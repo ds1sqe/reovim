@@ -423,4 +423,3 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
-

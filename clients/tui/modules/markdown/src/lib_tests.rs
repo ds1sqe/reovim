@@ -177,9 +177,15 @@ fn test_transform_line_insert_mode_bypass() {
     m.on_cursor_update(BufferId(1), 0, 0);
 
     // In insert mode, cursor line should show raw text
-    assert!(m.transform_line(BufferId(1), 0, "| Name  | Age |").is_none());
+    assert!(
+        m.transform_line(BufferId(1), 0, "| Name  | Age |")
+            .is_none()
+    );
     // Other lines still transform
-    assert!(m.transform_line(BufferId(1), 2, "| Alice | 30  |").is_some());
+    assert!(
+        m.transform_line(BufferId(1), 2, "| Alice | 30  |")
+            .is_some()
+    );
 }
 
 #[test]
@@ -192,7 +198,10 @@ fn test_transform_line_normal_mode_cursor() {
     m.on_cursor_update(BufferId(1), 0, 0);
 
     // Normal mode: cursor line still transforms
-    assert!(m.transform_line(BufferId(1), 0, "| Name  | Age |").is_some());
+    assert!(
+        m.transform_line(BufferId(1), 0, "| Name  | Age |")
+            .is_some()
+    );
 }
 
 #[test]

@@ -213,11 +213,7 @@ pub fn source_to_display_col(concealed: &ConcealedLine, source_col: usize) -> us
 /// `t=0.0` returns `from`, `t=1.0` returns `to`.
 #[must_use]
 #[allow(clippy::many_single_char_names)]
-fn lerp_color(
-    from: reovim_arch::Color,
-    to: reovim_arch::Color,
-    t: f32,
-) -> reovim_arch::Color {
+fn lerp_color(from: reovim_arch::Color, to: reovim_arch::Color, t: f32) -> reovim_arch::Color {
     let (from_r, from_g, from_b) = color_to_rgb(from);
     let (to_r, to_g, to_b) = color_to_rgb(to);
 
@@ -320,10 +316,9 @@ pub fn dim_style(style: &Style, opacity: f32, default_bg: reovim_arch::Color) ->
         return style.clone();
     }
 
-    let blend_opt =
-        |color: Option<reovim_arch::Color>| -> Option<reovim_arch::Color> {
-            color.map(|c| lerp_color(default_bg, c, opacity))
-        };
+    let blend_opt = |color: Option<reovim_arch::Color>| -> Option<reovim_arch::Color> {
+        color.map(|c| lerp_color(default_bg, c, opacity))
+    };
 
     Style {
         fg: blend_opt(style.fg),

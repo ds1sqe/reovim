@@ -141,8 +141,7 @@ impl ClientModule for MarkdownModule {
         let buffer_id = event.buffer_id.0;
         let detected = detect_tables(&event.new_lines);
         self.tables.insert(buffer_id, detected);
-        self.buffer_lines
-            .insert(buffer_id, event.new_lines.clone());
+        self.buffer_lines.insert(buffer_id, event.new_lines.clone());
         self.active_buffer_id = Some(buffer_id);
         self.rebuild_virtual_lines(buffer_id);
     }

@@ -158,10 +158,12 @@ fn decorations_matched_pair() {
     assert_eq!(open_decs.len(), 1);
     assert_eq!(open_decs[0].col_start, 3);
     assert_eq!(open_decs[0].col_end, 4);
-    assert!(open_decs[0]
-        .style
-        .attributes
-        .contains(Attributes::BOLD | Attributes::UNDERLINE));
+    assert!(
+        open_decs[0]
+            .style
+            .attributes
+            .contains(Attributes::BOLD | Attributes::UNDERLINE)
+    );
 
     let close_decs = m.inline_decorations(5);
     assert_eq!(close_decs.len(), 1);

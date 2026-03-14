@@ -15,8 +15,7 @@ use reovim_client_driver::{
     Style, Version,
 };
 
-use reovim_arch::Color;
-use serde::Deserialize;
+use {reovim_arch::Color, serde::Deserialize};
 
 /// Rainbow color palette (6 colors, cycling via `depth % 6`).
 const RAINBOW_COLORS: [Color; 6] = [
@@ -174,30 +173,30 @@ impl PairModule {
         if self.matchpair_enabled
             && let Some(ref matched) = self.matched
         {
-                let mut attrs = Attributes::new();
-                attrs.set(Attributes::BOLD | Attributes::UNDERLINE);
-                let style = Style {
-                    attributes: attrs,
-                    ..Style::default()
-                };
+            let mut attrs = Attributes::new();
+            attrs.set(Attributes::BOLD | Attributes::UNDERLINE);
+            let style = Style {
+                attributes: attrs,
+                ..Style::default()
+            };
 
-                self.decorations_by_line
-                    .entry(matched.open.line as usize)
-                    .or_default()
-                    .push(InlineDecoration {
-                        col_start: matched.open.col as u16,
-                        col_end: matched.open.col as u16 + 1,
-                        style: style.clone(),
-                    });
+            self.decorations_by_line
+                .entry(matched.open.line as usize)
+                .or_default()
+                .push(InlineDecoration {
+                    col_start: matched.open.col as u16,
+                    col_end: matched.open.col as u16 + 1,
+                    style: style.clone(),
+                });
 
-                self.decorations_by_line
-                    .entry(matched.close.line as usize)
-                    .or_default()
-                    .push(InlineDecoration {
-                        col_start: matched.close.col as u16,
-                        col_end: matched.close.col as u16 + 1,
-                        style,
-                    });
+            self.decorations_by_line
+                .entry(matched.close.line as usize)
+                .or_default()
+                .push(InlineDecoration {
+                    col_start: matched.close.col as u16,
+                    col_end: matched.close.col as u16 + 1,
+                    style,
+                });
         }
     }
 }

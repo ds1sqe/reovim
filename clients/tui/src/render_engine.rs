@@ -184,23 +184,12 @@ fn build_remote_clients(state: &TuiCoreState) -> Vec<reovim_client_driver::Remot
             mode: r.mode.clone(),
             cursor_color: reovim_client_driver::viewport::client_color(r.client_id),
             selection: r.selection.as_ref().map(|sel| {
-                let (sl, sc, el, ec) = if (sel.start.line, sel.start.column)
-                    <= (sel.end.line, sel.end.column)
-                {
-                    (
-                        sel.start.line,
-                        sel.start.column,
-                        sel.end.line,
-                        sel.end.column,
-                    )
-                } else {
-                    (
-                        sel.end.line,
-                        sel.end.column,
-                        sel.start.line,
-                        sel.start.column,
-                    )
-                };
+                let (sl, sc, el, ec) =
+                    if (sel.start.line, sel.start.column) <= (sel.end.line, sel.end.column) {
+                        (sel.start.line, sel.start.column, sel.end.line, sel.end.column)
+                    } else {
+                        (sel.end.line, sel.end.column, sel.start.line, sel.start.column)
+                    };
                 reovim_client_driver::SelectionInfo {
                     start_line: sl,
                     start_col: sc,
@@ -217,22 +206,10 @@ fn build_remote_clients(state: &TuiCoreState) -> Vec<reovim_client_driver::Remot
 /// Build local `SelectionInfo` from TUI state.
 fn build_local_selection(state: &TuiCoreState) -> Option<reovim_client_driver::SelectionInfo> {
     let sel = state.window_selections.get(&state.focused_window_id)?;
-    let (sl, sc, el, ec) = if (sel.start.line, sel.start.column)
-        <= (sel.end.line, sel.end.column)
-    {
-        (
-            sel.start.line,
-            sel.start.column,
-            sel.end.line,
-            sel.end.column,
-        )
+    let (sl, sc, el, ec) = if (sel.start.line, sel.start.column) <= (sel.end.line, sel.end.column) {
+        (sel.start.line, sel.start.column, sel.end.line, sel.end.column)
     } else {
-        (
-            sel.end.line,
-            sel.end.column,
-            sel.start.line,
-            sel.start.column,
-        )
+        (sel.end.line, sel.end.column, sel.start.line, sel.start.column)
     };
     Some(reovim_client_driver::SelectionInfo {
         start_line: sl,

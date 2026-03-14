@@ -5,8 +5,8 @@
 //! in `viewport.rs` as part of the gutter framework (M5, #636).
 
 use reovim_client_driver::{
-    AnnotationContext, ClientModule, ClientModuleError, ColumnWidth, GutterCell,
-    LineNumberMode, ModuleContext, OptionValue, PlatformCapabilities, ProbeResult, Style, Version,
+    AnnotationContext, ClientModule, ClientModuleError, ColumnWidth, GutterCell, LineNumberMode,
+    ModuleContext, OptionValue, PlatformCapabilities, ProbeResult, Style, Version,
 };
 
 /// Line numbers annotation module.
@@ -88,9 +88,7 @@ impl ClientModule for LineNumbersModule {
         let is_cursor_line = line == ctx.cursor_line;
 
         let (display_num, _) = match self.mode {
-            LineNumberMode::Absolute | LineNumberMode::Hybrid => {
-                (line_num, is_cursor_line)
-            }
+            LineNumberMode::Absolute | LineNumberMode::Hybrid => (line_num, is_cursor_line),
             LineNumberMode::Relative => {
                 let rel = if is_cursor_line {
                     line_num
@@ -117,14 +115,12 @@ impl ClientModule for LineNumbersModule {
     fn on_option_changed(&mut self, name: &str, value: &OptionValue) {
         match (name, value) {
             ("number", OptionValue::Bool(true))
-                if self.mode == LineNumberMode::None
-                    || self.mode == LineNumberMode::Relative =>
+                if self.mode == LineNumberMode::None || self.mode == LineNumberMode::Relative =>
             {
                 self.mode = LineNumberMode::Absolute;
             }
             ("number", OptionValue::Bool(false))
-                if self.mode == LineNumberMode::Absolute
-                    || self.mode == LineNumberMode::Hybrid =>
+                if self.mode == LineNumberMode::Absolute || self.mode == LineNumberMode::Hybrid =>
             {
                 self.mode = LineNumberMode::None;
             }

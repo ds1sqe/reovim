@@ -1,5 +1,4 @@
-use super::*;
-use crate::Attributes;
+use {super::*, crate::Attributes};
 
 // =============================================================================
 // ConcealedLine::identity
@@ -230,10 +229,7 @@ fn dim_style_half_opacity() {
 
 #[test]
 fn dim_style_preserves_attributes() {
-    let style = Style::new()
-        .fg(reovim_arch::Color::Red)
-        .bold()
-        .italic();
+    let style = Style::new().fg(reovim_arch::Color::Red).bold().italic();
     let dimmed = dim_style(&style, 0.5, reovim_arch::Color::Black);
     assert!(dimmed.attributes.contains(Attributes::BOLD));
     assert!(dimmed.attributes.contains(Attributes::ITALIC));

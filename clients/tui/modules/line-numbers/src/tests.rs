@@ -1,5 +1,4 @@
-use super::*;
-use reovim_client_driver::BufferId;
+use {super::*, reovim_client_driver::BufferId};
 
 fn make_ctx(total_lines: usize, cursor_line: usize) -> AnnotationContext {
     AnnotationContext {
@@ -94,10 +93,7 @@ fn has_annotations_absolute_mode() {
 fn column_width_none_mode() {
     let module = LineNumbersModule::new();
     let ctx = make_ctx(100, 0);
-    assert_eq!(
-        module.annotation_column_width(&ctx, &TestCaps),
-        ColumnWidth::Fixed(0)
-    );
+    assert_eq!(module.annotation_column_width(&ctx, &TestCaps), ColumnWidth::Fixed(0));
 }
 
 #[test]
@@ -106,10 +102,7 @@ fn column_width_small_file() {
     module.set_mode(LineNumberMode::Absolute);
     let ctx = make_ctx(9, 0);
     // 9 lines → 1 digit + 1 padding = Dynamic(2)
-    assert_eq!(
-        module.annotation_column_width(&ctx, &TestCaps),
-        ColumnWidth::Dynamic(2)
-    );
+    assert_eq!(module.annotation_column_width(&ctx, &TestCaps), ColumnWidth::Dynamic(2));
 }
 
 #[test]
@@ -118,10 +111,7 @@ fn column_width_100_lines() {
     module.set_mode(LineNumberMode::Absolute);
     let ctx = make_ctx(100, 0);
     // 100 lines → 3 digits + 1 padding = Dynamic(4)
-    assert_eq!(
-        module.annotation_column_width(&ctx, &TestCaps),
-        ColumnWidth::Dynamic(4)
-    );
+    assert_eq!(module.annotation_column_width(&ctx, &TestCaps), ColumnWidth::Dynamic(4));
 }
 
 #[test]
@@ -130,10 +120,7 @@ fn column_width_empty_file() {
     module.set_mode(LineNumberMode::Absolute);
     let ctx = make_ctx(0, 0);
     // 0 lines → 1 digit + 1 padding = Dynamic(2)
-    assert_eq!(
-        module.annotation_column_width(&ctx, &TestCaps),
-        ColumnWidth::Dynamic(2)
-    );
+    assert_eq!(module.annotation_column_width(&ctx, &TestCaps), ColumnWidth::Dynamic(2));
 }
 
 // =============================================================================
@@ -301,8 +288,7 @@ fn option_unknown_ignored() {
 fn lifecycle() {
     let mut module = LineNumbersModule::new();
     let caps: &'static dyn PlatformCapabilities = Box::leak(Box::new(TestCaps));
-    let theme: &'static dyn reovim_client_driver::ThemeProvider =
-        Box::leak(Box::new(MockTheme));
+    let theme: &'static dyn reovim_client_driver::ThemeProvider = Box::leak(Box::new(MockTheme));
     let ctx = ModuleContext {
         capabilities: caps,
         server: std::sync::Arc::new(MockServer),

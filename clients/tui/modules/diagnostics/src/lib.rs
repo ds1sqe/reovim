@@ -14,8 +14,7 @@ use reovim_client_driver::{
     Version, VirtualLine, VirtualLinePosition,
 };
 
-use reovim_arch::Color;
-use serde::Deserialize;
+use {reovim_arch::Color, serde::Deserialize};
 
 /// Deserialized diagnostic notification payload.
 #[derive(Debug, Deserialize)]

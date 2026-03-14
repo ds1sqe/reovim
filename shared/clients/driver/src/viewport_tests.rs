@@ -1,10 +1,11 @@
-use std::borrow::Cow;
-use std::cell::RefCell;
+use std::{borrow::Cow, cell::RefCell};
 
-use super::*;
-use crate::{
-    BufferId, CursorInfo, LineNumberMode, SyntaxToken, ViewportContext, ViewportRenderer,
-    VirtualLine, VirtualLinePosition,
+use {
+    super::*,
+    crate::{
+        BufferId, CursorInfo, LineNumberMode, SyntaxToken, ViewportContext, ViewportRenderer,
+        VirtualLine, VirtualLinePosition,
+    },
 };
 
 // =============================================================================
@@ -229,10 +230,7 @@ fn apply_opacity_partial() {
 #[test]
 fn classify_with_modules_no_modules() {
     let modules: Vec<Box<dyn ClientModule>> = Vec::new();
-    assert_eq!(
-        classify_with_modules(&modules, "keyword"),
-        RenderBehavior::Highlight
-    );
+    assert_eq!(classify_with_modules(&modules, "keyword"), RenderBehavior::Highlight);
 }
 
 #[test]
@@ -259,10 +257,7 @@ fn classify_with_modules_no_buffer_contrib() {
         }
     }
     let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(NonContribModule)];
-    assert_eq!(
-        classify_with_modules(&modules, "keyword"),
-        RenderBehavior::Highlight
-    );
+    assert_eq!(classify_with_modules(&modules, "keyword"), RenderBehavior::Highlight);
 }
 
 // =============================================================================
@@ -322,10 +317,7 @@ fn render_transformed_line_multi_segment() {
     let mut surface = RecordingSurface::new(80, 24);
     let style = Style::new().fg(reovim_arch::Color::Red);
     let transformed = TransformedLine {
-        segments: vec![
-            ("fn ".to_string(), Some(style)),
-            ("main".to_string(), None),
-        ],
+        segments: vec![("fn ".to_string(), Some(style)), ("main".to_string(), None)],
     };
     render_transformed_line(&mut surface, 0, 0, 20, &transformed);
     let text = surface.text_at(0);
@@ -535,10 +527,7 @@ fn render_line_content_with_conceal() {
     );
     let text = surface.text_at(0);
     assert!(text.contains("..."), "URL should be concealed: {text}");
-    assert!(
-        !text.contains("http"),
-        "URL should not be visible: {text}"
-    );
+    assert!(!text.contains("http"), "URL should not be visible: {text}");
 }
 
 #[test]
@@ -929,15 +918,27 @@ fn render_buffer_content_with_gutter_annotations() {
     // Mock annotation module that returns line numbers
     struct MockAnnotation;
     impl ClientModule for MockAnnotation {
-        fn id(&self) -> &'static str { "mock-ann" }
-        fn name(&self) -> &'static str { "Mock" }
-        fn version(&self) -> crate::Version { crate::Version::new(1, 0, 0) }
+        fn id(&self) -> &'static str {
+            "mock-ann"
+        }
+        fn name(&self) -> &'static str {
+            "Mock"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
         fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
             crate::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> { Ok(()) }
-        fn has_annotations(&self) -> bool { true }
-        fn annotation_priority(&self) -> u16 { 100 }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_annotations(&self) -> bool {
+            true
+        }
+        fn annotation_priority(&self) -> u16 {
+            100
+        }
         fn annotation_column_width(
             &self,
             _ctx: &crate::AnnotationContext,
@@ -945,7 +946,11 @@ fn render_buffer_content_with_gutter_annotations() {
         ) -> crate::ColumnWidth {
             crate::ColumnWidth::Fixed(4)
         }
-        fn annotate(&self, line: usize, _ctx: &crate::AnnotationContext) -> Option<crate::GutterCell> {
+        fn annotate(
+            &self,
+            line: usize,
+            _ctx: &crate::AnnotationContext,
+        ) -> Option<crate::GutterCell> {
             Some(crate::GutterCell {
                 text: (line + 1).to_string(),
                 style: Style::new().fg(reovim_arch::Color::DarkGrey),
@@ -1343,10 +1348,7 @@ fn compute_cursor_visual_col_no_buffer() {
     let cursor = CursorInfo { line: 0, column: 5 };
     let modules: Vec<Box<dyn ClientModule>> = Vec::new();
     let tokens = MockTokenProvider::empty();
-    assert_eq!(
-        compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules),
-        5
-    );
+    assert_eq!(compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules), 5);
 }
 
 #[test]
@@ -1359,10 +1361,7 @@ fn compute_cursor_visual_col_no_content() {
     let cursor = CursorInfo { line: 0, column: 3 };
     let modules: Vec<Box<dyn ClientModule>> = Vec::new();
     let tokens = MockTokenProvider::empty();
-    assert_eq!(
-        compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules),
-        3
-    );
+    assert_eq!(compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules), 3);
 }
 
 #[test]
@@ -1376,10 +1375,7 @@ fn compute_cursor_visual_col_no_conceals() {
     let cursor = CursorInfo { line: 0, column: 3 };
     let modules: Vec<Box<dyn ClientModule>> = Vec::new();
     let tokens = MockTokenProvider::empty();
-    assert_eq!(
-        compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules),
-        3
-    );
+    assert_eq!(compute_cursor_visual_col(&ctx, &cursor, &tokens, &MockTheme, &modules), 3);
 }
 
 // =============================================================================

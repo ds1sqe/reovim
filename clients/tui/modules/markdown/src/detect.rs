@@ -100,8 +100,18 @@ pub fn detect_tables(lines: &[String]) -> Vec<TableRegion> {
             if let Some(delim) = delimiter.filter(|_| end > start) {
                 let col_widths = super::layout::calculate_max_column_widths(lines, start, end - 1);
                 if !col_widths.is_empty() {
-                    let top_border = super::layout::generate_border(&col_widths, '\u{250C}', '\u{252C}', '\u{2510}');
-                    let bottom_border = super::layout::generate_border(&col_widths, '\u{2514}', '\u{2534}', '\u{2518}');
+                    let top_border = super::layout::generate_border(
+                        &col_widths,
+                        '\u{250C}',
+                        '\u{252C}',
+                        '\u{2510}',
+                    );
+                    let bottom_border = super::layout::generate_border(
+                        &col_widths,
+                        '\u{2514}',
+                        '\u{2534}',
+                        '\u{2518}',
+                    );
                     tables.push(TableRegion {
                         start_line: start,
                         end_line: end - 1,

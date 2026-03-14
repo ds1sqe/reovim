@@ -1221,10 +1221,7 @@ fn viewport_context_with_content() {
     let ctx = ViewportContext {
         buffer_id: Some(BufferId(1)),
         buffer_lines: Some(&lines),
-        cursor: Some(CursorInfo {
-            line: 0,
-            column: 2,
-        }),
+        cursor: Some(CursorInfo { line: 0, column: 2 }),
         scroll_top: 0,
         local_selection: None,
         remote_clients: &remotes,

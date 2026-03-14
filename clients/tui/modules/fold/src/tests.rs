@@ -123,18 +123,14 @@ fn notification_non_array_value() {
 #[test]
 fn auto_selects_single_buffer() {
     let mut m = FoldModule::new();
-    m.on_notification(
-        r#"{"folds":{"42":[{"start_line":0,"hidden_count":3,"preview":"fn a"}]}}"#,
-    );
+    m.on_notification(r#"{"folds":{"42":[{"start_line":0,"hidden_count":3,"preview":"fn a"}]}}"#);
     assert_eq!(m.active_buffer_id, Some(42));
 }
 
 #[test]
 fn notification_non_numeric_buffer_id_skipped() {
     let mut m = FoldModule::new();
-    m.on_notification(
-        r#"{"folds":{"abc":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#,
-    );
+    m.on_notification(r#"{"folds":{"abc":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#);
     assert!(!m.has_buffer_contrib());
 }
 
@@ -182,9 +178,7 @@ fn fold_ranges_empty_when_inactive() {
 #[test]
 fn fold_ranges_returns_hidden_ranges() {
     let mut m = FoldModule::new();
-    m.on_notification(
-        r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"fn foo"}]}}"#,
-    );
+    m.on_notification(r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"fn foo"}]}}"#);
     let ranges = m.fold_ranges();
     assert_eq!(ranges.len(), 1);
     // Hidden lines start at start_line + 1 (fold marker line is visible)
@@ -209,9 +203,7 @@ fn fold_ranges_multiple_folds() {
 #[test]
 fn fold_ranges_zero_count_excluded() {
     let mut m = FoldModule::new();
-    m.on_notification(
-        r#"{"folds":{"1":[{"start_line":5,"hidden_count":0,"preview":"empty"}]}}"#,
-    );
+    m.on_notification(r#"{"folds":{"1":[{"start_line":5,"hidden_count":0,"preview":"empty"}]}}"#);
     let ranges = m.fold_ranges();
     assert!(ranges.is_empty());
 }
@@ -272,9 +264,7 @@ fn transform_line_at_fold_start() {
 #[test]
 fn transform_line_non_fold_line() {
     let mut m = FoldModule::new();
-    m.on_notification(
-        r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"fn foo"}]}}"#,
-    );
+    m.on_notification(r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"fn foo"}]}}"#);
 
     let result = m.transform_line(BufferId(1), 3, "some other line");
     assert!(result.is_none());

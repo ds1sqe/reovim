@@ -91,4 +91,3 @@ fn test_framebuffer_fill_region() {
     assert_eq!(fb.get(3, 2).unwrap().char, '#');
     assert_eq!(fb.get(4, 1).unwrap().char, ' ');
 }
-

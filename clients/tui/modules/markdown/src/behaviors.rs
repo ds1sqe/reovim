@@ -70,9 +70,7 @@ pub fn classify_markdown_token(category: &str) -> Option<RenderBehavior> {
         "markup.raw.delimiter" => Some(RenderBehavior::Hide),
 
         // Code block -> background
-        "markup.raw.block" => Some(RenderBehavior::Background(
-            reovim_arch::Color::default(),
-        )),
+        "markup.raw.block" => Some(RenderBehavior::Background(reovim_arch::Color::default())),
 
         // Not a markdown category -- fall through
         _ => None,

@@ -7,7 +7,11 @@ use {
 
 /// Mirror of `viewport::label_text` for test assertions.
 fn label_text(display_name: &str, mode: &str) -> String {
-    let name = if display_name.is_empty() { "?" } else { display_name };
+    let name = if display_name.is_empty() {
+        "?"
+    } else {
+        display_name
+    };
     let mode_abbrev = match mode.to_lowercase() {
         m if m.contains("insert") => "[I]",
         m if m.contains("visual") => "[V]",

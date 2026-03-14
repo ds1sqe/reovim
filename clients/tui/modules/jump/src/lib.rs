@@ -140,12 +140,7 @@ impl ClientModule for JumpModule {
         }
     }
 
-    fn transform_line(
-        &self,
-        _buf: BufferId,
-        line: usize,
-        text: &str,
-    ) -> Option<TransformedLine> {
+    fn transform_line(&self, _buf: BufferId, line: usize, text: &str) -> Option<TransformedLine> {
         if !self.active {
             return None;
         }
