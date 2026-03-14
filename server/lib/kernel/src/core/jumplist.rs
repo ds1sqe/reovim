@@ -78,7 +78,7 @@ impl JumpEntry {
 ///
 /// Consecutive duplicate entries are automatically suppressed to prevent
 /// noise from repeated jumps to the same location.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Jumplist {
     /// Stored entries (oldest first).
     entries: Vec<JumpEntry>,

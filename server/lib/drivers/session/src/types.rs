@@ -22,7 +22,8 @@
 use {
     reovim_driver_layout::RootCompositor,
     reovim_kernel::api::v1::{
-        BufferId, HistoryRing, MarkBank, ModeId, ModeStack, Position, RegisterBank, WindowId,
+        BufferId, HistoryRing, Jumplist, MarkBank, ModeId, ModeStack, Position, RegisterBank,
+        WindowId,
     },
 };
 
@@ -245,6 +246,8 @@ pub struct ClientContext<'a> {
     pub clipboard_history: &'a mut HistoryRing,
     /// Per-client local marks (a-z).
     pub local_marks: &'a mut MarkBank,
+    /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
+    pub jumplist: &'a mut Jumplist,
     /// Per-client active buffer (#471).
     ///
     /// Each client tracks which buffer they are viewing independently.

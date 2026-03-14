@@ -34,7 +34,8 @@ use {
         runtime::SessionRuntime,
     },
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack,
+        Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId,
+        ModeStack,
         ModuleId, Position, RegisterBank,
     },
     std::sync::Arc,
@@ -95,6 +96,7 @@ pub struct TestSessionRuntime {
     clipboard_history: HistoryRing,
     /// Per-client local marks (#515).
     local_marks: MarkBank,
+    jumplist: Jumplist,
     /// Per-client active buffer (#471).
     active_buffer: Option<BufferId>,
     /// Per-client terminal dimensions (#471).
@@ -131,6 +133,7 @@ impl TestSessionRuntime {
             registers: RegisterBank::new(),                             // Per-client (#515)
             clipboard_history: HistoryRing::new(),                      // Per-client (#515)
             local_marks: MarkBank::new(),                               // Per-client (#515)
+            jumplist: Jumplist::new(),
             active_buffer: None,                                        // Per-client (#471)
             terminal_size: (80, 24),                                    // Per-client (#471)
             kernel: Self::make_test_kernel(),
@@ -152,6 +155,7 @@ impl TestSessionRuntime {
             registers: RegisterBank::new(),                        // Per-client (#515)
             clipboard_history: HistoryRing::new(),                 // Per-client (#515)
             local_marks: MarkBank::new(),                          // Per-client (#515)
+            jumplist: Jumplist::new(),
             active_buffer: None,                                   // Per-client (#471)
             terminal_size: (80, 24),                               // Per-client (#471)
             kernel: Self::make_test_kernel(),
@@ -244,6 +248,7 @@ impl TestSessionRuntime {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            jumplist: &mut self.jumplist,
             active_buffer: &mut self.active_buffer,
             terminal_size: &mut self.terminal_size,
         };
@@ -274,6 +279,7 @@ impl TestSessionRuntime {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            jumplist: &mut self.jumplist,
             active_buffer: &mut self.active_buffer,
             terminal_size: &mut self.terminal_size,
         };

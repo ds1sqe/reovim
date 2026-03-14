@@ -33,6 +33,7 @@ struct TestState {
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
+    jumplist: Jumplist,
     active_buffer: Option<BufferId>,
     terminal_size: (u16, u16),
 }
@@ -61,6 +62,7 @@ impl TestState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -78,6 +80,7 @@ impl TestState {
                 registers: &mut self.registers,
                 clipboard_history: &mut self.clipboard_history,
                 local_marks: &mut self.local_marks,
+                jumplist: &mut self.jumplist,
                 active_buffer: &mut self.active_buffer,
                 terminal_size: &mut self.terminal_size,
             },

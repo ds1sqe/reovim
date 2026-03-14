@@ -2,7 +2,7 @@ use {
     super::*,
     crate::{testing::StubExecutor, types::ClientId},
     reovim_kernel::{
-        api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
+        api::v1::{HistoryRing, Jumplist, MarkBank, ModuleId, RegisterBank},
         testing::test_mode,
     },
 };
@@ -32,6 +32,7 @@ fn test_mode_api() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -46,6 +47,7 @@ fn test_mode_api() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -100,6 +102,7 @@ fn test_per_client_mode_stack() {
     let mut client_registers = RegisterBank::new();
     let mut client_clipboard_history = HistoryRing::new();
     let mut client_local_marks = MarkBank::new();
+    let mut client_jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -120,6 +123,7 @@ fn test_per_client_mode_stack() {
                 registers: &mut client_registers,
                 clipboard_history: &mut client_clipboard_history,
                 local_marks: &mut client_local_marks,
+            jumplist: &mut client_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -162,6 +166,7 @@ fn test_owner_tracking() {
     let mut client_registers = RegisterBank::new();
     let mut client_clipboard_history = HistoryRing::new();
     let mut client_local_marks = MarkBank::new();
+    let mut client_jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -178,6 +183,7 @@ fn test_owner_tracking() {
                 registers: &mut client_registers,
                 clipboard_history: &mut client_clipboard_history,
                 local_marks: &mut client_local_marks,
+            jumplist: &mut client_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -202,6 +208,7 @@ fn test_owner_tracking() {
                 registers: &mut client_registers,
                 clipboard_history: &mut client_clipboard_history,
                 local_marks: &mut client_local_marks,
+            jumplist: &mut client_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -229,6 +236,7 @@ fn test_multi_client_mode_isolation() {
     let mut client1_registers = RegisterBank::new();
     let mut client1_clipboard_history = HistoryRing::new();
     let mut client1_local_marks = MarkBank::new();
+    let mut client1_jumplist = Jumplist::new();
     let mut client2_stack = ModeStack::new(test_mode());
     let mut client2_windows = crate::WindowLayout::empty();
     let mut client2_extensions = crate::ExtensionMap::new();
@@ -237,6 +245,7 @@ fn test_multi_client_mode_isolation() {
     let mut client2_registers = RegisterBank::new();
     let mut client2_clipboard_history = HistoryRing::new();
     let mut client2_local_marks = MarkBank::new();
+    let mut client2_jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -253,6 +262,7 @@ fn test_multi_client_mode_isolation() {
                 registers: &mut client1_registers,
                 clipboard_history: &mut client1_clipboard_history,
                 local_marks: &mut client1_local_marks,
+            jumplist: &mut client1_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -275,6 +285,7 @@ fn test_multi_client_mode_isolation() {
                 registers: &mut client2_registers,
                 clipboard_history: &mut client2_clipboard_history,
                 local_marks: &mut client2_local_marks,
+            jumplist: &mut client2_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -308,6 +319,7 @@ fn test_window_api() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -322,6 +334,7 @@ fn test_window_api() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -386,6 +399,7 @@ fn test_extension_api() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -400,6 +414,7 @@ fn test_extension_api() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -448,6 +463,7 @@ fn test_shared_ext_without_shared_extensions_returns_none() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -462,6 +478,7 @@ fn test_shared_ext_without_shared_extensions_returns_none() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -500,6 +517,7 @@ fn test_shared_ext_mut_without_shared_extensions_returns_none() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -514,6 +532,7 @@ fn test_shared_ext_mut_without_shared_extensions_returns_none() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -553,6 +572,7 @@ fn test_shared_ext_with_shared_extensions_returns_value() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -570,6 +590,7 @@ fn test_shared_ext_with_shared_extensions_returns_value() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -612,6 +633,7 @@ fn test_shared_ext_mut_creates_and_returns() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -626,6 +648,7 @@ fn test_shared_ext_mut_creates_and_returns() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -713,6 +736,7 @@ fn test_change_tracking() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -727,6 +751,7 @@ fn test_change_tracking() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1332,6 +1357,7 @@ fn test_has_compositor_false() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1346,6 +1372,7 @@ fn test_has_compositor_false() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1370,6 +1397,7 @@ fn test_session_accessor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1384,6 +1412,7 @@ fn test_session_accessor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1408,6 +1437,7 @@ fn test_session_mut_accessor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1422,6 +1452,7 @@ fn test_session_mut_accessor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1448,6 +1479,7 @@ fn test_kernel_accessor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1462,6 +1494,7 @@ fn test_kernel_accessor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1487,6 +1520,7 @@ fn test_windows_accessor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1501,6 +1535,7 @@ fn test_windows_accessor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1525,6 +1560,7 @@ fn test_windows_mut_accessor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1539,6 +1575,7 @@ fn test_windows_mut_accessor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2102,6 +2139,7 @@ fn test_execute_command_not_found() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2116,6 +2154,7 @@ fn test_execute_command_not_found() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2378,6 +2417,7 @@ fn test_insert_text_no_active_window_uses_zero_position() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = Some(buf_id); // Per-client (#471)
     let mut terminal_size = (80u16, 24u16);
 
@@ -2392,6 +2432,7 @@ fn test_insert_text_no_active_window_uses_zero_position() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2425,6 +2466,7 @@ fn test_delete_range_no_active_window_uses_zero_position() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = Some(buf_id); // Per-client (#471)
     let mut terminal_size = (80u16, 24u16);
 
@@ -2439,6 +2481,7 @@ fn test_delete_range_no_active_window_uses_zero_position() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2537,6 +2580,7 @@ fn test_get_register_raw_clipboard_plus_returns_none() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2551,6 +2595,7 @@ fn test_get_register_raw_clipboard_plus_returns_none() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2584,6 +2629,7 @@ fn test_get_register_raw_selection_star_returns_none() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2598,6 +2644,7 @@ fn test_get_register_raw_selection_star_returns_none() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2633,6 +2680,7 @@ fn test_get_register_numbered_with_provider() {
     clipboard_history.push(RegisterContent::characterwise("yank-1"));
     clipboard_history.push(RegisterContent::characterwise("yank-0"));
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2647,6 +2695,7 @@ fn test_get_register_numbered_with_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2681,6 +2730,7 @@ fn test_set_register_clipboard_plus_not_stored_in_register_bank() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2695,6 +2745,7 @@ fn test_set_register_clipboard_plus_not_stored_in_register_bank() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2724,6 +2775,7 @@ fn test_store_register_with_sync_clipboard_plus() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2738,6 +2790,7 @@ fn test_store_register_with_sync_clipboard_plus() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2768,6 +2821,7 @@ fn test_set_register_selection_star_not_stored_in_register_bank() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2782,6 +2836,7 @@ fn test_set_register_selection_star_not_stored_in_register_bank() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -2810,6 +2865,7 @@ fn test_store_register_with_sync_selection_star() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -2824,6 +2880,7 @@ fn test_store_register_with_sync_selection_star() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3007,6 +3064,7 @@ fn test_undo_with_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3021,6 +3079,7 @@ fn test_undo_with_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3057,6 +3116,7 @@ fn test_redo_with_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3071,6 +3131,7 @@ fn test_redo_with_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3100,6 +3161,7 @@ fn test_can_undo_with_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3114,6 +3176,7 @@ fn test_can_undo_with_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3148,6 +3211,7 @@ fn test_undo_mine_with_owner_and_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3163,6 +3227,7 @@ fn test_undo_mine_with_owner_and_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3200,6 +3265,7 @@ fn test_redo_mine_with_owner_and_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3215,6 +3281,7 @@ fn test_redo_mine_with_owner_and_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3247,6 +3314,7 @@ fn test_record_edit_mine_with_owner_and_provider() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3262,6 +3330,7 @@ fn test_record_edit_mine_with_owner_and_provider() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3428,6 +3497,7 @@ fn test_undo_with_delete_edits() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3442,6 +3512,7 @@ fn test_undo_with_delete_edits() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3480,6 +3551,7 @@ fn test_redo_with_insert_edits() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3494,6 +3566,7 @@ fn test_redo_with_insert_edits() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3533,6 +3606,7 @@ fn test_undo_mine_with_delete_edits() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3548,6 +3622,7 @@ fn test_undo_mine_with_delete_edits() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3587,6 +3662,7 @@ fn test_redo_mine_with_insert_edits() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3602,6 +3678,7 @@ fn test_redo_mine_with_insert_edits() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3633,6 +3710,7 @@ fn test_apply_undo_edits_buffer_not_found() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3647,6 +3725,7 @@ fn test_apply_undo_edits_buffer_not_found() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3908,6 +3987,7 @@ fn test_compositor_navigate() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3922,6 +4002,7 @@ fn test_compositor_navigate() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3947,6 +4028,7 @@ fn test_compositor_split() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -3961,6 +4043,7 @@ fn test_compositor_split() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -3986,6 +4069,7 @@ fn test_compositor_close_current_window() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4000,6 +4084,7 @@ fn test_compositor_close_current_window() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4025,6 +4110,7 @@ fn test_compositor_close_others() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4039,6 +4125,7 @@ fn test_compositor_close_others() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4064,6 +4151,7 @@ fn test_compositor_resize() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4078,6 +4166,7 @@ fn test_compositor_resize() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4103,6 +4192,7 @@ fn test_compositor_equalize() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4117,6 +4207,7 @@ fn test_compositor_equalize() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4142,6 +4233,7 @@ fn test_compositor_cycle() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4156,6 +4248,7 @@ fn test_compositor_cycle() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4181,6 +4274,7 @@ fn test_compositor_focus() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4195,6 +4289,7 @@ fn test_compositor_focus() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4220,6 +4315,7 @@ fn test_compositor_focus_same_window_no_event() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4234,6 +4330,7 @@ fn test_compositor_focus_same_window_no_event() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4260,6 +4357,7 @@ fn test_compositor_focused_window() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4274,6 +4372,7 @@ fn test_compositor_focused_window() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4297,6 +4396,7 @@ fn test_compositor_window_count() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4311,6 +4411,7 @@ fn test_compositor_window_count() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4334,6 +4435,7 @@ fn test_compositor_active_layer() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4348,6 +4450,7 @@ fn test_compositor_active_layer() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4371,6 +4474,7 @@ fn test_compositor_toggle_float() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4385,6 +4489,7 @@ fn test_compositor_toggle_float() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4409,6 +4514,7 @@ fn test_compositor_raise_float() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4423,6 +4529,7 @@ fn test_compositor_raise_float() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4446,6 +4553,7 @@ fn test_compositor_lower_float() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4460,6 +4568,7 @@ fn test_compositor_lower_float() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4483,6 +4592,7 @@ fn test_compositor_show_overlay() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4497,6 +4607,7 @@ fn test_compositor_show_overlay() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4522,6 +4633,7 @@ fn test_compositor_hide_overlay() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4536,6 +4648,7 @@ fn test_compositor_hide_overlay() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4559,6 +4672,7 @@ fn test_compositor_resize_overlay() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4573,6 +4687,7 @@ fn test_compositor_resize_overlay() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4596,6 +4711,7 @@ fn test_compositor_hide_all_overlays() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4610,6 +4726,7 @@ fn test_compositor_hide_all_overlays() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4633,6 +4750,7 @@ fn test_compositor_set_active_layer_opacity() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4647,6 +4765,7 @@ fn test_compositor_set_active_layer_opacity() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4670,6 +4789,7 @@ fn test_compositor_set_active_layer_opacity_clamps() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4684,6 +4804,7 @@ fn test_compositor_set_active_layer_opacity_clamps() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4709,6 +4830,7 @@ fn test_compositor_active_layer_opacity() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4723,6 +4845,7 @@ fn test_compositor_active_layer_opacity() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4748,6 +4871,7 @@ fn test_compositor_adjust_active_layer_opacity() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4762,6 +4886,7 @@ fn test_compositor_adjust_active_layer_opacity() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4787,6 +4912,7 @@ fn test_set_screen_with_compositor() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4801,6 +4927,7 @@ fn test_set_screen_with_compositor() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4824,6 +4951,7 @@ fn test_emit_layout_event_with_compositor() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4838,6 +4966,7 @@ fn test_emit_layout_event_with_compositor() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -4861,6 +4990,7 @@ fn test_arrange_with_compositor() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -4875,6 +5005,7 @@ fn test_arrange_with_compositor() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5042,6 +5173,7 @@ fn test_compositor_close_current_window_single_window() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut rt = SessionRuntime::new(
@@ -5055,6 +5187,7 @@ fn test_compositor_close_current_window_single_window() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5086,6 +5219,7 @@ fn test_record_cursor_move_extends_selection() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5108,6 +5242,7 @@ fn test_record_cursor_move_extends_selection() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5141,6 +5276,7 @@ fn test_record_cursor_move_no_selection() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5161,6 +5297,7 @@ fn test_record_cursor_move_no_selection() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5190,6 +5327,7 @@ fn test_record_cursor_move_no_active_window() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5205,6 +5343,7 @@ fn test_record_cursor_move_no_active_window() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5234,6 +5373,7 @@ fn test_record_selection_change_directly() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5249,6 +5389,7 @@ fn test_record_selection_change_directly() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5282,6 +5423,7 @@ fn test_compositor_focus_same_window_no_layout_event() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5296,6 +5438,7 @@ fn test_compositor_focus_same_window_no_layout_event() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -5363,6 +5506,7 @@ fn test_set_screen_without_compositor() {
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();
     let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -5377,6 +5521,7 @@ fn test_set_screen_without_compositor() {
             registers: &mut r,
             clipboard_history: &mut ch,
             local_marks: &mut lm,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
