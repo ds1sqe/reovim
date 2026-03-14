@@ -13,9 +13,9 @@ use {
     reovim_protocol::v2::{
         BufferInfo, CodecMetadata, GetAnnotationsRequest, GetAnnotationsResponse,
         GetLineCountRequest, GetLineCountResponse, GetRawContentRequest, GetRawContentResponse,
-        LineAnnotation, ListBuffersRequest, ListBuffersResponse, OpenFileRequest,
-        OpenFileResponse, SetContentRequest, SetContentResponse, WriteFileRequest,
-        WriteFileResponse, buffer_service_server::BufferService,
+        LineAnnotation, ListBuffersRequest, ListBuffersResponse, OpenFileRequest, OpenFileResponse,
+        SetContentRequest, SetContentResponse, WriteFileRequest, WriteFileResponse,
+        buffer_service_server::BufferService,
     },
     tonic::{Request, Response, Status},
 };

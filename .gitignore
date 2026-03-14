@@ -2,7 +2,9 @@
 tmp/
 COVERAGE.md
 COVERAGE-SERVER.md
+
 CLAUDE.md
+
 .claude/
 
 # Python cache
@@ -10,3 +12,5 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info
+
+nodemodules/

@@ -58,7 +58,8 @@ pub type ClientOnBufferFocusFn = unsafe extern "C" fn(*mut c_void, usize);
 
 /// FFI function: `on_buffer_update` trampoline
 /// (`buffer_id`, revision, `changed_start`, `changed_end`, `total_lines`).
-pub type ClientOnBufferUpdateFn = unsafe extern "C" fn(*mut c_void, usize, u64, usize, usize, usize);
+pub type ClientOnBufferUpdateFn =
+    unsafe extern "C" fn(*mut c_void, usize, u64, usize, usize, usize);
 
 /// FFI function: `on_option_changed` trampoline
 /// (`name_ptr`, `name_len`, tag, `i64_val`, `str_ptr`, `str_len`).

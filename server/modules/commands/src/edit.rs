@@ -157,8 +157,7 @@ fn decode_file_content(
                     // Store metadata in shared extensions (per-buffer, not per-client)
                     // so gRPC handler and other clients can access it.
                     if let Some(buffer_id) = runtime.active_buffer()
-                        && let Some(codec_state) =
-                            runtime.shared_ext_mut::<CodecSessionState>()
+                        && let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>()
                     {
                         codec_state.insert(buffer_id, result.metadata);
                     }

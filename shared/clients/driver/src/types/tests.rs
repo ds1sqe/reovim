@@ -1487,35 +1487,23 @@ fn client_module_probe_capabilities_all_set() {
 
 #[test]
 fn client_module_probe_capabilities_individual() {
-    let chrome_only = ClientModuleProbe::new(
-        "c",
-        "C",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_capabilities(true, false, false);
+    let chrome_only =
+        ClientModuleProbe::new("c", "C", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_capabilities(true, false, false);
     assert!(chrome_only.has_chrome());
     assert!(!chrome_only.has_buffer_contrib());
     assert!(!chrome_only.has_annotations());
 
-    let buffer_only = ClientModuleProbe::new(
-        "b",
-        "B",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_capabilities(false, true, false);
+    let buffer_only =
+        ClientModuleProbe::new("b", "B", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_capabilities(false, true, false);
     assert!(!buffer_only.has_chrome());
     assert!(buffer_only.has_buffer_contrib());
     assert!(!buffer_only.has_annotations());
 
-    let annotation_only = ClientModuleProbe::new(
-        "a",
-        "A",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_capabilities(false, false, true);
+    let annotation_only =
+        ClientModuleProbe::new("a", "A", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_capabilities(false, false, true);
     assert!(!annotation_only.has_chrome());
     assert!(!annotation_only.has_buffer_contrib());
     assert!(annotation_only.has_annotations());
@@ -1523,13 +1511,9 @@ fn client_module_probe_capabilities_individual() {
 
 #[test]
 fn client_module_probe_capabilities_roundtrip_via_copy() {
-    let a = ClientModuleProbe::new(
-        "rt",
-        "Roundtrip",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_capabilities(true, false, true);
+    let a =
+        ClientModuleProbe::new("rt", "Roundtrip", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_capabilities(true, false, true);
     let b = a;
     assert!(b.has_chrome());
     assert!(!b.has_buffer_contrib());
