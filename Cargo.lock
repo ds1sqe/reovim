@@ -2278,6 +2278,8 @@ name = "reovim-client-driver"
 version = "0.12.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-depgraph",
+ "tracing",
  "unicode-width",
 ]
 
@@ -2308,8 +2310,23 @@ dependencies = [
  "reovim-driver-tui",
  "reovim-protocol",
  "reovim-testing",
- "reovim-tui-ext-defaults",
+ "reovim-tui-mod-cmdline",
+ "reovim-tui-mod-completion",
+ "reovim-tui-mod-diagnostics",
+ "reovim-tui-mod-explorer",
+ "reovim-tui-mod-fold",
+ "reovim-tui-mod-hover",
+ "reovim-tui-mod-jump",
+ "reovim-tui-mod-landing",
+ "reovim-tui-mod-line-numbers",
+ "reovim-tui-mod-markdown",
+ "reovim-tui-mod-microscope",
+ "reovim-tui-mod-notification",
+ "reovim-tui-mod-pair",
+ "reovim-tui-mod-signature-help",
  "reovim-tui-mod-statusline",
+ "reovim-tui-mod-tetromino",
+ "reovim-tui-mod-whichkey",
  "serde",
  "serde_json",
  "tempfile",
@@ -3574,30 +3591,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "reovim-tui-ext-defaults"
-version = "0.12.0-dev"
-dependencies = [
- "reovim-client-driver",
- "reovim-tui-mod-cmdline",
- "reovim-tui-mod-completion",
- "reovim-tui-mod-diagnostics",
- "reovim-tui-mod-explorer",
- "reovim-tui-mod-fold",
- "reovim-tui-mod-hover",
- "reovim-tui-mod-jump",
- "reovim-tui-mod-landing",
- "reovim-tui-mod-line-numbers",
- "reovim-tui-mod-markdown",
- "reovim-tui-mod-microscope",
- "reovim-tui-mod-notification",
- "reovim-tui-mod-pair",
- "reovim-tui-mod-signature-help",
- "reovim-tui-mod-statusline",
- "reovim-tui-mod-tetromino",
- "reovim-tui-mod-whichkey",
 ]
 
 [[package]]

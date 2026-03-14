@@ -98,6 +98,11 @@ pub mod tui_output;
 // gRPC v2 client
 #[cfg(feature = "grpc")]
 pub mod grpc_client;
+#[cfg(feature = "grpc")]
+pub mod server_handle;
+
+// Client module factory map
+pub mod static_client_modules;
 
 // Unified TUI app (Issue #493)
 #[cfg(feature = "grpc")]

@@ -107,9 +107,6 @@ members = [
     "clients/tui",
     "clients/tui/lib/drivers/tui",
     "clients/tui/lib/drivers/display",
-    # Client extensions - TUI (defaults meta-crate only; all extensions migrated to modules/)
-    "clients/tui/extensions/defaults",
-
     # Client modules - TUI (native ClientModule implementations)
     "clients/tui/modules/statusline",
     "clients/tui/modules/hover",

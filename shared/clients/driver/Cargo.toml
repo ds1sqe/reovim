@@ -14,4 +14,6 @@ workspace = true
 
 [dependencies]
 reovim-arch = { workspace = true }
+reovim-depgraph = { workspace = true }
+tracing = { workspace = true }
 unicode-width = { workspace = true }

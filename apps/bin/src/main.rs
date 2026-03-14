@@ -503,7 +503,8 @@ async fn run_cli(
 async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Result<()> {
     tracing::info!("Connecting headless TUI to {addr} ({width}x{height})");
 
-    let (mut app, handle) = connect_headless(addr, width, height, None, None)
+    let disabled = std::collections::HashSet::new();
+    let (mut app, handle) = connect_headless(addr, width, height, None, None, &disabled)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
@@ -527,12 +528,9 @@ async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
     tracing::info!("Connecting interactive TUI to {addr}");
 
     let disabled_kinds = bootstrap::compute_disabled_extension_kinds();
-    let (mut app, _handle) = connect_interactive(addr, None, None)
+    let (mut app, _handle) = connect_interactive(addr, None, None, &disabled_kinds)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
-    if !disabled_kinds.is_empty() {
-        app.set_disabled_kinds(&disabled_kinds);
-    }
 
     let result = app
         .run()
@@ -594,12 +592,9 @@ async fn run_integrated() -> std::io::Result<()> {
 
     // Connect interactive TUI with config-based extension filtering (#586)
     let disabled_kinds = bootstrap::compute_disabled_extension_kinds();
-    let (mut app, handle) = connect_interactive(&addr, None, None)
+    let (mut app, handle) = connect_interactive(&addr, None, None, &disabled_kinds)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
-    if !disabled_kinds.is_empty() {
-        app.set_disabled_kinds(&disabled_kinds);
-    }
 
     // Ctrl-C handler: gracefully stop TUI
     let ctrl_c_handle = handle.clone();

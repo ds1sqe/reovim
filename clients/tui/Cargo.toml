@@ -26,8 +26,24 @@ tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 # Display driver (FrameBuffer, FrameRenderer, Style)
 reovim-driver-display = { workspace = true }
 
-# TUI extensions (game-mod boundary — engine never imports individual extensions)
-reovim-tui-ext-defaults = { path = "extensions/defaults" }
+# Native ClientModule implementations
+reovim-tui-mod-statusline = { workspace = true }
+reovim-tui-mod-hover = { workspace = true }
+reovim-tui-mod-signature-help = { workspace = true }
+reovim-tui-mod-landing = { workspace = true }
+reovim-tui-mod-completion = { workspace = true }
+reovim-tui-mod-notification = { workspace = true }
+reovim-tui-mod-whichkey = { workspace = true }
+reovim-tui-mod-cmdline = { workspace = true }
+reovim-tui-mod-microscope = { workspace = true }
+reovim-tui-mod-explorer = { workspace = true }
+reovim-tui-mod-tetromino = { workspace = true }
+reovim-tui-mod-line-numbers = { workspace = true }
+reovim-tui-mod-fold = { workspace = true }
+reovim-tui-mod-jump = { workspace = true }
+reovim-tui-mod-pair = { workspace = true }
+reovim-tui-mod-diagnostics = { workspace = true }
+reovim-tui-mod-markdown = { workspace = true }
 
 # Common client model (wire types, traits)
 reovim-client-model = { workspace = true }

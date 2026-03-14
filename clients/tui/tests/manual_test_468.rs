@@ -21,7 +21,7 @@ const W: u16 = 80;
 const H: u16 = 24;
 
 async fn headless(addr: &str) -> Result<TuiHandle, TuiAppError> {
-    let (mut app, handle) = connect_headless(addr, W, H, None, None).await?;
+    let (mut app, handle) = connect_headless(addr, W, H, None, None, &std::collections::HashSet::new()).await?;
     tokio::spawn(async move { app.run().await });
     Ok(handle)
 }

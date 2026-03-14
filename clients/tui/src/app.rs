@@ -146,8 +146,12 @@ pub struct TuiApp<O: TuiOutput> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl<O: TuiOutput> TuiApp<O> {
     /// Create a TUI app with the given output adapter and connection details.
+    ///
+    /// # Panics
+    ///
+    /// Panics if client module dependency resolution fails (cycle or missing dep).
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new<S: std::hash::BuildHasher>(
         output: O,
         frame_buffer: FrameBuffer,
         input_rx: mpsc::Receiver<TuiInput>,
@@ -157,6 +161,7 @@ impl<O: TuiOutput> TuiApp<O> {
         server_address: String,
         debug_config: Option<TuiDebugConfig>,
         initial_theme: Option<&str>,
+        disabled_kinds: &std::collections::HashSet<String, S>,
     ) -> Self {
         let (width, height) = (state.width, state.height);
 
@@ -173,6 +178,11 @@ impl<O: TuiOutput> TuiApp<O> {
             Self::apply_theme_internal(&theme_loader, &mut theme_manager, theme_name);
         }
 
+        // Load client modules via factory map + dependency-resolving loader
+        let factories = crate::static_client_modules::builtin_client_modules();
+        let loader = reovim_client_driver::ClientModuleLoader::new(factories, disabled_kinds)
+            .expect("client module dependency resolution failed");
+
         Self {
             frame_buffer,
             input_rx,
@@ -188,7 +198,7 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: reovim_tui_ext_defaults::create_native_modules(),
+            extensions: loader.into_modules(),
             capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
                 width,
                 height,
@@ -196,24 +206,6 @@ impl<O: TuiOutput> TuiApp<O> {
             ),
             output,
         }
-    }
-
-    /// Replace extensions with a filtered set (#586).
-    ///
-    /// Called by the app layer after construction to apply user config.
-    /// Must be called before `run()`.
-    ///
-    /// All extensions are now native `ClientModule` implementations.
-    /// The `disabled_kinds` parameter filters which modules are loaded.
-    pub fn set_disabled_kinds<S: std::hash::BuildHasher>(
-        &mut self,
-        disabled_kinds: &std::collections::HashSet<String, S>,
-    ) {
-        if disabled_kinds.is_empty() {
-            return;
-        }
-        self.extensions
-            .retain(|m| !disabled_kinds.contains(m.kind()));
     }
 
     /// Apply a theme by name.
@@ -940,10 +932,11 @@ use crate::output::{HeadlessOutput, TerminalOutput};
 ///
 /// Returns an error if connection or terminal initialization fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn connect_interactive(
+pub async fn connect_interactive<S: std::hash::BuildHasher + Send + Sync>(
     addr: &str,
     debug_config: Option<TuiDebugConfig>,
     theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
 ) -> Result<(TuiApp<TerminalOutput>, TuiHandle), TuiAppError> {
     let output = TerminalOutput::new()?;
     let (width, height) = TerminalOutput::terminal_size()?;
@@ -966,6 +959,7 @@ pub async fn connect_interactive(
         addr.to_string(),
         debug_config,
         theme,
+        disabled_kinds,
     );
 
     let handle = TuiHandle::new(input_tx);
@@ -981,12 +975,13 @@ pub async fn connect_interactive(
 ///
 /// Returns an error if connection fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn connect_headless(
+pub async fn connect_headless<S: std::hash::BuildHasher + Send + Sync>(
     addr: &str,
     width: u16,
     height: u16,
     debug_config: Option<TuiDebugConfig>,
     theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
 ) -> Result<(TuiApp<HeadlessOutput>, TuiHandle), TuiAppError> {
     let output = HeadlessOutput;
 
@@ -1005,6 +1000,7 @@ pub async fn connect_headless(
         addr.to_string(),
         debug_config,
         theme,
+        disabled_kinds,
     );
 
     let handle = TuiHandle::new(input_tx);

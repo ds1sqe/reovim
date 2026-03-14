@@ -34,7 +34,7 @@ use {
 ///
 /// Connects to the server, spawns the event loop, and returns a handle.
 async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, TuiAppError> {
-    let (mut app, handle) = connect_headless(addr, width, height, None, None).await?;
+    let (mut app, handle) = connect_headless(addr, width, height, None, None, &std::collections::HashSet::new()).await?;
     // Spawn the event loop in the background
     tokio::spawn(async move { app.run().await });
     Ok(handle)

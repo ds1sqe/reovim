@@ -21,7 +21,7 @@ use {
 
 /// Helper to create a headless TUI connection.
 async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, TuiAppError> {
-    let (mut app, handle) = connect_headless(addr, width, height, None, None).await?;
+    let (mut app, handle) = connect_headless(addr, width, height, None, None, &std::collections::HashSet::new()).await?;
     tokio::spawn(async move { app.run().await });
     Ok(handle)
 }
