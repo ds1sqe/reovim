@@ -105,7 +105,8 @@ impl ClientModuleHandle {
     /// Create a handle wrapping a static `Box<dyn ClientModule>`.
     #[must_use]
     pub fn from_static(module: Box<dyn ClientModule>) -> Self {
-        // Leak the kind string so we can return &'static str
+        // Leak the kind string for &'static str lifetime. Bounded by module count
+        // (max ~20 modules, each leaking one short string). Not a real leak.
         let kind: &'static str = Box::leak(module.kind().to_string().into_boxed_str());
         let name = module.name().to_string();
         let version = module.version();
@@ -150,6 +151,7 @@ impl ClientModuleHandle {
         ptr: *mut c_void,
         ffi: ClientFfiSymbols,
     ) -> Self {
+        // Leak the kind string for &'static str lifetime (same bounded pattern as from_static).
         let kind: &'static str = Box::leak(probe.id_str().to_string().into_boxed_str());
         let name = probe.name_str().to_string();
         let version = probe.version;

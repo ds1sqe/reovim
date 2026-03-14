@@ -8,6 +8,9 @@ use std::collections::HashMap;
 
 use reovim_client_driver::ClientModuleFactory;
 
+/// Number of builtin client modules. Update when adding/removing modules.
+const BUILTIN_MODULE_COUNT: usize = 17;
+
 /// Return the builtin client module factory map.
 ///
 /// Each entry maps a module kind string to a factory function that
@@ -15,7 +18,7 @@ use reovim_client_driver::ClientModuleFactory;
 /// to instantiate modules, resolve dependencies, and manage lifecycle.
 #[must_use]
 pub fn builtin_client_modules() -> HashMap<&'static str, ClientModuleFactory> {
-    let mut map = HashMap::with_capacity(17);
+    let mut map = HashMap::with_capacity(BUILTIN_MODULE_COUNT);
     map.insert(
         "statusline",
         (|| Box::new(reovim_tui_mod_statusline::StatuslineModule::new())) as ClientModuleFactory,

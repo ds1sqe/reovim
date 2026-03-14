@@ -1,9 +1,13 @@
-use super::builtin_client_modules;
+use super::{BUILTIN_MODULE_COUNT, builtin_client_modules};
 
 #[test]
 fn factory_map_count() {
     let map = builtin_client_modules();
-    assert_eq!(map.len(), 17, "expected 17 builtin client modules");
+    assert_eq!(
+        map.len(),
+        BUILTIN_MODULE_COUNT,
+        "factory map size must match BUILTIN_MODULE_COUNT"
+    );
 }
 
 #[test]
