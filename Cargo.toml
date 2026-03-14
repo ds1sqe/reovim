@@ -109,21 +109,7 @@ members = [
     "clients/tui/lib/drivers/display",
     "clients/tui/lib/drivers/extension-loader",
 
-    # Client extensions - TUI
-    "clients/tui/extensions/which-key",
-    "clients/tui/extensions/cmdline",
-    "clients/tui/extensions/notification",
-    "clients/tui/extensions/microscope",
-    "clients/tui/extensions/completion",
-    "clients/tui/extensions/explorer",
-    "clients/tui/extensions/tetromino",
-    "clients/tui/extensions/range-finder",
-    "clients/tui/extensions/hover",
-    "clients/tui/extensions/signature-help",
-    "clients/tui/extensions/diagnostics",
-    "clients/tui/extensions/markdown",
-    "clients/tui/extensions/landing",
-    "clients/tui/extensions/pair",
+    # Client extensions - TUI (defaults meta-crate only; all extensions migrated to modules/)
     "clients/tui/extensions/defaults",
 
     # Client modules - TUI (native ClientModule implementations)
@@ -357,7 +343,6 @@ reovim-module-codec-legacy = { path = "./server/modules/codec-legacy", version =
 reovim-module-codec-pdf = { path = "./server/modules/codec-pdf", version = "0.12.0-dev" }
 reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-struct", version = "0.12.0-dev" }
 reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.12.0-dev" }
-reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.12.0-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
 reovim-tui-mod-statusline = { path = "./clients/tui/modules/statusline", version = "0.12.0-dev" }
