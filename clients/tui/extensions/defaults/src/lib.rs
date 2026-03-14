@@ -3,8 +3,7 @@
 //! This is the game-mod boundary: the engine depends ONLY on this crate
 //! for module registration. It never imports individual module crates.
 //!
-//! All extensions have been migrated to native `ClientModule` implementations.
-//! The legacy `TuiExtension` trait and bridge adapter are no longer used.
+//! All extensions are native `ClientModule` implementations.
 
 use reovim_client_driver::ClientModule;
 
