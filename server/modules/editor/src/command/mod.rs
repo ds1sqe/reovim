@@ -29,6 +29,7 @@ mod delete;
 mod display_line;
 mod file;
 mod insert_edit;
+mod mark;
 mod operators;
 mod paste;
 mod replace;
@@ -42,6 +43,7 @@ pub use {
     display_line::{CursorDisplayDown, CursorDisplayUp},
     file::WriteBufferCommand,
     insert_edit::{InsertNewline, InsertTab, get_line_indent},
+    mark::{GotoMarkExact, GotoMarkLine, SetMark},
     operators::{
         EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
         EnterYankOperator,
@@ -103,6 +105,10 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(RedoCommand),
         // File operations
         Box::new(WriteBufferCommand),
+        // Mark operations
+        Box::new(SetMark),
+        Box::new(GotoMarkLine),
+        Box::new(GotoMarkExact),
     ]
 }
 
@@ -157,6 +163,16 @@ pub fn yank_commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(PasteAfter), Box::new(PasteBefore)]
+}
+
+/// Get all mark commands.
+#[must_use]
+pub fn mark_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![
+        Box::new(SetMark),
+        Box::new(GotoMarkLine),
+        Box::new(GotoMarkExact),
+    ]
 }
 
 #[cfg(test)]
