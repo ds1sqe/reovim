@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    ClientModule, ClientModuleError, ModuleContext, OptionValue, ProbeResult, Style, Version,
+    BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
+    OptionValue, ProbeResult, Style, Version,
     handle::ClientModuleHandle,
     traits::{PlatformCapabilities, ServerHandle, ThemeProvider},
     types::{ColorDepth, Insets, RenderingModel},
@@ -15,6 +16,13 @@ struct HandleTestModule {
     init_result: ProbeResult,
     exit_ok: bool,
     on_all_loaded_called: bool,
+    last_notification: Option<String>,
+    last_mode: Option<String>,
+    last_cursor: Option<(BufferId, usize, usize)>,
+    last_buffer_focus: Option<BufferId>,
+    last_buffer_update_id: Option<BufferId>,
+    last_option: Option<(String, OptionValue)>,
+    tick_returns: bool,
 }
 
 impl HandleTestModule {
@@ -23,6 +31,13 @@ impl HandleTestModule {
             init_result: ProbeResult::Success,
             exit_ok: true,
             on_all_loaded_called: false,
+            last_notification: None,
+            last_mode: None,
+            last_cursor: None,
+            last_buffer_focus: None,
+            last_buffer_update_id: None,
+            last_option: None,
+            tick_returns: false,
         }
     }
 
@@ -33,6 +48,11 @@ impl HandleTestModule {
 
     fn with_exit_fail(mut self) -> Self {
         self.exit_ok = false;
+        self
+    }
+
+    fn with_tick_returns(mut self, val: bool) -> Self {
+        self.tick_returns = val;
         self
     }
 }
@@ -69,6 +89,54 @@ impl ClientModule for HandleTestModule {
     }
     fn on_all_loaded(&mut self, _ctx: &ModuleContext) {
         self.on_all_loaded_called = true;
+    }
+    fn on_notification(&mut self, data: &str) {
+        self.last_notification = Some(data.to_string());
+    }
+    fn on_mode_change(&mut self, mode: &str) {
+        self.last_mode = Some(mode.to_string());
+    }
+    fn on_cursor_update(&mut self, buffer_id: BufferId, line: usize, col: usize) {
+        self.last_cursor = Some((buffer_id, line, col));
+    }
+    fn on_buffer_focus(&mut self, buffer_id: BufferId) {
+        self.last_buffer_focus = Some(buffer_id);
+    }
+    fn on_buffer_update(&mut self, event: &BufferUpdateEvent) {
+        self.last_buffer_update_id = Some(event.buffer_id);
+    }
+    fn on_option_changed(&mut self, name: &str, value: &OptionValue) {
+        self.last_option = Some((name.to_string(), value.clone()));
+    }
+    fn tick(&mut self) -> bool {
+        self.tick_returns
+    }
+    fn has_chrome(&self) -> bool {
+        true
+    }
+    fn has_buffer_contrib(&self) -> bool {
+        false
+    }
+    fn has_annotations(&self) -> bool {
+        true
+    }
+    fn chrome_position(&self) -> ChromePosition {
+        ChromePosition::Top
+    }
+    fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
+        3
+    }
+    fn chrome_priority(&self) -> u16 {
+        42
+    }
+    fn chrome_z_order(&self) -> u16 {
+        7
+    }
+    fn buffer_contrib_priority(&self) -> u16 {
+        99
+    }
+    fn annotation_priority(&self) -> u16 {
+        15
     }
 }
 
@@ -278,3 +346,210 @@ fn handle_debug() {
     assert!(debug.contains("handle-test"));
     assert!(debug.contains("Handle Test Module"));
 }
+
+// =============================================================================
+// Event dispatch tests (static)
+// =============================================================================
+
+#[test]
+fn handle_on_notification_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    // Dispatches to the static module without panic.
+    handle.on_notification(r#"{"type":"test"}"#);
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_mode_change_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_mode_change("insert");
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_cursor_update_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_cursor_update(BufferId(1), 10, 5);
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_buffer_focus_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_buffer_focus(BufferId(42));
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_buffer_update_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    let event = BufferUpdateEvent {
+        buffer_id: BufferId(1),
+        revision: 5,
+        changed_range: 0..10,
+        new_lines: vec!["hello".to_string()],
+        total_lines: 100,
+    };
+    handle.on_buffer_update(&event);
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_option_changed_bool_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_option_changed("wrap", &OptionValue::Bool(true));
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_option_changed_integer_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_option_changed("tabstop", &OptionValue::Integer(4));
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_on_option_changed_string_static() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    handle.on_option_changed("filetype", &OptionValue::String("rust".to_string()));
+    assert!(handle.is_static());
+}
+
+#[test]
+fn handle_tick_static_false() {
+    let module = Box::new(HandleTestModule::new());
+    let mut handle = ClientModuleHandle::from_static(module);
+    assert!(!handle.tick());
+}
+
+#[test]
+fn handle_tick_static_true() {
+    let module = Box::new(HandleTestModule::new().with_tick_returns(true));
+    let mut handle = ClientModuleHandle::from_static(module);
+    assert!(handle.tick());
+}
+
+// =============================================================================
+// Role declaration dispatch tests (static)
+// =============================================================================
+
+#[test]
+fn handle_has_chrome_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert!(handle.has_chrome());
+}
+
+#[test]
+fn handle_has_buffer_contrib_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert!(!handle.has_buffer_contrib());
+}
+
+#[test]
+fn handle_has_annotations_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert!(handle.has_annotations());
+}
+
+#[test]
+fn handle_chrome_position_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.chrome_position(), ChromePosition::Top);
+}
+
+#[test]
+fn handle_chrome_requested_size_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.chrome_requested_size(), 3);
+}
+
+#[test]
+fn handle_chrome_priority_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.chrome_priority(), 42);
+}
+
+#[test]
+fn handle_chrome_z_order_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.chrome_z_order(), 7);
+}
+
+#[test]
+fn handle_buffer_contrib_priority_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.buffer_contrib_priority(), 99);
+}
+
+#[test]
+fn handle_annotation_priority_static() {
+    let module = Box::new(HandleTestModule::new());
+    let handle = ClientModuleHandle::from_static(module);
+    assert_eq!(handle.annotation_priority(), 15);
+}
+
+// =============================================================================
+// Compile-time checks
+// =============================================================================
+
+#[test]
+fn ffi_symbols_send_check() {
+    fn assert_send<T: Send>() {}
+    assert_send::<crate::handle::ClientFfiSymbols>();
+}
+
+#[test]
+fn ffi_symbols_all_none_backward_compat() {
+    // Verify that ClientFfiSymbols can be constructed with all optional fields None.
+    // This proves backward compatibility with pre-0.3.0 modules.
+    let ffi = crate::handle::ClientFfiSymbols {
+        init: dummy_init,
+        exit: dummy_exit,
+        destroy: dummy_destroy,
+        on_all_loaded: None,
+        on_notification: None,
+        on_mode_change: None,
+        on_cursor_update: None,
+        on_buffer_focus: None,
+        on_buffer_update: None,
+        on_option_changed: None,
+        tick: None,
+        has_chrome: None,
+        has_buffer_contrib: None,
+        has_annotations: None,
+        chrome_position: None,
+        chrome_requested_size: None,
+        chrome_priority: None,
+        chrome_z_order: None,
+        buffer_contrib_priority: None,
+        annotation_priority: None,
+    };
+    // Verify all optional fields are None (backward compat with pre-0.3.0).
+    assert!(ffi.on_notification.is_none());
+    assert!(ffi.tick.is_none());
+    assert!(ffi.has_chrome.is_none());
+}
+
+unsafe extern "C" fn dummy_init(_: *mut std::ffi::c_void, _: *const std::ffi::c_void) -> i32 {
+    0
+}
+unsafe extern "C" fn dummy_exit(_: *mut std::ffi::c_void) -> i32 {
+    0
+}
+unsafe extern "C" fn dummy_destroy(_: *mut std::ffi::c_void) {}

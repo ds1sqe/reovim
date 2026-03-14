@@ -537,6 +537,21 @@ pub fn declare_client_module(input: TokenStream) -> TokenStream {
                 probe = probe.with_optional_dep(i, dep);
             }
 
+            // Populate capability flags from trait methods.
+            let has_chrome = {
+                use ::reovim_client_driver::ClientModule;
+                temp.has_chrome()
+            };
+            let has_buffer_contrib = {
+                use ::reovim_client_driver::ClientModule;
+                temp.has_buffer_contrib()
+            };
+            let has_annotations = {
+                use ::reovim_client_driver::ClientModule;
+                temp.has_annotations()
+            };
+            probe = probe.with_capabilities(has_chrome, has_buffer_contrib, has_annotations);
+
             probe
         }
 
@@ -623,6 +638,324 @@ pub fn declare_client_module(input: TokenStream) -> TokenStream {
                 use ::reovim_client_driver::ClientModule;
                 module.on_all_loaded(ctx);
             }));
+        }
+
+        // ====================================================================
+        // Event Trampolines (0.3.0)
+        // ====================================================================
+
+        /// On-notification trampoline. Converts ptr+len to `&str` and calls
+        /// `ClientModule::on_notification`.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_notification(
+            module: *mut ::std::ffi::c_void,
+            data_ptr: *const u8,
+            data_len: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let data = ::std::str::from_utf8(
+                    ::std::slice::from_raw_parts(data_ptr, data_len),
+                )
+                .unwrap_or("");
+                use ::reovim_client_driver::ClientModule;
+                module.on_notification(data);
+            }));
+        }
+
+        /// On-mode-change trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_mode_change(
+            module: *mut ::std::ffi::c_void,
+            mode_ptr: *const u8,
+            mode_len: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let mode = ::std::str::from_utf8(
+                    ::std::slice::from_raw_parts(mode_ptr, mode_len),
+                )
+                .unwrap_or("");
+                use ::reovim_client_driver::ClientModule;
+                module.on_mode_change(mode);
+            }));
+        }
+
+        /// On-cursor-update trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_cursor_update(
+            module: *mut ::std::ffi::c_void,
+            buffer_id: usize,
+            line: usize,
+            col: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.on_cursor_update(
+                    ::reovim_client_driver::BufferId(buffer_id),
+                    line,
+                    col,
+                );
+            }));
+        }
+
+        /// On-buffer-focus trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_buffer_focus(
+            module: *mut ::std::ffi::c_void,
+            buffer_id: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.on_buffer_focus(::reovim_client_driver::BufferId(buffer_id));
+            }));
+        }
+
+        /// On-buffer-update trampoline. Passes scalar metadata only; `new_lines`
+        /// is empty (dynamic modules re-fetch content via `ServerHandle`).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_buffer_update(
+            module: *mut ::std::ffi::c_void,
+            buffer_id: usize,
+            revision: u64,
+            changed_start: usize,
+            changed_end: usize,
+            total_lines: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let event = ::reovim_client_driver::BufferUpdateEvent {
+                    buffer_id: ::reovim_client_driver::BufferId(buffer_id),
+                    revision,
+                    changed_range: changed_start..changed_end,
+                    new_lines: ::std::vec::Vec::new(),
+                    total_lines,
+                };
+                use ::reovim_client_driver::ClientModule;
+                module.on_buffer_update(&event);
+            }));
+        }
+
+        /// On-option-changed trampoline. Decodes tag+value into `OptionValue`.
+        ///
+        /// Tag encoding: 0 = Bool (i64 != 0), 1 = Integer (i64), 2 = String.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_option_changed(
+            module: *mut ::std::ffi::c_void,
+            name_ptr: *const u8,
+            name_len: usize,
+            tag: i32,
+            i64_val: i64,
+            str_ptr: *const u8,
+            str_len: usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let name = ::std::str::from_utf8(
+                    ::std::slice::from_raw_parts(name_ptr, name_len),
+                )
+                .unwrap_or("");
+                let value = match tag {
+                    0 => ::reovim_client_driver::OptionValue::Bool(i64_val != 0),
+                    1 => ::reovim_client_driver::OptionValue::Integer(i64_val),
+                    2 => {
+                        let s = ::std::str::from_utf8(
+                            ::std::slice::from_raw_parts(str_ptr, str_len),
+                        )
+                        .unwrap_or("")
+                        .to_string();
+                        ::reovim_client_driver::OptionValue::String(s)
+                    }
+                    _ => return, // unknown tag — ignore
+                };
+                use ::reovim_client_driver::ClientModule;
+                module.on_option_changed(name, &value);
+            }));
+        }
+
+        /// Tick trampoline. Returns 1 if redraw needed, 0 otherwise, -2 on panic.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_tick(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.tick()
+            }));
+            match result {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(_) => -2,
+            }
+        }
+
+        // ====================================================================
+        // Role Declaration Trampolines (0.3.0)
+        // ====================================================================
+
+        /// Has-chrome trampoline. Returns 1 if true, 0 if false, -2 on panic.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_has_chrome(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.has_chrome()
+            }));
+            match result {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(_) => -2,
+            }
+        }
+
+        /// Has-buffer-contrib trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_has_buffer_contrib(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.has_buffer_contrib()
+            }));
+            match result {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(_) => -2,
+            }
+        }
+
+        /// Has-annotations trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_has_annotations(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.has_annotations()
+            }));
+            match result {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(_) => -2,
+            }
+        }
+
+        /// Chrome-position trampoline. Returns encoded integer:
+        /// 0=Top, 1=Bottom, 2=Left, 3=Right, 4=Overlay.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_chrome_position(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.chrome_position()
+            }));
+            match result {
+                Ok(::reovim_client_driver::ChromePosition::Top) => 0,
+                Ok(::reovim_client_driver::ChromePosition::Bottom) => 1,
+                Ok(::reovim_client_driver::ChromePosition::Left) => 2,
+                Ok(::reovim_client_driver::ChromePosition::Right) => 3,
+                Ok(::reovim_client_driver::ChromePosition::Overlay) => 4,
+                Err(_) => 1, // default: Bottom on panic
+            }
+        }
+
+        /// Chrome-requested-size trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_chrome_requested_size(
+            module: *mut ::std::ffi::c_void,
+        ) -> u16 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                // Use a minimal NullCaps for the caps parameter. Dynamic modules
+                // should use capabilities cached from init().
+                struct NullCaps;
+                impl ::reovim_client_driver::PlatformCapabilities for NullCaps {
+                    fn rendering_model(&self) -> ::reovim_client_driver::RenderingModel {
+                        ::reovim_client_driver::RenderingModel::CellGrid
+                    }
+                    fn grid_size(&self) -> Option<(u16, u16)> { None }
+                    fn color_depth(&self) -> ::reovim_client_driver::ColorDepth {
+                        ::reovim_client_driver::ColorDepth::TrueColor
+                    }
+                    fn pixel_size(&self) -> Option<(u32, u32)> { None }
+                    fn reliable_unicode_width(&self) -> bool { true }
+                    fn dark_mode(&self) -> bool { false }
+                    fn smooth_scroll(&self) -> bool { false }
+                    fn pointer_events(&self) -> bool { false }
+                    fn touch_input(&self) -> bool { false }
+                    fn haptic(&self) -> bool { false }
+                    fn safe_area(&self) -> ::reovim_client_driver::Insets {
+                        ::reovim_client_driver::Insets::ZERO
+                    }
+                    fn has_focus(&self) -> bool { true }
+                    fn clipboard_available(&self) -> bool { false }
+                    fn screen_reader_active(&self) -> bool { false }
+                }
+                module.chrome_requested_size(&NullCaps)
+            }));
+            result.unwrap_or(1)
+        }
+
+        /// Chrome-priority trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_chrome_priority(
+            module: *mut ::std::ffi::c_void,
+        ) -> u16 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.chrome_priority()
+            }));
+            result.unwrap_or(0)
+        }
+
+        /// Chrome-z-order trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_chrome_z_order(
+            module: *mut ::std::ffi::c_void,
+        ) -> u16 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.chrome_z_order()
+            }));
+            result.unwrap_or(0)
+        }
+
+        /// Buffer-contrib-priority trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_buffer_contrib_priority(
+            module: *mut ::std::ffi::c_void,
+        ) -> u16 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.buffer_contrib_priority()
+            }));
+            result.unwrap_or(0)
+        }
+
+        /// Annotation-priority trampoline.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_annotation_priority(
+            module: *mut ::std::ffi::c_void,
+        ) -> u16 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module.annotation_priority()
+            }));
+            result.unwrap_or(0)
         }
     };
 

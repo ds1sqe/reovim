@@ -145,7 +145,14 @@ impl std::fmt::Display for Version {
 ///   `ClientServiceRegistry`, `ClientModuleRegistry`, expanded `ServerHandle`
 ///   (`list_commands`, `get_option_metadata`), notification helpers (serde feature),
 ///   `ModuleContext` gains `services` and `module_registry` fields (Option).
-pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 2, 0);
+/// - **0.3.0**: Event trampolines (`on_notification`, `on_mode_change`,
+///   `on_cursor_update`, `on_buffer_focus`, `on_buffer_update`,
+///   `on_option_changed`, `tick`), role declaration trampolines (`has_chrome`,
+///   `has_buffer_contrib`, `has_annotations`), chrome metadata trampolines
+///   (`chrome_position`, `chrome_requested_size`, `chrome_priority`,
+///   `chrome_z_order`, `buffer_contrib_priority`, `annotation_priority`),
+///   capability flags in `ClientModuleProbe`.
+pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 3, 0);
 
 /// Check if a required API version is compatible with the provided version.
 ///
@@ -188,6 +195,14 @@ pub struct ClientModuleProbe {
     pub optional_deps_count: u8,
     /// Optional dependency IDs (UTF-8, null-padded).
     pub optional_deps: [[u8; 64]; 8],
+    /// Capability bitflags.
+    ///
+    /// Bit layout:
+    /// - bit 0: `has_chrome`
+    /// - bit 1: `has_buffer_contrib`
+    /// - bit 2: `has_annotations`
+    /// - bits 3-31: reserved (zero)
+    pub capabilities: u32,
 }
 
 impl ClientModuleProbe {
@@ -203,6 +218,7 @@ impl ClientModuleProbe {
             required_deps: [[0; 64]; 8],
             optional_deps_count: 0,
             optional_deps: [[0; 64]; 8],
+            capabilities: 0,
         };
 
         // Copy id
@@ -328,6 +344,45 @@ impl ClientModuleProbe {
             }
         }
         self
+    }
+
+    /// Set capability flags (builder pattern).
+    #[must_use]
+    pub const fn with_capabilities(
+        mut self,
+        has_chrome: bool,
+        has_buffer_contrib: bool,
+        has_annotations: bool,
+    ) -> Self {
+        self.capabilities = 0;
+        if has_chrome {
+            self.capabilities |= 1;
+        }
+        if has_buffer_contrib {
+            self.capabilities |= 1 << 1;
+        }
+        if has_annotations {
+            self.capabilities |= 1 << 2;
+        }
+        self
+    }
+
+    /// Whether this module contributes chrome.
+    #[must_use]
+    pub const fn has_chrome(&self) -> bool {
+        self.capabilities & 1 != 0
+    }
+
+    /// Whether this module contributes to buffer rendering.
+    #[must_use]
+    pub const fn has_buffer_contrib(&self) -> bool {
+        self.capabilities & (1 << 1) != 0
+    }
+
+    /// Whether this module contributes gutter annotations.
+    #[must_use]
+    pub const fn has_annotations(&self) -> bool {
+        self.capabilities & (1 << 2) != 0
     }
 }
 

@@ -1453,6 +1453,90 @@ fn client_module_probe_copy_semantics() {
 }
 
 // =============================================================================
+// ClientModuleProbe capabilities
+// =============================================================================
+
+#[test]
+fn client_module_probe_default_capabilities_all_false() {
+    let probe = ClientModuleProbe::new(
+        "cap-test",
+        "Cap Test",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    );
+    assert!(!probe.has_chrome());
+    assert!(!probe.has_buffer_contrib());
+    assert!(!probe.has_annotations());
+    assert_eq!(probe.capabilities, 0);
+}
+
+#[test]
+fn client_module_probe_capabilities_all_set() {
+    let probe = ClientModuleProbe::new(
+        "cap-test",
+        "Cap Test",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_capabilities(true, true, true);
+    assert!(probe.has_chrome());
+    assert!(probe.has_buffer_contrib());
+    assert!(probe.has_annotations());
+    assert_eq!(probe.capabilities, 0b111);
+}
+
+#[test]
+fn client_module_probe_capabilities_individual() {
+    let chrome_only = ClientModuleProbe::new(
+        "c",
+        "C",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_capabilities(true, false, false);
+    assert!(chrome_only.has_chrome());
+    assert!(!chrome_only.has_buffer_contrib());
+    assert!(!chrome_only.has_annotations());
+
+    let buffer_only = ClientModuleProbe::new(
+        "b",
+        "B",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_capabilities(false, true, false);
+    assert!(!buffer_only.has_chrome());
+    assert!(buffer_only.has_buffer_contrib());
+    assert!(!buffer_only.has_annotations());
+
+    let annotation_only = ClientModuleProbe::new(
+        "a",
+        "A",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_capabilities(false, false, true);
+    assert!(!annotation_only.has_chrome());
+    assert!(!annotation_only.has_buffer_contrib());
+    assert!(annotation_only.has_annotations());
+}
+
+#[test]
+fn client_module_probe_capabilities_roundtrip_via_copy() {
+    let a = ClientModuleProbe::new(
+        "rt",
+        "Roundtrip",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_capabilities(true, false, true);
+    let b = a;
+    assert!(b.has_chrome());
+    assert!(!b.has_buffer_contrib());
+    assert!(b.has_annotations());
+}
+
+// =============================================================================
 // CLIENT_MODULE_API_VERSION
 // =============================================================================
 
@@ -1460,7 +1544,7 @@ fn client_module_probe_copy_semantics() {
 fn client_api_version_exists() {
     let v = CLIENT_MODULE_API_VERSION;
     assert_eq!(v.major, 0);
-    assert_eq!(v.minor, 2);
+    assert_eq!(v.minor, 3);
     assert_eq!(v.patch, 0);
 }
 

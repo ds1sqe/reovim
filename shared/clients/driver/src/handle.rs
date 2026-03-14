@@ -16,7 +16,8 @@
 use std::{ffi::c_void, path::PathBuf};
 
 use crate::{
-    ClientModule, ClientModuleError, ClientModuleProbe, ModuleContext, ProbeResult, Version,
+    BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError,
+    ClientModuleProbe, ModuleContext, OptionValue, ProbeResult, Version,
 };
 
 // =============================================================================
@@ -41,12 +42,70 @@ pub type ClientDestroyFn = unsafe extern "C" fn(*mut c_void);
 /// FFI function: `on_all_loaded` trampoline.
 pub type ClientOnAllLoadedFn = unsafe extern "C" fn(*mut c_void, *const c_void);
 
+// -- Event FFI function types ------------------------------------------------
+
+/// FFI function: `on_notification` trampoline (data ptr + len).
+pub type ClientOnNotificationFn = unsafe extern "C" fn(*mut c_void, *const u8, usize);
+
+/// FFI function: `on_mode_change` trampoline (mode ptr + len).
+pub type ClientOnModeChangeFn = unsafe extern "C" fn(*mut c_void, *const u8, usize);
+
+/// FFI function: `on_cursor_update` trampoline (`buffer_id`, line, col).
+pub type ClientOnCursorUpdateFn = unsafe extern "C" fn(*mut c_void, usize, usize, usize);
+
+/// FFI function: `on_buffer_focus` trampoline (`buffer_id`).
+pub type ClientOnBufferFocusFn = unsafe extern "C" fn(*mut c_void, usize);
+
+/// FFI function: `on_buffer_update` trampoline
+/// (`buffer_id`, revision, `changed_start`, `changed_end`, `total_lines`).
+pub type ClientOnBufferUpdateFn = unsafe extern "C" fn(*mut c_void, usize, u64, usize, usize, usize);
+
+/// FFI function: `on_option_changed` trampoline
+/// (`name_ptr`, `name_len`, tag, `i64_val`, `str_ptr`, `str_len`).
+/// Tag encoding: 0 = Bool (i64 != 0), 1 = Integer (i64), 2 = String (`str_ptr` + `str_len`).
+pub type ClientOnOptionChangedFn =
+    unsafe extern "C" fn(*mut c_void, *const u8, usize, i32, i64, *const u8, usize);
+
+/// FFI function: `tick` trampoline. Returns 1 if redraw needed, 0 otherwise.
+pub type ClientTickFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+// -- Role declaration FFI function types -------------------------------------
+
+/// FFI function: `has_chrome` trampoline. Returns 1 if true, 0 if false.
+pub type ClientHasChromeFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+/// FFI function: `has_buffer_contrib` trampoline. Returns 1 if true, 0 if false.
+pub type ClientHasBufferContribFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+/// FFI function: `has_annotations` trampoline. Returns 1 if true, 0 if false.
+pub type ClientHasAnnotationsFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+/// FFI function: `chrome_position` trampoline.
+/// Returns encoded integer: 0=Top, 1=Bottom, 2=Left, 3=Right, 4=Overlay.
+pub type ClientChromePositionFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+/// FFI function: `chrome_requested_size` trampoline.
+pub type ClientChromeRequestedSizeFn = unsafe extern "C" fn(*mut c_void) -> u16;
+
+/// FFI function: `chrome_priority` trampoline.
+pub type ClientChromePriorityFn = unsafe extern "C" fn(*mut c_void) -> u16;
+
+/// FFI function: `chrome_z_order` trampoline.
+pub type ClientChromeZOrderFn = unsafe extern "C" fn(*mut c_void) -> u16;
+
+/// FFI function: `buffer_contrib_priority` trampoline.
+pub type ClientBufferContribPriorityFn = unsafe extern "C" fn(*mut c_void) -> u16;
+
+/// FFI function: `annotation_priority` trampoline.
+pub type ClientAnnotationPriorityFn = unsafe extern "C" fn(*mut c_void) -> u16;
+
 // =============================================================================
 // ClientFfiSymbols
 // =============================================================================
 
 /// Resolved FFI symbols from a dynamic client module shared library.
 pub struct ClientFfiSymbols {
+    // -- Lifecycle -----------------------------------------------------------
     /// Init trampoline.
     pub init: ClientInitFn,
     /// Exit trampoline.
@@ -55,6 +114,42 @@ pub struct ClientFfiSymbols {
     pub destroy: ClientDestroyFn,
     /// On-all-loaded trampoline (optional).
     pub on_all_loaded: Option<ClientOnAllLoadedFn>,
+
+    // -- Events (optional — absent in pre-0.3.0 modules) ---------------------
+    /// On-notification trampoline.
+    pub on_notification: Option<ClientOnNotificationFn>,
+    /// On-mode-change trampoline.
+    pub on_mode_change: Option<ClientOnModeChangeFn>,
+    /// On-cursor-update trampoline.
+    pub on_cursor_update: Option<ClientOnCursorUpdateFn>,
+    /// On-buffer-focus trampoline.
+    pub on_buffer_focus: Option<ClientOnBufferFocusFn>,
+    /// On-buffer-update trampoline.
+    pub on_buffer_update: Option<ClientOnBufferUpdateFn>,
+    /// On-option-changed trampoline.
+    pub on_option_changed: Option<ClientOnOptionChangedFn>,
+    /// Tick trampoline.
+    pub tick: Option<ClientTickFn>,
+
+    // -- Role declaration (optional — absent in pre-0.3.0 modules) -----------
+    /// Has-chrome trampoline.
+    pub has_chrome: Option<ClientHasChromeFn>,
+    /// Has-buffer-contrib trampoline.
+    pub has_buffer_contrib: Option<ClientHasBufferContribFn>,
+    /// Has-annotations trampoline.
+    pub has_annotations: Option<ClientHasAnnotationsFn>,
+    /// Chrome-position trampoline.
+    pub chrome_position: Option<ClientChromePositionFn>,
+    /// Chrome-requested-size trampoline.
+    pub chrome_requested_size: Option<ClientChromeRequestedSizeFn>,
+    /// Chrome-priority trampoline.
+    pub chrome_priority: Option<ClientChromePriorityFn>,
+    /// Chrome-z-order trampoline.
+    pub chrome_z_order: Option<ClientChromeZOrderFn>,
+    /// Buffer-contrib-priority trampoline.
+    pub buffer_contrib_priority: Option<ClientBufferContribPriorityFn>,
+    /// Annotation-priority trampoline.
+    pub annotation_priority: Option<ClientAnnotationPriorityFn>,
 }
 
 // =============================================================================
@@ -303,6 +398,354 @@ impl ClientModuleHandle {
                 on_all_loaded(ptr, ctx_ptr);
             }
         }
+    }
+
+    // =========================================================================
+    // Event dispatch
+    // =========================================================================
+
+    /// Handle a server notification (JSON data).
+    pub fn on_notification(&mut self, data: &str) {
+        if let Some(module) = &mut self.static_module {
+            module.on_notification(data);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_notification
+        {
+            // SAFETY: ptr is from entry(), data is a valid UTF-8 slice
+            unsafe {
+                (f)(ptr, data.as_ptr(), data.len());
+            }
+        }
+    }
+
+    /// Handle a mode change (e.g., "normal", "insert", "visual").
+    pub fn on_mode_change(&mut self, mode: &str) {
+        if let Some(module) = &mut self.static_module {
+            module.on_mode_change(mode);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_mode_change
+        {
+            // SAFETY: ptr is from entry(), mode is a valid UTF-8 slice
+            unsafe {
+                (f)(ptr, mode.as_ptr(), mode.len());
+            }
+        }
+    }
+
+    /// Handle a cursor position change.
+    pub fn on_cursor_update(&mut self, buffer_id: BufferId, line: usize, col: usize) {
+        if let Some(module) = &mut self.static_module {
+            module.on_cursor_update(buffer_id, line, col);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_cursor_update
+        {
+            // SAFETY: ptr is from entry()
+            unsafe {
+                (f)(ptr, buffer_id.0, line, col);
+            }
+        }
+    }
+
+    /// Handle focus change to a different buffer.
+    pub fn on_buffer_focus(&mut self, buffer_id: BufferId) {
+        if let Some(module) = &mut self.static_module {
+            module.on_buffer_focus(buffer_id);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_buffer_focus
+        {
+            // SAFETY: ptr is from entry()
+            unsafe {
+                (f)(ptr, buffer_id.0);
+            }
+        }
+    }
+
+    /// Handle a buffer content update.
+    ///
+    /// For dynamic modules, only scalar metadata is passed (`buffer_id`,
+    /// revision, `changed_start`, `changed_end`, `total_lines`). The
+    /// `new_lines` field cannot cross FFI as a `Vec<String>`. Dynamic modules
+    /// that need content can re-fetch via `ServerHandle`.
+    pub fn on_buffer_update(&mut self, event: &BufferUpdateEvent) {
+        if let Some(module) = &mut self.static_module {
+            module.on_buffer_update(event);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_buffer_update
+        {
+            // SAFETY: ptr is from entry()
+            unsafe {
+                (f)(
+                    ptr,
+                    event.buffer_id.0,
+                    event.revision,
+                    event.changed_range.start,
+                    event.changed_range.end,
+                    event.total_lines,
+                );
+            }
+        }
+    }
+
+    /// Handle an option value change.
+    ///
+    /// For dynamic modules, the value is encoded as (tag, i64, `str_ptr`, `str_len`):
+    /// - tag 0 = Bool (i64 != 0)
+    /// - tag 1 = Integer (i64 value)
+    /// - tag 2 = String (`str_ptr` + `str_len`)
+    pub fn on_option_changed(&mut self, name: &str, value: &OptionValue) {
+        if let Some(module) = &mut self.static_module {
+            module.on_option_changed(name, value);
+            return;
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.on_option_changed
+        {
+            let (tag, i64_val, str_ptr, str_len) = match value {
+                OptionValue::Bool(b) => (0i32, i64::from(*b), std::ptr::null(), 0),
+                OptionValue::Integer(i) => (1, *i, std::ptr::null(), 0),
+                OptionValue::String(s) => (2, 0, s.as_ptr(), s.len()),
+            };
+            // SAFETY: ptr is from entry(), name and string value are valid UTF-8 slices
+            unsafe {
+                (f)(ptr, name.as_ptr(), name.len(), tag, i64_val, str_ptr, str_len);
+            }
+        }
+    }
+
+    /// Periodic tick. Returns `true` if state changed and a redraw is needed.
+    pub fn tick(&mut self) -> bool {
+        if let Some(module) = &mut self.static_module {
+            return module.tick();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.tick
+        {
+            // SAFETY: ptr is from entry()
+            let code = unsafe { (f)(ptr) };
+            return code == 1;
+        }
+        false
+    }
+
+    // =========================================================================
+    // Role declaration dispatch
+    // =========================================================================
+
+    /// Whether this module contributes chrome.
+    #[must_use]
+    pub fn has_chrome(&self) -> bool {
+        if let Some(module) = &self.static_module {
+            return module.has_chrome();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.has_chrome
+        {
+            // SAFETY: ptr is from entry()
+            let code = unsafe { (f)(ptr) };
+            return code == 1;
+        }
+        false
+    }
+
+    /// Whether this module contributes to buffer rendering.
+    #[must_use]
+    pub fn has_buffer_contrib(&self) -> bool {
+        if let Some(module) = &self.static_module {
+            return module.has_buffer_contrib();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.has_buffer_contrib
+        {
+            // SAFETY: ptr is from entry()
+            let code = unsafe { (f)(ptr) };
+            return code == 1;
+        }
+        false
+    }
+
+    /// Whether this module contributes gutter annotations.
+    #[must_use]
+    pub fn has_annotations(&self) -> bool {
+        if let Some(module) = &self.static_module {
+            return module.has_annotations();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.has_annotations
+        {
+            // SAFETY: ptr is from entry()
+            let code = unsafe { (f)(ptr) };
+            return code == 1;
+        }
+        false
+    }
+
+    /// Where this module's chrome is rendered.
+    #[must_use]
+    pub fn chrome_position(&self) -> ChromePosition {
+        if let Some(module) = &self.static_module {
+            return module.chrome_position();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.chrome_position
+        {
+            // SAFETY: ptr is from entry()
+            let code = unsafe { (f)(ptr) };
+            return match code {
+                0 => ChromePosition::Top,
+                2 => ChromePosition::Left,
+                3 => ChromePosition::Right,
+                4 => ChromePosition::Overlay,
+                _ => ChromePosition::Bottom, // 1 or unknown
+            };
+        }
+        ChromePosition::Bottom
+    }
+
+    /// Requested size (height for Top/Bottom, width for Left/Right).
+    ///
+    /// For dynamic modules, the `caps` parameter is not passed through FFI.
+    /// Dynamic modules should use capabilities cached from `init()`.
+    #[must_use]
+    pub fn chrome_requested_size(&self) -> u16 {
+        if let Some(module) = &self.static_module {
+            // Static modules get no caps here either -- consistent interface.
+            // TUI compositor passes caps separately when needed.
+            return module.chrome_requested_size(&NullCaps);
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.chrome_requested_size
+        {
+            // SAFETY: ptr is from entry()
+            return unsafe { (f)(ptr) };
+        }
+        1
+    }
+
+    /// Priority for chrome allocation (higher = allocated first).
+    #[must_use]
+    pub fn chrome_priority(&self) -> u16 {
+        if let Some(module) = &self.static_module {
+            return module.chrome_priority();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.chrome_priority
+        {
+            // SAFETY: ptr is from entry()
+            return unsafe { (f)(ptr) };
+        }
+        0
+    }
+
+    /// Z-order for overlay chrome (higher = drawn on top).
+    #[must_use]
+    pub fn chrome_z_order(&self) -> u16 {
+        if let Some(module) = &self.static_module {
+            return module.chrome_z_order();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.chrome_z_order
+        {
+            // SAFETY: ptr is from entry()
+            return unsafe { (f)(ptr) };
+        }
+        0
+    }
+
+    /// Priority for buffer contribution dispatch (higher = checked first).
+    #[must_use]
+    pub fn buffer_contrib_priority(&self) -> u16 {
+        if let Some(module) = &self.static_module {
+            return module.buffer_contrib_priority();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.buffer_contrib_priority
+        {
+            // SAFETY: ptr is from entry()
+            return unsafe { (f)(ptr) };
+        }
+        0
+    }
+
+    /// Priority for annotation ordering (higher = leftmost in gutter).
+    #[must_use]
+    pub fn annotation_priority(&self) -> u16 {
+        if let Some(module) = &self.static_module {
+            return module.annotation_priority();
+        }
+        if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
+            && let Some(f) = ffi.annotation_priority
+        {
+            // SAFETY: ptr is from entry()
+            return unsafe { (f)(ptr) };
+        }
+        0
+    }
+}
+
+// =============================================================================
+// NullCaps (minimal PlatformCapabilities for chrome_requested_size dispatch)
+// =============================================================================
+
+/// Minimal `PlatformCapabilities` stub used when dispatching
+/// `chrome_requested_size` through the handle (where no caps are available).
+///
+/// The TUI compositor provides real capabilities when calling `chrome_render`.
+/// This stub only appears in the `chrome_requested_size()` path where the
+/// handle does not carry a caps reference.
+struct NullCaps;
+
+impl crate::traits::PlatformCapabilities for NullCaps {
+    fn rendering_model(&self) -> crate::RenderingModel {
+        crate::RenderingModel::CellGrid
+    }
+    fn grid_size(&self) -> Option<(u16, u16)> {
+        None
+    }
+    fn color_depth(&self) -> crate::ColorDepth {
+        crate::ColorDepth::TrueColor
+    }
+    fn pixel_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn reliable_unicode_width(&self) -> bool {
+        true
+    }
+    fn dark_mode(&self) -> bool {
+        false
+    }
+    fn smooth_scroll(&self) -> bool {
+        false
+    }
+    fn pointer_events(&self) -> bool {
+        false
+    }
+    fn touch_input(&self) -> bool {
+        false
+    }
+    fn haptic(&self) -> bool {
+        false
+    }
+    fn safe_area(&self) -> crate::Insets {
+        crate::Insets::ZERO
+    }
+    fn has_focus(&self) -> bool {
+        true
+    }
+    fn clipboard_available(&self) -> bool {
+        false
+    }
+    fn screen_reader_active(&self) -> bool {
+        false
     }
 }
 

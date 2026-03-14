@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **ClientModule FFI event and role declaration trampolines (#648, part of #645)**:
+  Extended the client module FFI boundary with 16 new trampolines for event
+  dispatch (`on_notification`, `on_mode_change`, `on_cursor_update`,
+  `on_buffer_focus`, `on_buffer_update`, `on_option_changed`, `tick`) and role
+  declaration (`has_chrome`, `has_buffer_contrib`, `has_annotations`,
+  `chrome_position`, `chrome_requested_size`, `chrome_priority`, `chrome_z_order`,
+  `buffer_contrib_priority`, `annotation_priority`). `ClientModuleHandle` now
+  dispatches all event and role methods through both static trait and dynamic FFI
+  paths. `ClientModuleProbe` gains `capabilities` bitflags for probe-time role
+  detection. `declare_client_module!` proc macro generates all new trampoline
+  symbols. `CLIENT_MODULE_API_VERSION` bumped to 0.3.0.
+
 - **ClientModule SDK refinement (#646, part of #645)**: Enriched the client driver
   crate for external module development (primary consumer: Tilth game).
   `ClientModuleError` is now an enum with `InitFailed`, `ExitFailed`,
