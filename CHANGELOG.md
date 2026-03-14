@@ -2,7 +2,13 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.12.0-dev
+## [Unreleased] - v0.12.1-dev
+
+### Changed
+
+- Version bump to 0.12.1-dev for Phase 13 (SDK polish, integration, web alignment)
+
+## [0.12.0-dev] - 2026-03-14
 
 ### Added
 
