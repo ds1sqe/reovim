@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **v0.8.1 feature parity audit (#652, part of #645)**: Comprehensive feature
+  matrix document comparing the pre-kernel v0.8.1 archive against the current
+  codebase across 11 categories (core editing, motions, operators, text objects,
+  visual mode, search, ex commands, window management, plugins/modules, language
+  support, UI features). Overall parity: ~95%. Identified 5 gaps: semantic text
+  objects (treesitter-based), marks (kernel ready, vim commands stubbed), jump
+  list (kernel ready, keybindings not wired), yank animation, animated landing
+  mascot. Documented 20+ features new in current that did not exist in v0.8.1.
+
 - **Web CLM rendering infrastructure (#651, part of #645)**: Chrome compositor,
   DOM render surface, and chrome dispatcher for the web client.
   `ChromeCompositor` allocates non-overlapping screen regions using TUI-matching
