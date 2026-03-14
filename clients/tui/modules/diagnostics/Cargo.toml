@@ -1,0 +1,17 @@
+[package]
+name = "reovim-tui-mod-diagnostics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Diagnostics inline rendering module for Reovim TUI"
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+reovim-arch = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

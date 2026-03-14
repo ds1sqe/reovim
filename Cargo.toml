@@ -139,6 +139,11 @@ members = [
     "clients/tui/modules/explorer",
     "clients/tui/modules/tetromino",
     "clients/tui/modules/line-numbers",
+    "clients/tui/modules/fold",
+    "clients/tui/modules/jump",
+    "clients/tui/modules/pair",
+    "clients/tui/modules/diagnostics",
+    "clients/tui/modules/markdown",
 
     # Client layer - CLI
     "clients/cli",
@@ -367,6 +372,11 @@ reovim-tui-mod-microscope = { path = "./clients/tui/modules/microscope", version
 reovim-tui-mod-explorer = { path = "./clients/tui/modules/explorer", version = "0.12.0-dev" }
 reovim-tui-mod-tetromino = { path = "./clients/tui/modules/tetromino", version = "0.12.0-dev" }
 reovim-tui-mod-line-numbers = { path = "./clients/tui/modules/line-numbers", version = "0.12.0-dev" }
+reovim-tui-mod-fold = { path = "./clients/tui/modules/fold", version = "0.12.0-dev" }
+reovim-tui-mod-jump = { path = "./clients/tui/modules/jump", version = "0.12.0-dev" }
+reovim-tui-mod-pair = { path = "./clients/tui/modules/pair", version = "0.12.0-dev" }
+reovim-tui-mod-diagnostics = { path = "./clients/tui/modules/diagnostics", version = "0.12.0-dev" }
+reovim-tui-mod-markdown = { path = "./clients/tui/modules/markdown", version = "0.12.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

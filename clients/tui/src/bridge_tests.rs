@@ -175,44 +175,49 @@ impl TuiExtension for MockExtension {
 // explorer, hover, signature-help, landing, polyblocks) are now native
 // ClientModule implementations and no longer need bridge classification.
 
+// pair migrated to native ClientModule (reovim-tui-mod-pair)
 #[test]
-fn classify_pair() {
+fn classify_pair_now_unknown() {
     let (chrome, buf, pos, _) = classify_extension("pair");
-    assert!(!chrome);
-    assert!(buf);
-    assert_eq!(pos, ChromePosition::Bottom);
+    assert!(chrome);
+    assert!(!buf);
+    assert_eq!(pos, ChromePosition::Overlay);
 }
 
+// markdown migrated to native ClientModule (reovim-tui-mod-markdown)
 #[test]
-fn classify_markdown() {
+fn classify_markdown_now_unknown() {
     let (chrome, buf, pos, _) = classify_extension("markdown");
-    assert!(!chrome);
-    assert!(buf);
-    assert_eq!(pos, ChromePosition::Bottom);
+    assert!(chrome);
+    assert!(!buf);
+    assert_eq!(pos, ChromePosition::Overlay);
 }
 
+// diagnostics migrated to native ClientModule (reovim-tui-mod-diagnostics)
 #[test]
-fn classify_diagnostics() {
+fn classify_diagnostics_now_unknown() {
     let (chrome, buf, pos, _) = classify_extension("diagnostics");
-    assert!(!chrome);
-    assert!(buf);
-    assert_eq!(pos, ChromePosition::Bottom);
+    assert!(chrome);
+    assert!(!buf);
+    assert_eq!(pos, ChromePosition::Overlay);
 }
 
+// range-finder-jump migrated to native ClientModule (reovim-tui-mod-jump)
 #[test]
-fn classify_range_finder_jump() {
+fn classify_range_finder_jump_now_unknown() {
     let (chrome, buf, pos, _) = classify_extension("range-finder-jump");
-    assert!(!chrome);
-    assert!(buf);
-    assert_eq!(pos, ChromePosition::Bottom);
+    assert!(chrome);
+    assert!(!buf);
+    assert_eq!(pos, ChromePosition::Overlay);
 }
 
+// range-finder-fold migrated to native ClientModule (reovim-tui-mod-fold)
 #[test]
-fn classify_range_finder_fold() {
+fn classify_range_finder_fold_now_unknown() {
     let (chrome, buf, pos, _) = classify_extension("range-finder-fold");
-    assert!(!chrome);
-    assert!(buf);
-    assert_eq!(pos, ChromePosition::Bottom);
+    assert!(chrome);
+    assert!(!buf);
+    assert_eq!(pos, ChromePosition::Overlay);
 }
 
 #[test]
@@ -272,11 +277,13 @@ fn bridge_chrome_role() {
 }
 
 #[test]
-fn bridge_buffer_contrib_role() {
-    let ext = MockExtension::default().with_kind("pair");
+fn bridge_all_extensions_classified_as_chrome() {
+    // All buffer-contrib extensions migrated to native ClientModule.
+    // Any remaining bridge-wrapped extensions are classified as chrome.
+    let ext = MockExtension::default().with_kind("unknown-kind");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
-    assert!(!bridge.has_chrome());
-    assert!(bridge.has_buffer_contrib());
+    assert!(bridge.has_chrome());
+    assert!(!bridge.has_buffer_contrib());
     assert!(!bridge.has_annotations());
 }
 
@@ -575,14 +582,14 @@ fn wrap_extensions_empty() {
 fn wrap_extensions_multiple() {
     let extensions: Vec<Box<dyn TuiExtension>> = vec![
         Box::new(MockExtension::default().with_kind("custom-chrome")),
-        Box::new(MockExtension::default().with_kind("pair")),
+        Box::new(MockExtension::default().with_kind("another-chrome")),
     ];
     let modules = wrap_extensions(extensions);
     assert_eq!(modules.len(), 2);
     assert_eq!(modules[0].kind(), "custom-chrome");
     assert!(modules[0].has_chrome());
-    assert_eq!(modules[1].kind(), "pair");
-    assert!(modules[1].has_buffer_contrib());
+    assert_eq!(modules[1].kind(), "another-chrome");
+    assert!(modules[1].has_chrome());
 }
 
 // =============================================================================

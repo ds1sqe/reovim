@@ -1,0 +1,15 @@
+[package]
+name = "reovim-tui-mod-markdown"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Markdown rendering module for Reovim TUI"
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+reovim-arch = { workspace = true }

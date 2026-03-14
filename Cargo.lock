@@ -3626,12 +3626,17 @@ dependencies = [
  "reovim-tui-ext-whichkey",
  "reovim-tui-mod-cmdline",
  "reovim-tui-mod-completion",
+ "reovim-tui-mod-diagnostics",
  "reovim-tui-mod-explorer",
+ "reovim-tui-mod-fold",
  "reovim-tui-mod-hover",
+ "reovim-tui-mod-jump",
  "reovim-tui-mod-landing",
  "reovim-tui-mod-line-numbers",
+ "reovim-tui-mod-markdown",
  "reovim-tui-mod-microscope",
  "reovim-tui-mod-notification",
+ "reovim-tui-mod-pair",
  "reovim-tui-mod-signature-help",
  "reovim-tui-mod-statusline",
  "reovim-tui-mod-tetromino",
@@ -3766,9 +3771,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-tui-mod-diagnostics"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-driver",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "reovim-tui-mod-explorer"
 version = "0.12.0-dev"
 dependencies = [
+ "reovim-client-driver",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-fold"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
  "reovim-client-driver",
  "serde_json",
 ]
@@ -3779,6 +3803,15 @@ version = "0.12.0-dev"
 dependencies = [
  "reovim-client-driver",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-jump"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-driver",
  "serde_json",
 ]
 
@@ -3798,6 +3831,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-tui-mod-markdown"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-driver",
+]
+
+[[package]]
 name = "reovim-tui-mod-microscope"
 version = "0.12.0-dev"
 dependencies = [
@@ -3810,6 +3851,16 @@ name = "reovim-tui-mod-notification"
 version = "0.12.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-pair"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-driver",
+ "serde",
  "serde_json",
 ]
 

@@ -39,6 +39,11 @@ pub fn create_native_modules() -> Vec<Box<dyn ClientModule>> {
         Box::new(reovim_tui_mod_explorer::ExplorerModule::new()),
         Box::new(reovim_tui_mod_tetromino::TetrominoModule::new()),
         Box::new(reovim_tui_mod_line_numbers::LineNumbersModule::new()),
+        Box::new(reovim_tui_mod_fold::FoldModule::new()),
+        Box::new(reovim_tui_mod_jump::JumpModule::new()),
+        Box::new(reovim_tui_mod_pair::PairModule::new()),
+        Box::new(reovim_tui_mod_diagnostics::DiagnosticsModule::new()),
+        Box::new(reovim_tui_mod_markdown::MarkdownModule::new()),
     ]
 }
 
@@ -127,11 +132,11 @@ fn all_extensions() -> Vec<Box<dyn TuiExtension>> {
         // microscope migrated to native ClientModule (reovim-tui-mod-microscope)
         // explorer migrated to native ClientModule (reovim-tui-mod-explorer)
         // tetromino migrated to native ClientModule (reovim-tui-mod-tetromino)
-        Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
-        Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
-        Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
-        Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
-        Box::new(reovim_tui_ext_pair::PairExtension::new()),
+        // range-finder-fold migrated to native ClientModule (reovim-tui-mod-fold)
+        // range-finder-jump migrated to native ClientModule (reovim-tui-mod-jump)
+        // pair migrated to native ClientModule (reovim-tui-mod-pair)
+        // diagnostics migrated to native ClientModule (reovim-tui-mod-diagnostics)
+        // markdown migrated to native ClientModule (reovim-tui-mod-markdown)
     ]
 }
 

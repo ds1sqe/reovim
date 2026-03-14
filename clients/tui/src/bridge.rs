@@ -99,17 +99,11 @@ pub fn wrap_extensions(extensions: Vec<Box<dyn TuiExtension>>) -> Vec<Box<dyn Cl
 
 /// Classify an extension by its `kind()` into (chrome, `buffer_contrib`, position, priority).
 ///
-/// Chrome extensions (cmdline, whichkey, notification, microscope, completion,
-/// explorer, hover, signature-help, landing, polyblocks) are now native
-/// `ClientModule` implementations and no longer go through the bridge.
-/// Only buffer-contrib extensions remain here.
-fn classify_extension(kind: &str) -> (bool, bool, ChromePosition, u16) {
-    match kind {
-        "pair" | "markdown" | "diagnostics" | "range-finder-jump" | "range-finder-fold" => {
-            (false, true, ChromePosition::Bottom, 0)
-        }
-        _ => (true, false, ChromePosition::Overlay, 0),
-    }
+/// All extensions have been migrated to native `ClientModule` implementations.
+/// This function exists only for unknown extension kinds that may still go
+/// through the bridge adapter.
+const fn classify_extension(_kind: &str) -> (bool, bool, ChromePosition, u16) {
+    (true, false, ChromePosition::Overlay, 0)
 }
 
 // =============================================================================

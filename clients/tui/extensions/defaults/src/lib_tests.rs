@@ -5,21 +5,16 @@ use super::*;
 #[test]
 fn test_create_extensions_count() {
     let exts = create_extensions();
-    // Legacy extensions: range-finder-jump, range-finder-fold, diagnostics, markdown, pair = 5
-    // (cmdline, microscope, explorer, tetromino migrated to native ClientModule)
-    assert_eq!(exts.len(), 5);
+    // Legacy extensions: diagnostics, markdown, pair = 3
+    // (cmdline, microscope, explorer, tetromino, range-finder-fold, range-finder-jump migrated)
+    assert_eq!(exts.len(), 0);
 }
 
 #[test]
 fn test_extension_kinds() {
     let exts = create_extensions();
-    let kinds: Vec<&str> = exts.iter().map(|e| e.kind()).collect();
-    // cmdline, microscope, explorer, polyblocks migrated to native ClientModule
-    assert!(kinds.contains(&"range-finder-jump"));
-    assert!(kinds.contains(&"range-finder-fold"));
-    assert!(kinds.contains(&"diagnostics"));
-    assert!(kinds.contains(&"markdown"));
-    assert!(kinds.contains(&"pair"));
+    // All buffer-contrib extensions migrated to native ClientModule
+    assert!(exts.is_empty());
 }
 
 #[test]
@@ -39,16 +34,16 @@ fn test_all_extensions_initially_inactive() {
 fn test_extension_dispatch() {
     let exts = create_extensions();
 
-    // Markdown is always active; all others start inactive
+    // All extensions migrated to native ClientModule — none remain
     let active_count = exts.iter().filter(|e| e.is_active()).count();
-    assert_eq!(active_count, 1);
+    assert_eq!(active_count, 0);
 }
 
 #[test]
 fn test_create_extensions_sorted_by_depgraph() {
     // All current extensions have empty deps, so order is valid (no panic)
     let exts = create_extensions();
-    assert_eq!(exts.len(), 5);
+    assert_eq!(exts.len(), 0);
 }
 
 #[test]
@@ -171,14 +166,14 @@ fn test_validate_extensions_empty() {
 #[test]
 fn test_create_extensions_filtered_empty_set_returns_all() {
     let exts = create_extensions_filtered(&HashSet::new());
-    assert_eq!(exts.len(), 5);
+    assert_eq!(exts.len(), 0);
 }
 
 #[test]
 fn test_create_extensions_filtered_disable_one() {
     let disabled: HashSet<String> = ["pair".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 4);
+    assert_eq!(exts.len(), 0);
     assert!(exts.iter().all(|e| e.kind() != "pair"));
 }
 
@@ -191,7 +186,7 @@ fn test_create_extensions_filtered_disable_multiple() {
     ]
     .into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 2);
+    assert_eq!(exts.len(), 0);
     for ext in &exts {
         assert!(!disabled.contains(ext.kind()));
     }
@@ -201,7 +196,7 @@ fn test_create_extensions_filtered_disable_multiple() {
 fn test_create_extensions_filtered_unknown_kinds_ignored() {
     let disabled: HashSet<String> = ["nonexistent".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 5);
+    assert_eq!(exts.len(), 0);
 }
 
 #[test]
@@ -230,8 +225,8 @@ fn test_create_extensions_matches_filtered_empty() {
 fn test_create_native_modules_count() {
     let modules = create_native_modules();
     // statusline, hover, signature-help, landing, completion, notification, whichkey,
-    // cmdline, microscope, explorer, polyblocks, line-numbers = 12
-    assert_eq!(modules.len(), 12);
+    // cmdline, microscope, explorer, polyblocks, line-numbers, fold, jump, pair, diagnostics, markdown = 17
+    assert_eq!(modules.len(), 17);
 }
 
 #[test]
@@ -250,4 +245,9 @@ fn test_native_module_kinds() {
     assert!(kinds.contains(&"explorer"));
     assert!(kinds.contains(&"polyblocks"));
     assert!(kinds.contains(&"line-numbers"));
+    assert!(kinds.contains(&"range-finder-fold"));
+    assert!(kinds.contains(&"range-finder-jump"));
+    assert!(kinds.contains(&"pair"));
+    assert!(kinds.contains(&"diagnostics"));
+    assert!(kinds.contains(&"markdown"));
 }
