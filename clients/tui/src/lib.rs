@@ -77,7 +77,6 @@ impl TuiDebugConfig {
 
 // Module declarations - gRPC v2 only
 pub mod adapter;
-pub mod bridge;
 pub mod cli_panel;
 pub mod cli_render;
 pub mod core_helpers;
@@ -124,9 +123,6 @@ pub use {
 // Unified TUI app exports
 #[cfg(feature = "grpc")]
 pub use app::{TuiApp, TuiAppError, connect_headless, connect_interactive};
-
-/// Re-export extension creation for app-layer config wiring (#586).
-pub use reovim_tui_ext_defaults::create_extensions_filtered;
 
 // gRPC v2 client exports
 #[cfg(feature = "grpc")]

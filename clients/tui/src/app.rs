@@ -188,13 +188,7 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: {
-                let mut modules = reovim_tui_ext_defaults::create_native_modules();
-                modules.extend(crate::bridge::wrap_extensions(
-                    reovim_tui_ext_defaults::create_extensions(),
-                ));
-                modules
-            },
+            extensions: reovim_tui_ext_defaults::create_native_modules(),
             capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
                 width,
                 height,
@@ -207,18 +201,19 @@ impl<O: TuiOutput> TuiApp<O> {
     /// Replace extensions with a filtered set (#586).
     ///
     /// Called by the app layer after construction to apply user config.
-    /// Must be called before `run()`. Extensions are already initialized
-    /// by `create_extensions_filtered()`.
+    /// Must be called before `run()`.
     ///
-    /// Accepts legacy `TuiExtension` trait objects and wraps them
-    /// as `ClientModule` via the bridge adapter.
-    pub fn set_extensions(
+    /// All extensions are now native `ClientModule` implementations.
+    /// The `disabled_kinds` parameter filters which modules are loaded.
+    pub fn set_disabled_kinds<S: std::hash::BuildHasher>(
         &mut self,
-        extensions: Vec<Box<dyn reovim_driver_display::render_backend::TuiExtension>>,
+        disabled_kinds: &std::collections::HashSet<String, S>,
     ) {
-        let mut modules = reovim_tui_ext_defaults::create_native_modules();
-        modules.extend(crate::bridge::wrap_extensions(extensions));
-        self.extensions = modules;
+        if disabled_kinds.is_empty() {
+            return;
+        }
+        self.extensions
+            .retain(|m| !disabled_kinds.contains(m.kind()));
     }
 
     /// Apply a theme by name.

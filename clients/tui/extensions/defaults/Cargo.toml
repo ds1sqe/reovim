@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Default TUI extensions meta-crate for reovim"
+description = "Default TUI modules meta-crate for reovim"
 repository.workspace = true
 homepage.workspace = true
 
@@ -13,31 +13,6 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
-# Extension trait
-reovim-driver-display = { workspace = true }
-
-# Dependency resolution for extension sort order (#583)
-reovim-depgraph = { workspace = true }
-
-# Logging for validation warnings (#584)
-tracing = { workspace = true }
-
-# Concrete extensions
-reovim-tui-ext-whichkey = { path = "../which-key" }
-reovim-tui-ext-cmdline = { path = "../cmdline" }
-reovim-tui-ext-notification = { path = "../notification" }
-reovim-tui-ext-microscope = { path = "../microscope" }
-reovim-tui-ext-completion = { path = "../completion" }
-reovim-tui-ext-explorer = { path = "../explorer" }
-reovim-tui-ext-tetromino = { path = "../tetromino" }
-reovim-tui-ext-range-finder = { path = "../range-finder" }
-reovim-tui-ext-hover = { path = "../hover" }
-reovim-tui-ext-signature-help = { path = "../signature-help" }
-reovim-tui-ext-diagnostics = { path = "../diagnostics" }
-reovim-tui-ext-markdown = { path = "../markdown" }
-reovim-tui-ext-landing = { path = "../landing" }
-reovim-tui-ext-pair = { path = "../pair" }
-
 # Native ClientModule implementations
 reovim-client-driver = { workspace = true }
 reovim-tui-mod-statusline = { workspace = true }

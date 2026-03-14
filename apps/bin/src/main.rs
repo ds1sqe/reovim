@@ -531,7 +531,7 @@ async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
     if !disabled_kinds.is_empty() {
-        app.set_extensions(reovim_client_tui::create_extensions_filtered(&disabled_kinds));
+        app.set_disabled_kinds(&disabled_kinds);
     }
 
     let result = app
@@ -598,7 +598,7 @@ async fn run_integrated() -> std::io::Result<()> {
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
     if !disabled_kinds.is_empty() {
-        app.set_extensions(reovim_client_tui::create_extensions_filtered(&disabled_kinds));
+        app.set_disabled_kinds(&disabled_kinds);
     }
 
     // Ctrl-C handler: gracefully stop TUI
