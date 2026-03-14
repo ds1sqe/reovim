@@ -387,8 +387,11 @@ fn loader_with_required_deps() {
             optional: &[],
         })
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("dep_a", fa as ClientModuleFactory), ("dep_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("dep_a", fa as ClientModuleFactory),
+        ("dep_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled = HashSet::new();
     let loader = ClientModuleLoader::new(factories, &disabled).unwrap();
     let kinds: Vec<&str> = loader.as_module_slice().iter().map(|m| m.kind()).collect();
@@ -409,8 +412,11 @@ fn loader_with_optional_deps() {
             optional: &["opt_a"],
         })
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("opt_a", fa as ClientModuleFactory), ("opt_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("opt_a", fa as ClientModuleFactory),
+        ("opt_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled = HashSet::new();
     let loader = ClientModuleLoader::new(factories, &disabled).unwrap();
     let kinds: Vec<&str> = loader.as_module_slice().iter().map(|m| m.kind()).collect();
@@ -435,8 +441,11 @@ fn loader_cycle_detection() {
             optional: &[],
         })
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("cyc_a", fa as ClientModuleFactory), ("cyc_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("cyc_a", fa as ClientModuleFactory),
+        ("cyc_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled = HashSet::new();
     let result = ClientModuleLoader::new(factories, &disabled);
     assert!(result.is_err());
@@ -468,8 +477,11 @@ fn loader_disabled_modules_excluded() {
     fn fb() -> Box<dyn ClientModule> {
         Box::new(SimpleModule("dis_b"))
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("dis_a", fa as ClientModuleFactory), ("dis_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("dis_a", fa as ClientModuleFactory),
+        ("dis_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled: HashSet<String> = std::iter::once("dis_b".to_string()).collect();
     let loader = ClientModuleLoader::new(factories, &disabled).unwrap();
     assert_eq!(loader.module_count(), 1);
@@ -488,8 +500,11 @@ fn loader_disabled_dep_makes_optional_skip() {
             optional: &["dopt_a"],
         })
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("dopt_a", fa as ClientModuleFactory), ("dopt_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("dopt_a", fa as ClientModuleFactory),
+        ("dopt_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled: HashSet<String> = std::iter::once("dopt_a".to_string()).collect();
     let loader = ClientModuleLoader::new(factories, &disabled).unwrap();
     assert_eq!(loader.module_count(), 1);
@@ -508,8 +523,11 @@ fn loader_disabled_required_dep_error() {
             optional: &[],
         })
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("dreq_a", fa as ClientModuleFactory), ("dreq_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("dreq_a", fa as ClientModuleFactory),
+        ("dreq_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled: HashSet<String> = std::iter::once("dreq_a".to_string()).collect();
     let result = ClientModuleLoader::new(factories, &disabled);
     assert!(result.is_err());
@@ -523,8 +541,11 @@ fn loader_init_all_success() {
     fn fb() -> Box<dyn ClientModule> {
         Box::new(SimpleModule("init_b"))
     }
-    let factories: HashMap<&str, ClientModuleFactory> =
-        [("init_a", fa as ClientModuleFactory), ("init_b", fb as ClientModuleFactory)].into();
+    let factories: HashMap<&str, ClientModuleFactory> = [
+        ("init_a", fa as ClientModuleFactory),
+        ("init_b", fb as ClientModuleFactory),
+    ]
+    .into();
     let disabled = HashSet::new();
     let mut loader = ClientModuleLoader::new(factories, &disabled).unwrap();
     let ctx = make_ctx();
@@ -552,10 +573,7 @@ fn loader_init_failure_continues() {
     let count = loader.init_all(&ctx);
     assert_eq!(count, 1);
     assert_eq!(loader.running_count(), 1);
-    assert!(matches!(
-        loader.state("ifail_bad"),
-        Some(ClientModuleState::Failed(_))
-    ));
+    assert!(matches!(loader.state("ifail_bad"), Some(ClientModuleState::Failed(_))));
 }
 
 #[test]
@@ -588,10 +606,7 @@ fn loader_init_permanently_deferred() {
     let ctx = make_ctx();
     let count = loader.init_all(&ctx);
     assert_eq!(count, 0);
-    assert!(matches!(
-        loader.state("perma_defer"),
-        Some(ClientModuleState::Failed(_))
-    ));
+    assert!(matches!(loader.state("perma_defer"), Some(ClientModuleState::Failed(_))));
 }
 
 #[test]
@@ -655,10 +670,7 @@ fn loader_exit_skips_non_running() {
     let ctx = make_ctx();
     loader.init_all(&ctx);
     loader.exit_all();
-    assert!(matches!(
-        loader.state("skip_bad"),
-        Some(ClientModuleState::Failed(_))
-    ));
+    assert!(matches!(loader.state("skip_bad"), Some(ClientModuleState::Failed(_))));
 }
 
 #[test]
@@ -769,10 +781,7 @@ fn loader_state_display() {
     assert_eq!(format!("{}", ClientModuleState::Loaded), "Loaded");
     assert_eq!(format!("{}", ClientModuleState::Initializing), "Initializing");
     assert_eq!(format!("{}", ClientModuleState::Running), "Running");
-    assert_eq!(
-        format!("{}", ClientModuleState::Failed("boom".to_string())),
-        "Failed(boom)"
-    );
+    assert_eq!(format!("{}", ClientModuleState::Failed("boom".to_string())), "Failed(boom)");
 }
 
 #[test]
@@ -799,9 +808,6 @@ fn loader_exit_failure_continues() {
 
     loader.exit_all();
     assert_eq!(loader.state("ef_a"), Some(&ClientModuleState::Loaded));
-    assert!(matches!(
-        loader.state("ef_b"),
-        Some(ClientModuleState::Failed(_))
-    ));
+    assert!(matches!(loader.state("ef_b"), Some(ClientModuleState::Failed(_))));
     assert_eq!(loader.state("ef_c"), Some(&ClientModuleState::Loaded));
 }

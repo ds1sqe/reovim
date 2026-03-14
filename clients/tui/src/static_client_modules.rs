@@ -16,23 +16,76 @@ use reovim_client_driver::ClientModuleFactory;
 #[must_use]
 pub fn builtin_client_modules() -> HashMap<&'static str, ClientModuleFactory> {
     let mut map = HashMap::with_capacity(17);
-    map.insert("statusline", (|| Box::new(reovim_tui_mod_statusline::StatuslineModule::new())) as ClientModuleFactory);
-    map.insert("hover", (|| Box::new(reovim_tui_mod_hover::HoverModule::new())) as ClientModuleFactory);
-    map.insert("signature-help", (|| Box::new(reovim_tui_mod_signature_help::SignatureHelpModule::new())) as ClientModuleFactory);
-    map.insert("landing", (|| Box::new(reovim_tui_mod_landing::LandingModule::new())) as ClientModuleFactory);
-    map.insert("completion", (|| Box::new(reovim_tui_mod_completion::CompletionModule::new())) as ClientModuleFactory);
-    map.insert("notification", (|| Box::new(reovim_tui_mod_notification::NotificationModule::new())) as ClientModuleFactory);
-    map.insert("whichkey", (|| Box::new(reovim_tui_mod_whichkey::WhichKeyModule::new())) as ClientModuleFactory);
-    map.insert("cmdline", (|| Box::new(reovim_tui_mod_cmdline::CmdlineModule::new())) as ClientModuleFactory);
-    map.insert("microscope", (|| Box::new(reovim_tui_mod_microscope::MicroscopeModule::new())) as ClientModuleFactory);
-    map.insert("explorer", (|| Box::new(reovim_tui_mod_explorer::ExplorerModule::new())) as ClientModuleFactory);
-    map.insert("polyblocks", (|| Box::new(reovim_tui_mod_tetromino::TetrominoModule::new())) as ClientModuleFactory);
-    map.insert("line-numbers", (|| Box::new(reovim_tui_mod_line_numbers::LineNumbersModule::new())) as ClientModuleFactory);
-    map.insert("range-finder-fold", (|| Box::new(reovim_tui_mod_fold::FoldModule::new())) as ClientModuleFactory);
-    map.insert("range-finder-jump", (|| Box::new(reovim_tui_mod_jump::JumpModule::new())) as ClientModuleFactory);
-    map.insert("pair", (|| Box::new(reovim_tui_mod_pair::PairModule::new())) as ClientModuleFactory);
-    map.insert("diagnostics", (|| Box::new(reovim_tui_mod_diagnostics::DiagnosticsModule::new())) as ClientModuleFactory);
-    map.insert("markdown", (|| Box::new(reovim_tui_mod_markdown::MarkdownModule::new())) as ClientModuleFactory);
+    map.insert(
+        "statusline",
+        (|| Box::new(reovim_tui_mod_statusline::StatuslineModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "hover",
+        (|| Box::new(reovim_tui_mod_hover::HoverModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "signature-help",
+        (|| Box::new(reovim_tui_mod_signature_help::SignatureHelpModule::new()))
+            as ClientModuleFactory,
+    );
+    map.insert(
+        "landing",
+        (|| Box::new(reovim_tui_mod_landing::LandingModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "completion",
+        (|| Box::new(reovim_tui_mod_completion::CompletionModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "notification",
+        (|| Box::new(reovim_tui_mod_notification::NotificationModule::new()))
+            as ClientModuleFactory,
+    );
+    map.insert(
+        "whichkey",
+        (|| Box::new(reovim_tui_mod_whichkey::WhichKeyModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "cmdline",
+        (|| Box::new(reovim_tui_mod_cmdline::CmdlineModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "microscope",
+        (|| Box::new(reovim_tui_mod_microscope::MicroscopeModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "explorer",
+        (|| Box::new(reovim_tui_mod_explorer::ExplorerModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "polyblocks",
+        (|| Box::new(reovim_tui_mod_tetromino::TetrominoModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "line-numbers",
+        (|| Box::new(reovim_tui_mod_line_numbers::LineNumbersModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "range-finder-fold",
+        (|| Box::new(reovim_tui_mod_fold::FoldModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "range-finder-jump",
+        (|| Box::new(reovim_tui_mod_jump::JumpModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "pair",
+        (|| Box::new(reovim_tui_mod_pair::PairModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "diagnostics",
+        (|| Box::new(reovim_tui_mod_diagnostics::DiagnosticsModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "markdown",
+        (|| Box::new(reovim_tui_mod_markdown::MarkdownModule::new())) as ClientModuleFactory,
+    );
     map
 }
 

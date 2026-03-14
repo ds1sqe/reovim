@@ -163,10 +163,8 @@ fn resolve_and_reorder(
     let init_order: Vec<String> = resolved.order.clone();
 
     // Reorder by resolved topological order using Option-swap pattern
-    let mut mod_slots: Vec<Option<Box<dyn ClientModule>>> =
-        modules.into_iter().map(Some).collect();
-    let mut state_slots: Vec<Option<ClientModuleState>> =
-        states.into_iter().map(Some).collect();
+    let mut mod_slots: Vec<Option<Box<dyn ClientModule>>> = modules.into_iter().map(Some).collect();
+    let mut state_slots: Vec<Option<ClientModuleState>> = states.into_iter().map(Some).collect();
     let mut sorted_mods = Vec::with_capacity(mod_slots.len());
     let mut sorted_states = Vec::with_capacity(state_slots.len());
 
@@ -254,8 +252,7 @@ impl ClientModuleLoader {
                         );
                     }
                     ProbeResult::Failed(err) => {
-                        self.states[i] =
-                            ClientModuleState::Failed(err.message.clone());
+                        self.states[i] = ClientModuleState::Failed(err.message.clone());
                         *done = true;
                         tracing::warn!(
                             module = self.modules[i].kind(),
@@ -273,12 +270,9 @@ impl ClientModuleLoader {
 
         // Mark permanently deferred modules as failed
         for (i, done) in initialized.iter().enumerate() {
-            if !done
-                && !matches!(self.states[i], ClientModuleState::Failed(_))
-            {
-                self.states[i] = ClientModuleState::Failed(
-                    "permanently deferred after max passes".to_string(),
-                );
+            if !done && !matches!(self.states[i], ClientModuleState::Failed(_)) {
+                self.states[i] =
+                    ClientModuleState::Failed("permanently deferred after max passes".to_string());
                 tracing::warn!(
                     module = self.modules[i].kind(),
                     "client module permanently deferred"
@@ -326,14 +320,10 @@ impl ClientModuleLoader {
             match self.modules[idx].exit() {
                 Ok(()) => {
                     self.states[idx] = ClientModuleState::Loaded;
-                    tracing::debug!(
-                        module = self.modules[idx].kind(),
-                        "client module exited"
-                    );
+                    tracing::debug!(module = self.modules[idx].kind(), "client module exited");
                 }
                 Err(err) => {
-                    self.states[idx] =
-                        ClientModuleState::Failed(err.message.clone());
+                    self.states[idx] = ClientModuleState::Failed(err.message.clone());
                     tracing::warn!(
                         module = self.modules[idx].kind(),
                         error = %err.message,
@@ -386,9 +376,7 @@ impl ClientModuleLoader {
     }
 
     /// Mutable iterator over the underlying boxed modules.
-    pub fn modules_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut Box<dyn ClientModule>> {
+    pub fn modules_mut(&mut self) -> impl Iterator<Item = &mut Box<dyn ClientModule>> {
         self.modules.iter_mut()
     }
 

@@ -29,9 +29,7 @@ pub fn default_client_search_paths() -> Vec<PathBuf> {
     if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
         paths.push(PathBuf::from(xdg_data).join("reovim/client-modules"));
     } else if let Ok(home) = std::env::var("HOME") {
-        paths.push(
-            PathBuf::from(home).join(".local/share/reovim/client-modules"),
-        );
+        paths.push(PathBuf::from(home).join(".local/share/reovim/client-modules"));
     }
 
     // System paths

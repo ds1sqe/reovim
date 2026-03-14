@@ -188,8 +188,7 @@ fn handle_init_static_success() {
 #[test]
 fn handle_init_static_defer() {
     let module = Box::new(
-        HandleTestModule::new()
-            .with_init_result(ProbeResult::Defer("not ready".to_string())),
+        HandleTestModule::new().with_init_result(ProbeResult::Defer("not ready".to_string())),
     );
     let mut handle = ClientModuleHandle::from_static(module);
     let ctx = make_ctx();
@@ -199,11 +198,11 @@ fn handle_init_static_defer() {
 
 #[test]
 fn handle_init_static_fail() {
-    let module = Box::new(
-        HandleTestModule::new().with_init_result(ProbeResult::Failed(ClientModuleError {
+    let module = Box::new(HandleTestModule::new().with_init_result(ProbeResult::Failed(
+        ClientModuleError {
             message: "init failed".to_string(),
-        })),
-    );
+        },
+    )));
     let mut handle = ClientModuleHandle::from_static(module);
     let ctx = make_ctx();
     let result = handle.init(&ctx);

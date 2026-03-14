@@ -109,7 +109,11 @@ impl ClientModuleHandle {
         let kind: &'static str = Box::leak(module.kind().to_string().into_boxed_str());
         let name = module.name().to_string();
         let version = module.version();
-        let deps = module.dependencies().iter().map(|s| (*s).to_string()).collect();
+        let deps = module
+            .dependencies()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
         let optional_deps = module
             .optional_dependencies()
             .iter()
@@ -149,8 +153,16 @@ impl ClientModuleHandle {
         let kind: &'static str = Box::leak(probe.id_str().to_string().into_boxed_str());
         let name = probe.name_str().to_string();
         let version = probe.version;
-        let deps = probe.required_deps().iter().map(|s| (*s).to_string()).collect();
-        let optional_deps = probe.optional_deps().iter().map(|s| (*s).to_string()).collect();
+        let deps = probe
+            .required_deps()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let optional_deps = probe
+            .optional_deps()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
 
         Self {
             kind,

@@ -1368,44 +1368,26 @@ fn client_api_version_exists() {
 
 #[test]
 fn is_client_compatible_same_version() {
-    assert!(is_client_compatible(
-        Version::new(1, 0, 0),
-        Version::new(1, 0, 0)
-    ));
+    assert!(is_client_compatible(Version::new(1, 0, 0), Version::new(1, 0, 0)));
 }
 
 #[test]
 fn is_client_compatible_same_major_higher_minor() {
-    assert!(is_client_compatible(
-        Version::new(1, 0, 0),
-        Version::new(1, 2, 0)
-    ));
+    assert!(is_client_compatible(Version::new(1, 0, 0), Version::new(1, 2, 0)));
 }
 
 #[test]
 fn is_client_compatible_same_major_lower_minor() {
-    assert!(!is_client_compatible(
-        Version::new(1, 3, 0),
-        Version::new(1, 2, 0)
-    ));
+    assert!(!is_client_compatible(Version::new(1, 3, 0), Version::new(1, 2, 0)));
 }
 
 #[test]
 fn is_client_compatible_different_major() {
-    assert!(!is_client_compatible(
-        Version::new(2, 0, 0),
-        Version::new(1, 0, 0)
-    ));
+    assert!(!is_client_compatible(Version::new(2, 0, 0), Version::new(1, 0, 0)));
 }
 
 #[test]
 fn is_client_compatible_zero_major() {
-    assert!(is_client_compatible(
-        Version::new(0, 1, 0),
-        Version::new(0, 1, 0)
-    ));
-    assert!(!is_client_compatible(
-        Version::new(0, 1, 0),
-        Version::new(0, 0, 0)
-    ));
+    assert!(is_client_compatible(Version::new(0, 1, 0), Version::new(0, 1, 0)));
+    assert!(!is_client_compatible(Version::new(0, 1, 0), Version::new(0, 0, 0)));
 }

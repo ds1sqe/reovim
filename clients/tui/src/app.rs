@@ -188,12 +188,11 @@ impl<O: TuiOutput> TuiApp<O> {
         // Create server handle adapter for module init() calls.
         // Clone the gRPC client so modules get their own handle while the app
         // keeps its owned client for async event loop calls.
-        let server_handle: Arc<dyn ServerHandle> = Arc::new(
-            crate::server_handle::TuiServerHandle::new(
+        let server_handle: Arc<dyn ServerHandle> =
+            Arc::new(crate::server_handle::TuiServerHandle::new(
                 Arc::new(reovim_arch::sync::Mutex::new(client.clone())),
                 tokio::runtime::Handle::current(),
-            ),
-        );
+            ));
 
         Self {
             frame_buffer,

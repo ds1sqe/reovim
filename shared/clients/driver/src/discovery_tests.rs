@@ -37,7 +37,11 @@ fn discover_matches_prefix() {
     let _ = std::fs::create_dir_all(&temp);
 
     // Create matching and non-matching files
-    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let ext = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
     let matching = temp.join(format!("libreovim_client_module_test.{ext}"));
     let non_matching = temp.join(format!("libsomething_else.{ext}"));
     std::fs::write(&matching, b"").unwrap();
@@ -70,20 +74,15 @@ fn find_module_by_name() {
 
 #[test]
 fn module_name_from_path_valid() {
-    let path = PathBuf::from("/usr/lib/reovim/client-modules/libreovim_client_module_statusline.so");
-    assert_eq!(
-        client_module_name_from_path(&path),
-        Some("statusline".to_string())
-    );
+    let path =
+        PathBuf::from("/usr/lib/reovim/client-modules/libreovim_client_module_statusline.so");
+    assert_eq!(client_module_name_from_path(&path), Some("statusline".to_string()));
 }
 
 #[test]
 fn module_name_from_path_dylib() {
     let path = PathBuf::from("/opt/reovim/libreovim_client_module_hover.dylib");
-    assert_eq!(
-        client_module_name_from_path(&path),
-        Some("hover".to_string())
-    );
+    assert_eq!(client_module_name_from_path(&path), Some("hover".to_string()));
 }
 
 #[test]

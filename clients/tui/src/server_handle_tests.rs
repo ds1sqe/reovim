@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use reovim_client_driver::OptionValue;
-use reovim_protocol::v2::{self, option_value::Value};
+use {
+    reovim_client_driver::OptionValue,
+    reovim_protocol::v2::{self, option_value::Value},
+};
 
 use super::convert_options;
 
 fn make_proto_option(value: Value) -> v2::OptionValue {
-    v2::OptionValue {
-        value: Some(value),
-    }
+    v2::OptionValue { value: Some(value) }
 }
 
 #[test]
@@ -64,10 +64,7 @@ fn convert_options_mixed() {
     let mut map = HashMap::new();
     map.insert("flag".to_string(), make_proto_option(Value::BoolValue(false)));
     map.insert("count".to_string(), make_proto_option(Value::IntValue(42)));
-    map.insert(
-        "name".to_string(),
-        make_proto_option(Value::StringValue("test".to_string())),
-    );
+    map.insert("name".to_string(), make_proto_option(Value::StringValue("test".to_string())));
     let result = convert_options(&map);
     assert_eq!(result.len(), 3);
 

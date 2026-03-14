@@ -102,12 +102,7 @@ pub struct ClientModuleProbe {
 impl ClientModuleProbe {
     /// Create a new probe with the given metadata.
     #[must_use]
-    pub const fn new(
-        id: &str,
-        name: &str,
-        version: Version,
-        api_version: Version,
-    ) -> Self {
+    pub const fn new(id: &str, name: &str, version: Version, api_version: Version) -> Self {
         let mut probe = Self {
             id: [0; 64],
             name: [0; 128],
@@ -151,14 +146,22 @@ impl ClientModuleProbe {
     /// Get the module ID as a string slice.
     #[must_use]
     pub fn id_str(&self) -> &str {
-        let len = self.id.iter().position(|&b| b == 0).unwrap_or(self.id.len());
+        let len = self
+            .id
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.id.len());
         std::str::from_utf8(&self.id[..len]).unwrap_or("")
     }
 
     /// Get the module name as a string slice.
     #[must_use]
     pub fn name_str(&self) -> &str {
-        let len = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
+        let len = self
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.name.len());
         std::str::from_utf8(&self.name[..len]).unwrap_or("")
     }
 

@@ -6,8 +6,10 @@
 
 use std::sync::Arc;
 
-use reovim_arch::sync::Mutex;
-use reovim_client_driver::{OptionValue, ServerHandle};
+use {
+    reovim_arch::sync::Mutex,
+    reovim_client_driver::{OptionValue, ServerHandle},
+};
 
 use crate::grpc_client::TuiGrpcClient;
 
@@ -33,9 +35,8 @@ impl ServerHandle for TuiServerHandle {
     fn get_options(&self, names: &[&str]) -> Vec<(String, OptionValue)> {
         let names_owned: Vec<String> = names.iter().map(|s| (*s).to_string()).collect();
         let mut client = self.client.lock();
-        let result = tokio::task::block_in_place(|| {
-            self.runtime.block_on(client.get_options(names_owned))
-        });
+        let result =
+            tokio::task::block_in_place(|| self.runtime.block_on(client.get_options(names_owned)));
         match result {
             Ok(resp) => convert_options(&resp.options),
             Err(e) => {
