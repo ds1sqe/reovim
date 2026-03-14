@@ -88,7 +88,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ hashFiles('Cargo.lock') }}
+          key: v2-mcdc-${{ hashFiles('Cargo.lock') }}
 
   # ─── Build: Server variant (starts immediately, no lint gate) ───
   build-server:
@@ -112,7 +112,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: server-${{ hashFiles('Cargo.lock') }}
+          key: v2-server-${{ hashFiles('Cargo.lock') }}
 
   # ─── Test: MC/DC Unit Tests (sharded) ───
   test-mcdc-unit:
@@ -137,7 +137,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ hashFiles('Cargo.lock') }}
+          key: v2-mcdc-${{ hashFiles('Cargo.lock') }}
       - name: Clean stale profraw files
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run unit tests
@@ -190,7 +190,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ hashFiles('Cargo.lock') }}
+          key: v2-mcdc-${{ hashFiles('Cargo.lock') }}
       - name: Clean stale profraw files
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run integration tests
@@ -242,7 +242,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: server-${{ hashFiles('Cargo.lock') }}
+          key: v2-server-${{ hashFiles('Cargo.lock') }}
       - name: Clean stale profraw files
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run server tests with coverage
