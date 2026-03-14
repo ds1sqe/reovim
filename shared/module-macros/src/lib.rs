@@ -423,3 +423,208 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
+
+/// Generates FFI entry points for dynamic **client** module loading.
+///
+/// This is the client-side counterpart to [`declare_module!`]. It generates
+/// symbols prefixed with `reovim_client_module_*` to avoid collision with
+/// server-side symbols when both module types exist in the same `.so`.
+///
+/// # Usage
+///
+/// ```ignore
+/// use reovim_client_driver::*;
+/// use reovim_module_macros::declare_client_module;
+///
+/// pub struct MyClientModule { /* ... */ }
+///
+/// impl ClientModule for MyClientModule {
+///     fn id(&self) -> &'static str { "my-module" }
+///     fn kind(&self) -> &'static str { "my-module" }
+///     fn name(&self) -> &'static str { "My Module" }
+///     fn version(&self) -> Version { Version::new(1, 0, 0) }
+///     fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult { ProbeResult::Success }
+///     fn exit(&mut self) -> Result<(), ClientModuleError> { Ok(()) }
+/// }
+///
+/// impl MyClientModule {
+///     pub fn new() -> Self { Self { /* ... */ } }
+/// }
+///
+/// declare_client_module!(MyClientModule);
+/// ```
+///
+/// # Generated Symbols
+///
+/// | Symbol | Type | Purpose |
+/// |--------|------|---------|
+/// | `REOVIM_CLIENT_MODULE_API_VERSION` | `Version` | Pre-load version check |
+/// | `reovim_client_module_probe()` | `fn() -> ClientModuleProbe` | Metadata query |
+/// | `reovim_client_module_entry()` | `fn() -> *mut c_void` | Instance creation |
+/// | `reovim_client_module_init()` | `fn(*mut c_void, *const c_void) -> i32` | Init trampoline |
+/// | `reovim_client_module_exit()` | `fn(*mut c_void) -> i32` | Exit trampoline |
+/// | `reovim_client_module_destroy()` | `fn(*mut c_void)` | Cleanup |
+/// | `reovim_client_module_on_all_loaded()` | `fn(*mut c_void, *const c_void)` | Lifecycle hook |
+///
+/// # Requirements
+///
+/// The module type must:
+/// - Implement `ClientModule` trait
+/// - Have a `new() -> Self` constructor
+/// - Be `Send + Sync + 'static`
+///
+/// # Return Codes
+///
+/// Init and exit trampolines return:
+/// - `0`: Success
+/// - `1`: Defer (init only - try again later)
+/// - `-1`: Failed/Error
+/// - `-2`: Panic occurred
+#[proc_macro]
+#[allow(clippy::too_many_lines)]
+pub fn declare_client_module(input: TokenStream) -> TokenStream {
+    let module_type = parse_macro_input!(input as Ident);
+
+    let expanded = quote! {
+        // ====================================================================
+        // Static API Version
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub static REOVIM_CLIENT_MODULE_API_VERSION: ::reovim_client_driver::Version =
+            ::reovim_client_driver::CLIENT_MODULE_API_VERSION;
+
+        // ====================================================================
+        // Module Probe (metadata without instantiation)
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub extern "C" fn reovim_client_module_probe() -> ::reovim_client_driver::ClientModuleProbe {
+            let temp = <#module_type>::new();
+
+            let id = {
+                use ::reovim_client_driver::ClientModule;
+                temp.id()
+            };
+            let name = {
+                use ::reovim_client_driver::ClientModule;
+                temp.name()
+            };
+            let version = {
+                use ::reovim_client_driver::ClientModule;
+                temp.version()
+            };
+
+            let required_deps = {
+                use ::reovim_client_driver::ClientModule;
+                temp.dependencies()
+            };
+            let optional_deps = {
+                use ::reovim_client_driver::ClientModule;
+                temp.optional_dependencies()
+            };
+
+            let mut probe = ::reovim_client_driver::ClientModuleProbe::new(
+                id,
+                name,
+                version,
+                ::reovim_client_driver::CLIENT_MODULE_API_VERSION,
+            );
+
+            for (i, dep) in required_deps.iter().take(8).enumerate() {
+                probe = probe.with_required_dep(i, dep);
+            }
+
+            for (i, dep) in optional_deps.iter().take(8).enumerate() {
+                probe = probe.with_optional_dep(i, dep);
+            }
+
+            probe
+        }
+
+        // ====================================================================
+        // Module Entry (instance creation)
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_entry() -> *mut ::std::ffi::c_void {
+            let module = ::std::boxed::Box::new(<#module_type>::new());
+            ::std::boxed::Box::into_raw(module) as *mut ::std::ffi::c_void
+        }
+
+        // ====================================================================
+        // Init Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_init(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let ctx = &*(ctx as *const ::reovim_client_driver::ModuleContext);
+
+                use ::reovim_client_driver::ClientModule;
+                module.init(ctx)
+            }));
+
+            match result {
+                Ok(::reovim_client_driver::ProbeResult::Success) => 0,
+                Ok(::reovim_client_driver::ProbeResult::Defer(_)) => 1,
+                Ok(::reovim_client_driver::ProbeResult::Failed(_)) => -1,
+                Err(_) => -2,
+            }
+        }
+
+        // ====================================================================
+        // Exit Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_exit(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+
+                use ::reovim_client_driver::ClientModule;
+                module.exit()
+            }));
+
+            match result {
+                Ok(Ok(())) => 0,
+                Ok(Err(_)) => -1,
+                Err(_) => -2,
+            }
+        }
+
+        // ====================================================================
+        // Destroy Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_destroy(
+            module: *mut ::std::ffi::c_void,
+        ) {
+            if !module.is_null() {
+                let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                    drop(::std::boxed::Box::from_raw(module as *mut #module_type));
+                }));
+            }
+        }
+
+        // ====================================================================
+        // On All Loaded Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_all_loaded(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::std::ffi::c_void,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let ctx = &*(ctx as *const ::reovim_client_driver::ModuleContext);
+
+                use ::reovim_client_driver::ClientModule;
+                module.on_all_loaded(ctx);
+            }));
+        }
+    };
+
+    expanded.into()
+}

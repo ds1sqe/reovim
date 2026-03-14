@@ -1284,3 +1284,128 @@ fn pointer_button_all_variants() {
     }
     assert_ne!(PointerButton::Left, PointerButton::Right);
 }
+
+// =============================================================================
+// ClientModuleProbe
+// =============================================================================
+
+#[test]
+fn client_module_probe_roundtrip() {
+    let probe = ClientModuleProbe::new(
+        "my-module",
+        "My Module",
+        Version::new(1, 2, 3),
+        CLIENT_MODULE_API_VERSION,
+    );
+    assert_eq!(probe.id_str(), "my-module");
+    assert_eq!(probe.name_str(), "My Module");
+    assert_eq!(probe.version, Version::new(1, 2, 3));
+    assert_eq!(probe.api_version, CLIENT_MODULE_API_VERSION);
+}
+
+#[test]
+fn client_module_probe_deps() {
+    let probe = ClientModuleProbe::new(
+        "child",
+        "Child Module",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    )
+    .with_required_dep(0, "parent-a")
+    .with_required_dep(1, "parent-b")
+    .with_optional_dep(0, "optional-x");
+
+    let required = probe.required_deps();
+    assert_eq!(required.len(), 2);
+    assert_eq!(required[0], "parent-a");
+    assert_eq!(required[1], "parent-b");
+
+    let optional = probe.optional_deps();
+    assert_eq!(optional.len(), 1);
+    assert_eq!(optional[0], "optional-x");
+}
+
+#[test]
+fn client_module_probe_empty_deps() {
+    let probe = ClientModuleProbe::new(
+        "standalone",
+        "Standalone",
+        Version::new(0, 1, 0),
+        CLIENT_MODULE_API_VERSION,
+    );
+    assert!(probe.required_deps().is_empty());
+    assert!(probe.optional_deps().is_empty());
+}
+
+#[test]
+fn client_module_probe_copy_semantics() {
+    let a = ClientModuleProbe::new(
+        "copy-test",
+        "Copy Test",
+        Version::new(1, 0, 0),
+        CLIENT_MODULE_API_VERSION,
+    );
+    let b = a;
+    assert_eq!(a.id_str(), b.id_str());
+    assert_eq!(a.name_str(), b.name_str());
+}
+
+// =============================================================================
+// CLIENT_MODULE_API_VERSION
+// =============================================================================
+
+#[test]
+fn client_api_version_exists() {
+    let v = CLIENT_MODULE_API_VERSION;
+    assert_eq!(v.major, 0);
+    assert_eq!(v.minor, 1);
+    assert_eq!(v.patch, 0);
+}
+
+// =============================================================================
+// is_client_compatible
+// =============================================================================
+
+#[test]
+fn is_client_compatible_same_version() {
+    assert!(is_client_compatible(
+        Version::new(1, 0, 0),
+        Version::new(1, 0, 0)
+    ));
+}
+
+#[test]
+fn is_client_compatible_same_major_higher_minor() {
+    assert!(is_client_compatible(
+        Version::new(1, 0, 0),
+        Version::new(1, 2, 0)
+    ));
+}
+
+#[test]
+fn is_client_compatible_same_major_lower_minor() {
+    assert!(!is_client_compatible(
+        Version::new(1, 3, 0),
+        Version::new(1, 2, 0)
+    ));
+}
+
+#[test]
+fn is_client_compatible_different_major() {
+    assert!(!is_client_compatible(
+        Version::new(2, 0, 0),
+        Version::new(1, 0, 0)
+    ));
+}
+
+#[test]
+fn is_client_compatible_zero_major() {
+    assert!(is_client_compatible(
+        Version::new(0, 1, 0),
+        Version::new(0, 1, 0)
+    ));
+    assert!(!is_client_compatible(
+        Version::new(0, 1, 0),
+        Version::new(0, 0, 0)
+    ));
+}

@@ -85,16 +85,6 @@ impl fmt::Display for ClientModuleLoaderError {
 impl std::error::Error for ClientModuleLoaderError {}
 
 // =============================================================================
-// TrackedClientModule
-// =============================================================================
-
-/// Internal wrapper tracking a module alongside its lifecycle state.
-struct TrackedClientModule {
-    module: Box<dyn ClientModule>,
-    state: ClientModuleState,
-}
-
-// =============================================================================
 // ClientModuleLoader
 // =============================================================================
 
@@ -104,31 +94,44 @@ struct TrackedClientModule {
 /// set. The loader instantiates modules, resolves dependencies via topological
 /// sort, and provides `init_all()` / `on_all_loaded()` / `exit_all()` lifecycle
 /// methods.
+///
+/// Uses parallel arrays for modules and states so that callers can borrow
+/// `&[Box<dyn ClientModule>]` directly (needed by render engine, notification
+/// handler, etc.).
 pub struct ClientModuleLoader {
-    modules: Vec<TrackedClientModule>,
+    /// Modules in dependency-resolved order.
+    modules: Vec<Box<dyn ClientModule>>,
+    /// Per-module lifecycle state (parallel to `modules`).
+    states: Vec<ClientModuleState>,
     /// Module kinds in dependency-resolved init order.
     init_order: Vec<String>,
 }
+
+/// Result of dependency resolution: reordered modules, states, and init order.
+type ResolveResult = Result<
+    (Vec<Box<dyn ClientModule>>, Vec<ClientModuleState>, Vec<String>),
+    ClientModuleLoaderError,
+>;
 
 /// Resolve dependencies and reorder modules by topological sort.
 ///
 /// Shared between `new()` and `from_modules_for_test()`.
 fn resolve_and_reorder(
-    modules: Vec<TrackedClientModule>,
-) -> Result<(Vec<TrackedClientModule>, Vec<String>), ClientModuleLoaderError> {
+    modules: Vec<Box<dyn ClientModule>>,
+    states: Vec<ClientModuleState>,
+) -> ResolveResult {
     if modules.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
 
     // Collect module info into owned data (avoids borrow of modules vec).
     let module_info: Vec<(String, Vec<String>, Vec<String>)> = modules
         .iter()
-        .map(|t| {
+        .map(|m| {
             (
-                t.module.kind().to_string(),
-                t.module.dependencies().iter().map(|s| (*s).to_string()).collect(),
-                t.module
-                    .optional_dependencies()
+                m.kind().to_string(),
+                m.dependencies().iter().map(|s| (*s).to_string()).collect(),
+                m.optional_dependencies()
                     .iter()
                     .map(|s| (*s).to_string())
                     .collect(),
@@ -154,25 +157,30 @@ fn resolve_and_reorder(
     let kind_to_idx: HashMap<&str, usize> = modules
         .iter()
         .enumerate()
-        .map(|(i, t)| (t.module.kind(), i))
+        .map(|(i, m)| (m.kind(), i))
         .collect();
 
     let init_order: Vec<String> = resolved.order.clone();
 
     // Reorder by resolved topological order using Option-swap pattern
-    let mut slots: Vec<Option<TrackedClientModule>> =
+    let mut mod_slots: Vec<Option<Box<dyn ClientModule>>> =
         modules.into_iter().map(Some).collect();
-    let mut sorted = Vec::with_capacity(slots.len());
+    let mut state_slots: Vec<Option<ClientModuleState>> =
+        states.into_iter().map(Some).collect();
+    let mut sorted_mods = Vec::with_capacity(mod_slots.len());
+    let mut sorted_states = Vec::with_capacity(state_slots.len());
 
     for kind in &resolved.order {
         if let Some(&idx) = kind_to_idx.get(kind.as_str())
-            && let Some(tracked) = slots[idx].take()
+            && let Some(module) = mod_slots[idx].take()
+            && let Some(state) = state_slots[idx].take()
         {
-            sorted.push(tracked);
+            sorted_mods.push(module);
+            sorted_states.push(state);
         }
     }
 
-    Ok((sorted, init_order))
+    Ok((sorted_mods, sorted_states, init_order))
 }
 
 impl ClientModuleLoader {
@@ -189,18 +197,17 @@ impl ClientModuleLoader {
         factories: HashMap<&'static str, ClientModuleFactory, S>,
         disabled: &HashSet<String, S2>,
     ) -> Result<Self, ClientModuleLoaderError> {
-        let modules: Vec<TrackedClientModule> = factories
+        let modules: Vec<Box<dyn ClientModule>> = factories
             .into_iter()
             .filter(|(kind, _)| !disabled.contains(*kind))
-            .map(|(_, factory)| TrackedClientModule {
-                module: factory(),
-                state: ClientModuleState::Loaded,
-            })
+            .map(|(_, factory)| factory())
             .collect();
+        let states = vec![ClientModuleState::Loaded; modules.len()];
 
-        let (modules, init_order) = resolve_and_reorder(modules)?;
+        let (modules, states, init_order) = resolve_and_reorder(modules, states)?;
         Ok(Self {
             modules,
+            states,
             init_order,
         })
     }
@@ -211,48 +218,47 @@ impl ClientModuleLoader {
     /// (up to 3 passes, matching server behavior). Returns the count of
     /// successfully initialized modules.
     pub fn init_all(&mut self, ctx: &ModuleContext) -> usize {
-        let count = self.modules.len();
-        let mut initialized = vec![false; count];
+        let mut initialized = vec![false; self.modules.len()];
         let mut success_count = 0;
 
         for pass in 0..MAX_DEFER_PASSES {
             let mut any_deferred = false;
 
-            for (i, tracked) in self.modules.iter_mut().enumerate() {
-                if initialized[i] {
+            for (i, done) in initialized.iter_mut().enumerate() {
+                if *done {
                     continue;
                 }
-                if matches!(tracked.state, ClientModuleState::Failed(_)) {
+                if matches!(self.states[i], ClientModuleState::Failed(_)) {
                     continue;
                 }
 
-                tracked.state = ClientModuleState::Initializing;
+                self.states[i] = ClientModuleState::Initializing;
 
-                match tracked.module.init(ctx) {
+                match self.modules[i].init(ctx) {
                     ProbeResult::Success => {
-                        tracked.state = ClientModuleState::Running;
-                        initialized[i] = true;
+                        self.states[i] = ClientModuleState::Running;
+                        *done = true;
                         success_count += 1;
                         tracing::debug!(
-                            module = tracked.module.kind(),
+                            module = self.modules[i].kind(),
                             "client module initialized (pass {pass})"
                         );
                     }
                     ProbeResult::Defer(reason) => {
-                        tracked.state = ClientModuleState::Loaded;
+                        self.states[i] = ClientModuleState::Loaded;
                         any_deferred = true;
                         tracing::debug!(
-                            module = tracked.module.kind(),
+                            module = self.modules[i].kind(),
                             reason = %reason,
                             "client module deferred (pass {pass})"
                         );
                     }
                     ProbeResult::Failed(err) => {
-                        tracked.state =
+                        self.states[i] =
                             ClientModuleState::Failed(err.message.clone());
-                        initialized[i] = true;
+                        *done = true;
                         tracing::warn!(
-                            module = tracked.module.kind(),
+                            module = self.modules[i].kind(),
                             error = %err.message,
                             "client module init failed"
                         );
@@ -266,15 +272,15 @@ impl ClientModuleLoader {
         }
 
         // Mark permanently deferred modules as failed
-        for (i, tracked) in self.modules.iter_mut().enumerate() {
-            if !initialized[i]
-                && !matches!(tracked.state, ClientModuleState::Failed(_))
+        for (i, done) in initialized.iter().enumerate() {
+            if !done
+                && !matches!(self.states[i], ClientModuleState::Failed(_))
             {
-                tracked.state = ClientModuleState::Failed(
+                self.states[i] = ClientModuleState::Failed(
                     "permanently deferred after max passes".to_string(),
                 );
                 tracing::warn!(
-                    module = tracked.module.kind(),
+                    module = self.modules[i].kind(),
                     "client module permanently deferred"
                 );
             }
@@ -285,9 +291,9 @@ impl ClientModuleLoader {
 
     /// Call `on_all_loaded()` on each running module.
     pub fn on_all_loaded(&mut self, ctx: &ModuleContext) {
-        for tracked in &mut self.modules {
-            if tracked.state == ClientModuleState::Running {
-                tracked.module.on_all_loaded(ctx);
+        for i in 0..self.modules.len() {
+            if self.states[i] == ClientModuleState::Running {
+                self.modules[i].on_all_loaded(ctx);
             }
         }
     }
@@ -301,7 +307,7 @@ impl ClientModuleLoader {
             .modules
             .iter()
             .enumerate()
-            .map(|(i, tracked)| (tracked.module.kind(), i))
+            .map(|(i, m)| (m.kind(), i))
             .collect();
 
         // Exit in reverse init order
@@ -313,24 +319,23 @@ impl ClientModuleLoader {
             .collect();
 
         for idx in reverse_order {
-            let tracked = &mut self.modules[idx];
-            if tracked.state != ClientModuleState::Running {
+            if self.states[idx] != ClientModuleState::Running {
                 continue;
             }
 
-            match tracked.module.exit() {
+            match self.modules[idx].exit() {
                 Ok(()) => {
-                    tracked.state = ClientModuleState::Loaded;
+                    self.states[idx] = ClientModuleState::Loaded;
                     tracing::debug!(
-                        module = tracked.module.kind(),
+                        module = self.modules[idx].kind(),
                         "client module exited"
                     );
                 }
                 Err(err) => {
-                    tracked.state =
+                    self.states[idx] =
                         ClientModuleState::Failed(err.message.clone());
                     tracing::warn!(
-                        module = tracked.module.kind(),
+                        module = self.modules[idx].kind(),
                         error = %err.message,
                         "client module exit failed"
                     );
@@ -348,9 +353,9 @@ impl ClientModuleLoader {
     /// Number of modules in `Running` state.
     #[must_use]
     pub fn running_count(&self) -> usize {
-        self.modules
+        self.states
             .iter()
-            .filter(|t| t.state == ClientModuleState::Running)
+            .filter(|s| **s == ClientModuleState::Running)
             .count()
     }
 
@@ -359,27 +364,38 @@ impl ClientModuleLoader {
     pub fn state(&self, kind: &str) -> Option<&ClientModuleState> {
         self.modules
             .iter()
-            .find(|t| t.module.kind() == kind)
-            .map(|t| &t.state)
+            .position(|m| m.kind() == kind)
+            .map(|i| &self.states[i])
+    }
+
+    /// Borrow all modules as a slice of boxed trait objects.
+    #[must_use]
+    pub fn modules(&self) -> &[Box<dyn ClientModule>] {
+        &self.modules
+    }
+
+    /// Mutable borrow of all modules as a slice of boxed trait objects.
+    pub fn modules_mut_slice(&mut self) -> &mut [Box<dyn ClientModule>] {
+        &mut self.modules
     }
 
     /// Borrow all modules as trait object references.
     #[must_use]
     pub fn as_module_slice(&self) -> Vec<&dyn ClientModule> {
-        self.modules.iter().map(|t| t.module.as_ref()).collect()
+        self.modules.iter().map(AsRef::as_ref).collect()
     }
 
     /// Mutable iterator over the underlying boxed modules.
     pub fn modules_mut(
         &mut self,
     ) -> impl Iterator<Item = &mut Box<dyn ClientModule>> {
-        self.modules.iter_mut().map(|t| &mut t.module)
+        self.modules.iter_mut()
     }
 
     /// Consume the loader and return all modules as owned boxes.
     #[must_use]
     pub fn into_modules(self) -> Vec<Box<dyn ClientModule>> {
-        self.modules.into_iter().map(|t| t.module).collect()
+        self.modules
     }
 }
 
@@ -387,6 +403,7 @@ impl fmt::Debug for ClientModuleLoader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClientModuleLoader")
             .field("module_count", &self.modules.len())
+            .field("states", &self.states)
             .field("init_order", &self.init_order)
             .finish()
     }
@@ -403,17 +420,11 @@ impl ClientModuleLoader {
     pub fn from_modules_for_test(
         modules: Vec<Box<dyn ClientModule>>,
     ) -> Result<Self, ClientModuleLoaderError> {
-        let tracked: Vec<TrackedClientModule> = modules
-            .into_iter()
-            .map(|module| TrackedClientModule {
-                module,
-                state: ClientModuleState::Loaded,
-            })
-            .collect();
-
-        let (modules, init_order) = resolve_and_reorder(tracked)?;
+        let states = vec![ClientModuleState::Loaded; modules.len()];
+        let (modules, states, init_order) = resolve_and_reorder(modules, states)?;
         Ok(Self {
             modules,
+            states,
             init_order,
         })
     }

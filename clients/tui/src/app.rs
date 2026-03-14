@@ -19,9 +19,9 @@
 //! - **Output Trait**: `TuiOutput` handles only display I/O (flush, cursor).
 //!   Headless impl is all no-ops.
 
-use std::{collections::HashMap, io, time::Duration};
+use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
-use reovim_client_driver::ClientModule;
+use reovim_client_driver::{ClientModule, ClientModuleLoader, ServerHandle};
 
 use crate::render_backend::RenderBackend as _;
 
@@ -133,8 +133,10 @@ pub struct TuiApp<O: TuiOutput> {
     pending_token_refresh: std::collections::HashSet<u64>,
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
-    /// TUI extensions (cmdline, whichkey, etc.) — engine has ZERO knowledge.
-    extensions: Vec<Box<dyn ClientModule>>,
+    /// Client module loader — manages lifecycle and dependency order.
+    module_loader: ClientModuleLoader,
+    /// Server handle adapter for module `init()` calls.
+    server_handle: Arc<dyn ServerHandle>,
     /// Platform capabilities (updated on resize, focus changes).
     capabilities: crate::render_engine_bridge::TuiPlatformCapabilities,
 
@@ -180,8 +182,18 @@ impl<O: TuiOutput> TuiApp<O> {
 
         // Load client modules via factory map + dependency-resolving loader
         let factories = crate::static_client_modules::builtin_client_modules();
-        let loader = reovim_client_driver::ClientModuleLoader::new(factories, disabled_kinds)
+        let module_loader = ClientModuleLoader::new(factories, disabled_kinds)
             .expect("client module dependency resolution failed");
+
+        // Create server handle adapter for module init() calls.
+        // Clone the gRPC client so modules get their own handle while the app
+        // keeps its owned client for async event loop calls.
+        let server_handle: Arc<dyn ServerHandle> = Arc::new(
+            crate::server_handle::TuiServerHandle::new(
+                Arc::new(reovim_arch::sync::Mutex::new(client.clone())),
+                tokio::runtime::Handle::current(),
+            ),
+        );
 
         Self {
             frame_buffer,
@@ -198,7 +210,8 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: loader.into_modules(),
+            module_loader,
+            server_handle,
             capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
                 width,
                 height,
@@ -241,6 +254,18 @@ impl<O: TuiOutput> TuiApp<O> {
     ///
     /// Returns an error if the event loop fails.
     pub async fn run(&mut self) -> Result<(), TuiAppError> {
+        // Initialize client modules before fetching state
+        let theme_adapter =
+            crate::render_engine_bridge::ThemeProviderAdapter::new(&self.theme_manager);
+        let ctx = reovim_client_driver::ModuleContext {
+            capabilities: &self.capabilities,
+            server: Arc::clone(&self.server_handle),
+            theme: &theme_adapter,
+        };
+        let init_count = self.module_loader.init_all(&ctx);
+        tracing::info!(init_count, "Client modules initialized");
+        self.module_loader.on_all_loaded(&ctx);
+
         // Initial state fetch
         self.fetch_initial_state().await?;
 
@@ -249,7 +274,12 @@ impl<O: TuiOutput> TuiApp<O> {
         self.render()?;
 
         // Event loop
-        self.event_loop().await
+        let result = self.event_loop().await;
+
+        // Shutdown modules in reverse dependency order
+        self.module_loader.exit_all();
+
+        result
     }
 
     // =========================================================================
@@ -532,7 +562,7 @@ impl<O: TuiOutput> TuiApp<O> {
                 // Redraw timer (both modes)
                 _ = redraw_timer.tick() => {
                     // Tick extensions (e.g., which-key show-delay)
-                    for ext in &mut self.extensions {
+                    for ext in self.module_loader.modules_mut() {
                         if ext.tick() {
                             self.state.set_needs_redraw(true);
                         }
@@ -632,7 +662,7 @@ impl<O: TuiOutput> TuiApp<O> {
 
         // Update platform capabilities and notify all modules
         self.capabilities.update_grid_size(width, height);
-        for ext in &mut self.extensions {
+        for ext in self.module_loader.modules_mut() {
             ext.on_capabilities_changed(&self.capabilities);
         }
 
@@ -714,7 +744,7 @@ impl<O: TuiOutput> TuiApp<O> {
             &mut self.frame_buffer,
             &self.state,
             &config,
-            &self.extensions,
+            self.module_loader.modules(),
             &self.token_cache_manager,
             &self.theme_manager,
         );
@@ -754,7 +784,7 @@ impl<O: TuiOutput> TuiApp<O> {
     fn position_cursor(&mut self) {
         // Check if any chrome extension wants cursor positioning
         let (width, height) = self.frame_buffer.size();
-        for ext in &self.extensions {
+        for ext in self.module_loader.modules() {
             if ext.has_chrome()
                 && let Some((cx, cy)) = ext.cursor_position(width, height)
             {
@@ -787,7 +817,8 @@ impl<O: TuiOutput> TuiApp<O> {
             #[allow(clippy::cast_possible_truncation)]
             let cursor_line_idx = cursor_pos.line as usize;
             let virtual_count: usize = self
-                .extensions
+                .module_loader
+                .modules()
                 .iter()
                 .filter(|e| e.has_buffer_contrib())
                 .flat_map(|e| e.virtual_lines())
@@ -805,7 +836,8 @@ impl<O: TuiOutput> TuiApp<O> {
             let bid = reovim_client_driver::BufferId(buffer_id as usize);
             #[allow(clippy::cast_possible_truncation)]
             let cursor_x = self
-                .extensions
+                .module_loader
+                .modules()
                 .iter()
                 .filter(|e| e.has_buffer_contrib())
                 .find_map(|e| {
@@ -901,7 +933,7 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
     }
 
     fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
-        &mut self.extensions
+        self.module_loader.modules_mut_slice()
     }
 
     fn on_capture_request(

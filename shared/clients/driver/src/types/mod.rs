@@ -25,6 +25,7 @@ pub struct ClientModuleError {
 }
 
 /// Semantic version for a client module.
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Version {
     pub major: u32,
@@ -46,6 +47,193 @@ impl Version {
 impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+/// Client module API version for dynamic loading compatibility checks.
+///
+/// Loader checks this before calling any FFI symbols. Major version mismatch
+/// = incompatible ABI; minor version mismatch = backward compatible.
+pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 1, 0);
+
+/// Check if a required API version is compatible with the provided version.
+///
+/// Same semver rules as the kernel's `is_compatible()`:
+/// - Major must match exactly
+/// - Required minor must be <= provided minor
+#[must_use]
+pub const fn is_client_compatible(required: Version, provided: Version) -> bool {
+    if required.major != provided.major {
+        return false;
+    }
+    required.minor <= provided.minor
+}
+
+// =============================================================================
+// ClientModuleProbe (FFI-safe metadata)
+// =============================================================================
+
+/// FFI-safe metadata for a client module (read before instantiation).
+///
+/// Mirrors the kernel's `ModuleProbe` adapted for `ClientModule`. All fields
+/// are fixed-size `#[repr(C)]` so the loader can read them from a `.so`
+/// without instantiating the module.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ClientModuleProbe {
+    /// Module identifier (UTF-8, null-padded).
+    pub id: [u8; 64],
+    /// Human-readable name (UTF-8, null-padded).
+    pub name: [u8; 128],
+    /// Module version.
+    pub version: Version,
+    /// Required API version.
+    pub api_version: Version,
+    /// Number of required dependencies (0..=8).
+    pub required_deps_count: u8,
+    /// Required dependency IDs (UTF-8, null-padded).
+    pub required_deps: [[u8; 64]; 8],
+    /// Number of optional dependencies (0..=8).
+    pub optional_deps_count: u8,
+    /// Optional dependency IDs (UTF-8, null-padded).
+    pub optional_deps: [[u8; 64]; 8],
+}
+
+impl ClientModuleProbe {
+    /// Create a new probe with the given metadata.
+    #[must_use]
+    pub const fn new(
+        id: &str,
+        name: &str,
+        version: Version,
+        api_version: Version,
+    ) -> Self {
+        let mut probe = Self {
+            id: [0; 64],
+            name: [0; 128],
+            version,
+            api_version,
+            required_deps_count: 0,
+            required_deps: [[0; 64]; 8],
+            optional_deps_count: 0,
+            optional_deps: [[0; 64]; 8],
+        };
+
+        // Copy id
+        let id_bytes = id.as_bytes();
+        let id_len = if id_bytes.len() < 64 {
+            id_bytes.len()
+        } else {
+            64
+        };
+        let mut i = 0;
+        while i < id_len {
+            probe.id[i] = id_bytes[i];
+            i += 1;
+        }
+
+        // Copy name
+        let name_bytes = name.as_bytes();
+        let name_len = if name_bytes.len() < 128 {
+            name_bytes.len()
+        } else {
+            128
+        };
+        i = 0;
+        while i < name_len {
+            probe.name[i] = name_bytes[i];
+            i += 1;
+        }
+
+        probe
+    }
+
+    /// Get the module ID as a string slice.
+    #[must_use]
+    pub fn id_str(&self) -> &str {
+        let len = self.id.iter().position(|&b| b == 0).unwrap_or(self.id.len());
+        std::str::from_utf8(&self.id[..len]).unwrap_or("")
+    }
+
+    /// Get the module name as a string slice.
+    #[must_use]
+    pub fn name_str(&self) -> &str {
+        let len = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
+        std::str::from_utf8(&self.name[..len]).unwrap_or("")
+    }
+
+    /// Get required dependency IDs.
+    #[must_use]
+    pub fn required_deps(&self) -> Vec<&str> {
+        (0..self.required_deps_count as usize)
+            .filter_map(|i| {
+                let len = self.required_deps[i]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(64);
+                std::str::from_utf8(&self.required_deps[i][..len]).ok()
+            })
+            .collect()
+    }
+
+    /// Get optional dependency IDs.
+    #[must_use]
+    pub fn optional_deps(&self) -> Vec<&str> {
+        (0..self.optional_deps_count as usize)
+            .filter_map(|i| {
+                let len = self.optional_deps[i]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(64);
+                std::str::from_utf8(&self.optional_deps[i][..len]).ok()
+            })
+            .collect()
+    }
+
+    /// Add a required dependency at the given index (builder pattern).
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)] // index < 8, always fits in u8
+    pub const fn with_required_dep(mut self, index: usize, dep: &str) -> Self {
+        if index < 8 {
+            let dep_bytes = dep.as_bytes();
+            let dep_len = if dep_bytes.len() < 64 {
+                dep_bytes.len()
+            } else {
+                64
+            };
+            let mut i = 0;
+            while i < dep_len {
+                self.required_deps[index][i] = dep_bytes[i];
+                i += 1;
+            }
+            if index >= self.required_deps_count as usize {
+                self.required_deps_count = (index + 1) as u8;
+            }
+        }
+        self
+    }
+
+    /// Add an optional dependency at the given index (builder pattern).
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)] // index < 8, always fits in u8
+    pub const fn with_optional_dep(mut self, index: usize, dep: &str) -> Self {
+        if index < 8 {
+            let dep_bytes = dep.as_bytes();
+            let dep_len = if dep_bytes.len() < 64 {
+                dep_bytes.len()
+            } else {
+                64
+            };
+            let mut i = 0;
+            while i < dep_len {
+                self.optional_deps[index][i] = dep_bytes[i];
+                i += 1;
+            }
+            if index >= self.optional_deps_count as usize {
+                self.optional_deps_count = (index + 1) as u8;
+            }
+        }
+        self
     }
 }
 

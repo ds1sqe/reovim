@@ -13,6 +13,7 @@ categories = ["text-editors"]
 workspace = true
 
 [dependencies]
+libloading = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
 tracing = { workspace = true }

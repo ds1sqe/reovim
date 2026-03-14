@@ -74,6 +74,38 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   70 tests). Legacy extension list now empty (0 TuiExtensions). Bridge classify_extension()
   simplified to const fn. 17 native ClientModule instances registered.
 
+- **Client module loader** (#638): `ClientModuleLoader` with factory map consumption,
+  dependency resolution via `reovim-depgraph` topological sort, and multi-pass initialization
+  with deferral (3 passes, matching server). `TuiServerHandle` adapter wrapping `TuiGrpcClient`
+  for sync `ServerHandle` trait using `block_in_place`. Module lifecycle wiring: `init_all()`
+  before initial state fetch, `on_all_loaded()` after init, `exit_all()` on shutdown.
+  Factory map (`static_client_modules.rs`) replaces `create_native_modules()` from defaults
+  crate. `TuiGrpcClient` cloneable for server handle sharing. 26 loader tests, 6 server
+  handle tests, 3 factory map tests.
+
+- **`declare_client_module!` macro** (#638): Proc-macro generating FFI entry points for
+  dynamic client module loading (`reovim_client_module_*` prefix, avoiding server symbol
+  collision). `ClientModuleProbe` type for FFI-safe metadata, `CLIENT_MODULE_API_VERSION`
+  constant, `is_client_compatible()` semver check. 10 type tests.
+
+- **`ClientModuleHandle` and dynamic loading infrastructure** (#638): Unified handle
+  wrapping static `Box<dyn ClientModule>` and dynamic `*mut c_void` with FFI symbols.
+  `ClientFfiSymbols` for resolved trampolines. Discovery module with XDG-compliant search
+  paths, `REOVIM_CLIENT_MODULE_PATH` env var, and `.so` filename conventions. 13 handle
+  tests, 7 discovery tests.
+
+- **CORE purity grep test** (#638): `scripts/grep-test-core.sh` enforces that
+  `clients/tui/src/` (excluding factory map and test files) has zero references to
+  concrete module type names or crate prefixes.
+
+### Changed
+
+- TUI modules registered via `builtin_client_modules()` factory map instead of
+  `create_native_modules()` (#638)
+- `TuiApp` stores `ClientModuleLoader` instead of `Vec<Box<dyn ClientModule>>`
+  for lifecycle management (#638)
+- `TuiGrpcClient` is now `Clone` for server handle sharing (#638)
+
 ### Removed
 
 - **Legacy extension cleanup** (#638): Delete `TuiExtensionBridge` adapter and all 14
@@ -82,6 +114,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Simplify `TuiApp` to use `create_native_modules()` directly with `set_disabled_kinds()`
   for filtering. Defaults meta-crate reduced from 178 to 42 lines. Only the
   `extensions/defaults/` meta-crate remains; all individual extension crates deleted.
+  Delete `reovim-tui-ext-defaults` crate (replaced by `static_client_modules.rs` factory
+  map and `ClientModuleLoader`). Delete `set_disabled_kinds()` method (filtering at
+  construction time via loader).
   Delete `TuiExtension` trait, `ViewportContext`, `RenderBehavior`, `VirtualLine`,
   `TransformedLine`, and `VirtualLinePosition` from display driver (superseded by
   client-driver types). Delete `declare_extension!` macro (no consumers). Remove dead

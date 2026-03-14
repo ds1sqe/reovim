@@ -1,5 +1,7 @@
 pub mod chrome_utils;
 pub mod conceal;
+pub mod discovery;
+pub mod handle;
 pub mod loader;
 pub mod traits;
 pub mod types;

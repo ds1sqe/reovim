@@ -131,6 +131,9 @@ impl From<tonic::transport::Error> for TuiGrpcError {
 ///
 /// Wraps all service clients and provides a unified interface for TUI operations.
 /// This is the primary client for gRPC v2 communication.
+///
+/// `Clone` is cheap — tonic service clients share the underlying `Channel`.
+#[derive(Clone)]
 pub struct TuiGrpcClient {
     input: InputServiceClient<Channel>,
     state: StateServiceClient<Channel>,
