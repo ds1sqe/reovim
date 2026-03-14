@@ -1,0 +1,16 @@
+[package]
+name = "reovim-tui-mod-jump"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Jump label rendering module for Reovim TUI"
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+reovim-arch = { workspace = true }
+serde_json = { workspace = true }

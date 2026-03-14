@@ -19,9 +19,11 @@
 //! - **Output Trait**: `TuiOutput` handles only display I/O (flush, cursor).
 //!   Headless impl is all no-ops.
 
-use std::{collections::HashMap, io, time::Duration};
+use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
-use crate::render_backend::{RenderBackend as _, TuiExtension};
+use reovim_client_driver::{ClientModule, ClientModuleLoader, ServerHandle};
+
+use crate::render_backend::RenderBackend as _;
 
 use {
     crossterm::event::{KeyCode, KeyModifiers},
@@ -131,8 +133,12 @@ pub struct TuiApp<O: TuiOutput> {
     pending_token_refresh: std::collections::HashSet<u64>,
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
-    /// TUI extensions (cmdline, whichkey, etc.) — engine has ZERO knowledge.
-    extensions: Vec<Box<dyn TuiExtension>>,
+    /// Client module loader — manages lifecycle and dependency order.
+    module_loader: ClientModuleLoader,
+    /// Server handle adapter for module `init()` calls.
+    server_handle: Arc<dyn ServerHandle>,
+    /// Platform capabilities (updated on resize, focus changes).
+    capabilities: crate::render_engine_bridge::TuiPlatformCapabilities,
 
     // === I/O adapter (only thing that differs) ===
     /// Display output adapter (terminal for interactive, no-op for headless).
@@ -142,8 +148,12 @@ pub struct TuiApp<O: TuiOutput> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl<O: TuiOutput> TuiApp<O> {
     /// Create a TUI app with the given output adapter and connection details.
+    ///
+    /// # Panics
+    ///
+    /// Panics if client module dependency resolution fails (cycle or missing dep).
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new<S: std::hash::BuildHasher>(
         output: O,
         frame_buffer: FrameBuffer,
         input_rx: mpsc::Receiver<TuiInput>,
@@ -153,6 +163,7 @@ impl<O: TuiOutput> TuiApp<O> {
         server_address: String,
         debug_config: Option<TuiDebugConfig>,
         initial_theme: Option<&str>,
+        disabled_kinds: &std::collections::HashSet<String, S>,
     ) -> Self {
         let (width, height) = (state.width, state.height);
 
@@ -169,6 +180,20 @@ impl<O: TuiOutput> TuiApp<O> {
             Self::apply_theme_internal(&theme_loader, &mut theme_manager, theme_name);
         }
 
+        // Load client modules via factory map + dependency-resolving loader
+        let factories = crate::static_client_modules::builtin_client_modules();
+        let module_loader = ClientModuleLoader::new(factories, disabled_kinds)
+            .expect("client module dependency resolution failed");
+
+        // Create server handle adapter for module init() calls.
+        // Clone the gRPC client so modules get their own handle while the app
+        // keeps its owned client for async event loop calls.
+        let server_handle: Arc<dyn ServerHandle> =
+            Arc::new(crate::server_handle::TuiServerHandle::new(
+                Arc::new(reovim_arch::sync::Mutex::new(client.clone())),
+                tokio::runtime::Handle::current(),
+            ));
+
         Self {
             frame_buffer,
             input_rx,
@@ -184,18 +209,15 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: reovim_tui_ext_defaults::create_extensions(),
+            module_loader,
+            server_handle,
+            capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
+                width,
+                height,
+                reovim_driver_display::DisplayCapabilities::detect(),
+            ),
             output,
         }
-    }
-
-    /// Replace extensions with a filtered set (#586).
-    ///
-    /// Called by the app layer after construction to apply user config.
-    /// Must be called before `run()`. Extensions are already initialized
-    /// by `create_extensions_filtered()`.
-    pub fn set_extensions(&mut self, extensions: Vec<Box<dyn TuiExtension>>) {
-        self.extensions = extensions;
     }
 
     /// Apply a theme by name.
@@ -231,6 +253,18 @@ impl<O: TuiOutput> TuiApp<O> {
     ///
     /// Returns an error if the event loop fails.
     pub async fn run(&mut self) -> Result<(), TuiAppError> {
+        // Initialize client modules before fetching state
+        let theme_adapter =
+            crate::render_engine_bridge::ThemeProviderAdapter::new(&self.theme_manager);
+        let ctx = reovim_client_driver::ModuleContext {
+            capabilities: &self.capabilities,
+            server: Arc::clone(&self.server_handle),
+            theme: &theme_adapter,
+        };
+        let init_count = self.module_loader.init_all(&ctx);
+        tracing::info!(init_count, "Client modules initialized");
+        self.module_loader.on_all_loaded(&ctx);
+
         // Initial state fetch
         self.fetch_initial_state().await?;
 
@@ -239,7 +273,12 @@ impl<O: TuiOutput> TuiApp<O> {
         self.render()?;
 
         // Event loop
-        self.event_loop().await
+        let result = self.event_loop().await;
+
+        // Shutdown modules in reverse dependency order
+        self.module_loader.exit_all();
+
+        result
     }
 
     // =========================================================================
@@ -522,7 +561,7 @@ impl<O: TuiOutput> TuiApp<O> {
                 // Redraw timer (both modes)
                 _ = redraw_timer.tick() => {
                     // Tick extensions (e.g., which-key show-delay)
-                    for ext in &mut self.extensions {
+                    for ext in self.module_loader.modules_mut() {
                         if ext.tick() {
                             self.state.set_needs_redraw(true);
                         }
@@ -620,6 +659,12 @@ impl<O: TuiOutput> TuiApp<O> {
         self.state.height = height;
         self.layout_mirror.set_screen(width, height);
 
+        // Update platform capabilities and notify all modules
+        self.capabilities.update_grid_size(width, height);
+        for ext in self.module_loader.modules_mut() {
+            ext.on_capabilities_changed(&self.capabilities);
+        }
+
         if let Err(e) = self
             .client
             .resize(u64::from(width), u64::from(height))
@@ -698,7 +743,7 @@ impl<O: TuiOutput> TuiApp<O> {
             &mut self.frame_buffer,
             &self.state,
             &config,
-            &self.extensions,
+            self.module_loader.modules(),
             &self.token_cache_manager,
             &self.theme_manager,
         );
@@ -736,10 +781,10 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Position cursor (for interactive mode).
     fn position_cursor(&mut self) {
-        // Check if any active extension wants cursor positioning
+        // Check if any chrome extension wants cursor positioning
         let (width, height) = self.frame_buffer.size();
-        for ext in &self.extensions {
-            if ext.is_active()
+        for ext in self.module_loader.modules() {
+            if ext.has_chrome()
                 && let Some((cx, cy)) = ext.cursor_position(width, height)
             {
                 self.output.position_cursor(cx, cy);
@@ -771,9 +816,10 @@ impl<O: TuiOutput> TuiApp<O> {
             #[allow(clippy::cast_possible_truncation)]
             let cursor_line_idx = cursor_pos.line as usize;
             let virtual_count: usize = self
-                .extensions
+                .module_loader
+                .modules()
                 .iter()
-                .filter(|e| e.is_active())
+                .filter(|e| e.has_buffer_contrib())
                 .flat_map(|e| e.virtual_lines())
                 .filter(|vl| vl.buffer_line >= scroll_top && vl.buffer_line <= cursor_line_idx)
                 .count();
@@ -786,16 +832,15 @@ impl<O: TuiOutput> TuiApp<O> {
             // Extension column mapping (e.g., table expanded columns)
             let buffer_id = self.state.get_focused_buffer_id().unwrap_or(0);
             #[allow(clippy::cast_possible_truncation)]
+            let bid = reovim_client_driver::BufferId(buffer_id as usize);
+            #[allow(clippy::cast_possible_truncation)]
             let cursor_x = self
-                .extensions
+                .module_loader
+                .modules()
                 .iter()
-                .filter(|e| e.is_active())
+                .filter(|e| e.has_buffer_contrib())
                 .find_map(|e| {
-                    e.map_cursor_column(
-                        buffer_id,
-                        cursor_pos.line as usize,
-                        cursor_pos.column as usize,
-                    )
+                    e.map_cursor_column(bid, cursor_pos.line as usize, cursor_pos.column as usize)
                 })
                 .map_or_else(
                     || rect.x as u16 + gutter_width + cursor_pos.column as u16,
@@ -886,8 +931,8 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
         self.output.invalidate();
     }
 
-    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
-        &mut self.extensions
+    fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
+        self.module_loader.modules_mut_slice()
     }
 
     fn on_capture_request(
@@ -918,10 +963,11 @@ use crate::output::{HeadlessOutput, TerminalOutput};
 ///
 /// Returns an error if connection or terminal initialization fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn connect_interactive(
+pub async fn connect_interactive<S: std::hash::BuildHasher + Send + Sync>(
     addr: &str,
     debug_config: Option<TuiDebugConfig>,
     theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
 ) -> Result<(TuiApp<TerminalOutput>, TuiHandle), TuiAppError> {
     let output = TerminalOutput::new()?;
     let (width, height) = TerminalOutput::terminal_size()?;
@@ -944,6 +990,7 @@ pub async fn connect_interactive(
         addr.to_string(),
         debug_config,
         theme,
+        disabled_kinds,
     );
 
     let handle = TuiHandle::new(input_tx);
@@ -959,12 +1006,13 @@ pub async fn connect_interactive(
 ///
 /// Returns an error if connection fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn connect_headless(
+pub async fn connect_headless<S: std::hash::BuildHasher + Send + Sync>(
     addr: &str,
     width: u16,
     height: u16,
     debug_config: Option<TuiDebugConfig>,
     theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
 ) -> Result<(TuiApp<HeadlessOutput>, TuiHandle), TuiAppError> {
     let output = HeadlessOutput;
 
@@ -983,6 +1031,7 @@ pub async fn connect_headless(
         addr.to_string(),
         debug_config,
         theme,
+        disabled_kinds,
     );
 
     let handle = TuiHandle::new(input_tx);

@@ -5,7 +5,7 @@ struct MockContext {
     state: TuiCoreState,
     buffer_modified_calls: Vec<u64>,
     option_changed_calls: Vec<String>,
-    extensions: Vec<Box<dyn TuiExtension>>,
+    extensions: Vec<Box<dyn ClientModule>>,
 }
 
 impl MockContext {
@@ -18,7 +18,7 @@ impl MockContext {
         }
     }
 
-    fn with_extensions(mut self, extensions: Vec<Box<dyn TuiExtension>>) -> Self {
+    fn with_extensions(mut self, extensions: Vec<Box<dyn ClientModule>>) -> Self {
         self.extensions = extensions;
         self
     }
@@ -44,7 +44,7 @@ impl NotificationContext for MockContext {
         self.option_changed_calls.push(name.to_string());
     }
 
-    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+    fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
         &mut self.extensions
     }
 }
@@ -78,7 +78,7 @@ fn test_default_on_buffer_modified_is_noop() {
     // Ensure the default trait implementation doesn't panic
     struct MinimalContext {
         state: TuiCoreState,
-        extensions: Vec<Box<dyn TuiExtension>>,
+        extensions: Vec<Box<dyn ClientModule>>,
     }
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl NotificationContext for MinimalContext {
@@ -88,7 +88,7 @@ fn test_default_on_buffer_modified_is_noop() {
         fn client_mut(&mut self) -> &mut crate::grpc_client::TuiGrpcClient {
             unimplemented!()
         }
-        fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+        fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
             &mut self.extensions
         }
     }
@@ -797,49 +797,74 @@ async fn test_handle_selection_missing_positions_use_defaults() {
 
 // Test extension stub — engine has ZERO knowledge of real extensions.
 // This verifies the generic dispatch mechanism only.
-use crate::render_backend::RenderBackend;
+use std::sync::{Arc, Mutex};
+
+use reovim_client_driver::{ClientModuleError, ProbeResult, Version};
+
+/// Shared handle to inspect what data a `StubExtension` received.
+#[derive(Clone)]
+struct StubHandle(Arc<Mutex<String>>);
+
+impl StubHandle {
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(String::new())))
+    }
+
+    fn received_data(&self) -> bool {
+        !self.0.lock().unwrap().is_empty()
+    }
+}
 
 struct StubExtension {
     ext_kind: &'static str,
-    active: bool,
-    last_data: String,
+    shared: StubHandle,
 }
 
 impl StubExtension {
-    fn new(kind: &'static str) -> Self {
-        Self {
-            ext_kind: kind,
-            active: false,
-            last_data: String::new(),
-        }
+    fn new(kind: &'static str) -> (Self, StubHandle) {
+        let handle = StubHandle::new();
+        (
+            Self {
+                ext_kind: kind,
+                shared: handle.clone(),
+            },
+            handle,
+        )
     }
 }
 
-impl TuiExtension for StubExtension {
+impl ClientModule for StubExtension {
+    fn id(&self) -> &'static str {
+        self.ext_kind
+    }
     fn kind(&self) -> &'static str {
         self.ext_kind
     }
-
-    fn is_active(&self) -> bool {
-        self.active
+    fn name(&self) -> &'static str {
+        "Stub"
+    }
+    fn version(&self) -> Version {
+        Version::new(0, 1, 0)
+    }
+    fn init(&mut self, _ctx: &reovim_client_driver::ModuleContext) -> ProbeResult {
+        ProbeResult::Success
+    }
+    fn exit(&mut self) -> Result<(), ClientModuleError> {
+        Ok(())
     }
 
-    fn apply_notification(&mut self, data: &str) {
-        self.last_data = data.to_string();
-        self.active = data.contains("\"active\":true");
+    fn on_notification(&mut self, data: &str) {
+        *self.shared.0.lock().unwrap() = data.to_string();
     }
-
-    fn render(&self, _backend: &mut dyn RenderBackend) {}
 }
 
 #[tokio::test]
 async fn test_handle_extension_updated_dispatches_to_matching() {
     use reovim_protocol::v2::ExtensionUpdatedPayload;
 
-    let mut ctx = MockContext::new(1).with_extensions(vec![
-        Box::new(StubExtension::new("cmdline")),
-        Box::new(StubExtension::new("whichkey")),
-    ]);
+    let (cmdline, cmdline_h) = StubExtension::new("cmdline");
+    let (whichkey, whichkey_h) = StubExtension::new("whichkey");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "cmdline".to_string(),
@@ -849,18 +874,18 @@ async fn test_handle_extension_updated_dispatches_to_matching() {
 
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
-    // The matching extension should be activated
-    assert!(ctx.extensions[0].is_active());
+    // The matching extension should have received data
+    assert!(cmdline_h.received_data());
     // The other extension should NOT be affected
-    assert!(!ctx.extensions[1].is_active());
+    assert!(!whichkey_h.received_data());
 }
 
 #[tokio::test]
 async fn test_handle_extension_updated_remote_ignored() {
     use reovim_protocol::v2::ExtensionUpdatedPayload;
 
-    let mut ctx =
-        MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+    let (cmdline, cmdline_h) = StubExtension::new("cmdline");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "cmdline".to_string(),
@@ -871,17 +896,16 @@ async fn test_handle_extension_updated_remote_ignored() {
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
     // Extension should NOT be updated (remote client)
-    assert!(!ctx.extensions[0].is_active());
+    assert!(!cmdline_h.received_data());
 }
 
 #[tokio::test]
 async fn test_handle_extension_updated_unknown_kind_ignored() {
     use reovim_protocol::v2::ExtensionUpdatedPayload;
 
-    let mut ctx = MockContext::new(1).with_extensions(vec![
-        Box::new(StubExtension::new("cmdline")),
-        Box::new(StubExtension::new("whichkey")),
-    ]);
+    let (cmdline, cmdline_h) = StubExtension::new("cmdline");
+    let (whichkey, whichkey_h) = StubExtension::new("whichkey");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "unknown_ext".to_string(),
@@ -892,16 +916,16 @@ async fn test_handle_extension_updated_unknown_kind_ignored() {
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
     // Neither extension should be affected
-    assert!(!ctx.extensions[0].is_active());
-    assert!(!ctx.extensions[1].is_active());
+    assert!(!cmdline_h.received_data());
+    assert!(!whichkey_h.received_data());
 }
 
 #[tokio::test]
 async fn test_handle_extension_updated_client_id_zero_is_local() {
     use reovim_protocol::v2::ExtensionUpdatedPayload;
 
-    let mut ctx =
-        MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+    let (cmdline, cmdline_h) = StubExtension::new("cmdline");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "cmdline".to_string(),
@@ -912,15 +936,15 @@ async fn test_handle_extension_updated_client_id_zero_is_local() {
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
     // Extension should be updated (client_id 0 treated as local)
-    assert!(ctx.extensions[0].is_active());
+    assert!(cmdline_h.received_data());
 }
 
 #[tokio::test]
 async fn test_handle_extension_updated_invalid_json_no_panic() {
     use reovim_protocol::v2::ExtensionUpdatedPayload;
 
-    let mut ctx =
-        MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+    let (cmdline, cmdline_h) = StubExtension::new("cmdline");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "cmdline".to_string(),
@@ -931,8 +955,8 @@ async fn test_handle_extension_updated_invalid_json_no_panic() {
     // Should not panic — extensions handle their own JSON parsing
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
-    // Extension received data but couldn't parse "active":true
-    assert!(!ctx.extensions[0].is_active());
+    // Extension received data (even invalid JSON — it's up to the module to parse)
+    assert!(cmdline_h.received_data());
 }
 
 #[tokio::test]

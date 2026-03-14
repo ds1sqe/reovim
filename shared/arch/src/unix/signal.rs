@@ -9,7 +9,7 @@ use crate::traits::{SignalHandler, TerminalSize};
 /// Unix signal handler implementation.
 ///
 /// On Unix with crossterm:
-/// - Resize (SIGWINCH) is delivered via [`InputEvent::Resize`] through the input source
+/// - Resize (SIGWINCH) is delivered via `InputEvent::Resize` through the input source
 /// - Interrupt (SIGINT) is typically delivered as Ctrl+C key event in raw mode
 /// - Suspend (SIGTSTP) is typically delivered as Ctrl+Z key event in raw mode
 ///

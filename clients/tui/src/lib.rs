@@ -92,11 +92,17 @@ pub mod output;
 pub mod render_backend;
 pub mod render_core;
 pub mod render_engine;
+pub mod render_engine_bridge;
 pub mod tui_output;
 
 // gRPC v2 client
 #[cfg(feature = "grpc")]
 pub mod grpc_client;
+#[cfg(feature = "grpc")]
+pub mod server_handle;
+
+// Client module factory map
+pub mod static_client_modules;
 
 // Unified TUI app (Issue #493)
 #[cfg(feature = "grpc")]
@@ -122,9 +128,6 @@ pub use {
 // Unified TUI app exports
 #[cfg(feature = "grpc")]
 pub use app::{TuiApp, TuiAppError, connect_headless, connect_interactive};
-
-/// Re-export extension creation for app-layer config wiring (#586).
-pub use reovim_tui_ext_defaults::create_extensions_filtered;
 
 // gRPC v2 client exports
 #[cfg(feature = "grpc")]

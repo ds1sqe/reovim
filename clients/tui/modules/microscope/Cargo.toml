@@ -1,0 +1,17 @@
+[package]
+name = "reovim-tui-mod-microscope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Microscope fuzzy finder native module for reovim TUI"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+serde_json = { workspace = true }

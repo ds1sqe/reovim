@@ -424,117 +424,205 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-/// Generates FFI entry points for dynamic TUI extension loading (#624).
+/// Generates FFI entry points for dynamic **client** module loading.
 ///
-/// Similar to [`declare_module!`] but for TUI extensions. Generates
-/// simpler entry points since extensions have a lighter lifecycle.
+/// This is the client-side counterpart to [`declare_module!`]. It generates
+/// symbols prefixed with `reovim_client_module_*` to avoid collision with
+/// server-side symbols when both module types exist in the same `.so`.
 ///
 /// # Usage
 ///
 /// ```ignore
-/// use reovim_driver_display::TuiExtension;
-/// use reovim_module_macros::declare_extension;
+/// use reovim_client_driver::*;
+/// use reovim_module_macros::declare_client_module;
 ///
-/// pub struct MyExtension { /* ... */ }
+/// pub struct MyClientModule { /* ... */ }
 ///
-/// impl TuiExtension for MyExtension {
-///     fn kind(&self) -> &'static str { "my-extension" }
-///     // ... other methods
+/// impl ClientModule for MyClientModule {
+///     fn id(&self) -> &'static str { "my-module" }
+///     fn kind(&self) -> &'static str { "my-module" }
+///     fn name(&self) -> &'static str { "My Module" }
+///     fn version(&self) -> Version { Version::new(1, 0, 0) }
+///     fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult { ProbeResult::Success }
+///     fn exit(&mut self) -> Result<(), ClientModuleError> { Ok(()) }
 /// }
 ///
-/// impl MyExtension {
+/// impl MyClientModule {
 ///     pub fn new() -> Self { Self { /* ... */ } }
 /// }
 ///
-/// declare_extension!(MyExtension);
+/// declare_client_module!(MyClientModule);
 /// ```
 ///
 /// # Generated Symbols
 ///
 /// | Symbol | Type | Purpose |
 /// |--------|------|---------|
-/// | `reovim_extension_kind()` | `fn() -> *const c_char` | Extension kind query |
-/// | `reovim_extension_entry()` | `fn() -> *mut c_void` | Instance creation |
-/// | `reovim_extension_destroy()` | `fn(*mut c_void)` | Cleanup trampoline |
-///
-/// # Loader Protocol
-///
-/// 1. Load shared library via `libloading`
-/// 2. Call `reovim_extension_kind()` to get the extension kind string
-/// 3. Call `reovim_extension_entry()` to create the instance
-/// 4. Cast the returned pointer to `Box<dyn TuiExtension>` via the trampoline
-/// 5. Use normally via the `TuiExtension` trait
-/// 6. Call `reovim_extension_destroy()` when done
+/// | `REOVIM_CLIENT_MODULE_API_VERSION` | `Version` | Pre-load version check |
+/// | `reovim_client_module_probe()` | `fn() -> ClientModuleProbe` | Metadata query |
+/// | `reovim_client_module_entry()` | `fn() -> *mut c_void` | Instance creation |
+/// | `reovim_client_module_init()` | `fn(*mut c_void, *const c_void) -> i32` | Init trampoline |
+/// | `reovim_client_module_exit()` | `fn(*mut c_void) -> i32` | Exit trampoline |
+/// | `reovim_client_module_destroy()` | `fn(*mut c_void)` | Cleanup |
+/// | `reovim_client_module_on_all_loaded()` | `fn(*mut c_void, *const c_void)` | Lifecycle hook |
 ///
 /// # Requirements
 ///
-/// The extension type must:
-/// - Implement `TuiExtension` trait
+/// The module type must:
+/// - Implement `ClientModule` trait
 /// - Have a `new() -> Self` constructor
+/// - Be `Send + Sync + 'static`
+///
+/// # Return Codes
+///
+/// Init and exit trampolines return:
+/// - `0`: Success
+/// - `1`: Defer (init only - try again later)
+/// - `-1`: Failed/Error
+/// - `-2`: Panic occurred
 #[proc_macro]
-pub fn declare_extension(input: TokenStream) -> TokenStream {
-    let ext_type = parse_macro_input!(input as Ident);
+#[allow(clippy::too_many_lines)]
+pub fn declare_client_module(input: TokenStream) -> TokenStream {
+    let module_type = parse_macro_input!(input as Ident);
 
     let expanded = quote! {
         // ====================================================================
-        // Extension Kind Query
+        // Static API Version
         // ====================================================================
-        // Returns the extension kind as a NUL-terminated C string.
-        // Loader uses this to identify the extension before full instantiation.
         #[unsafe(no_mangle)]
-        pub extern "C" fn reovim_extension_kind() -> *const ::std::ffi::c_char {
-            // Static NUL-terminated string for the extension kind.
-            // The closure creates a temporary instance to query kind().
-            use ::std::sync::OnceLock;
-            static KIND: OnceLock<::std::ffi::CString> = OnceLock::new();
-            KIND.get_or_init(|| {
-                let temp = <#ext_type>::new();
-                let kind_str = ::reovim_driver_display::TuiExtension::kind(&temp);
-                ::std::ffi::CString::new(kind_str)
-                    .unwrap_or_else(|_| ::std::ffi::CString::new("unknown").unwrap())
-            })
-            .as_ptr()
+        pub static REOVIM_CLIENT_MODULE_API_VERSION: ::reovim_client_driver::Version =
+            ::reovim_client_driver::CLIENT_MODULE_API_VERSION;
+
+        // ====================================================================
+        // Module Probe (metadata without instantiation)
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub extern "C" fn reovim_client_module_probe() -> ::reovim_client_driver::ClientModuleProbe {
+            let temp = <#module_type>::new();
+
+            let id = {
+                use ::reovim_client_driver::ClientModule;
+                temp.id()
+            };
+            let name = {
+                use ::reovim_client_driver::ClientModule;
+                temp.name()
+            };
+            let version = {
+                use ::reovim_client_driver::ClientModule;
+                temp.version()
+            };
+
+            let required_deps = {
+                use ::reovim_client_driver::ClientModule;
+                temp.dependencies()
+            };
+            let optional_deps = {
+                use ::reovim_client_driver::ClientModule;
+                temp.optional_dependencies()
+            };
+
+            let mut probe = ::reovim_client_driver::ClientModuleProbe::new(
+                id,
+                name,
+                version,
+                ::reovim_client_driver::CLIENT_MODULE_API_VERSION,
+            );
+
+            for (i, dep) in required_deps.iter().take(8).enumerate() {
+                probe = probe.with_required_dep(i, dep);
+            }
+
+            for (i, dep) in optional_deps.iter().take(8).enumerate() {
+                probe = probe.with_optional_dep(i, dep);
+            }
+
+            probe
         }
 
         // ====================================================================
-        // Extension Entry (create instance)
+        // Module Entry (instance creation)
         // ====================================================================
-        // Creates an extension instance and returns a thin pointer.
-        //
-        // # Safety
-        //
-        // - Caller must eventually call reovim_extension_destroy()
-        // - The returned pointer is a `Box<dyn TuiExtension>` leaked as raw
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn reovim_extension_entry() -> *mut ::std::ffi::c_void {
-            let ext: ::std::boxed::Box<dyn ::reovim_driver_display::TuiExtension> =
-                ::std::boxed::Box::new(<#ext_type>::new());
-            // Box<dyn TuiExtension> is a fat pointer (2 words).
-            // We box it again to get a thin pointer for FFI.
-            let double_boxed = ::std::boxed::Box::new(ext);
-            ::std::boxed::Box::into_raw(double_boxed) as *mut ::std::ffi::c_void
+        pub unsafe extern "C" fn reovim_client_module_entry() -> *mut ::std::ffi::c_void {
+            let module = ::std::boxed::Box::new(<#module_type>::new());
+            ::std::boxed::Box::into_raw(module) as *mut ::std::ffi::c_void
+        }
+
+        // ====================================================================
+        // Init Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_init(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let ctx = &*(ctx as *const ::reovim_client_driver::ModuleContext);
+
+                use ::reovim_client_driver::ClientModule;
+                module.init(ctx)
+            }));
+
+            match result {
+                Ok(::reovim_client_driver::ProbeResult::Success) => 0,
+                Ok(::reovim_client_driver::ProbeResult::Defer(_)) => 1,
+                Ok(::reovim_client_driver::ProbeResult::Failed(_)) => -1,
+                Err(_) => -2,
+            }
+        }
+
+        // ====================================================================
+        // Exit Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_exit(
+            module: *mut ::std::ffi::c_void,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+
+                use ::reovim_client_driver::ClientModule;
+                module.exit()
+            }));
+
+            match result {
+                Ok(Ok(())) => 0,
+                Ok(Err(_)) => -1,
+                Err(_) => -2,
+            }
         }
 
         // ====================================================================
         // Destroy Trampoline
         // ====================================================================
-        // Drops the extension instance and frees memory.
-        //
-        // # Safety
-        //
-        // - `ext` must be a pointer from reovim_extension_entry()
-        // - Must not be called twice on the same pointer
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn reovim_extension_destroy(
-            ext: *mut ::std::ffi::c_void,
+        pub unsafe extern "C" fn reovim_client_module_destroy(
+            module: *mut ::std::ffi::c_void,
         ) {
-            if !ext.is_null() {
+            if !module.is_null() {
                 let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                    drop(::std::boxed::Box::from_raw(
-                        ext as *mut ::std::boxed::Box<dyn ::reovim_driver_display::TuiExtension>
-                    ));
+                    drop(::std::boxed::Box::from_raw(module as *mut #module_type));
                 }));
             }
+        }
+
+        // ====================================================================
+        // On All Loaded Trampoline
+        // ====================================================================
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_all_loaded(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::std::ffi::c_void,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let ctx = &*(ctx as *const ::reovim_client_driver::ModuleContext);
+
+                use ::reovim_client_driver::ClientModule;
+                module.on_all_loaded(ctx);
+            }));
         }
     };
 

@@ -1,0 +1,14 @@
+[package]
+name = "reovim-tui-mod-statusline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Statusline chrome module for Reovim TUI"
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-driver = { workspace = true }

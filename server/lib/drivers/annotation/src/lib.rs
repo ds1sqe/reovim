@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Annotation data driver for the gutter annotation system.
 //!
 //! This crate provides the display-agnostic DATA types for the annotation

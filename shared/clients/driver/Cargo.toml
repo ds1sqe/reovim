@@ -1,0 +1,20 @@
+[package]
+name = "reovim-client-driver"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Platform-agnostic trait contracts for Reovim client modules"
+repository.workspace = true
+keywords = ["reovim", "editor", "client"]
+categories = ["text-editors"]
+
+[lints]
+workspace = true
+
+[dependencies]
+libloading = { workspace = true }
+reovim-arch = { workspace = true }
+reovim-depgraph = { workspace = true }
+tracing = { workspace = true }
+unicode-width = { workspace = true }

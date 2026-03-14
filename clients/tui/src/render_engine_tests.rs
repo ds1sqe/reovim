@@ -1,9 +1,27 @@
 use {
     super::*,
-    crate::{CursorPosition, RemoteClient},
-    reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan},
+    crate::{CursorPosition, RemoteClient, SelectionState},
+    reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan, ui::display_width},
     reovim_protocol::v2::WindowInfo,
 };
+
+/// Mirror of `viewport::label_text` for test assertions.
+fn label_text(display_name: &str, mode: &str) -> String {
+    let name = if display_name.is_empty() {
+        "?"
+    } else {
+        display_name
+    };
+    let mode_abbrev = match mode.to_lowercase() {
+        m if m.contains("insert") => "[I]",
+        m if m.contains("visual") => "[V]",
+        m if m.contains("command") || m.contains("cmdline") => "[C]",
+        m if m.contains("replace") => "[R]",
+        _ => "[N]",
+    };
+    let name = reovim_client_driver::ui::truncate_end(name, 16);
+    format!(" {name} {mode_abbrev} ")
+}
 
 /// Helper: create default token cache and theme for tests.
 fn test_syntax() -> (AnnotationCacheManager, ThemeManager) {
@@ -74,39 +92,40 @@ fn test_render_frame_basic() {
     let config = RenderConfig::default();
 
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
-    // Should have rendered statusline
+    // Statusline is now a chrome module — include it
+    let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+
+    // Should have rendered statusline via chrome dispatch
     let last_row = fb.row(23).unwrap();
     // At minimum, some cells should be non-empty
     assert!(last_row.iter().any(|c| c.char != ' '));
 }
 
 #[test]
-fn test_mode_style() {
-    let insert_style = mode_style("INSERT");
-    assert_eq!(insert_style.bg, Some(Color::Green));
+fn test_mode_style_moved_to_statusline_module() {
+    // mode_style is now in reovim-tui-mod-statusline.
+    // Tested there: statusline module has 20 tests covering all modes.
+    // This test verifies the statusline module renders via chrome dispatch.
+    let mut fb = FrameBuffer::new(80, 24);
+    let state = TuiCoreState::new(1);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
 
-    let normal_style = mode_style("NORMAL");
-    assert_eq!(normal_style.bg, Some(Color::Blue));
+    // StatuslineModule is a native ClientModule — need to pass it via extensions
+    let mut statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    statusline.on_mode_change("NORMAL");
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
-    let visual_style = mode_style("VISUAL");
-    assert_eq!(visual_style.bg, Some(Color::Magenta));
+    // Statusline renders at bottom via chrome dispatch
+    let cell = fb.get(1, 23).unwrap();
+    assert_eq!(cell.char, 'N'); // " NORMAL " - 'N' at x=1
 }
 
-#[test]
-fn test_normalize_selection_already_ordered() {
-    let sel = selection(1, 5, 3, 10, "char");
-    let (sl, sc, el, ec) = normalize_selection(&sel);
-    assert_eq!((sl, sc, el, ec), (1, 5, 3, 10));
-}
-
-#[test]
-fn test_normalize_selection_reversed() {
-    let sel = selection(5, 10, 2, 3, "char");
-    let (sl, sc, el, ec) = normalize_selection(&sel);
-    assert_eq!((sl, sc, el, ec), (2, 3, 5, 10));
-}
+// normalize_selection tests moved to viewport_tests.rs
 
 #[test]
 fn test_render_char_selection() {
@@ -301,7 +320,7 @@ fn test_render_local_selection() {
     let (tc, tm) = test_syntax();
     render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
-    let expected_bg = Some(LOCAL_SELECTION_BG);
+    let expected_bg = Some(reovim_client_driver::viewport::LOCAL_SELECTION_BG);
     for col in 3..=8u16 {
         let cell = fb.get(col, 0).unwrap();
         assert_eq!(cell.style.bg, expected_bg, "col {col} should have local selection bg");
@@ -579,68 +598,7 @@ fn test_remote_cursor_label_different_buffer_not_shown() {
     }
 }
 
-#[test]
-fn test_label_text_helper() {
-    // Normal name with mode
-    assert_eq!(label_text("alice", "NORMAL"), " alice [N] ");
-
-    // Empty name
-    assert_eq!(label_text("", "NORMAL"), " ? [N] ");
-
-    // Long name triggers truncation
-    let long = label_text("very-long-username-that-exceeds", "INSERT");
-    assert!(long.contains("..."), "Long name should be truncated with '...'");
-    assert!(long.contains("[I]"), "Label should contain insert mode indicator");
-    assert!(long.starts_with(' '), "Label should have leading space");
-    assert!(long.ends_with(' '), "Label should have trailing space");
-
-    // Exact limit (16 chars)
-    assert_eq!(label_text("exactly16chars!!", "NORMAL"), " exactly16chars!! [N] ");
-
-    // Mode abbreviations
-    assert!(label_text("x", "INSERT").contains("[I]"));
-    assert!(label_text("x", "VISUAL").contains("[V]"));
-    assert!(label_text("x", "COMMAND").contains("[C]"));
-    assert!(label_text("x", "REPLACE").contains("[R]"));
-    assert!(label_text("x", "NORMAL").contains("[N]"));
-}
-
-#[test]
-fn test_mode_style_command() {
-    let style = mode_style("COMMAND");
-    assert_eq!(style.bg, Some(Color::Yellow));
-    assert_eq!(style.fg, Some(Color::Black));
-}
-
-#[test]
-fn test_mode_style_cmdline() {
-    let style = mode_style("CMDLINE");
-    assert_eq!(style.bg, Some(Color::Yellow));
-}
-
-#[test]
-fn test_mode_abbreviation_cmdline_without_command() {
-    // Exercise line 457: mode contains "cmdline" but not "command"
-    let abbrev = mode_abbreviation("CMDLINE");
-    assert_eq!(abbrev, "[C]");
-}
-
-#[test]
-fn test_mode_style_replace() {
-    let style = mode_style("REPLACE");
-    assert_eq!(style.bg, Some(Color::Red));
-    assert_eq!(style.fg, Some(Color::Black));
-}
-
-#[test]
-fn test_mode_style_case_insensitive() {
-    // mode_style lowercases before checking
-    let insert = mode_style("Insert");
-    assert_eq!(insert.bg, Some(Color::Green));
-
-    let visual = mode_style("Visual Line");
-    assert_eq!(visual.bg, Some(Color::Magenta));
-}
+// label_text, mode_abbreviation tests moved to viewport_tests.rs
 
 #[test]
 fn test_render_config_default() {
@@ -820,17 +778,18 @@ fn test_render_self_cursor_headless() {
 #[test]
 fn test_render_statusline_with_cursor() {
     let mut fb = FrameBuffer::new(40, 10);
-    let mut state = TuiCoreState::new(1);
-    state.mode_display = "NORMAL".to_string();
-    state.focused_window_id = 1;
-    state.update_local_cursor(1, 3, 7);
-
+    let state = TuiCoreState::new(1);
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+
+    // Create statusline module with cursor
+    let mut statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    statusline.on_mode_change("NORMAL");
+    statusline.on_cursor_update(reovim_client_driver::BufferId(0), 3, 7);
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
     // Statusline at row 9 (height - 1)
-    // Should contain mode indicator
     let cell = fb.get(1, 9).unwrap();
     assert_eq!(cell.char, 'N'); // " NORMAL " starts at x=0 with space, 'N' at x=1
 }
@@ -838,13 +797,14 @@ fn test_render_statusline_with_cursor() {
 #[test]
 fn test_render_statusline_without_cursor() {
     let mut fb = FrameBuffer::new(40, 10);
-    let mut state = TuiCoreState::new(1);
-    state.mode_display = "INSERT".to_string();
-    // No cursor set - should show "?:?"
-
+    let state = TuiCoreState::new(1);
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+
+    // Create statusline module without cursor update (shows "?:?")
+    let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
     // Statusline should be rendered (row 9)
     let last_row = fb.row(9).unwrap();
@@ -941,42 +901,7 @@ fn test_render_config_default_opacity() {
     assert_eq!(config.gutter_width, 0);
 }
 
-#[test]
-fn test_apply_opacity_fully_opaque() {
-    let style = Style::default().fg(Color::White);
-    let result = apply_opacity(&style, 1.0, Color::Black);
-    assert_eq!(result.fg, style.fg);
-}
-
-#[test]
-fn test_apply_opacity_half_transparent() {
-    let style = Style::default().fg(Color::Rgb {
-        r: 200,
-        g: 200,
-        b: 200,
-    });
-    let result = apply_opacity(&style, 0.5, Color::Black);
-    // Dimmed color should be darker than original
-    if let (Some(Color::Rgb { r: orig, .. }), Some(Color::Rgb { r: dimmed, .. })) =
-        (style.fg, result.fg)
-    {
-        assert!(dimmed < orig, "Dimmed {dimmed} should be less than original {orig}");
-    } else {
-        panic!("Expected RGB colors");
-    }
-}
-
-#[test]
-fn test_apply_opacity_fully_transparent() {
-    let style = Style::default().fg(Color::Rgb {
-        r: 200,
-        g: 200,
-        b: 200,
-    });
-    let result = apply_opacity(&style, 0.0, Color::Black);
-    // At opacity 0.0, fg should blend to default_bg (black)
-    assert_eq!(result.fg, Some(Color::Black));
-}
+// apply_opacity tests moved to viewport_tests.rs (dim_style tests in conceal_tests.rs)
 
 #[test]
 fn test_render_with_opacity_dims_content() {
@@ -1037,46 +962,8 @@ fn test_render_with_opacity_dims_tilde() {
     assert!(tilde_cell.style.fg.is_some());
 }
 
-// =========================================================================
-// is_line_folded
-// =========================================================================
-
-#[test]
-fn test_is_line_folded_empty_ranges() {
-    assert!(!is_line_folded(5, &[]));
-}
-
-#[test]
-fn test_is_line_folded_within_range() {
-    let ranges = [(3, 4)]; // lines 3, 4, 5, 6 are hidden
-    assert!(!is_line_folded(2, &ranges));
-    assert!(is_line_folded(3, &ranges));
-    assert!(is_line_folded(5, &ranges));
-    assert!(is_line_folded(6, &ranges));
-    assert!(!is_line_folded(7, &ranges));
-}
-
-#[test]
-fn test_is_line_folded_multiple_ranges() {
-    let ranges = [(3, 2), (10, 3)]; // lines 3-4 and 10-12 are hidden
-    assert!(is_line_folded(3, &ranges));
-    assert!(is_line_folded(4, &ranges));
-    assert!(!is_line_folded(5, &ranges));
-    assert!(is_line_folded(10, &ranges));
-    assert!(is_line_folded(12, &ranges));
-    assert!(!is_line_folded(13, &ranges));
-}
-
-#[test]
-fn test_is_line_folded_boundary() {
-    let ranges = [(0, 1)]; // only line 0 is hidden
-    assert!(is_line_folded(0, &ranges));
-    assert!(!is_line_folded(1, &ranges));
-}
-
-// =========================================================================
-// Syntax highlighting integration
-// =========================================================================
+// is_line_folded, render_line_content, buffer_to_screen_row_vl tests
+// moved to viewport_tests.rs in client-driver crate.
 
 /// Helper: populate token cache with tokens for a buffer.
 fn populate_tokens(
@@ -1088,176 +975,6 @@ fn populate_tokens(
     let cache = tc.get_or_create(buffer_id);
     cache.rebuild_line_offsets(content);
     cache.apply_update(tokens, 0, u64::MAX, true, content);
-}
-
-#[test]
-fn test_render_line_content_applies_syntax_tokens() {
-    let mut fb = FrameBuffer::new(20, 1);
-    let mut tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    // "fn main" — "fn" is keyword (cols 0..2)
-    let content = "fn main";
-    populate_tokens(
-        &mut tc,
-        1,
-        content,
-        &[TokenSpan {
-            start_byte: 0,
-            end_byte: 2,
-            category: "keyword".to_string(),
-        }],
-    );
-
-    render_line_content(&mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
-
-    // "fn" (cols 0,1) should have keyword style from theme
-    let keyword_style = tm.get_style("keyword");
-    let cell_f = fb.get(0, 0).unwrap();
-    let cell_n = fb.get(1, 0).unwrap();
-    assert_eq!(cell_f.char, 'f');
-    assert_eq!(cell_n.char, 'n');
-    assert_eq!(cell_f.style.fg, keyword_style.fg, "keyword fg mismatch");
-    assert_eq!(cell_n.style.fg, keyword_style.fg, "keyword fg mismatch");
-
-    // " " (col 2) and "main" should have default style (no token)
-    let cell_space = fb.get(2, 0).unwrap();
-    let default_style = Style::default();
-    assert_ne!(cell_f.style.fg, default_style.fg, "keyword should differ from default");
-    // Space and 'm' should NOT have the keyword color
-    assert_ne!(cell_space.style.fg, keyword_style.fg);
-}
-
-#[test]
-fn test_render_line_content_no_tokens_uses_default_style() {
-    let mut fb = FrameBuffer::new(20, 1);
-    let tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false, &[]);
-
-    // All chars should be rendered with default style
-    for col in 0..5u16 {
-        let cell = fb.get(col, 0).unwrap();
-        assert_eq!(cell.style.fg, Style::default().fg);
-    }
-}
-
-#[test]
-fn test_render_line_content_no_buffer_id_uses_default() {
-    let mut fb = FrameBuffer::new(20, 1);
-    let tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    // buffer_id=None should not query token cache
-    render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, None, 0, &tc, &tm, false, &[]);
-
-    let cell = fb.get(0, 0).unwrap();
-    assert_eq!(cell.char, 'h');
-    assert_eq!(cell.style.fg, Style::default().fg);
-}
-
-#[test]
-fn test_render_line_content_token_beyond_width_stops() {
-    let mut fb = FrameBuffer::new(3, 1);
-    let mut tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    let content = "fn main()";
-    populate_tokens(
-        &mut tc,
-        1,
-        content,
-        &[TokenSpan {
-            start_byte: 0,
-            end_byte: 2,
-            category: "keyword".to_string(),
-        }],
-    );
-
-    // Width=3, so only "fn " is rendered (cols 0,1,2)
-    render_line_content(&mut fb, 0, 0, 3, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
-
-    let cell = fb.get(0, 0).unwrap();
-    assert_eq!(cell.char, 'f');
-    let keyword_style = tm.get_style("keyword");
-    assert_eq!(cell.style.fg, keyword_style.fg);
-
-    // Col 2 (' ') should be default style — not keyword
-    let cell_space = fb.get(2, 0).unwrap();
-    assert_eq!(cell_space.char, ' ');
-    assert_ne!(cell_space.style.fg, keyword_style.fg);
-}
-
-#[test]
-fn test_render_line_content_multiple_tokens() {
-    let mut fb = FrameBuffer::new(30, 1);
-    let mut tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    // "fn main" — "fn"=keyword, "main"=function
-    let content = "fn main";
-    populate_tokens(
-        &mut tc,
-        1,
-        content,
-        &[
-            TokenSpan {
-                start_byte: 0,
-                end_byte: 2,
-                category: "keyword".to_string(),
-            },
-            TokenSpan {
-                start_byte: 3,
-                end_byte: 7,
-                category: "function".to_string(),
-            },
-        ],
-    );
-
-    render_line_content(&mut fb, 0, 0, 30, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
-
-    let keyword_style = tm.get_style("keyword");
-    let function_style = tm.get_style("function");
-
-    // "fn" should have keyword style
-    assert_eq!(fb.get(0, 0).unwrap().style.fg, keyword_style.fg);
-    assert_eq!(fb.get(1, 0).unwrap().style.fg, keyword_style.fg);
-
-    // "main" (cols 3-6) should have function style
-    assert_eq!(fb.get(3, 0).unwrap().style.fg, function_style.fg);
-    assert_eq!(fb.get(6, 0).unwrap().style.fg, function_style.fg);
-}
-
-#[test]
-fn test_render_line_content_correct_line_index() {
-    let mut fb = FrameBuffer::new(20, 1);
-    let mut tc = AnnotationCacheManager::new();
-    let tm = ThemeManager::new(BuiltinTheme::Dark.load());
-
-    // Two-line content, tokens only on line 1
-    let content = "hello\nfn world";
-    populate_tokens(
-        &mut tc,
-        1,
-        content,
-        &[TokenSpan {
-            start_byte: 6,
-            end_byte: 8,
-            category: "keyword".to_string(),
-        }],
-    );
-
-    // Render line 0 ("hello") — should have no keyword styling
-    render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false, &[]);
-    let cell = fb.get(0, 0).unwrap();
-    assert_eq!(cell.style.fg, Style::default().fg);
-
-    // Render line 1 ("fn world") — "fn" should have keyword styling
-    let mut fb2 = FrameBuffer::new(20, 1);
-    render_line_content(&mut fb2, 0, 0, 20, "fn world", 1.0, Some(1), 1, &tc, &tm, false, &[]);
-    let keyword_style = tm.get_style("keyword");
-    assert_eq!(fb2.get(0, 0).unwrap().style.fg, keyword_style.fg);
 }
 
 #[test]
@@ -1291,46 +1008,4 @@ fn test_render_frame_with_syntax_tokens() {
     let cell = fb.get(0, 0).unwrap();
     assert_eq!(cell.char, 'f');
     assert_eq!(cell.style.fg, keyword_style.fg);
-}
-
-// =========================================================================
-// classify_with_extensions tests
-// =========================================================================
-
-#[test]
-fn test_classify_with_extensions_no_extensions_is_highlight() {
-    let result = classify_with_extensions(&[], "keyword.function");
-    assert!(matches!(result, RenderBehavior::Highlight));
-}
-
-#[test]
-fn test_classify_with_extensions_unknown_category_is_highlight() {
-    let result = classify_with_extensions(&[], "some.random.category");
-    assert!(matches!(result, RenderBehavior::Highlight));
-}
-
-// =========================================================================
-// buffer_to_screen_row_vl tests
-// =========================================================================
-
-#[test]
-fn test_buffer_to_screen_row_vl_no_virtual_lines() {
-    assert_eq!(buffer_to_screen_row_vl(5, 2, &[]), 3);
-}
-
-#[test]
-fn test_buffer_to_screen_row_vl_with_virtual_lines() {
-    let vl = VirtualLine {
-        buffer_line: 1,
-        position: VirtualLinePosition::Before,
-        content: "border".to_string(),
-        style: Style::default(),
-    };
-    let vls: Vec<&VirtualLine> = vec![&vl];
-    // Line 0: no virtual lines before it → screen 0
-    assert_eq!(buffer_to_screen_row_vl(0, 0, &vls), 0);
-    // Line 1: 1 virtual line at line 1 → screen 2
-    assert_eq!(buffer_to_screen_row_vl(1, 0, &vls), 2);
-    // Line 2: still 1 virtual line (at line 1) → screen 3
-    assert_eq!(buffer_to_screen_row_vl(2, 0, &vls), 3);
 }
