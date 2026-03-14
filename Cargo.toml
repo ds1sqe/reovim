@@ -107,8 +107,6 @@ members = [
     "clients/tui",
     "clients/tui/lib/drivers/tui",
     "clients/tui/lib/drivers/display",
-    "clients/tui/lib/drivers/extension-loader",
-
     # Client extensions - TUI (defaults meta-crate only; all extensions migrated to modules/)
     "clients/tui/extensions/defaults",
 
@@ -259,7 +257,6 @@ reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.12.0-d
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.12.0-dev" }
 reovim-driver-display = { path = "./clients/tui/lib/drivers/display", version = "0.12.0-dev" }
-reovim-driver-extension-loader = { path = "./clients/tui/lib/drivers/extension-loader", version = "0.12.0-dev" }
 
 # Client crates
 reovim-client-tui = { path = "./clients/tui", version = "0.12.0-dev" }
