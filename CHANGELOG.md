@@ -74,6 +74,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   70 tests). Legacy extension list now empty (0 TuiExtensions). Bridge classify_extension()
   simplified to const fn. 17 native ClientModule instances registered.
 
+### Removed
+
+- **Legacy extension cleanup** (#638): Delete `TuiExtensionBridge` adapter and all 14
+  legacy `TuiExtension` crates (~13,000 lines removed). Remove `create_extensions()`,
+  `create_extensions_filtered()`, `validate_extensions()`, `shutdown_extensions()`.
+  Simplify `TuiApp` to use `create_native_modules()` directly with `set_disabled_kinds()`
+  for filtering. Defaults meta-crate reduced from 178 to 42 lines. Only the
+  `extensions/defaults/` meta-crate remains; all individual extension crates deleted.
+  Delete `TuiExtension` trait, `ViewportContext`, `RenderBehavior`, `VirtualLine`,
+  `TransformedLine`, and `VirtualLinePosition` from display driver (superseded by
+  client-driver types). Delete `declare_extension!` macro (no consumers). Remove dead
+  bridge conversion functions (`collect_virtual_lines`, `classify_with_extensions`,
+  `transform_line`, `map_cursor_column`, `visual_line_len`, `convert_driver_rb_to_display`,
+  `convert_driver_tl_to_display`). ~1,200 additional lines removed.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)

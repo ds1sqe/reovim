@@ -4,9 +4,8 @@
 //! implements `RenderBackend` for interactive TUI rendering. It also provides
 //! frame buffer capture utilities.
 //!
-//! The `RenderBackend` trait itself, `impl RenderBackend for FrameBuffer`,
-//! and `TuiExtension` trait live in `reovim-driver-display` — the shared
-//! display crate that extension crates depend on.
+//! The `RenderBackend` trait itself and `impl RenderBackend for FrameBuffer`
+//! live in `reovim-driver-display`.
 //!
 //! # Design
 //!
@@ -23,11 +22,8 @@
 //! └──────────────────────────┴──────────────────────────────────┘
 //! ```
 
-// Re-export the trait, extension, and viewport context from display crate
-pub use reovim_driver_display::render_backend::{
-    RenderBackend, RenderBehavior, TransformedLine, TuiExtension, ViewportContext, VirtualLine,
-    VirtualLinePosition,
-};
+// Re-export the trait from display crate
+pub use reovim_driver_display::render_backend::RenderBackend;
 
 use reovim_driver_display::{FrameBuffer, Style};
 

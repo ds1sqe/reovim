@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use super::*;
 
 // =============================================================================
@@ -413,103 +411,11 @@ fn convert_style_all_attributes() {
     assert!(display_style.attributes.contains(DisplayAttributes::DIM));
 }
 
-#[test]
-fn convert_render_behavior_highlight() {
-    let rb = reovim_client_driver::RenderBehavior::Highlight;
-    let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(matches!(display_rb, DisplayRenderBehavior::Highlight));
-}
-
-#[test]
-fn convert_render_behavior_conceal() {
-    let rb = reovim_client_driver::RenderBehavior::Conceal {
-        replacement: Cow::Borrowed("*"),
-    };
-    let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(
-        matches!(display_rb, DisplayRenderBehavior::Conceal { replacement } if replacement == "*")
-    );
-}
-
-#[test]
-fn convert_render_behavior_background() {
-    let rb = reovim_client_driver::RenderBehavior::Background(Color::Rgb {
-        r: 128,
-        g: 128,
-        b: 128,
-    });
-    let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(matches!(display_rb, DisplayRenderBehavior::Background));
-}
-
-#[test]
-fn convert_render_behavior_hide() {
-    let rb = reovim_client_driver::RenderBehavior::Hide;
-    let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(matches!(display_rb, DisplayRenderBehavior::Hide));
-}
-
-#[test]
-fn convert_render_behavior_full_width_line() {
-    let rb = reovim_client_driver::RenderBehavior::FullWidthLine {
-        ch: '-',
-        style: reovim_client_driver::Style::default(),
-    };
-    let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(matches!(display_rb, DisplayRenderBehavior::FullWidthLine { ch: '-' }));
-}
-
-#[test]
-fn convert_transformed_line_single_segment() {
-    let tl = reovim_client_driver::TransformedLine {
-        segments: vec![("hello".to_string(), None)],
-    };
-    let display_tl = convert_driver_tl_to_display(&tl);
-    assert_eq!(display_tl.text, "hello");
-    assert_eq!(display_tl.styles.len(), 5);
-    assert!(display_tl.styles.iter().all(Option::is_none));
-}
-
-#[test]
-fn convert_transformed_line_multiple_segments() {
-    let bold_style = reovim_client_driver::Style {
-        fg: Some(Color::Rgb { r: 255, g: 0, b: 0 }),
-        bg: None,
-        attributes: reovim_client_driver::Attributes::BOLD,
-    };
-    let tl = reovim_client_driver::TransformedLine {
-        segments: vec![
-            ("ab".to_string(), Some(bold_style)),
-            ("cd".to_string(), None),
-        ],
-    };
-    let display_tl = convert_driver_tl_to_display(&tl);
-    assert_eq!(display_tl.text, "abcd");
-    assert_eq!(display_tl.styles.len(), 4);
-    // First two chars have bold style
-    assert!(display_tl.styles[0].is_some());
-    assert!(display_tl.styles[1].is_some());
-    // Last two chars have no style
-    assert!(display_tl.styles[2].is_none());
-    assert!(display_tl.styles[3].is_none());
-}
-
-#[test]
-fn convert_transformed_line_empty() {
-    let tl = reovim_client_driver::TransformedLine {
-        segments: Vec::new(),
-    };
-    let display_tl = convert_driver_tl_to_display(&tl);
-    assert!(display_tl.text.is_empty());
-    assert!(display_tl.styles.is_empty());
-}
-
 // =============================================================================
 // Extension query helper tests
 // =============================================================================
 
 /// Minimal stub implementing `ClientModule` for testing query helpers.
-#[allow(clippy::struct_excessive_bools)]
 struct StubModule {
     id: &'static str,
     chrome: bool,
@@ -518,9 +424,6 @@ struct StubModule {
     requested_size: u16,
     fold_ranges_data: Vec<(usize, usize)>,
     virtual_lines_data: Vec<reovim_client_driver::VirtualLine>,
-    classify_result: Option<reovim_client_driver::RenderBehavior>,
-    transform_result: Option<reovim_client_driver::TransformedLine>,
-    cursor_col_result: Option<u16>,
 }
 
 impl Default for StubModule {
@@ -533,9 +436,6 @@ impl Default for StubModule {
             requested_size: 0,
             fold_ranges_data: Vec::new(),
             virtual_lines_data: Vec::new(),
-            classify_result: None,
-            transform_result: None,
-            cursor_col_result: None,
         }
     }
 }
@@ -590,28 +490,6 @@ impl reovim_client_driver::ClientModule for StubModule {
 
     fn virtual_lines(&self) -> &[reovim_client_driver::VirtualLine] {
         &self.virtual_lines_data
-    }
-
-    fn classify_token(&self, _category: &str) -> Option<reovim_client_driver::RenderBehavior> {
-        self.classify_result.clone()
-    }
-
-    fn transform_line(
-        &self,
-        _buf: reovim_client_driver::BufferId,
-        _line: usize,
-        _text: &str,
-    ) -> Option<reovim_client_driver::TransformedLine> {
-        self.transform_result.clone()
-    }
-
-    fn map_cursor_column(
-        &self,
-        _buf: reovim_client_driver::BufferId,
-        _line: usize,
-        _col: usize,
-    ) -> Option<u16> {
-        self.cursor_col_result
     }
 }
 
@@ -682,13 +560,13 @@ fn collect_fold_ranges_ignores_non_buffer_contrib() {
 }
 
 #[test]
-fn collect_virtual_lines_empty() {
+fn collect_driver_virtual_lines_empty() {
     let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    assert!(collect_virtual_lines(&exts).is_empty());
+    assert!(collect_driver_virtual_lines(&exts).is_empty());
 }
 
 #[test]
-fn collect_virtual_lines_converts_types() {
+fn collect_driver_virtual_lines_from_buffer_contrib() {
     let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
         buffer_contrib: true,
         virtual_lines_data: vec![reovim_client_driver::VirtualLine {
@@ -699,93 +577,11 @@ fn collect_virtual_lines_converts_types() {
         }],
         ..StubModule::default()
     })];
-    let vlines = collect_virtual_lines(&exts);
+    let vlines = collect_driver_virtual_lines(&exts);
     assert_eq!(vlines.len(), 1);
     assert_eq!(vlines[0].buffer_line, 10);
-    assert_eq!(vlines[0].position, DisplayVirtualLinePosition::Before);
+    assert_eq!(vlines[0].position, reovim_client_driver::VirtualLinePosition::Before);
     assert_eq!(vlines[0].content, "--- fold ---");
-}
-
-#[test]
-fn classify_with_extensions_returns_default_when_empty() {
-    let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    let result = classify_with_extensions(&exts, "keyword");
-    assert!(matches!(result, DisplayRenderBehavior::Highlight));
-}
-
-#[test]
-fn classify_with_extensions_finds_match() {
-    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
-        buffer_contrib: true,
-        classify_result: Some(reovim_client_driver::RenderBehavior::Hide),
-        ..StubModule::default()
-    })];
-    let result = classify_with_extensions(&exts, "keyword");
-    assert!(matches!(result, DisplayRenderBehavior::Hide));
-}
-
-#[test]
-fn transform_line_returns_none_when_empty() {
-    let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    assert!(transform_line(&exts, 1, 0, "text").is_none());
-}
-
-#[test]
-fn transform_line_converts_result() {
-    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
-        buffer_contrib: true,
-        transform_result: Some(reovim_client_driver::TransformedLine {
-            segments: vec![("abc".to_string(), None)],
-        }),
-        ..StubModule::default()
-    })];
-    let result = transform_line(&exts, 1, 0, "abc");
-    assert!(result.is_some());
-    let tl = result.unwrap();
-    assert_eq!(tl.text, "abc");
-    assert_eq!(tl.styles.len(), 3);
-}
-
-#[test]
-fn map_cursor_column_returns_none_when_empty() {
-    let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    assert!(map_cursor_column(&exts, 1, 0, 5).is_none());
-}
-
-#[test]
-fn map_cursor_column_finds_result() {
-    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
-        buffer_contrib: true,
-        cursor_col_result: Some(8),
-        ..StubModule::default()
-    })];
-    assert_eq!(map_cursor_column(&exts, 1, 0, 5), Some(8));
-}
-
-#[test]
-fn visual_line_len_from_transform() {
-    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
-        buffer_contrib: true,
-        transform_result: Some(reovim_client_driver::TransformedLine {
-            segments: vec![("hello".to_string(), None)],
-        }),
-        ..StubModule::default()
-    })];
-    let text = "hello".to_string();
-    assert_eq!(visual_line_len(&exts, 1, 0, Some(&text)), Some(5));
-}
-
-#[test]
-fn visual_line_len_fallback_to_text() {
-    let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    let text = "hello world".to_string();
-    assert_eq!(visual_line_len(&exts, 1, 0, Some(&text)), Some(11));
-}
-
-#[test]
-fn visual_line_len_none_when_no_text_and_no_transform() {
-    let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    assert_eq!(visual_line_len(&exts, 1, 0, None), None);
 }
 
 // =============================================================================

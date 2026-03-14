@@ -18,8 +18,7 @@ use crate::{
 /// of specific UI features.
 ///
 /// All methods have default no-op implementations so modules only override
-/// what they need. The bridge adapter wraps legacy `TuiExtension` as
-/// `ClientModule` during the incremental migration.
+/// what they need.
 #[allow(unused_variables)]
 pub trait ClientModule: Send + Sync + 'static {
     // ---- Identity ----

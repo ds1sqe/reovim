@@ -958,8 +958,8 @@ fn test_render_with_opacity_dims_tilde() {
     assert!(tilde_cell.style.fg.is_some());
 }
 
-// is_line_folded, render_line_content, classify_with_extensions,
-// buffer_to_screen_row_vl tests moved to viewport_tests.rs in client-driver crate.
+// is_line_folded, render_line_content, buffer_to_screen_row_vl tests
+// moved to viewport_tests.rs in client-driver crate.
 
 /// Helper: populate token cache with tokens for a buffer.
 fn populate_tokens(
