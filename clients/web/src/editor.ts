@@ -33,8 +33,14 @@ import { ViewportCache, BufferCache } from "./cache/index.js";
 // Overlay rendering (Phase 11.1)
 import { OverlayRenderer } from "./render/overlay.js";
 
-// Extension system (#468)
-import { createExtensions, type WebExtension } from "./extensions/index.js";
+// Extension system (#468, upgraded to CLM in #650)
+import { createClientModules } from "./extensions/index.js";
+import { ClientModuleLoader } from "./core/loader.js";
+import { BrowserPlatformAdapter } from "./core/platform-adapter.js";
+import { GrpcServerHandle } from "./core/server-handle.js";
+import { WebClientServiceRegistry } from "./core/service-registry.js";
+import { WebExtensionAdapter } from "./core/extension-adapter.js";
+import type { ModuleContext } from "./core/contracts.js";
 
 // Capture handler (Phase 16)
 import { CaptureHandler, type CaptureableState } from "./capture/index.js";
@@ -119,8 +125,9 @@ export class Editor {
   // Capture handler (Phase 16)
   private captureHandler: CaptureHandler;
 
-  // Extension system (#468)
-  private extensions: WebExtension[];
+  // Extension system (#468, upgraded to CLM in #650)
+  private loader: ClientModuleLoader;
+  private moduleContext: ModuleContext;
 
   // Remote clients for multi-client awareness (Phase 14, #471)
   private remoteClients: Map<bigint, RemoteClient> = new Map();
@@ -173,8 +180,28 @@ export class Editor {
     // Initialize overlay renderer (Phase 11.1)
     this.overlayRenderer = new OverlayRenderer();
 
-    // Initialize extensions (#468)
-    this.extensions = createExtensions();
+    // Initialize CLM module loader (#650)
+    const modules = createClientModules();
+    this.loader = new ClientModuleLoader(modules);
+    const services = new WebClientServiceRegistry();
+    this.moduleContext = {
+      capabilities: new BrowserPlatformAdapter(),
+      server: new GrpcServerHandle(this.client),
+      // Theme adapter requires ThemeManager -- stub with minimal impl
+      // until ThemeManager is wired into Editor (existing code does not
+      // hold a ThemeManager reference; theme is applied via CSS variables).
+      theme: {
+        highlight: () => null,
+        highlightWithFallback: () => null,
+        foreground: () => ({}),
+        background: () => ({}),
+        isDark: () => true,
+      },
+      services,
+      moduleRegistry: this.loader,
+    };
+    this.loader.initAll(this.moduleContext);
+    this.loader.onAllLoaded(this.moduleContext);
 
     // Initialize capture handler (Phase 16)
     this.captureHandler = new CaptureHandler({
@@ -713,21 +740,27 @@ export class Editor {
       }
 
       case "extensionUpdated": {
-        // #468: Generic extension dispatch
+        // #468/#650: Generic extension dispatch via CLM loader
         const ext = payload.value;
         const extClientId = ext.clientId ?? 0n;
         const isLocal = extClientId === 0n || extClientId === this.myClientId;
 
         if (isLocal) {
-          for (const extension of this.extensions) {
-            if (extension.kind() === ext.kind) {
-              extension.applyNotification(ext.data);
-              const container = document.getElementById("app") ?? this.editorElement;
-              if (container) {
-                if (extension.isActive()) {
-                  extension.render(container);
-                } else {
-                  extension.hide();
+          for (const mod of this.loader.modules()) {
+            if (mod.kind() === ext.kind) {
+              // Dispatch notification through CLM interface
+              mod.onNotification?.(ext.data);
+
+              // DOM rendering: access the wrapped WebExtension for DOM ops
+              if (mod instanceof WebExtensionAdapter) {
+                const webExt = mod.wrappedExtension;
+                const container = document.getElementById("app") ?? this.editorElement;
+                if (container) {
+                  if (webExt.isActive()) {
+                    webExt.render(container);
+                  } else {
+                    webExt.hide();
+                  }
                 }
               }
             }

@@ -30,6 +30,8 @@ import { RangeFinderJumpExtension } from "./range-finder-jump.js";
 import { RangeFinderFoldExtension } from "./range-finder-fold.js";
 import { LandingExtension } from "./landing.js";
 import { toposortExtensions } from "./toposort.js";
+import { adaptExtensions } from "../core/extension-adapter.js";
+import type { WebExtensionAdapter } from "../core/extension-adapter.js";
 
 /**
  * Create all default web extensions, sorted by dependency order (#583).
@@ -86,4 +88,35 @@ export function shutdownExtensions(extensions: WebExtension[]): void {
   for (let i = extensions.length - 1; i >= 0; i--) {
     extensions[i].exit?.();
   }
+}
+
+/**
+ * Create all default web extensions wrapped as CLM ClientModules (#650).
+ *
+ * Creates `WebExtension` instances, wraps each via `WebExtensionAdapter`,
+ * and returns them as `ClientModule[]` (via the adapter subtype) ready
+ * for the `ClientModuleLoader`.
+ *
+ * @param disabledKinds - Optional set of module kinds to exclude.
+ */
+export function createClientModules(
+  disabledKinds?: Set<string>,
+): WebExtensionAdapter[] {
+  let exts: WebExtension[] = [
+    new CmdlineExtension(),
+    new WhichKeyExtension(),
+    new NotificationExtension(),
+    new MicroscopeExtension(),
+    new CompletionExtension(),
+    new ExplorerExtension(),
+    new RangeFinderJumpExtension(),
+    new RangeFinderFoldExtension(),
+    new LandingExtension(),
+  ];
+
+  if (disabledKinds && disabledKinds.size > 0) {
+    exts = exts.filter((ext) => !disabledKinds.has(ext.kind()));
+  }
+
+  return adaptExtensions(exts);
 }

@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Web CLM contracts and module lifecycle (#650, part of #645)**: TypeScript
+  interfaces mirroring all Rust CLM traits (`PlatformCapabilities`,
+  `RenderSurface`, `ServerHandle`, `ClmThemeProvider`, `ClientModuleRegistry`,
+  `ClientServiceRegistry`, `ModuleContext`, `ClientModule`) in
+  `clients/web/src/core/`. `BrowserPlatformAdapter` queries browser
+  capabilities with SSR-safe guards. `GrpcServerHandle` wraps the existing
+  `ReovimClient`. `ThemeProviderAdapter` bridges web `ThemeManager` to CLM
+  interface. `WebExtensionAdapter` wraps all 9 existing `WebExtension`
+  implementations into `ClientModule` without behavior change.
+  `ClientModuleLoader` provides topological sort, 3-pass deferral init, and
+  reverse-order shutdown. `Editor` and `HeadlessWebClient` upgraded from raw
+  `createExtensions()` to CLM loader. 119 new tests across 9 test files.
+
 - **ClientModule FFI event and role declaration trampolines (#648, part of #645)**:
   Extended the client module FFI boundary with 16 new trampolines for event
   dispatch (`on_notification`, `on_mode_change`, `on_cursor_update`,

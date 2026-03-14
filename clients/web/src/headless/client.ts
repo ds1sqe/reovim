@@ -59,7 +59,12 @@ import {
   type FrameCapture,
   type WindowState as CaptureWindowState,
 } from "../capture/index.js";
-import { createExtensions, type WebExtension } from "../extensions/index.js";
+import { createClientModules } from "../extensions/index.js";
+import { ClientModuleLoader } from "../core/loader.js";
+import { BrowserPlatformAdapter } from "../core/platform-adapter.js";
+import { WebClientServiceRegistry } from "../core/service-registry.js";
+import type { ModuleContext, ServerHandle } from "../core/contracts.js";
+import type { OptionValue, OptionMetadata } from "../core/types.js";
 
 /** gRPC client interface (same as browser client) */
 interface ReovimClient {
@@ -152,7 +157,7 @@ export class HeadlessWebClient {
   private client: ReovimClient;
   private state: HeadlessState;
   private captureHandler: CaptureHandler;
-  private extensions: WebExtension[];
+  private loader: ClientModuleLoader;
   private notificationAbort: AbortController | null = null;
 
   private constructor(client: ReovimClient, options: HeadlessClientOptions) {
@@ -176,7 +181,30 @@ export class HeadlessWebClient {
       getState: () => this.getCaptureableState(),
     });
 
-    this.extensions = createExtensions();
+    // CLM module loader (#650)
+    const modules = createClientModules();
+    this.loader = new ClientModuleLoader(modules);
+    const stubServer: ServerHandle = {
+      getOptions: async () => new Map<string, OptionValue>(),
+      executeCommand: async () => {},
+      listCommands: async () => [],
+      getOptionMetadata: async (_name: string): Promise<OptionMetadata | null> => null,
+    };
+    const ctx: ModuleContext = {
+      capabilities: new BrowserPlatformAdapter(),
+      server: stubServer,
+      theme: {
+        highlight: () => null,
+        highlightWithFallback: () => null,
+        foreground: () => ({}),
+        background: () => ({}),
+        isDark: () => true,
+      },
+      services: new WebClientServiceRegistry(),
+      moduleRegistry: this.loader,
+    };
+    this.loader.initAll(ctx);
+    this.loader.onAllLoaded(ctx);
   }
 
   /**
@@ -304,11 +332,11 @@ export class HeadlessWebClient {
       }
 
       case "extensionUpdated": {
-        // #468: Generic extension state tracking (no DOM rendering)
+        // #468/#650: Extension dispatch via CLM loader (no DOM rendering)
         const ext = payload.value;
-        for (const extension of this.extensions) {
-          if (extension.kind() === ext.kind) {
-            extension.applyNotification(ext.data);
+        for (const mod of this.loader.modules()) {
+          if (mod.kind() === ext.kind) {
+            mod.onNotification?.(ext.data);
           }
         }
         break;
@@ -452,7 +480,7 @@ export class HeadlessWebClient {
    * is not active or the kind is unknown.
    */
   getExtensionState(kind: string): Record<string, unknown> | null {
-    return this.extensions.find(e => e.kind() === kind)?.getState() ?? null;
+    return this.loader.modules().find(m => m.kind() === kind)?.getState?.() ?? null;
   }
 
   /**
