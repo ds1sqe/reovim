@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Syntax highlight pipeline (#655, part of #653)**: End-to-end wiring of the
+  syntax highlighting pipeline. Fixed `insert_text()` missing `BufferModified`
+  EventBus emission (bug). Added `start_byte` to `Modification` enum for
+  incremental tree-sitter parsing via `SyntaxEdit`. `emit_syntax_updates()` now
+  uses `driver.update()` (incremental O(edit)) when edit info is available,
+  falling back to `driver.parse()` (full O(n)) otherwise. Syntax drivers cleaned
+  up on buffer close. TUI subscribes to real-time `StreamTokens` stream instead
+  of poll-based `get_tokens()` refresh. `modification_to_syntax_edit()` conversion
+  in server layer (kernel purity). 13 new tests. Search highlighting deferred.
+
 - **Marks and jump list (#654, part of #653)**: Full mark and jump list support.
   `SetMark` (m{char}) sets local (a-z) or global (A-Z) marks at cursor position.
   `GotoMarkLine` ('{char}) jumps to mark line (column 0). `GotoMarkExact`

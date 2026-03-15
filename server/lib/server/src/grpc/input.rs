@@ -432,8 +432,9 @@ impl InputServiceImpl {
 
     /// Update syntax drivers and broadcast token updates for modified buffers.
     ///
-    /// Called after key processing when `buffer_modified` is true. Does a
-    /// full re-parse for each modified buffer (incremental update deferred).
+    /// Called after key processing when `buffer_modified` is true. Uses
+    /// incremental `driver.update()` when edit info is available, falls back
+    /// to full `driver.parse()` otherwise (#655).
     ///
     /// The function splits mutable borrows to avoid `ExtensionMap` aliasing:
     /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
