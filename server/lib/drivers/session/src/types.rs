@@ -909,6 +909,47 @@ impl Session {
         self.shared.compositor_mut()
     }
 }
+
+/// Per-client cursor position snapshot for bridge tick consumption.
+///
+/// Updated by the runner after each key event. Bridges read this in
+/// `tick()` to detect cursor movement without direct access to the
+/// window layout.
+///
+/// This is a mechanism-level type: any bridge can read it, the runner
+/// writes it. No module-specific coupling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorSnapshot {
+    /// Cursor line (0-indexed).
+    pub line: u32,
+    /// Cursor column (0-indexed).
+    pub col: u32,
+    /// Raw buffer ID for the active buffer.
+    pub buffer_id: u64,
+}
+
+impl CursorSnapshot {
+    /// Create a new cursor snapshot.
+    #[must_use]
+    pub const fn new(line: u32, col: u32, buffer_id: u64) -> Self {
+        Self {
+            line,
+            col,
+            buffer_id,
+        }
+    }
+}
+
+impl crate::SessionExtension for CursorSnapshot {
+    fn create() -> Self {
+        Self {
+            line: u32::MAX,
+            col: u32::MAX,
+            buffer_id: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

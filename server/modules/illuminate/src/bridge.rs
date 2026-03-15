@@ -5,7 +5,7 @@
 
 use {
     reovim_driver_session::{
-        ExtensionMap,
+        CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::ServiceRegistry,
@@ -85,7 +85,17 @@ impl ExtensionStateBridge for IlluminateBridge {
         _shared_extensions: &mut ExtensionMap,
         _services: &ServiceRegistry,
     ) -> bool {
+        // Read cursor position from snapshot (written by runner after each key event).
+        let (cursor_line, cursor_col) = {
+            let snap = client_extensions.get_or_insert::<CursorSnapshot>();
+            (snap.line, snap.col)
+        };
+
         let state = client_extensions.get_or_insert::<IlluminateState>();
+
+        // Feed cursor position into shadow tracking.
+        // This resets idle_ticks when the cursor moves to a new position.
+        state.cursor_moved(cursor_line, cursor_col);
 
         // If highlights are already computed for this position, nothing to do
         if state.computed {

@@ -227,6 +227,27 @@ impl InputService for InputServiceImpl {
             }
         }
 
+        // #664: Update cursor snapshot for bridge tick consumption.
+        // Bridges (illuminate, etc.) read this in tick() to detect cursor movement.
+        if accumulated_changes.cursor_moved {
+            session.with_clients_mut(|clients| {
+                let client = clients.get_mut(&client_id)?;
+                let window = client.state.windows.active()?;
+                let buffer_id = window.buffer_id?;
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    let snap = client
+                        .state
+                        .extensions
+                        .get_or_insert::<reovim_driver_session::CursorSnapshot>();
+                    snap.line = window.cursor.line as u32;
+                    snap.col = window.cursor.column as u32;
+                    snap.buffer_id = buffer_id.as_usize() as u64;
+                }
+                Some(())
+            });
+        }
+
         // #474: Auto-detect selection changes (defense-in-depth).
         if let Some(state) = session.client_state(client_id) {
             Self::ensure_selection_change_recorded(

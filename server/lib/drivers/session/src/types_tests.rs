@@ -874,3 +874,52 @@ fn test_window_layout_remove_last_window() {
     assert!(layout.is_empty());
     assert!(layout.active_id().is_none());
 }
+
+// =========================================================================
+// CursorSnapshot (#664)
+// =========================================================================
+
+#[test]
+fn cursor_snapshot_new() {
+    let snap = super::CursorSnapshot::new(10, 20, 42);
+    assert_eq!(snap.line, 10);
+    assert_eq!(snap.col, 20);
+    assert_eq!(snap.buffer_id, 42);
+}
+
+#[test]
+fn cursor_snapshot_create_sentinel() {
+    use crate::SessionExtension;
+    let snap = super::CursorSnapshot::create();
+    assert_eq!(snap.line, u32::MAX);
+    assert_eq!(snap.col, u32::MAX);
+    assert_eq!(snap.buffer_id, 0);
+}
+
+#[test]
+fn cursor_snapshot_eq() {
+    let a = super::CursorSnapshot::new(1, 2, 3);
+    let b = super::CursorSnapshot::new(1, 2, 3);
+    assert_eq!(a, b);
+}
+
+#[test]
+fn cursor_snapshot_ne() {
+    let a = super::CursorSnapshot::new(1, 2, 3);
+    let b = super::CursorSnapshot::new(1, 2, 4);
+    assert_ne!(a, b);
+}
+
+#[test]
+fn cursor_snapshot_clone() {
+    let a = super::CursorSnapshot::new(5, 6, 7);
+    let b = a;
+    assert_eq!(a, b);
+}
+
+#[test]
+fn cursor_snapshot_debug() {
+    let snap = super::CursorSnapshot::new(0, 0, 0);
+    let debug = format!("{snap:?}");
+    assert!(debug.contains("CursorSnapshot"));
+}

@@ -5773,3 +5773,234 @@ fn test_signal_queue_independent_of_state_changes() {
         drop(changes);
     });
 }
+
+// =========================================================================
+// #664: CursorMoved event emission from record_cursor_move
+// =========================================================================
+
+/// `record_cursor_move` should emit a `CursorMoved` kernel event with correct from/to.
+#[test]
+fn test_record_cursor_move_emits_cursor_moved_event() {
+    use {
+        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicU64, Ordering},
+        },
+    };
+
+    let mut session = Session::new(ClientId::new(1), test_mode());
+    let kernel = KernelContext::default();
+    let executor = StubExecutor;
+    let mut ms = ModeStack::new(test_mode());
+    let mut w = crate::WindowLayout::empty();
+    let mut e = crate::ExtensionMap::new();
+    let mut c = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut r = RegisterBank::new();
+    let mut ch = HistoryRing::new();
+    let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    // Window at (3, 7) — this is the "from" position at construction time
+    let mut window = crate::Window::new();
+    window.cursor = Position::new(3, 7).into();
+    w.add(window);
+
+    // Subscribe to CursorMoved before creating runtime
+    let received = Arc::new(AtomicBool::new(false));
+    let received_buf = Arc::new(AtomicU64::new(0));
+    let received_to_line = Arc::new(AtomicU64::new(0));
+    let received_to_col = Arc::new(AtomicU64::new(0));
+    let received_from_line = Arc::new(AtomicU64::new(0));
+    let received_from_col = Arc::new(AtomicU64::new(0));
+
+    let r1 = Arc::clone(&received);
+    let rb = Arc::clone(&received_buf);
+    let rtl = Arc::clone(&received_to_line);
+    let rtc = Arc::clone(&received_to_col);
+    let rfl = Arc::clone(&received_from_line);
+    let rfc = Arc::clone(&received_from_col);
+
+    let _sub = kernel
+        .event_bus
+        .subscribe::<CursorMoved, _>(50, move |event| {
+            r1.store(true, Ordering::SeqCst);
+            rb.store(event.buffer_id, Ordering::SeqCst);
+            rtl.store(u64::from(event.to.0), Ordering::SeqCst);
+            rtc.store(u64::from(event.to.1), Ordering::SeqCst);
+            rfl.store(u64::from(event.from.0), Ordering::SeqCst);
+            rfc.store(u64::from(event.from.1), Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let buf = BufferId::new();
+    let mut rt = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut ms,
+            windows: &mut w,
+            extensions: &mut e,
+            compositor: &mut c,
+            tabs: &mut tabs,
+            registers: &mut r,
+            clipboard_history: &mut ch,
+            local_marks: &mut lm,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    );
+
+    // Move cursor to (3, 7) same as initial — from and to should match
+    rt.record_cursor_move(buf);
+
+    assert!(received.load(Ordering::SeqCst));
+    assert_eq!(received_buf.load(Ordering::SeqCst), buf.as_usize() as u64);
+    // from = snapshot at construction = (3, 7)
+    assert_eq!(received_from_line.load(Ordering::SeqCst), 3);
+    assert_eq!(received_from_col.load(Ordering::SeqCst), 7);
+    // to = current cursor = (3, 7)
+    assert_eq!(received_to_line.load(Ordering::SeqCst), 3);
+    assert_eq!(received_to_col.load(Ordering::SeqCst), 7);
+}
+
+/// When there is no active window, `CursorMoved` should NOT be emitted.
+#[test]
+fn test_record_cursor_move_no_window_no_event() {
+    use {
+        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut session = Session::new(ClientId::new(1), test_mode());
+    let kernel = KernelContext::default();
+    let executor = StubExecutor;
+    let mut ms = ModeStack::new(test_mode());
+    let mut w = crate::WindowLayout::empty(); // No windows
+    let mut e = crate::ExtensionMap::new();
+    let mut c = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut r = RegisterBank::new();
+    let mut ch = HistoryRing::new();
+    let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let received = Arc::new(AtomicBool::new(false));
+    let r1 = Arc::clone(&received);
+    let _sub = kernel.event_bus.subscribe::<CursorMoved, _>(50, move |_| {
+        r1.store(true, Ordering::SeqCst);
+        EventResult::Handled
+    });
+
+    let buf = BufferId::new();
+    let mut rt = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut ms,
+            windows: &mut w,
+            extensions: &mut e,
+            compositor: &mut c,
+            tabs: &mut tabs,
+            registers: &mut r,
+            clipboard_history: &mut ch,
+            local_marks: &mut lm,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    );
+    rt.record_cursor_move(buf);
+
+    // No window = no event
+    assert!(!received.load(Ordering::SeqCst));
+}
+
+/// Multiple `record_cursor_move` calls update the snapshot for subsequent `from` values.
+#[test]
+fn test_record_cursor_move_multiple_updates_snapshot() {
+    use {
+        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        std::sync::{Arc, Mutex},
+    };
+
+    let mut session = Session::new(ClientId::new(1), test_mode());
+    let kernel = KernelContext::default();
+    let executor = StubExecutor;
+    let mut ms = ModeStack::new(test_mode());
+    let mut w = crate::WindowLayout::empty();
+    let mut e = crate::ExtensionMap::new();
+    let mut c = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut r = RegisterBank::new();
+    let mut ch = HistoryRing::new();
+    let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let mut window = crate::Window::new();
+    window.cursor = Position::new(0, 0).into();
+    w.add(window);
+
+    #[allow(clippy::type_complexity)]
+    let events: Arc<Mutex<Vec<(u32, u32, u32, u32)>>> = Arc::new(Mutex::new(Vec::new()));
+    let events_clone = Arc::clone(&events);
+    let _sub = kernel
+        .event_bus
+        .subscribe::<CursorMoved, _>(50, move |event| {
+            events_clone
+                .lock()
+                .unwrap()
+                .push((event.from.0, event.from.1, event.to.0, event.to.1));
+            EventResult::Handled
+        });
+
+    let buf = BufferId::new();
+    let mut rt = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut ms,
+            windows: &mut w,
+            extensions: &mut e,
+            compositor: &mut c,
+            tabs: &mut tabs,
+            registers: &mut r,
+            clipboard_history: &mut ch,
+            local_marks: &mut lm,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    );
+
+    // First move: cursor still at (0,0)
+    rt.record_cursor_move(buf);
+
+    // Simulate cursor moving to (5, 10) — modify window directly
+    rt.windows_mut().active_mut().unwrap().cursor = Position::new(5, 10).into();
+
+    // Second move: from should be (0,0), to should be (5,10)
+    rt.record_cursor_move(buf);
+
+    let captured = events.lock().unwrap();
+    assert_eq!(captured.len(), 2);
+    // First: from=(0,0), to=(0,0)
+    assert_eq!(captured[0], (0, 0, 0, 0));
+    // Second: from=(0,0) [snapshot from first emission], to=(5,10)
+    assert_eq!(captured[1], (0, 0, 5, 10));
+    drop(captured);
+}

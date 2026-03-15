@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::state::{HighlightRange, IlluminateState},
-    reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge},
+    reovim_driver_session::{CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge},
     reovim_kernel::api::v1::{BufferId, ServiceRegistry},
 };
 
@@ -300,4 +300,90 @@ fn test_from_lsp_kind_write() {
         from_lsp_kind(Some(reovim_driver_lsp::lsp_types::DocumentHighlightKind::WRITE)),
         HighlightKind::Write
     );
+}
+
+// ========================================================================
+// tick with CursorSnapshot (#664)
+// ========================================================================
+
+#[test]
+fn test_tick_reads_cursor_snapshot() {
+    let mut ext = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+
+    // Set cursor snapshot to a specific position
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 5;
+    snap.col = 10;
+    snap.buffer_id = 1;
+
+    // First tick — cursor_moved detects new position, resets idle_ticks to 0, then tick adds 1
+    IlluminateBridge.tick(&mut ext, &mut shared, &services);
+
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert_eq!(state.shadow_line, 5);
+    assert_eq!(state.shadow_col, 10);
+    assert_eq!(state.idle_ticks, 1);
+}
+
+#[test]
+fn test_tick_cursor_move_resets_idle() {
+    let mut ext = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+
+    // Set initial cursor position
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 5;
+    snap.col = 10;
+
+    // Tick twice to build up idle_ticks
+    IlluminateBridge.tick(&mut ext, &mut shared, &services);
+    IlluminateBridge.tick(&mut ext, &mut shared, &services);
+    assert_eq!(ext.get::<IlluminateState>().unwrap().idle_ticks, 2);
+
+    // Move cursor to new position
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 8;
+    snap.col = 3;
+
+    // Next tick should reset idle_ticks (cursor_moved detects change, then tick adds 1)
+    IlluminateBridge.tick(&mut ext, &mut shared, &services);
+
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert_eq!(state.shadow_line, 8);
+    assert_eq!(state.shadow_col, 3);
+    assert_eq!(state.idle_ticks, 1);
+    assert!(!state.computed);
+}
+
+#[test]
+fn test_tick_hold_then_move_resets() {
+    let mut ext = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+
+    // Set cursor position
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 1;
+    snap.col = 1;
+
+    // Reach HOLD_TICKS threshold
+    for _ in 0..3 {
+        IlluminateBridge.tick(&mut ext, &mut shared, &services);
+    }
+    assert!(ext.get::<IlluminateState>().unwrap().computed);
+
+    // Move cursor — should reset computed flag on next tick
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 2;
+    snap.col = 2;
+
+    // cursor_moved resets computed via shadow change
+    IlluminateBridge.tick(&mut ext, &mut shared, &services);
+
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert!(!state.computed);
+    assert_eq!(state.idle_ticks, 1);
 }

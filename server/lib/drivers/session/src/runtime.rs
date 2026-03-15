@@ -47,7 +47,9 @@ use {
     reovim_kernel::api::v1::{
         BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, TabId, UndoResult,
         WindowId,
-        events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
+        events::kernel::{
+            CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
+        },
     },
 };
 
@@ -166,6 +168,11 @@ pub struct SessionRuntime<'a> {
     /// Incremented before each `execute_command()` call, decremented after.
     /// Max depth is 16 — deeper recursion returns an error.
     command_depth: usize,
+    /// Cursor position snapshot for `CursorMoved` event emission (#664).
+    ///
+    /// Captured at construction time (pre-command cursor position).
+    /// Updated after each `CursorMoved` emission for multi-move commands.
+    cursor_snapshot: Option<(u32, u32)>,
 }
 
 impl<'a> SessionRuntime<'a> {
@@ -221,6 +228,13 @@ impl<'a> SessionRuntime<'a> {
             let (width, height) = *client.terminal_size;
             Rect::new(0, 0, width, height)
         };
+        // Snapshot cursor position before any command executes (#664).
+        // Used as `from` in CursorMoved event emission.
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_snapshot = client
+            .windows
+            .active()
+            .map(|w| (w.cursor.line as u32, w.cursor.column as u32));
         Self {
             owner: None,
             session,
@@ -241,6 +255,7 @@ impl<'a> SessionRuntime<'a> {
             changes: StateChanges::new(),
             signals: Vec::new(),
             command_depth: 0,
+            cursor_snapshot,
         }
     }
 
@@ -287,6 +302,11 @@ impl<'a> SessionRuntime<'a> {
             let (width, height) = *client.terminal_size;
             Rect::new(0, 0, width, height)
         };
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_snapshot = client
+            .windows
+            .active()
+            .map(|w| (w.cursor.line as u32, w.cursor.column as u32));
         Self {
             owner: Some(owner),
             session,
@@ -307,6 +327,7 @@ impl<'a> SessionRuntime<'a> {
             changes: StateChanges::new(),
             signals: Vec::new(),
             command_depth: 0,
+            cursor_snapshot,
         }
     }
 
@@ -1291,6 +1312,21 @@ impl ChangeTracker for SessionRuntime<'_> {
     }
 
     fn record_cursor_move(&mut self, buffer: BufferId) {
+        // #664: Emit CursorMoved event for subscribers (illuminate, etc.).
+        // `cursor_snapshot` holds the pre-command position (captured at construction)
+        // or the post-previous-move position (updated after each emission).
+        #[allow(clippy::cast_possible_truncation)]
+        if let Some(window) = self.windows.active() {
+            let to = (window.cursor.line as u32, window.cursor.column as u32);
+            let from = self.cursor_snapshot.unwrap_or(to);
+            self.kernel.event_bus.emit(CursorMoved {
+                buffer_id: buffer.as_usize() as u64,
+                from,
+                to,
+            });
+            self.cursor_snapshot = Some(to);
+        }
+
         self.changes.record_cursor_move(buffer);
         // #474: Centralized visual selection extension.
         // When cursor moves and selection exists, auto-update sel.end
