@@ -268,8 +268,8 @@ impl InputService for InputServiceImpl {
             &mut accumulated_changes,
         );
 
-        // Update syntax drivers for modified buffers (#539)
-        if accumulated_changes.buffer_modified {
+        // Update syntax drivers for modified/deleted buffers (#539, #655)
+        if accumulated_changes.buffer_modified || !accumulated_changes.buffers_deleted.is_empty() {
             Self::emit_syntax_updates(&session, &accumulated_changes);
         }
 
@@ -443,6 +443,16 @@ impl InputServiceImpl {
             SyntaxSessionState, SyntaxStreamState, build_token_update,
             modification_to_syntax_edit,
         };
+
+        // Clean up syntax drivers for deleted buffers (#655 Phase 4)
+        if !changes.buffers_deleted.is_empty() {
+            session.with_state_mut_sync(|state| {
+                let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
+                for &buffer_id in &changes.buffers_deleted {
+                    syntax.remove(buffer_id);
+                }
+            });
+        }
 
         if changes.modified_buffers.is_empty() {
             return;
