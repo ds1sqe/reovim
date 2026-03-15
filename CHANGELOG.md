@@ -2,7 +2,7 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.13.0-dev
+## [0.14.0] - 2026-03-15
 
 ### Added
 
