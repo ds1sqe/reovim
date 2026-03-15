@@ -729,6 +729,19 @@ impl BufferApi for SessionRuntime<'_> {
             };
             self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
+            // Emit BufferModified event for subscribers (#655, matches delete_range pattern)
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+                self.kernel.event_bus.emit(BufferModified {
+                    buffer_id: buffer.as_usize() as u64,
+                    modification: Modification::Insert {
+                        start: (pos.line as u32, pos.column as u32),
+                        text: text.to_string(),
+                    },
+                });
+            }
+
             self.changes.record_buffer_modified(buffer);
         }
     }

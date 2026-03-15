@@ -2255,6 +2255,23 @@ fn test_insert_text_with_cursor_position() {
 // =========================================================================
 
 #[test]
+fn test_insert_text_emits_buffer_modified() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    harness.with_runtime(|runtime| {
+        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
+    });
+
+    harness.assert_buffer_content("hello world");
+    let changes = harness.take_changes();
+    assert!(changes.buffer_modified);
+    assert!(changes.affected_buffers.contains(&buffer_id));
+}
+
+#[test]
 fn test_delete_range_emits_buffer_modified() {
     use crate::testing::TestSessionRuntime;
 
