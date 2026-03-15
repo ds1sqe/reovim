@@ -772,7 +772,9 @@ impl BufferApi for SessionRuntime<'_> {
             let cursor_after = cursor_before;
 
             // Record edit for undo - use record_edit_mine for per-client undo (#471)
-            if !deleted_text.is_empty() {
+            if deleted_text.is_empty() {
+                self.changes.record_buffer_modified(buffer);
+            } else {
                 let edit = Edit::Delete {
                     position: start,
                     text: deleted_text.clone(),
@@ -796,8 +798,6 @@ impl BufferApi for SessionRuntime<'_> {
                     self.changes
                         .record_buffer_modified_with_edit(buffer, modification);
                 }
-            } else {
-                self.changes.record_buffer_modified(buffer);
             }
         }
     }

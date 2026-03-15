@@ -440,8 +440,7 @@ impl InputServiceImpl {
     /// 2. Access `SyntaxStreamState`, broadcast the update
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
         use crate::session::{
-            SyntaxSessionState, SyntaxStreamState, build_token_update,
-            modification_to_syntax_edit,
+            SyntaxSessionState, SyntaxStreamState, build_token_update, modification_to_syntax_edit,
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)

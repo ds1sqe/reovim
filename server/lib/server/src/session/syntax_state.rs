@@ -273,14 +273,7 @@ pub fn modification_to_syntax_edit(
             start_byte,
         } => {
             let old_end_byte = start_byte + text.len();
-            Some(SyntaxEdit::delete(
-                *start_byte,
-                start.0,
-                start.1,
-                old_end_byte,
-                end.0,
-                end.1,
-            ))
+            Some(SyntaxEdit::delete(*start_byte, start.0, start.1, old_end_byte, end.0, end.1))
         }
         Modification::Replace {
             start,
