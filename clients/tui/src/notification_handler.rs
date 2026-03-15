@@ -238,6 +238,9 @@ pub async fn handle_notification<C: NotificationContext>(
             // Notify context for optional syntax refresh
             ctx.on_buffer_modified(buffer_id);
 
+            // Refresh buffer metadata for statusline (#661)
+            dispatch_buffer_metadata(ctx).await;
+
             Ok(NotificationResult::Redraw)
         }
 
@@ -313,6 +316,21 @@ pub async fn handle_notification<C: NotificationContext>(
                     }
                 }
             }
+
+            // Dispatch on_buffer_focus for the focused buffer
+            if is_local {
+                let focused_buf = ctx.state_mut().get_focused_buffer_id();
+                if let Some(buf_id) = focused_buf {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let bid = BufferId(buf_id as usize);
+                    for ext in ctx.extensions_mut() {
+                        ext.on_buffer_focus(bid);
+                    }
+                }
+            }
+
+            // Fetch buffer metadata and dispatch to statusline (#661)
+            dispatch_buffer_metadata(ctx).await;
 
             Ok(NotificationResult::Redraw)
         }
@@ -545,6 +563,85 @@ pub async fn handle_notification<C: NotificationContext>(
             // Other notifications - trigger redraw
             Ok(NotificationResult::Redraw)
         }
+    }
+}
+
+/// Fetch buffer list and dispatch metadata as a JSON notification to
+/// the statusline module (kind = "statusline"). Called after layout
+/// changes and buffer modifications.
+///
+/// The JSON payload format: `{"filename":"...", "filetype":"...",
+/// "encoding":"...", "modified":bool, "readonly":bool}`
+#[cfg_attr(coverage_nightly, coverage(off))]
+async fn dispatch_buffer_metadata<C: NotificationContext>(ctx: &mut C) {
+    let focused_buf = ctx.state_mut().get_focused_buffer_id();
+    let Some(focused_id) = focused_buf else {
+        return;
+    };
+
+    let Ok(response) = ctx.client_mut().list_buffers().await else {
+        return;
+    };
+
+    let Some(info) = response.buffers.iter().find(|b| b.id == focused_id) else {
+        return;
+    };
+
+    // Build JSON payload from BufferInfo proto fields
+    let filename = if info.name.is_empty() {
+        info.path.as_deref().unwrap_or("")
+    } else {
+        &info.name
+    };
+    let filetype = guess_filetype(filename);
+    let encoding = info
+        .codec_metadata
+        .as_ref()
+        .and_then(|m| m.line_ending.as_deref())
+        .map_or("utf-8", |le| if le == "crlf" { "crlf" } else { "utf-8" });
+    let modified = info.modified;
+    let readonly = info.readonly.unwrap_or(false);
+
+    // Escape filename for JSON (simple: replace backslash and quotes)
+    let escaped = filename.replace('\\', "\\\\").replace('"', "\\\"");
+    let json = format!(
+        r#"{{"filename":"{escaped}","filetype":"{filetype}","encoding":"{encoding}","modified":{modified},"readonly":{readonly}}}"#
+    );
+
+    for ext in ctx.extensions_mut() {
+        if ext.kind() == "statusline" {
+            ext.on_notification(&json);
+        }
+    }
+}
+
+/// Guess filetype from filename extension.
+fn guess_filetype(name: &str) -> &'static str {
+    let ext = name.rsplit('.').next().unwrap_or("");
+    match ext {
+        "rs" => "rust",
+        "py" => "python",
+        "js" => "javascript",
+        "ts" => "typescript",
+        "tsx" => "tsx",
+        "jsx" => "jsx",
+        "go" => "go",
+        "c" | "h" => "c",
+        "cpp" | "cxx" | "cc" | "hpp" => "cpp",
+        "java" => "java",
+        "json" => "json",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "md" | "markdown" => "markdown",
+        "sh" | "bash" => "bash",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "sql" => "sql",
+        "lua" => "lua",
+        "rb" => "ruby",
+        "xml" => "xml",
+        "txt" => "text",
+        _ => "",
     }
 }
 

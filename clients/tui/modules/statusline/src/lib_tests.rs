@@ -1,13 +1,22 @@
 use {
     super::*,
     reovim_client_driver::{
-        testing::{MockPlatformCapabilities, WriteSurface},
+        testing::{MockPlatformCapabilities, RecordingSurface, WriteSurface},
         types::Color,
     },
 };
 
 fn test_caps() -> MockPlatformCapabilities {
     MockPlatformCapabilities::new()
+}
+
+fn bounds(width: u16) -> Rect {
+    Rect {
+        x: 0,
+        y: 0,
+        width,
+        height: 1,
+    }
 }
 
 // =============================================================================
@@ -25,7 +34,7 @@ fn statusline_id() {
 #[test]
 fn statusline_version() {
     let m = StatuslineModule::new();
-    assert_eq!(m.version(), Version::new(0, 1, 0));
+    assert_eq!(m.version(), Version::new(0, 2, 0));
 }
 
 #[test]
@@ -73,13 +82,7 @@ fn statusline_mode_change() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("insert");
     let mut surface = WriteSurface::new(80, 1);
-    let bounds = Rect {
-        x: 0,
-        y: 0,
-        width: 80,
-        height: 1,
-    };
-    m.chrome_render(&mut surface, bounds, &test_caps());
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
     assert_eq!(surface.text_at(0, 0), Some(" INSERT "));
 }
 
@@ -87,16 +90,10 @@ fn statusline_mode_change() {
 fn statusline_cursor_update() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 10, 5);
+    m.total_lines = 100;
     let mut surface = WriteSurface::new(80, 1);
-    let bounds = Rect {
-        x: 0,
-        y: 0,
-        width: 80,
-        height: 1,
-    };
-    m.chrome_render(&mut surface, bounds, &test_caps());
-    // Cursor position should show "11:6" (1-indexed)
-    let has_cursor_pos = surface.writes().iter().any(|w| w.text == "11:6");
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_cursor_pos = surface.writes().iter().any(|w| w.text.contains("11:6"));
     assert!(has_cursor_pos, "Expected cursor position 11:6 in writes");
 }
 
@@ -104,15 +101,22 @@ fn statusline_cursor_update() {
 fn statusline_no_cursor_shows_question_marks() {
     let m = StatuslineModule::new();
     let mut surface = WriteSurface::new(80, 1);
-    let bounds = Rect {
-        x: 0,
-        y: 0,
-        width: 80,
-        height: 1,
-    };
-    m.chrome_render(&mut surface, bounds, &test_caps());
-    let has_question = surface.writes().iter().any(|w| w.text == "?:?");
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_question = surface.writes().iter().any(|w| w.text.contains("?:?"));
     assert!(has_question, "Expected ?:? when no cursor data");
+}
+
+#[test]
+fn statusline_buffer_update_tracks_total_lines() {
+    let mut m = StatuslineModule::new();
+    m.on_buffer_update(&BufferUpdateEvent {
+        buffer_id: BufferId(1),
+        revision: 1,
+        changed_range: 0..0,
+        new_lines: vec![],
+        total_lines: 500,
+    });
+    assert_eq!(m.total_lines, 500);
 }
 
 // =============================================================================
@@ -161,6 +165,63 @@ fn mode_style_replace() {
     assert_eq!(style.bg, Some(Color::Red));
 }
 
+#[test]
+fn mode_style_unknown_defaults_to_normal() {
+    let style = mode_style("OPERATOR_PENDING");
+    assert_eq!(style.fg, Some(Color::Black));
+    assert_eq!(style.bg, Some(Color::Blue));
+}
+
+// =============================================================================
+// Progress indicator tests
+// =============================================================================
+
+#[test]
+fn progress_all_for_empty_buffer() {
+    assert_eq!(progress_indicator(0, 0), "All");
+}
+
+#[test]
+fn progress_all_for_single_line() {
+    assert_eq!(progress_indicator(0, 1), "All");
+}
+
+#[test]
+fn progress_top_at_first_line() {
+    assert_eq!(progress_indicator(0, 100), "Top");
+}
+
+#[test]
+fn progress_bot_at_last_line() {
+    assert_eq!(progress_indicator(99, 100), "Bot");
+}
+
+#[test]
+fn progress_bot_beyond_last_line() {
+    assert_eq!(progress_indicator(200, 100), "Bot");
+}
+
+#[test]
+fn progress_50_percent_at_midpoint() {
+    assert_eq!(progress_indicator(50, 101), "50%");
+}
+
+#[test]
+fn progress_1_percent_near_top() {
+    assert_eq!(progress_indicator(1, 100), "1%");
+}
+
+#[test]
+fn progress_98_percent_near_bottom() {
+    assert_eq!(progress_indicator(98, 100), "98%");
+}
+
+#[test]
+fn progress_two_line_buffer() {
+    assert_eq!(progress_indicator(0, 2), "Top");
+    assert_eq!(progress_indicator(1, 2), "Bot");
+}
+
 // =============================================================================
 // Rendering tests
 // =============================================================================
@@ -170,13 +231,7 @@ fn statusline_renders_mode_with_correct_style() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("visual");
     let mut surface = WriteSurface::new(80, 1);
-    let bounds = Rect {
-        x: 0,
-        y: 0,
-        width: 80,
-        height: 1,
-    };
-    m.chrome_render(&mut surface, bounds, &test_caps());
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
     let style = surface.style_at(0, 0).unwrap();
     assert_eq!(style.fg, Some(Color::Black));
     assert_eq!(style.bg, Some(Color::Magenta));
@@ -193,8 +248,220 @@ fn statusline_renders_at_bounds_offset() {
         height: 1,
     };
     m.chrome_render(&mut surface, bounds, &test_caps());
-    // Mode should render at y=23
     assert_eq!(surface.text_at(0, 23), Some(" NORMAL "));
+}
+
+#[test]
+fn statusline_renders_progress_in_z_section() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 50, 10);
+    m.total_lines = 200;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    // Should show progress + position
+    let has_progress = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains("25%") && w.text.contains("51:11"));
+    assert!(has_progress, "Expected '25% 51:11' in writes");
+}
+
+#[test]
+fn statusline_renders_top_progress() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.total_lines = 100;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_top = surface.writes().iter().any(|w| w.text.contains("Top"));
+    assert!(has_top, "Expected 'Top' in writes");
+}
+
+#[test]
+fn statusline_renders_bot_progress() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 99, 0);
+    m.total_lines = 100;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_bot = surface.writes().iter().any(|w| w.text.contains("Bot"));
+    assert!(has_bot, "Expected 'Bot' in writes");
+}
+
+#[test]
+fn statusline_renders_all_progress_for_small_buffer() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.total_lines = 1;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_all = surface.writes().iter().any(|w| w.text.contains("All"));
+    assert!(has_all, "Expected 'All' in writes");
+}
+
+#[test]
+fn statusline_fills_background() {
+    let m = StatuslineModule::new();
+    let mut surface = RecordingSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    // The fill call sets bg=DarkGrey across the entire row
+    let style = surface.style_at(40, 0);
+    assert_eq!(style.bg, Some(Color::DarkGrey));
+}
+
+#[test]
+fn statusline_zero_width_does_not_render() {
+    let m = StatuslineModule::new();
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(0), &test_caps());
+    assert!(surface.writes().is_empty(), "Expected no writes on zero width");
+}
+
+// =============================================================================
+// Section C (filename) tests — Phase 2 fields
+// =============================================================================
+
+#[test]
+fn statusline_renders_filename_when_set() {
+    let mut m = StatuslineModule::new();
+    m.filename = Some(String::from("main.rs"));
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_filename = surface.writes().iter().any(|w| w.text.contains("main.rs"));
+    assert!(has_filename, "Expected filename in writes");
+}
+
+#[test]
+fn statusline_renders_modified_indicator() {
+    let mut m = StatuslineModule::new();
+    m.filename = Some(String::from("main.rs"));
+    m.modified = true;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_modified = surface.writes().iter().any(|w| w.text.contains("[+]"));
+    assert!(has_modified, "Expected [+] in writes");
+}
+
+#[test]
+fn statusline_renders_readonly_indicator() {
+    let mut m = StatuslineModule::new();
+    m.filename = Some(String::from("main.rs"));
+    m.readonly = true;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_readonly = surface.writes().iter().any(|w| w.text.contains("[RO]"));
+    assert!(has_readonly, "Expected [RO] in writes");
+}
+
+#[test]
+fn statusline_no_filename_no_section_c() {
+    let m = StatuslineModule::new();
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_filename = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains("main.rs") || w.text.contains("[+]"));
+    assert!(!has_filename, "Expected no filename section without data");
+}
+
+// =============================================================================
+// Section Y (filetype + encoding) tests — Phase 2 fields
+// =============================================================================
+
+#[test]
+fn statusline_renders_filetype_in_y_section() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.filetype = Some(String::from("rust"));
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_ft = surface.writes().iter().any(|w| w.text.contains("rust"));
+    assert!(has_ft, "Expected filetype 'rust' in writes");
+}
+
+#[test]
+fn statusline_renders_filetype_and_encoding() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.filetype = Some(String::from("rust"));
+    m.encoding = Some(String::from("utf-8"));
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_both = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains("rust") && w.text.contains("utf-8"));
+    assert!(has_both, "Expected 'rust utf-8' in writes");
+}
+
+// =============================================================================
+// Section B (git branch) tests — Phase 3 fields
+// =============================================================================
+
+#[test]
+fn statusline_renders_git_branch() {
+    let mut m = StatuslineModule::new();
+    m.git_branch = Some(String::from("main"));
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_branch = surface.writes().iter().any(|w| w.text.contains("main"));
+    assert!(has_branch, "Expected git branch 'main' in writes");
+}
+
+#[test]
+fn statusline_no_branch_no_section_b() {
+    let m = StatuslineModule::new();
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_branch = surface.writes().iter().any(|w| w.text.contains("\u{e0a0}"));
+    assert!(!has_branch, "Expected no branch icon without data");
+}
+
+// =============================================================================
+// Build right sections tests
+// =============================================================================
+
+#[test]
+fn build_right_sections_minimal() {
+    let m = StatuslineModule::new();
+    let sections = m.build_right_sections();
+    // No cursor → just "?:?"
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].0, "?:?");
+}
+
+#[test]
+fn build_right_sections_with_cursor() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 9, 4);
+    m.total_lines = 50;
+    let sections = m.build_right_sections();
+    // Just Z section (no filetype)
+    assert_eq!(sections.len(), 1);
+    assert!(sections[0].0.contains("10:5"));
+}
+
+#[test]
+fn build_right_sections_with_filetype() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.filetype = Some(String::from("python"));
+    let sections = m.build_right_sections();
+    // Y section + Z section
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0].0, "python");
+}
+
+#[test]
+fn build_right_sections_with_filetype_and_encoding() {
+    let mut m = StatuslineModule::new();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.filetype = Some(String::from("python"));
+    m.encoding = Some(String::from("utf-8"));
+    let sections = m.build_right_sections();
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0].0, "python utf-8");
 }
 
 // =============================================================================
@@ -211,4 +478,87 @@ fn statusline_default_impl() {
 fn statusline_exit_ok() {
     let mut m = StatuslineModule::new();
     assert!(m.exit().is_ok());
+}
+
+// =============================================================================
+// Notification tests (Phase 2: buffer metadata)
+// =============================================================================
+
+#[test]
+fn on_notification_parses_buffer_metadata() {
+    let mut m = StatuslineModule::new();
+    m.on_notification(r#"{"filename":"main.rs","filetype":"rust","encoding":"utf-8","modified":true,"readonly":false}"#);
+    assert_eq!(m.filename.as_deref(), Some("main.rs"));
+    assert_eq!(m.filetype.as_deref(), Some("rust"));
+    assert_eq!(m.encoding.as_deref(), Some("utf-8"));
+    assert!(m.modified);
+    assert!(!m.readonly);
+}
+
+#[test]
+fn on_notification_partial_payload() {
+    let mut m = StatuslineModule::new();
+    m.on_notification(r#"{"filename":"lib.rs"}"#);
+    assert_eq!(m.filename.as_deref(), Some("lib.rs"));
+    // Other fields unchanged
+    assert!(m.filetype.is_none());
+    assert!(!m.modified);
+}
+
+#[test]
+fn on_notification_empty_filename_clears() {
+    let mut m = StatuslineModule::new();
+    m.filename = Some(String::from("old.rs"));
+    m.on_notification(r#"{"filename":""}"#);
+    assert!(m.filename.is_none());
+}
+
+#[test]
+fn on_notification_invalid_json_ignored() {
+    let mut m = StatuslineModule::new();
+    m.filename = Some(String::from("keep.rs"));
+    m.on_notification("not json at all");
+    assert_eq!(m.filename.as_deref(), Some("keep.rs"));
+}
+
+#[test]
+fn on_notification_updates_modified_flag() {
+    let mut m = StatuslineModule::new();
+    assert!(!m.modified);
+    m.on_notification(r#"{"modified":true}"#);
+    assert!(m.modified);
+    m.on_notification(r#"{"modified":false}"#);
+    assert!(!m.modified);
+}
+
+#[test]
+fn on_notification_updates_readonly_flag() {
+    let mut m = StatuslineModule::new();
+    assert!(!m.readonly);
+    m.on_notification(r#"{"readonly":true}"#);
+    assert!(m.readonly);
+}
+
+// =============================================================================
+// PCT_STRINGS table tests
+// =============================================================================
+
+#[test]
+fn pct_strings_table_has_100_entries() {
+    assert_eq!(PCT_STRINGS.len(), 100);
+}
+
+#[test]
+fn pct_strings_first_entry() {
+    assert_eq!(PCT_STRINGS[0], "0%");
+}
+
+#[test]
+fn pct_strings_last_entry() {
+    assert_eq!(PCT_STRINGS[99], "99%");
+}
+
+#[test]
+fn pct_strings_midpoint() {
+    assert_eq!(PCT_STRINGS[50], "50%");
 }

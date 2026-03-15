@@ -3725,6 +3725,8 @@ name = "reovim-tui-mod-statusline"
 version = "0.14.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
