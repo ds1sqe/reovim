@@ -238,8 +238,7 @@ pub async fn handle_notification<C: NotificationContext>(
             // Notify context for optional syntax refresh
             ctx.on_buffer_modified(buffer_id);
 
-            // Refresh buffer metadata for statusline (#661)
-            dispatch_buffer_metadata(ctx).await;
+            // Buffer metadata dispatched by TuiApp after this returns (#661)
 
             Ok(NotificationResult::Redraw)
         }
@@ -329,8 +328,7 @@ pub async fn handle_notification<C: NotificationContext>(
                 }
             }
 
-            // Fetch buffer metadata and dispatch to statusline (#661)
-            dispatch_buffer_metadata(ctx).await;
+            // Buffer metadata dispatched by TuiApp after this returns (#661)
 
             Ok(NotificationResult::Redraw)
         }
@@ -567,19 +565,22 @@ pub async fn handle_notification<C: NotificationContext>(
 }
 
 /// Fetch buffer list and dispatch metadata as a JSON notification to
-/// the statusline module (kind = "statusline"). Called after layout
-/// changes and buffer modifications.
+/// the statusline module (kind = "statusline"). Called by `TuiApp`
+/// after layout changes and buffer modifications (#661).
 ///
 /// The JSON payload format: `{"filename":"...", "filetype":"...",
 /// "encoding":"...", "modified":bool, "readonly":bool}`
 #[cfg_attr(coverage_nightly, coverage(off))]
-async fn dispatch_buffer_metadata<C: NotificationContext>(ctx: &mut C) {
-    let focused_buf = ctx.state_mut().get_focused_buffer_id();
-    let Some(focused_id) = focused_buf else {
+pub(crate) async fn dispatch_buffer_metadata(
+    state: &TuiCoreState,
+    client: &mut TuiGrpcClient,
+    extensions: &mut [Box<dyn ClientModule>],
+) {
+    let Some(focused_id) = state.get_focused_buffer_id() else {
         return;
     };
 
-    let Ok(response) = ctx.client_mut().list_buffers().await else {
+    let Ok(response) = client.list_buffers().await else {
         return;
     };
 
@@ -608,7 +609,7 @@ async fn dispatch_buffer_metadata<C: NotificationContext>(ctx: &mut C) {
         r#"{{"filename":"{escaped}","filetype":"{filetype}","encoding":"{encoding}","modified":{modified},"readonly":{readonly}}}"#
     );
 
-    for ext in ctx.extensions_mut() {
+    for ext in extensions {
         if ext.kind() == "statusline" {
             ext.on_notification(&json);
         }

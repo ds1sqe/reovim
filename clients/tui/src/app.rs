@@ -44,7 +44,9 @@ use crate::{
     grpc_client::{TuiGrpcClient, TuiGrpcError},
     handle::{ControlRequest, RawInputEvent, TuiHandle, TuiInput},
     layout_mirror::ServerLayoutMirror,
-    notification_handler::{NotificationContext, NotificationResult, handle_notification},
+    notification_handler::{
+        NotificationContext, NotificationResult, dispatch_buffer_metadata, handle_notification,
+    },
     render_backend::format_frame_buffer,
     render_engine::render_frame,
     tui_output::{CursorStyleHint, TuiOutput},
@@ -759,6 +761,10 @@ impl<O: TuiOutput> TuiApp<O> {
         // Update layout mirror after any notification
         self.layout_mirror
             .apply_layout_changed(self.state.focused_window_id, &self.state.windows);
+
+        // Dispatch buffer metadata to statusline module (#661)
+        let exts = self.module_loader.modules_mut_slice();
+        dispatch_buffer_metadata(&self.state, &mut self.client, exts).await;
 
         Ok(())
     }
