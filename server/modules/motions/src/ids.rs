@@ -64,6 +64,19 @@ pub const DOCUMENT_END: CommandId = CommandId::new(MODULE, "document-end");
 pub const WHOLE_LINE: CommandId = CommandId::new(MODULE, "whole-line");
 
 // =============================================================================
+// Screen Position Motions
+// =============================================================================
+
+/// Move to top of screen (H).
+pub const SCREEN_HIGH: CommandId = CommandId::new(MODULE, "screen-high");
+
+/// Move to middle of screen (M).
+pub const SCREEN_MIDDLE: CommandId = CommandId::new(MODULE, "screen-middle");
+
+/// Move to bottom of screen (L).
+pub const SCREEN_LOW: CommandId = CommandId::new(MODULE, "screen-low");
+
+// =============================================================================
 // Find Character Motions
 // =============================================================================
 

@@ -122,6 +122,7 @@ pub fn change_bindings() -> Vec<KeybindingRegistration> {
 // Delete Mode Motion and Text Object Bindings
 // =============================================================================
 
+#[allow(clippy::too_many_lines)]
 fn delete_motion_bindings() -> Vec<KeybindingRegistration> {
     vec![
         // Basic cursor motions
@@ -196,6 +197,19 @@ fn delete_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[DELETE_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Screen position motions (#669)
+        KeybindingRegistration::new("H", motions::SCREEN_HIGH)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Screen high motion"),
+        KeybindingRegistration::new("M", motions::SCREEN_MIDDLE)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Screen middle motion"),
+        KeybindingRegistration::new("L", motions::SCREEN_LOW)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Screen low motion"),
         // Find/till character motions (#554)
         KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
             .with_modes(&[DELETE_MODE])
@@ -430,6 +444,7 @@ fn delete_textobject_bindings() -> Vec<KeybindingRegistration> {
 // Yank Mode Motion and Text Object Bindings
 // =============================================================================
 
+#[allow(clippy::too_many_lines)]
 fn yank_motion_bindings() -> Vec<KeybindingRegistration> {
     vec![
         KeybindingRegistration::new("h", editor::CURSOR_LEFT)
@@ -500,6 +515,19 @@ fn yank_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[YANK_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Screen position motions (#669)
+        KeybindingRegistration::new("H", motions::SCREEN_HIGH)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Screen high motion"),
+        KeybindingRegistration::new("M", motions::SCREEN_MIDDLE)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Screen middle motion"),
+        KeybindingRegistration::new("L", motions::SCREEN_LOW)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Screen low motion"),
         // Find/till character motions (#554)
         KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
             .with_modes(&[YANK_MODE])
@@ -732,6 +760,7 @@ fn yank_textobject_bindings() -> Vec<KeybindingRegistration> {
 // Change Mode Motion and Text Object Bindings
 // =============================================================================
 
+#[allow(clippy::too_many_lines)]
 fn change_motion_bindings() -> Vec<KeybindingRegistration> {
     vec![
         KeybindingRegistration::new("h", editor::CURSOR_LEFT)
@@ -802,6 +831,19 @@ fn change_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[CHANGE_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Screen position motions (#669)
+        KeybindingRegistration::new("H", motions::SCREEN_HIGH)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Screen high motion"),
+        KeybindingRegistration::new("M", motions::SCREEN_MIDDLE)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Screen middle motion"),
+        KeybindingRegistration::new("L", motions::SCREEN_LOW)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Screen low motion"),
         // Find/till character motions (#554)
         KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
             .with_modes(&[CHANGE_MODE])

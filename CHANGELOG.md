@@ -6,6 +6,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **H, M, L screen-position motions (#669, part of #660)**: Three new motions
+  that move the cursor relative to the viewport. `H` moves to the top of the
+  visible screen (with optional count for Nth line from top). `M` moves to the
+  middle of the screen. `L` moves to the bottom (with optional count for Nth
+  line from bottom). All three are linewise jump motions that push to the jump
+  list and work in normal, visual, and operator-pending modes (dH, yM, cL).
+  Viewport clamping prevents cursor from moving past buffer bounds. 32 tests.
+
+- **Rich statusline segments (#661, part of #660)**: Rewritten TUI statusline
+  from minimal mode+position to lualine-style sections (A/B/C/X/Y/Z). Section
+  A: mode badge. Section C: filename with modified [+] and readonly [RO]
+  indicators. Section Y: filetype and encoding. Section Z: progress percentage
+  (Top/Bot/All/N%) and line:col position. Buffer metadata flows via JSON
+  notification from `list_buffers()` gRPC call after layout and buffer changes.
+  Background fill, section separators, and right-aligned rendering. 59 tests.
+
 - **Client-side animations (#657, part of #653)**: Yank flash highlight and
   landing screen animations for TUI and Web clients. Server-side
   `YankFlashBridge` emits yank range via existing `extension_updated` pipeline

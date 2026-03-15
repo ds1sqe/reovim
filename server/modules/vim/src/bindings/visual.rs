@@ -72,6 +72,19 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of document"),
+        // Screen position motions (#669)
+        KeybindingRegistration::new("H", motions::SCREEN_HIGH)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("motion")
+            .with_description("Extend to top of screen"),
+        KeybindingRegistration::new("M", motions::SCREEN_MIDDLE)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("motion")
+            .with_description("Extend to middle of screen"),
+        KeybindingRegistration::new("L", motions::SCREEN_LOW)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("motion")
+            .with_description("Extend to bottom of screen"),
         // ====================================================================
         // Selection operations
         // ====================================================================

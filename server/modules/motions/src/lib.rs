@@ -5,6 +5,7 @@
 //! This module implements motion commands that move the cursor:
 //! - Word motions: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
 //! - Line motions: `0`, `$`, `^`, `gg`, `G`
+//! - Screen motions: `H`, `M`, `L`
 //! - Find-char motions: `f`, `F`, `t`, `T`, `;`, `,`
 //! - Search motions: `/`, `?`, `n`, `N`, `*`, `#`, `:noh`
 //!
@@ -33,6 +34,7 @@ use {
 pub mod find_char;
 pub mod ids;
 pub mod line;
+pub mod screen;
 pub mod search;
 pub mod search_state;
 pub mod word;
@@ -96,6 +98,7 @@ impl CommandProvider for MotionsModule {
         let mut handlers = Vec::new();
         handlers.extend(word::all_commands());
         handlers.extend(line::all_commands());
+        handlers.extend(screen::all_commands());
         handlers.extend(find_char::all_commands());
         handlers.extend(search::all_commands());
         handlers
@@ -112,6 +115,8 @@ mod find_char_tests;
 mod lib_tests;
 #[cfg(test)]
 mod line_tests;
+#[cfg(test)]
+mod screen_tests;
 #[cfg(test)]
 mod search_tests;
 #[cfg(test)]

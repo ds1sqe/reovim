@@ -49,8 +49,8 @@ fn test_module_new() {
 fn test_command_handlers_total() {
     let module = MotionsModule;
     let handlers = module.command_handlers();
-    // 8 word + 6 line + 7 find_char + 7 search = 28
-    assert_eq!(handlers.len(), 28);
+    // 8 word + 6 line + 3 screen + 7 find_char + 7 search = 31
+    assert_eq!(handlers.len(), 31);
 }
 
 #[test]
