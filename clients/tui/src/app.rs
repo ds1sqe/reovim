@@ -35,6 +35,7 @@ use {
         option_changed_payload::Value as OptionValue,
     },
     tokio::{select, sync::mpsc, time::interval},
+    tokio_stream::StreamMap,
     tonic::Streaming,
 };
 
@@ -129,8 +130,10 @@ pub struct TuiApp<O: TuiOutput> {
     theme_manager: ThemeManager,
     /// Theme loader for finding and loading theme files.
     theme_loader: ThemeLoader,
-    /// Buffer IDs needing syntax token refresh.
+    /// Buffer IDs needing syntax token refresh (fallback for buffers without streams).
     pending_token_refresh: std::collections::HashSet<u64>,
+    /// Active token update streams per buffer (#655).
+    token_streams: StreamMap<u64, Streaming<reovim_protocol::v2::TokenUpdate>>,
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
     /// Client module loader — manages lifecycle and dependency order.
@@ -208,6 +211,7 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_manager,
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
+            token_streams: StreamMap::new(),
             needs_display_options_refresh: false,
             module_loader,
             server_handle,
@@ -505,6 +509,19 @@ impl<O: TuiOutput> TuiApp<O> {
                 );
 
                 tracing::debug!(buffer_id, token_count = token_spans.len(), "Cached syntax tokens");
+
+                // Subscribe to real-time token updates (#655)
+                if !self.token_streams.contains_key(&buffer_id) {
+                    match self.client.stream_tokens(buffer_id).await {
+                        Ok(stream) => {
+                            self.token_streams.insert(buffer_id, stream);
+                            tracing::debug!(buffer_id, "Subscribed to token stream");
+                        }
+                        Err(e) => {
+                            tracing::debug!(buffer_id, error = %e, "Could not subscribe to token stream");
+                        }
+                    }
+                }
             }
             Err(e) => {
                 tracing::debug!(buffer_id, error = %e, "Could not fetch tokens");
@@ -557,6 +574,46 @@ impl<O: TuiOutput> TuiApp<O> {
                         }
                         Ok(None) => return Err(TuiAppError::StreamEnded),
                         Err(e) => return Err(TuiAppError::Grpc(e.into())),
+                    }
+                }
+
+                // Token stream updates (#655) — real-time syntax tokens
+                Some((buffer_id, update_result)) = tokio_stream::StreamExt::next(&mut self.token_streams) => {
+                    match update_result {
+                        Ok(update) => {
+                            let content = self
+                                .state
+                                .buffer_cache
+                                .get(&buffer_id)
+                                .map(|lines| lines.join("\n"))
+                                .unwrap_or_default();
+
+                            let token_spans: Vec<TokenSpan> = update
+                                .tokens
+                                .into_iter()
+                                .map(|t| TokenSpan {
+                                    start_byte: t.start_byte,
+                                    end_byte: t.end_byte,
+                                    category: t.category,
+                                })
+                                .collect();
+
+                            self.token_cache_manager.apply_token_update(
+                                buffer_id,
+                                &token_spans,
+                                update.start_line,
+                                update.end_line,
+                                update.full_refresh,
+                                &content,
+                                &update.layer,
+                                update.priority,
+                            );
+
+                            self.state.set_needs_redraw(true);
+                        }
+                        Err(e) => {
+                            tracing::debug!(buffer_id, error = %e, "Token stream error, removing");
+                        }
                     }
                 }
 
@@ -911,7 +968,10 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
     }
 
     fn on_buffer_modified(&mut self, buffer_id: u64) {
-        self.pending_token_refresh.insert(buffer_id);
+        // Skip poll-based refresh if we have an active stream for this buffer (#655)
+        if !self.token_streams.contains_key(&buffer_id) {
+            self.pending_token_refresh.insert(buffer_id);
+        }
     }
 
     fn on_option_changed(&mut self, name: &str, value: Option<OptionValue>) {
