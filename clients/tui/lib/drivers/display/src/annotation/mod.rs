@@ -63,6 +63,7 @@
 
 // Presenter implementations (moved from server modules in D2 Phase 3)
 mod blame_presenter;
+mod diagnostic_presenter;
 mod git_signs_presenter;
 mod line_number_presenter;
 
@@ -94,6 +95,6 @@ pub use {
 
 // Concrete presenter implementations
 pub use {
-    blame_presenter::BlamePresenter, git_signs_presenter::GitSignsPresenter,
-    line_number_presenter::LineNumberPresenter,
+    blame_presenter::BlamePresenter, diagnostic_presenter::DiagnosticPresenter,
+    git_signs_presenter::GitSignsPresenter, line_number_presenter::LineNumberPresenter,
 };
