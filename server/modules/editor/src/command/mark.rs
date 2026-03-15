@@ -3,14 +3,14 @@
 //! Provides mark operations:
 //! - `SetMark` (m{char}) - set a mark at cursor position
 //! - `GotoMarkLine` ('{char}) - jump to mark line (column 0)
-//! - `GotoMarkExact` (`{char}) - jump to mark exact position
+//! - `GotoMarkExact` (`` ` ``{char}) - jump to mark exact position
 
 use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{SessionRuntime, api::BufferApi},
-    reovim_kernel::api::v1::{CommandId, JumpEntry, Mark, Position},
+    reovim_kernel::api::v1::{BufferId, CommandId, JumpEntry, Mark, Position},
 };
 
 use crate::ids;
@@ -110,7 +110,7 @@ impl CommandHandler for GotoMarkLine {
     }
 }
 
-/// Go to mark exact position (`{char}).
+/// Go to mark exact position (`` ` ``{char}).
 ///
 /// Jumps to the mark's exact line and column (Vim `` ` `` behavior).
 #[derive(Debug, Clone, Copy, Default)]
@@ -154,7 +154,7 @@ impl CommandHandler for GotoMarkExact {
 fn goto_mark(
     runtime: &mut SessionRuntime<'_>,
     mark_char: char,
-    buffer_id: reovim_kernel::api::v1::BufferId,
+    buffer_id: BufferId,
     line_only: bool,
 ) -> CommandResult {
     // Look up the mark

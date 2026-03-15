@@ -547,10 +547,8 @@ impl VimNormalResolver {
     /// Classify a command as a mark operation, if applicable (#654).
     ///
     /// Returns the corresponding `PendingCharOp` if the command is one of the
-    /// mark commands (m, ', `), otherwise returns `None`.
-    pub fn classify_mark_command(
-        cmd: &reovim_kernel::api::v1::CommandId,
-    ) -> Option<PendingCharOp> {
+    /// mark commands (m, ', `` ` ``), otherwise returns `None`.
+    pub fn classify_mark_command(cmd: &reovim_kernel::api::v1::CommandId) -> Option<PendingCharOp> {
         if *cmd == editor::ids::SET_MARK {
             Some(PendingCharOp::SetMark)
         } else if *cmd == editor::ids::GOTO_MARK_LINE {

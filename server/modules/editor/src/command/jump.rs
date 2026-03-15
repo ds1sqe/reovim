@@ -40,12 +40,12 @@ impl CommandHandler for JumpBackward {
         };
 
         // Switch buffer if needed
-        if let Some(current_buf) = runtime.active_buffer() {
-            if entry.buffer != current_buf {
-                runtime.set_active_buffer(Some(entry.buffer));
-                if let Some(window) = runtime.windows_mut().active_mut() {
-                    window.buffer_id = Some(entry.buffer);
-                }
+        if let Some(current_buf) = runtime.active_buffer()
+            && entry.buffer != current_buf
+        {
+            runtime.set_active_buffer(Some(entry.buffer));
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.buffer_id = Some(entry.buffer);
             }
         }
 
@@ -87,12 +87,12 @@ impl CommandHandler for JumpForward {
         };
 
         // Switch buffer if needed
-        if let Some(current_buf) = runtime.active_buffer() {
-            if entry.buffer != current_buf {
-                runtime.set_active_buffer(Some(entry.buffer));
-                if let Some(window) = runtime.windows_mut().active_mut() {
-                    window.buffer_id = Some(entry.buffer);
-                }
+        if let Some(current_buf) = runtime.active_buffer()
+            && entry.buffer != current_buf
+        {
+            runtime.set_active_buffer(Some(entry.buffer));
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.buffer_id = Some(entry.buffer);
             }
         }
 

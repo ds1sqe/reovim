@@ -394,8 +394,7 @@ fn search_and_move_from(
     direction: Direction,
     search_from: Position,
 ) -> CommandResult {
-    use reovim_driver_session::ChangeTracker;
-    use reovim_kernel::api::v1::JumpEntry;
+    use {reovim_driver_session::ChangeTracker, reovim_kernel::api::v1::JumpEntry};
 
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
@@ -423,9 +422,7 @@ fn search_and_move_from(
         Some(Ok(Some(m))) => {
             // Push current position to jump list before search jump (#654)
             if let Some(pos) = old_cursor {
-                runtime
-                    .jumplist_mut()
-                    .push(JumpEntry::new(buffer_id, pos));
+                runtime.jumplist_mut().push(JumpEntry::new(buffer_id, pos));
             }
             // Move cursor via per-client Window (#471)
             if let Some(window) = runtime.windows_mut().active_mut() {

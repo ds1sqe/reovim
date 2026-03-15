@@ -7,7 +7,7 @@ use {
     },
     reovim_kernel::{
         api::v1::{
-            Buffer, BufferId, HistoryRing, KernelContext, Jumplist, MarkBank, ModeStack, Position,
+            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
             RegisterBank, RegisterContent,
         },
         testing::{create_test_context, test_mode},

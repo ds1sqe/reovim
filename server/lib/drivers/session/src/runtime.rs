@@ -540,6 +540,7 @@ impl<'a> SessionRuntime<'a> {
     }
 
     /// Get per-client jump list (#654).
+    #[must_use]
     pub const fn jumplist(&self) -> &reovim_kernel::api::v1::Jumplist {
         self.jumplist
     }

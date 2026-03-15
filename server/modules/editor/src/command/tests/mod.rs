@@ -3,6 +3,7 @@ mod delete;
 mod display_line;
 mod file;
 mod jump;
+mod mark;
 mod mod_tests;
 mod operators;
 mod paste;
