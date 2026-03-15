@@ -86,13 +86,17 @@ fn render_tree_node(
     // Build the prefix from vertical_lines and is_last
     let prefix = build_prefix(&node.vertical_lines, node.is_last, node.depth);
 
-    // Choose icon
+    // Choose icon (Nerd Font for files/dirs, @ for symlinks)
     let icon = if node.is_dir {
-        if node.is_expanded { "v " } else { "> " }
+        if node.is_expanded {
+            dir_icon_expanded(&node.name)
+        } else {
+            dir_icon_collapsed(&node.name)
+        }
     } else if node.is_symlink {
         "@ "
     } else {
-        "  "
+        file_icon(&node.name)
     };
 
     // Choose name color
@@ -219,6 +223,70 @@ fn render_message(surface: &mut dyn RenderSurface, msg: &str, bounds: &SidebarBo
     let available = bounds.width.saturating_sub(2) as usize;
     let display: String = msg.chars().take(available).collect();
     surface.write_styled(bounds.x + 1, y, &display, style);
+}
+
+// =============================================================================
+// File type icons (Nerd Font)
+// =============================================================================
+
+/// Get Nerd Font icon for a file based on its name/extension.
+fn file_icon(filename: &str) -> &'static str {
+    let ext = filename.rsplit_once('.').map(|(_, e)| e);
+    match ext {
+        Some("rs") => "\u{e7a8} ",                         //
+        Some("py" | "pyi") => "\u{e73c} ",                 //
+        Some("js" | "mjs" | "cjs") => "\u{e781} ",         //
+        Some("ts" | "mts" | "cts") => "\u{e628} ",         //
+        Some("go") => "\u{e626} ",                         //
+        Some("c" | "h") => "\u{e61e} ",                    //
+        Some("cpp" | "hpp" | "cc" | "cxx") => "\u{e61d} ", //
+        Some("sh" | "bash" | "zsh") => "\u{e795} ",        //
+        Some("html" | "htm") => "\u{e736} ",               //
+        Some("css" | "scss" | "sass") => "\u{e749} ",      //
+        Some("md" | "markdown") => "\u{e73e} ",            //
+        Some("json") => "\u{e60b} ",                       //
+        Some("toml" | "yaml" | "yml") => "\u{e615} ",      //
+        Some("lua") => "\u{e620} ",                        //
+        Some("java") => "\u{e738} ",                       //
+        Some("rb") => "\u{e739} ",                         //
+        Some("lock") => "\u{f023} ",                       //
+        Some("txt") => "\u{f0219} ",                       // 󰈙
+        Some("xml") => "\u{e619} ",                        //
+        Some("svg") => "\u{e60e} ",                        //
+        _ => match filename {
+            "Dockerfile" | "dockerfile" => "\u{e7b0} ",     //
+            "Makefile" | "makefile" => "\u{e673} ",         //
+            ".gitignore" | ".gitattributes" => "\u{e702} ", //
+            ".env" | ".env.local" => "\u{f462} ",           //
+            _ => "\u{f0219} ",                              // 󰈙 generic file
+        },
+    }
+}
+
+/// Get Nerd Font icon for a collapsed directory.
+fn dir_icon_collapsed(dirname: &str) -> &'static str {
+    match dirname {
+        ".git" => "\u{e702} ",                      //
+        "node_modules" => "\u{e71e} ",              //
+        "target" | "build" | "dist" => "\u{f487} ", //  (gear)
+        "src" | "lib" => "\u{f07c} ",               //  (folder open alt)
+        "tests" | "test" | "spec" => "\u{f0668} ",  // 󰙨 (flask)
+        "docs" | "doc" => "\u{f02d} ",              //  (book)
+        _ => "\u{f024b} ",                          // 󰉋 closed folder
+    }
+}
+
+/// Get Nerd Font icon for an expanded directory.
+fn dir_icon_expanded(dirname: &str) -> &'static str {
+    match dirname {
+        ".git" => "\u{e702} ",                      //
+        "node_modules" => "\u{e71e} ",              //
+        "target" | "build" | "dist" => "\u{f487} ", //  (gear)
+        "src" | "lib" => "\u{f07c} ",               //  (folder open alt)
+        "tests" | "test" | "spec" => "\u{f0668} ",  // 󰙨 (flask)
+        "docs" | "doc" => "\u{f02d} ",              //  (book)
+        _ => "\u{f0770} ",                          // 󰝰 open folder
+    }
 }
 
 #[cfg(test)]

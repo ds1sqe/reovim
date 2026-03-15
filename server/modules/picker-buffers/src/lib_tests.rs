@@ -71,10 +71,12 @@ fn items_from_buffers() {
 
     assert_eq!(items[0].display, "main.rs");
     assert_eq!(items[0].detail.as_deref(), Some("#1"));
-    assert!(items[0].icon.is_none());
+    // Unmodified .rs file gets Rust icon
+    assert_eq!(items[0].icon, Some('\u{e7a8}'));
 
     assert_eq!(items[1].display, "lib.rs");
     assert_eq!(items[1].detail.as_deref(), Some("#2"));
+    // Modified buffer shows '+' instead of file type icon
     assert_eq!(items[1].icon, Some('+'));
 }
 

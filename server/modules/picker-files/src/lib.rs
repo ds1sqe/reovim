@@ -77,11 +77,12 @@ impl Picker for FilesPicker {
                 let path = entry.path();
                 let relative = path.strip_prefix(&ctx.cwd).ok()?;
                 let display = relative.to_string_lossy().into_owned();
+                let icon = reovim_driver_picker::icon_for_path(&display);
                 Some(PickerItem {
                     display,
                     detail: None,
                     data: PickerData::FilePath(path.to_path_buf()),
-                    icon: None,
+                    icon,
                 })
             })
             .collect()

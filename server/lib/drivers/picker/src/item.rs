@@ -32,6 +32,40 @@ pub enum PickerData {
     Text(String),
 }
 
+/// Get a Nerd Font icon char for a file extension.
+///
+/// Returns `None` for unrecognized extensions.
+#[must_use]
+pub fn file_type_icon(extension: &str) -> Option<char> {
+    match extension {
+        "rs" => Some('\u{e7a8}'),                    //
+        "py" | "pyi" => Some('\u{e73c}'),            //
+        "js" | "mjs" | "cjs" => Some('\u{e781}'),    //
+        "ts" | "mts" | "cts" => Some('\u{e628}'),    //
+        "go" => Some('\u{e626}'),                    //
+        "c" | "h" => Some('\u{e61e}'),               //
+        "cpp" | "hpp" => Some('\u{e61d}'),           //
+        "sh" | "bash" | "zsh" => Some('\u{e795}'),   //
+        "html" | "htm" => Some('\u{e736}'),          //
+        "css" | "scss" => Some('\u{e749}'),          //
+        "md" | "markdown" => Some('\u{e73e}'),       //
+        "json" => Some('\u{e60b}'),                  //
+        "toml" | "yaml" | "yml" => Some('\u{e615}'), //
+        "lua" => Some('\u{e620}'),                   //
+        "java" => Some('\u{e738}'),                  //
+        "rb" => Some('\u{e739}'),                    //
+        "xml" => Some('\u{e619}'),                   //
+        _ => None,
+    }
+}
+
+/// Get icon char from a file path string by extracting the extension.
+#[must_use]
+pub fn icon_for_path(path: &str) -> Option<char> {
+    let ext = path.rsplit_once('.')?.1;
+    file_type_icon(ext)
+}
+
 #[cfg(test)]
 #[path = "item_tests.rs"]
 mod tests;

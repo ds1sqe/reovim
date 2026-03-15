@@ -130,9 +130,10 @@ fn render_expanded_dir_icon() {
     let mut surface = WriteSurface::new(40, 10);
     render_explorer(&mut surface, &data, &bounds);
 
-    // 'v' icon for expanded dir at row 1 (tree_start_y), col 1 (margin)
+    // Nerd Font icon for expanded "src" dir at row 1 (tree_start_y), col 1 (margin)
     let ch = surface.text_at(1, 1);
-    assert_eq!(ch, Some("v"));
+    assert!(ch.is_some(), "expanded dir should have an icon at (1,1)");
+    assert_ne!(ch, Some(" "), "expanded dir icon should not be a space");
 }
 
 #[test]
@@ -142,9 +143,10 @@ fn render_collapsed_dir_icon() {
     let mut surface = WriteSurface::new(40, 10);
     render_explorer(&mut surface, &data, &bounds);
 
-    // '>' icon for collapsed dir
+    // Nerd Font icon for collapsed dir
     let ch = surface.text_at(1, 1);
-    assert_eq!(ch, Some(">"));
+    assert!(ch.is_some(), "collapsed dir should have an icon at (1,1)");
+    assert_ne!(ch, Some(" "), "collapsed dir icon should not be a space");
 }
 
 #[test]
@@ -164,7 +166,7 @@ fn render_symlink_icon() {
     let mut surface = WriteSurface::new(40, 10);
     render_explorer(&mut surface, &data, &bounds);
 
-    // '@' icon for symlink
+    // '@' icon preserved for symlinks
     let ch = surface.text_at(1, 1);
     assert_eq!(ch, Some("@"));
 }
@@ -273,4 +275,55 @@ fn build_prefix_depth_3() {
     let prefix = build_prefix(&[true, true, false], true, 3);
     assert!(prefix.contains('\u{2502}'));
     assert!(prefix.contains('\u{2514}'));
+}
+
+// ========================================================================
+// File icon lookup tests
+// ========================================================================
+
+#[test]
+fn file_icon_rust() {
+    assert!(file_icon("main.rs").contains('\u{e7a8}'));
+}
+
+#[test]
+fn file_icon_python() {
+    assert!(file_icon("script.py").contains('\u{e73c}'));
+}
+
+#[test]
+fn file_icon_unknown_extension() {
+    let icon = file_icon("file.xyz");
+    assert!(!icon.is_empty(), "unknown extension should get generic file icon");
+}
+
+#[test]
+fn file_icon_no_extension() {
+    let icon = file_icon("Makefile");
+    assert!(!icon.is_empty(), "special names should get an icon");
+}
+
+#[test]
+fn dir_icon_git() {
+    let icon = dir_icon_collapsed(".git");
+    assert!(icon.contains('\u{e702}'));
+}
+
+#[test]
+fn dir_icon_generic_collapsed() {
+    let icon = dir_icon_collapsed("my_dir");
+    assert!(!icon.is_empty());
+}
+
+#[test]
+fn dir_icon_generic_expanded() {
+    let icon = dir_icon_expanded("my_dir");
+    assert!(!icon.is_empty());
+}
+
+#[test]
+fn dir_icon_collapsed_vs_expanded_differ() {
+    let collapsed = dir_icon_collapsed("my_dir");
+    let expanded = dir_icon_expanded("my_dir");
+    assert_ne!(collapsed, expanded, "collapsed and expanded generic dirs should differ");
 }

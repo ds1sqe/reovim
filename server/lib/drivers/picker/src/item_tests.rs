@@ -102,3 +102,43 @@ fn picker_data_clone() {
     let debug = format!("{cloned:?}");
     assert!(debug.contains("GotoLocation"));
 }
+
+// ========================================================================
+// File type icon tests
+// ========================================================================
+
+#[test]
+fn file_type_icon_rust() {
+    assert_eq!(file_type_icon("rs"), Some('\u{e7a8}'));
+}
+
+#[test]
+fn file_type_icon_python() {
+    assert_eq!(file_type_icon("py"), Some('\u{e73c}'));
+    assert_eq!(file_type_icon("pyi"), Some('\u{e73c}'));
+}
+
+#[test]
+fn file_type_icon_javascript() {
+    assert_eq!(file_type_icon("js"), Some('\u{e781}'));
+}
+
+#[test]
+fn file_type_icon_unknown() {
+    assert_eq!(file_type_icon("xyz"), None);
+}
+
+#[test]
+fn icon_for_path_with_extension() {
+    assert_eq!(icon_for_path("src/main.rs"), Some('\u{e7a8}'));
+}
+
+#[test]
+fn icon_for_path_no_extension() {
+    assert_eq!(icon_for_path("Makefile"), None);
+}
+
+#[test]
+fn icon_for_path_unknown_extension() {
+    assert_eq!(icon_for_path("data.bin"), None);
+}

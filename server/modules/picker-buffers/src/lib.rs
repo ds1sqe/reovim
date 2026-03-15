@@ -58,7 +58,11 @@ impl Picker for BuffersPicker {
         ctx.buffers
             .iter()
             .map(|buf| {
-                let icon = if buf.modified { Some('+') } else { None };
+                let icon = if buf.modified {
+                    Some('+')
+                } else {
+                    reovim_driver_picker::icon_for_path(&buf.name)
+                };
                 PickerItem {
                     display: buf.name.clone(),
                     detail: Some(format!("#{}", buf.id)),

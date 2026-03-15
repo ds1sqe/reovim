@@ -25,7 +25,7 @@ pub use {
     action::PickerAction,
     context::{BufferInfo, CommandInfo, OptionInfo, PickerContext},
     engine::{EngineItem, PickerEngine, TickStatus, push_item, push_items},
-    item::{PickerData, PickerItem},
+    item::{PickerData, PickerItem, file_type_icon, icon_for_path},
     picker::Picker,
     preview::PreviewContent,
     registry::PickerRegistry,
