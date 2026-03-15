@@ -694,7 +694,7 @@ impl Clone for EditingState {
             registers: self.registers.clone(), // #515
             clipboard_history: self.clipboard_history.clone(), // #515
             local_marks: self.local_marks.clone(), // #515
-            jumplist: self.jumplist.clone(),    // #654
+            jumplist: self.jumplist.clone(), // #654
             active_buffer: self.active_buffer, // #471
             terminal_size: self.terminal_size, // #471
         }

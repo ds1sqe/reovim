@@ -35,8 +35,7 @@ use {
     },
     reovim_kernel::api::v1::{
         Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId,
-        ModeStack,
-        ModuleId, Position, RegisterBank,
+        ModeStack, ModuleId, Position, RegisterBank,
     },
     std::sync::Arc,
 };
@@ -134,8 +133,8 @@ impl TestSessionRuntime {
             clipboard_history: HistoryRing::new(),                      // Per-client (#515)
             local_marks: MarkBank::new(),                               // Per-client (#515)
             jumplist: Jumplist::new(),
-            active_buffer: None,                                        // Per-client (#471)
-            terminal_size: (80, 24),                                    // Per-client (#471)
+            active_buffer: None,     // Per-client (#471)
+            terminal_size: (80, 24), // Per-client (#471)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -156,8 +155,8 @@ impl TestSessionRuntime {
             clipboard_history: HistoryRing::new(),                 // Per-client (#515)
             local_marks: MarkBank::new(),                          // Per-client (#515)
             jumplist: Jumplist::new(),
-            active_buffer: None,                                   // Per-client (#471)
-            terminal_size: (80, 24),                               // Per-client (#471)
+            active_buffer: None,     // Per-client (#471)
+            terminal_size: (80, 24), // Per-client (#471)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),

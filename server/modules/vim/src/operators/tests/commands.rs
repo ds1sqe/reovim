@@ -12,8 +12,8 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId,
-                ModuleId, RegisterBank, RwLock,
+                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+                RegisterBank, RwLock,
             },
         },
         testing::create_test_context,

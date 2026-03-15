@@ -3,7 +3,9 @@ use {
     reovim_driver_command::{ArgSpec, Command},
     reovim_driver_session::ClientId,
     reovim_driver_vfs::MockVfs,
-    reovim_kernel::api::v1::{HistoryRing, Jumplist, KernelContext, MarkBank, ModuleId, RegisterBank},
+    reovim_kernel::api::v1::{
+        HistoryRing, Jumplist, KernelContext, MarkBank, ModuleId, RegisterBank,
+    },
 };
 
 fn test_vfs() -> Arc<dyn VfsDriver> {
