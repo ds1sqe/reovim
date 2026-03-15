@@ -10,8 +10,8 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position,
-                RegisterBank,
+                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+                Position, RegisterBank,
             },
         },
         testing::create_test_context,

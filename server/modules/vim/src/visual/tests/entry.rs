@@ -76,7 +76,8 @@ use {
     reovim_kernel::api::{
         ModeStack,
         v1::{
-            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
+            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+            RegisterBank,
         },
     },
 };
@@ -213,6 +214,7 @@ fn test_enter_visual_mode_execute_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -227,6 +229,7 @@ fn test_enter_visual_mode_execute_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -301,6 +304,7 @@ fn test_enter_visual_line_mode_execute_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -315,6 +319,7 @@ fn test_enter_visual_line_mode_execute_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -389,6 +394,7 @@ fn test_enter_visual_block_mode_execute_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -403,6 +409,7 @@ fn test_enter_visual_block_mode_execute_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

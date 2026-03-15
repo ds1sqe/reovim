@@ -5,7 +5,7 @@ use {
         ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{HistoryRing, KernelContext, MarkBank, ModeStack, RegisterBank},
+        api::v1::{HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, RegisterBank},
         testing::test_mode,
     },
 };
@@ -61,6 +61,7 @@ fn test_enter_delete_operator_returns_success() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -74,6 +75,7 @@ fn test_enter_delete_operator_returns_success() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -99,6 +101,7 @@ fn test_enter_yank_operator_returns_success() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -112,6 +115,7 @@ fn test_enter_yank_operator_returns_success() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -137,6 +141,7 @@ fn test_enter_change_operator_returns_success() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -150,6 +155,7 @@ fn test_enter_change_operator_returns_success() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -175,6 +181,7 @@ fn test_enter_indent_operator_returns_success() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -188,6 +195,7 @@ fn test_enter_indent_operator_returns_success() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -213,6 +221,7 @@ fn test_enter_dedent_operator_returns_success() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -226,6 +235,7 @@ fn test_enter_dedent_operator_returns_success() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

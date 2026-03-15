@@ -14,7 +14,7 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId,
+                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
                 RegisterBank,
             },
         },

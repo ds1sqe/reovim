@@ -187,7 +187,8 @@ use {
     reovim_kernel::api::{
         ModeStack,
         v1::{
-            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
+            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+            RegisterBank,
         },
     },
 };

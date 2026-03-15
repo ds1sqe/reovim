@@ -17,8 +17,8 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, Position,
-                RegisterBank, RwLock,
+                Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank,
+                Position, RegisterBank, RwLock,
             },
         },
         testing::create_test_context,
@@ -1426,6 +1426,7 @@ fn test_exit_commandline_search_no_cursor_position() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1440,6 +1441,7 @@ fn test_exit_commandline_search_no_cursor_position() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

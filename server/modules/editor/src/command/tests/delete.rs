@@ -7,7 +7,7 @@ use {
     },
     reovim_kernel::{
         api::v1::{
-            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeStack, Position,
+            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
             RegisterBank,
         },
         testing::{create_test_context, test_mode},
@@ -24,6 +24,7 @@ struct TestState {
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
+    jumplist: Jumplist,
     active_buffer: Option<BufferId>,
     terminal_size: (u16, u16),
 }
@@ -42,6 +43,7 @@ impl TestState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         };
@@ -68,6 +70,7 @@ impl TestState {
                 registers: &mut self.registers,
                 clipboard_history: &mut self.clipboard_history,
                 local_marks: &mut self.local_marks,
+                jumplist: &mut self.jumplist,
                 active_buffer: &mut self.active_buffer,
                 terminal_size: &mut self.terminal_size,
             },
@@ -116,6 +119,7 @@ fn test_delete_char_no_buffer_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -129,6 +133,7 @@ fn test_delete_char_no_buffer_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -156,6 +161,7 @@ fn test_delete_char_no_window_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -169,6 +175,7 @@ fn test_delete_char_no_window_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -317,6 +324,7 @@ fn test_delete_char_before_no_buffer_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -330,6 +338,7 @@ fn test_delete_char_before_no_buffer_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -357,6 +366,7 @@ fn test_delete_char_before_no_window_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -370,6 +380,7 @@ fn test_delete_char_before_no_window_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -553,6 +564,7 @@ fn test_delete_line_no_buffer_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -566,6 +578,7 @@ fn test_delete_line_no_buffer_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -754,6 +767,7 @@ fn test_delete_to_eol_no_buffer_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -767,6 +781,7 @@ fn test_delete_to_eol_no_buffer_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -794,6 +809,7 @@ fn test_delete_to_eol_no_window_returns_error() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -807,6 +823,7 @@ fn test_delete_to_eol_no_window_returns_error() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

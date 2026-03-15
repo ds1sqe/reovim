@@ -170,7 +170,7 @@ use {
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{Buffer, BufferId, HistoryRing, KernelContext, MarkBank, RegisterBank, RwLock},
+        v1::{Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, RegisterBank, RwLock},
     },
     std::sync::Arc,
 };
@@ -930,6 +930,7 @@ fn test_open_line_below_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -944,6 +945,7 @@ fn test_open_line_below_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -977,6 +979,7 @@ fn test_open_line_above_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -991,6 +994,7 @@ fn test_open_line_above_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1024,6 +1028,7 @@ fn test_enter_insert_first_non_blank_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1038,6 +1043,7 @@ fn test_enter_insert_first_non_blank_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1072,6 +1078,7 @@ fn test_enter_insert_end_of_line_no_active_window() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1086,6 +1093,7 @@ fn test_enter_insert_end_of_line_no_active_window() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

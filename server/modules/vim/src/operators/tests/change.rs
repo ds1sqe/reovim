@@ -14,8 +14,8 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, ModeId,
-                ModuleId, Position, Register, RegisterBank, RwLock,
+                Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank,
+                ModeId, ModuleId, Position, Register, RegisterBank, RwLock,
             },
         },
         testing::create_test_context,
@@ -39,6 +39,7 @@ fn run_command<C: CommandHandler>(
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
@@ -52,6 +53,7 @@ fn run_command<C: CommandHandler>(
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

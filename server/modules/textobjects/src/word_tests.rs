@@ -11,8 +11,8 @@ use {
         api::{
             ModeStack,
             v1::{
-                BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position,
-                RegisterBank,
+                BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+                Position, RegisterBank,
             },
         },
         testing::{create_test_context, setup_buffer, test_mode},
@@ -37,6 +37,7 @@ struct TestState {
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
+    jumplist: Jumplist,
     active_buffer: Option<BufferId>,
     terminal_size: (u16, u16),
 }
@@ -61,6 +62,7 @@ impl TestState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -85,6 +87,7 @@ impl TestState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -109,6 +112,7 @@ impl TestState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -131,6 +135,7 @@ impl TestState {
                 registers: &mut self.registers,
                 clipboard_history: &mut self.clipboard_history,
                 local_marks: &mut self.local_marks,
+                jumplist: &mut self.jumplist,
                 active_buffer: &mut self.active_buffer,
                 terminal_size: &mut self.terminal_size,
             },
@@ -894,6 +899,7 @@ fn test_inner_word_no_active_window_returns_error() {
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
+        jumplist: Jumplist::new(),
         active_buffer: None,
         terminal_size: (80, 24),
     };
@@ -925,6 +931,7 @@ fn test_a_word_no_active_window_returns_error() {
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
+        jumplist: Jumplist::new(),
         active_buffer: None,
         terminal_size: (80, 24),
     };
@@ -956,6 +963,7 @@ fn test_inner_word_big_no_active_window_returns_error() {
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
+        jumplist: Jumplist::new(),
         active_buffer: None,
         terminal_size: (80, 24),
     };
@@ -987,6 +995,7 @@ fn test_a_word_big_no_active_window_returns_error() {
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
+        jumplist: Jumplist::new(),
         active_buffer: None,
         terminal_size: (80, 24),
     };
