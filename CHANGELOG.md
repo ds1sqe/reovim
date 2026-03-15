@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Marks and jump list (#654, part of #653)**: Full mark and jump list support.
+  `SetMark` (m{char}) sets local (a-z) or global (A-Z) marks at cursor position.
+  `GotoMarkLine` ('{char}) jumps to mark line (column 0). `GotoMarkExact`
+  (`` ` ``{char}) jumps to exact mark position. `JumpBackward` (Ctrl-O) and
+  `JumpForward` (Ctrl-I) navigate the per-client jump list. Major jumps (gg, G,
+  n, N, *, #, mark goto) automatically push current position to the jump list
+  before moving. Mark commands use the `PendingCharOp` resolver pattern (same as
+  f/F/t/T/r). `Jumplist` added to per-client state chain (`ClientContext`,
+  `EditingState`, `SessionRuntime`). 22 new tests for mark and jump commands,
+  33 test files updated for Jumplist cascade.
+
 - **v0.8.1 feature parity audit (#652, part of #645)**: Comprehensive feature
   matrix document comparing the pre-kernel v0.8.1 archive against the current
   codebase across 11 categories (core editing, motions, operators, text objects,
@@ -82,6 +93,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   extensions. gRPC `ListBuffers` response now populates `codec_metadata` (codec name,
   line ending, BOM flag) from `CodecSessionState`. CLI `buffers` command displays
   codec info in both plain (`[utf-8, lf]`) and JSON formats.
+
+- **Marks and jump list user-facing commands (#654)**: Implemented complete marks and
+  jump list feature for editor. `SetMark`, `GotoMarkLine`, and `GotoMarkExact` commands
+  handle local (a-z) and global (A-Z) marks using kernel infrastructure. Vim module
+  resolver wires `m`, `'`, and `` ` `` prefixes via `PendingCharOp` pattern. `JumpBackward`
+  (Ctrl-O) and `JumpForward` (Ctrl-I) navigate the per-client jump list. Integrated
+  push-on-jump into `gg`, `G`, search motions, and mark jumps. 26 new mark tests, 7 jump
+  tests, integrated into 33 existing test files via `Jumplist` cascade. Zero warnings.
 
 ### Changed
 
