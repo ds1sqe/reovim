@@ -1,7 +1,7 @@
 /**
  * Highlight group constants.
  *
- * Defines the 42 standard highlight groups used by themes.
+ * Defines the 73 standard highlight groups used by themes.
  * Matches TUI Rust implementation exactly.
  *
  * Groups are organized into four categories:
@@ -55,6 +55,42 @@ export const PROPERTY = 'property';
 
 /** HTML/XML tags */
 export const TAG = 'tag';
+
+// =============================================================================
+// Syntax Sub-Category Groups (31 groups)
+// =============================================================================
+
+export const KEYWORD_CONTROL = 'keyword.control';
+export const KEYWORD_FUNCTION = 'keyword.function';
+export const KEYWORD_TYPE = 'keyword.type';
+export const KEYWORD_OPERATOR = 'keyword.operator';
+export const TYPE_BUILTIN = 'type.builtin';
+export const FUNCTION_BUILTIN = 'function.builtin';
+export const FUNCTION_MACRO = 'function.macro';
+export const FUNCTION_METHOD = 'function.method';
+export const VARIABLE_BUILTIN = 'variable.builtin';
+export const VARIABLE_PARAMETER = 'variable.parameter';
+export const VARIABLE_FIELD = 'variable.field';
+export const STRING_ESCAPE = 'string.escape';
+export const COMMENT_DOC = 'comment.doc';
+export const PUNCTUATION_BRACKET = 'punctuation.bracket';
+export const PUNCTUATION_DELIMITER = 'punctuation.delimiter';
+export const NAMESPACE = 'namespace';
+export const CONSTRUCTOR = 'constructor';
+export const LABEL = 'label';
+export const BOOLEAN = 'boolean';
+export const CHARACTER = 'character';
+export const MARKUP_HEADING = 'markup.heading';
+export const MARKUP_BOLD = 'markup.bold';
+export const MARKUP_ITALIC = 'markup.italic';
+export const MARKUP_STRIKETHROUGH = 'markup.strikethrough';
+export const MARKUP_LINK = 'markup.link';
+export const MARKUP_LINK_URL = 'markup.link.url';
+export const MARKUP_LIST = 'markup.list';
+export const MARKUP_RAW = 'markup.raw';
+export const MARKUP_RAW_INLINE = 'markup.raw.inline';
+export const EMBEDDED = 'embedded';
+export const SPECIAL = 'special';
 
 // =============================================================================
 // UI Groups (17 groups)
@@ -118,8 +154,8 @@ export const SEARCH_MATCH = 'search_match';
 /** Error diagnostic */
 export const DIAGNOSTIC_ERROR = 'diagnostic.error';
 
-/** Warning diagnostic */
-export const DIAGNOSTIC_WARN = 'diagnostic.warn';
+/** Warning diagnostic (matches server-side diagnostic.warning) */
+export const DIAGNOSTIC_WARN = 'diagnostic.warning';
 
 /** Info diagnostic */
 export const DIAGNOSTIC_INFO = 'diagnostic.info';
@@ -160,12 +196,12 @@ export const BOOKMARK = 'bookmark';
 // =============================================================================
 
 /**
- * All built-in highlight groups (42 total).
+ * All built-in highlight groups (73 total).
  *
  * Used by tests to verify theme completeness and for CSS variable generation.
  */
 export const ALL_GROUPS: readonly string[] = [
-  // Syntax (13)
+  // Syntax base (13)
   KEYWORD,
   FUNCTION,
   TYPE,
@@ -179,6 +215,38 @@ export const ALL_GROUPS: readonly string[] = [
   ATTRIBUTE,
   PROPERTY,
   TAG,
+  // Syntax sub-categories (31)
+  KEYWORD_CONTROL,
+  KEYWORD_FUNCTION,
+  KEYWORD_TYPE,
+  KEYWORD_OPERATOR,
+  TYPE_BUILTIN,
+  FUNCTION_BUILTIN,
+  FUNCTION_MACRO,
+  FUNCTION_METHOD,
+  VARIABLE_BUILTIN,
+  VARIABLE_PARAMETER,
+  VARIABLE_FIELD,
+  STRING_ESCAPE,
+  COMMENT_DOC,
+  PUNCTUATION_BRACKET,
+  PUNCTUATION_DELIMITER,
+  NAMESPACE,
+  CONSTRUCTOR,
+  LABEL,
+  BOOLEAN,
+  CHARACTER,
+  MARKUP_HEADING,
+  MARKUP_BOLD,
+  MARKUP_ITALIC,
+  MARKUP_STRIKETHROUGH,
+  MARKUP_LINK,
+  MARKUP_LINK_URL,
+  MARKUP_LIST,
+  MARKUP_RAW,
+  MARKUP_RAW_INLINE,
+  EMBEDDED,
+  SPECIAL,
   // UI (17)
   BACKGROUND,
   FOREGROUND,

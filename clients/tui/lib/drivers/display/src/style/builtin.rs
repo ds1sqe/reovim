@@ -150,6 +150,276 @@ static DARK_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| {
     );
 
     // -------------------------------------------------------------------------
+    // Syntax sub-categories (30 groups) - visually distinct variants
+    // -------------------------------------------------------------------------
+    // keyword.* -- inherit purple from KEYWORD unless distinct
+    m.insert(
+        groups::KEYWORD_CONTROL,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 198,
+                g: 120,
+                b: 221,
+            })
+            .bold(),
+    ); // Purple (same)
+    m.insert(
+        groups::KEYWORD_FUNCTION,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 198,
+                g: 120,
+                b: 221,
+            })
+            .bold(),
+    ); // Purple (same)
+    m.insert(
+        groups::KEYWORD_TYPE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 198,
+                g: 120,
+                b: 221,
+            })
+            .bold(),
+    ); // Purple (same)
+    m.insert(
+        groups::KEYWORD_OPERATOR,
+        Style::new().fg(Color::Rgb {
+            r: 198,
+            g: 120,
+            b: 221,
+        }),
+    ); // Purple (no bold)
+    // type.builtin -- italic to distinguish from user types
+    m.insert(
+        groups::TYPE_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 229,
+                g: 192,
+                b: 123,
+            })
+            .italic(),
+    ); // Yellow italic
+    // function.* -- blue family
+    m.insert(
+        groups::FUNCTION_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 97,
+                g: 175,
+                b: 239,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(
+        groups::FUNCTION_MACRO,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 86,
+                g: 182,
+                b: 194,
+            })
+            .italic(),
+    ); // Cyan italic
+    m.insert(
+        groups::FUNCTION_METHOD,
+        Style::new().fg(Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239,
+        }),
+    ); // Blue (same)
+    // variable.* -- red family
+    m.insert(
+        groups::VARIABLE_BUILTIN,
+        Style::new().fg(Color::Rgb {
+            r: 209,
+            g: 154,
+            b: 102,
+        }),
+    ); // Orange
+    m.insert(
+        groups::VARIABLE_PARAMETER,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 224,
+                g: 108,
+                b: 117,
+            })
+            .italic(),
+    ); // Red italic
+    m.insert(
+        groups::VARIABLE_FIELD,
+        Style::new().fg(Color::Rgb {
+            r: 224,
+            g: 108,
+            b: 117,
+        }),
+    ); // Red (same as VARIABLE)
+    // string.escape -- orange to stand out in green strings
+    m.insert(
+        groups::STRING_ESCAPE,
+        Style::new().fg(Color::Rgb {
+            r: 209,
+            g: 154,
+            b: 102,
+        }),
+    ); // Orange
+    // comment.doc -- slightly brighter grey, bold
+    m.insert(
+        groups::COMMENT_DOC,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 108,
+                g: 115,
+                b: 128,
+            })
+            .italic()
+            .bold(),
+    ); // Brighter grey
+    // punctuation.* -- foreground color
+    m.insert(
+        groups::PUNCTUATION_BRACKET,
+        Style::new().fg(Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::PUNCTUATION_DELIMITER,
+        Style::new().fg(Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191,
+        }),
+    ); // Foreground
+    // standalone sub-categories
+    m.insert(
+        groups::NAMESPACE,
+        Style::new().fg(Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239,
+        }),
+    ); // Blue
+    m.insert(
+        groups::CONSTRUCTOR,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 229,
+                g: 192,
+                b: 123,
+            })
+            .bold(),
+    ); // Yellow bold
+    m.insert(
+        groups::LABEL,
+        Style::new().fg(Color::Rgb {
+            r: 198,
+            g: 120,
+            b: 221,
+        }),
+    ); // Purple
+    m.insert(
+        groups::BOOLEAN,
+        Style::new().fg(Color::Rgb {
+            r: 209,
+            g: 154,
+            b: 102,
+        }),
+    ); // Orange
+    m.insert(
+        groups::CHARACTER,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 195,
+            b: 121,
+        }),
+    ); // Green
+    // markup.* -- document formatting
+    m.insert(
+        groups::MARKUP_HEADING,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 97,
+                g: 175,
+                b: 239,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(groups::MARKUP_BOLD, Style::new().bold());
+    m.insert(groups::MARKUP_ITALIC, Style::new().italic());
+    m.insert(
+        groups::MARKUP_STRIKETHROUGH,
+        Style::new().fg(Color::Rgb {
+            r: 92,
+            g: 99,
+            b: 112,
+        }),
+    ); // Grey
+    m.insert(
+        groups::MARKUP_LINK,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 86,
+                g: 182,
+                b: 194,
+            })
+            .underline(),
+    ); // Cyan underline
+    m.insert(
+        groups::MARKUP_LINK_URL,
+        Style::new().fg(Color::Rgb {
+            r: 86,
+            g: 182,
+            b: 194,
+        }),
+    ); // Cyan
+    m.insert(
+        groups::MARKUP_LIST,
+        Style::new().fg(Color::Rgb {
+            r: 198,
+            g: 120,
+            b: 221,
+        }),
+    ); // Purple
+    m.insert(
+        groups::MARKUP_RAW,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 195,
+            b: 121,
+        }),
+    ); // Green
+    m.insert(
+        groups::MARKUP_RAW_INLINE,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 195,
+            b: 121,
+        }),
+    ); // Green
+    m.insert(
+        groups::EMBEDDED,
+        Style::new().fg(Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::SPECIAL,
+        Style::new().fg(Color::Rgb {
+            r: 86,
+            g: 182,
+            b: 194,
+        }),
+    ); // Cyan
+
+    // -------------------------------------------------------------------------
     // UI colors (17 groups)
     // -------------------------------------------------------------------------
     m.insert(
@@ -562,6 +832,267 @@ static LIGHT_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| 
     );
 
     // -------------------------------------------------------------------------
+    // Syntax sub-categories (30 groups) - Light theme variants
+    // -------------------------------------------------------------------------
+    m.insert(
+        groups::KEYWORD_CONTROL,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 166,
+                g: 38,
+                b: 164,
+            })
+            .bold(),
+    ); // Magenta
+    m.insert(
+        groups::KEYWORD_FUNCTION,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 166,
+                g: 38,
+                b: 164,
+            })
+            .bold(),
+    ); // Magenta
+    m.insert(
+        groups::KEYWORD_TYPE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 166,
+                g: 38,
+                b: 164,
+            })
+            .bold(),
+    ); // Magenta
+    m.insert(
+        groups::KEYWORD_OPERATOR,
+        Style::new().fg(Color::Rgb {
+            r: 166,
+            g: 38,
+            b: 164,
+        }),
+    ); // Magenta (no bold)
+    m.insert(
+        groups::TYPE_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 193,
+                g: 132,
+                b: 1,
+            })
+            .italic(),
+    ); // Yellow italic
+    m.insert(
+        groups::FUNCTION_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 64,
+                g: 120,
+                b: 242,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(
+        groups::FUNCTION_MACRO,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 1,
+                g: 132,
+                b: 188,
+            })
+            .italic(),
+    ); // Cyan italic
+    m.insert(
+        groups::FUNCTION_METHOD,
+        Style::new().fg(Color::Rgb {
+            r: 64,
+            g: 120,
+            b: 242,
+        }),
+    ); // Blue
+    m.insert(
+        groups::VARIABLE_BUILTIN,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 104,
+            b: 1,
+        }),
+    ); // Orange
+    m.insert(
+        groups::VARIABLE_PARAMETER,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 228,
+                g: 86,
+                b: 73,
+            })
+            .italic(),
+    ); // Red italic
+    m.insert(
+        groups::VARIABLE_FIELD,
+        Style::new().fg(Color::Rgb {
+            r: 228,
+            g: 86,
+            b: 73,
+        }),
+    ); // Red
+    m.insert(
+        groups::STRING_ESCAPE,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 104,
+            b: 1,
+        }),
+    ); // Orange
+    m.insert(
+        groups::COMMENT_DOC,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 130,
+                g: 131,
+                b: 137,
+            })
+            .italic()
+            .bold(),
+    ); // Darker grey
+    m.insert(
+        groups::PUNCTUATION_BRACKET,
+        Style::new().fg(Color::Rgb {
+            r: 56,
+            g: 58,
+            b: 66,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::PUNCTUATION_DELIMITER,
+        Style::new().fg(Color::Rgb {
+            r: 56,
+            g: 58,
+            b: 66,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::NAMESPACE,
+        Style::new().fg(Color::Rgb {
+            r: 64,
+            g: 120,
+            b: 242,
+        }),
+    ); // Blue
+    m.insert(
+        groups::CONSTRUCTOR,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 193,
+                g: 132,
+                b: 1,
+            })
+            .bold(),
+    ); // Yellow bold
+    m.insert(
+        groups::LABEL,
+        Style::new().fg(Color::Rgb {
+            r: 166,
+            g: 38,
+            b: 164,
+        }),
+    ); // Magenta
+    m.insert(
+        groups::BOOLEAN,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 104,
+            b: 1,
+        }),
+    ); // Orange
+    m.insert(
+        groups::CHARACTER,
+        Style::new().fg(Color::Rgb {
+            r: 80,
+            g: 161,
+            b: 79,
+        }),
+    ); // Green
+    m.insert(
+        groups::MARKUP_HEADING,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 64,
+                g: 120,
+                b: 242,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(groups::MARKUP_BOLD, Style::new().bold());
+    m.insert(groups::MARKUP_ITALIC, Style::new().italic());
+    m.insert(
+        groups::MARKUP_STRIKETHROUGH,
+        Style::new().fg(Color::Rgb {
+            r: 160,
+            g: 161,
+            b: 167,
+        }),
+    ); // Grey
+    m.insert(
+        groups::MARKUP_LINK,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 1,
+                g: 132,
+                b: 188,
+            })
+            .underline(),
+    ); // Cyan underline
+    m.insert(
+        groups::MARKUP_LINK_URL,
+        Style::new().fg(Color::Rgb {
+            r: 1,
+            g: 132,
+            b: 188,
+        }),
+    ); // Cyan
+    m.insert(
+        groups::MARKUP_LIST,
+        Style::new().fg(Color::Rgb {
+            r: 166,
+            g: 38,
+            b: 164,
+        }),
+    ); // Magenta
+    m.insert(
+        groups::MARKUP_RAW,
+        Style::new().fg(Color::Rgb {
+            r: 80,
+            g: 161,
+            b: 79,
+        }),
+    ); // Green
+    m.insert(
+        groups::MARKUP_RAW_INLINE,
+        Style::new().fg(Color::Rgb {
+            r: 80,
+            g: 161,
+            b: 79,
+        }),
+    ); // Green
+    m.insert(
+        groups::EMBEDDED,
+        Style::new().fg(Color::Rgb {
+            r: 56,
+            g: 58,
+            b: 66,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::SPECIAL,
+        Style::new().fg(Color::Rgb {
+            r: 1,
+            g: 132,
+            b: 188,
+        }),
+    ); // Cyan
+
+    // -------------------------------------------------------------------------
     // UI colors (17 groups)
     // -------------------------------------------------------------------------
     m.insert(
@@ -971,6 +1502,267 @@ static TOKYO_NIGHT_ORANGE_PALETTE: LazyLock<HashMap<&'static str, Style>> = Lazy
             b: 142,
         }), // #f7768e Red
     );
+
+    // -------------------------------------------------------------------------
+    // Syntax sub-categories (30 groups) - Tokyo Night Orange variants
+    // -------------------------------------------------------------------------
+    m.insert(
+        groups::KEYWORD_CONTROL,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 187,
+                g: 154,
+                b: 247,
+            })
+            .bold(),
+    ); // Purple
+    m.insert(
+        groups::KEYWORD_FUNCTION,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 187,
+                g: 154,
+                b: 247,
+            })
+            .bold(),
+    ); // Purple
+    m.insert(
+        groups::KEYWORD_TYPE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 187,
+                g: 154,
+                b: 247,
+            })
+            .bold(),
+    ); // Purple
+    m.insert(
+        groups::KEYWORD_OPERATOR,
+        Style::new().fg(Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        }),
+    ); // Purple (no bold)
+    m.insert(
+        groups::TYPE_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 255,
+                g: 158,
+                b: 100,
+            })
+            .italic(),
+    ); // Orange italic
+    m.insert(
+        groups::FUNCTION_BUILTIN,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 122,
+                g: 162,
+                b: 247,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(
+        groups::FUNCTION_MACRO,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 137,
+                g: 221,
+                b: 255,
+            })
+            .italic(),
+    ); // Cyan italic
+    m.insert(
+        groups::FUNCTION_METHOD,
+        Style::new().fg(Color::Rgb {
+            r: 122,
+            g: 162,
+            b: 247,
+        }),
+    ); // Blue
+    m.insert(
+        groups::VARIABLE_BUILTIN,
+        Style::new().fg(Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        }),
+    ); // Orange
+    m.insert(
+        groups::VARIABLE_PARAMETER,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 247,
+                g: 118,
+                b: 142,
+            })
+            .italic(),
+    ); // Red italic
+    m.insert(
+        groups::VARIABLE_FIELD,
+        Style::new().fg(Color::Rgb {
+            r: 115,
+            g: 218,
+            b: 202,
+        }),
+    ); // Teal
+    m.insert(
+        groups::STRING_ESCAPE,
+        Style::new().fg(Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        }),
+    ); // Orange
+    m.insert(
+        groups::COMMENT_DOC,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 96,
+                g: 105,
+                b: 147,
+            })
+            .italic()
+            .bold(),
+    ); // Brighter grey
+    m.insert(
+        groups::PUNCTUATION_BRACKET,
+        Style::new().fg(Color::Rgb {
+            r: 169,
+            g: 177,
+            b: 214,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::PUNCTUATION_DELIMITER,
+        Style::new().fg(Color::Rgb {
+            r: 169,
+            g: 177,
+            b: 214,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::NAMESPACE,
+        Style::new().fg(Color::Rgb {
+            r: 122,
+            g: 162,
+            b: 247,
+        }),
+    ); // Blue
+    m.insert(
+        groups::CONSTRUCTOR,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 224,
+                g: 175,
+                b: 104,
+            })
+            .bold(),
+    ); // Yellow bold
+    m.insert(
+        groups::LABEL,
+        Style::new().fg(Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        }),
+    ); // Purple
+    m.insert(
+        groups::BOOLEAN,
+        Style::new().fg(Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        }),
+    ); // Orange
+    m.insert(
+        groups::CHARACTER,
+        Style::new().fg(Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        }),
+    ); // Green
+    m.insert(
+        groups::MARKUP_HEADING,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 122,
+                g: 162,
+                b: 247,
+            })
+            .bold(),
+    ); // Blue bold
+    m.insert(groups::MARKUP_BOLD, Style::new().bold());
+    m.insert(groups::MARKUP_ITALIC, Style::new().italic());
+    m.insert(
+        groups::MARKUP_STRIKETHROUGH,
+        Style::new().fg(Color::Rgb {
+            r: 86,
+            g: 95,
+            b: 137,
+        }),
+    ); // Grey
+    m.insert(
+        groups::MARKUP_LINK,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 125,
+                g: 207,
+                b: 255,
+            })
+            .underline(),
+    ); // Cyan underline
+    m.insert(
+        groups::MARKUP_LINK_URL,
+        Style::new().fg(Color::Rgb {
+            r: 125,
+            g: 207,
+            b: 255,
+        }),
+    ); // Cyan
+    m.insert(
+        groups::MARKUP_LIST,
+        Style::new().fg(Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        }),
+    ); // Purple
+    m.insert(
+        groups::MARKUP_RAW,
+        Style::new().fg(Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        }),
+    ); // Green
+    m.insert(
+        groups::MARKUP_RAW_INLINE,
+        Style::new().fg(Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        }),
+    ); // Green
+    m.insert(
+        groups::EMBEDDED,
+        Style::new().fg(Color::Rgb {
+            r: 169,
+            g: 177,
+            b: 214,
+        }),
+    ); // Foreground
+    m.insert(
+        groups::SPECIAL,
+        Style::new().fg(Color::Rgb {
+            r: 137,
+            g: 221,
+            b: 255,
+        }),
+    ); // Cyan
 
     // -------------------------------------------------------------------------
     // UI colors (17 groups)

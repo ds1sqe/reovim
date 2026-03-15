@@ -2,9 +2,9 @@ use super::*;
 
 #[test]
 fn test_all_groups_count() {
-    // 13 syntax + 17 UI + 4 diagnostic + 8 gutter = 42 groups
+    // 13 syntax base + 31 syntax sub-categories + 17 UI + 4 diagnostic + 8 gutter = 73 groups
     // Module-specific groups (e.g., rainbow brackets) are registered via StyleGroupRegistry
-    assert_eq!(ALL_GROUPS.len(), 42);
+    assert_eq!(ALL_GROUPS.len(), 73);
 }
 
 #[test]

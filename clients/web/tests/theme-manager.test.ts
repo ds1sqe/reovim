@@ -657,8 +657,8 @@ describe("Built-in Themes", () => {
 // ============ Highlight Groups Tests ============
 
 describe("Highlight Groups", () => {
-  it("ALL_GROUPS contains 42 groups", () => {
-    expect(ALL_GROUPS.length).toBe(42);
+  it("ALL_GROUPS contains 73 groups", () => {
+    expect(ALL_GROUPS.length).toBe(73);
   });
 
   it("SYNTAX_GROUPS contains 13 groups", () => {

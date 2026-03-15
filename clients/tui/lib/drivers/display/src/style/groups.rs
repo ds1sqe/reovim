@@ -277,13 +277,13 @@ pub const BOOKMARK: &str = "bookmark";
 // All Groups (for testing completeness)
 // ============================================================================
 
-/// All built-in highlight groups (42 total).
+/// All built-in highlight groups (73 total).
 ///
 /// Used by tests to verify theme completeness.
 /// Additional groups (e.g., rainbow brackets) are registered by modules
 /// via `StyleGroupRegistry` at runtime.
 pub const ALL_GROUPS: &[&str] = &[
-    // Syntax (13)
+    // Syntax base (13)
     KEYWORD,
     FUNCTION,
     TYPE,
@@ -297,6 +297,38 @@ pub const ALL_GROUPS: &[&str] = &[
     ATTRIBUTE,
     PROPERTY,
     TAG,
+    // Syntax sub-categories (30)
+    KEYWORD_CONTROL,
+    KEYWORD_FUNCTION,
+    KEYWORD_TYPE,
+    KEYWORD_OPERATOR,
+    TYPE_BUILTIN,
+    FUNCTION_BUILTIN,
+    FUNCTION_MACRO,
+    FUNCTION_METHOD,
+    VARIABLE_BUILTIN,
+    VARIABLE_PARAMETER,
+    VARIABLE_FIELD,
+    STRING_ESCAPE,
+    COMMENT_DOC,
+    PUNCTUATION_BRACKET,
+    PUNCTUATION_DELIMITER,
+    NAMESPACE,
+    CONSTRUCTOR,
+    LABEL,
+    BOOLEAN,
+    CHARACTER,
+    MARKUP_HEADING,
+    MARKUP_BOLD,
+    MARKUP_ITALIC,
+    MARKUP_STRIKETHROUGH,
+    MARKUP_LINK,
+    MARKUP_LINK_URL,
+    MARKUP_LIST,
+    MARKUP_RAW,
+    MARKUP_RAW_INLINE,
+    EMBEDDED,
+    SPECIAL,
     // UI (17)
     BACKGROUND,
     FOREGROUND,
