@@ -228,6 +228,18 @@ pub const CMDLINE_COMPLETE_PREV: CommandId = CommandId::new(MODULE, "cmdline-com
 /// Enter window mode (Ctrl-w).
 pub const ENTER_WINDOW_MODE: CommandId = CommandId::new(MODULE, "enter-window-mode");
 
+/// Enter replace mode (R).
+///
+/// Switches to replace mode where typed characters overwrite existing text.
+/// Backspace restores original characters.
+pub const ENTER_REPLACE_MODE: CommandId = CommandId::new(MODULE, "enter-replace-mode");
+
+/// Backspace in replace mode.
+///
+/// Restores the original character that was overwritten by replace mode.
+/// Pops from the replace restore stack in `VimSessionState`.
+pub const REPLACE_BACKSPACE: CommandId = CommandId::new(MODULE, "replace-backspace");
+
 /// Cancel and return to normal mode (no cursor adjustment).
 ///
 /// Used by operator modes (delete, yank, change) when escape is pressed.

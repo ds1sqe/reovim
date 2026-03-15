@@ -4,6 +4,7 @@ mod delete;
 mod insert;
 mod normal;
 mod operator_common;
+mod replace;
 mod visual;
 mod window;
 mod yank;

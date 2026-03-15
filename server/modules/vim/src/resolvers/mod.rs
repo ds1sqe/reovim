@@ -25,6 +25,7 @@ mod delete;
 mod insert;
 mod normal;
 pub mod operator_common;
+mod replace;
 mod visual;
 mod window;
 mod yank;
@@ -34,6 +35,9 @@ pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankReso
 
 // Case operator resolver (#666)
 pub use case::VimCaseResolver;
+
+// Replace mode resolver (#666)
+pub use replace::VimReplaceResolver;
 
 // Window mode resolver (Epic #438)
 pub use window::VimWindowResolver;

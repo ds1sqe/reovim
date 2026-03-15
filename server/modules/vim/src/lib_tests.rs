@@ -367,9 +367,9 @@ fn test_init_registers_resolvers() {
     let resolver_registry = ctx.services.get::<ResolverRegistry>();
     assert!(resolver_registry.is_some(), "ResolverRegistry should exist after init");
     let resolver_registry = resolver_registry.unwrap();
-    // Should have: normal, insert, delete, yank, change, commandline, window,
-    // visual, visual-line, visual-block, lowercase, uppercase, toggle-case = 13
-    assert_eq!(resolver_registry.len(), 13, "Should register 13 resolvers");
+    // Should have: normal, insert, replace, delete, yank, change, commandline, window,
+    // visual, visual-line, visual-block, lowercase, uppercase, toggle-case = 14
+    assert_eq!(resolver_registry.len(), 14, "Should register 14 resolvers");
 }
 
 #[test]

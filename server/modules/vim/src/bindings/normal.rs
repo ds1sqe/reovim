@@ -229,6 +229,10 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("edit")
             .with_description("Replace character"),
+        KeybindingRegistration::new("R", vim::ENTER_REPLACE_MODE)
+            .with_modes(&["vim:normal"])
+            .with_category("mode")
+            .with_description("Enter replace mode"),
         KeybindingRegistration::new("~", editor::TOGGLE_CASE)
             .with_modes(&["vim:normal"])
             .with_category("edit")

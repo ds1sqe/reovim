@@ -114,15 +114,15 @@ pub use vim_lookup_policy::VimLookupPolicy;
 // Re-export mode commands (Epic #372 - Mode Ownership)
 pub use commands::{
     ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
-    EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterSearchBackward,
-    EnterSearchForward, EnterWindowMode, ExecuteFindChar, ExitCommandLineMode, ExitToNormal,
-    OpenLineAbove, OpenLineBelow,
+    EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterReplaceMode,
+    EnterSearchBackward, EnterSearchForward, EnterWindowMode, ExecuteFindChar,
+    ExitCommandLineMode, ExitToNormal, OpenLineAbove, OpenLineBelow, ReplaceBackspace,
 };
 
 // Re-export resolvers
 pub use resolvers::{
     VimCaseResolver, VimChangeResolver, VimCommandLineResolver, VimDeleteResolver,
-    VimInsertResolver, VimNormalResolver, VimVisualResolver, VimYankResolver,
+    VimInsertResolver, VimNormalResolver, VimReplaceResolver, VimVisualResolver, VimYankResolver,
 };
 
 // Re-export visual mode commands
@@ -224,6 +224,9 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimVisualResolver::character_wise());
         resolver_registry.register(resolvers::VimVisualResolver::line_wise());
         resolver_registry.register(resolvers::VimVisualResolver::block_wise());
+
+        // Replace mode resolver (#666)
+        resolver_registry.register(resolvers::VimReplaceResolver::new());
 
         // Case operator resolvers (#666)
         resolver_registry.register(resolvers::VimCaseResolver::new(

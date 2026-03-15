@@ -43,10 +43,30 @@
 //! }
 //! ```
 
-use {reovim_driver_input::KeyEvent, reovim_driver_session::SessionExtension};
+use {
+    reovim_driver_input::KeyEvent,
+    reovim_driver_session::SessionExtension,
+    reovim_kernel::api::v1::Position,
+};
 
 // Re-export TextObjRange from session driver for convenience
 pub use reovim_driver_session::TextObjRange;
+
+// =============================================================================
+// Replace Mode Types (#666)
+// =============================================================================
+
+/// Entry in the replace mode restore stack.
+///
+/// Records the position and original character that was overwritten.
+/// Used by backspace to restore the original.
+#[derive(Debug, Clone, Copy)]
+pub struct ReplaceRestoreEntry {
+    /// The position where the replacement occurred.
+    pub position: Position,
+    /// The original character (`None` if cursor was at EOL — char was inserted).
+    pub original: Option<char>,
+}
 
 /// Vim-specific per-session state.
 ///
@@ -149,6 +169,16 @@ pub struct VimSessionState {
     /// Cleared when recording starts, saved into `last_change.keys` when
     /// recording finishes. Used by `.` to replay the exact key sequence.
     pub repeat_keys: Vec<KeyEvent>,
+
+    // =========================================================================
+    // Replace Mode State (#666)
+    // =========================================================================
+    /// Restore stack for replace mode backspace.
+    ///
+    /// Each entry records the position and original character that was
+    /// overwritten. Backspace pops from this stack to restore the original.
+    /// Cleared on replace mode entry.
+    pub replace_restore_stack: Vec<ReplaceRestoreEntry>,
 }
 
 impl SessionExtension for VimSessionState {

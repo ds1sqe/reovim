@@ -189,6 +189,130 @@ impl CommandHandler for ExitToNormal {
     }
 }
 
+/// Enter replace mode (R in normal mode).
+///
+/// In replace mode, typed characters overwrite existing text at the cursor.
+/// Backspace restores original characters. Escape returns to normal mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterReplaceMode;
+
+impl Command for EnterReplaceMode {
+    fn id(&self) -> CommandId {
+        ids::ENTER_REPLACE_MODE
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter replace mode"
+    }
+}
+
+impl CommandHandler for EnterReplaceMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // Start undo batching for replace mode (like insert mode entry)
+        if let Some(buffer_id) = args.buffer_id() {
+            begin_insert_batch(runtime, buffer_id);
+        }
+        // Clear insert buffer and replace restore stack
+        if let Some(vim) = runtime.ext_mut::<crate::VimSessionState>().into() {
+            vim.insert_buffer.clear();
+            vim.replace_restore_stack.clear();
+        }
+        runtime.set_mode(VimMode::REPLACE_ID, TransitionContext::new());
+        CommandResult::Success
+    }
+}
+
+/// Backspace in replace mode.
+///
+/// Restores the original character that was overwritten. Pops from
+/// the replace restore stack in `VimSessionState`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReplaceBackspace;
+
+impl Command for ReplaceBackspace {
+    fn id(&self) -> CommandId {
+        ids::REPLACE_BACKSPACE
+    }
+
+    fn description(&self) -> &'static str {
+        "Restore original character in replace mode"
+    }
+}
+
+impl CommandHandler for ReplaceBackspace {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let entry = runtime
+            .ext_mut::<crate::VimSessionState>()
+            .replace_restore_stack
+            .pop();
+
+        let Some(entry) = entry else {
+            // Nothing to restore
+            return CommandResult::Success;
+        };
+
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::Success;
+        };
+        let Some(buffer_id) = window.buffer_id else {
+            return CommandResult::Success;
+        };
+        let cursor = Position::new(window.cursor.line, window.cursor.column);
+
+        if cursor.column > 0 {
+            let delete_col = cursor.column - 1;
+            // Delete the replacement character
+            runtime.delete_range(buffer_id, Position::new(cursor.line, delete_col), cursor);
+
+            // Restore original character if there was one
+            if let Some(original) = entry.original {
+                let restore_str = String::from(original);
+                runtime.insert_text(buffer_id, Position::new(cursor.line, delete_col), &restore_str);
+            }
+
+            // Move cursor back
+            if let Some(w) = runtime.windows_mut().active_mut() {
+                w.cursor.column = delete_col;
+            }
+        } else if cursor.line > 0 {
+            // At start of line — join with previous line
+            let prev_line_len = runtime
+                .buffer_line_len(buffer_id, cursor.line - 1)
+                .unwrap_or(0);
+
+            // Delete the newline
+            runtime.delete_range(
+                buffer_id,
+                Position::new(cursor.line - 1, prev_line_len),
+                Position::new(cursor.line, 0),
+            );
+
+            // Restore original char if there was one
+            if let Some(original) = entry.original {
+                let restore_str = String::from(original);
+                runtime.insert_text(
+                    buffer_id,
+                    Position::new(cursor.line - 1, prev_line_len),
+                    &restore_str,
+                );
+            }
+
+            // Move cursor to join point
+            if let Some(w) = runtime.windows_mut().active_mut() {
+                w.cursor.line -= 1;
+                w.cursor.column = prev_line_len;
+            }
+        }
+
+        // Pop from insert buffer for dot repeat
+        runtime.ext_mut::<crate::VimSessionState>().insert_buffer.pop();
+
+        CommandResult::Success
+    }
+}
+
 /// Enter window management mode (Ctrl-W in normal mode).
 ///
 /// This pushes "window" mode onto the mode stack. In window mode,

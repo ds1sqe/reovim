@@ -3,7 +3,7 @@ use super::super::*;
 #[test]
 fn test_mode_commands_count() {
     let cmds = mode_commands();
-    assert_eq!(cmds.len(), 30);
+    assert_eq!(cmds.len(), 32);
 }
 
 #[test]
@@ -134,4 +134,20 @@ fn test_mode_commands_contains_cancel_to_normal() {
     let cmds = mode_commands();
     let has_cancel = cmds.iter().any(|c| c.id() == ids::CANCEL_TO_NORMAL);
     assert!(has_cancel);
+}
+
+#[test]
+fn test_mode_commands_contains_enter_replace_mode() {
+    use crate::ids;
+    let cmds = mode_commands();
+    let has_enter_replace = cmds.iter().any(|c| c.id() == ids::ENTER_REPLACE_MODE);
+    assert!(has_enter_replace);
+}
+
+#[test]
+fn test_mode_commands_contains_replace_backspace() {
+    use crate::ids;
+    let cmds = mode_commands();
+    let has_replace_bs = cmds.iter().any(|c| c.id() == ids::REPLACE_BACKSPACE);
+    assert!(has_replace_bs);
 }
