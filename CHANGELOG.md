@@ -6,6 +6,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **UI/UX visual polish (#659, part of #653)**: Comprehensive visual
+  enhancements with expanded highlight groups, Nerd Font icons, and
+  diagnostic gutter support. Highlight groups expanded from 42 to 73
+  with 31 syntax sub-categories (keyword.control, function.macro,
+  type.builtin, variable.parameter, etc.) and explicit palette entries
+  in all 3 builtin themes (Dark, Light, Tokyo Night Orange).
+  Completion popup shows Nerd Font kind icons (17 CompletionKind
+  variants mapped to glyphs). Notification level icons replaced with
+  Nerd Font (info, check, alert, close_circle). Explorer shows file
+  type icons for 20+ extensions and special directory icons. Picker
+  results show file type icons. DiagnosticPresenter renders severity
+  icons in the gutter (error/warning/info/hint with colors). Fixed web
+  DIAGNOSTIC_WARN key mismatch (diagnostic.warn -> diagnostic.warning).
+
 - **Treesitter-based semantic text objects (#656, part of #653)**: 14 new
   treesitter-based text objects (7 kinds x inner/around): function (if/af),
   class (ic/ac), argument (ia/aa), conditional (io/ao), loop (il/al),
