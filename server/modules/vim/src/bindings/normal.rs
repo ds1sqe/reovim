@@ -365,6 +365,17 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("mark")
             .with_description("Go to mark (exact position)"),
         // ====================================================================
+        // Jump List
+        // ====================================================================
+        KeybindingRegistration::new("<C-o>", editor::JUMP_BACKWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("jump")
+            .with_description("Jump to older position"),
+        KeybindingRegistration::new("<C-i>", editor::JUMP_FORWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("jump")
+            .with_description("Jump to newer position"),
+        // ====================================================================
         // Join
         // ====================================================================
         KeybindingRegistration::new("J", editor::JOIN_LINES)

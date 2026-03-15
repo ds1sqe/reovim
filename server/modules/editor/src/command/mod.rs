@@ -29,6 +29,7 @@ mod delete;
 mod display_line;
 mod file;
 mod insert_edit;
+mod jump;
 mod mark;
 mod operators;
 mod paste;
@@ -43,6 +44,7 @@ pub use {
     display_line::{CursorDisplayDown, CursorDisplayUp},
     file::WriteBufferCommand,
     insert_edit::{InsertNewline, InsertTab, get_line_indent},
+    jump::{JumpBackward, JumpForward},
     mark::{GotoMarkExact, GotoMarkLine, SetMark},
     operators::{
         EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
@@ -109,6 +111,9 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(SetMark),
         Box::new(GotoMarkLine),
         Box::new(GotoMarkExact),
+        // Jump list
+        Box::new(JumpBackward),
+        Box::new(JumpForward),
     ]
 }
 
@@ -173,6 +178,12 @@ pub fn mark_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(GotoMarkLine),
         Box::new(GotoMarkExact),
     ]
+}
+
+/// Get all jump list commands.
+#[must_use]
+pub fn jump_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(JumpBackward), Box::new(JumpForward)]
 }
 
 #[cfg(test)]

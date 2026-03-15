@@ -10,7 +10,9 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine, Position},
+    reovim_kernel::api::v1::{
+        CommandId, Cursor, JumpEntry, LinePosition, Motion, MotionEngine, Position,
+    },
 };
 
 use crate::ids;
@@ -114,6 +116,11 @@ fn execute_jump_line(
     if new_pos == old_pos {
         return CommandResult::Success; // No movement
     }
+
+    // Push current position to jump list before major jump (#654)
+    runtime
+        .jumplist_mut()
+        .push(JumpEntry::new(buffer_id, old_pos));
 
     // Move cursor via per-client Window (#471)
     if let Some(window) = runtime.windows_mut().active_mut() {

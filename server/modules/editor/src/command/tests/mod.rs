@@ -2,6 +2,7 @@ mod cursor;
 mod delete;
 mod display_line;
 mod file;
+mod jump;
 mod mod_tests;
 mod operators;
 mod paste;

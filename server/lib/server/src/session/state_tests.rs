@@ -3,8 +3,8 @@ use {
     parking_lot::RwLock as ParkingLotRwLock,
     reovim_driver_buffer::TestBufferManager,
     reovim_kernel::api::v1::{
-        EventBus, HistoryRing, MarkBank, ModuleId, MotionEngine, OptionRegistry, RegisterBank,
-        ServiceRegistry, TextObjectEngine,
+        EventBus, HistoryRing, Jumplist, MarkBank, ModuleId, MotionEngine, OptionRegistry,
+        RegisterBank, ServiceRegistry, TextObjectEngine,
     },
 };
 
@@ -120,6 +120,7 @@ fn test_resolve_key_for_client_mode_isolation() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -136,6 +137,7 @@ fn test_resolve_key_for_client_mode_isolation() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -354,6 +356,7 @@ fn test_try_on_command_complete_for_client_returns_none_without_resolver() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -368,6 +371,7 @@ fn test_try_on_command_complete_for_client_returns_none_without_resolver() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -391,6 +395,7 @@ fn test_execute_command_for_client_returns_none_without_command() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -411,6 +416,7 @@ fn test_execute_command_for_client_returns_none_without_command() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -564,6 +570,7 @@ fn test_resolve_key_for_client_no_resolver() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -579,6 +586,7 @@ fn test_resolve_key_for_client_no_resolver() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -839,6 +847,7 @@ fn test_resolve_key_for_client_different_modes() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -854,6 +863,7 @@ fn test_resolve_key_for_client_different_modes() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -913,6 +923,7 @@ fn test_execute_command_for_client_with_registered_command() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -928,6 +939,7 @@ fn test_execute_command_for_client_with_registered_command() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1358,6 +1370,7 @@ fn test_try_on_command_complete_for_client_with_resolver() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1372,6 +1385,7 @@ fn test_try_on_command_complete_for_client_with_resolver() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1466,6 +1480,7 @@ fn test_try_on_command_complete_for_client_exercises_stub_executor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1480,6 +1495,7 @@ fn test_try_on_command_complete_for_client_exercises_stub_executor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1580,6 +1596,7 @@ fn test_resolve_key_for_client_exercises_stub_executor() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1595,6 +1612,7 @@ fn test_resolve_key_for_client_exercises_stub_executor() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -1766,6 +1784,7 @@ fn resolve_pb_test(
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -1780,6 +1799,7 @@ fn resolve_pb_test(
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

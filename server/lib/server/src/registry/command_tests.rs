@@ -3,7 +3,7 @@ use {
     reovim_driver_command::{ArgSpec, Command},
     reovim_driver_session::ClientId,
     reovim_driver_vfs::MockVfs,
-    reovim_kernel::api::v1::{HistoryRing, KernelContext, MarkBank, ModuleId, RegisterBank},
+    reovim_kernel::api::v1::{HistoryRing, Jumplist, KernelContext, MarkBank, ModuleId, RegisterBank},
 };
 
 fn test_vfs() -> Arc<dyn VfsDriver> {
@@ -107,6 +107,7 @@ fn test_command_registry_execute_for_client() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -123,6 +124,7 @@ fn test_command_registry_execute_for_client() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -414,6 +416,7 @@ fn test_command_registry_execute_for_client_not_found() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
@@ -430,6 +433,7 @@ fn test_command_registry_execute_for_client_not_found() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },
@@ -508,6 +512,7 @@ fn test_command_registry_execute_with_buffer() {
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
     let mut active_buffer = Some(buffer_id); // Per-client active_buffer (#471)
     let mut terminal_size = (80u16, 24u16);
 
@@ -524,6 +529,7 @@ fn test_command_registry_execute_with_buffer() {
             registers: &mut registers,
             clipboard_history: &mut clipboard_history,
             local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
             active_buffer: &mut active_buffer,
             terminal_size: &mut terminal_size,
         },

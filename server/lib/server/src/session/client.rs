@@ -47,7 +47,7 @@ use {
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
         Window, WindowLayout,
     },
-    reovim_kernel::api::v1::{BufferId, HistoryRing, MarkBank, ModeStack, RegisterBank},
+    reovim_kernel::api::v1::{BufferId, HistoryRing, Jumplist, MarkBank, ModeStack, RegisterBank},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};
@@ -635,6 +635,12 @@ pub struct EditingState {
     /// shared in `KernelContext.global_marks`.
     pub local_marks: MarkBank,
 
+    /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
+    ///
+    /// Each client owns their own jump list. Jump positions are recorded
+    /// on cursor movements across buffer boundaries or large jumps.
+    pub jumplist: Jumplist,
+
     /// Per-client active buffer (#471).
     ///
     /// Each client tracks which buffer they are viewing independently.
@@ -662,6 +668,7 @@ impl std::fmt::Debug for EditingState {
             .field("registers", &self.registers)
             .field("clipboard_history", &self.clipboard_history)
             .field("local_marks", &self.local_marks)
+            .field("jumplist", &self.jumplist)
             .field("active_buffer", &self.active_buffer)
             .field("terminal_size", &self.terminal_size)
             .finish()
@@ -687,6 +694,7 @@ impl Clone for EditingState {
             registers: self.registers.clone(), // #515
             clipboard_history: self.clipboard_history.clone(), // #515
             local_marks: self.local_marks.clone(), // #515
+            jumplist: self.jumplist.clone(),    // #654
             active_buffer: self.active_buffer, // #471
             terminal_size: self.terminal_size, // #471
         }
@@ -712,6 +720,7 @@ impl Default for EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -734,6 +743,7 @@ impl EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -758,6 +768,7 @@ impl EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            jumplist: Jumplist::new(),
             active_buffer: None,
             terminal_size: (80, 24),
         }
@@ -788,6 +799,7 @@ impl EditingState {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            jumplist: &mut self.jumplist,
             active_buffer: &mut self.active_buffer,
             terminal_size: &mut self.terminal_size,
         }

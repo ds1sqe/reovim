@@ -187,6 +187,16 @@ pub const GOTO_MARK_LINE: CommandId = CommandId::new(MODULE, "goto-mark-line");
 pub const GOTO_MARK_EXACT: CommandId = CommandId::new(MODULE, "goto-mark-exact");
 
 // =============================================================================
+// Jump List Navigation
+// =============================================================================
+
+/// Jump to older position (Ctrl-O).
+pub const JUMP_BACKWARD: CommandId = CommandId::new(MODULE, "jump-backward");
+
+/// Jump to newer position (Ctrl-I).
+pub const JUMP_FORWARD: CommandId = CommandId::new(MODULE, "jump-forward");
+
+// =============================================================================
 // Case Operations (not yet implemented)
 // =============================================================================
 

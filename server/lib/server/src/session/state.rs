@@ -25,7 +25,7 @@ use {
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack, RegisterContent,
+        Buffer, BufferId, CommandId, Jumplist, KernelContext, ModeId, ModeStack, RegisterContent,
     },
 };
 
@@ -376,6 +376,7 @@ impl SessionState {
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;
         let mut terminal_size = (80u16, 24u16);
 
@@ -390,6 +391,7 @@ impl SessionState {
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
+                jumplist: &mut temp_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -476,6 +478,7 @@ impl SessionState {
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
+            jumplist: client_jumplist,
             active_buffer: client_active_buffer,
             terminal_size: client_terminal_size,
         } = client;
@@ -504,6 +507,7 @@ impl SessionState {
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
+                jumplist: client_jumplist,
                 active_buffer: client_active_buffer,
                 terminal_size: client_terminal_size,
             },
@@ -632,6 +636,7 @@ impl SessionState {
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;
         let mut terminal_size = (80u16, 24u16);
 
@@ -646,6 +651,7 @@ impl SessionState {
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
+                jumplist: &mut temp_jumplist,
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
@@ -698,6 +704,7 @@ impl SessionState {
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
+            jumplist: client_jumplist,
             active_buffer: client_active_buffer,
             terminal_size: client_terminal_size,
         } = client;
@@ -723,6 +730,7 @@ impl SessionState {
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
+                jumplist: client_jumplist,
                 active_buffer: client_active_buffer,
                 terminal_size: client_terminal_size,
             },

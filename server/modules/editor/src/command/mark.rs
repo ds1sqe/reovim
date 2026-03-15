@@ -10,7 +10,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{SessionRuntime, api::BufferApi},
-    reovim_kernel::api::v1::{CommandId, Mark, Position},
+    reovim_kernel::api::v1::{CommandId, JumpEntry, Mark, Position},
 };
 
 use crate::ids;
@@ -181,6 +181,14 @@ fn goto_mark(
     let Some((mark_pos, mark_buffer)) = mark_result else {
         return CommandResult::error("Mark not set");
     };
+
+    // Push current position to jump list before mark jump (#654)
+    if let Some(window) = runtime.windows().active() {
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
+        runtime
+            .jumplist_mut()
+            .push(JumpEntry::new(buffer_id, old_pos));
+    }
 
     // If mark is in a different buffer, switch active buffer
     if mark_buffer != buffer_id {

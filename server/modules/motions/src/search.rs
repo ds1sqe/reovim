@@ -333,7 +333,10 @@ fn search_and_move(
     pattern: &str,
     direction: Direction,
 ) -> CommandResult {
-    use {reovim_driver_session::ChangeTracker, reovim_kernel::api::v1::Position};
+    use {
+        reovim_driver_session::ChangeTracker,
+        reovim_kernel::api::v1::{JumpEntry, Position},
+    };
 
     // Get active buffer and cursor position
     let Some(buffer_id) = args.buffer_id() else {
@@ -362,6 +365,10 @@ fn search_and_move(
 
     match search_result {
         Some(Ok(Some(m))) => {
+            // Push current position to jump list before search jump (#654)
+            runtime
+                .jumplist_mut()
+                .push(JumpEntry::new(buffer_id, cursor));
             // Move cursor to match start via per-client Window (#471)
             if let Some(window) = runtime.windows_mut().active_mut() {
                 window.cursor = m.start.into();
@@ -388,10 +395,17 @@ fn search_and_move_from(
     search_from: Position,
 ) -> CommandResult {
     use reovim_driver_session::ChangeTracker;
+    use reovim_kernel::api::v1::JumpEntry;
 
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
     };
+
+    // Capture cursor position before search for jumplist (#654)
+    let old_cursor = runtime
+        .windows()
+        .active()
+        .map(|w| Position::new(w.cursor.line, w.cursor.column));
 
     let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
         return CommandResult::error("Search provider not available");
@@ -407,6 +421,12 @@ fn search_and_move_from(
 
     match search_result {
         Some(Ok(Some(m))) => {
+            // Push current position to jump list before search jump (#654)
+            if let Some(pos) = old_cursor {
+                runtime
+                    .jumplist_mut()
+                    .push(JumpEntry::new(buffer_id, pos));
+            }
             // Move cursor via per-client Window (#471)
             if let Some(window) = runtime.windows_mut().active_mut() {
                 window.cursor = m.start.into();
