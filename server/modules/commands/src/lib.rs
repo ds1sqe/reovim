@@ -18,6 +18,7 @@ mod edit;
 mod quit;
 mod session;
 mod set;
+mod substitute;
 mod write;
 
 use {
@@ -31,6 +32,7 @@ pub use {
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
     set::SetCommand,
+    substitute::SubstituteCommand,
     write::{WriteCommand, WriteQuitCommand},
 };
 
@@ -44,6 +46,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(WriteQuitCommand),
         Box::new(ColorschemeCommand),
         Box::new(SetCommand),
+        Box::new(SubstituteCommand),
     ];
     cmds.extend(session::command_handlers());
     cmds

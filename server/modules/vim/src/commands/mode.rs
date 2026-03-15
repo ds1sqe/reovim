@@ -333,6 +333,35 @@ impl CommandHandler for ExitCommandLineMode {
     }
 }
 
+/// Strip range prefix from a command line string.
+///
+/// Detects and removes range prefixes like `%`, returning the range
+/// as `(start_line, end_line)` and the remaining command string.
+///
+/// Supported prefixes:
+/// - `%` — entire buffer (0, `last_line`)
+/// - No prefix — returns `None` (command handles default)
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn strip_range_prefix<'a>(
+    runtime: &SessionRuntime<'_>,
+    args: &CommandContext,
+    cmdline: &'a str,
+) -> (Option<(usize, usize)>, &'a str) {
+    let trimmed = cmdline.trim_start();
+
+    // % prefix means entire buffer
+    if let Some(rest) = trimmed.strip_prefix('%') {
+        let line_count = args
+            .buffer_id()
+            .and_then(|bid| runtime.buffer_line_count(bid))
+            .unwrap_or(1);
+        let last_line = line_count.saturating_sub(1);
+        return (Some((0, last_line)), rest);
+    }
+
+    (None, cmdline)
+}
+
 /// Execute an ex-command via `CommandNameIndex` and `runtime.execute_command()`.
 ///
 /// Parses the command line, resolves the command name via `CommandNameIndex`,
@@ -344,7 +373,10 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
         reovim_driver_session::CommandApi,
     };
 
-    let Some(parsed) = parse_cmdline(cmdline) else {
+    // Strip range prefix (%, line numbers) from cmdline (#666)
+    let (range, effective_cmdline) = strip_range_prefix(runtime, args, cmdline);
+
+    let Some(parsed) = parse_cmdline(effective_cmdline) else {
         return;
     };
 
@@ -393,6 +425,10 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
     }
     if let Some(vfs) = args.vfs() {
         ctx.set_vfs(Arc::clone(vfs));
+    }
+    // Propagate range if detected (#666)
+    if let Some((start, end)) = range {
+        ctx.set("range", reovim_driver_command_types::ArgValue::Range(start, end));
     }
 
     let result = runtime.execute_command(cmd_id, ctx);
