@@ -484,6 +484,42 @@ fn test_client_capabilities_dynamic_registration_references() {
     assert_eq!(references.dynamic_registration, Some(true));
 }
 
+#[tokio::test]
+async fn test_document_highlight_sends_request() {
+    let (client, mut rx) = test_client_with_rx();
+    let client = Arc::new(client);
+    let client_clone = Arc::clone(&client);
+
+    let uri: Uri = "file:///test.rs".parse().unwrap();
+    let position = Position::new(3, 8);
+
+    let task = tokio::spawn(async move { client_clone.document_highlight(uri, position).await });
+
+    let msg = rx.recv().await.unwrap();
+    let request_id = match msg {
+        Message::Request(req) => {
+            assert_eq!(req.method, "textDocument/documentHighlight");
+            req.id
+        }
+        _ => panic!("expected request"),
+    };
+
+    client
+        .handle_response(Response::success(request_id, Value::Null))
+        .await;
+
+    let result = task.await.unwrap().unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_client_capabilities_has_document_highlight() {
+    let caps = Client::client_capabilities();
+    let text_doc = caps.text_document.unwrap();
+    let doc_highlight = text_doc.document_highlight.unwrap();
+    assert_eq!(doc_highlight.dynamic_registration, Some(true));
+}
+
 #[test]
 fn test_client_capabilities_synchronization_not_dynamic() {
     let caps = Client::client_capabilities();

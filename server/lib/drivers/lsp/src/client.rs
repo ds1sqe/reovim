@@ -15,12 +15,12 @@ use std::{
 
 use {
     lsp_types::{
-        ClientCapabilities, CompletionParams, CompletionResponse, GotoDefinitionParams,
-        GotoDefinitionResponse, Hover, HoverParams, InitializeParams, InitializeResult,
-        InitializedParams, Location, PartialResultParams, Position, ReferenceContext,
-        ReferenceParams, ServerCapabilities, TextDocumentClientCapabilities,
-        TextDocumentIdentifier, TextDocumentPositionParams, TextDocumentSyncClientCapabilities,
-        Uri, WorkDoneProgressParams,
+        ClientCapabilities, CompletionParams, CompletionResponse, DocumentHighlight,
+        DocumentHighlightParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+        InitializeParams, InitializeResult, InitializedParams, Location, PartialResultParams,
+        Position, ReferenceContext, ReferenceParams, ServerCapabilities,
+        TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
+        TextDocumentSyncClientCapabilities, Uri, WorkDoneProgressParams,
     },
     serde_json::Value,
     tokio::{
@@ -368,6 +368,10 @@ impl Client {
                     }),
                     ..Default::default()
                 }),
+                // Enable document highlight support (dynamic registration: #664)
+                document_highlight: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                    dynamic_registration: Some(true),
+                }),
                 // Enable signature help support
                 signature_help: Some(lsp_types::SignatureHelpClientCapabilities {
                     dynamic_registration: Some(true),
@@ -516,6 +520,31 @@ impl Client {
         };
 
         self.request("textDocument/signatureHelp", params).await
+    }
+
+    /// Get document highlights for the symbol at the given position.
+    ///
+    /// Returns a list of ranges where the symbol appears, with kind
+    /// information (text, read, write).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn document_highlight(
+        &self,
+        uri: Uri,
+        position: Position,
+    ) -> Result<Option<Vec<DocumentHighlight>>, LspError> {
+        let params = DocumentHighlightParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+
+        self.request("textDocument/documentHighlight", params).await
     }
 
     /// Shutdown the language server gracefully.

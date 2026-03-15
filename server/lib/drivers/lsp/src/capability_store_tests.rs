@@ -155,6 +155,15 @@ fn test_apply_registration_document_symbol() {
     assert!(caps.document_symbol_provider.is_some());
 }
 
+#[test]
+fn test_apply_registration_document_highlight() {
+    let store = CapabilityStore::new(empty_caps());
+    let reg = make_registration("r1", "textDocument/documentHighlight");
+    assert!(store.apply_registration(&reg));
+    let caps = store.load_full();
+    assert!(caps.document_highlight_provider.is_some());
+}
+
 // ========================================================================
 // Registration with options
 // ========================================================================
@@ -256,6 +265,18 @@ fn test_apply_unregistration_removes_capability() {
     let unreg = make_unregistration("r1", "textDocument/hover");
     assert!(store.apply_unregistration(&unreg));
     assert!(store.load_full().hover_provider.is_none());
+}
+
+#[test]
+fn test_apply_unregistration_document_highlight() {
+    let store = CapabilityStore::new(empty_caps());
+    let reg = make_registration("r1", "textDocument/documentHighlight");
+    store.apply_registration(&reg);
+    assert!(store.load_full().document_highlight_provider.is_some());
+
+    let unreg = make_unregistration("r1", "textDocument/documentHighlight");
+    assert!(store.apply_unregistration(&unreg));
+    assert!(store.load_full().document_highlight_provider.is_none());
 }
 
 #[test]
@@ -390,6 +411,7 @@ fn test_clear_all_known_methods() {
     caps.code_action_provider = Some(CodeActionProviderCapability::Simple(true));
     caps.document_formatting_provider = Some(OneOf::Left(true));
     caps.document_symbol_provider = Some(OneOf::Left(true));
+    caps.document_highlight_provider = Some(OneOf::Left(true));
 
     for method in [
         "textDocument/completion",
@@ -400,6 +422,7 @@ fn test_clear_all_known_methods() {
         "textDocument/codeAction",
         "textDocument/formatting",
         "textDocument/documentSymbol",
+        "textDocument/documentHighlight",
     ] {
         assert!(clear_method_capability(&mut caps, method));
     }
@@ -412,6 +435,7 @@ fn test_clear_all_known_methods() {
     assert!(caps.code_action_provider.is_none());
     assert!(caps.document_formatting_provider.is_none());
     assert!(caps.document_symbol_provider.is_none());
+    assert!(caps.document_highlight_provider.is_none());
 }
 
 // ========================================================================
@@ -435,6 +459,7 @@ fn test_apply_all_methods_without_options() {
         "textDocument/codeAction",
         "textDocument/formatting",
         "textDocument/documentSymbol",
+        "textDocument/documentHighlight",
     ] {
         let mut caps = empty_caps();
         assert!(apply_method_registration(&mut caps, method, None), "Failed for {method}");

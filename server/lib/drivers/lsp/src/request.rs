@@ -1,13 +1,14 @@
 //! LSP request types.
 //!
 //! Defines the request variants for LSP operations. Currently implements
-//! 7 core variants; additional variants will be added in future phases.
+//! 8 core variants; additional variants will be added in future phases.
 
 use std::fmt;
 
 use {
     lsp_types::{
-        CompletionResponse, GotoDefinitionResponse, Hover, Location, Position, SignatureHelp, Uri,
+        CompletionResponse, DocumentHighlight, GotoDefinitionResponse, Hover, Location, Position,
+        SignatureHelp, Uri,
     },
     reovim_kernel::api::v1::OneshotSender,
 };
@@ -117,6 +118,15 @@ pub enum LspRequest {
         /// Response channel.
         response_tx: OneshotSender<NavigationResult<Option<SignatureHelp>>>,
     },
+    /// Request document highlight at a position.
+    DocumentHighlight {
+        /// Document URI.
+        uri: Uri,
+        /// Cursor position.
+        position: Position,
+        /// Response channel.
+        response_tx: OneshotSender<NavigationResult<Option<Vec<DocumentHighlight>>>>,
+    },
     /// Request server shutdown.
     Shutdown,
 }
@@ -174,6 +184,11 @@ impl fmt::Debug for LspRequest {
                 .finish_non_exhaustive(),
             Self::SignatureHelp { uri, position, .. } => f
                 .debug_struct("SignatureHelp")
+                .field("uri", uri)
+                .field("position", position)
+                .finish_non_exhaustive(),
+            Self::DocumentHighlight { uri, position, .. } => f
+                .debug_struct("DocumentHighlight")
                 .field("uri", uri)
                 .field("position", position)
                 .finish_non_exhaustive(),

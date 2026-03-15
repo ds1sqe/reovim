@@ -2194,6 +2194,7 @@ dependencies = [
  "reovim-module-git-signs",
  "reovim-module-git-statusline",
  "reovim-module-health-check",
+ "reovim-module-illuminate",
  "reovim-module-keymap",
  "reovim-module-lsp",
  "reovim-module-lsp-navigation",
@@ -2955,6 +2956,20 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-illuminate"
+version = "0.14.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

@@ -138,6 +138,20 @@ category = "jump"
 description = "Jump search backward (two-char pattern)"
 
 [[keybinding]]
+key = "]]"
+command = "illuminate:next-reference"
+modes = ["vim:normal"]
+category = "navigation"
+description = "Next reference"
+
+[[keybinding]]
+key = "[["
+command = "illuminate:prev-reference"
+modes = ["vim:normal"]
+category = "navigation"
+description = "Previous reference"
+
+[[keybinding]]
 key = "za"
 command = "range-finder:fold-toggle"
 modes = ["vim:normal"]

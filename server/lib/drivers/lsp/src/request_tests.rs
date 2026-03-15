@@ -139,3 +139,17 @@ fn test_signature_help_debug() {
     assert!(debug_str.contains("position"));
     assert!(!debug_str.contains("response_tx"));
 }
+
+#[test]
+fn test_document_highlight_debug() {
+    let (tx, _rx) = reovim_kernel::api::v1::oneshot();
+    let req = LspRequest::DocumentHighlight {
+        uri: make_uri("file:///test.rs"),
+        position: Position::new(8, 12),
+        response_tx: tx,
+    };
+    let debug_str = format!("{req:?}");
+    assert!(debug_str.contains("DocumentHighlight"));
+    assert!(debug_str.contains("position"));
+    assert!(!debug_str.contains("response_tx"));
+}

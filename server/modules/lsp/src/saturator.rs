@@ -350,6 +350,7 @@ impl LspSaturator {
     }
 
     /// Handle an outgoing request from the main thread.
+    #[allow(clippy::too_many_lines)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     async fn handle_request(
         client: &Arc<Client>,
@@ -442,6 +443,19 @@ impl LspSaturator {
                 tokio::spawn(async move {
                     let result = client.signature_help(uri, position).await;
                     debug!(success = result.is_ok(), "signature_help completed");
+                    let _ = response_tx.send(result);
+                });
+            }
+            LspRequest::DocumentHighlight {
+                uri,
+                position,
+                response_tx,
+            } => {
+                debug!(uri = %uri.as_str(), position = ?position, "Spawning document_highlight task");
+                let client = Arc::clone(client);
+                tokio::spawn(async move {
+                    let result = client.document_highlight(uri, position).await;
+                    debug!(success = result.is_ok(), "document_highlight completed");
                     let _ = response_tx.send(result);
                 });
             }
@@ -589,6 +603,12 @@ impl LspSaturator {
             LspRequest::SignatureHelp { uri, position, .. } => {
                 log.log_sent(
                     "textDocument/signatureHelp",
+                    &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::DocumentHighlight { uri, position, .. } => {
+                log.log_sent(
+                    "textDocument/documentHighlight",
                     &format!("{} {}:{}", uri.as_str(), position.line, position.character),
                 );
             }

@@ -203,6 +203,10 @@ fn apply_method_registration(
             caps.document_symbol_provider = Some(OneOf::Left(true));
             true
         }
+        "textDocument/documentHighlight" => {
+            caps.document_highlight_provider = Some(OneOf::Left(true));
+            true
+        }
         _ => {
             warn!(method, "Unknown dynamic registration method, skipping");
             false
@@ -245,6 +249,10 @@ fn clear_method_capability(caps: &mut ServerCapabilities, method: &str) -> bool 
         }
         "textDocument/documentSymbol" => {
             caps.document_symbol_provider = None;
+            true
+        }
+        "textDocument/documentHighlight" => {
+            caps.document_highlight_provider = None;
             true
         }
         _ => {

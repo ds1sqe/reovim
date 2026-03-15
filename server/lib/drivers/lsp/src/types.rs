@@ -35,6 +35,9 @@ pub use lsp_types::MessageType;
 // Signature
 pub use lsp_types::SignatureHelp;
 
+// Document highlight
+pub use lsp_types::{DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams};
+
 // Server state (for LspProvider trait, #521)
 pub use lsp_types::{ServerCapabilities, ServerInfo};
 

@@ -87,6 +87,7 @@ members = [
     "server/modules/picker-git-stash",
     "server/modules/git-signs",
     "server/modules/git-statusline",
+    "server/modules/illuminate",
     "server/modules/git-blame",
     "server/modules/module-manager",
     "server/modules/emacs",
@@ -323,6 +324,7 @@ reovim-picker-git-status = { path = "./server/modules/picker-git-status", versio
 reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version = "0.14.0-dev" }
 reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.14.0-dev" }
 reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.14.0-dev" }
+reovim-module-illuminate = { path = "./server/modules/illuminate", version = "0.14.0-dev" }
 reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.14.0-dev" }
 reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.14.0-dev" }
 reovim-module-emacs = { path = "./server/modules/emacs", version = "0.14.0-dev" }

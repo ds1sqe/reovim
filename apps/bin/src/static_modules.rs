@@ -21,7 +21,7 @@ pub type ModuleFactory = fn() -> Box<dyn Module>;
 /// Ordering comes from the `builtins.toml` manifest, not from this map.
 #[must_use]
 pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
-    let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(41);
+    let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(42);
 
     // Tier 1: Service modules
     map.insert("undo", || Box::new(reovim_module_undo::UndoModule::new()));
@@ -145,6 +145,9 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("module-manager", || {
         Box::new(reovim_module_module_manager::ModuleManagerModule::new())
     });
+
+    // Tier 4: Word reference highlight (#664)
+    map.insert("illuminate", || Box::new(reovim_module_illuminate::IlluminateModule::new()));
 
     map
 }
