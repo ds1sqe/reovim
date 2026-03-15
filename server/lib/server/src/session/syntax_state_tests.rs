@@ -273,6 +273,115 @@ fn test_send_full_refresh_no_subscribers_returns_early() {
     // No panic
 }
 
+// =============================================================================
+// modification_to_syntax_edit tests (#655)
+// =============================================================================
+
+#[test]
+fn test_modification_to_syntax_edit_insert() {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    let modification = Modification::Insert {
+        start: (0, 5),
+        text: "hello".to_string(),
+        start_byte: 5,
+    };
+    let edit = modification_to_syntax_edit(&modification).unwrap();
+    assert_eq!(edit.start_byte, 5);
+    assert_eq!(edit.old_end_byte, 5); // Insert: old_end = start
+    assert_eq!(edit.new_end_byte, 10); // 5 + "hello".len()
+    assert_eq!(edit.start_row, 0);
+    assert_eq!(edit.start_col, 5);
+    assert_eq!(edit.new_end_row, 0);
+    assert_eq!(edit.new_end_col, 10);
+}
+
+#[test]
+fn test_modification_to_syntax_edit_insert_multiline() {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    let modification = Modification::Insert {
+        start: (1, 3),
+        text: "ab\ncd".to_string(),
+        start_byte: 10,
+    };
+    let edit = modification_to_syntax_edit(&modification).unwrap();
+    assert_eq!(edit.start_byte, 10);
+    assert_eq!(edit.new_end_byte, 15); // 10 + 5
+    assert_eq!(edit.new_end_row, 2); // 1 + 1 newline
+    assert_eq!(edit.new_end_col, 2); // "cd" after newline
+}
+
+#[test]
+fn test_modification_to_syntax_edit_delete() {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    let modification = Modification::Delete {
+        start: (0, 0),
+        end: (0, 5),
+        text: "hello".to_string(),
+        start_byte: 0,
+    };
+    let edit = modification_to_syntax_edit(&modification).unwrap();
+    assert_eq!(edit.start_byte, 0);
+    assert_eq!(edit.old_end_byte, 5); // 0 + "hello".len()
+    assert_eq!(edit.new_end_byte, 0); // Delete: new_end = start
+    assert_eq!(edit.old_end_row, 0);
+    assert_eq!(edit.old_end_col, 5);
+}
+
+#[test]
+fn test_modification_to_syntax_edit_replace() {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    let modification = Modification::Replace {
+        start: (0, 0),
+        end: (0, 5),
+        old_text: "hello".to_string(),
+        new_text: "world!".to_string(),
+        start_byte: 0,
+    };
+    let edit = modification_to_syntax_edit(&modification).unwrap();
+    assert_eq!(edit.start_byte, 0);
+    assert_eq!(edit.old_end_byte, 5); // "hello".len()
+    assert_eq!(edit.new_end_byte, 6); // "world!".len()
+    assert_eq!(edit.new_end_row, 0);
+    assert_eq!(edit.new_end_col, 6);
+}
+
+#[test]
+fn test_modification_to_syntax_edit_full_replace() {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    assert!(modification_to_syntax_edit(&Modification::FullReplace).is_none());
+}
+
+// =============================================================================
+// compute_end_position tests (#655)
+// =============================================================================
+
+#[test]
+fn test_compute_end_position_single_line() {
+    assert_eq!(compute_end_position(0, 0, "hello"), (0, 5));
+    assert_eq!(compute_end_position(2, 3, "abc"), (2, 6));
+}
+
+#[test]
+fn test_compute_end_position_multi_line() {
+    assert_eq!(compute_end_position(0, 0, "ab\ncd"), (1, 2));
+    assert_eq!(compute_end_position(5, 10, "x\ny\nz"), (7, 1));
+}
+
+#[test]
+fn test_compute_end_position_empty() {
+    assert_eq!(compute_end_position(3, 7, ""), (3, 7));
+}
+
+#[test]
+fn test_compute_end_position_trailing_newline() {
+    assert_eq!(compute_end_position(0, 0, "abc\n"), (1, 0));
+}
+
 #[test]
 fn test_debug_impl() {
     let mut state = SyntaxStreamState::new();

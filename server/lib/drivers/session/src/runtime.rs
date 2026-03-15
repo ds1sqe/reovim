@@ -717,6 +717,9 @@ impl BufferApi for SessionRuntime<'_> {
                 |w| Position::new(w.cursor.line, w.cursor.column),
             );
 
+            // Compute byte offset BEFORE mutation (#655)
+            let byte_offset = buf.read().position_to_byte(pos);
+
             buf.write().insert_at(pos, text);
 
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
@@ -733,16 +736,18 @@ impl BufferApi for SessionRuntime<'_> {
             #[allow(clippy::cast_possible_truncation)]
             {
                 use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+                let modification = Modification::Insert {
+                    start: (pos.line as u32, pos.column as u32),
+                    text: text.to_string(),
+                    start_byte: byte_offset,
+                };
                 self.kernel.event_bus.emit(BufferModified {
                     buffer_id: buffer.as_usize() as u64,
-                    modification: Modification::Insert {
-                        start: (pos.line as u32, pos.column as u32),
-                        text: text.to_string(),
-                    },
+                    modification: modification.clone(),
                 });
+                self.changes
+                    .record_buffer_modified_with_edit(buffer, modification);
             }
-
-            self.changes.record_buffer_modified(buffer);
         }
     }
 
@@ -754,6 +759,9 @@ impl BufferApi for SessionRuntime<'_> {
                 || Position::new(0, 0),
                 |w| Position::new(w.cursor.line, w.cursor.column),
             );
+
+            // Compute byte offset BEFORE mutation (#655)
+            let byte_offset = buf.read().position_to_byte(start);
 
             let deleted_text = {
                 let mut b = buf.write();
@@ -775,18 +783,22 @@ impl BufferApi for SessionRuntime<'_> {
                 #[allow(clippy::cast_possible_truncation)]
                 {
                     use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+                    let modification = Modification::Delete {
+                        start: (start.line as u32, start.column as u32),
+                        end: (end.line as u32, end.column as u32),
+                        text: deleted_text,
+                        start_byte: byte_offset,
+                    };
                     self.kernel.event_bus.emit(BufferModified {
                         buffer_id: buffer.as_usize() as u64,
-                        modification: Modification::Delete {
-                            start: (start.line as u32, start.column as u32),
-                            end: (end.line as u32, end.column as u32),
-                            text: deleted_text,
-                        },
+                        modification: modification.clone(),
                     });
+                    self.changes
+                        .record_buffer_modified_with_edit(buffer, modification);
                 }
+            } else {
+                self.changes.record_buffer_modified(buffer);
             }
-
-            self.changes.record_buffer_modified(buffer);
         }
     }
 

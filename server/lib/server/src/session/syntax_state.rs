@@ -218,6 +218,96 @@ impl SyntaxStreamState {
     }
 }
 
+/// Compute the end position (row, col) after inserting text starting at (`start_row`, `start_col`).
+///
+/// Handles multi-line text by counting newlines and tracking the final line's column.
+#[must_use]
+pub fn compute_end_position(start_row: u32, start_col: u32, text: &str) -> (u32, u32) {
+    let mut row = start_row;
+    let mut col = start_col;
+    for ch in text.chars() {
+        if ch == '\n' {
+            row += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (row, col)
+}
+
+/// Convert a kernel `Modification` to a syntax driver `SyntaxEdit`.
+///
+/// Returns `None` for `FullReplace` (requires full reparse, not incremental edit).
+///
+/// This function lives in the server layer because it bridges two crate boundaries:
+/// `Modification` from `reovim-kernel` and `SyntaxEdit` from `reovim-driver-syntax`.
+/// Placing it on `Modification` directly would violate kernel purity.
+#[must_use]
+pub fn modification_to_syntax_edit(
+    modification: &reovim_kernel::api::v1::events::kernel::Modification,
+) -> Option<SyntaxEdit> {
+    use reovim_kernel::api::v1::events::kernel::Modification;
+
+    match modification {
+        Modification::Insert {
+            start,
+            text,
+            start_byte,
+        } => {
+            let new_end_byte = start_byte + text.len();
+            let (new_end_row, new_end_col) = compute_end_position(start.0, start.1, text);
+            Some(SyntaxEdit::insert(
+                *start_byte,
+                start.0,
+                start.1,
+                new_end_byte,
+                new_end_row,
+                new_end_col,
+            ))
+        }
+        Modification::Delete {
+            start,
+            end,
+            text,
+            start_byte,
+        } => {
+            let old_end_byte = start_byte + text.len();
+            Some(SyntaxEdit::delete(
+                *start_byte,
+                start.0,
+                start.1,
+                old_end_byte,
+                end.0,
+                end.1,
+            ))
+        }
+        Modification::Replace {
+            start,
+            end,
+            old_text,
+            new_text,
+            start_byte,
+        } => {
+            let old_end_byte = start_byte + old_text.len();
+            let new_end_byte = start_byte + new_text.len();
+            let (new_end_row, new_end_col) = compute_end_position(start.0, start.1, new_text);
+            Some(SyntaxEdit::new(
+                *start_byte,
+                old_end_byte,
+                new_end_byte,
+                start.0,
+                start.1,
+                end.0,
+                end.1,
+                new_end_row,
+                new_end_col,
+            ))
+        }
+        Modification::FullReplace => None,
+    }
+}
+
 /// Build a `TokenUpdate` from a syntax driver's current highlights.
 ///
 /// This is a standalone function to avoid double-borrow issues when

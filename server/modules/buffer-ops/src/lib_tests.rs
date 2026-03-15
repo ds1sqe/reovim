@@ -146,6 +146,7 @@ fn test_event_bus_receives_buffer_modified() {
         modification: Modification::Insert {
             start: (0, 0),
             text: "hello".to_string(),
+            start_byte: 0,
         },
     };
     ctx.kernel.event_bus.emit(event);

@@ -113,6 +113,8 @@ pub enum Modification {
         start: (u32, u32),
         /// The inserted text
         text: String,
+        /// Byte offset where the insertion begins (for incremental parsing).
+        start_byte: usize,
     },
     /// Text was deleted from a range.
     Delete {
@@ -122,6 +124,8 @@ pub enum Modification {
         end: (u32, u32),
         /// The deleted text
         text: String,
+        /// Byte offset where the deletion begins (for incremental parsing).
+        start_byte: usize,
     },
     /// Text was replaced (delete + insert combined).
     Replace {
@@ -133,6 +137,8 @@ pub enum Modification {
         old_text: String,
         /// New text
         new_text: String,
+        /// Byte offset where the replacement begins (for incremental parsing).
+        start_byte: usize,
     },
     /// Entire buffer content was replaced (e.g., file reload).
     FullReplace,

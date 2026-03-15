@@ -439,7 +439,10 @@ impl InputServiceImpl {
     /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
     /// 2. Access `SyntaxStreamState`, broadcast the update
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
-        use crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update};
+        use crate::session::{
+            SyntaxSessionState, SyntaxStreamState, build_token_update,
+            modification_to_syntax_edit,
+        };
 
         if changes.modified_buffers.is_empty() {
             return;
@@ -463,16 +466,29 @@ impl InputServiceImpl {
                 if let Some(ref path) = file_path {
                     syntax.ensure_driver_from_path(buffer_id, path, &content);
                 }
+
+                // Try incremental update if edit info available, fall back to full reparse (#655)
+                let edit_info = changes
+                    .modified_buffer_edits
+                    .iter()
+                    .find(|(id, _)| *id == buffer_id)
+                    .and_then(|(_, modification)| modification_to_syntax_edit(modification));
+
                 if let Some(driver) = syntax.get_mut(buffer_id) {
-                    driver.parse(&content);
+                    if let Some(ref edit) = edit_info {
+                        driver.update(&content, edit);
+                    } else {
+                        driver.parse(&content);
+                    }
                 }
 
                 // Build token update from the driver (immutable borrow)
+                let full_refresh = edit_info.is_none();
                 let update = build_token_update(
                     state.app.extensions.get_or_insert::<SyntaxSessionState>(),
                     buffer_id,
                     total_lines,
-                    true,
+                    full_refresh,
                 );
 
                 // Step 2: Broadcast to subscribers (mutable borrow of SyntaxStreamState)

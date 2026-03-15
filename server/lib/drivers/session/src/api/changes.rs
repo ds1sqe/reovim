@@ -85,6 +85,13 @@ pub struct StateChanges {
     pub buffer_modified: bool,
     /// Buffers whose content was modified.
     pub modified_buffers: Vec<BufferId>,
+    /// Edit details for modified buffers (for incremental syntax parsing, #655).
+    ///
+    /// Parallel to `modified_buffers`. Contains `(BufferId, Modification)` pairs
+    /// for edits that have structured edit info. Empty when edits come from paths
+    /// that don't provide `Modification` (e.g., undo/redo).
+    pub modified_buffer_edits:
+        Vec<(BufferId, reovim_kernel::api::v1::events::kernel::Modification)>,
     /// All buffers affected (for cursor, selection, etc.).
     pub affected_buffers: Vec<BufferId>,
 
@@ -177,6 +184,8 @@ impl StateChanges {
         self.selection_changed |= other.selection_changed;
         self.buffer_modified |= other.buffer_modified;
         self.modified_buffers.extend(other.modified_buffers);
+        self.modified_buffer_edits
+            .extend(other.modified_buffer_edits);
         self.affected_buffers.extend(other.affected_buffers);
         self.buffers_created.extend(other.buffers_created);
         self.buffers_deleted.extend(other.buffers_deleted);
@@ -231,6 +240,20 @@ impl StateChanges {
         if !self.affected_buffers.contains(&buffer) {
             self.affected_buffers.push(buffer);
         }
+    }
+
+    /// Record buffer modification with structured edit info (#655).
+    ///
+    /// Like `record_buffer_modified` but also stores the `Modification` data
+    /// for incremental syntax parsing. The server layer uses this to call
+    /// `driver.update()` instead of `driver.parse()`.
+    pub fn record_buffer_modified_with_edit(
+        &mut self,
+        buffer: BufferId,
+        modification: reovim_kernel::api::v1::events::kernel::Modification,
+    ) {
+        self.record_buffer_modified(buffer);
+        self.modified_buffer_edits.push((buffer, modification));
     }
 
     /// Record that a buffer was created.

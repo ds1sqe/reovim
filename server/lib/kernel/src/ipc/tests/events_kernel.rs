@@ -20,10 +20,11 @@ fn test_buffer_modified_insert() {
         modification: Modification::Insert {
             start: (0, 0),
             text: "hello".to_string(),
+            start_byte: 0,
         },
     };
     assert_eq!(event.buffer_id, 1);
-    if let Modification::Insert { start, text } = event.modification {
+    if let Modification::Insert { start, text, .. } = event.modification {
         assert_eq!(start, (0, 0));
         assert_eq!(text, "hello");
     } else {
