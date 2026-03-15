@@ -13,6 +13,7 @@ use crate::{
     highlight::{Annotation, SyntaxContext},
     injection::Injection,
     scope::ContextHierarchy,
+    textobject::{TextObjectKind, TextObjectRange, TextObjectScope},
 };
 
 /// Main parsing interface for syntax highlighting.
@@ -192,6 +193,32 @@ pub trait SyntaxDriver: Send + Sync {
     /// Returns `SyntaxContext::Code`. Override for context-aware behavior.
     fn context_at_byte(&self, _byte_offset: usize) -> SyntaxContext {
         SyntaxContext::Code
+    }
+
+    /// Get the range of a semantic text object at a position.
+    ///
+    /// Resolves language-aware text objects like functions, classes, arguments,
+    /// etc. at the given cursor position. Returns the byte and position range
+    /// of the matching construct, or `None` if no match exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - The type of text object (function, class, etc.)
+    /// * `scope` - Inner (body only) or outer (full construct)
+    /// * `line` - 0-indexed cursor line
+    /// * `col` - 0-indexed cursor column
+    ///
+    /// # Default
+    ///
+    /// Returns `None`. Override for drivers with treesitter query support.
+    fn textobject_range(
+        &self,
+        _kind: TextObjectKind,
+        _scope: TextObjectScope,
+        _line: u32,
+        _col: u32,
+    ) -> Option<TextObjectRange> {
+        None
     }
 
     /// Check if the driver has valid parse state.

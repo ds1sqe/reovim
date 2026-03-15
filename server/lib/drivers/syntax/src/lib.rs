@@ -84,6 +84,7 @@ mod registry;
 mod scope;
 pub mod state;
 mod store;
+pub mod textobject;
 
 // ============================================================================
 // Re-exports
@@ -107,6 +108,7 @@ pub use {
     lang_store::LanguageInfoStore,
     registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},
     scope::{ContextHierarchy, ScopeKind, ScopeRange},
+    textobject::{TextObjectKind, TextObjectRange, TextObjectScope},
 };
 
 // Error types
