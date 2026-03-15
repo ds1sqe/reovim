@@ -1014,3 +1014,178 @@ fn test_simplify_kind_unknown() {
     assert_eq!(simplify_kind("block"), "block");
     assert_eq!(simplify_kind("if_expression"), "if_expression");
 }
+
+// ========================================================================
+// Textobject Tests
+// ========================================================================
+
+#[test]
+fn test_textobject_range_none_without_query() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let mut driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+    driver.parse("fn main() {}");
+
+    assert!(
+        driver
+            .textobject_range(TextObjectKind::Function, TextObjectScope::Inner, 0, 5)
+            .is_none()
+    );
+}
+
+#[test]
+fn test_textobject_range_none_before_parse() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    assert!(
+        driver
+            .textobject_range(TextObjectKind::Function, TextObjectScope::Inner, 0, 5)
+            .is_none()
+    );
+}
+
+#[test]
+fn test_textobject_range_function_outer() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    driver.parse("fn main() {\n    let x = 1;\n}");
+
+    // Cursor inside function body (line 1, col 4)
+    let range = driver
+        .textobject_range(TextObjectKind::Function, TextObjectScope::Outer, 1, 4)
+        .expect("should find function.outer");
+
+    // function.outer should cover the entire function_item
+    assert_eq!(range.start_row, 0);
+    assert_eq!(range.start_byte, 0);
+}
+
+#[test]
+fn test_textobject_range_function_inner() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    driver.parse("fn main() {\n    let x = 1;\n}");
+
+    // Cursor inside function body
+    let range = driver
+        .textobject_range(TextObjectKind::Function, TextObjectScope::Inner, 1, 4)
+        .expect("should find function.inner");
+
+    // function.inner should cover the block (body), not the signature
+    assert!(range.start_byte > 0, "inner should start after fn signature");
+}
+
+#[test]
+fn test_textobject_range_cursor_outside() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    // Two functions with a blank line between
+    driver.parse("fn foo() {}\n\nfn bar() {}");
+
+    // Cursor on the blank line (line 1) - outside any function
+    let range = driver.textobject_range(TextObjectKind::Function, TextObjectScope::Outer, 1, 0);
+    assert!(range.is_none(), "cursor outside any function should return None");
+}
+
+#[test]
+fn test_textobject_range_nested_picks_smallest() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    // Nested functions: cursor inside inner function should pick it, not the outer
+    let code = "fn outer() {\n    fn inner() {\n        let x = 1;\n    }\n}";
+    driver.parse(code);
+
+    // Cursor at line 2, col 8 (inside inner function body)
+    let range = driver
+        .textobject_range(TextObjectKind::Function, TextObjectScope::Outer, 2, 8)
+        .expect("should find nested function");
+
+    // The innermost function starts at "fn inner()"
+    assert_eq!(range.start_row, 1, "should pick the inner function, not outer");
+}
+
+#[test]
+fn test_textobject_range_unknown_capture() {
+    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    // Only defines function captures, not class
+    let textobjects_query = Arc::new(
+        Query::new(&language, "(function_item body: (block) @function.inner) @function.outer")
+            .unwrap(),
+    );
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .textobjects_query(textobjects_query)
+        .build()
+        .unwrap();
+
+    driver.parse("fn main() {}");
+
+    // Ask for class (not defined in query)
+    let range = driver.textobject_range(TextObjectKind::Class, TextObjectScope::Inner, 0, 5);
+    assert!(range.is_none(), "undefined capture should return None");
+}

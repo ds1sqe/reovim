@@ -29,7 +29,7 @@ use {
     reovim_driver_syntax::{
         Annotation, ContextHierarchy, DecorationCapture, DecorationRule, FoldKind, FoldRange,
         HighlightCategory, Injection, ScopeKind, ScopeRange, SyntaxContext, SyntaxDriver,
-        SyntaxEdit, decoration::apply_rules,
+        SyntaxEdit, TextObjectKind, TextObjectRange, TextObjectScope, decoration::apply_rules,
     },
     streaming_iterator::StreamingIterator,
     tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
@@ -87,6 +87,9 @@ pub struct TreeSitterDriver {
 
     /// Optional context query for scope boundaries
     context_query: Option<Arc<Query>>,
+
+    /// Optional textobjects query for semantic text object resolution
+    textobjects_query: Option<Arc<Query>>,
 
     /// Optional decoration query for conceal/background/virtual text
     decoration_query: Option<Arc<Query>>,
@@ -150,6 +153,7 @@ impl TreeSitterDriver {
             indents_query: None,
             injection_manager: None,
             context_query: None,
+            textobjects_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -200,6 +204,7 @@ impl TreeSitterDriver {
             indents_query,
             injection_manager,
             context_query: None,
+            textobjects_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -1004,6 +1009,69 @@ impl SyntaxDriver for TreeSitterDriver {
         SyntaxContext::Code
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    fn textobject_range(
+        &self,
+        kind: TextObjectKind,
+        scope: TextObjectScope,
+        line: u32,
+        col: u32,
+    ) -> Option<TextObjectRange> {
+        let textobjects_query = self.textobjects_query.as_ref()?;
+
+        self.with_tree(|tree, content| {
+            let mut cursor = QueryCursor::new();
+            let capture_names = textobjects_query.capture_names();
+
+            // Build target capture name: "function.inner", "class.outer", etc.
+            let target = format!("{}.{}", kind.capture_name(), scope.suffix());
+
+            // Find capture index for the target name
+            let target_idx = capture_names.iter().position(|n| *n == target)?;
+
+            let cursor_point = Point::new(line as usize, col as usize);
+            let mut best: Option<(usize, TextObjectRange)> = None;
+
+            let mut matches =
+                cursor.matches(textobjects_query, tree.root_node(), content.as_bytes());
+            while let Some(match_) = matches.next() {
+                for capture in match_.captures {
+                    if capture.index as usize != target_idx {
+                        continue;
+                    }
+
+                    let node = capture.node;
+                    let start = node.start_position();
+                    let end = node.end_position();
+
+                    // Filter: node must contain cursor position
+                    if cursor_point < start || cursor_point > end {
+                        continue;
+                    }
+
+                    // Pick smallest (most specific) node
+                    let size = node.end_byte() - node.start_byte();
+                    if best.as_ref().is_none_or(|(best_size, _)| size < *best_size) {
+                        best = Some((
+                            size,
+                            TextObjectRange::new(
+                                node.start_byte(),
+                                node.end_byte(),
+                                start.row as u32,
+                                start.column as u32,
+                                end.row as u32,
+                                end.column as u32,
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            best.map(|(_, range)| range)
+        })
+        .flatten()
+    }
+
     fn is_parsed(&self) -> bool {
         self.tree.read().is_some()
     }
@@ -1125,6 +1193,7 @@ pub struct TreeSitterDriverBuilder {
     injections_query: Option<Arc<Query>>,
     indents_query: Option<Arc<Query>>,
     context_query: Option<Arc<Query>>,
+    textobjects_query: Option<Arc<Query>>,
     decoration_query: Option<Arc<Query>>,
     decoration_rules: Vec<DecorationRule>,
     inline_parser: Option<Mutex<Parser>>,
@@ -1148,6 +1217,7 @@ impl TreeSitterDriverBuilder {
             injections_query: None,
             indents_query: None,
             context_query: None,
+            textobjects_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -1161,6 +1231,13 @@ impl TreeSitterDriverBuilder {
     #[must_use]
     pub fn context_query(mut self, query: Arc<Query>) -> Self {
         self.context_query = Some(query);
+        self
+    }
+
+    /// Set the textobjects query for semantic text object resolution.
+    #[must_use]
+    pub fn textobjects_query(mut self, query: Arc<Query>) -> Self {
+        self.textobjects_query = Some(query);
         self
     }
 
@@ -1256,6 +1333,7 @@ impl TreeSitterDriverBuilder {
             indents_query: self.indents_query,
             injection_manager,
             context_query: self.context_query,
+            textobjects_query: self.textobjects_query,
             decoration_query: self.decoration_query,
             decoration_rules: self.decoration_rules,
             inline_parser: self.inline_parser,

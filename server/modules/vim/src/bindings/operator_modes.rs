@@ -374,6 +374,55 @@ fn delete_textobject_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[DELETE_MODE])
             .with_category("textobj")
             .with_description("Around paragraph"),
+        // Semantic text objects (treesitter-based)
+        KeybindingRegistration::new("if", textobjects::INNER_FUNCTION)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner function"),
+        KeybindingRegistration::new("af", textobjects::AROUND_FUNCTION)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around function"),
+        KeybindingRegistration::new("ic", textobjects::INNER_CLASS)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner class"),
+        KeybindingRegistration::new("ac", textobjects::AROUND_CLASS)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around class"),
+        KeybindingRegistration::new("ia", textobjects::INNER_ARGUMENT)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner argument"),
+        KeybindingRegistration::new("aa", textobjects::AROUND_ARGUMENT)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around argument"),
+        KeybindingRegistration::new("io", textobjects::INNER_CONDITIONAL)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner conditional"),
+        KeybindingRegistration::new("ao", textobjects::AROUND_CONDITIONAL)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around conditional"),
+        KeybindingRegistration::new("il", textobjects::INNER_LOOP)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner loop"),
+        KeybindingRegistration::new("al", textobjects::AROUND_LOOP)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around loop"),
+        KeybindingRegistration::new("i/", textobjects::INNER_COMMENT)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Inner comment"),
+        KeybindingRegistration::new("a/", textobjects::AROUND_COMMENT)
+            .with_modes(&[DELETE_MODE])
+            .with_category("textobj")
+            .with_description("Around comment"),
     ]
 }
 
@@ -627,6 +676,55 @@ fn yank_textobject_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[YANK_MODE])
             .with_category("textobj")
             .with_description("Around paragraph"),
+        // Semantic text objects (treesitter-based)
+        KeybindingRegistration::new("if", textobjects::INNER_FUNCTION)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner function"),
+        KeybindingRegistration::new("af", textobjects::AROUND_FUNCTION)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around function"),
+        KeybindingRegistration::new("ic", textobjects::INNER_CLASS)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner class"),
+        KeybindingRegistration::new("ac", textobjects::AROUND_CLASS)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around class"),
+        KeybindingRegistration::new("ia", textobjects::INNER_ARGUMENT)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner argument"),
+        KeybindingRegistration::new("aa", textobjects::AROUND_ARGUMENT)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around argument"),
+        KeybindingRegistration::new("io", textobjects::INNER_CONDITIONAL)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner conditional"),
+        KeybindingRegistration::new("ao", textobjects::AROUND_CONDITIONAL)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around conditional"),
+        KeybindingRegistration::new("il", textobjects::INNER_LOOP)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner loop"),
+        KeybindingRegistration::new("al", textobjects::AROUND_LOOP)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around loop"),
+        KeybindingRegistration::new("i/", textobjects::INNER_COMMENT)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Inner comment"),
+        KeybindingRegistration::new("a/", textobjects::AROUND_COMMENT)
+            .with_modes(&[YANK_MODE])
+            .with_category("textobj")
+            .with_description("Around comment"),
     ]
 }
 
@@ -880,6 +978,55 @@ fn change_textobject_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[CHANGE_MODE])
             .with_category("textobj")
             .with_description("Around paragraph"),
+        // Semantic text objects (treesitter-based)
+        KeybindingRegistration::new("if", textobjects::INNER_FUNCTION)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner function"),
+        KeybindingRegistration::new("af", textobjects::AROUND_FUNCTION)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around function"),
+        KeybindingRegistration::new("ic", textobjects::INNER_CLASS)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner class"),
+        KeybindingRegistration::new("ac", textobjects::AROUND_CLASS)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around class"),
+        KeybindingRegistration::new("ia", textobjects::INNER_ARGUMENT)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner argument"),
+        KeybindingRegistration::new("aa", textobjects::AROUND_ARGUMENT)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around argument"),
+        KeybindingRegistration::new("io", textobjects::INNER_CONDITIONAL)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner conditional"),
+        KeybindingRegistration::new("ao", textobjects::AROUND_CONDITIONAL)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around conditional"),
+        KeybindingRegistration::new("il", textobjects::INNER_LOOP)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner loop"),
+        KeybindingRegistration::new("al", textobjects::AROUND_LOOP)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around loop"),
+        KeybindingRegistration::new("i/", textobjects::INNER_COMMENT)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Inner comment"),
+        KeybindingRegistration::new("a/", textobjects::AROUND_COMMENT)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("textobj")
+            .with_description("Around comment"),
     ]
 }
 

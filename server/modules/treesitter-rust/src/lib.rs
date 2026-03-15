@@ -68,6 +68,10 @@ const RUST_INDENTS_QUERY: &str = include_str!("queries/indents.scm");
 /// Provides scope hierarchy for statusline breadcrumbs
 const RUST_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
 
+/// Rust textobjects query (embedded from queries/textobjects.scm)
+/// Provides semantic text object resolution (function, class, argument, etc.)
+const RUST_TEXTOBJECTS_QUERY: &str = include_str!("queries/textobjects.scm");
+
 /// Factory for creating Rust syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
@@ -85,6 +89,8 @@ pub struct RustSyntaxFactory {
     indents_query: Arc<Query>,
     /// Pre-compiled context query (scope hierarchy)
     context_query: Arc<Query>,
+    /// Pre-compiled textobjects query (semantic text objects)
+    textobjects_query: Arc<Query>,
 }
 
 impl RustSyntaxFactory {
@@ -115,12 +121,16 @@ impl RustSyntaxFactory {
         let context_query = Query::new(&language, RUST_CONTEXT_QUERY)
             .expect("Failed to compile Rust context query");
 
+        let textobjects_query = Query::new(&language, RUST_TEXTOBJECTS_QUERY)
+            .expect("Failed to compile Rust textobjects query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
             injections_query: Arc::new(injections_query),
             indents_query: Arc::new(indents_query),
             context_query: Arc::new(context_query),
+            textobjects_query: Arc::new(textobjects_query),
         }
     }
 
@@ -151,6 +161,7 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
             .injections_query(self.injections_query.clone())
             .indents_query(self.indents_query.clone())
             .context_query(self.context_query.clone())
+            .textobjects_query(self.textobjects_query.clone())
             .build()
             .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }

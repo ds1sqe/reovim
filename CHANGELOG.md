@@ -6,6 +6,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Treesitter-based semantic text objects (#656, part of #653)**: 14 new
+  treesitter-based text objects (7 kinds x inner/around): function (if/af),
+  class (ic/ac), argument (ia/aa), conditional (io/ao), loop (il/al),
+  comment (i//a/), block (deferred keybinding). `SyntaxDriver::textobject_range()`
+  trait method with default no-op. `TreeSitterDriver` implementation using
+  `QueryCursor` with smallest-node selection for nested constructs.
+  `textobjects.scm` query files for Rust (functions, structs/enums/traits/impls,
+  parameters, conditionals, loops, comments, blocks) and Python (functions,
+  classes, parameters, conditionals, loops, comments, blocks). 14 command
+  handlers in textobjects module with `SyntaxSessionState` driver lookup.
+  Keybindings in all operator-pending modes (delete, yank, change) and visual
+  modes. Graceful degradation when no syntax driver available. Block keybinding
+  (iB/aB) deferred due to conflict with existing brace textobject.
+
 - **Syntax highlight pipeline (#655, part of #653)**: End-to-end wiring of the
   syntax highlighting pipeline. Fixed `insert_text()` missing `BufferModified`
   EventBus emission (bug). Added `start_byte` to `Modification` enum for

@@ -29,6 +29,7 @@ pub mod bracket;
 pub mod ids;
 pub mod paragraph;
 pub mod quote;
+pub mod semantic;
 pub mod word;
 
 use {
@@ -97,6 +98,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     cmds.extend(quote::all_commands());
     cmds.extend(bracket::all_commands());
     cmds.extend(paragraph::all_commands());
+    cmds.extend(semantic::all_commands());
     cmds
 }
 
@@ -112,5 +114,7 @@ mod lib_tests;
 mod paragraph_tests;
 #[cfg(test)]
 mod quote_tests;
+#[cfg(test)]
+mod semantic_tests;
 #[cfg(test)]
 mod word_tests;

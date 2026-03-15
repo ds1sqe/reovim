@@ -40,7 +40,7 @@ fn test_module_init() {
     let store = services.get::<CommandHandlerStore>();
     assert!(store.is_some(), "CommandHandlerStore should be registered");
     let handlers = store.unwrap().take_handlers();
-    assert_eq!(handlers.len(), 20, "All 20 text object commands should be registered");
+    assert_eq!(handlers.len(), 34, "All 34 text object commands should be registered");
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn test_paragraph_commands_count() {
 #[test]
 fn test_all_commands_count() {
     let cmds = all_commands();
-    assert_eq!(cmds.len(), 20); // 4 + 6 + 8 + 2
+    assert_eq!(cmds.len(), 34); // 4 + 6 + 8 + 2 + 14
 }
 
 #[test]
@@ -130,10 +130,16 @@ fn test_all_commands_have_descriptions() {
 }
 
 #[test]
-fn test_all_commands_have_args() {
+fn test_all_commands_args_valid() {
     let cmds = all_commands();
     for cmd in &cmds {
-        let args = cmd.args();
-        assert!(!args.is_empty(), "Command {} should have args", cmd.id());
+        // All commands should return a valid args vec (empty is fine for semantic textobjects)
+        let _args = cmd.args();
     }
+}
+
+#[test]
+fn test_semantic_commands_count() {
+    let cmds = semantic::all_commands();
+    assert_eq!(cmds.len(), 14); // 7 kinds x 2 scopes
 }

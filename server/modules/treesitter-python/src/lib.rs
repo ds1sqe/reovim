@@ -52,6 +52,10 @@ const PYTHON_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 /// Python context query (embedded from queries/context.scm)
 const PYTHON_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
 
+/// Python textobjects query (embedded from queries/textobjects.scm)
+/// Provides semantic text object resolution (function, class, argument, etc.)
+const PYTHON_TEXTOBJECTS_QUERY: &str = include_str!("queries/textobjects.scm");
+
 /// Factory for creating Python syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
@@ -64,6 +68,8 @@ pub struct PythonSyntaxFactory {
     folds_query: Arc<Query>,
     /// Pre-compiled context query
     context_query: Arc<Query>,
+    /// Pre-compiled textobjects query (semantic text objects)
+    textobjects_query: Arc<Query>,
 }
 
 impl PythonSyntaxFactory {
@@ -88,10 +94,14 @@ impl PythonSyntaxFactory {
         let context_query = Query::new(&language, PYTHON_CONTEXT_QUERY)
             .expect("Failed to compile Python context query");
 
+        let textobjects_query = Query::new(&language, PYTHON_TEXTOBJECTS_QUERY)
+            .expect("Failed to compile Python textobjects query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
             context_query: Arc::new(context_query),
+            textobjects_query: Arc::new(textobjects_query),
         }
     }
 
@@ -119,6 +129,7 @@ impl SyntaxDriverFactory for PythonSyntaxFactory {
         TreeSitterDriver::builder("python", &language, self.highlight_query.clone())
             .folds_query(self.folds_query.clone())
             .context_query(self.context_query.clone())
+            .textobjects_query(self.textobjects_query.clone())
             .build()
             .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }

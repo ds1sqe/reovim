@@ -3222,6 +3222,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-layout",
  "reovim-driver-session",
+ "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
 ]

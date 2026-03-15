@@ -268,6 +268,55 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("textobject")
             .with_description("Select around angle brackets"),
+        // Semantic text objects (treesitter-based)
+        KeybindingRegistration::new("if", textobjects::INNER_FUNCTION)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner function"),
+        KeybindingRegistration::new("af", textobjects::AROUND_FUNCTION)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around function"),
+        KeybindingRegistration::new("ic", textobjects::INNER_CLASS)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner class"),
+        KeybindingRegistration::new("ac", textobjects::AROUND_CLASS)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around class"),
+        KeybindingRegistration::new("ia", textobjects::INNER_ARGUMENT)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner argument"),
+        KeybindingRegistration::new("aa", textobjects::AROUND_ARGUMENT)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around argument"),
+        KeybindingRegistration::new("io", textobjects::INNER_CONDITIONAL)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner conditional"),
+        KeybindingRegistration::new("ao", textobjects::AROUND_CONDITIONAL)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around conditional"),
+        KeybindingRegistration::new("il", textobjects::INNER_LOOP)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner loop"),
+        KeybindingRegistration::new("al", textobjects::AROUND_LOOP)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around loop"),
+        KeybindingRegistration::new("i/", textobjects::INNER_COMMENT)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select inner comment"),
+        KeybindingRegistration::new("a/", textobjects::AROUND_COMMENT)
+            .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
+            .with_category("textobject")
+            .with_description("Select around comment"),
         // ====================================================================
         // Visual insert commands (I/A) - Issue #145
         // ====================================================================
