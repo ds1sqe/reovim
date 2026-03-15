@@ -436,14 +436,25 @@ impl ModeKeyResolver for VimDeleteResolver {
 
         // Fall back to motion-based range calculation
         let vim = client_extensions.get_mut::<crate::VimSessionState>()?;
-        let motion = vim.pending_motion.take()?;
+
+        // Peek first: if a multi-step motion (e.g., jump search) pushed a
+        // mode for label selection, the cursor hasn't moved yet.  Return
+        // None so the motion state is preserved for the second
+        // on_command_complete call that fires after the cursor actually moves.
+        let _ = vim.pending_motion.as_ref()?;
 
         let state = self.state.read().expect("lock poisoned");
         let start_pos = state.start_position?;
         drop(state);
 
-        // Get current cursor position (end of motion)
         let end_pos = session.cursor_position()?;
+
+        if start_pos == end_pos {
+            return None;
+        }
+
+        // Now consume — the motion has actually completed.
+        let motion = vim.pending_motion.take()?;
 
         // Normalize range and adjust for motion type
         let (range_start, range_end) = {

@@ -15,11 +15,7 @@ use {
     reovim_kernel::api::v1::{ModeId, Position},
 };
 
-use crate::{
-    VimSessionState, ids,
-    modes::VimMode,
-    session_state::ReplaceRestoreEntry,
-};
+use crate::{VimSessionState, ids, modes::VimMode, session_state::ReplaceRestoreEntry};
 
 /// Vim replace mode key resolver.
 ///
@@ -60,8 +56,7 @@ impl VimReplaceResolver {
     /// Check if a key is backspace.
     const fn is_backspace(key: &KeyEvent) -> bool {
         matches!(key.code, KeyCode::Backspace)
-            || (key.modifiers.contains(Modifiers::CTRL)
-                && matches!(key.code, KeyCode::Char('h')))
+            || (key.modifiers.contains(Modifiers::CTRL) && matches!(key.code, KeyCode::Char('h')))
     }
 }
 
@@ -112,8 +107,7 @@ impl ModeKeyResolver for VimReplaceResolver {
         let lookup_state = input.keymap.query(input.mode, &keys);
 
         match lookup_state {
-            KeyLookupState::ExactOnly(cmd)
-            | KeyLookupState::ExactWithLonger { exact: cmd, .. } => {
+            KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd, .. } => {
                 ResolveResult::Execute(cmd, ResolveContext::new())
             }
             KeyLookupState::PrefixOnly => ResolveResult::Pending,
@@ -135,10 +129,7 @@ impl ModeKeyResolver for VimReplaceResolver {
 }
 
 /// Push a restore entry for the current cursor position.
-fn push_restore_entry(
-    session: &dyn SessionApiDyn,
-    client_extensions: &mut ExtensionMap,
-) {
+fn push_restore_entry(session: &dyn SessionApiDyn, client_extensions: &mut ExtensionMap) {
     let Some(buffer_id) = session.active_buffer() else {
         return;
     };
@@ -194,11 +185,7 @@ fn handle_replace_char(
 
         // Delete the character at cursor
         let char_end = cursor.column + original_char.map_or(1, char::len_utf8);
-        session.delete_range(
-            buffer_id,
-            cursor,
-            Position::new(cursor.line, char_end),
-        );
+        session.delete_range(buffer_id, cursor, Position::new(cursor.line, char_end));
     } else {
         // At end of line: just insert (extends line)
         if let Some(vim) = client_extensions.get_mut::<VimSessionState>() {

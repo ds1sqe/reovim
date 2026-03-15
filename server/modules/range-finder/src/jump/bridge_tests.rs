@@ -29,7 +29,7 @@ fn test_jump_bridge_snapshot_inactive() {
 fn test_jump_bridge_snapshot_active() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<JumpSessionState>();
-    state.start(vec!["he he he".into()], 0, 100, Direction::Both);
+    state.start(vec!["he he he".into()], 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -50,7 +50,7 @@ fn test_jump_bridge_is_active_empty() {
 fn test_jump_bridge_is_active_true() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<JumpSessionState>();
-    state.start(vec!["hello".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello".into()], 0, 0, Direction::Both, 0);
     assert!(JumpBridge.is_active(&map));
 }
 
@@ -66,7 +66,7 @@ fn test_jump_bridge_snapshot_active_waiting_first() {
     // Active but not yet showing labels (WaitingFirstChar).
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<JumpSessionState>();
-    state.start(vec!["hello".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello".into()], 0, 0, Direction::Both, 0);
 
     let snap = JumpBridge.snapshot(&map).unwrap();
     assert_eq!(snap["active"], true);

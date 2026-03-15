@@ -76,7 +76,7 @@ fn test_escape_cancels_and_pops() {
 
     // Start a jump session.
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both);
+    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both, 0);
     assert!(jump.is_active());
 
     let result = resolve(&resolver, &make_escape_key(), &mut ext);
@@ -112,7 +112,7 @@ fn test_char_first_char_completed() {
     let mut ext = ExtensionMap::new();
 
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both);
+    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both, 0);
 
     // First char: state machine waiting for second char.
     let result = resolve(&resolver, &make_char_key('h'), &mut ext);
@@ -126,7 +126,7 @@ fn test_char_auto_jump_pops_with_execute() {
     let mut ext = ExtensionMap::new();
 
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both);
+    jump.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both, 0);
 
     // "wo" has exactly one match -> auto-jump.
     resolve(&resolver, &make_char_key('w'), &mut ext);
@@ -147,7 +147,7 @@ fn test_char_no_matches_pops_cancelled() {
     let mut ext = ExtensionMap::new();
 
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["hello world".into()], 0, 0, crate::jump::search::Direction::Both);
+    jump.start(vec!["hello world".into()], 0, 0, crate::jump::search::Direction::Both, 0);
 
     // "zz" has zero matches.
     resolve(&resolver, &make_char_key('z'), &mut ext);
@@ -166,7 +166,7 @@ fn test_char_multiple_matches_shows_labels() {
     let mut ext = ExtensionMap::new();
 
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["he he he".into()], 0, 100, crate::jump::search::Direction::Both);
+    jump.start(vec!["he he he".into()], 0, 100, crate::jump::search::Direction::Both, 0);
 
     // "he" has 3 matches -> showing labels, still active.
     resolve(&resolver, &make_char_key('h'), &mut ext);
@@ -181,7 +181,7 @@ fn test_char_label_selection_completes() {
     let mut ext = ExtensionMap::new();
 
     let jump = ext.get_or_insert::<JumpSessionState>();
-    jump.start(vec!["he he he".into()], 0, 100, crate::jump::search::Direction::Both);
+    jump.start(vec!["he he he".into()], 0, 100, crate::jump::search::Direction::Both, 0);
 
     // "he" -> 3 matches with single-char labels.
     resolve(&resolver, &make_char_key('h'), &mut ext);
@@ -229,7 +229,7 @@ fn test_text_input_sink_wired() {
 
     // Verify JumpSessionState's TextInputSink works through insert_char.
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, crate::jump::search::Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     assert!(state.has_target());

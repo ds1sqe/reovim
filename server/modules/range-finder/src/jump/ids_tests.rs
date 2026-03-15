@@ -24,15 +24,30 @@ fn test_start_find_char_jump_id() {
 }
 
 #[test]
+fn test_jump_search_backward_id() {
+    assert_eq!(JUMP_SEARCH_BACKWARD.module(), &MODULE);
+    assert_eq!(JUMP_SEARCH_BACKWARD.name(), "jump-search-backward");
+}
+
+#[test]
 fn test_command_ids_unique() {
-    assert_ne!(JUMP_SEARCH, JUMP_EXECUTE);
-    assert_ne!(JUMP_SEARCH, START_FIND_CHAR_JUMP);
-    assert_ne!(JUMP_EXECUTE, START_FIND_CHAR_JUMP);
+    let ids = [
+        JUMP_SEARCH,
+        JUMP_SEARCH_BACKWARD,
+        JUMP_EXECUTE,
+        START_FIND_CHAR_JUMP,
+    ];
+    for (i, a) in ids.iter().enumerate() {
+        for b in &ids[i + 1..] {
+            assert_ne!(a, b);
+        }
+    }
 }
 
 #[test]
 fn test_command_ids_belong_to_module() {
     assert_eq!(JUMP_SEARCH.module(), &MODULE);
+    assert_eq!(JUMP_SEARCH_BACKWARD.module(), &MODULE);
     assert_eq!(JUMP_EXECUTE.module(), &MODULE);
     assert_eq!(START_FIND_CHAR_JUMP.module(), &MODULE);
 }

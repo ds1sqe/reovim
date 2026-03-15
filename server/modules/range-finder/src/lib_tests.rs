@@ -84,12 +84,12 @@ fn test_module_init_with_bridge_store() {
     assert_eq!(bridges[0].kind(), "range-finder-jump");
     assert_eq!(bridges[1].kind(), "range-finder-fold");
 
-    // Verify commands were registered (3 jump + 5 fold + 1 enhanced find-char = 9)
+    // Verify commands were registered (4 jump + 5 fold + 1 enhanced find-char = 10)
     let command_store = services
         .get::<reovim_driver_command::CommandHandlerStore>()
         .unwrap();
     let handlers = command_store.take_handlers();
-    assert_eq!(handlers.len(), 9);
+    assert_eq!(handlers.len(), 10);
 
     // Verify resolver was registered (#524)
     let resolvers = services.get::<ResolverRegistry>().unwrap();
@@ -120,12 +120,12 @@ fn test_module_init_without_bridge_store() {
     // Should succeed even without ModeBridgeStore (reduced functionality)
     assert!(matches!(result, ProbeResult::Success));
 
-    // Verify commands still registered (3 jump + 5 fold = 8, no enhanced find-char)
+    // Verify commands still registered (4 jump + 5 fold = 9, no enhanced find-char)
     let command_store = services
         .get::<reovim_driver_command::CommandHandlerStore>()
         .unwrap();
     let handlers = command_store.take_handlers();
-    assert_eq!(handlers.len(), 8);
+    assert_eq!(handlers.len(), 9);
 }
 
 #[test]

@@ -1394,6 +1394,69 @@ fn test_mock_session_undo_api() {
     session.record_edit_mine(bid, vec![], Position::new(0, 0), Position::new(0, 0));
 }
 
+// ========================================================================
+// Deferred motion tests (#663 operator-pending jump integration)
+// ========================================================================
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_on_command_complete_defers_when_cursor_unmoved() {
+    // When a multi-step motion (e.g., jump search) pushes a mode for label
+    // selection, on_command_complete fires before the cursor has moved.
+    // The resolver should return None and NOT consume pending_motion.
+    let resolver = VimDeleteResolver::new();
+    {
+        let mut state = resolver.state.write().unwrap();
+        state.set_start_position(Position::new(2, 5));
+        state.initialized = true;
+    }
+
+    // Cursor is at SAME position as start (motion hasn't completed yet)
+    let mut session = MockSession::with_cursor(2, 5);
+    let mut extensions = ExtensionMap::new();
+    let mut shared_ext = ExtensionMap::new();
+
+    let vim = extensions.get_or_insert::<crate::VimSessionState>();
+    vim.pending_motion = Some(PendingMotion::new(false, false, false));
+
+    let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
+    assert!(result.is_none(), "should defer when cursor hasn't moved");
+
+    // pending_motion must NOT be consumed (preserved for second call)
+    let vim = extensions.get::<crate::VimSessionState>().unwrap();
+    assert!(
+        vim.pending_motion.is_some(),
+        "pending_motion should be preserved for deferred motion"
+    );
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_on_command_complete_completes_after_cursor_moves() {
+    // Second call: cursor has moved to the jump target.
+    let resolver = VimDeleteResolver::new();
+    {
+        let mut state = resolver.state.write().unwrap();
+        state.set_start_position(Position::new(2, 5));
+        state.initialized = true;
+    }
+
+    // Cursor moved to (4, 0) — different from start (2, 5)
+    let mut session = MockSession::with_cursor(4, 0);
+    let mut extensions = ExtensionMap::new();
+    let mut shared_ext = ExtensionMap::new();
+
+    let vim = extensions.get_or_insert::<crate::VimSessionState>();
+    vim.pending_motion = Some(PendingMotion::new(false, false, false));
+
+    let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
+    assert!(result.is_some(), "should complete when cursor moved");
+
+    // pending_motion should now be consumed
+    let vim = extensions.get::<crate::VimSessionState>().unwrap();
+    assert!(vim.pending_motion.is_none(), "pending_motion should be consumed");
+}
+
 #[test]
 fn test_mock_session_change_tracker() {
     let mut session = MockSession::new();

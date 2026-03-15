@@ -68,6 +68,13 @@ pub struct JumpSessionState {
     cursor_col: u32,
     /// Search direction.
     direction: Direction,
+    /// Line offset for viewport-bounded scanning.
+    ///
+    /// When searching only visible lines, `lines` is a viewport slice and
+    /// match positions are relative to that slice. `line_offset` is added
+    /// to `JumpTarget.line` in `take_target()` to produce absolute buffer
+    /// coordinates.
+    line_offset: u32,
 }
 
 impl Default for JumpSessionState {
@@ -79,6 +86,7 @@ impl Default for JumpSessionState {
             cursor_line: 0,
             cursor_col: 0,
             direction: Direction::Both,
+            line_offset: 0,
         }
     }
 }
@@ -101,12 +109,18 @@ impl TextInputSink for JumpSessionState {
 
 impl JumpSessionState {
     /// Start a jump search session with the given buffer context.
+    ///
+    /// `line_offset` is the absolute buffer line of the first element in
+    /// `lines` (i.e., `scroll_top` for viewport-bounded scanning). It is
+    /// added to `JumpTarget.line` in [`take_target`] so the caller always
+    /// receives absolute buffer coordinates.
     pub fn start(
         &mut self,
         lines: Vec<String>,
         cursor_line: u32,
         cursor_col: u32,
         direction: Direction,
+        line_offset: u32,
     ) {
         self.phase = JumpPhase::WaitingFirstChar;
         self.target = None;
@@ -114,6 +128,7 @@ impl JumpSessionState {
         self.cursor_line = cursor_line;
         self.cursor_col = cursor_col;
         self.direction = direction;
+        self.line_offset = line_offset;
     }
 
     /// Start a jump session with pre-computed matches (e.g., from f/t motions).
@@ -127,6 +142,7 @@ impl JumpSessionState {
     pub fn start_with_matches(&mut self, matches: Vec<JumpMatch>) {
         self.target = None;
         self.lines.clear();
+        self.line_offset = 0;
 
         if matches.is_empty() {
             self.phase = JumpPhase::Inactive;
@@ -146,10 +162,14 @@ impl JumpSessionState {
 
     /// Take the resolved jump target (consumes it).
     ///
-    /// Returns `Some(JumpTarget)` if a label was successfully selected,
-    /// `None` otherwise.
-    pub const fn take_target(&mut self) -> Option<JumpTarget> {
-        self.target.take()
+    /// The returned target's `line` is adjusted by `line_offset` so it
+    /// represents an absolute buffer line, regardless of whether the search
+    /// was viewport-bounded.
+    pub fn take_target(&mut self) -> Option<JumpTarget> {
+        self.target.take().map(|mut t| {
+            t.line += self.line_offset;
+            t
+        })
     }
 
     /// Whether a resolved jump target is available (non-consuming).

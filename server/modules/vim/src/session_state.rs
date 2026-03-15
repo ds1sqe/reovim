@@ -44,8 +44,7 @@
 //! ```
 
 use {
-    reovim_driver_input::KeyEvent,
-    reovim_driver_session::SessionExtension,
+    reovim_driver_input::KeyEvent, reovim_driver_session::SessionExtension,
     reovim_kernel::api::v1::Position,
 };
 

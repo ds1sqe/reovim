@@ -6,6 +6,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Leap-style bidirectional jump motions (#663, part of #660)**: Enhanced
+  range-finder module with viewport-bounded scanning and backward search.
+  `s{char}{char}` now searches forward only (was bidirectional) with matches
+  limited to visible viewport lines for large-file performance. New `S`
+  keybinding for backward jump search (`Direction::Backward`). Jump targets
+  use `line_offset` translation for correct absolute buffer coordinates when
+  viewport is scrolled. Operator-pending integration: `ds`, `ys`, `cs` with
+  jump motions via deferred `on_command_complete` pattern — operator resolvers
+  (delete, yank, change, case) now peek `pending_motion` and defer completion
+  when cursor hasn't moved (multi-step motion pushed a mode for label
+  selection). `start_with_matches()` resets `line_offset` to avoid stale
+  offsets from prior viewport-bounded searches. 25 new tests across
+  range-finder and vim modules.
+
 - **H, M, L screen-position motions (#669, part of #660)**: Three new motions
   that move the cursor relative to the viewport. `H` moves to the top of the
   visible screen (with optional count for Nth line from top). `M` moves to the

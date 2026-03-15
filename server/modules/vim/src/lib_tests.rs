@@ -394,10 +394,10 @@ fn test_init_registers_keybindings() {
     assert!(keybinding_store.is_some(), "KeybindingStore should exist after init");
     let keybinding_store = keybinding_store.unwrap();
     let all_bindings = bindings::all();
-    // Keybindings = vim core bindings + 20 personality manifest bindings
+    // Keybindings = vim core bindings + 21 personality manifest bindings
     assert_eq!(
         keybinding_store.len(),
-        all_bindings.len() + 20,
+        all_bindings.len() + 21,
         "Should register all keybindings (core + manifest)"
     );
 }

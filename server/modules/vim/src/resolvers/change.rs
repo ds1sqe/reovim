@@ -402,13 +402,22 @@ impl ModeKeyResolver for VimChangeResolver {
 
         // Fall back to motion-based range calculation
         let vim = client_extensions.get_mut::<crate::VimSessionState>()?;
-        let motion = vim.pending_motion.take()?;
+
+        // Peek first: multi-step motions (jump search) push a mode for
+        // label selection before the cursor moves.  Defer completion.
+        let _ = vim.pending_motion.as_ref()?;
 
         let state = self.state.read().expect("lock poisoned");
         let start_pos = state.start_position?;
         drop(state);
 
         let end_pos = session.cursor_position()?;
+
+        if start_pos == end_pos {
+            return None;
+        }
+
+        let motion = vim.pending_motion.take()?;
 
         // Normalize range and adjust for motion type
         //

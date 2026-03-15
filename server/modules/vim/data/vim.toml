@@ -128,7 +128,14 @@ key = "s"
 command = "range-finder:jump-search"
 modes = ["vim:normal"]
 category = "jump"
-description = "Jump search (two-char pattern)"
+description = "Jump search forward (two-char pattern)"
+
+[[keybinding]]
+key = "S"
+command = "range-finder:jump-search-backward"
+modes = ["vim:normal"]
+category = "jump"
+description = "Jump search backward (two-char pattern)"
 
 [[keybinding]]
 key = "za"

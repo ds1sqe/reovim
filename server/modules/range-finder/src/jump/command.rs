@@ -11,7 +11,34 @@ use {
 
 use super::{ids, search::Direction, state::JumpSessionState};
 
-/// Command to start a jump search (`s` in normal mode).
+/// Gather visible buffer lines and cursor context for a viewport-bounded jump.
+///
+/// Returns `(lines, relative_cursor_line, cursor_col, scroll_top)`.
+/// Returns `None` if there is no active window or buffer.
+#[allow(clippy::cast_possible_truncation)]
+fn gather_viewport_context(
+    runtime: &SessionRuntime<'_>,
+    buffer_id: reovim_kernel::api::v1::BufferId,
+) -> Option<(Vec<String>, u32, u32, u32)> {
+    let window = runtime.windows().active()?;
+    let cursor_line = window.cursor.line;
+    let cursor_col = window.cursor.column as u32;
+    let scroll_top = window.viewport.scroll_top;
+    let viewport_height = usize::from(window.viewport.height);
+
+    let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
+    let start = scroll_top.min(line_count);
+    let end = (scroll_top + viewport_height).min(line_count);
+    let mut lines = Vec::with_capacity(end - start);
+    for i in start..end {
+        lines.push(runtime.buffer_line(buffer_id, i).unwrap_or_default());
+    }
+
+    let relative_cursor = cursor_line.saturating_sub(scroll_top) as u32;
+    Some((lines, relative_cursor, cursor_col, start as u32))
+}
+
+/// Command to start a forward jump search (`s` in normal mode).
 ///
 /// Initialises the `JumpSessionState` state machine and transitions
 /// to `range-finder:jump-input` mode.
@@ -24,7 +51,7 @@ impl Command for JumpSearchCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Start jump search (two-char pattern)"
+        "Start forward jump search (two-char pattern)"
     }
 }
 
@@ -34,29 +61,46 @@ impl CommandHandler for JumpSearchCommand {
             return CommandResult::Success;
         };
 
-        // Read cursor position from active window (#524).
-        // CommandContext.cursor_position() is not populated by the server framework,
-        // so we read directly from the per-client window state (same pattern as motions).
-        let Some(window) = runtime.windows().active() else {
+        let Some((lines, cursor, col, offset)) = gather_viewport_context(runtime, buffer_id) else {
             return CommandResult::Success;
         };
-        #[allow(clippy::cast_possible_truncation)]
-        let (line, col) = (window.cursor.line as u32, window.cursor.column as u32);
 
-        // Gather buffer lines for jump search.
-        let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
-        let mut lines = Vec::with_capacity(line_count);
-        for i in 0..line_count {
-            lines.push(runtime.buffer_line(buffer_id, i).unwrap_or_default());
-        }
-
-        // Start the jump state machine.
         let jump = runtime.ext_mut::<JumpSessionState>();
-        jump.start(lines, line, col, Direction::Both);
-
-        // Enter jump-input mode for label selection.
+        jump.start(lines, cursor, col, Direction::Forward, offset);
         runtime.push_mode(ids::JUMP_INPUT_MODE, TransitionContext::new());
+        CommandResult::Success
+    }
+}
 
+/// Command to start a backward jump search (`S` in normal mode).
+///
+/// Identical to `JumpSearchCommand` except uses `Direction::Backward`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct JumpSearchBackwardCommand;
+
+impl Command for JumpSearchBackwardCommand {
+    fn id(&self) -> CommandId {
+        ids::JUMP_SEARCH_BACKWARD
+    }
+
+    fn description(&self) -> &'static str {
+        "Start backward jump search (two-char pattern)"
+    }
+}
+
+impl CommandHandler for JumpSearchBackwardCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+
+        let Some((lines, cursor, col, offset)) = gather_viewport_context(runtime, buffer_id) else {
+            return CommandResult::Success;
+        };
+
+        let jump = runtime.ext_mut::<JumpSessionState>();
+        jump.start(lines, cursor, col, Direction::Backward, offset);
+        runtime.push_mode(ids::JUMP_INPUT_MODE, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -164,6 +208,7 @@ struct MatchPosition {
 pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![
         Box::new(JumpSearchCommand),
+        Box::new(JumpSearchBackwardCommand),
         Box::new(JumpExecuteCommand),
         Box::new(StartFindCharJumpCommand),
     ]

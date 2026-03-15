@@ -5,8 +5,11 @@ use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId};
 /// Range-finder module ID.
 pub const MODULE: ModuleId = ModuleId::new("range-finder");
 
-/// Start a jump search (bound to `s` in normal mode).
+/// Start a forward jump search (bound to `s` in normal mode).
 pub const JUMP_SEARCH: CommandId = CommandId::new(MODULE, "jump-search");
+
+/// Start a backward jump search (bound to `S` in normal mode).
+pub const JUMP_SEARCH_BACKWARD: CommandId = CommandId::new(MODULE, "jump-search-backward");
 
 /// Execute the jump (cursor move after label resolution).
 pub const JUMP_EXECUTE: CommandId = CommandId::new(MODULE, "jump-execute");

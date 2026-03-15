@@ -23,14 +23,14 @@ fn test_default_inactive() {
 #[test]
 fn test_start_transitions_to_waiting_first() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello".into()], 0, 0, Direction::Both, 0);
     assert!(state.is_active());
 }
 
 #[test]
 fn test_first_char_transitions_to_waiting_second() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('h');
     // Should be in WaitingSecondChar now (still active, no matches shown).
     assert!(state.is_active());
@@ -40,7 +40,7 @@ fn test_first_char_transitions_to_waiting_second() {
 #[test]
 fn test_second_char_zero_matches_cancels() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 0, Direction::Both, 0);
     state.insert_char('z');
     state.insert_char('z');
     assert!(!state.is_active());
@@ -50,7 +50,7 @@ fn test_second_char_zero_matches_cancels() {
 #[test]
 fn test_second_char_one_match_auto_jumps() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     // "wo" only matches once at col 6.
@@ -65,7 +65,7 @@ fn test_second_char_few_matches_shows_single_labels() {
     let mut state = JumpSessionState::default();
     // 3 matches of "he": need to be careful with cursor position.
     let lines = vec!["he he he".into()];
-    state.start(lines, 0, 100, Direction::Both);
+    state.start(lines, 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
     // Should be ShowingLabels with single-char labels.
@@ -79,7 +79,7 @@ fn test_second_char_few_matches_shows_single_labels() {
 fn test_second_char_many_matches_shows_two_char_labels() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
     assert!(state.is_active());
@@ -93,7 +93,7 @@ fn test_second_char_over_max_shows_capped_labels() {
     // >676 matches should be capped at 676 by find_matches.
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(700);
-    state.start(lines, 10000, 10000, Direction::Both);
+    state.start(lines, 10000, 10000, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
     // Should show labels (capped at 676), not cancel.
@@ -106,7 +106,7 @@ fn test_second_char_over_max_shows_capped_labels() {
 fn test_label_select_single_char_match() {
     let mut state = JumpSessionState::default();
     let lines = vec!["he he he".into()];
-    state.start(lines, 0, 100, Direction::Both);
+    state.start(lines, 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -127,7 +127,7 @@ fn test_label_select_single_char_match() {
 fn test_label_select_single_char_no_match() {
     let mut state = JumpSessionState::default();
     let lines = vec!["he he he".into()];
-    state.start(lines, 0, 100, Direction::Both);
+    state.start(lines, 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -141,7 +141,7 @@ fn test_label_select_single_char_no_match() {
 fn test_label_select_two_char_first() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -157,7 +157,7 @@ fn test_label_select_two_char_first() {
 fn test_label_select_two_char_complete() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -181,7 +181,7 @@ fn test_label_select_two_char_complete() {
 fn test_label_select_two_char_no_match() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -195,7 +195,7 @@ fn test_label_select_two_char_no_match() {
 #[test]
 fn test_cancel_from_waiting_first() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello".into()], 0, 0, Direction::Both, 0);
     state.cancel();
     assert!(!state.is_active());
 }
@@ -203,7 +203,7 @@ fn test_cancel_from_waiting_first() {
 #[test]
 fn test_cancel_from_waiting_second() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello".into()], 0, 0, Direction::Both);
+    state.start(vec!["hello".into()], 0, 0, Direction::Both, 0);
     state.insert_char('h');
     state.cancel();
     assert!(!state.is_active());
@@ -213,7 +213,7 @@ fn test_cancel_from_waiting_second() {
 fn test_cancel_from_showing_labels() {
     let mut state = JumpSessionState::default();
     let lines = vec!["he he he".into()];
-    state.start(lines, 0, 100, Direction::Both);
+    state.start(lines, 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
     assert!(state.is_active());
@@ -225,7 +225,7 @@ fn test_cancel_from_showing_labels() {
 fn test_cancel_from_waiting_label_second() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
     state.insert_char('s'); // First char of two-char label.
@@ -245,7 +245,7 @@ fn test_insert_char_when_inactive_noop() {
 #[test]
 fn test_take_target_consumes() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     assert!(state.take_target().is_some());
@@ -267,7 +267,7 @@ fn test_is_active_states() {
     let mut state = JumpSessionState::default();
     assert!(!state.is_active()); // Inactive
 
-    state.start(vec!["he he he".into()], 0, 100, Direction::Both);
+    state.start(vec!["he he he".into()], 0, 100, Direction::Both, 0);
     assert!(state.is_active()); // WaitingFirstChar
 
     state.insert_char('h');
@@ -281,7 +281,7 @@ fn test_is_active_states() {
 fn test_get_matches_showing_labels() {
     let mut state = JumpSessionState::default();
     let lines = vec!["he he he".into()];
-    state.start(lines, 0, 100, Direction::Both);
+    state.start(lines, 0, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -312,7 +312,7 @@ fn test_text_input_sink_available() {
 fn test_two_char_label_invalid_first_char() {
     let mut state = JumpSessionState::default();
     let lines = make_lines_with_matches(30);
-    state.start(lines, 100, 100, Direction::Both);
+    state.start(lines, 100, 100, Direction::Both, 0);
     state.insert_char('h');
     state.insert_char('e');
 
@@ -325,7 +325,7 @@ fn test_two_char_label_invalid_first_char() {
 #[test]
 fn test_has_target_true_after_auto_jump() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     assert!(state.has_target());
@@ -340,7 +340,7 @@ fn test_has_target_false_when_inactive() {
 #[test]
 fn test_has_target_false_after_take() {
     let mut state = JumpSessionState::default();
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     assert!(state.has_target());
@@ -420,7 +420,7 @@ fn test_start_with_matches_cancel() {
 fn test_start_with_matches_clears_previous_target() {
     let mut state = JumpSessionState::default();
     // First: auto-jump sets a target
-    state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
     state.insert_char('w');
     state.insert_char('o');
     assert!(state.has_target());
@@ -459,4 +459,95 @@ fn test_start_with_matches_two_char_labels() {
     assert!(!state.is_active());
     let target = state.take_target().expect("should have target");
     assert_eq!(target.col, 0);
+}
+
+// =========================================================================
+// Viewport line_offset tests (Phase 1 of #663)
+// =========================================================================
+
+#[test]
+fn test_line_offset_zero_backward_compatible() {
+    let mut state = JumpSessionState::default();
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 0);
+    state.insert_char('w');
+    state.insert_char('o');
+    let target = state.take_target().expect("target");
+    // With line_offset=0, target.line should be unchanged.
+    assert_eq!(target.line, 0);
+    assert_eq!(target.col, 6);
+}
+
+#[test]
+fn test_line_offset_translates_target_line() {
+    // Simulate viewport starting at buffer line 10.
+    // "hello world" is at viewport line 0 (buffer line 10).
+    let mut state = JumpSessionState::default();
+    state.start(vec!["hello world".into()], 0, 100, Direction::Both, 10);
+    state.insert_char('w');
+    state.insert_char('o');
+    let target = state.take_target().expect("target");
+    // target.line should be 10 (0 + line_offset 10).
+    assert_eq!(target.line, 10);
+    assert_eq!(target.col, 6);
+}
+
+#[test]
+fn test_line_offset_with_multiple_viewport_lines() {
+    // Viewport lines 5-7 of a buffer, cursor at viewport line 0.
+    let lines = vec![
+        "first line".into(),
+        "second line".into(),
+        "hello world".into(),
+    ];
+    let mut state = JumpSessionState::default();
+    state.start(lines, 0, 100, Direction::Both, 5);
+    state.insert_char('w');
+    state.insert_char('o');
+    let target = state.take_target().expect("target");
+    // "wo" is at viewport line 2, so buffer line = 2 + 5 = 7.
+    assert_eq!(target.line, 7);
+    assert_eq!(target.col, 6);
+}
+
+#[test]
+fn test_line_offset_with_label_selection() {
+    // Multiple matches in viewport with offset.
+    let lines = vec!["he he he".into()];
+    let mut state = JumpSessionState::default();
+    state.start(lines, 0, 100, Direction::Both, 20);
+    state.insert_char('h');
+    state.insert_char('e');
+    assert!(state.is_active());
+
+    // Select first label.
+    let matches = state.get_matches().unwrap();
+    let first_label_char = matches[0].label.chars().next().unwrap();
+    let expected_col = matches[0].col;
+    state.insert_char(first_label_char);
+
+    let target = state.take_target().expect("target");
+    // Buffer line = 0 + 20 = 20.
+    assert_eq!(target.line, 20);
+    assert_eq!(target.col, expected_col);
+}
+
+#[test]
+fn test_line_offset_not_applied_to_start_with_matches() {
+    // start_with_matches doesn't use line_offset (pre-computed positions
+    // are already absolute from f/t motions).
+    let mut state = JumpSessionState::default();
+    state.start(vec!["dummy".into()], 0, 0, Direction::Both, 50);
+    // Now override with start_with_matches (resets line context).
+    let labels = crate::jump::search::generate_labels(2);
+    let matches = vec![
+        JumpMatch::new(0, 5, labels[0].clone(), 5),
+        JumpMatch::new(0, 10, labels[1].clone(), 10),
+    ];
+    state.start_with_matches(matches);
+    state.insert_char('s');
+    let target = state.take_target().expect("target");
+    // start_with_matches resets line_offset to 0 because f/t positions
+    // are already absolute buffer coordinates.
+    assert_eq!(target.line, 0);
+    assert_eq!(target.col, 5);
 }

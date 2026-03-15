@@ -115,8 +115,8 @@ pub use vim_lookup_policy::VimLookupPolicy;
 pub use commands::{
     ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
     EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterReplaceMode,
-    EnterSearchBackward, EnterSearchForward, EnterWindowMode, ExecuteFindChar,
-    ExitCommandLineMode, ExitToNormal, OpenLineAbove, OpenLineBelow, ReplaceBackspace,
+    EnterSearchBackward, EnterSearchForward, EnterWindowMode, ExecuteFindChar, ExitCommandLineMode,
+    ExitToNormal, OpenLineAbove, OpenLineBelow, ReplaceBackspace,
 };
 
 // Re-export resolvers

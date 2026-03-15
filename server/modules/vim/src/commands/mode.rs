@@ -269,7 +269,11 @@ impl CommandHandler for ReplaceBackspace {
             // Restore original character if there was one
             if let Some(original) = entry.original {
                 let restore_str = String::from(original);
-                runtime.insert_text(buffer_id, Position::new(cursor.line, delete_col), &restore_str);
+                runtime.insert_text(
+                    buffer_id,
+                    Position::new(cursor.line, delete_col),
+                    &restore_str,
+                );
             }
 
             // Move cursor back
@@ -307,7 +311,10 @@ impl CommandHandler for ReplaceBackspace {
         }
 
         // Pop from insert buffer for dot repeat
-        runtime.ext_mut::<crate::VimSessionState>().insert_buffer.pop();
+        runtime
+            .ext_mut::<crate::VimSessionState>()
+            .insert_buffer
+            .pop();
 
         CommandResult::Success
     }

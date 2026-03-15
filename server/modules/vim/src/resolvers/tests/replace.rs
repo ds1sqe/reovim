@@ -2,12 +2,10 @@
 
 use {
     reovim_driver_input::{
-        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery,
-        ModeKeyResolver, ModeState, Modifiers, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
+        ModeState, Modifiers, ResolveInput, ResolveResult,
     },
-    reovim_kernel::api::v1::{
-        BufferId, CommandId, ModeId, ModuleId, Position, WindowId,
-    },
+    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModuleId, Position, WindowId},
 };
 
 use {
@@ -91,7 +89,11 @@ impl MockSession {
             mode: VimMode::REPLACE_ID,
             cursor: Some(Position::new(0, 0)),
             buffer_id: Some(buffer_id),
-            lines: if lines.is_empty() { vec![String::new()] } else { lines },
+            lines: if lines.is_empty() {
+                vec![String::new()]
+            } else {
+                lines
+            },
         }
     }
 
@@ -102,19 +104,38 @@ impl MockSession {
 }
 
 impl ModeApi for MockSession {
-    fn current_mode(&self) -> &ModeId { &self.mode }
-    fn home_mode(&self) -> &ModeId { &self.mode }
-    fn mode_depth(&self) -> usize { 1 }
-    fn is_mode_active(&self, _mode: &ModeId) -> bool { false }
-    fn mode_stack(&self) -> Vec<ModeId> { vec![self.mode.clone()] }
+    fn current_mode(&self) -> &ModeId {
+        &self.mode
+    }
+    fn home_mode(&self) -> &ModeId {
+        &self.mode
+    }
+    fn mode_depth(&self) -> usize {
+        1
+    }
+    fn is_mode_active(&self, _mode: &ModeId) -> bool {
+        false
+    }
+    fn mode_stack(&self) -> Vec<ModeId> {
+        vec![self.mode.clone()]
+    }
     fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {}
-    fn pop_mode(&mut self, _result: Option<reovim_driver_session::PopResult>) -> Result<(), ModeError> { Ok(()) }
-    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_session::TransitionContext) { self.mode = mode; }
+    fn pop_mode(
+        &mut self,
+        _result: Option<reovim_driver_session::PopResult>,
+    ) -> Result<(), ModeError> {
+        Ok(())
+    }
+    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {
+        self.mode = mode;
+    }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl BufferApi for MockSession {
-    fn active_buffer(&self) -> Option<BufferId> { self.buffer_id }
+    fn active_buffer(&self) -> Option<BufferId> {
+        self.buffer_id
+    }
     fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
     fn buffer_line(&self, _b: BufferId, l: usize) -> Option<String> {
         self.lines.get(l).cloned()
@@ -125,30 +146,63 @@ impl BufferApi for MockSession {
     fn buffer_line_len(&self, _b: BufferId, l: usize) -> Option<usize> {
         self.lines.get(l).map(String::len)
     }
-    fn buffer_text_range(&self, _b: BufferId, _s: Position, _e: Position) -> Option<String> { None }
-    fn buffer_content(&self, _b: BufferId) -> Option<String> { None }
-    fn buffer_file_path(&self, _b: BufferId) -> Option<String> { None }
-    fn is_buffer_modified(&self, _b: BufferId) -> Option<bool> { None }
+    fn buffer_text_range(&self, _b: BufferId, _s: Position, _e: Position) -> Option<String> {
+        None
+    }
+    fn buffer_content(&self, _b: BufferId) -> Option<String> {
+        None
+    }
+    fn buffer_file_path(&self, _b: BufferId) -> Option<String> {
+        None
+    }
+    fn is_buffer_modified(&self, _b: BufferId) -> Option<bool> {
+        None
+    }
     fn set_buffer_modified(&mut self, _b: BufferId, _m: bool) {}
     fn insert_text(&mut self, _b: BufferId, _p: Position, _t: &str) {}
     fn delete_range(&mut self, _b: BufferId, _s: Position, _e: Position) {}
-    fn create_buffer(&mut self, _n: Option<&str>, _c: &str) -> BufferId { BufferId::new() }
-    fn delete_buffer(&mut self, _b: BufferId) -> Result<(), reovim_driver_session::api::BufferError> { Ok(()) }
+    fn create_buffer(&mut self, _n: Option<&str>, _c: &str) -> BufferId {
+        BufferId::new()
+    }
+    fn delete_buffer(
+        &mut self,
+        _b: BufferId,
+    ) -> Result<(), reovim_driver_session::api::BufferError> {
+        Ok(())
+    }
     fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl WindowApi for MockSession {
-    fn active_window(&self) -> Option<WindowId> { Some(WindowId::new()) }
-    fn cursor_position(&self) -> Option<Position> { self.cursor }
-    fn window_count(&self) -> usize { 1 }
-    fn window_buffer(&self, _w: WindowId) -> Option<BufferId> { self.buffer_id }
-    fn create_window(&mut self, _b: Option<BufferId>) -> WindowId { WindowId::new() }
-    fn close_window(&mut self, _w: WindowId) -> Result<(), WindowError> { Ok(()) }
-    fn focus_window(&mut self, _w: WindowId) -> Result<(), WindowError> { Ok(()) }
-    fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> { Ok(()) }
+    fn active_window(&self) -> Option<WindowId> {
+        Some(WindowId::new())
+    }
+    fn cursor_position(&self) -> Option<Position> {
+        self.cursor
+    }
+    fn window_count(&self) -> usize {
+        1
+    }
+    fn window_buffer(&self, _w: WindowId) -> Option<BufferId> {
+        self.buffer_id
+    }
+    fn create_window(&mut self, _b: Option<BufferId>) -> WindowId {
+        WindowId::new()
+    }
+    fn close_window(&mut self, _w: WindowId) -> Result<(), WindowError> {
+        Ok(())
+    }
+    fn focus_window(&mut self, _w: WindowId) -> Result<(), WindowError> {
+        Ok(())
+    }
+    fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> {
+        Ok(())
+    }
     fn set_active_selection(&mut self, _selection: Option<Selection>) {}
-    fn active_selection(&self) -> Option<&Selection> { None }
+    fn active_selection(&self) -> Option<&Selection> {
+        None
+    }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -160,19 +214,33 @@ impl CommandApi for MockSession {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl UndoApi for MockSession {
-    fn undo(&mut self, _b: BufferId) -> Option<UndoResult> { None }
-    fn redo(&mut self, _b: BufferId) -> Option<UndoResult> { None }
+    fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn redo(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
     fn record_edit(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
-    fn can_undo(&self, _b: BufferId) -> bool { false }
-    fn can_redo(&self, _b: BufferId) -> bool { false }
-    fn undo_mine(&mut self, _b: BufferId) -> Option<UndoResult> { None }
-    fn redo_mine(&mut self, _b: BufferId) -> Option<UndoResult> { None }
+    fn can_undo(&self, _b: BufferId) -> bool {
+        false
+    }
+    fn can_redo(&self, _b: BufferId) -> bool {
+        false
+    }
+    fn undo_mine(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn redo_mine(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
     fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl ChangeTracker for MockSession {
-    fn take_changes(&mut self) -> StateChanges { StateChanges::new() }
+    fn take_changes(&mut self) -> StateChanges {
+        StateChanges::new()
+    }
     fn record_cursor_move(&mut self, _b: BufferId) {}
     fn record_selection_change(&mut self, _b: BufferId) {}
 }
