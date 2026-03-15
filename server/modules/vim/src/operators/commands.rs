@@ -18,7 +18,10 @@ use {
 };
 
 use {
-    super::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
+    super::{
+        DeleteOperator, LowercaseOperator, Operator, OperatorContext, Range, ToggleCaseOperator,
+        UppercaseOperator, YankOperator,
+    },
     crate::ids::MODULE,
 };
 
@@ -183,6 +186,78 @@ impl CommandHandler for ChangeCommand {
 }
 
 // =============================================================================
+// Lowercase Command (vim:lowercase)
+// =============================================================================
+
+/// Lowercase operator command - wraps `LowercaseOperator` for command execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LowercaseCommand;
+
+impl Command for LowercaseCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(MODULE, "lowercase")
+    }
+
+    fn description(&self) -> &'static str {
+        "Lowercase text in range"
+    }
+}
+
+impl CommandHandler for LowercaseCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_operator(&LowercaseOperator, runtime, args)
+    }
+}
+
+// =============================================================================
+// Uppercase Command (vim:uppercase)
+// =============================================================================
+
+/// Uppercase operator command - wraps `UppercaseOperator` for command execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UppercaseCommand;
+
+impl Command for UppercaseCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(MODULE, "uppercase")
+    }
+
+    fn description(&self) -> &'static str {
+        "Uppercase text in range"
+    }
+}
+
+impl CommandHandler for UppercaseCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_operator(&UppercaseOperator, runtime, args)
+    }
+}
+
+// =============================================================================
+// Toggle Case Command (vim:toggle-case-op)
+// =============================================================================
+
+/// Toggle case operator command - wraps `ToggleCaseOperator` for command execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleCaseCommand;
+
+impl Command for ToggleCaseCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(MODULE, "toggle-case-op")
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle case of text in range"
+    }
+}
+
+impl CommandHandler for ToggleCaseCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_operator(&ToggleCaseOperator, runtime, args)
+    }
+}
+
+// =============================================================================
 // Helper Function
 // =============================================================================
 
@@ -306,6 +381,9 @@ pub fn operator_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(DeleteCommand),
         Box::new(YankCommand),
         Box::new(ChangeCommand),
+        Box::new(LowercaseCommand),
+        Box::new(UppercaseCommand),
+        Box::new(ToggleCaseCommand),
     ]
 }
 

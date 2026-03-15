@@ -6,6 +6,7 @@
 //! - Insert mode edits: newline, tab
 //! - Delete operations: x, X, dd, D
 //! - Replace operations: r, .
+//! - Case operations: ~
 //! - Undo/redo: u, Ctrl-R
 //! - Yank: yy, Y
 //! - Paste: p, P
@@ -24,6 +25,7 @@
 //! - h/l (left/right) clear the preferred column
 //! - Movements clamp to valid positions (no-op at boundaries)
 
+mod case;
 mod cursor;
 mod delete;
 mod display_line;
@@ -39,6 +41,7 @@ mod yank;
 
 // Re-export all command types for external use
 pub use {
+    case::ToggleCase,
     cursor::{CursorDown, CursorLeft, CursorRight, CursorUp},
     delete::{DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine},
     display_line::{CursorDisplayDown, CursorDisplayUp},
@@ -48,7 +51,7 @@ pub use {
     mark::{GotoMarkExact, GotoMarkLine, SetMark},
     operators::{
         EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
-        EnterYankOperator,
+        EnterLowercaseOperator, EnterToggleCaseOperator, EnterUppercaseOperator, EnterYankOperator,
     },
     paste::{PasteAfter, PasteBefore},
     replace::{JoinLines, RepeatDot, ReplaceChar, ReplaceCharStart},
@@ -86,6 +89,9 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(EnterChangeOperator),
         Box::new(EnterIndentOperator),
         Box::new(EnterDedentOperator),
+        Box::new(EnterLowercaseOperator),
+        Box::new(EnterUppercaseOperator),
+        Box::new(EnterToggleCaseOperator),
         // Delete operations
         Box::new(DeleteChar),
         Box::new(DeleteCharBefore),
@@ -100,6 +106,8 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Replace
         Box::new(ReplaceCharStart),
         Box::new(ReplaceChar),
+        // Case
+        Box::new(ToggleCase),
         // Repeat
         Box::new(RepeatDot),
         // Undo/redo

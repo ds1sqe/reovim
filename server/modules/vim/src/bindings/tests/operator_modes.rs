@@ -24,8 +24,19 @@ fn test_all_operator_bindings_count() {
     let delete = delete_bindings();
     let yank = yank_bindings();
     let change = change_bindings();
+    let lowercase = lowercase_bindings();
+    let uppercase = uppercase_bindings();
+    let toggle_case = toggle_case_bindings();
 
-    assert_eq!(all.len(), delete.len() + yank.len() + change.len());
+    assert_eq!(
+        all.len(),
+        delete.len()
+            + yank.len()
+            + change.len()
+            + lowercase.len()
+            + uppercase.len()
+            + toggle_case.len()
+    );
 }
 
 #[test]

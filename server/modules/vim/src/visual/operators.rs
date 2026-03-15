@@ -379,6 +379,122 @@ impl CommandHandler for DedentSelection {
     }
 }
 
+// =============================================================================
+// Case Operators in Visual Mode (#666)
+// =============================================================================
+
+/// Helper to apply a case transformation to the visual selection.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn execute_case_selection(
+    runtime: &mut SessionRuntime<'_>,
+    args: &CommandContext,
+    transform: fn(&str) -> String,
+) -> CommandResult {
+    let Some(buffer_id) = args.buffer_id() else {
+        return CommandResult::error("No active buffer");
+    };
+
+    let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
+        return CommandResult::Success;
+    };
+
+    let end_line_len = runtime.buffer_line_len(buffer_id, selection.end.line);
+    let total_lines = runtime.buffer_line_count(buffer_id).unwrap_or(1);
+    let (start, end, _is_linewise) = expand_selection_range(&selection, end_line_len, total_lines);
+
+    // Read, transform, replace
+    if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
+        let transformed = transform(&text);
+        if transformed != text {
+            runtime.delete_range(buffer_id, start, end);
+            runtime.insert_text(buffer_id, start, &transformed);
+        }
+    }
+
+    // Clear selection and set cursor to start of range
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.selection = None;
+        window.cursor = start.into();
+    }
+
+    runtime.record_selection_change(buffer_id);
+    runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
+
+    CommandResult::Success
+}
+
+/// Toggle case of selection (~ in visual mode).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleCaseSelection;
+
+impl Command for ToggleCaseSelection {
+    fn id(&self) -> CommandId {
+        ids::TOGGLE_CASE_SELECTION
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle case of visual selection"
+    }
+}
+
+impl CommandHandler for ToggleCaseSelection {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_case_selection(runtime, args, |s| {
+            s.chars()
+                .map(|c| {
+                    if c.is_uppercase() {
+                        c.to_lowercase().next().unwrap_or(c)
+                    } else if c.is_lowercase() {
+                        c.to_uppercase().next().unwrap_or(c)
+                    } else {
+                        c
+                    }
+                })
+                .collect()
+        })
+    }
+}
+
+/// Lowercase selection (u in visual mode).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LowercaseSelection;
+
+impl Command for LowercaseSelection {
+    fn id(&self) -> CommandId {
+        ids::LOWERCASE_SELECTION
+    }
+
+    fn description(&self) -> &'static str {
+        "Lowercase visual selection"
+    }
+}
+
+impl CommandHandler for LowercaseSelection {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_case_selection(runtime, args, str::to_lowercase)
+    }
+}
+
+/// Uppercase selection (U in visual mode).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UppercaseSelection;
+
+impl Command for UppercaseSelection {
+    fn id(&self) -> CommandId {
+        ids::UPPERCASE_SELECTION
+    }
+
+    fn description(&self) -> &'static str {
+        "Uppercase visual selection"
+    }
+}
+
+impl CommandHandler for UppercaseSelection {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_case_selection(runtime, args, str::to_uppercase)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
 #[path = "tests/operators.rs"]

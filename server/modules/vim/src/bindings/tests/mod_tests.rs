@@ -183,6 +183,9 @@ fn test_all_bindings_have_valid_modes() {
         "vim:delete",
         "vim:yank",
         "vim:change",
+        "vim:lowercase",
+        "vim:uppercase",
+        "vim:toggle-case",
     ];
     for binding in all() {
         for mode in binding.modes {

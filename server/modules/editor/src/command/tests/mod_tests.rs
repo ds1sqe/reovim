@@ -180,10 +180,10 @@ fn test_cursor_commands_have_count_arg() {
 #[test]
 fn test_all_commands_count() {
     let cmds = all_commands();
-    // 4 cursor + 2 display + 2 insert-edit + 5 enter-operator
-    // + 5 delete + 1 yank + 2 paste + 2 replace (start+exec) + 1 repeat + 2 undo + 1 write
-    // + 3 mark + 2 jump = 32
-    assert_eq!(cmds.len(), 32);
+    // 4 cursor + 2 display + 2 insert-edit + 8 enter-operator
+    // + 5 delete + 1 yank + 2 paste + 2 replace (start+exec) + 1 case
+    // + 1 repeat + 2 undo + 1 write + 3 mark + 2 jump = 36
+    assert_eq!(cmds.len(), 36);
 }
 
 #[test]

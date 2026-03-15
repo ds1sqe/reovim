@@ -607,6 +607,12 @@ impl VimNormalResolver {
             Some(VimMode::YANK_ID)
         } else if *cmd == editor::ids::ENTER_CHANGE_OPERATOR {
             Some(VimMode::CHANGE_ID)
+        } else if *cmd == editor::ids::ENTER_LOWERCASE_OPERATOR {
+            Some(VimMode::LOWERCASE_ID)
+        } else if *cmd == editor::ids::ENTER_UPPERCASE_OPERATOR {
+            Some(VimMode::UPPERCASE_ID)
+        } else if *cmd == editor::ids::ENTER_TOGGLE_CASE_OPERATOR {
+            Some(VimMode::TOGGLE_CASE_ID)
         } else {
             None
         }

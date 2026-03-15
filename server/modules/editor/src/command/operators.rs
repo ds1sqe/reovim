@@ -6,6 +6,9 @@
 //! - `EnterChangeOperator` (c)
 //! - `EnterIndentOperator` (>)
 //! - `EnterDedentOperator` (<)
+//! - `EnterLowercaseOperator` (gu)
+//! - `EnterUppercaseOperator` (gU)
+//! - `EnterToggleCaseOperator` (g~)
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
@@ -145,6 +148,69 @@ impl CommandHandler for EnterDedentOperator {
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "dedent" and enter operator-pending mode
+        CommandResult::Success
+    }
+}
+
+/// Enter lowercase operator-pending mode (gu).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterLowercaseOperator;
+
+impl Command for EnterLowercaseOperator {
+    fn id(&self) -> CommandId {
+        ids::ENTER_LOWERCASE_OPERATOR
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter lowercase operator-pending mode"
+    }
+}
+
+impl CommandHandler for EnterLowercaseOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        CommandResult::Success
+    }
+}
+
+/// Enter uppercase operator-pending mode (gU).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterUppercaseOperator;
+
+impl Command for EnterUppercaseOperator {
+    fn id(&self) -> CommandId {
+        ids::ENTER_UPPERCASE_OPERATOR
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter uppercase operator-pending mode"
+    }
+}
+
+impl CommandHandler for EnterUppercaseOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        CommandResult::Success
+    }
+}
+
+/// Enter toggle case operator-pending mode (g~).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterToggleCaseOperator;
+
+impl Command for EnterToggleCaseOperator {
+    fn id(&self) -> CommandId {
+        ids::ENTER_TOGGLE_CASE_OPERATOR
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter toggle case operator-pending mode"
+    }
+}
+
+impl CommandHandler for EnterToggleCaseOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }

@@ -1,3 +1,4 @@
+mod case;
 mod cursor;
 mod delete;
 mod display_line;

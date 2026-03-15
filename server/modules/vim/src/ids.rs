@@ -129,6 +129,21 @@ pub const YANK: OperatorId = OperatorId::new(MODULE, "yank");
 /// Vim equivalent: `c`
 pub const CHANGE: OperatorId = OperatorId::new(MODULE, "change");
 
+/// Lowercase operator - converts text to lowercase.
+///
+/// Vim equivalent: `gu`
+pub const LOWERCASE: OperatorId = OperatorId::new(MODULE, "lowercase");
+
+/// Uppercase operator - converts text to uppercase.
+///
+/// Vim equivalent: `gU`
+pub const UPPERCASE: OperatorId = OperatorId::new(MODULE, "uppercase");
+
+/// Toggle case operator - swaps uppercase/lowercase.
+///
+/// Vim equivalent: `g~`
+pub const TOGGLE_CASE_OP: OperatorId = OperatorId::new(MODULE, "toggle-case");
+
 // =============================================================================
 // Mode Switching - Insert
 // =============================================================================

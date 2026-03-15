@@ -137,8 +137,8 @@ fn test_vim_mode_id_equality() {
 
 #[test]
 fn test_vim_mode_all_count() {
-    // 11 modes total (7 original + Window + 3 operator modes)
-    assert_eq!(VimMode::ALL.len(), 11);
+    // 14 modes total (7 original + Window + 3 operator modes + 3 case operator modes)
+    assert_eq!(VimMode::ALL.len(), 14);
 }
 
 #[test]

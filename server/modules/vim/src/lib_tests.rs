@@ -368,8 +368,8 @@ fn test_init_registers_resolvers() {
     assert!(resolver_registry.is_some(), "ResolverRegistry should exist after init");
     let resolver_registry = resolver_registry.unwrap();
     // Should have: normal, insert, delete, yank, change, commandline, window,
-    // visual, visual-line, visual-block = 10
-    assert_eq!(resolver_registry.len(), 10, "Should register 10 resolvers");
+    // visual, visual-line, visual-block, lowercase, uppercase, toggle-case = 13
+    assert_eq!(resolver_registry.len(), 13, "Should register 13 resolvers");
 }
 
 #[test]

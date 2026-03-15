@@ -118,7 +118,7 @@ fn test_change_command_id() {
 #[test]
 fn test_operator_commands_count() {
     let cmds = operator_commands();
-    assert_eq!(cmds.len(), 3);
+    assert_eq!(cmds.len(), 6);
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn test_all_operator_commands_default() {
 #[test]
 fn test_operator_commands_have_correct_ids() {
     let cmds = operator_commands();
-    assert_eq!(cmds.len(), 3);
+    assert_eq!(cmds.len(), 6);
 }
 
 // ========================================================================

@@ -38,6 +38,12 @@ pub enum OperatorType {
     Yank,
     /// Change operator (c)
     Change,
+    /// Lowercase operator (gu)
+    Lowercase,
+    /// Uppercase operator (gU)
+    Uppercase,
+    /// Toggle case operator (g~)
+    ToggleCase,
 }
 
 impl OperatorType {
@@ -48,6 +54,9 @@ impl OperatorType {
             Self::Delete => VimMode::DELETE_ID,
             Self::Yank => VimMode::YANK_ID,
             Self::Change => VimMode::CHANGE_ID,
+            Self::Lowercase => VimMode::LOWERCASE_ID,
+            Self::Uppercase => VimMode::UPPERCASE_ID,
+            Self::ToggleCase => VimMode::TOGGLE_CASE_ID,
         }
     }
 
@@ -59,16 +68,27 @@ impl OperatorType {
             Self::Delete => crate::ids::DELETE.clone(),
             Self::Yank => crate::ids::YANK.clone(),
             Self::Change => crate::ids::CHANGE.clone(),
+            Self::Lowercase => crate::ids::LOWERCASE.clone(),
+            Self::Uppercase => crate::ids::UPPERCASE.clone(),
+            Self::ToggleCase => crate::ids::TOGGLE_CASE_OP.clone(),
         }
     }
 
     /// Get the key that triggers linewise operation (doubled operator).
+    ///
+    /// For case operators, this is the second key after the `g` prefix:
+    /// - `guu` → lowercase current line (line key is `u`)
+    /// - `gUU` → uppercase current line (line key is `U`)
+    /// - `g~~` → toggle case current line (line key is `~`)
     #[must_use]
     pub const fn line_key(&self) -> char {
         match self {
             Self::Delete => 'd',
             Self::Yank => 'y',
             Self::Change => 'c',
+            Self::Lowercase => 'u',
+            Self::Uppercase => 'U',
+            Self::ToggleCase => '~',
         }
     }
 
@@ -79,6 +99,9 @@ impl OperatorType {
             Self::Delete => "DELETE",
             Self::Yank => "YANK",
             Self::Change => "CHANGE",
+            Self::Lowercase => "LOWERCASE",
+            Self::Uppercase => "UPPERCASE",
+            Self::ToggleCase => "TOGGLE-CASE",
         }
     }
 }

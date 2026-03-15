@@ -1073,16 +1073,72 @@ fn change_textobject_bindings() -> Vec<KeybindingRegistration> {
 }
 
 // =============================================================================
+// Case Operator Mode Keybindings (#666)
+// =============================================================================
+
+const LOWERCASE_MODE: &str = "vim:lowercase";
+const UPPERCASE_MODE: &str = "vim:uppercase";
+const TOGGLE_CASE_MODE: &str = "vim:toggle-case";
+
+/// Lowercase operator mode bindings (gu).
+#[must_use]
+pub fn lowercase_bindings() -> Vec<KeybindingRegistration> {
+    vec![
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[LOWERCASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel lowercase"),
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[LOWERCASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel lowercase"),
+    ]
+}
+
+/// Uppercase operator mode bindings (gU).
+#[must_use]
+pub fn uppercase_bindings() -> Vec<KeybindingRegistration> {
+    vec![
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[UPPERCASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel uppercase"),
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[UPPERCASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel uppercase"),
+    ]
+}
+
+/// Toggle case operator mode bindings (g~).
+#[must_use]
+pub fn toggle_case_bindings() -> Vec<KeybindingRegistration> {
+    vec![
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[TOGGLE_CASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel toggle case"),
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
+            .with_modes(&[TOGGLE_CASE_MODE])
+            .with_category("mode")
+            .with_description("Cancel toggle case"),
+    ]
+}
+
+// =============================================================================
 // Combined Bindings
 // =============================================================================
 
-/// Returns all operator mode keybindings (delete, yank, change).
+/// Returns all operator mode keybindings (delete, yank, change, case).
 #[must_use]
 pub fn all_operator_bindings() -> Vec<KeybindingRegistration> {
     let mut bindings = Vec::new();
     bindings.extend(delete_bindings());
     bindings.extend(yank_bindings());
     bindings.extend(change_bindings());
+    bindings.extend(lowercase_bindings());
+    bindings.extend(uppercase_bindings());
+    bindings.extend(toggle_case_bindings());
     bindings
 }
 

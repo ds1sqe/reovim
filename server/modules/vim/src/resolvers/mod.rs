@@ -18,6 +18,7 @@
 //! - Each resolver is focused (~300 lines)
 //! - Statusline shows "DELETE"/"YANK"/"CHANGE"
 
+mod case;
 mod change;
 mod commandline;
 mod delete;
@@ -30,6 +31,9 @@ mod yank;
 
 // Dedicated operator resolvers (Epic #415)
 pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankResolver};
+
+// Case operator resolver (#666)
+pub use case::VimCaseResolver;
 
 // Window mode resolver (Epic #438)
 pub use window::VimWindowResolver;

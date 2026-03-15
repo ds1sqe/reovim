@@ -121,8 +121,8 @@ pub use commands::{
 
 // Re-export resolvers
 pub use resolvers::{
-    VimChangeResolver, VimCommandLineResolver, VimDeleteResolver, VimInsertResolver,
-    VimNormalResolver, VimVisualResolver, VimYankResolver,
+    VimCaseResolver, VimChangeResolver, VimCommandLineResolver, VimDeleteResolver,
+    VimInsertResolver, VimNormalResolver, VimVisualResolver, VimYankResolver,
 };
 
 // Re-export visual mode commands
@@ -138,12 +138,15 @@ pub use visual::{
     // Exit
     ExitVisualMode,
     IndentSelection,
+    LowercaseSelection,
     // Manipulation
     ReselectLast,
     SwapAnchor,
+    ToggleCaseSelection,
     ToggleVisualBlock,
     ToggleVisualChar,
     ToggleVisualLine,
+    UppercaseSelection,
     YankSelection,
     // Helper functions
     visual_commands,
@@ -221,6 +224,17 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimVisualResolver::character_wise());
         resolver_registry.register(resolvers::VimVisualResolver::line_wise());
         resolver_registry.register(resolvers::VimVisualResolver::block_wise());
+
+        // Case operator resolvers (#666)
+        resolver_registry.register(resolvers::VimCaseResolver::new(
+            resolvers::operator_common::OperatorType::Lowercase,
+        ));
+        resolver_registry.register(resolvers::VimCaseResolver::new(
+            resolvers::operator_common::OperatorType::Uppercase,
+        ));
+        resolver_registry.register(resolvers::VimCaseResolver::new(
+            resolvers::operator_common::OperatorType::ToggleCase,
+        ));
 
         // #620: Self-register lookup policy (decouples bootstrap from vim import)
         let policy_store = ctx.services.get_or_create::<LookupPolicyStore>();

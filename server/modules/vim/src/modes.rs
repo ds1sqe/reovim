@@ -63,6 +63,12 @@ pub enum VimMode {
     Yank = 10,
     /// Change operator mode - waiting for motion to change.
     Change = 11,
+    /// Lowercase operator mode - waiting for motion to lowercase.
+    Lowercase = 12,
+    /// Uppercase operator mode - waiting for motion to uppercase.
+    Uppercase = 13,
+    /// Toggle case operator mode - waiting for motion to toggle case.
+    ToggleCase = 14,
 }
 
 impl VimMode {
@@ -79,6 +85,9 @@ impl VimMode {
         Self::Delete,
         Self::Yank,
         Self::Change,
+        Self::Lowercase,
+        Self::Uppercase,
+        Self::ToggleCase,
     ];
 
     // ========================================================================
@@ -117,6 +126,15 @@ impl VimMode {
 
     /// Mode ID for Change mode.
     pub const CHANGE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "change", 11);
+
+    /// Mode ID for Lowercase operator mode.
+    pub const LOWERCASE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "lowercase", 12);
+
+    /// Mode ID for Uppercase operator mode.
+    pub const UPPERCASE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "uppercase", 13);
+
+    /// Mode ID for Toggle Case operator mode.
+    pub const TOGGLE_CASE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "toggle-case", 14);
 }
 
 impl Mode for VimMode {
@@ -143,6 +161,9 @@ impl Mode for VimMode {
             Self::Delete => "delete",
             Self::Yank => "yank",
             Self::Change => "change",
+            Self::Lowercase => "lowercase",
+            Self::Uppercase => "uppercase",
+            Self::ToggleCase => "toggle-case",
         };
         ModeId::with_discriminant(VIM_MODULE, name, self.discriminant())
     }
@@ -161,6 +182,9 @@ impl Mode for VimMode {
             Self::Delete => "DELETE",
             Self::Yank => "YANK",
             Self::Change => "CHANGE",
+            Self::Lowercase => "LOWERCASE",
+            Self::Uppercase => "UPPERCASE",
+            Self::ToggleCase => "TOGGLE-CASE",
         }
     }
 
@@ -171,7 +195,13 @@ impl Mode for VimMode {
             }
             Self::Insert | Self::CommandLine => CursorStyle::Bar,
             Self::Replace => CursorStyle::Underline,
-            Self::Window | Self::Delete | Self::Yank | Self::Change => CursorStyle::Block,
+            Self::Window
+            | Self::Delete
+            | Self::Yank
+            | Self::Change
+            | Self::Lowercase
+            | Self::Uppercase
+            | Self::ToggleCase => CursorStyle::Block,
         }
     }
 
@@ -186,9 +216,14 @@ impl Mode for VimMode {
     fn inherits_from(&self) -> Option<Self> {
         match self {
             // Operator modes, window mode, and visual inherit from normal
-            Self::Window | Self::Delete | Self::Yank | Self::Change | Self::Visual => {
-                Some(Self::Normal)
-            }
+            Self::Window
+            | Self::Delete
+            | Self::Yank
+            | Self::Change
+            | Self::Lowercase
+            | Self::Uppercase
+            | Self::ToggleCase
+            | Self::Visual => Some(Self::Normal),
             Self::VisualLine | Self::VisualBlock => Some(Self::Visual),
             Self::Replace => Some(Self::Insert),
             Self::Normal | Self::Insert | Self::CommandLine => None,

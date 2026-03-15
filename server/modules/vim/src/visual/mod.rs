@@ -30,7 +30,8 @@ pub use {
         ReselectLast, SwapAnchor, ToggleVisualBlock, ToggleVisualChar, ToggleVisualLine,
     },
     operators::{
-        ChangeSelection, DedentSelection, DeleteSelection, IndentSelection, YankSelection,
+        ChangeSelection, DedentSelection, DeleteSelection, IndentSelection, LowercaseSelection,
+        ToggleCaseSelection, UppercaseSelection, YankSelection,
     },
 };
 
@@ -77,6 +78,9 @@ pub fn visual_operator_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ChangeSelection),
         Box::new(IndentSelection),
         Box::new(DedentSelection),
+        Box::new(ToggleCaseSelection),
+        Box::new(LowercaseSelection),
+        Box::new(UppercaseSelection),
     ]
 }
 

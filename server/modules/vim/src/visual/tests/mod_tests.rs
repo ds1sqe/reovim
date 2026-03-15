@@ -483,13 +483,13 @@ fn test_visual_exit_commands_count() {
 #[test]
 fn test_visual_commands_count() {
     let cmds = visual_commands();
-    assert_eq!(cmds.len(), 14); // 3 entry + 1 exit + 5 selection + 5 operators
+    assert_eq!(cmds.len(), 17); // 3 entry + 1 exit + 5 selection + 8 operators
 }
 
 #[test]
 fn test_visual_operator_commands_count() {
     let cmds = visual_operator_commands();
-    assert_eq!(cmds.len(), 5); // delete, yank, change, indent, dedent
+    assert_eq!(cmds.len(), 8); // delete, yank, change, indent, dedent, toggle-case, lowercase, uppercase
 }
 
 // =========================================================================

@@ -105,6 +105,16 @@ pub const ENTER_INDENT_OPERATOR: CommandId = CommandId::new(MODULE, "enter-inden
 /// Enter dedent operator mode (<).
 pub const ENTER_DEDENT_OPERATOR: CommandId = CommandId::new(MODULE, "enter-dedent-operator");
 
+/// Enter lowercase operator mode (gu).
+pub const ENTER_LOWERCASE_OPERATOR: CommandId = CommandId::new(MODULE, "enter-lowercase-operator");
+
+/// Enter uppercase operator mode (gU).
+pub const ENTER_UPPERCASE_OPERATOR: CommandId = CommandId::new(MODULE, "enter-uppercase-operator");
+
+/// Enter toggle case operator mode (g~).
+pub const ENTER_TOGGLE_CASE_OPERATOR: CommandId =
+    CommandId::new(MODULE, "enter-toggle-case-operator");
+
 // =============================================================================
 // Yank/Paste
 // =============================================================================

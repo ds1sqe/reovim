@@ -3,7 +3,7 @@ use super::super::*;
 #[test]
 fn test_operators_list() {
     let ops = operators();
-    assert_eq!(ops.len(), 3);
+    assert_eq!(ops.len(), 6);
 
     // Check operators are present
     let ids: Vec<_> = ops.iter().map(|o| o.id()).collect();
@@ -39,7 +39,7 @@ fn test_operator_commands_not_empty() {
 #[test]
 fn test_operator_commands_count() {
     let cmds = operator_commands();
-    assert_eq!(cmds.len(), 3); // delete, yank, change
+    assert_eq!(cmds.len(), 6); // delete, yank, change, lowercase, uppercase, toggle-case
 }
 
 #[test]

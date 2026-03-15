@@ -233,6 +233,18 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("edit")
             .with_description("Toggle case"),
+        KeybindingRegistration::new("gu", editor::ENTER_LOWERCASE_OPERATOR)
+            .with_modes(&["vim:normal"])
+            .with_category("operator")
+            .with_description("Lowercase operator"),
+        KeybindingRegistration::new("gU", editor::ENTER_UPPERCASE_OPERATOR)
+            .with_modes(&["vim:normal"])
+            .with_category("operator")
+            .with_description("Uppercase operator"),
+        KeybindingRegistration::new("g~", editor::ENTER_TOGGLE_CASE_OPERATOR)
+            .with_modes(&["vim:normal"])
+            .with_category("operator")
+            .with_description("Toggle case operator"),
         KeybindingRegistration::new(".", vim::DOT_REPEAT)
             .with_modes(&["vim:normal"])
             .with_category("edit")
