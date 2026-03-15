@@ -1,3 +1,7 @@
+use std::{sync::Arc, time::Duration};
+
+use reovim_arch::clock::TestClock;
+
 use {
     super::*,
     reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
@@ -17,6 +21,12 @@ fn render(module: &LandingModule, w: u16, h: u16) -> RecordingSurface {
     };
     module.chrome_render(&mut surface, bounds, &MockPlatformCapabilities::new());
     surface
+}
+
+fn test_module() -> (LandingModule, Arc<TestClock>) {
+    let clock = Arc::new(TestClock::new());
+    let module = LandingModule::with_clock(clock.clone());
+    (module, clock)
 }
 
 // =============================================================================
@@ -98,12 +108,6 @@ fn dismiss_is_permanent() {
     assert!(m.dismissed);
 }
 
-#[test]
-fn tick_returns_false() {
-    let mut m = LandingModule::new();
-    assert!(!m.tick());
-}
-
 // =============================================================================
 // Render tests
 // =============================================================================
@@ -146,5 +150,119 @@ fn render_content_centered() {
 fn render_large_terminal() {
     let m = LandingModule::new();
     let surface = render(&m, 200, 60);
+    assert!(surface.has_content());
+}
+
+// =============================================================================
+// Animation tests (#657)
+// =============================================================================
+
+#[test]
+fn tick_returns_false_before_first_frame() {
+    let (mut m, clock) = test_module();
+    clock.advance(Duration::from_millis(100));
+    assert!(!m.tick());
+}
+
+#[test]
+fn tick_returns_true_after_breathing_frame() {
+    let (mut m, clock) = test_module();
+    clock.advance(Duration::from_millis(500));
+    assert!(m.tick());
+}
+
+#[test]
+fn breathing_frames_cycle() {
+    let (mut m, clock) = test_module();
+
+    // Frame 0 is the initial state
+    assert_eq!(m.animation_color(), BREATHING_COLORS[0]);
+
+    // Advance through all breathing frames
+    for (i, expected_color) in BREATHING_COLORS.iter().enumerate().skip(1) {
+        clock.advance(Duration::from_millis(500));
+        assert!(m.tick());
+        assert_eq!(m.animation_color(), *expected_color, "frame {i} mismatch");
+    }
+
+    // Wraps around
+    clock.advance(Duration::from_millis(500));
+    assert!(m.tick());
+    assert_eq!(m.animation_color(), BREATHING_COLORS[0]);
+}
+
+#[test]
+fn roar_triggers_after_interval() {
+    let (mut m, clock) = test_module();
+
+    // Advance past the roar interval
+    clock.advance(Duration::from_secs(8));
+    // First tick advances breathing frame
+    assert!(m.tick());
+    // Roar should now be active
+    assert!(m.roar_active);
+}
+
+#[test]
+fn roar_plays_then_returns_to_breathing() {
+    let (mut m, clock) = test_module();
+
+    // Trigger roar
+    clock.advance(Duration::from_secs(8));
+    m.tick();
+    assert!(m.roar_active);
+
+    // Play through roar frames
+    for _ in 0..ROAR_COLORS.len() {
+        clock.advance(Duration::from_millis(100));
+        m.tick();
+    }
+
+    // Should be back to breathing
+    assert!(!m.roar_active);
+}
+
+#[test]
+fn tick_returns_false_after_dismissal() {
+    let (mut m, clock) = test_module();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    clock.advance(Duration::from_millis(500));
+    assert!(!m.tick());
+}
+
+#[test]
+fn with_clock_constructor() {
+    let clock = Arc::new(TestClock::new());
+    let m = LandingModule::with_clock(clock);
+    assert!(!m.dismissed);
+    assert_eq!(m.current_frame, 0);
+    assert!(!m.roar_active);
+}
+
+#[test]
+fn animation_color_breathing() {
+    let (m, _clock) = test_module();
+    // Initial frame is breathing frame 0
+    assert_eq!(m.animation_color(), BREATHING_COLORS[0]);
+}
+
+#[test]
+fn animation_color_roar() {
+    let (mut m, clock) = test_module();
+    // Trigger roar
+    clock.advance(Duration::from_secs(8));
+    m.tick();
+    assert!(m.roar_active);
+    assert_eq!(m.animation_color(), ROAR_COLORS[0]);
+}
+
+#[test]
+fn render_uses_animation_color() {
+    let (mut m, clock) = test_module();
+    // Advance to a different frame
+    clock.advance(Duration::from_millis(500));
+    m.tick();
+    // Should render without panic using the animation color
+    let surface = render(&m, 80, 24);
     assert!(surface.has_content());
 }

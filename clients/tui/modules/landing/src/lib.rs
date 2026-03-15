@@ -1,13 +1,29 @@
-//! Startup landing screen chrome module.
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+//! Startup landing screen chrome module (#657: animated).
 //!
 //! Displays a centered overlay with ASCII art, version info, and quick-action
 //! hints when the editor starts with no file argument. Dismissed on any user
 //! interaction (cursor move, mode change, or buffer update).
-//! Native `ClientModule` implementation (no `TuiExtension` bridge).
+//!
+//! # Animation (#657)
+//!
+//! The border and logo cycle through a breathing color animation (6 frames,
+//! 500ms per frame). Every 8 seconds, a brief roar flash plays (4 frames,
+//! 100ms per frame) before returning to breathing.
 
-use reovim_client_driver::{
-    BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-    PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use {
+    reovim_arch::clock::{Clock, SystemClock},
+    reovim_client_driver::{
+        BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError,
+        ModuleContext, PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version,
+        types::Color,
+    },
 };
 
 /// ASCII art logo lines (compact, ~40 chars wide).
@@ -44,18 +60,123 @@ const BOX_WIDTH: u16 = 42;
 
 const KIND: &str = "landing";
 
+// =============================================================================
+// Animation constants
+// =============================================================================
+
+/// Breathing color palette (6 frames, cycling).
+const BREATHING_COLORS: [Color; 6] = [
+    Color::Rgb {
+        r: 0,
+        g: 180,
+        b: 220,
+    }, // Bright cyan
+    Color::Rgb {
+        r: 0,
+        g: 160,
+        b: 200,
+    }, // Medium cyan
+    Color::Rgb {
+        r: 0,
+        g: 140,
+        b: 180,
+    }, // Subdued cyan
+    Color::Rgb {
+        r: 0,
+        g: 120,
+        b: 160,
+    }, // Dim cyan
+    Color::Rgb {
+        r: 0,
+        g: 140,
+        b: 180,
+    }, // Subdued (return)
+    Color::Rgb {
+        r: 0,
+        g: 160,
+        b: 200,
+    }, // Medium (return)
+];
+
+/// Roar color palette (4 frames, one-shot).
+const ROAR_COLORS: [Color; 4] = [
+    Color::White,
+    Color::Rgb {
+        r: 255,
+        g: 200,
+        b: 50,
+    }, // Gold flash
+    Color::Rgb {
+        r: 0,
+        g: 200,
+        b: 255,
+    }, // Bright cyan return
+    Color::Cyan, // Normal
+];
+
+/// Duration per breathing frame.
+const BREATHING_FRAME_DURATION: Duration = Duration::from_millis(500);
+
+/// Duration per roar frame.
+const ROAR_FRAME_DURATION: Duration = Duration::from_millis(100);
+
+/// Interval between roar triggers.
+const ROAR_INTERVAL: Duration = Duration::from_secs(8);
+
 /// Startup landing screen module.
 ///
 /// Starts active and dismisses permanently on the first user interaction.
+/// Animates the border and logo with a breathing color cycle (#657).
 pub struct LandingModule {
     dismissed: bool,
+    clock: Arc<dyn Clock>,
+    /// Time when the last frame advanced.
+    last_frame_time: Instant,
+    /// Current frame index.
+    current_frame: usize,
+    /// Whether roar animation is playing.
+    roar_active: bool,
+    /// Time of last roar start (for interval tracking).
+    last_roar_time: Instant,
 }
 
 impl LandingModule {
-    /// Create a new landing module (starts active).
+    /// Create a new landing module (starts active, with system clock).
     #[must_use]
-    pub const fn new() -> Self {
-        Self { dismissed: false }
+    pub fn new() -> Self {
+        let clock = Arc::new(SystemClock);
+        let now = clock.now();
+        Self {
+            dismissed: false,
+            clock,
+            last_frame_time: now,
+            current_frame: 0,
+            roar_active: false,
+            last_roar_time: now,
+        }
+    }
+
+    /// Create with custom clock (for deterministic testing).
+    #[must_use]
+    pub fn with_clock(clock: Arc<dyn Clock>) -> Self {
+        let now = clock.now();
+        Self {
+            dismissed: false,
+            clock,
+            last_frame_time: now,
+            current_frame: 0,
+            roar_active: false,
+            last_roar_time: now,
+        }
+    }
+
+    /// Get the current animation color for the border and logo.
+    const fn animation_color(&self) -> Color {
+        if self.roar_active {
+            ROAR_COLORS[self.current_frame % ROAR_COLORS.len()]
+        } else {
+            BREATHING_COLORS[self.current_frame % BREATHING_COLORS.len()]
+        }
     }
 }
 
@@ -118,6 +239,45 @@ impl ClientModule for LandingModule {
         self.dismissed = true;
     }
 
+    fn tick(&mut self) -> bool {
+        if self.dismissed {
+            return false;
+        }
+
+        let now = self.clock.now();
+
+        let frame_duration = if self.roar_active {
+            ROAR_FRAME_DURATION
+        } else {
+            BREATHING_FRAME_DURATION
+        };
+
+        let elapsed = now.duration_since(self.last_frame_time);
+        if elapsed < frame_duration {
+            return false;
+        }
+
+        // Advance frame
+        self.current_frame += 1;
+        self.last_frame_time = now;
+
+        // Handle roar completion
+        if self.roar_active && self.current_frame >= ROAR_COLORS.len() {
+            self.roar_active = false;
+            self.current_frame = 0;
+            self.last_roar_time = now;
+        }
+
+        // Check if it's time for a roar
+        if !self.roar_active && now.duration_since(self.last_roar_time) >= ROAR_INTERVAL {
+            self.roar_active = true;
+            self.current_frame = 0;
+            self.last_frame_time = now;
+        }
+
+        true
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
@@ -151,7 +311,8 @@ impl ClientModule for LandingModule {
         let box_x = width.saturating_sub(BOX_WIDTH) / 2;
         let box_y = height.saturating_sub(box_height) / 2;
 
-        let border_style = Style::new().fg(Color::Cyan);
+        let anim_color = self.animation_color();
+        let border_style = Style::new().fg(anim_color);
         let bg = Color::Rgb {
             r: 30,
             g: 30,
@@ -187,7 +348,7 @@ impl ClientModule for LandingModule {
         let mut y = box_y + 2;
 
         // Logo (centered within inner width).
-        let logo_style = Style::new().fg(Color::Cyan).bg(bg);
+        let logo_style = Style::new().fg(anim_color).bg(bg);
         for line in LOGO {
             let line_len = line.len() as u16;
             let logo_x = content_x + inner_width.saturating_sub(line_len) / 2;

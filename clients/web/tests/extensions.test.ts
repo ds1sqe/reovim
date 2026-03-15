@@ -144,9 +144,9 @@ const DEFAULT_DELAY_MS = 500;
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 9 extensions with correct kinds", () => {
+  it("createExtensions returns 10 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(9);
+    expect(extensions).toHaveLength(10);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
@@ -158,6 +158,7 @@ describe("factory", () => {
     expect(kinds).toContain("range-finder-jump");
     expect(kinds).toContain("range-finder-fold");
     expect(kinds).toContain("landing");
+    expect(kinds).toContain("yank-flash");
   });
 
   it("extensions start inactive (except landing)", () => {
@@ -1744,10 +1745,10 @@ describe("toposortExtensions", () => {
 describe("createExtensions lifecycle", () => {
   it("returns sorted extensions with init called", () => {
     const exts = createExtensions();
-    expect(exts.length).toBe(9);
+    expect(exts.length).toBe(10);
     // All extensions should have unique kinds
     const kinds = exts.map((e) => e.kind());
-    expect(new Set(kinds).size).toBe(9);
+    expect(new Set(kinds).size).toBe(10);
   });
 
   it("shutdownExtensions calls exit in reverse order", () => {

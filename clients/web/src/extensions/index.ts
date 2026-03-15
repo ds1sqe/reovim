@@ -18,6 +18,7 @@ export { ExplorerExtension } from "./explorer.js";
 export { RangeFinderJumpExtension } from "./range-finder-jump.js";
 export { RangeFinderFoldExtension } from "./range-finder-fold.js";
 export { LandingExtension } from "./landing.js";
+export { YankFlashExtension } from "./yank-flash.js";
 
 import type { WebExtension } from "./interface.js";
 import { CmdlineExtension } from "./cmdline.js";
@@ -29,6 +30,7 @@ import { ExplorerExtension } from "./explorer.js";
 import { RangeFinderJumpExtension } from "./range-finder-jump.js";
 import { RangeFinderFoldExtension } from "./range-finder-fold.js";
 import { LandingExtension } from "./landing.js";
+import { YankFlashExtension } from "./yank-flash.js";
 import { toposortExtensions } from "./toposort.js";
 import { adaptExtensions } from "../core/extension-adapter.js";
 import type { WebExtensionAdapter } from "../core/extension-adapter.js";
@@ -51,6 +53,7 @@ export function createExtensions(disabledKinds?: Set<string>): WebExtension[] {
     new RangeFinderJumpExtension(),
     new RangeFinderFoldExtension(),
     new LandingExtension(),
+    new YankFlashExtension(),
   ];
 
   if (disabledKinds && disabledKinds.size > 0) {
@@ -112,6 +115,7 @@ export function createClientModules(
     new RangeFinderJumpExtension(),
     new RangeFinderFoldExtension(),
     new LandingExtension(),
+    new YankFlashExtension(),
   ];
 
   if (disabledKinds && disabledKinds.size > 0) {

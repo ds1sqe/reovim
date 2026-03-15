@@ -107,6 +107,21 @@ impl CommandHandler for YankCommand {
                 current_pos = ?cur_pos,
                 "yank command: cursor restored"
             );
+
+            // #657: Record yank flash state for client-side animation
+            if let Some(buffer_id) = args.buffer_id() {
+                use reovim_driver_session::api::ExtensionApi;
+                let (end_line, end_col) = args.range_end().unwrap_or((0, 0));
+                let state = runtime.ext_mut::<super::yank_flash::YankFlashState>();
+                state.record(
+                    buffer_id,
+                    start_line,
+                    start_col,
+                    end_line,
+                    end_col,
+                    args.is_linewise(),
+                );
+            }
         }
 
         result

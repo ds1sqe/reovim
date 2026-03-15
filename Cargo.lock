@@ -2330,6 +2330,7 @@ dependencies = [
  "reovim-tui-mod-statusline",
  "reovim-tui-mod-tetromino",
  "reovim-tui-mod-whichkey",
+ "reovim-tui-mod-yank-flash",
  "serde",
  "serde_json",
  "tempfile",
@@ -3403,6 +3404,7 @@ dependencies = [
  "reovim-module-textobjects",
  "reovim-module-window-ops",
  "reovim-testing",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -3663,6 +3665,7 @@ dependencies = [
 name = "reovim-tui-mod-landing"
 version = "0.13.0-dev"
 dependencies = [
+ "reovim-arch",
  "reovim-client-driver",
 ]
 
@@ -3736,6 +3739,15 @@ dependencies = [
 name = "reovim-tui-mod-whichkey"
 version = "0.13.0-dev"
 dependencies = [
+ "reovim-client-driver",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-yank-flash"
+version = "0.13.0-dev"
+dependencies = [
+ "reovim-arch",
  "reovim-client-driver",
  "serde_json",
 ]

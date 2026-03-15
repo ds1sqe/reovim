@@ -49,7 +49,7 @@ use {
         ModeProviderRegistry, ResolverRegistry,
     },
     reovim_driver_manifest::ModeBridgeStore,
-    reovim_driver_session::InitialModeProvider,
+    reovim_driver_session::{InitialModeProvider, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,
@@ -193,6 +193,10 @@ impl Module for VimModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register YankFlashBridge via BridgeProvider (#657)
+        let provider = ctx.services.get_or_create::<BridgeProvider>();
+        provider.register(operators::yank_flash::YankFlashBridge);
+
         // Register default mode provider with typed key (Epic #417)
         let mode_registry = ctx.services.get_or_create::<ModeProviderRegistry>();
         mode_registry.register(ModeProviderKey::Entry, Arc::new(VimDefaultModeProvider::new()));
@@ -263,6 +267,10 @@ impl Module for VimModule {
 
     fn provides(&self) -> &[&'static str] {
         &[reovim_capabilities::MODE_MANAGEMENT]
+    }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[operators::yank_flash::KIND]
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {

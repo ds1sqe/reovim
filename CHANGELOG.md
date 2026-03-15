@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Client-side animations (#657, part of #653)**: Yank flash highlight and
+  landing screen animations for TUI and Web clients. Server-side
+  `YankFlashBridge` emits yank range via existing `extension_updated` pipeline
+  (no proto changes). TUI `yank-flash` ClientModule renders 200ms background
+  highlight via `inline_decorations()` with `Clock` trait for deterministic
+  testing. Web `YankFlashExtension` applies CSS highlight class with
+  `setTimeout` auto-dismiss. TUI landing screen gains breathing color animation
+  (6-frame cycle, 500ms/frame) with periodic roar flash (4-frame, 100ms/frame,
+  every 8s). Web landing screen gets CSS keyframe breathing animation with
+  periodic roar class swap.
+
 - **UI/UX visual polish (#659, part of #653)**: Comprehensive visual
   enhancements with expanded highlight groups, Nerd Font icons, and
   diagnostic gutter support. Highlight groups expanded from 42 to 73

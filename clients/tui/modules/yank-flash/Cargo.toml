@@ -1,13 +1,11 @@
 [package]
-name = "reovim-tui-mod-landing"
+name = "reovim-tui-mod-yank-flash"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
-description = "Startup landing screen native ClientModule for reovim"
+license.workspace = true
+description = "Yank flash highlight module for Reovim TUI"
 repository.workspace = true
-homepage.workspace = true
 
 [lints]
 workspace = true
@@ -15,6 +13,7 @@ workspace = true
 [dependencies]
 reovim-client-driver = { workspace = true }
 reovim-arch = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 reovim-client-driver = { workspace = true, features = ["testing"] }

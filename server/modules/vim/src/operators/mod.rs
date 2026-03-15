@@ -21,6 +21,7 @@ mod delete;
 mod registers;
 mod types;
 mod yank;
+pub mod yank_flash;
 
 // Re-export operator types
 pub use types::{Operator, OperatorContext, OperatorError, Range};

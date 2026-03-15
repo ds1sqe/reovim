@@ -42,6 +42,7 @@ fn factory_map_keys_match_kind() {
         "range-finder-fold",
         "range-finder-jump",
         "pair",
+        "yank-flash",
         "diagnostics",
         "markdown",
     ];

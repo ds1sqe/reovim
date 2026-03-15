@@ -38,6 +38,7 @@ reovim-driver-annotation = { workspace = true }
 # Layout driver for compositor traits
 reovim-driver-layout = { workspace = true }
 reovim-driver-manifest = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
