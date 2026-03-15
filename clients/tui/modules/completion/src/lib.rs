@@ -21,6 +21,8 @@ struct CompletionRow {
     label: String,
     /// Kind abbreviation (e.g., "fn", "va", "kw").
     kind_abbrev: String,
+    /// Kind icon (Nerd Font glyph, preferred over abbreviation).
+    kind_icon: String,
     /// Source ID (e.g., "lsp", "buffer").
     source_id: String,
 }
@@ -56,7 +58,13 @@ impl CompletionModule {
             .items
             .iter()
             .map(|item| {
-                let base = item.kind_abbrev.len() + 1 + item.label.len();
+                let kind_len = if item.kind_icon.is_empty() {
+                    item.kind_abbrev.len()
+                } else {
+                    // Nerd Font icons are typically 2 display columns wide
+                    2
+                };
+                let base = kind_len + 1 + item.label.len();
                 if item.source_id.is_empty() {
                     base
                 } else {
@@ -152,6 +160,11 @@ impl ClientModule for CompletionModule {
                                 .and_then(serde_json::Value::as_str)
                                 .unwrap_or("tx")
                                 .to_owned();
+                            let kind_icon = v
+                                .get("kindIcon")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("")
+                                .to_owned();
                             let source_id = v
                                 .get("sourceId")
                                 .and_then(serde_json::Value::as_str)
@@ -160,6 +173,7 @@ impl ClientModule for CompletionModule {
                             Some(CompletionRow {
                                 label,
                                 kind_abbrev,
+                                kind_icon,
                                 source_id,
                             })
                         })
@@ -248,12 +262,16 @@ impl ClientModule for CompletionModule {
             };
 
             let mut x = content_x;
-            let kind_display: String = item
-                .kind_abbrev
+            let kind_display = if item.kind_icon.is_empty() {
+                &item.kind_abbrev
+            } else {
+                &item.kind_icon
+            };
+            let kind_truncated: String = kind_display
                 .chars()
                 .take((content_x + content_width).saturating_sub(x) as usize)
                 .collect();
-            let written = surface.write_styled(x, row_y, &kind_display, kind_style);
+            let written = surface.write_styled(x, row_y, &kind_truncated, kind_style);
             x += written;
 
             // Space separator.

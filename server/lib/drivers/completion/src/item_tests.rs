@@ -114,3 +114,33 @@ fn abbreviation_all_variants() {
     // Ensure we covered all 17 variants
     assert_eq!(cases.len(), 17);
 }
+
+#[test]
+fn icon_all_variants_non_empty() {
+    let all_kinds = [
+        CompletionKind::Text,
+        CompletionKind::Function,
+        CompletionKind::Method,
+        CompletionKind::Variable,
+        CompletionKind::Field,
+        CompletionKind::Keyword,
+        CompletionKind::Snippet,
+        CompletionKind::Module,
+        CompletionKind::Class,
+        CompletionKind::Interface,
+        CompletionKind::Property,
+        CompletionKind::Constant,
+        CompletionKind::Enum,
+        CompletionKind::EnumMember,
+        CompletionKind::File,
+        CompletionKind::Folder,
+        CompletionKind::TypeParameter,
+    ];
+    for kind in all_kinds {
+        let icon = kind.icon();
+        assert!(!icon.is_empty(), "{kind:?} should have a non-empty icon");
+        // Nerd Font icons should be exactly one Unicode char
+        assert_eq!(icon.chars().count(), 1, "{kind:?} icon should be a single char");
+    }
+    assert_eq!(all_kinds.len(), 17);
+}

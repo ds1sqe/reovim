@@ -34,6 +34,7 @@ const KIND_CSS: Record<string, string> = {
 interface CompletionItem {
   label: string;
   kindAbbrev: string;
+  kindIcon?: string;
   sourceId: string;
   detail?: string;
 }
@@ -125,14 +126,14 @@ export class CompletionExtension implements WebExtension {
         itemEl.classList.add("selected");
       }
 
-      // Kind badge.
+      // Kind badge (icon preferred, abbreviation fallback).
       const kindEl = document.createElement("span");
       kindEl.className = "completion-kind";
       const cssKind = KIND_CSS[item.kindAbbrev];
       if (cssKind) {
         kindEl.classList.add(`completion-kind-${cssKind}`);
       }
-      kindEl.textContent = item.kindAbbrev;
+      kindEl.textContent = item.kindIcon || item.kindAbbrev;
       itemEl.appendChild(kindEl);
 
       // Label.

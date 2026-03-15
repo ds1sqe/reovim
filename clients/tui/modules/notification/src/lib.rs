@@ -108,13 +108,13 @@ impl NotificationModule {
         }
     }
 
-    /// Get icon character for a notification level.
-    const fn level_icon(level: Level) -> char {
+    /// Get Nerd Font icon for a notification level.
+    const fn level_icon(level: Level) -> &'static str {
         match level {
-            Level::Info => 'i',
-            Level::Success => '+',
-            Level::Warning => '!',
-            Level::Error => 'x',
+            Level::Info => "\u{f02fd}",    // 󰋽 nf-md-information
+            Level::Success => "\u{f012c}", // 󰄬 nf-md-check
+            Level::Warning => "\u{f002a}", // 󰀪 nf-md-alert
+            Level::Error => "\u{f0159}",   // 󰅙 nf-md-close_circle
         }
     }
 }
@@ -324,8 +324,8 @@ impl ClientModule for NotificationModule {
             // Title line with level icon
             let icon = Self::level_icon(toast.level);
             let icon_style = Style::new().fg(border_color);
-            surface.write_styled(content_x, y + 1, &icon.to_string(), icon_style);
-            surface.write_styled(content_x + 1, y + 1, " ", Style::new());
+            let icon_written = surface.write_styled(content_x, y + 1, icon, icon_style);
+            surface.write_styled(content_x + icon_written, y + 1, " ", Style::new());
 
             let title_style = Style::new().fg(Color::White);
             let max_title_len = content_width.saturating_sub(2) as usize;

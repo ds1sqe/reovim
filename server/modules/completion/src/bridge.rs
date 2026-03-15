@@ -41,6 +41,7 @@ impl ExtensionStateBridge for CompletionBridge {
                 let mut obj = serde_json::json!({
                     "label": item.label,
                     "kindAbbrev": item.kind_abbrev,
+                    "kindIcon": item.kind_icon,
                     "sourceId": item.source_id,
                 });
                 if let Some(ref detail) = item.detail {

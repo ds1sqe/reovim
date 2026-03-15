@@ -23,6 +23,8 @@ pub struct CompletionItemSnapshot {
     pub is_snippet: bool,
     /// Kind abbreviation (e.g., "fn", "va", "kw").
     pub kind_abbrev: String,
+    /// Kind icon (Nerd Font glyph).
+    pub kind_icon: String,
     /// Kind for styling.
     pub kind: CompletionKind,
     /// Optional detail text (type signature, etc.).
@@ -40,6 +42,7 @@ impl CompletionItemSnapshot {
             insert_text: item.insert_text.clone(),
             is_snippet: item.is_snippet,
             kind_abbrev: item.kind.abbreviation().to_owned(),
+            kind_icon: item.kind.icon().to_owned(),
             kind: item.kind,
             detail: item.detail.clone(),
             source_id: item.source_id.to_owned(),

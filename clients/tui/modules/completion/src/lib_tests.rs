@@ -145,6 +145,7 @@ fn calculate_popup_width_clamped() {
     m.items = vec![CompletionRow {
         label: "a".repeat(200),
         kind_abbrev: "fn".to_owned(),
+        kind_icon: String::new(),
         source_id: "lsp".to_owned(),
     }];
     assert_eq!(m.calculate_popup_width(80), 76);
@@ -208,6 +209,7 @@ fn completion_row_debug_clone() {
     let row = CompletionRow {
         label: "foo".to_owned(),
         kind_abbrev: "fn".to_owned(),
+        kind_icon: "\u{f0295}".to_owned(),
         source_id: "lsp".to_owned(),
     };
     assert!(format!("{row:?}").contains("CompletionRow"));

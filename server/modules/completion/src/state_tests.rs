@@ -6,6 +6,7 @@ fn make_snapshot(label: &str, kind: CompletionKind) -> CompletionItemSnapshot {
         insert_text: label.to_owned(),
         is_snippet: false,
         kind_abbrev: kind.abbreviation().to_owned(),
+        kind_icon: kind.icon().to_owned(),
         kind,
         detail: None,
         source_id: "test".to_owned(),
@@ -181,6 +182,7 @@ fn snapshot_from_item() {
     assert_eq!(snap.insert_text, "my_func");
     assert!(!snap.is_snippet);
     assert_eq!(snap.kind_abbrev, "fn");
+    assert_eq!(snap.kind_icon, CompletionKind::Function.icon());
     assert_eq!(snap.kind, CompletionKind::Function);
     assert_eq!(snap.detail.as_deref(), Some("fn()"));
     assert_eq!(snap.source_id, "lsp");

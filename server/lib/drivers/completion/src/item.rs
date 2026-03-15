@@ -88,6 +88,30 @@ impl CompletionKind {
             Self::TypeParameter => "typ",
         }
     }
+
+    /// Nerd Font icon for popup display.
+    #[must_use]
+    pub const fn icon(self) -> &'static str {
+        match self {
+            Self::Text => "\u{f039a}",          // 󰎚 nf-md-format_text_variant
+            Self::Function => "\u{f0295}",      // 󰊕 nf-md-function
+            Self::Method => "\u{f01a7}",        // 󰆧 nf-md-cube_outline
+            Self::Variable => "\u{f002b}",      // 󰀫 nf-md-alpha_v_box
+            Self::Field => "\u{f0722}",         // 󰜢 nf-md-tag
+            Self::Keyword => "\u{f030b}",       // 󰌋 nf-md-key
+            Self::Snippet => "\u{f0a6b}",       // 󰩫 nf-md-snippet
+            Self::Module => "\u{f0417}",        // 󰐗 nf-md-package_variant
+            Self::Class => "\u{f0831}",         // 󰠱 nf-md-shape
+            Self::Interface => "\u{f0730}",     // 󰜰 nf-md-transit_connection
+            Self::Property => "\u{f05b7}",      // 󰖷 nf-md-wrench
+            Self::Constant => "\u{f043f}",      // 󰐿 nf-md-pi
+            Self::Enum => "\u{f0558}",          // 󰕘 nf-md-format_list_numbered
+            Self::EnumMember => "\u{f055a}",    // 󰕚 nf-md-format_list_bulleted_type
+            Self::File => "\u{f0219}",          // 󰈙 nf-md-file
+            Self::Folder => "\u{f024b}",        // 󰉋 nf-md-folder
+            Self::TypeParameter => "\u{f0284}", // 󰊄 nf-md-format_columns
+        }
+    }
 }
 
 #[cfg(test)]

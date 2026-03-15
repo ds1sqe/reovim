@@ -202,11 +202,19 @@ fn render_border_color_by_level() {
 
 #[test]
 fn render_level_icons() {
-    // Test that level_icon returns correct chars
-    assert_eq!(NotificationModule::level_icon(Level::Info), 'i');
-    assert_eq!(NotificationModule::level_icon(Level::Success), '+');
-    assert_eq!(NotificationModule::level_icon(Level::Warning), '!');
-    assert_eq!(NotificationModule::level_icon(Level::Error), 'x');
+    // Each level has a non-empty Nerd Font icon (single Unicode codepoint)
+    for level in [Level::Info, Level::Success, Level::Warning, Level::Error] {
+        let icon = NotificationModule::level_icon(level);
+        assert!(!icon.is_empty(), "{level:?} should have a non-empty icon");
+        assert_eq!(icon.chars().count(), 1, "{level:?} icon should be a single char");
+    }
+    // All four levels map to distinct icons
+    let icons: std::collections::HashSet<_> =
+        [Level::Info, Level::Success, Level::Warning, Level::Error]
+            .iter()
+            .map(|l| NotificationModule::level_icon(*l))
+            .collect();
+    assert_eq!(icons.len(), 4, "each level should have a distinct icon");
 }
 
 #[test]
