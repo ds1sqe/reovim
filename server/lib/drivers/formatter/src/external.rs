@@ -89,15 +89,30 @@ impl FormatterProvider for ExternalFormatter {
                 })?;
         }
 
-        // Wait for completion with timeout
-        let output = child.wait_with_output().map_err(|e| {
-            warn!(command = %self.config.command, error = %e, "Formatter wait failed");
-            FormatError::CommandFailed {
-                command: self.config.command.clone(),
-                stderr: e.to_string(),
-                exit_code: None,
+        // Wait for completion with timeout enforcement.
+        // Move child to a thread and use channel recv_timeout to enforce the deadline.
+        let timeout = self.timeout;
+        let cmd_name = self.config.command.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        });
+
+        let output = match rx.recv_timeout(timeout) {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => {
+                warn!(command = %cmd_name, error = %e, "Formatter wait failed");
+                return Err(FormatError::CommandFailed {
+                    command: cmd_name,
+                    stderr: e.to_string(),
+                    exit_code: None,
+                });
             }
-        })?;
+            Err(_) => {
+                warn!(command = %cmd_name, timeout_secs = timeout.as_secs(), "Formatter timed out");
+                return Err(FormatError::Timeout);
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();

@@ -834,8 +834,6 @@ impl BufferApi for SessionRuntime<'_> {
             buf.write().set_content(content);
 
             // Record for undo as a delete-all + insert-all
-            let old_line_count = old_content.lines().count().max(1);
-            let old_last_line_len = old_content.lines().last().map_or(0, str::len);
             let edits = vec![
                 Edit::Delete {
                     position: Position::new(0, 0),
@@ -852,12 +850,7 @@ impl BufferApi for SessionRuntime<'_> {
             #[allow(clippy::cast_possible_truncation)]
             {
                 use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                let modification = Modification::Delete {
-                    start: (0, 0),
-                    end: (old_line_count.saturating_sub(1) as u32, old_last_line_len as u32),
-                    text: String::new(),
-                    start_byte: 0,
-                };
+                let modification = Modification::FullReplace;
                 self.kernel.event_bus.emit(BufferModified {
                     buffer_id: buffer.as_usize() as u64,
                     modification: modification.clone(),

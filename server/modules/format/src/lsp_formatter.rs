@@ -191,6 +191,7 @@ impl FormatterProvider for LspFormatter {
             .ok_or_else(|| FormatError::LspError("no LSP formatting available".to_string()))
     }
 
+    // Trait requires `&str`, literal return triggers clippy::unnecessary_literal_bound.
     #[allow(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
         "lsp"

@@ -79,6 +79,17 @@ fn test_path_substitution() {
 }
 
 #[test]
+fn test_timeout_fires() {
+    // "sleep 10" should be killed by the 100ms timeout
+    let config = FormatterConfig::stdin("sleep", vec!["10".into()]);
+    let fmt = ExternalFormatter::new(config).with_timeout(Duration::from_millis(100));
+
+    let result = fmt.format("", Path::new("test.txt"));
+    assert!(result.is_err());
+    assert!(matches!(result, Err(FormatError::Timeout)));
+}
+
+#[test]
 fn test_supports_range_is_false() {
     let config = FormatterConfig::stdin("cat", vec![]);
     let fmt = ExternalFormatter::new(config);
