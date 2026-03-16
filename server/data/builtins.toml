@@ -258,6 +258,11 @@ id = "illuminate"
 tier = 4
 library = "reovim_module_illuminate"
 
+[[modules]]
+id = "format"
+tier = 4
+library = "reovim_module_format"
+
 # Alternative personality — not loaded by default (requires explicit config)
 [[modules]]
 id = "emacs"

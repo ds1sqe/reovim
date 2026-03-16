@@ -34,6 +34,9 @@ pub const COMPLETION_PROVIDER: &str = "completion-provider";
 /// File explorer sidebar.
 pub const FILE_EXPLORER: &str = "file-explorer";
 
+/// Code formatting (format-on-save, external/LSP formatters).
+pub const FORMATTER_PROVIDER: &str = "formatter-provider";
+
 /// Fuzzy finder / picker orchestration.
 pub const FUZZY_FINDER: &str = "fuzzy-finder";
 
@@ -74,6 +77,7 @@ pub const ALL: &[&str] = &[
     COMMAND_DISPATCH,
     COMPLETION_PROVIDER,
     FILE_EXPLORER,
+    FORMATTER_PROVIDER,
     FUZZY_FINDER,
     GIT_PROVIDER,
     LSP_PROVIDER,

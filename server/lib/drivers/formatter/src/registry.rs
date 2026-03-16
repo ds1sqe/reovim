@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::provider::FormatterProvider;
+use {crate::provider::FormatterProvider, reovim_kernel::api::v1::Service};
 
 /// Registry of formatters keyed by filetype.
 ///
@@ -51,6 +51,8 @@ impl FormatterRegistry {
         self.formatters.is_empty()
     }
 }
+
+impl Service for FormatterRegistry {}
 
 impl Default for FormatterRegistry {
     fn default() -> Self {

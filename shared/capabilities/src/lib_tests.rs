@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_all_count() {
-    assert_eq!(ALL.len(), 16, "Update ALL array when adding/removing capabilities");
+    assert_eq!(ALL.len(), 17, "Update ALL array when adding/removing capabilities");
 }
 
 #[test]
@@ -33,6 +33,7 @@ fn test_all_contains_each_constant() {
     assert!(ALL.contains(&COMMAND_DISPATCH));
     assert!(ALL.contains(&COMPLETION_PROVIDER));
     assert!(ALL.contains(&FILE_EXPLORER));
+    assert!(ALL.contains(&FORMATTER_PROVIDER));
     assert!(ALL.contains(&FUZZY_FINDER));
     assert!(ALL.contains(&GIT_PROVIDER));
     assert!(ALL.contains(&LSP_PROVIDER));

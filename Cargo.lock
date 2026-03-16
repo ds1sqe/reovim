@@ -2189,6 +2189,7 @@ dependencies = [
  "reovim-module-completion",
  "reovim-module-editor",
  "reovim-module-explorer",
+ "reovim-module-format",
  "reovim-module-git",
  "reovim-module-git-blame",
  "reovim-module-git-signs",
@@ -2441,6 +2442,14 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-ffi",
  "reovim-driver-session",
+ "reovim-kernel",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-driver-formatter"
+version = "0.14.0-dev"
+dependencies = [
  "reovim-kernel",
  "tracing",
 ]
@@ -2900,6 +2909,22 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+]
+
+[[package]]
+name = "reovim-module-format"
+version = "0.14.0-dev"
+dependencies = [
+ "lsp-types",
+ "reovim-capabilities",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-formatter",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tracing",
 ]
 
 [[package]]

@@ -149,5 +149,8 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     // Tier 4: Word reference highlight (#664)
     map.insert("illuminate", || Box::new(reovim_module_illuminate::IlluminateModule::new()));
 
+    // Tier 4: Format-on-save (#667)
+    map.insert("format", || Box::new(reovim_module_format::FormatModule::new()));
+
     map
 }

@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Format-on-save with external and LSP formatters (#667, part of #660)**:
+  Pre-save formatting via `BufferWillSave` event subscription. External CLI
+  formatters (rustfmt, prettier, black, etc.) via `FormatterProvider` trait
+  and `ExternalFormatter` with stdin piping, timeout handling, and `{path}`
+  substitution. LSP `textDocument/formatting` with `TextEdit` application
+  (sorted descending, applied in reverse to preserve offsets). Formatter
+  resolution order: external > LSP > no-op. `autoformat` boolean option
+  (default true) for `:set noautoformat` toggle. `:Format` and `:FormatRange`
+  commands with undo recording via `replace_content()`. `FormatterRegistry`
+  keyed by filetype, `FormatterConfig` types, `FormatError` enum. Per-filetype
+  configuration support. `FORMATTER_PROVIDER` capability constant. 63 format
+  module tests + 37 formatter driver tests, zero clippy warnings.
+
 - **Word reference highlight — illuminate module (#664, part of #660)**:
   Highlights all references to the symbol under cursor using LSP
   `textDocument/documentHighlight` with word-match fallback. Tick-based

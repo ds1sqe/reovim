@@ -69,6 +69,7 @@ static-modules = [
     "dep:reovim-module-module-manager",
     "dep:reovim-module-textobjects",
     "dep:reovim-module-illuminate",
+    "dep:reovim-module-format",
 ]
 
 [dependencies]
@@ -197,6 +198,7 @@ reovim-module-profiles = { workspace = true, optional = true }
 reovim-module-health-check = { workspace = true, optional = true }
 reovim-module-module-manager = { workspace = true, optional = true }
 reovim-module-illuminate = { workspace = true, optional = true }
+reovim-module-format = { workspace = true, optional = true }
 
 [lints]
 workspace = true
