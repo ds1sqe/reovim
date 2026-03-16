@@ -8,7 +8,10 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
     reovim_driver_session::{BufferApi, CommandApi, ExtensionApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::BufferSaved},
+    reovim_kernel::api::v1::{
+        CommandId, ModuleId,
+        events::kernel::{BufferSaved, BufferWillSave},
+    },
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -58,7 +61,14 @@ impl CommandHandler for WriteCommand {
             return CommandResult::Error("No file name".to_string());
         };
 
-        // Get buffer content
+        // Emit BufferWillSave so pre-save hooks (format-on-save) can modify content
+        #[allow(clippy::cast_possible_truncation)]
+        runtime.kernel().event_bus.emit(BufferWillSave {
+            buffer_id: buffer_id.as_usize() as u64,
+            path: path.clone(),
+        });
+
+        // Get buffer content AFTER pre-save hooks (formatters may have modified it)
         let Some(content) = runtime.buffer_content(buffer_id) else {
             return CommandResult::Error("buffer not found".to_string());
         };

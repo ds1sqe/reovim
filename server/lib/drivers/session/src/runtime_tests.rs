@@ -1051,6 +1051,83 @@ fn test_rename_nonexistent_buffer() {
     });
 }
 
+// ========================================================================
+// replace_content (#667)
+// ========================================================================
+
+#[test]
+fn test_replace_content_updates_buffer() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("original content");
+    let buffer_id = harness.active_buffer().unwrap();
+
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(buffer_id, "formatted content");
+    });
+
+    harness.assert_buffer_content("formatted content");
+}
+
+#[test]
+fn test_replace_content_marks_modified() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("original");
+    let buffer_id = harness.active_buffer().unwrap();
+
+    // Clear modified flag
+    harness
+        .kernel()
+        .buffers
+        .get(buffer_id)
+        .unwrap()
+        .write()
+        .set_modified(false);
+
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(buffer_id, "new content");
+    });
+
+    let is_modified = harness
+        .kernel()
+        .buffers
+        .get(buffer_id)
+        .unwrap()
+        .read()
+        .is_modified();
+    assert!(is_modified);
+}
+
+#[test]
+fn test_replace_content_records_changes() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("before");
+    let buffer_id = harness.active_buffer().unwrap();
+    harness.take_changes();
+
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(buffer_id, "after");
+    });
+
+    let changes = harness.take_changes();
+    assert!(changes.buffer_modified);
+}
+
+#[test]
+fn test_replace_content_nonexistent_buffer() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    let fake_id = BufferId::new();
+
+    // Should not panic
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(fake_id, "anything");
+    });
+}
+
 #[test]
 fn test_delete_buffer_api() {
     use crate::testing::TestSessionRuntime;

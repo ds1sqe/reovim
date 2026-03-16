@@ -157,6 +157,21 @@ pub struct BufferSwitched {
 
 impl Event for BufferSwitched {}
 
+/// A buffer is about to be saved to disk.
+///
+/// Emitted before buffer content is persisted. Subscribers can modify
+/// the buffer content (e.g., format-on-save) and the write command will
+/// pick up the formatted content. Dispatch is synchronous.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferWillSave {
+    /// ID of the buffer about to be saved
+    pub buffer_id: u64,
+    /// Path the buffer will be saved to
+    pub path: String,
+}
+
+impl Event for BufferWillSave {}
+
 /// A buffer was saved to disk.
 ///
 /// Emitted after buffer content is persisted to the filesystem.

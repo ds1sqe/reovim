@@ -823,6 +823,51 @@ impl BufferApi for SessionRuntime<'_> {
         }
     }
 
+    fn replace_content(&mut self, buffer: BufferId, content: &str) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let cursor_before = self.windows().active().map_or_else(
+                || Position::new(0, 0),
+                |w| Position::new(w.cursor.line, w.cursor.column),
+            );
+
+            let old_content = buf.read().content();
+            buf.write().set_content(content);
+
+            // Record for undo as a delete-all + insert-all
+            let old_line_count = old_content.lines().count().max(1);
+            let old_last_line_len = old_content.lines().last().map_or(0, str::len);
+            let edits = vec![
+                Edit::Delete {
+                    position: Position::new(0, 0),
+                    text: old_content,
+                },
+                Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: content.to_string(),
+                },
+            ];
+            self.record_edit_mine(buffer, edits, cursor_before, cursor_before);
+
+            // Emit BufferModified for subscribers
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+                let modification = Modification::Delete {
+                    start: (0, 0),
+                    end: (old_line_count.saturating_sub(1) as u32, old_last_line_len as u32),
+                    text: String::new(),
+                    start_byte: 0,
+                };
+                self.kernel.event_bus.emit(BufferModified {
+                    buffer_id: buffer.as_usize() as u64,
+                    modification: modification.clone(),
+                });
+                self.changes
+                    .record_buffer_modified_with_edit(buffer, modification);
+            }
+        }
+    }
+
     fn create_buffer(&mut self, name: Option<&str>, content: &str) -> BufferId {
         use reovim_kernel::api::v1::Buffer;
 

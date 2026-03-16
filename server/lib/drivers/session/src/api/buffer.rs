@@ -104,6 +104,12 @@ pub trait BufferApi: Send {
     /// Delete a range.
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position);
 
+    /// Replace entire buffer content.
+    ///
+    /// Atomically replaces all lines in the buffer. Used by format-on-save
+    /// and similar bulk-replacement operations. Marks the buffer as modified.
+    fn replace_content(&mut self, buffer: BufferId, content: &str);
+
     // === Lifecycle ===
 
     /// Create a new buffer.

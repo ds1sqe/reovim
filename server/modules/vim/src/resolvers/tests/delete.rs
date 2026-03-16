@@ -426,6 +426,7 @@ impl BufferApi for MockSession {
         Ok(())
     }
     fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
+    fn replace_content(&mut self, _b: BufferId, _c: &str) {}
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]

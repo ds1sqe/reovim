@@ -358,6 +358,111 @@ fn test_write_emits_buffer_saved_event() {
     assert!(event_received.load(Ordering::SeqCst), "BufferSaved event should be emitted");
 }
 
+#[test]
+fn test_write_emits_buffer_will_save_event() {
+    use {
+        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_vfs::MockVfs,
+        reovim_kernel::api::v1::events::kernel::BufferWillSave,
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("format me");
+    let buffer_id = harness.active_buffer().unwrap();
+    harness
+        .kernel()
+        .buffers
+        .get(buffer_id)
+        .unwrap()
+        .write()
+        .set_file_path(Some("/tmp/will-save.txt".to_string()));
+
+    let mock_vfs = Arc::new(MockVfs::new());
+
+    let event_received = Arc::new(AtomicBool::new(false));
+    let event_flag = Arc::clone(&event_received);
+    let _sub = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferWillSave, _>(0, move |_event| {
+            event_flag.store(true, Ordering::SeqCst);
+            reovim_kernel::api::v1::EventResult::Handled
+        });
+
+    harness.with_runtime(|runtime| {
+        let cmd = WriteCommand;
+        let mut ctx = CommandContext::new();
+        ctx.set_buffer_id(buffer_id);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        let result = cmd.execute(runtime, &ctx);
+        assert!(result.is_success());
+    });
+
+    assert!(
+        event_received.load(Ordering::SeqCst),
+        "BufferWillSave event should be emitted before write"
+    );
+}
+
+#[test]
+fn test_write_will_save_fires_before_saved() {
+    use {
+        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_vfs::MockVfs,
+        reovim_kernel::api::v1::events::kernel::{BufferSaved, BufferWillSave},
+        std::sync::{Arc, Mutex},
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("order test");
+    let buffer_id = harness.active_buffer().unwrap();
+    harness
+        .kernel()
+        .buffers
+        .get(buffer_id)
+        .unwrap()
+        .write()
+        .set_file_path(Some("/tmp/order.txt".to_string()));
+
+    let mock_vfs = Arc::new(MockVfs::new());
+
+    // Track event ordering
+    let order = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+
+    let order_will = Arc::clone(&order);
+    let _sub1 = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferWillSave, _>(0, move |_| {
+            order_will.lock().unwrap().push("will_save");
+            reovim_kernel::api::v1::EventResult::Handled
+        });
+
+    let order_saved = Arc::clone(&order);
+    let _sub2 = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferSaved, _>(0, move |_| {
+            order_saved.lock().unwrap().push("saved");
+            reovim_kernel::api::v1::EventResult::Handled
+        });
+
+    harness.with_runtime(|runtime| {
+        let cmd = WriteCommand;
+        let mut ctx = CommandContext::new();
+        ctx.set_buffer_id(buffer_id);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        let result = cmd.execute(runtime, &ctx);
+        assert!(result.is_success());
+    });
+
+    let events = order.lock().unwrap();
+    assert_eq!(&*events, &["will_save", "saved"]);
+    drop(events);
+}
+
 // ========================================================================
 // WriteQuitCommand execution tests
 // ========================================================================
