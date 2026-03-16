@@ -204,7 +204,7 @@ fn invalidate_clears_all_caches() {
     assert_eq!(cached.inner.blame_calls.load(Ordering::Relaxed), 1);
 
     // Invalidate
-    cached.invalidate();
+    cached.invalidate_all();
 
     // Re-query — all should miss
     cached.current_branch(&cwd);

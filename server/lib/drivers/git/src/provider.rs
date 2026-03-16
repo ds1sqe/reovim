@@ -42,4 +42,56 @@ pub trait GitProvider: Send + Sync {
     fn blame(&self, _path: &Path) -> Vec<BlameEntry> {
         vec![]
     }
+
+    // ------------------------------------------------------------------
+    // Write operations (#668)
+    // ------------------------------------------------------------------
+
+    /// Stage an entire file.
+    ///
+    /// Equivalent to `git add <path>`.
+    fn stage_file(&self, _path: &Path) -> bool {
+        false
+    }
+
+    /// Reset a file to HEAD (discard working tree changes).
+    ///
+    /// Equivalent to `git checkout -- <path>`.
+    fn reset_file(&self, _path: &Path) -> bool {
+        false
+    }
+
+    /// Unstage a file (remove from index, keep working tree).
+    ///
+    /// Equivalent to `git reset HEAD -- <path>`.
+    fn unstage_file(&self, _path: &Path) -> bool {
+        false
+    }
+
+    /// Stage specific lines via a unified diff patch.
+    ///
+    /// Equivalent to `echo <patch> | git apply --cached`.
+    fn stage_lines(&self, _cwd: &Path, _patch: &str) -> bool {
+        false
+    }
+
+    /// Reset specific lines via a reverse unified diff patch.
+    ///
+    /// Equivalent to `echo <patch> | git apply --reverse`.
+    fn reset_lines(&self, _cwd: &Path, _patch: &str) -> bool {
+        false
+    }
+
+    /// Get the full diff content for a file against HEAD.
+    ///
+    /// Returns the raw `git diff` output including headers and hunks.
+    fn diff_content(&self, _path: &Path) -> Option<String> {
+        None
+    }
+
+    /// Invalidate cached data for a specific path.
+    ///
+    /// Called after write operations (stage, reset) to ensure
+    /// subsequent reads return fresh data. Default is a no-op.
+    fn invalidate(&self, _path: &Path) {}
 }

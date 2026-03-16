@@ -21,7 +21,7 @@ fn test_module_version() {
     let module = GitSignsModule::new();
     let v = module.version();
     assert_eq!(v.major, 0);
-    assert_eq!(v.minor, 1);
+    assert_eq!(v.minor, 2);
     assert_eq!(v.patch, 0);
 }
 
@@ -55,4 +55,20 @@ fn test_init_registers_source() {
         .get::<AnnotationSourceRegistry>()
         .expect("AnnotationSourceRegistry should be created");
     assert_eq!(registry.len(), 1, "should register one source");
+}
+
+#[test]
+fn test_keybindings_count() {
+    let module = GitSignsModule::new();
+    let bindings = module.keybindings();
+    // 2 navigation + 5 operations + 2 preview
+    assert_eq!(bindings.len(), 9);
+}
+
+#[test]
+fn test_keybindings_have_descriptions() {
+    let module = GitSignsModule::new();
+    for binding in module.keybindings() {
+        assert!(!binding.description.is_empty(), "Keybinding missing description");
+    }
 }

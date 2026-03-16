@@ -176,6 +176,38 @@ impl GitProvider for SubprocessGitProvider {
             .filter_map(parse_hunk_header)
             .collect()
     }
+
+    fn stage_file(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+        run_git(cwd, &["add", "--", &path_str]).is_some()
+    }
+
+    fn reset_file(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+        run_git(cwd, &["checkout", "--", &path_str]).is_some()
+    }
+
+    fn unstage_file(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+        run_git(cwd, &["reset", "HEAD", "--", &path_str]).is_some()
+    }
+
+    fn stage_lines(&self, cwd: &Path, patch: &str) -> bool {
+        run_git_with_stdin(cwd, &["apply", "--cached"], patch)
+    }
+
+    fn reset_lines(&self, cwd: &Path, patch: &str) -> bool {
+        run_git_with_stdin(cwd, &["apply", "--reverse"], patch)
+    }
+
+    fn diff_content(&self, path: &Path) -> Option<String> {
+        let path_str = path.to_string_lossy();
+        let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+        run_git(cwd, &["diff", "--", &path_str])
+    }
 }
 
 /// Parse the output of `git rev-parse --abbrev-ref HEAD`.
@@ -202,6 +234,28 @@ pub(crate) fn run_git(cwd: &Path, args: &[&str]) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Run a git command with stdin input, returning true on success.
+pub(crate) fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> bool {
+    use std::{io::Write as _, process::Stdio};
+
+    let Ok(mut child) = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+
+    if let Some(ref mut stdin) = child.stdin {
+        let _ = stdin.write_all(stdin_data.as_bytes());
+    }
+
+    child.wait().is_ok_and(|s| s.success())
 }
 
 /// Parse a single-character porcelain v1 status code.

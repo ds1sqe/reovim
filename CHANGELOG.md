@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Git hunk operations (#668, part of #660)**:
+  Extend git-signs module with hunk navigation and operations. `GitProvider`
+  trait extended with write operations: `stage_file`, `reset_file`,
+  `unstage_file`, `stage_lines`, `reset_lines`, `diff_content`, `invalidate`.
+  `SubprocessGitProvider` implements all via git CLI with `run_git_with_stdin`
+  helper for patch piping. `CachedGitProvider` forwards write ops and
+  invalidates per-path caches. Navigation: `]h`/`[h` jump between hunks with
+  wrap-around. Commands: stage hunk, reset hunk, stage buffer, reset buffer,
+  unstage file, preview hunk, diff this. 9 keybindings under `<leader>gh`
+  prefix. Pure navigation functions (`next_hunk_line`, `prev_hunk_line`,
+  `hunk_at_cursor`) with full test coverage.
+
 - **Diagnostics panel — trouble (#665, part of #660)**:
   Navigable diagnostics list with filtering and sorting, equivalent to
   trouble.nvim. Per-client `DiagnosticsState` as `SessionExtension` with

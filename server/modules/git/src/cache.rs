@@ -63,9 +63,9 @@ impl<P: GitProvider> CachedGitProvider<P> {
         }
     }
 
-    /// Clear all cached entries.
+    /// Clear all cached entries (test only).
     #[cfg(test)]
-    pub fn invalidate(&self) {
+    pub fn invalidate_all(&self) {
         self.branch_cache.write().expect("lock poisoned").clear();
         self.status_cache.write().expect("lock poisoned").clear();
         self.hunks_cache.write().expect("lock poisoned").clear();
@@ -164,6 +164,67 @@ impl<P: GitProvider> GitProvider for CachedGitProvider<P> {
             .expect("lock poisoned")
             .insert(key, CacheEntry::new(value.clone()));
         value
+    }
+
+    fn stage_file(&self, path: &Path) -> bool {
+        let result = self.inner.stage_file(path);
+        if result {
+            self.invalidate(path);
+        }
+        result
+    }
+
+    fn reset_file(&self, path: &Path) -> bool {
+        let result = self.inner.reset_file(path);
+        if result {
+            self.invalidate(path);
+        }
+        result
+    }
+
+    fn unstage_file(&self, path: &Path) -> bool {
+        let result = self.inner.unstage_file(path);
+        if result {
+            self.invalidate(path);
+        }
+        result
+    }
+
+    fn stage_lines(&self, cwd: &Path, patch: &str) -> bool {
+        let result = self.inner.stage_lines(cwd, patch);
+        // Invalidate all caches for this cwd since we don't know which file
+        if result {
+            self.hunks_cache.write().expect("lock poisoned").clear();
+            self.status_cache.write().expect("lock poisoned").clear();
+        }
+        result
+    }
+
+    fn reset_lines(&self, cwd: &Path, patch: &str) -> bool {
+        let result = self.inner.reset_lines(cwd, patch);
+        if result {
+            self.hunks_cache.write().expect("lock poisoned").clear();
+            self.status_cache.write().expect("lock poisoned").clear();
+        }
+        result
+    }
+
+    fn diff_content(&self, path: &Path) -> Option<String> {
+        // Not cached — full diff is infrequent (preview only)
+        self.inner.diff_content(path)
+    }
+
+    fn invalidate(&self, path: &Path) {
+        let key = path.to_path_buf();
+        self.hunks_cache
+            .write()
+            .expect("lock poisoned")
+            .remove(&key);
+        self.status_cache.write().expect("lock poisoned").clear();
+        self.blame_cache
+            .write()
+            .expect("lock poisoned")
+            .remove(&key);
     }
 }
 
