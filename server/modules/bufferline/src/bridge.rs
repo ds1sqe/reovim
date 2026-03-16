@@ -4,6 +4,8 @@
 //! during `tick()` to build `BufferlineSnapshot`. Serializes to JSON for
 //! gRPC transmission to clients.
 
+use std::collections::{HashMap, HashSet};
+
 use {
     reovim_driver_lsp::{DiagnosticSeverity, DiagnosticSnapshot},
     reovim_driver_session::{
@@ -81,25 +83,32 @@ impl ExtensionStateBridge for BufferlineBridge {
 
         let raw_entries = buffer_service.snapshot();
 
-        // Read diagnostic counts per buffer.
+        // Read diagnostic counts per buffer (build O(1) lookup map).
         let diag_counts = diagnostic_counts(shared_extensions);
+        let diag_map: HashMap<u64, (u32, u32)> = diag_counts
+            .into_iter()
+            .map(|(id, e, w)| (id, (e, w)))
+            .collect();
 
         // Read pin state.
         let pin_state = shared_extensions.get_or_insert::<BufferlineState>();
         let live_ids: Vec<u64> = raw_entries.iter().map(|e| e.id).collect();
         pin_state.clean_stale(&live_ids);
-        let pinned_ids: Vec<u64> = pin_state.pinned.clone();
+        let pinned_ids = &pin_state.pinned;
+        let pinned_set: HashSet<u64> = pinned_ids.iter().copied().collect();
+        let pinned_indices: HashMap<u64, usize> =
+            pinned_ids.iter().copied().enumerate().map(|(i, id)| (id, i)).collect();
 
         // Build entries: pinned first (in pin order), then unpinned (by buffer ID).
         let mut pinned_entries = Vec::new();
         let mut unpinned_entries = Vec::new();
 
         for raw in &raw_entries {
-            let is_pinned = pinned_ids.contains(&raw.id);
-            let (error_count, warning_count) = diag_counts
-                .iter()
-                .find(|(id, _, _)| *id == raw.id)
-                .map_or((0, 0), |(_, e, w)| (*e, *w));
+            let is_pinned = pinned_set.contains(&raw.id);
+            let (error_count, warning_count) = diag_map
+                .get(&raw.id)
+                .copied()
+                .unwrap_or((0, 0));
 
             let entry = BufferEntry {
                 id: raw.id,
@@ -121,9 +130,9 @@ impl ExtensionStateBridge for BufferlineBridge {
 
         // Sort pinned entries by their position in the pin list.
         pinned_entries.sort_by_key(|e| {
-            pinned_ids
-                .iter()
-                .position(|&pid| pid == e.id)
+            pinned_indices
+                .get(&e.id)
+                .copied()
                 .unwrap_or(usize::MAX)
         });
         // Unpinned entries stay in buffer ID order (from the service).
