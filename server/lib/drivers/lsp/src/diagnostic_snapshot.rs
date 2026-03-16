@@ -1,8 +1,8 @@
 //! Pre-resolved diagnostic snapshot for bridge serialization.
 //!
-//! The lsp module populates this state from `DiagnosticCache` data,
-//! resolving URI strings to buffer IDs. The `DiagnosticBridge` reads
-//! this snapshot from the shared `ExtensionMap` for serialization.
+//! Contains diagnostic data types shared across module boundaries.
+//! These types are populated by the LSP module's `DiagnosticBridge`
+//! and consumed by modules like `diagnostics-panel`.
 
 use reovim_driver_session::SessionExtension;
 
@@ -64,5 +64,5 @@ pub enum DiagnosticSeverity {
 }
 
 #[cfg(test)]
-#[path = "diagnostic_state_tests.rs"]
+#[path = "diagnostic_snapshot_tests.rs"]
 mod tests;

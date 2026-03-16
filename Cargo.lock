@@ -2187,6 +2187,7 @@ dependencies = [
  "reovim-module-codec-utf8",
  "reovim-module-commands",
  "reovim-module-completion",
+ "reovim-module-diagnostics-panel",
  "reovim-module-editor",
  "reovim-module-explorer",
  "reovim-module-format",
@@ -2497,6 +2498,7 @@ version = "0.14.0-dev"
 dependencies = [
  "lsp-types",
  "parking_lot",
+ "reovim-driver-session",
  "reovim-kernel",
  "serde",
  "serde_json",
@@ -2861,6 +2863,21 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-diagnostics-panel"
+version = "0.14.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
  "serde_json",
  "tracing",
 ]

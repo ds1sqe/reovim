@@ -152,5 +152,10 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     // Tier 4: Format-on-save (#667)
     map.insert("format", || Box::new(reovim_module_format::FormatModule::new()));
 
+    // Tier 4: Diagnostics panel (#665)
+    map.insert("diagnostics-panel", || {
+        Box::new(reovim_module_diagnostics_panel::DiagnosticsPanelModule::new())
+    });
+
     map
 }

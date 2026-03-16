@@ -90,6 +90,7 @@ members = [
     "server/modules/git-statusline",
     "server/modules/illuminate",
     "server/modules/format",
+    "server/modules/diagnostics-panel",
     "server/modules/git-blame",
     "server/modules/module-manager",
     "server/modules/emacs",
@@ -329,6 +330,7 @@ reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.14
 reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.14.0-dev" }
 reovim-module-illuminate = { path = "./server/modules/illuminate", version = "0.14.0-dev" }
 reovim-module-format = { path = "./server/modules/format", version = "0.14.0-dev" }
+reovim-module-diagnostics-panel = { path = "./server/modules/diagnostics-panel", version = "0.14.0-dev" }
 reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.14.0-dev" }
 reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.14.0-dev" }
 reovim-module-emacs = { path = "./server/modules/emacs", version = "0.14.0-dev" }

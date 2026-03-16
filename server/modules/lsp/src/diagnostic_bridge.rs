@@ -7,7 +7,10 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use {
-    reovim_driver_lsp::LspProviderRegistry,
+    reovim_driver_lsp::{
+        BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
+        LspProviderRegistry,
+    },
     reovim_driver_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
@@ -15,12 +18,7 @@ use {
     reovim_kernel::api::v1::{Service, ServiceRegistry},
 };
 
-use crate::{
-    KIND,
-    diagnostic_state::{
-        BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
-    },
-};
+use crate::KIND;
 
 // ============================================================================
 // DiagnosticPathIndex

@@ -31,7 +31,6 @@ use {
 
 mod auto_starter;
 pub mod diagnostic_bridge;
-pub mod diagnostic_state;
 
 const KIND: &str = "diagnostics";
 

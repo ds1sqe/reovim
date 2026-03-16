@@ -263,6 +263,11 @@ id = "format"
 tier = 4
 library = "reovim_module_format"
 
+[[modules]]
+id = "diagnostics-panel"
+tier = 4
+library = "reovim_module_diagnostics_panel"
+
 # Alternative personality — not loaded by default (requires explicit config)
 [[modules]]
 id = "emacs"

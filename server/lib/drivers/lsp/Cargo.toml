@@ -16,6 +16,9 @@ workspace = true
 # Kernel layer (provides KernelContext, EventBus, ArcSwap, channels, etc.)
 reovim-kernel = { workspace = true }
 
+# Session driver (SessionExtension for DiagnosticSnapshot)
+reovim-driver-session = { workspace = true }
+
 # LSP protocol types (matches lib/lsp version)
 lsp-types = "0.97"
 

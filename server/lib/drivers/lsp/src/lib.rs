@@ -39,6 +39,7 @@ mod cache;
 mod capability_store;
 pub mod client;
 mod config;
+mod diagnostic_snapshot;
 mod error;
 pub mod jsonrpc;
 mod key;
@@ -83,6 +84,11 @@ pub use sync::recv_response;
 
 // LSP traffic logger
 pub use logger::LspLogger;
+
+// Diagnostic snapshot types (shared data contracts for cross-module use)
+pub use diagnostic_snapshot::{
+    BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
+};
 
 // Re-export essential LSP types
 pub mod lsp_types {

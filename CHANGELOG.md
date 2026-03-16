@@ -6,6 +6,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Diagnostics panel — trouble (#665, part of #660)**:
+  Navigable diagnostics list with filtering and sorting, equivalent to
+  trouble.nvim. Per-client `DiagnosticsState` as `SessionExtension` with
+  `DiagnosticsPanelBridge` for JSON serialization to TUI/Web. Panel modes:
+  Diagnostics, Quickfix (stub), References (stub), TODO (stub). Sort by
+  severity/file/line with cycle command. Severity filter (errors only,
+  warnings only, show all). `DIAGNOSTICS` mode with dedicated resolver
+  (no char input, keymap-only). Commands: `:Trouble [mode]`, toggle, close,
+  next/prev, select (jump), filter, sort, refresh. Keybindings: `<leader>xx`
+  toggle, j/k/Enter/q/Esc in panel mode, e/w/a for filter, s for sort,
+  r for refresh. Diagnostic types (`DiagnosticSnapshot`, `DiagnosticItem`,
+  `BufferDiagnosticEntry`, `DiagnosticSeverity`) extracted from
+  `reovim-module-lsp` to `reovim-driver-lsp` for proper layer boundaries.
+  88 unit tests, zero clippy warnings.
+
 - **Format-on-save with external and LSP formatters (#667, part of #660)**:
   Pre-save formatting via `BufferWillSave` event subscription. External CLI
   formatters (rustfmt, prettier, black, etc.) via `FormatterProvider` trait
