@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use reovim_client_driver::ClientModuleFactory;
 
 /// Number of builtin client modules. Update when adding/removing modules.
-const BUILTIN_MODULE_COUNT: usize = 18;
+const BUILTIN_MODULE_COUNT: usize = 19;
 
 /// Return the builtin client module factory map.
 ///
@@ -92,6 +92,10 @@ pub fn builtin_client_modules() -> HashMap<&'static str, ClientModuleFactory> {
     map.insert(
         "markdown",
         (|| Box::new(reovim_tui_mod_markdown::MarkdownModule::new())) as ClientModuleFactory,
+    );
+    map.insert(
+        "bufferline",
+        (|| Box::new(reovim_tui_mod_bufferline::BufferlineModule::new())) as ClientModuleFactory,
     );
     map
 }

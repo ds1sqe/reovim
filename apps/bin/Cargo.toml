@@ -71,6 +71,7 @@ static-modules = [
     "dep:reovim-module-illuminate",
     "dep:reovim-module-format",
     "dep:reovim-module-diagnostics-panel",
+    "dep:reovim-module-bufferline",
 ]
 
 [dependencies]
@@ -201,6 +202,7 @@ reovim-module-module-manager = { workspace = true, optional = true }
 reovim-module-illuminate = { workspace = true, optional = true }
 reovim-module-format = { workspace = true, optional = true }
 reovim-module-diagnostics-panel = { workspace = true, optional = true }
+reovim-module-bufferline = { workspace = true, optional = true }
 
 [lints]
 workspace = true

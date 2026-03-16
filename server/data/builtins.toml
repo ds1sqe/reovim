@@ -268,6 +268,11 @@ id = "diagnostics-panel"
 tier = 4
 library = "reovim_module_diagnostics_panel"
 
+[[modules]]
+id = "bufferline"
+tier = 4
+library = "reovim_module_bufferline"
+
 # Alternative personality — not loaded by default (requires explicit config)
 [[modules]]
 id = "emacs"

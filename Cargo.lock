@@ -2176,6 +2176,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-buffer-simple",
+ "reovim-module-bufferline",
  "reovim-module-clipboard",
  "reovim-module-cmdline",
  "reovim-module-codec-binary-struct",
@@ -2316,6 +2317,7 @@ dependencies = [
  "reovim-driver-tui",
  "reovim-protocol",
  "reovim-testing",
+ "reovim-tui-mod-bufferline",
  "reovim-tui-mod-cmdline",
  "reovim-tui-mod-completion",
  "reovim-tui-mod-diagnostics",
@@ -2688,6 +2690,21 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-kernel",
  "reovim-module-macros",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-bufferline"
+version = "0.14.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
  "tracing",
 ]
 
@@ -3662,6 +3679,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "reovim-tui-mod-bufferline"
+version = "0.14.0-dev"
+dependencies = [
+ "reovim-client-driver",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

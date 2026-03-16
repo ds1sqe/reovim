@@ -45,6 +45,7 @@ reovim-tui-mod-pair = { workspace = true }
 reovim-tui-mod-yank-flash = { workspace = true }
 reovim-tui-mod-diagnostics = { workspace = true }
 reovim-tui-mod-markdown = { workspace = true }
+reovim-tui-mod-bufferline = { workspace = true }
 
 # Common client model (wire types, traits)
 reovim-client-model = { workspace = true }

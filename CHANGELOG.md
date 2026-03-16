@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Tab / buffer bar — bufferline (#662, part of #660)**:
+  Horizontal tab bar showing open buffers at the top of the editor. Two-layer
+  architecture: server module (`reovim-module-bufferline`) maintains buffer list
+  via EventBus subscriptions (`BufferCreated`, `BufferClosed`, `BufferModified`,
+  `BufferSaved`) with `ExtensionScope::Shared` bridge. TUI client module
+  (`reovim-tui-mod-bufferline`) renders at `ChromePosition::Top`. Features:
+  active buffer highlight (blue), modified `[+]` indicator, pinned `*` indicator
+  with pin-first ordering, per-buffer diagnostic counts (`E:n W:n`), overflow
+  scroll with `<`/`>` indicators. Commands: pin toggle (`<leader>bp`), unpin
+  (`<leader>bu`), close buffer (`<leader>bc`). `BufferListService` provides
+  buffer metadata, `BufferlineBridge` merges with `DiagnosticSnapshot` and
+  `BufferlineState` (pin list) during tick.
+
 - **Git hunk operations (#668, part of #660)**:
   Extend git-signs module with hunk navigation and operations. `GitProvider`
   trait extended with write operations: `stage_file`, `reset_file`,
