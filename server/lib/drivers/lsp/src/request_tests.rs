@@ -153,3 +153,41 @@ fn test_document_highlight_debug() {
     assert!(debug_str.contains("position"));
     assert!(!debug_str.contains("response_tx"));
 }
+
+#[test]
+fn test_formatting_debug() {
+    let (tx, _rx) = reovim_kernel::api::v1::oneshot();
+    let req = LspRequest::Formatting {
+        uri: make_uri("file:///test.rs"),
+        options: lsp_types::FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..lsp_types::FormattingOptions::default()
+        },
+        response_tx: tx,
+    };
+    let debug_str = format!("{req:?}");
+    assert!(debug_str.contains("Formatting"));
+    assert!(debug_str.contains("test.rs"));
+    assert!(!debug_str.contains("response_tx"));
+}
+
+#[test]
+fn test_range_formatting_debug() {
+    let (tx, _rx) = reovim_kernel::api::v1::oneshot();
+    let req = LspRequest::RangeFormatting {
+        uri: make_uri("file:///test.rs"),
+        range: lsp_types::Range::new(Position::new(0, 0), Position::new(10, 0)),
+        options: lsp_types::FormattingOptions {
+            tab_size: 2,
+            insert_spaces: true,
+            ..lsp_types::FormattingOptions::default()
+        },
+        response_tx: tx,
+    };
+    let debug_str = format!("{req:?}");
+    assert!(debug_str.contains("RangeFormatting"));
+    assert!(debug_str.contains("test.rs"));
+    assert!(debug_str.contains("range"));
+    assert!(!debug_str.contains("response_tx"));
+}

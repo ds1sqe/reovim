@@ -21,6 +21,7 @@ members = [
     "server/lib/drivers/buffer",
     "server/lib/drivers/search",
     "server/lib/drivers/clipboard",
+    "server/lib/drivers/formatter",
     "server/lib/drivers/ffi",
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
@@ -238,6 +239,7 @@ reovim-driver-undo = { path = "./server/lib/drivers/undo", version = "0.14.0-dev
 reovim-driver-buffer = { path = "./server/lib/drivers/buffer", version = "0.14.0-dev" }
 reovim-driver-search = { path = "./server/lib/drivers/search", version = "0.14.0-dev" }
 reovim-driver-clipboard = { path = "./server/lib/drivers/clipboard", version = "0.14.0-dev" }
+reovim-driver-formatter = { path = "./server/lib/drivers/formatter", version = "0.14.0-dev" }
 reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.14.0-dev" }
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.14.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.14.0-dev" }

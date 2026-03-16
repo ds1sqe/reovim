@@ -199,6 +199,10 @@ fn apply_method_registration(
             caps.document_formatting_provider = Some(OneOf::Left(true));
             true
         }
+        "textDocument/rangeFormatting" => {
+            caps.document_range_formatting_provider = Some(OneOf::Left(true));
+            true
+        }
         "textDocument/documentSymbol" => {
             caps.document_symbol_provider = Some(OneOf::Left(true));
             true
@@ -245,6 +249,10 @@ fn clear_method_capability(caps: &mut ServerCapabilities, method: &str) -> bool 
         }
         "textDocument/formatting" => {
             caps.document_formatting_provider = None;
+            true
+        }
+        "textDocument/rangeFormatting" => {
+            caps.document_range_formatting_provider = None;
             true
         }
         "textDocument/documentSymbol" => {

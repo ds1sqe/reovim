@@ -547,6 +547,46 @@ impl Client {
         self.request("textDocument/documentHighlight", params).await
     }
 
+    /// Get formatting edits for the entire document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn formatting(
+        &self,
+        uri: Uri,
+        options: lsp_types::FormattingOptions,
+    ) -> Result<Option<Vec<lsp_types::TextEdit>>, LspError> {
+        let params = lsp_types::DocumentFormattingParams {
+            text_document: TextDocumentIdentifier { uri },
+            options,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        self.request("textDocument/formatting", params).await
+    }
+
+    /// Get formatting edits for a range in the document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn range_formatting(
+        &self,
+        uri: Uri,
+        range: lsp_types::Range,
+        options: lsp_types::FormattingOptions,
+    ) -> Result<Option<Vec<lsp_types::TextEdit>>, LspError> {
+        let params = lsp_types::DocumentRangeFormattingParams {
+            text_document: TextDocumentIdentifier { uri },
+            range,
+            options,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        };
+
+        self.request("textDocument/rangeFormatting", params).await
+    }
+
     /// Shutdown the language server gracefully.
     ///
     /// Sends shutdown request followed by exit notification.

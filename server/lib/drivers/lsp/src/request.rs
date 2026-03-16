@@ -7,8 +7,8 @@ use std::fmt;
 
 use {
     lsp_types::{
-        CompletionResponse, DocumentHighlight, GotoDefinitionResponse, Hover, Location, Position,
-        SignatureHelp, Uri,
+        CompletionResponse, DocumentHighlight, FormattingOptions, GotoDefinitionResponse, Hover,
+        Location, Position, Range, SignatureHelp, TextEdit, Uri,
     },
     reovim_kernel::api::v1::OneshotSender,
 };
@@ -36,8 +36,6 @@ pub type NavigationResult<T> = Result<T, LspError>;
 /// - `Rename`
 /// - `DocumentSymbol`
 /// - `WorkspaceSymbol`
-/// - `Formatting`
-/// - `RangeFormatting`
 pub enum LspRequest {
     /// Notify server that a document was opened.
     DidOpen {
@@ -127,6 +125,26 @@ pub enum LspRequest {
         /// Response channel.
         response_tx: OneshotSender<NavigationResult<Option<Vec<DocumentHighlight>>>>,
     },
+    /// Request document formatting.
+    Formatting {
+        /// Document URI.
+        uri: Uri,
+        /// Formatting options (indent size, insert spaces, etc).
+        options: FormattingOptions,
+        /// Response channel.
+        response_tx: OneshotSender<NavigationResult<Option<Vec<TextEdit>>>>,
+    },
+    /// Request range formatting.
+    RangeFormatting {
+        /// Document URI.
+        uri: Uri,
+        /// Range to format.
+        range: Range,
+        /// Formatting options.
+        options: FormattingOptions,
+        /// Response channel.
+        response_tx: OneshotSender<NavigationResult<Option<Vec<TextEdit>>>>,
+    },
     /// Request server shutdown.
     Shutdown,
 }
@@ -191,6 +209,15 @@ impl fmt::Debug for LspRequest {
                 .debug_struct("DocumentHighlight")
                 .field("uri", uri)
                 .field("position", position)
+                .finish_non_exhaustive(),
+            Self::Formatting { uri, .. } => f
+                .debug_struct("Formatting")
+                .field("uri", uri)
+                .finish_non_exhaustive(),
+            Self::RangeFormatting { uri, range, .. } => f
+                .debug_struct("RangeFormatting")
+                .field("uri", uri)
+                .field("range", range)
                 .finish_non_exhaustive(),
             Self::Shutdown => write!(f, "Shutdown"),
         }

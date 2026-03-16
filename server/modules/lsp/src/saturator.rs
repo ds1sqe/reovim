@@ -459,6 +459,33 @@ impl LspSaturator {
                     let _ = response_tx.send(result);
                 });
             }
+            LspRequest::Formatting {
+                uri,
+                options,
+                response_tx,
+            } => {
+                debug!(uri = %uri.as_str(), "Spawning formatting task");
+                let client = Arc::clone(client);
+                tokio::spawn(async move {
+                    let result = client.formatting(uri, options).await;
+                    debug!(success = result.is_ok(), "formatting completed");
+                    let _ = response_tx.send(result);
+                });
+            }
+            LspRequest::RangeFormatting {
+                uri,
+                range,
+                options,
+                response_tx,
+            } => {
+                debug!(uri = %uri.as_str(), range = ?range, "Spawning range_formatting task");
+                let client = Arc::clone(client);
+                tokio::spawn(async move {
+                    let result = client.range_formatting(uri, range, options).await;
+                    debug!(success = result.is_ok(), "range_formatting completed");
+                    let _ = response_tx.send(result);
+                });
+            }
             LspRequest::Shutdown => {
                 info!("Shutdown requested");
                 if let Err(e) = client.shutdown().await {
@@ -610,6 +637,22 @@ impl LspSaturator {
                 log.log_sent(
                     "textDocument/documentHighlight",
                     &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::Formatting { uri, .. } => {
+                log.log_sent("textDocument/formatting", uri.as_str());
+            }
+            LspRequest::RangeFormatting { uri, range, .. } => {
+                log.log_sent(
+                    "textDocument/rangeFormatting",
+                    &format!(
+                        "{} {}:{}-{}:{}",
+                        uri.as_str(),
+                        range.start.line,
+                        range.start.character,
+                        range.end.line,
+                        range.end.character
+                    ),
                 );
             }
             LspRequest::Shutdown => {
