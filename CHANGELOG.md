@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Word reference highlight — illuminate module (#664, part of #660)**:
+  Highlights all references to the symbol under cursor using LSP
+  `textDocument/documentHighlight` with word-match fallback. Tick-based
+  cursor-hold detection (3 ticks at 100ms = 300ms delay) via bridge
+  `ExtensionStateBridge`. Navigation commands `]]` / `[[` jump between
+  highlighted references with wrap-around. CursorMoved kernel event
+  emission from `SessionRuntime::record_cursor_move()` with accurate
+  from/to positions. CursorSnapshot session extension for bridge tick
+  consumption without direct window access. LSP driver document highlight
+  request support with capability registration. 79 illuminate tests,
+  12 CursorMoved/CursorSnapshot tests, 100% line coverage.
+
 - **Leap-style bidirectional jump motions (#663, part of #660)**: Enhanced
   range-finder module with viewport-bounded scanning and backward search.
   `s{char}{char}` now searches forward only (was bidirectional) with matches

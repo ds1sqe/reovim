@@ -29,7 +29,7 @@ impl CommandHandler for NextReferenceCommand {
         let Some(state) = runtime.ext::<IlluminateState>() else {
             return CommandResult::Success;
         };
-        if !state.active || state.ranges.is_empty() {
+        if !state.active {
             return CommandResult::Success;
         }
 
@@ -37,6 +37,7 @@ impl CommandHandler for NextReferenceCommand {
             return CommandResult::Success;
         };
 
+        // next_range_index returns None when ranges is empty
         let Some(idx) = state.next_range_index(cursor.line as u32, cursor.column as u32) else {
             return CommandResult::Success;
         };
@@ -76,7 +77,7 @@ impl CommandHandler for PrevReferenceCommand {
         let Some(state) = runtime.ext::<IlluminateState>() else {
             return CommandResult::Success;
         };
-        if !state.active || state.ranges.is_empty() {
+        if !state.active {
             return CommandResult::Success;
         }
 
@@ -84,6 +85,7 @@ impl CommandHandler for PrevReferenceCommand {
             return CommandResult::Success;
         };
 
+        // prev_range_index returns None when ranges is empty
         let Some(idx) = state.prev_range_index(cursor.line as u32, cursor.column as u32) else {
             return CommandResult::Success;
         };
