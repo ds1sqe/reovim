@@ -306,11 +306,17 @@ impl CommandHandler for HoverCommand {
         let origin_col = cursor.column as u32;
 
         // Start tick so HoverBridge::tick() polls for the result.
-        if let Some(client_id) = runtime.owner()
+        // Capture handle + client_id for the async task to stop the tick
+        // when done (prevents indefinite 50ms write-lock contention).
+        let tick_stop = if let Some(client_id) = runtime.owner()
             && let Some(tick_handle) = services.get::<TickSchedulerHandle>()
         {
             tick_handle.start(client_id, "hover", HOVER_TICK_INTERVAL);
-        }
+            Some((Arc::clone(&tick_handle), client_id))
+        } else {
+            warn!("K: could not start hover tick");
+            None
+        };
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             let timeout = LSP_TIMEOUT;
@@ -347,6 +353,12 @@ impl CommandHandler for HoverCommand {
                     Err(join_err) => {
                         warn!("K: spawn_blocking panicked: {join_err}");
                     }
+                }
+                // Stop the tick — either the result was delivered or we timed
+                // out. No reason to keep taking session write locks.
+                if let Some((handle, cid)) = tick_stop {
+                    handle.stop(cid, "hover");
+                    debug!("K: hover tick stopped");
                 }
             });
         } else {

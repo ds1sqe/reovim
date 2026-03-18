@@ -5,10 +5,11 @@
 
 use {
     reovim_driver_session::{
-        ExtensionMap,
+        CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::ServiceRegistry,
+    tracing::debug,
 };
 
 use crate::{
@@ -73,6 +74,17 @@ impl ExtensionStateBridge for HoverBridge {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    fn on_cursor_moved(&self, line: usize, col: usize, extensions: &mut ExtensionMap) {
+        // Dismiss hover when cursor moves away from the trigger position.
+        if let Some(state) = extensions.get_mut::<HoverState>()
+            && state.active
+            && (line as u32 != state.origin_line || col as u32 != state.origin_col)
+        {
+            state.dismiss();
+        }
+    }
+
     fn tick(
         &self,
         client_extensions: &mut ExtensionMap,
@@ -81,11 +93,30 @@ impl ExtensionStateBridge for HoverBridge {
     ) -> bool {
         // Check HoverCache for a pending async hover result.
         let Some(cache) = services.get::<HoverCache>() else {
+            debug!("hover tick: no HoverCache in services");
             return false;
         };
         let Some(snapshot) = cache.take() else {
             return false;
         };
+
+        // Guard: suppress delivery if cursor has moved away from the
+        // hover origin since the request was sent (#662). Without this,
+        // a slow LSP response could show hover at a stale position.
+        if let Some(cursor) = client_extensions.get::<CursorSnapshot>()
+            && (cursor.line != snapshot.line || cursor.col != snapshot.col)
+        {
+            debug!("hover tick: cursor moved, discarding stale snapshot");
+            return false;
+        }
+
+        debug!(
+            content_len = snapshot.content.len(),
+            buffer_id = snapshot.buffer_id,
+            line = snapshot.line,
+            col = snapshot.col,
+            "hover tick: delivering snapshot to HoverState"
+        );
 
         // Move the snapshot into per-client HoverState.
         let state = client_extensions.get_or_insert::<HoverState>();

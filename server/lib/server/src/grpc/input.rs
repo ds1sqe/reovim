@@ -279,6 +279,16 @@ impl InputService for InputServiceImpl {
             Self::notify_bridges_mode_changed(&session, client_id, &self.bridges, &from, &to);
         }
 
+        // #662: Notify bridges of cursor movement so overlays can self-dismiss.
+        if accumulated_changes.cursor_moved {
+            Self::notify_bridges_cursor_moved(
+                &session,
+                client_id,
+                &self.bridges,
+                &mut accumulated_changes,
+            );
+        }
+
         // #514/#468/#469: Generic bridge change detection — emit on toggle AND on
         // every key while active (each keystroke may modify extension state).
         Self::detect_bridge_changes(
@@ -289,12 +299,9 @@ impl InputService for InputServiceImpl {
             &mut accumulated_changes,
         );
 
-        // Update syntax drivers for modified/deleted buffers (#539, #655)
-        if accumulated_changes.buffer_modified || !accumulated_changes.buffers_deleted.is_empty() {
-            Self::emit_syntax_updates(&session, &accumulated_changes);
-        }
-
-        // Emit notifications for accumulated state changes
+        // Emit notifications BEFORE syntax updates so the TUI receives
+        // BufferModified (which refreshes buffer_cache) before TokenUpdate
+        // (which needs fresh cache for byte→line conversion).
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
         if accumulated_changes.has_changes() {
@@ -304,6 +311,11 @@ impl InputService for InputServiceImpl {
                 client_id.as_usize() as u64,
                 &self.bridges,
             );
+        }
+
+        // Update syntax drivers for modified/deleted buffers (#539, #655)
+        if accumulated_changes.buffer_modified || !accumulated_changes.buffers_deleted.is_empty() {
+            Self::emit_syntax_updates(&session, &accumulated_changes);
         }
 
         // Return result
@@ -355,7 +367,7 @@ impl InputServiceImpl {
     ///
     /// For each bridge, emit a change notification if:
     /// - The active state toggled (was inactive, now active, or vice versa)
-    /// - The bridge is currently active (content may have changed)
+    /// - The bridge is currently active (content may have changed by key input)
     fn detect_bridge_changes(
         session: &Session,
         client_id: ClientId,
@@ -388,6 +400,39 @@ impl InputServiceImpl {
             for bridge in bridges.values() {
                 if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
                     bridge.on_mode_changed(from, to, ext);
+                }
+            }
+        });
+    }
+
+    /// Notify all client-scoped bridges of a cursor movement (#662).
+    ///
+    /// Gives bridges a chance to self-dismiss overlays (e.g., hover popup)
+    /// when the cursor moves away from the trigger position.
+    fn notify_bridges_cursor_moved(
+        session: &Session,
+        client_id: ClientId,
+        bridges: &BridgeRegistry,
+        changes: &mut StateChanges,
+    ) {
+        let Some((line, col)) = session.with_clients(|clients| {
+            let window = clients.get(&client_id)?.state.windows.active()?;
+            Some((window.cursor.line, window.cursor.column))
+        }) else {
+            return;
+        };
+
+        session.with_client_extensions_mut(client_id, |ext| {
+            for bridge in bridges.values() {
+                if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                    let was_active = bridge.is_active(ext);
+                    bridge.on_cursor_moved(line, col, ext);
+                    let is_active = bridge.is_active(ext);
+                    // If the bridge deactivated, record an extension change
+                    // so the notification pipeline sends the updated state.
+                    if was_active && !is_active {
+                        changes.record_extension_change(bridge.kind().into());
+                    }
                 }
             }
         });
@@ -656,8 +701,13 @@ impl InputServiceImpl {
                     let modified_buffer = session.insert_char_for_client(client_id, ch, target);
 
                     // Record buffer modification and cursor movement for notification
-                    if let Some(buffer_id) = modified_buffer {
-                        changes.record_buffer_modified(buffer_id);
+                    if let Some((buffer_id, modification)) = modified_buffer {
+                        if let Some(edit) = modification {
+                            // Use incremental syntax path (edit info available)
+                            changes.record_buffer_modified_with_edit(buffer_id, edit);
+                        } else {
+                            changes.record_buffer_modified(buffer_id);
+                        }
                         changes.record_cursor_move(buffer_id);
                         tracing::debug!(?buffer_id, "Recorded buffer modification for InsertChar");
                     }

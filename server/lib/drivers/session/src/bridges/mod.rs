@@ -144,6 +144,15 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     /// Only called for [`ExtensionScope::Client`] bridges (#521).
     fn on_mode_changed(&self, _from: &str, _to: &str, _extensions: &mut ExtensionMap) {}
 
+    /// Called when the client's cursor moves (#662).
+    ///
+    /// Bridges can use this to auto-dismiss overlays (e.g., hover popup)
+    /// when the cursor moves away from the trigger position.
+    /// Default implementation is a no-op.
+    ///
+    /// Only called for [`ExtensionScope::Client`] bridges.
+    fn on_cursor_moved(&self, _line: usize, _col: usize, _extensions: &mut ExtensionMap) {}
+
     /// Snapshot with cross-client context (multiplayer support, #543).
     ///
     /// Default delegates to [`snapshot()`](Self::snapshot) — single-player bridges
