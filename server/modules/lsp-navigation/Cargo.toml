@@ -29,6 +29,7 @@ reovim-module-microscope = { workspace = true }
 reovim-module-macros = { workspace = true }
 lsp-types = "0.97"
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]

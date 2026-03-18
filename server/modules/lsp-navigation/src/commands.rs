@@ -14,8 +14,8 @@ use {
     },
     reovim_driver_picker::{PickerData, PickerItem, push_items},
     reovim_driver_session::{
-        BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
-        WindowApi,
+        BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TickSchedulerHandle,
+        TransitionContext, WindowApi,
     },
     reovim_kernel::api::v1::{CommandId, ServiceRegistry},
     reovim_module_microscope::{MicroscopeState, modes::MicroscopeMode},
@@ -24,7 +24,7 @@ use {
 };
 
 use crate::{
-    hover_state::{HoverContentType, HoverState},
+    hover_state::{HoverCache, HoverContentType, HoverSnapshot},
     ids,
     signature_help_state::SignatureHelpState,
 };
@@ -246,6 +246,9 @@ impl reovim_driver_command::Command for HoverCommand {
     }
 }
 
+/// Tick interval for hover bridge polling.
+const HOVER_TICK_INTERVAL: Duration = Duration::from_millis(50);
+
 impl CommandHandler for HoverCommand {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -290,42 +293,67 @@ impl CommandHandler for HoverCommand {
             return CommandResult::Success;
         }
 
-        debug!("K: request sent, waiting for response");
-        match recv_response(&rx, LSP_TIMEOUT) {
-            Ok(Ok(Some(hover))) => {
-                let text = format_hover_content(&hover);
-                if text.is_empty() {
-                    notify_info(runtime, "No hover information");
-                } else {
-                    let content_type = hover_content_type(&hover.contents);
-                    let state = runtime.ext_mut::<HoverState>();
-                    // Cursor positions and buffer IDs are bounded well within u32/u64.
-                    #[allow(clippy::cast_possible_truncation)]
-                    state.show(
-                        text,
-                        content_type,
-                        buf_id.as_usize() as u64,
-                        cursor.line as u32,
-                        cursor.column as u32,
-                    );
-                    runtime
-                        .take_changes()
-                        .record_extension_change("hover".into());
-                }
-            }
-            Ok(Ok(None)) => {
-                notify_info(runtime, "No hover information");
-            }
-            Ok(Err(e)) => {
-                warn!("K: LSP error: {e}");
-                notify_info(runtime, "LSP request failed");
-            }
-            Err(e) => {
-                warn!("K: recv_timeout error: {e}");
-                notify_info(runtime, "LSP request failed");
-            }
+        // Fire-and-forget: spawn async task to await LSP response (#662).
+        // The task stores the result in HoverCache; HoverBridge::tick()
+        // picks it up and pushes to the client.
+        let cache = services.get_or_create::<HoverCache>();
+        let cache_arc = cache.shared();
+        #[allow(clippy::cast_possible_truncation)]
+        let origin_buffer_id = buf_id.as_usize() as u64;
+        #[allow(clippy::cast_possible_truncation)]
+        let origin_line = cursor.line as u32;
+        #[allow(clippy::cast_possible_truncation)]
+        let origin_col = cursor.column as u32;
+
+        // Start tick so HoverBridge::tick() polls for the result.
+        if let Some(client_id) = runtime.owner()
+            && let Some(tick_handle) = services.get::<TickSchedulerHandle>()
+        {
+            tick_handle.start(client_id, "hover", HOVER_TICK_INTERVAL);
         }
 
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let timeout = LSP_TIMEOUT;
+            handle.spawn(async move {
+                // OneshotReceiver is crossbeam-based (not a Future), so use
+                // spawn_blocking to await it without holding a tokio thread.
+                let result = tokio::task::spawn_blocking(move || rx.recv_timeout(timeout)).await;
+                match result {
+                    Ok(Ok(Ok(Some(hover)))) => {
+                        let text = format_hover_content(&hover);
+                        if text.is_empty() {
+                            debug!("K: hover returned empty content");
+                        } else {
+                            let content_type = hover_content_type(&hover.contents);
+                            cache_arc.store(Arc::new(Some(HoverSnapshot {
+                                content: text,
+                                content_type,
+                                buffer_id: origin_buffer_id,
+                                line: origin_line,
+                                col: origin_col,
+                            })));
+                            info!("K: hover result cached for tick");
+                        }
+                    }
+                    Ok(Ok(Ok(None))) => {
+                        debug!("K: server returned None (no hover)");
+                    }
+                    Ok(Ok(Err(e))) => {
+                        warn!("K: LSP error: {e}");
+                    }
+                    Ok(Err(_recv_err)) => {
+                        warn!("K: oneshot channel closed or timed out");
+                    }
+                    Err(join_err) => {
+                        warn!("K: spawn_blocking panicked: {join_err}");
+                    }
+                }
+            });
+        } else {
+            debug!("K: no tokio runtime, skipping async hover");
+        }
+
+        debug!("K: hover request sent (non-blocking)");
         CommandResult::Success
     }
 }

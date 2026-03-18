@@ -19,15 +19,19 @@
 //! // Create a simple gutter with line numbers only
 //! let config = GutterConfig::default_line_numbers();
 //!
-//! // Create a full gutter with multiple columns
+//! // Create a full gutter with multiple columns.
+//! // Columns are sorted by priority before rendering (lower = further left).
 //! let config = GutterConfig::new(vec![
 //!     ColumnConfig::new(KindPattern::exact("sign"))
 //!         .visibility(VisibilityMode::Auto)
-//!         .width(2),
+//!         .width(2)
+//!         .priority(10),
 //!     ColumnConfig::new(KindPattern::prefix("diagnostic"))
-//!         .visibility(VisibilityMode::Auto),
+//!         .visibility(VisibilityMode::Auto)
+//!         .priority(30),
 //!     ColumnConfig::new(KindPattern::exact("line_number"))
-//!         .visibility(VisibilityMode::Always),
+//!         .visibility(VisibilityMode::Always)
+//!         .priority(100),
 //! ]);
 //! ```
 
@@ -62,6 +66,8 @@ impl VisibilityMode {
 /// Configuration for a single gutter column.
 ///
 /// Each column displays annotations matching its pattern.
+/// Columns are rendered left-to-right in ascending `priority` order
+/// (lower value = further left).
 #[derive(Debug, Clone)]
 pub struct ColumnConfig {
     /// Pattern for matching annotation kinds.
@@ -70,6 +76,8 @@ pub struct ColumnConfig {
     pub visibility: VisibilityMode,
     /// Fixed width override (None = dynamic).
     pub width: Option<u16>,
+    /// Rendering priority (lower = further left). Default: 0.
+    pub priority: i32,
 }
 
 impl ColumnConfig {
@@ -80,6 +88,7 @@ impl ColumnConfig {
             pattern,
             visibility: VisibilityMode::default(),
             width: None,
+            priority: 0,
         }
     }
 
@@ -97,6 +106,13 @@ impl ColumnConfig {
         self
     }
 
+    /// Set the rendering priority (lower = further left).
+    #[must_use]
+    pub const fn priority(mut self, priority: i32) -> Self {
+        self.priority = priority;
+        self
+    }
+
     /// Check if this column matches the given kind.
     #[must_use]
     pub fn matches(&self, kind: &super::AnnotationKind) -> bool {
@@ -106,10 +122,11 @@ impl ColumnConfig {
 
 /// Configuration for the entire gutter.
 ///
-/// Defines column order and behavior.
+/// Defines column layout and behavior. Columns are rendered left-to-right
+/// sorted by ascending `priority` (lower = further left).
 #[derive(Debug, Clone, Default)]
 pub struct GutterConfig {
-    /// Columns in display order (left to right).
+    /// Columns (rendered in priority order, not insertion order).
     pub columns: Vec<ColumnConfig>,
     /// Show separator after gutter.
     pub show_separator: bool,
@@ -134,7 +151,8 @@ impl GutterConfig {
         Self {
             columns: vec![
                 ColumnConfig::new(KindPattern::exact("line_number"))
-                    .visibility(VisibilityMode::Always),
+                    .visibility(VisibilityMode::Always)
+                    .priority(100),
             ],
             show_separator: true,
         }
@@ -147,18 +165,23 @@ impl GutterConfig {
             columns: vec![
                 ColumnConfig::new(KindPattern::prefix("sign"))
                     .visibility(VisibilityMode::Auto)
-                    .width(2),
+                    .width(2)
+                    .priority(10),
                 ColumnConfig::new(KindPattern::prefix("git"))
                     .visibility(VisibilityMode::Auto)
-                    .width(1),
+                    .width(1)
+                    .priority(20),
                 ColumnConfig::new(KindPattern::prefix("diagnostic"))
                     .visibility(VisibilityMode::Auto)
-                    .width(1),
+                    .width(1)
+                    .priority(30),
                 ColumnConfig::new(KindPattern::exact("fold"))
                     .visibility(VisibilityMode::Auto)
-                    .width(1),
+                    .width(1)
+                    .priority(40),
                 ColumnConfig::new(KindPattern::exact("line_number"))
-                    .visibility(VisibilityMode::Always),
+                    .visibility(VisibilityMode::Always)
+                    .priority(100),
             ],
             show_separator: true,
         }

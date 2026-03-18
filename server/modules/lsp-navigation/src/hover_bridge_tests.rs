@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, crate::hover_state::HoverSnapshot, std::sync::Arc};
 
 #[test]
 fn bridge_kind() {
@@ -103,4 +103,57 @@ fn on_mode_changed_noop_when_inactive() {
 fn on_mode_changed_noop_no_state() {
     let mut map = ExtensionMap::new();
     HoverBridge.on_mode_changed("test:normal", "test:insert", &mut map);
+}
+
+// ========================================================================
+// tick() tests (#662)
+// ========================================================================
+
+#[test]
+fn tick_no_cache_returns_false() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    assert!(!HoverBridge.tick(&mut client, &mut shared, &services));
+}
+
+#[test]
+fn tick_empty_cache_returns_false() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let _ = services.get_or_create::<HoverCache>();
+
+    assert!(!HoverBridge.tick(&mut client, &mut shared, &services));
+}
+
+#[test]
+fn tick_with_data_populates_hover_state() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+
+    let cache = services.get_or_create::<HoverCache>();
+    cache.shared().store(Arc::new(Some(HoverSnapshot {
+        content: "fn foo()".to_owned(),
+        content_type: HoverContentType::Markdown,
+        buffer_id: 42,
+        line: 10,
+        col: 5,
+    })));
+
+    // tick should consume the cache and return true
+    assert!(HoverBridge.tick(&mut client, &mut shared, &services));
+
+    // HoverState should now be populated
+    let state = client.get::<HoverState>().unwrap();
+    assert!(state.active);
+    assert_eq!(state.content, "fn foo()");
+    assert_eq!(state.content_type, HoverContentType::Markdown);
+    assert_eq!(state.origin_buffer_id, 42);
+    assert_eq!(state.origin_line, 10);
+    assert_eq!(state.origin_col, 5);
+
+    // Second tick should return false (cache consumed)
+    assert!(!HoverBridge.tick(&mut client, &mut shared, &services));
 }

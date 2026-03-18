@@ -2249,7 +2249,11 @@ name = "reovim-bench"
 version = "0.14.1-dev"
 dependencies = [
  "criterion",
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
  "reovim-kernel",
+ "reovim-module-treesitter-rust",
+ "serde_json",
 ]
 
 [[package]]
@@ -3092,6 +3096,7 @@ dependencies = [
  "reovim-module-notification",
  "serde_json",
  "tempfile",
+ "tokio",
  "tracing",
 ]
 

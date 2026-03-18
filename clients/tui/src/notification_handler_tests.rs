@@ -984,3 +984,150 @@ async fn test_notification_result_debug() {
     assert!(format!("{no_redraw:?}").contains("NoRedraw"));
     assert!(format!("{stop:?}").contains("Stop"));
 }
+
+// =========================================================================
+// proto_to_client_option conversion tests (#662)
+// =========================================================================
+
+#[test]
+fn test_proto_to_client_option_bool() {
+    let result = proto_to_client_option(OptionValue::BoolValue(true));
+    assert!(matches!(result, ClientOptionValue::Bool(true)));
+}
+
+#[test]
+fn test_proto_to_client_option_integer() {
+    let result = proto_to_client_option(OptionValue::IntValue(42));
+    assert!(matches!(result, ClientOptionValue::Integer(42)));
+}
+
+#[test]
+fn test_proto_to_client_option_string() {
+    let result = proto_to_client_option(OptionValue::StringValue("gruvbox".to_string()));
+    match result {
+        ClientOptionValue::String(s) => assert_eq!(s, "gruvbox"),
+        _ => panic!("Expected String variant"),
+    }
+}
+
+// =========================================================================
+// OptionChanged extension dispatch tests (#662)
+// =========================================================================
+
+/// Extension that records `on_option_changed` calls.
+type OptionCalls = Arc<Mutex<Vec<(String, reovim_client_driver::OptionValue)>>>;
+
+struct OptionTracker {
+    ext_kind: &'static str,
+    calls: OptionCalls,
+}
+
+impl OptionTracker {
+    fn new(kind: &'static str) -> (Self, OptionCalls) {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        (
+            Self {
+                ext_kind: kind,
+                calls: Arc::clone(&calls),
+            },
+            calls,
+        )
+    }
+}
+
+impl ClientModule for OptionTracker {
+    fn id(&self) -> &'static str {
+        self.ext_kind
+    }
+    fn kind(&self) -> &'static str {
+        self.ext_kind
+    }
+    fn name(&self) -> &'static str {
+        "OptionTracker"
+    }
+    fn version(&self) -> Version {
+        Version::new(0, 1, 0)
+    }
+    fn init(&mut self, _ctx: &reovim_client_driver::ModuleContext) -> ProbeResult {
+        ProbeResult::Success
+    }
+    fn exit(&mut self) -> Result<(), ClientModuleError> {
+        Ok(())
+    }
+
+    fn on_option_changed(&mut self, name: &str, value: &reovim_client_driver::OptionValue) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((name.to_string(), value.clone()));
+    }
+}
+
+#[tokio::test]
+async fn test_option_changed_dispatches_to_extensions() {
+    use reovim_protocol::v2::OptionChangedPayload;
+
+    let (tracker, calls) = OptionTracker::new("line_numbers");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker)]);
+
+    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
+        name: "number".to_string(),
+        value: Some(OptionValue::BoolValue(true)),
+    }));
+
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::Redraw));
+
+    // Context hook should have been called
+    assert_eq!(ctx.option_changed_calls, vec!["number"]);
+
+    // Extension should also have been called
+    assert_eq!(calls.lock().unwrap().len(), 1);
+    assert_eq!(calls.lock().unwrap()[0].0, "number");
+    assert!(matches!(calls.lock().unwrap()[0].1, ClientOptionValue::Bool(true)));
+}
+
+#[tokio::test]
+async fn test_option_changed_none_value_skips_extension_dispatch() {
+    use reovim_protocol::v2::OptionChangedPayload;
+
+    let (tracker, calls) = OptionTracker::new("line_numbers");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker)]);
+
+    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
+        name: "number".to_string(),
+        value: None,
+    }));
+
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::Redraw));
+
+    // Context hook called (with None)
+    assert_eq!(ctx.option_changed_calls, vec!["number"]);
+
+    // Extension should NOT be called (no value to convert)
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_option_changed_dispatches_to_multiple_extensions() {
+    use reovim_protocol::v2::OptionChangedPayload;
+
+    let (tracker1, calls1) = OptionTracker::new("line_numbers");
+    let (tracker2, calls2) = OptionTracker::new("statusline");
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker1), Box::new(tracker2)]);
+
+    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
+        name: "relativenumber".to_string(),
+        value: Some(OptionValue::BoolValue(false)),
+    }));
+
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::Redraw));
+
+    // Both extensions should have been called
+    assert_eq!(calls1.lock().unwrap().len(), 1);
+    assert_eq!(calls2.lock().unwrap().len(), 1);
+    assert_eq!(calls1.lock().unwrap()[0].0, "relativenumber");
+    assert_eq!(calls2.lock().unwrap()[0].0, "relativenumber");
+}

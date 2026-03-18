@@ -18,7 +18,9 @@ use reovim_protocol::v2::{
     Notification, notification::Payload, option_changed_payload::Value as OptionValue,
 };
 
-use reovim_client_driver::{BufferId, BufferUpdateEvent, ClientModule};
+use reovim_client_driver::{
+    BufferId, BufferUpdateEvent, ClientModule, OptionValue as ClientOptionValue,
+};
 
 use crate::{
     CursorPosition, RemoteClient, SelectionState, TuiCoreState,
@@ -342,7 +344,16 @@ pub async fn handle_notification<C: NotificationContext>(
 
         Payload::OptionChanged(opt) => {
             let value = opt.value.clone();
-            ctx.on_option_changed(&opt.name, value);
+            ctx.on_option_changed(&opt.name, value.clone());
+
+            // Dispatch to extensions so ClientModules (e.g., LineNumbers)
+            // receive option changes like :set nu / :set rnu.
+            if let Some(client_value) = value.map(proto_to_client_option) {
+                for ext in ctx.extensions_mut() {
+                    ext.on_option_changed(&opt.name, &client_value);
+                }
+            }
+
             Ok(NotificationResult::Redraw)
         }
 
@@ -613,6 +624,15 @@ pub(crate) async fn dispatch_buffer_metadata(
         if ext.kind() == "statusline" {
             ext.on_notification(&json);
         }
+    }
+}
+
+/// Convert a proto `OptionValue` to a client-driver `OptionValue`.
+fn proto_to_client_option(value: OptionValue) -> ClientOptionValue {
+    match value {
+        OptionValue::BoolValue(b) => ClientOptionValue::Bool(b),
+        OptionValue::IntValue(i) => ClientOptionValue::Integer(i),
+        OptionValue::StringValue(s) => ClientOptionValue::String(s),
     }
 }
 

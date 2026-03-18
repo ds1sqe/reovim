@@ -3,14 +3,17 @@
 //! Serializes [`HoverState`] to JSON for gRPC transmission to clients.
 //! Both TUI (Rust) and Web (TypeScript) extensions consume the same JSON.
 
-use reovim_driver_session::{
-    ExtensionMap,
-    bridges::{ExtensionScope, ExtensionStateBridge},
+use {
+    reovim_driver_session::{
+        ExtensionMap,
+        bridges::{ExtensionScope, ExtensionStateBridge},
+    },
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 use crate::{
     KIND_HOVER,
-    hover_state::{HoverContentType, HoverState},
+    hover_state::{HoverCache, HoverContentType, HoverState},
 };
 
 /// Bridge for hover popup state.
@@ -68,6 +71,32 @@ impl ExtensionStateBridge for HoverBridge {
         {
             state.dismiss();
         }
+    }
+
+    fn tick(
+        &self,
+        client_extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        services: &ServiceRegistry,
+    ) -> bool {
+        // Check HoverCache for a pending async hover result.
+        let Some(cache) = services.get::<HoverCache>() else {
+            return false;
+        };
+        let Some(snapshot) = cache.take() else {
+            return false;
+        };
+
+        // Move the snapshot into per-client HoverState.
+        let state = client_extensions.get_or_insert::<HoverState>();
+        state.show(
+            snapshot.content,
+            snapshot.content_type,
+            snapshot.buffer_id,
+            snapshot.line,
+            snapshot.col,
+        );
+        true
     }
 }
 

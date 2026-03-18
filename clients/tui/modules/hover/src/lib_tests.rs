@@ -347,3 +347,51 @@ fn payload_debug() {
     };
     assert!(format!("{p:?}").contains("HoverPayload"));
 }
+
+// =============================================================================
+// on_cursor_update tests (#662)
+// =============================================================================
+
+#[test]
+fn cursor_update_dismisses_when_moved() {
+    let mut m = HoverModule::new();
+    m.on_notification(&active_plaintext("fn foo()"));
+    assert!(m.active);
+
+    // Cursor moved to a different line
+    m.on_cursor_update(BufferId(0), 10, 5);
+    assert!(!m.active);
+    assert!(m.lines.is_empty());
+}
+
+#[test]
+fn cursor_update_keeps_popup_at_origin() {
+    let mut m = HoverModule::new();
+    m.on_notification(&active_plaintext("fn foo()"));
+    assert!(m.active);
+
+    // Cursor at same origin (line=5, col=10)
+    m.on_cursor_update(BufferId(0), 5, 10);
+    assert!(m.active);
+    assert!(!m.lines.is_empty());
+}
+
+#[test]
+fn cursor_update_inactive_is_noop() {
+    let mut m = HoverModule::new();
+    assert!(!m.active);
+
+    m.on_cursor_update(BufferId(0), 100, 200);
+    assert!(!m.active);
+}
+
+#[test]
+fn cursor_update_same_line_different_col_dismisses() {
+    let mut m = HoverModule::new();
+    m.on_notification(&active_plaintext("fn foo()"));
+    assert!(m.active);
+
+    // Same line but different column
+    m.on_cursor_update(BufferId(0), 5, 15);
+    assert!(!m.active);
+}

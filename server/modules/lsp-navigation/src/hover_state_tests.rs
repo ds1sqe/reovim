@@ -83,3 +83,80 @@ fn content_type_eq() {
     assert_eq!(HoverContentType::PlainText, HoverContentType::PlainText);
     assert_ne!(HoverContentType::PlainText, HoverContentType::Markdown);
 }
+
+// ========================================================================
+// HoverSnapshot tests (#662)
+// ========================================================================
+
+#[test]
+fn snapshot_debug() {
+    let snap = HoverSnapshot {
+        content: "hello".to_owned(),
+        content_type: HoverContentType::Markdown,
+        buffer_id: 1,
+        line: 5,
+        col: 3,
+    };
+    let debug = format!("{snap:?}");
+    assert!(debug.contains("HoverSnapshot"));
+    assert!(debug.contains("hello"));
+}
+
+#[test]
+fn snapshot_clone() {
+    let snap = HoverSnapshot {
+        content: "fn foo()".to_owned(),
+        content_type: HoverContentType::PlainText,
+        buffer_id: 42,
+        line: 10,
+        col: 0,
+    };
+    #[allow(clippy::redundant_clone)]
+    let cloned = snap.clone();
+    assert_eq!(cloned.content, "fn foo()");
+    assert_eq!(cloned.buffer_id, 42);
+}
+
+// ========================================================================
+// HoverCache tests (#662)
+// ========================================================================
+
+#[test]
+fn cache_default_returns_none() {
+    let cache = HoverCache::default();
+    assert!(cache.take().is_none());
+}
+
+#[test]
+fn cache_store_and_take() {
+    let cache = HoverCache::default();
+    let shared = cache.shared();
+
+    // Store a snapshot via the shared Arc
+    shared.store(Arc::new(Some(HoverSnapshot {
+        content: "hover info".to_owned(),
+        content_type: HoverContentType::Markdown,
+        buffer_id: 1,
+        line: 5,
+        col: 3,
+    })));
+
+    // Take should retrieve it
+    let snap = cache.take();
+    assert!(snap.is_some());
+    let snap = snap.unwrap();
+    assert_eq!(snap.content, "hover info");
+    assert_eq!(snap.buffer_id, 1);
+    assert_eq!(snap.line, 5);
+    assert_eq!(snap.col, 3);
+
+    // Second take should be None
+    assert!(cache.take().is_none());
+}
+
+#[test]
+fn cache_debug() {
+    let cache = HoverCache::default();
+    let debug = format!("{cache:?}");
+    assert!(debug.contains("HoverCache"));
+}

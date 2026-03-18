@@ -453,3 +453,129 @@ fn test_add_cells_padded_output_wider_than_column() {
     // Width should be 3 (truncated) + 1 (separator)
     assert_eq!(line.width, 4);
 }
+
+// ========================================================================
+// Priority ordering tests
+// ========================================================================
+
+/// Presenter that outputs a single identifying char.
+struct TagPresenter {
+    id: &'static str,
+    pattern: KindPattern,
+    tag: char,
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl AnnotationPresenter for TagPresenter {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn handles(&self) -> KindPattern {
+        self.pattern.clone()
+    }
+    fn present(&self, _: &Annotation, _: &PresenterContext) -> PresentedOutput {
+        PresentedOutput::cell(self.tag, Style::default())
+    }
+    fn column_width(&self, _: &PresenterContext) -> ColumnWidth {
+        ColumnWidth::fixed(1)
+    }
+}
+
+#[test]
+fn test_compose_line_sorts_by_priority_not_insertion_order() {
+    // Insert columns in REVERSE priority order (line_number first, sign last).
+    // Composer should render them in priority order: sign(10), line_number(100).
+    let mut store = AnnotationStore::new();
+    store.replace_source(
+        SourceId::new("sign"),
+        vec![Annotation::new(
+            AnnotationKind::new("sign"),
+            crate::annotation::AnnotationTarget::Line(0),
+            0,
+            crate::annotation::AnnotationPayload::Text("!".into()),
+        )],
+    );
+    store.replace_source(SourceId::new("line_number"), vec![Annotation::line_number(0, 1)]);
+
+    let mut registry = PresenterRegistry::new();
+    registry.register(Arc::new(TagPresenter {
+        id: "sign",
+        pattern: KindPattern::exact("sign"),
+        tag: 'S',
+    }));
+    registry.register(Arc::new(TagPresenter {
+        id: "line_number",
+        pattern: KindPattern::exact("line_number"),
+        tag: 'N',
+    }));
+
+    // Insertion order: line_number (priority 100) FIRST, sign (priority 10) SECOND
+    let config = GutterConfig::new(vec![
+        ColumnConfig::new(KindPattern::exact("line_number"))
+            .visibility(VisibilityMode::Always)
+            .width(1)
+            .priority(100),
+        ColumnConfig::new(KindPattern::exact("sign"))
+            .visibility(VisibilityMode::Always)
+            .width(1)
+            .priority(10),
+    ])
+    .with_separator(false);
+
+    let composer = GutterComposer::new(&store, &registry, &config);
+    let ctx = PresenterContext::new(10, 0, true);
+    let line = composer.compose_line(0, &ctx);
+
+    // Despite insertion order, sign (priority 10) should come first
+    assert_eq!(line.cells.len(), 2);
+    assert_eq!(line.cells[0].char, 'S'); // sign first (priority 10)
+    assert_eq!(line.cells[1].char, 'N'); // line_number second (priority 100)
+}
+
+#[test]
+fn test_total_width_uses_priority_order() {
+    // Verify total_width doesn't depend on insertion order
+    let store = AnnotationStore::new();
+    let mut registry = PresenterRegistry::new();
+    registry.register(Arc::new(TagPresenter {
+        id: "a",
+        pattern: KindPattern::exact("a"),
+        tag: 'A',
+    }));
+    registry.register(Arc::new(TagPresenter {
+        id: "b",
+        pattern: KindPattern::exact("b"),
+        tag: 'B',
+    }));
+
+    // Order A then B
+    let config_ab = GutterConfig::new(vec![
+        ColumnConfig::new(KindPattern::exact("a"))
+            .visibility(VisibilityMode::Always)
+            .width(2)
+            .priority(10),
+        ColumnConfig::new(KindPattern::exact("b"))
+            .visibility(VisibilityMode::Always)
+            .width(3)
+            .priority(20),
+    ]);
+
+    // Order B then A (reversed insertion, same priorities)
+    let config_ba = GutterConfig::new(vec![
+        ColumnConfig::new(KindPattern::exact("b"))
+            .visibility(VisibilityMode::Always)
+            .width(3)
+            .priority(20),
+        ColumnConfig::new(KindPattern::exact("a"))
+            .visibility(VisibilityMode::Always)
+            .width(2)
+            .priority(10),
+    ]);
+
+    let ctx = PresenterContext::new(10, 0, false);
+
+    let composer_ab = GutterComposer::new(&store, &registry, &config_ab);
+    let composer_ba = GutterComposer::new(&store, &registry, &config_ba);
+
+    assert_eq!(composer_ab.total_width(&ctx), composer_ba.total_width(&ctx));
+}

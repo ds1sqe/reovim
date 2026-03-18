@@ -19,7 +19,7 @@ use std::sync::Arc;
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_picker::PickerRegistry,
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -76,6 +76,12 @@ impl Module for LspNavigationModule {
         let bridge_provider = ctx.services.get_or_create::<BridgeProvider>();
         bridge_provider.register(hover_bridge::HoverBridge);
         bridge_provider.register(signature_help_bridge::SignatureHelpBridge);
+
+        // Ensure HoverCache exists for async hover pipeline (#662).
+        let _ = ctx.services.get_or_create::<hover_state::HoverCache>();
+
+        // Ensure TickSchedulerHandle exists for hover tick (#662).
+        let _ = ctx.services.get_or_create::<TickSchedulerHandle>();
 
         ProbeResult::Success
     }

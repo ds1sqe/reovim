@@ -5,8 +5,8 @@
 
 use {
     reovim_client_driver::{
-        ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-        ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+        BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
+        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
     },
     serde::Deserialize,
 };
@@ -159,6 +159,14 @@ impl ClientModule for HoverModule {
 
         if self.lines.is_empty() {
             self.active = false;
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn on_cursor_update(&mut self, _buffer_id: BufferId, line: usize, col: usize) {
+        if self.active && (line as u32 != self.origin_line || col as u32 != self.origin_col) {
+            self.active = false;
+            self.lines.clear();
         }
     }
 

@@ -172,3 +172,39 @@ fn test_gutter_config_default() {
     let config = GutterConfig::default();
     assert!(config.is_empty());
 }
+
+// ========================================================================
+// Priority tests
+// ========================================================================
+
+#[test]
+fn test_column_config_default_priority() {
+    let col = ColumnConfig::new(KindPattern::exact("test"));
+    assert_eq!(col.priority, 0);
+}
+
+#[test]
+fn test_column_config_priority_builder() {
+    let col = ColumnConfig::new(KindPattern::exact("test")).priority(42);
+    assert_eq!(col.priority, 42);
+}
+
+#[test]
+fn test_column_config_negative_priority() {
+    let col = ColumnConfig::new(KindPattern::exact("test")).priority(-10);
+    assert_eq!(col.priority, -10);
+}
+
+#[test]
+fn test_full_config_priorities() {
+    let config = GutterConfig::full();
+    let priorities: Vec<i32> = config.columns.iter().map(|c| c.priority).collect();
+    // signs=10, git=20, diagnostic=30, fold=40, line_number=100
+    assert_eq!(priorities, vec![10, 20, 30, 40, 100]);
+}
+
+#[test]
+fn test_default_line_numbers_priority() {
+    let config = GutterConfig::default_line_numbers();
+    assert_eq!(config.columns[0].priority, 100);
+}

@@ -2,8 +2,19 @@
 //!
 //! Stored in the session's `ExtensionMap` as a `SessionExtension`.
 //! The hover popup displays LSP hover information near the hovered symbol.
+//!
+//! # Async hover pipeline (#662)
+//!
+//! `HoverSnapshot` holds formatted hover data produced by an async task.
+//! `HoverCache` wraps it in `ArcSwap` for lock-free transfer from the
+//! async task to `HoverBridge::tick()`.
 
-use reovim_driver_session::SessionExtension;
+use std::sync::Arc;
+
+use {
+    reovim_driver_session::SessionExtension,
+    reovim_kernel::api::v1::{ArcSwap, Service},
+};
 
 /// Content format for hover display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +81,60 @@ impl SessionExtension for HoverState {
             origin_line: 0,
             origin_col: 0,
         }
+    }
+}
+
+/// Formatted hover data ready for display.
+///
+/// Produced by the async task after the LSP response arrives.
+/// Stored in [`HoverCache`] for `HoverBridge::tick()` to consume.
+#[derive(Debug, Clone)]
+pub struct HoverSnapshot {
+    /// Formatted hover text.
+    pub content: String,
+    /// Content format.
+    pub content_type: HoverContentType,
+    /// Buffer ID where hover was triggered.
+    pub buffer_id: u64,
+    /// Line where hover was triggered (0-indexed).
+    pub line: u32,
+    /// Column where hover was triggered (0-indexed).
+    pub col: u32,
+}
+
+/// Lock-free cache for async hover results (#662).
+///
+/// The async task stores a `HoverSnapshot` here; `HoverBridge::tick()`
+/// takes it out and moves the data into `HoverState`.
+///
+/// Registered as a `Service` in `ServiceRegistry` during module init.
+#[derive(Debug)]
+pub struct HoverCache {
+    inner: Arc<ArcSwap<Option<HoverSnapshot>>>,
+}
+
+impl Default for HoverCache {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(ArcSwap::from_pointee(None)),
+        }
+    }
+}
+
+impl Service for HoverCache {}
+
+impl HoverCache {
+    /// Get a clone of the inner `Arc` for sharing with async tasks.
+    #[must_use]
+    pub fn shared(&self) -> Arc<ArcSwap<Option<HoverSnapshot>>> {
+        Arc::clone(&self.inner)
+    }
+
+    /// Take the pending snapshot (if any), replacing it with `None`.
+    #[must_use]
+    pub fn take(&self) -> Option<HoverSnapshot> {
+        let current = self.inner.swap(Arc::new(None));
+        Arc::try_unwrap(current).unwrap_or_else(|arc| (*arc).clone())
     }
 }
 

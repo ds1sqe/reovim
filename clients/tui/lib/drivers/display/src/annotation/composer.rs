@@ -22,7 +22,7 @@ use crate::highlight::Style;
 
 use super::{
     AnnotationKind, AnnotationStore,
-    config::GutterConfig,
+    config::{ColumnConfig, GutterConfig},
     presenter::{AnnotationPresenter, GutterCell, PresentedOutput, PresenterContext},
     registry::PresenterRegistry,
 };
@@ -91,11 +91,12 @@ impl<'a> GutterComposer<'a> {
     /// Calculate the total gutter width.
     ///
     /// This considers all columns, their visibility, and width settings.
+    /// Columns are iterated in priority order (lower = further left).
     #[must_use]
     pub fn total_width(&self, ctx: &PresenterContext) -> usize {
         let mut total = 0;
 
-        for col_config in &self.config.columns {
+        for col_config in self.sorted_columns() {
             // Check visibility
             let has_annotations = self.has_annotations_for_pattern(&col_config.pattern);
             if !col_config.visibility.should_show(has_annotations) {
@@ -120,6 +121,8 @@ impl<'a> GutterComposer<'a> {
     }
 
     /// Compose the gutter for a single line.
+    ///
+    /// Columns are rendered in priority order (lower = further left).
     #[must_use]
     pub fn compose_line(&self, line: usize, ctx: &PresenterContext) -> ComposedLine {
         if self.config.is_empty() {
@@ -129,7 +132,7 @@ impl<'a> GutterComposer<'a> {
         let mut cells = Vec::new();
         let annotations = self.store.query_line(line);
 
-        for col_config in &self.config.columns {
+        for col_config in self.sorted_columns() {
             // Check visibility
             let has_annotations = self.has_annotations_for_pattern(&col_config.pattern);
             if !col_config.visibility.should_show(has_annotations) {
@@ -181,6 +184,13 @@ impl<'a> GutterComposer<'a> {
                 self.compose_line(line, &line_ctx)
             })
             .collect()
+    }
+
+    /// Return columns sorted by priority (lower = further left).
+    fn sorted_columns(&self) -> Vec<&ColumnConfig> {
+        let mut cols: Vec<&ColumnConfig> = self.config.columns.iter().collect();
+        cols.sort_by_key(|c| c.priority);
+        cols
     }
 
     /// Check if any annotations exist for the given pattern.
