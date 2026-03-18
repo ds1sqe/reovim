@@ -18,6 +18,12 @@ reovim-kernel = { workspace = true }
 # Criterion benchmarking framework
 criterion = { version = "0.5", features = ["html_reports"] }
 
+# Syntax hot path benchmarks
+reovim-driver-syntax = { workspace = true }
+reovim-driver-syntax-treesitter = { workspace = true }
+reovim-module-treesitter-rust = { workspace = true }
+serde_json = { workspace = true }
+
 [[bench]]
 name = "buffer_ops"
 harness = false
@@ -28,4 +34,12 @@ harness = false
 
 [[bench]]
 name = "profiler_overhead"
+harness = false
+
+[[bench]]
+name = "syntax_hot_path"
+harness = false
+
+[[bench]]
+name = "notification_overhead"
 harness = false

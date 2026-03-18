@@ -161,6 +161,27 @@ fn bench_position_to_byte(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark: Buffer content join (lines.join("\n")).
+///
+/// This measures the cost of `buffer.content()` which is called on every edit
+/// in `emit_syntax_updates()`. For a 5000-line file, this creates a ~200KB
+/// string allocation per keystroke.
+fn bench_content_join(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/content_join");
+
+    for &lines in &[100, 500, 1000, 5000, 10000] {
+        let buffer = generate_buffer(lines);
+
+        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
+            b.iter(|| {
+                let _ = std::hint::black_box(buffer.content());
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_insert_char,
@@ -170,5 +191,6 @@ criterion_group!(
     bench_from_string,
     bench_line_access,
     bench_position_to_byte,
+    bench_content_join,
 );
 criterion_main!(benches);
