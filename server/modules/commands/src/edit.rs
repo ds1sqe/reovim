@@ -12,10 +12,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
-    reovim_kernel::api::v1::{
-        CommandId, ModuleId,
-        events::kernel::{FileOpened, FileTypeChanged},
-    },
+    reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -91,11 +88,16 @@ impl CommandHandler for EditCommand {
                 ));
             };
 
+            // Canonicalize the path once so find_project_root can walk
+            // parent directories regardless of the server's working directory.
+            let canonical_path = std::fs::canonicalize(filename)
+                .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
+
             // Update buffer content
             {
                 let mut buffer = buffer_arc.write();
                 buffer.set_content(&content);
-                buffer.set_file_path(Some(filename.to_string()));
+                buffer.set_file_path(Some(canonical_path.clone()));
                 buffer.set_modified(false);
             }
 
@@ -104,16 +106,8 @@ impl CommandHandler for EditCommand {
             let buffer_id_raw = buffer_id.as_usize() as u64;
             kernel.event_bus.emit(FileOpened {
                 buffer_id: buffer_id_raw,
-                path: filename.to_string(),
+                path: canonical_path,
             });
-
-            // Emit FileTypeChanged if we can detect the language from the extension
-            if let Some(file_type) = file_type_from_extension(filename) {
-                kernel.event_bus.emit(FileTypeChanged {
-                    buffer_id: buffer_id_raw,
-                    file_type: file_type.to_string(),
-                });
-            }
         }
 
         // Record buffer modification so the notification pipeline emits
@@ -178,32 +172,6 @@ fn decode_file_content(
         let offset = e.utf8_error().valid_up_to();
         format!("File is not valid UTF-8 (invalid byte at offset {offset})")
     })
-}
-
-/// Detect file type from file extension for `FileTypeChanged` events.
-fn file_type_from_extension(filename: &str) -> Option<&'static str> {
-    let ext_os = Path::new(filename).extension()?.to_str()?;
-    let ext = ext_os.to_ascii_lowercase();
-    match ext.as_str() {
-        "rs" => Some("rust"),
-        "py" | "pyi" => Some("python"),
-        "ts" => Some("typescript"),
-        "tsx" => Some("typescriptreact"),
-        "js" => Some("javascript"),
-        "jsx" => Some("javascriptreact"),
-        "c" | "h" => Some("c"),
-        "cpp" | "cc" | "cxx" | "hpp" => Some("cpp"),
-        "go" => Some("go"),
-        "java" => Some("java"),
-        "lua" => Some("lua"),
-        "rb" => Some("ruby"),
-        "zig" => Some("zig"),
-        "toml" => Some("toml"),
-        "json" => Some("json"),
-        "yaml" | "yml" => Some("yaml"),
-        "md" | "markdown" => Some("markdown"),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

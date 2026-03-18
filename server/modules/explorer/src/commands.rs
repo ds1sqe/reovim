@@ -11,7 +11,7 @@ use {
         BufferApi, ClipboardApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
         WindowApi,
     },
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, events::kernel::FileOpened},
     std::path::{Path, PathBuf},
 };
 
@@ -359,13 +359,28 @@ impl CommandHandler for Open {
             match vfs.read(&path) {
                 Ok(content) => {
                     let text = String::from_utf8_lossy(&content);
-                    let buf_id = runtime.create_buffer(Some(&path.to_string_lossy()), &text);
+
+                    // Canonicalize so LSP and project-root discovery get absolute paths.
+                    let canonical = std::fs::canonicalize(&path).map_or_else(
+                        |_| path.to_string_lossy().into_owned(),
+                        |p| p.to_string_lossy().into_owned(),
+                    );
+
+                    let buf_id = runtime.create_buffer(Some(&canonical), &text);
                     runtime.set_active_buffer(Some(buf_id));
                     runtime.record_buffer_modified(buf_id);
 
                     if let Some(window) = runtime.active_window() {
                         let _ = runtime.set_window_buffer(window, buf_id);
                     }
+
+                    // Emit FileOpened so LSP, syntax, and other subscribers are notified.
+                    #[allow(clippy::cast_possible_truncation)]
+                    let buf_id_raw = buf_id.as_usize() as u64;
+                    runtime.kernel().event_bus.emit(FileOpened {
+                        buffer_id: buf_id_raw,
+                        path: canonical,
+                    });
 
                     let state = runtime.ext_mut::<ExplorerState>();
                     state.active = false;
