@@ -55,6 +55,8 @@ struct Toast {
     displayed_at: Instant,
     /// Whether this is a progress toast (no auto-dismiss).
     is_progress: bool,
+    /// Optional producer name for grouped display (#691).
+    source: Option<String>,
 }
 
 /// Notification toast chrome module.
@@ -233,6 +235,11 @@ impl ClientModule for NotificationModule {
 
             let is_progress = progress.is_some();
 
+            let source = entry
+                .get("source")
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
             self.toasts.push(Toast {
                 id,
                 level: Self::parse_level(level_str),
@@ -241,6 +248,7 @@ impl ClientModule for NotificationModule {
                 progress,
                 displayed_at: self.clock.now(),
                 is_progress,
+                source,
             });
         }
 
@@ -275,88 +283,202 @@ impl ClientModule for NotificationModule {
         }
 
         let width = bounds.width;
-
-        // Position: top-right corner with 1-col margin
         let toast_w = TOAST_WIDTH.min(width.saturating_sub(2));
         let toast_x = width.saturating_sub(toast_w + 1);
         let mut y: u16 = 1;
 
-        // Show newest toasts first (reverse), capped at MAX_VISIBLE
+        // Collect visible toasts (newest first), capped at MAX_VISIBLE
         let visible: Vec<&Toast> = self.toasts.iter().rev().take(MAX_VISIBLE).collect();
 
+        // Partition into groups: grouped by source, or standalone (None source)
+        let mut groups: Vec<(Option<&str>, Vec<&Toast>)> = Vec::new();
         for toast in &visible {
-            let has_body = !toast.body.is_empty();
-            let has_progress = toast.progress.is_some();
-            // Height: 1 (title) + optional body + optional progress bar
-            let content_lines = 1 + u16::from(has_body) + u16::from(has_progress);
-            let toast_height = content_lines + 2; // +2 for borders
-
-            let border_color = Self::level_color(toast.level);
-            let border_style = Style::new().fg(border_color);
-
-            // Draw border
-            reovim_client_driver::chrome_utils::render_box_border(
-                surface,
-                toast_x,
-                y,
-                toast_w,
-                toast_height,
-                &border_style,
-            );
-
-            let content_x = toast_x + 2;
-            let content_width = toast_w.saturating_sub(4);
-
-            // Clear interior
-            for row in 1..toast_height.saturating_sub(1) {
-                surface.fill(
-                    Rect {
-                        x: content_x,
-                        y: y + row,
-                        width: content_width,
-                        height: 1,
-                    },
-                    ' ',
-                    Style::new(),
-                );
+            if let Some(ref source) = toast.source {
+                if let Some(group) = groups.iter_mut().find(|(s, _)| *s == Some(source.as_str())) {
+                    group.1.push(toast);
+                } else {
+                    groups.push((Some(source.as_str()), vec![toast]));
+                }
+            } else {
+                // Standalone toast (no source) — each gets its own "group"
+                groups.push((None, vec![toast]));
             }
-
-            // Title line with level icon
-            let icon = Self::level_icon(toast.level);
-            let icon_style = Style::new().fg(border_color);
-            let icon_written = surface.write_styled(content_x, y + 1, icon, icon_style);
-            surface.write_styled(content_x + icon_written, y + 1, " ", Style::new());
-
-            let title_style = Style::new().fg(Color::White);
-            let max_title_len = content_width.saturating_sub(2) as usize;
-            let title_display = reovim_client_driver::ui::truncate_end(&toast.title, max_title_len);
-            surface.write_styled(content_x + 2, y + 1, &title_display, title_style);
-
-            let mut current_row = y + 2;
-
-            // Body line
-            if has_body {
-                let body_style = Style::new().fg(Color::DarkGrey);
-                let body_display =
-                    reovim_client_driver::ui::truncate_end(&toast.body, content_width as usize);
-                surface.write_styled(content_x, current_row, &body_display, body_style);
-                current_row += 1;
-            }
-
-            // Progress bar
-            if let Some((percent, ref detail)) = toast.progress {
-                render_progress_bar(
-                    surface,
-                    content_x,
-                    current_row,
-                    content_width,
-                    percent,
-                    detail,
-                );
-            }
-
-            y += toast_height + 1; // 1-row gap between toasts
         }
+
+        for (source, toasts) in &groups {
+            if source.is_some() {
+                y = render_grouped_box(self, surface, toast_x, y, toast_w, *source, toasts);
+            } else {
+                for toast in toasts {
+                    y = render_standalone_toast(self, surface, toast_x, y, toast_w, toast);
+                }
+            }
+        }
+    }
+}
+
+/// Render a grouped notification box for toasts sharing the same source (#691).
+///
+/// Layout:
+/// ```text
+/// ┌─ rust-analyzer ──────────────────┐
+/// │  ✓ Language server ready         │
+/// │  42% ████████░░░░ Indexing       │
+/// └──────────────────────────────────┘
+/// ```
+#[allow(clippy::cast_possible_truncation)]
+fn render_grouped_box(
+    module: &NotificationModule,
+    surface: &mut dyn RenderSurface,
+    x: u16,
+    y: u16,
+    width: u16,
+    source: Option<&str>,
+    toasts: &[&Toast],
+) -> u16 {
+    // Calculate total content height: one line per toast entry
+    let content_lines: u16 = toasts
+        .iter()
+        .map(|t| {
+            let has_body = !t.body.is_empty();
+            let has_progress = t.progress.is_some();
+            1 + u16::from(has_body) + u16::from(has_progress)
+        })
+        .sum();
+    let box_height = content_lines + 2; // +2 for top/bottom borders
+
+    // Use highest-priority level color for the group border
+    let group_level = toasts
+        .iter()
+        .map(|t| t.level)
+        .max_by_key(|l| match l {
+            Level::Error => 3,
+            Level::Warning => 2,
+            Level::Success => 1,
+            Level::Info => 0,
+        })
+        .unwrap_or(Level::Info);
+    let border_color = NotificationModule::level_color(group_level);
+    let border_style = Style::new().fg(border_color);
+
+    // Draw border with source name in top border
+    reovim_client_driver::chrome_utils::render_box_border(surface, x, y, width, box_height, &border_style);
+
+    // Write source name into top border
+    if let Some(name) = source {
+        let label = format!(" {name} ");
+        let max_label = (width.saturating_sub(4)) as usize;
+        let display = reovim_client_driver::ui::truncate_end(&label, max_label);
+        let label_style = Style::new().fg(border_color).bold();
+        surface.write_styled(x + 2, y, &display, label_style);
+    }
+
+    let content_x = x + 2;
+    let content_width = width.saturating_sub(4);
+
+    // Clear interior
+    for row in 1..box_height.saturating_sub(1) {
+        surface.fill(
+            Rect {
+                x: content_x,
+                y: y + row,
+                width: content_width,
+                height: 1,
+            },
+            ' ',
+            Style::new(),
+        );
+    }
+
+    // Render each toast entry inside the box
+    let mut current_row = y + 1;
+    for toast in toasts {
+        render_toast_content(module, surface, content_x, current_row, content_width, toast);
+        current_row += 1;
+        if !toast.body.is_empty() {
+            current_row += 1;
+        }
+        if toast.progress.is_some() {
+            current_row += 1;
+        }
+    }
+
+    y + box_height + 1 // 1-row gap
+}
+
+/// Render a standalone toast (no source grouping — backward compat).
+#[allow(clippy::cast_possible_truncation)]
+fn render_standalone_toast(
+    module: &NotificationModule,
+    surface: &mut dyn RenderSurface,
+    x: u16,
+    y: u16,
+    width: u16,
+    toast: &Toast,
+) -> u16 {
+    let has_body = !toast.body.is_empty();
+    let has_progress = toast.progress.is_some();
+    let content_lines = 1 + u16::from(has_body) + u16::from(has_progress);
+    let toast_height = content_lines + 2;
+
+    let border_color = NotificationModule::level_color(toast.level);
+    let border_style = Style::new().fg(border_color);
+
+    reovim_client_driver::chrome_utils::render_box_border(surface, x, y, width, toast_height, &border_style);
+
+    let content_x = x + 2;
+    let content_width = width.saturating_sub(4);
+
+    for row in 1..toast_height.saturating_sub(1) {
+        surface.fill(
+            Rect {
+                x: content_x,
+                y: y + row,
+                width: content_width,
+                height: 1,
+            },
+            ' ',
+            Style::new(),
+        );
+    }
+
+    render_toast_content(module, surface, content_x, y + 1, content_width, toast);
+
+    y + toast_height + 1
+}
+
+/// Render the content of a single toast entry (icon + title + optional body + progress).
+#[allow(clippy::cast_possible_truncation)]
+fn render_toast_content(
+    _module: &NotificationModule,
+    surface: &mut dyn RenderSurface,
+    x: u16,
+    y: u16,
+    width: u16,
+    toast: &Toast,
+) {
+    let border_color = NotificationModule::level_color(toast.level);
+    let icon = NotificationModule::level_icon(toast.level);
+    let icon_style = Style::new().fg(border_color);
+    let icon_written = surface.write_styled(x, y, icon, icon_style);
+    surface.write_styled(x + icon_written, y, " ", Style::new());
+
+    let title_style = Style::new().fg(Color::White);
+    let max_title_len = width.saturating_sub(2) as usize;
+    let title_display = reovim_client_driver::ui::truncate_end(&toast.title, max_title_len);
+    surface.write_styled(x + 2, y, &title_display, title_style);
+
+    let mut current_row = y + 1;
+
+    if !toast.body.is_empty() {
+        let body_style = Style::new().fg(Color::DarkGrey);
+        let body_display = reovim_client_driver::ui::truncate_end(&toast.body, width as usize);
+        surface.write_styled(x, current_row, &body_display, body_style);
+        current_row += 1;
+    }
+
+    if let Some((percent, ref detail)) = toast.progress {
+        render_progress_bar(surface, x, current_row, width, percent, detail);
     }
 }
 

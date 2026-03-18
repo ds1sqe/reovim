@@ -170,10 +170,27 @@ fn test_notification_debug_clone() {
         title: "test".to_string(),
         body: String::new(),
         progress: None,
+        source: None,
     };
     let n2 = n.clone();
     assert_eq!(n2.id, 1);
     assert!(format!("{n:?}").contains("test"));
+}
+
+#[test]
+fn test_notification_debug_clone_with_source() {
+    let n = Notification {
+        id: 1,
+        level: NotificationLevel::Info,
+        title: "test".to_string(),
+        body: String::new(),
+        progress: None,
+        source: Some("rust-analyzer".to_string()),
+    };
+    let n2 = n.clone();
+    assert_eq!(n2.source.as_deref(), Some("rust-analyzer"));
+    assert_eq!(n2.id, 1);
+    assert!(format!("{n:?}").contains("rust-analyzer"));
 }
 
 #[test]
@@ -207,4 +224,84 @@ fn test_max_entries_boundary_no_eviction() {
     assert_eq!(state.entries().len(), 50);
     assert_eq!(state.entries()[0].title, "msg-0"); // oldest preserved
     assert_eq!(state.entries()[49].title, "msg-49");
+}
+
+// ========================================================================
+// Source field tests (#691)
+// ========================================================================
+
+#[test]
+fn test_push_has_no_source() {
+    let mut state = NotificationState::create();
+    state.push(NotificationLevel::Info, "test");
+    assert!(state.entries()[0].source.is_none());
+}
+
+#[test]
+fn test_push_with_body_has_no_source() {
+    let mut state = NotificationState::create();
+    state.push_with_body(NotificationLevel::Info, "test", "body");
+    assert!(state.entries()[0].source.is_none());
+}
+
+#[test]
+fn test_push_progress_has_no_source() {
+    let mut state = NotificationState::create();
+    state.push_progress("test", 50, "detail");
+    assert!(state.entries()[0].source.is_none());
+}
+
+#[test]
+fn test_push_with_source_some() {
+    let mut state = NotificationState::create();
+    let id = state.push_with_source(
+        Some("rust-analyzer".to_string()),
+        NotificationLevel::Success,
+        "Server ready",
+    );
+    assert_eq!(id, 0);
+    let entry = &state.entries()[0];
+    assert_eq!(entry.source.as_deref(), Some("rust-analyzer"));
+    assert_eq!(entry.title, "Server ready");
+    assert_eq!(entry.level, NotificationLevel::Success);
+}
+
+#[test]
+fn test_push_with_source_none() {
+    let mut state = NotificationState::create();
+    let id = state.push_with_source(None, NotificationLevel::Info, "no source");
+    assert_eq!(id, 0);
+    assert!(state.entries()[0].source.is_none());
+}
+
+#[test]
+fn test_push_progress_with_source() {
+    let mut state = NotificationState::create();
+    let id = state.push_progress_with_source(
+        Some("rust-analyzer".to_string()),
+        "Indexing",
+        42,
+        "3/10 crates",
+    );
+    assert_eq!(id, 0);
+    let entry = &state.entries()[0];
+    assert_eq!(entry.source.as_deref(), Some("rust-analyzer"));
+    assert_eq!(entry.title, "Indexing");
+    let progress = entry.progress.as_ref().unwrap();
+    assert_eq!(progress.percent, 42);
+    assert_eq!(progress.detail, "3/10 crates");
+}
+
+#[test]
+fn test_push_progress_with_source_clamps() {
+    let mut state = NotificationState::create();
+    state.push_progress_with_source(Some("lsp".to_string()), "test", 200, "over");
+    assert_eq!(state.entries()[0].progress.as_ref().unwrap().percent, 100);
+}
+
+#[test]
+fn test_push_progress_with_source_none() {
+    let mut state = NotificationState::create();
+    state.push_progress_with_source(None, "test", 50, "detail");
+    assert!(state.entries()[0].source.is_none());
 }

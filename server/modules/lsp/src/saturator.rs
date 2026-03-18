@@ -16,9 +16,10 @@ use std::sync::{
 use {
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        PublishDiagnosticsParams, RegistrationParams, TextDocumentContentChangeEvent,
-        TextDocumentIdentifier, TextDocumentItem, UnregistrationParams, Uri,
-        VersionedTextDocumentIdentifier,
+        NumberOrString, ProgressParams, PublishDiagnosticsParams, RegistrationParams,
+        ShowMessageParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+        TextDocumentItem, UnregistrationParams, Uri, VersionedTextDocumentIdentifier,
+        WorkDoneProgress,
     },
     reovim_driver_lsp::{
         CapabilityStore, DiagnosticCache, LspError, LspLogger, LspProvider, LspRequest,
@@ -27,6 +28,7 @@ use {
         jsonrpc::{Message, Response},
         transport::Transport,
     },
+    reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp},
     tokio::sync::mpsc,
     tracing::{debug, error, info, warn},
 };
@@ -130,6 +132,7 @@ impl LspSaturator {
     pub async fn start(
         config: LspServerConfig,
         language_id: String,
+        queue: Option<Arc<PendingNotificationQueue>>,
     ) -> Result<LspSaturatorHandle, LspError> {
         let cache = Arc::new(DiagnosticCache::new());
         let active = Arc::new(AtomicBool::new(false));
@@ -156,6 +159,8 @@ impl LspSaturator {
         let client_clone = Arc::clone(&client);
         let caps_clone = Arc::clone(&capability_store);
         let logger_clone = logger.clone();
+        let queue_clone = queue.clone();
+        let lang_id_clone = language_id.clone();
         tokio::spawn(Self::run(
             client_clone,
             stdout_reader,
@@ -164,6 +169,8 @@ impl LspSaturator {
             active_clone,
             caps_clone,
             logger_clone,
+            queue_clone,
+            lang_id_clone,
         ));
 
         // Spawn stderr reader if available
@@ -199,6 +206,7 @@ impl LspSaturator {
     ///
     /// Uses `tokio::select!` to handle both incoming server messages and
     /// outgoing requests concurrently.
+    #[allow(clippy::too_many_arguments)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     async fn run(
         client: Arc<Client>,
@@ -208,6 +216,8 @@ impl LspSaturator {
         active: Arc<AtomicBool>,
         capabilities: Arc<CapabilityStore>,
         logger: Option<Arc<LspLogger>>,
+        queue: Option<Arc<PendingNotificationQueue>>,
+        server_name: String,
     ) {
         info!("LSP saturator started");
 
@@ -218,7 +228,10 @@ impl LspSaturator {
                     match result {
                         Ok(message) => {
                             Self::log_incoming(logger.as_ref(), &message);
-                            Self::handle_server_message(&client, &cache, &capabilities, message).await;
+                            Self::handle_server_message(
+                                &client, &cache, &capabilities, message,
+                                queue.as_deref(), &server_name,
+                            ).await;
                         }
                         Err(e) => {
                             error!("Failed to receive message: {e}");
@@ -253,6 +266,8 @@ impl LspSaturator {
         cache: &Arc<DiagnosticCache>,
         capabilities: &CapabilityStore,
         message: Message,
+        queue: Option<&PendingNotificationQueue>,
+        server_name: &str,
     ) {
         match message {
             Message::Response(response) => {
@@ -264,15 +279,39 @@ impl LspSaturator {
                 client.handle_response(response).await;
             }
             Message::Notification(notification) => {
-                if notification.method == "textDocument/publishDiagnostics" {
-                    if let Some(params) = notification.params
-                        && let Ok(diag_params) =
-                            serde_json::from_value::<PublishDiagnosticsParams>(params)
-                    {
-                        Self::handle_diagnostics(cache, diag_params);
+                match notification.method.as_str() {
+                    "textDocument/publishDiagnostics" => {
+                        if let Some(params) = notification.params
+                            && let Ok(diag_params) =
+                                serde_json::from_value::<PublishDiagnosticsParams>(params)
+                        {
+                            Self::handle_diagnostics(cache, diag_params);
+                        }
                     }
-                } else {
-                    debug!(method = %notification.method, "Unhandled notification");
+                    "$/progress" => {
+                        if let Some(queue) = queue
+                            && let Some(params) = notification.params
+                        {
+                            handle_progress_notification(queue, server_name, params);
+                        }
+                    }
+                    "window/showMessage" => {
+                        if let Some(queue) = queue
+                            && let Some(params) = notification.params
+                        {
+                            handle_show_message(queue, server_name, params);
+                        }
+                    }
+                    "window/logMessage" => {
+                        if let Some(queue) = queue
+                            && let Some(params) = notification.params
+                        {
+                            handle_log_message(queue, server_name, params);
+                        }
+                    }
+                    _ => {
+                        debug!(method = %notification.method, "Unhandled notification");
+                    }
                 }
             }
             Message::Request(request) => {
@@ -690,6 +729,144 @@ impl LspSaturator {
         }
 
         debug!("Stderr reader exited");
+    }
+}
+
+// ============================================================================
+// Notification handlers (#691) — extracted as standalone functions for testability
+// ============================================================================
+
+/// Handle `$/progress` notification from the language server.
+///
+/// Parses `ProgressParams` and pushes the appropriate `PendingOp` to the queue.
+fn handle_progress_notification(
+    queue: &PendingNotificationQueue,
+    server_name: &str,
+    params: serde_json::Value,
+) {
+    let Ok(progress_params) = serde_json::from_value::<ProgressParams>(params) else {
+        warn!("Failed to parse $/progress params");
+        return;
+    };
+
+    let token = match &progress_params.token {
+        NumberOrString::String(s) => s.clone(),
+        NumberOrString::Number(n) => format!("lsp_{n}"),
+    };
+
+    let source = Some(server_name.to_owned());
+
+    let lsp_types::ProgressParamsValue::WorkDone(progress) = progress_params.value;
+
+    match progress {
+        WorkDoneProgress::Begin(begin) => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let percentage = begin.percentage.map_or(0, |p| p.clamp(0, 100) as u8);
+            queue.push_op(
+                source,
+                PendingOp::ProgressBegin {
+                    token,
+                    title: begin.title,
+                    message: begin.message.unwrap_or_default(),
+                    percentage,
+                },
+            );
+        }
+        WorkDoneProgress::Report(report) => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let percentage = report
+                .percentage
+                .map(|p| p.clamp(0, 100) as u8);
+            queue.push_op(
+                source,
+                PendingOp::ProgressReport {
+                    token,
+                    message: report.message,
+                    percentage,
+                },
+            );
+        }
+        WorkDoneProgress::End(end) => {
+            queue.push_op(
+                source,
+                PendingOp::ProgressEnd {
+                    token,
+                    message: end.message,
+                },
+            );
+        }
+    }
+}
+
+/// Handle `window/showMessage` notification.
+///
+/// Maps LSP `MessageType` to `PendingLevel` and pushes to the queue.
+fn handle_show_message(
+    queue: &PendingNotificationQueue,
+    server_name: &str,
+    params: serde_json::Value,
+) {
+    let Ok(msg_params) = serde_json::from_value::<ShowMessageParams>(params) else {
+        warn!("Failed to parse window/showMessage params");
+        return;
+    };
+
+    let level = match msg_params.typ {
+        lsp_types::MessageType::ERROR => PendingLevel::Error,
+        lsp_types::MessageType::WARNING => PendingLevel::Warning,
+        _ => PendingLevel::Info, // INFO, LOG, and others → Info
+    };
+
+    queue.push_op(
+        Some(server_name.to_owned()),
+        PendingOp::Push {
+            level,
+            title: msg_params.message,
+        },
+    );
+}
+
+/// Handle `window/logMessage` notification.
+///
+/// Only Error and Warning log messages are surfaced as toasts.
+/// Info and lower are routed to `tracing::info!` only (FD recommendation).
+fn handle_log_message(
+    queue: &PendingNotificationQueue,
+    server_name: &str,
+    params: serde_json::Value,
+) {
+    let Ok(msg_params) = serde_json::from_value::<ShowMessageParams>(params) else {
+        warn!("Failed to parse window/logMessage params");
+        return;
+    };
+
+    match msg_params.typ {
+        lsp_types::MessageType::ERROR => {
+            queue.push_op(
+                Some(server_name.to_owned()),
+                PendingOp::Push {
+                    level: PendingLevel::Error,
+                    title: msg_params.message,
+                },
+            );
+        }
+        lsp_types::MessageType::WARNING => {
+            queue.push_op(
+                Some(server_name.to_owned()),
+                PendingOp::Push {
+                    level: PendingLevel::Warning,
+                    title: msg_params.message,
+                },
+            );
+        }
+        _ => {
+            // Info/Log level — trace only, no toast
+            info!(
+                server = %server_name,
+                message = %msg_params.message,
+                "LSP log message"
+            );
+        }
     }
 }
 

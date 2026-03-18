@@ -71,7 +71,7 @@ impl Module for NotificationModule {
 
         // Register NotificationDrain implementation (#542: decouple completion from this module).
         let drain_registry = ctx.services.get_or_create::<NotificationDrainRegistry>();
-        drain_registry.register(Arc::new(drain::NotificationDrainImpl));
+        drain_registry.register(Arc::new(drain::NotificationDrainImpl::new()));
 
         ProbeResult::Success
     }

@@ -24,10 +24,21 @@ fn push_and_drain() {
 
     let items = queue.drain();
     assert_eq!(items.len(), 2);
-    assert_eq!(items[0].level, PendingLevel::Info);
-    assert_eq!(items[0].title, "hello");
-    assert_eq!(items[1].level, PendingLevel::Success);
-    assert_eq!(items[1].title, "world");
+    assert!(items[0].source.is_none());
+    assert_eq!(
+        items[0].op,
+        PendingOp::Push {
+            level: PendingLevel::Info,
+            title: "hello".to_owned(),
+        }
+    );
+    assert_eq!(
+        items[1].op,
+        PendingOp::Push {
+            level: PendingLevel::Success,
+            title: "world".to_owned(),
+        }
+    );
 
     // Queue is empty after drain.
     assert!(queue.is_empty());
@@ -49,7 +60,13 @@ fn drain_clears_queue() {
     queue.push(PendingLevel::Error, "second");
     let items = queue.drain();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].title, "second");
+    assert_eq!(
+        items[0].op,
+        PendingOp::Push {
+            level: PendingLevel::Error,
+            title: "second".to_owned(),
+        }
+    );
 }
 
 #[test]
@@ -85,10 +102,22 @@ fn all_levels() {
     queue.push(PendingLevel::Error, "e");
 
     let items = queue.drain();
-    assert_eq!(items[0].level, PendingLevel::Info);
-    assert_eq!(items[1].level, PendingLevel::Success);
-    assert_eq!(items[2].level, PendingLevel::Warning);
-    assert_eq!(items[3].level, PendingLevel::Error);
+    let levels: Vec<_> = items
+        .iter()
+        .map(|e| match &e.op {
+            PendingOp::Push { level, .. } => *level,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(
+        levels,
+        [
+            PendingLevel::Info,
+            PendingLevel::Success,
+            PendingLevel::Warning,
+            PendingLevel::Error,
+        ]
+    );
 }
 
 #[test]
@@ -161,4 +190,215 @@ fn service_impl() {
 
     let retrieved = registry.get::<PendingNotificationQueue>();
     assert!(retrieved.is_some());
+}
+
+// ========================================================================
+// PendingOp and PendingEntry tests (#691)
+// ========================================================================
+
+#[test]
+fn push_op_with_source() {
+    let queue = PendingNotificationQueue::new();
+    queue.push_op(
+        Some("rust-analyzer".to_owned()),
+        PendingOp::Push {
+            level: PendingLevel::Info,
+            title: "Server ready".to_owned(),
+        },
+    );
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].source.as_deref(), Some("rust-analyzer"));
+    assert_eq!(
+        items[0].op,
+        PendingOp::Push {
+            level: PendingLevel::Info,
+            title: "Server ready".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn push_op_progress_begin() {
+    let queue = PendingNotificationQueue::new();
+    queue.push_op(
+        Some("rust-analyzer".to_owned()),
+        PendingOp::ProgressBegin {
+            token: "token-1".to_owned(),
+            title: "Indexing".to_owned(),
+            message: "crate foo".to_owned(),
+            percentage: 0,
+        },
+    );
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].source.as_deref(), Some("rust-analyzer"));
+    assert_eq!(
+        items[0].op,
+        PendingOp::ProgressBegin {
+            token: "token-1".to_owned(),
+            title: "Indexing".to_owned(),
+            message: "crate foo".to_owned(),
+            percentage: 0,
+        }
+    );
+}
+
+#[test]
+fn push_op_progress_report() {
+    let queue = PendingNotificationQueue::new();
+    queue.push_op(
+        Some("rust-analyzer".to_owned()),
+        PendingOp::ProgressReport {
+            token: "token-1".to_owned(),
+            message: Some("3/10 crates".to_owned()),
+            percentage: Some(30),
+        },
+    );
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].op,
+        PendingOp::ProgressReport {
+            token: "token-1".to_owned(),
+            message: Some("3/10 crates".to_owned()),
+            percentage: Some(30),
+        }
+    );
+}
+
+#[test]
+fn push_op_progress_end() {
+    let queue = PendingNotificationQueue::new();
+    queue.push_op(
+        None,
+        PendingOp::ProgressEnd {
+            token: "token-1".to_owned(),
+            message: Some("Done".to_owned()),
+        },
+    );
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(items[0].source.is_none());
+    assert_eq!(
+        items[0].op,
+        PendingOp::ProgressEnd {
+            token: "token-1".to_owned(),
+            message: Some("Done".to_owned()),
+        }
+    );
+}
+
+#[test]
+fn mixed_ops_drain_in_order() {
+    let queue = PendingNotificationQueue::new();
+    queue.push(PendingLevel::Info, "plain");
+    queue.push_op(
+        Some("lsp".to_owned()),
+        PendingOp::ProgressBegin {
+            token: "t1".to_owned(),
+            title: "Indexing".to_owned(),
+            message: String::new(),
+            percentage: 0,
+        },
+    );
+    queue.push_op(
+        Some("lsp".to_owned()),
+        PendingOp::ProgressReport {
+            token: "t1".to_owned(),
+            message: None,
+            percentage: Some(50),
+        },
+    );
+    queue.push_op(
+        Some("lsp".to_owned()),
+        PendingOp::ProgressEnd {
+            token: "t1".to_owned(),
+            message: None,
+        },
+    );
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 4);
+    assert!(matches!(items[0].op, PendingOp::Push { .. }));
+    assert!(matches!(items[1].op, PendingOp::ProgressBegin { .. }));
+    assert!(matches!(items[2].op, PendingOp::ProgressReport { .. }));
+    assert!(matches!(items[3].op, PendingOp::ProgressEnd { .. }));
+}
+
+#[test]
+fn concurrent_push_op() {
+    use std::sync::Arc;
+
+    let queue = Arc::new(PendingNotificationQueue::new());
+    let mut handles = Vec::new();
+
+    for i in 0..5 {
+        let q = Arc::clone(&queue);
+        handles.push(std::thread::spawn(move || {
+            q.push_op(
+                Some(format!("source-{i}")),
+                PendingOp::Push {
+                    level: PendingLevel::Info,
+                    title: format!("msg-{i}"),
+                },
+            );
+        }));
+    }
+
+    for h in handles {
+        h.join().expect("Thread panicked");
+    }
+
+    assert_eq!(queue.len(), 5);
+    let items = queue.drain();
+    assert_eq!(items.len(), 5);
+    assert!(items.iter().all(|e| e.source.is_some()));
+}
+
+#[test]
+fn pending_op_debug_clone_eq() {
+    let op = PendingOp::ProgressBegin {
+        token: "t".to_owned(),
+        title: "x".to_owned(),
+        message: String::new(),
+        percentage: 42,
+    };
+    let cloned = op.clone();
+    assert_eq!(op, cloned);
+
+    let debug = format!("{op:?}");
+    assert!(debug.contains("ProgressBegin"));
+}
+
+#[test]
+fn pending_entry_debug_clone_eq() {
+    let entry = PendingEntry {
+        source: Some("test".to_owned()),
+        op: PendingOp::Push {
+            level: PendingLevel::Success,
+            title: "ok".to_owned(),
+        },
+    };
+    let cloned = entry.clone();
+    assert_eq!(entry, cloned);
+
+    let debug = format!("{entry:?}");
+    assert!(debug.contains("PendingEntry"));
+    assert!(debug.contains("test"));
+}
+
+#[test]
+fn push_convenience_has_no_source() {
+    let queue = PendingNotificationQueue::new();
+    queue.push(PendingLevel::Warning, "test");
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(items[0].source.is_none());
+    assert!(matches!(items[0].op, PendingOp::Push { .. }));
 }

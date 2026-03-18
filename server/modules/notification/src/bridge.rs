@@ -61,6 +61,9 @@ impl ExtensionStateBridge for NotificationBridge {
                         "detail": progress.detail,
                     });
                 }
+                if let Some(ref source) = entry.source {
+                    obj["source"] = serde_json::json!(source);
+                }
                 obj
             })
             .collect();

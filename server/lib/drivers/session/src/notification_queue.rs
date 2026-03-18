@@ -13,6 +13,7 @@
 //! need to push notifications without depending on each other:
 //! - `completion` module: LSP completion results
 //! - `snippet` module: reload/catalog notifications
+//! - `lsp` module: `$/progress`, `window/showMessage`
 //! - `notification` module: drains into display state
 
 use {parking_lot::Mutex, reovim_kernel::api::v1::Service};
@@ -30,7 +31,65 @@ pub enum PendingLevel {
     Error,
 }
 
+/// Operation type for the pending notification queue.
+///
+/// Extends the original flat push with progress lifecycle operations
+/// for `$/progress` and similar producer protocols (#691).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingOp {
+    /// Simple notification (existing behavior).
+    Push {
+        /// Severity level.
+        level: PendingLevel,
+        /// Short title.
+        title: String,
+    },
+    /// Begin a progress notification.
+    ProgressBegin {
+        /// Opaque token from the producer (e.g., LSP progress token).
+        token: String,
+        /// Short title (e.g., "Indexing").
+        title: String,
+        /// Optional detail message.
+        message: String,
+        /// Initial percentage (0..=100), or 0 if indeterminate.
+        percentage: u8,
+    },
+    /// Update a progress notification.
+    ProgressReport {
+        /// Token matching a previous `ProgressBegin`.
+        token: String,
+        /// Updated detail message (if any).
+        message: Option<String>,
+        /// Updated percentage (if any).
+        percentage: Option<u8>,
+    },
+    /// End a progress notification.
+    ProgressEnd {
+        /// Token matching a previous `ProgressBegin`.
+        token: String,
+        /// Optional final message.
+        message: Option<String>,
+    },
+}
+
+/// A pending notification entry with optional source attribution.
+///
+/// Wraps a [`PendingOp`] with an optional source tag for producer grouping.
+/// The source identifies the notification producer (e.g., `"rust-analyzer"`,
+/// `"git"`) so the TUI can group notifications into bordered boxes (#691).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingEntry {
+    /// Optional producer name for grouped display.
+    pub source: Option<String>,
+    /// The notification operation.
+    pub op: PendingOp,
+}
+
 /// A pending notification to be flushed to display state.
+///
+/// Retained for backward compatibility. New code should use
+/// [`PendingEntry`] + [`PendingOp`] via [`PendingNotificationQueue::push_op`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingNotification {
     /// Severity level.
@@ -46,7 +105,7 @@ pub struct PendingNotification {
 /// command handler (which has `SessionRuntime`) can access it.
 #[derive(Debug)]
 pub struct PendingNotificationQueue {
-    queue: Mutex<Vec<PendingNotification>>,
+    queue: Mutex<Vec<PendingEntry>>,
 }
 
 impl PendingNotificationQueue {
@@ -58,24 +117,35 @@ impl PendingNotificationQueue {
         }
     }
 
-    /// Push a notification from any thread.
+    /// Push a simple notification from any thread.
+    ///
+    /// Convenience method for sourceless push operations.
+    /// For source-tagged or progress notifications, use [`push_op`](Self::push_op).
     pub fn push(&self, level: PendingLevel, title: impl Into<String>) {
-        self.queue.lock().push(PendingNotification {
-            level,
-            title: title.into(),
+        self.queue.lock().push(PendingEntry {
+            source: None,
+            op: PendingOp::Push {
+                level,
+                title: title.into(),
+            },
         });
     }
 
-    /// Drain all pending notifications.
+    /// Push a notification operation with optional source attribution.
+    pub fn push_op(&self, source: Option<String>, op: PendingOp) {
+        self.queue.lock().push(PendingEntry { source, op });
+    }
+
+    /// Drain all pending entries.
     ///
     /// Called from the command handler context where `SessionRuntime`
     /// is available to forward them to the display system.
-    pub fn drain(&self) -> Vec<PendingNotification> {
+    pub fn drain(&self) -> Vec<PendingEntry> {
         let mut queue = self.queue.lock();
         std::mem::take(&mut *queue)
     }
 
-    /// Number of pending notifications.
+    /// Number of pending entries.
     #[must_use]
     pub fn len(&self) -> usize {
         self.queue.lock().len()

@@ -177,7 +177,7 @@ async fn test_handle_server_message_with_response() {
     let message = jsonrpc::Message::Response(response);
 
     // No pending request for ID 99 — logs warning, no panic
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
 }
 
@@ -199,7 +199,7 @@ async fn test_handle_server_message_with_diagnostics_notification() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
     assert!(cache.has(&uri));
 }
@@ -212,7 +212,7 @@ async fn test_handle_server_message_diagnostics_no_params() {
     let notification = jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
     assert!(cache.is_empty());
 }
@@ -228,7 +228,7 @@ async fn test_handle_server_message_diagnostics_invalid_params() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
     assert!(cache.is_empty());
 }
@@ -239,12 +239,12 @@ async fn test_handle_server_message_unhandled_notification() {
     let cache = Arc::new(DiagnosticCache::new());
 
     let notification = jsonrpc::Notification::new(
-        "window/logMessage",
-        Some(serde_json::json!({"type": 3, "message": "test"})),
+        "custom/unknownMethod",
+        Some(serde_json::json!({"data": "test"})),
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
 }
 
@@ -256,7 +256,7 @@ async fn test_handle_server_message_with_request() {
     let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
     let message = jsonrpc::Message::Request(request);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
         .await;
 }
 
@@ -468,4 +468,324 @@ fn test_handle_capabilities_reflects_registration() {
     // Now capabilities() reflects the change
     let caps = handle.capabilities().unwrap();
     assert!(caps.hover_provider.is_some());
+}
+
+// ========================================================================
+// Progress and message notification handler tests (#691)
+// ========================================================================
+
+#[test]
+fn test_handle_progress_begin() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({
+        "token": "tok-1",
+        "value": {
+            "kind": "begin",
+            "title": "Indexing",
+            "message": "crate foo",
+            "percentage": 10
+        }
+    });
+
+    handle_progress_notification(&queue, "rust-analyzer", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].source.as_deref(), Some("rust-analyzer"));
+    assert!(matches!(
+        items[0].op,
+        PendingOp::ProgressBegin {
+            ref token,
+            ref title,
+            ref message,
+            percentage: 10,
+        } if token == "tok-1" && title == "Indexing" && message == "crate foo"
+    ));
+}
+
+#[test]
+fn test_handle_progress_report() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({
+        "token": "tok-1",
+        "value": {
+            "kind": "report",
+            "message": "3/10 crates",
+            "percentage": 30
+        }
+    });
+
+    handle_progress_notification(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(matches!(
+        items[0].op,
+        PendingOp::ProgressReport {
+            ref token,
+            message: Some(ref msg),
+            percentage: Some(30),
+        } if token == "tok-1" && msg == "3/10 crates"
+    ));
+}
+
+#[test]
+fn test_handle_progress_end() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({
+        "token": "tok-1",
+        "value": {
+            "kind": "end",
+            "message": "Done"
+        }
+    });
+
+    handle_progress_notification(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(matches!(
+        items[0].op,
+        PendingOp::ProgressEnd {
+            ref token,
+            message: Some(ref msg),
+        } if token == "tok-1" && msg == "Done"
+    ));
+}
+
+#[test]
+fn test_handle_progress_number_token() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({
+        "token": 42,
+        "value": {
+            "kind": "begin",
+            "title": "Building"
+        }
+    });
+
+    handle_progress_notification(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(matches!(
+        items[0].op,
+        PendingOp::ProgressBegin { ref token, .. } if token == "lsp_42"
+    ));
+}
+
+#[test]
+fn test_handle_progress_invalid_params() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"invalid": "data"});
+
+    handle_progress_notification(&queue, "ra", params);
+
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn test_handle_progress_begin_no_percentage() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({
+        "token": "tok-1",
+        "value": {
+            "kind": "begin",
+            "title": "Indexing"
+        }
+    });
+
+    handle_progress_notification(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert!(matches!(
+        items[0].op,
+        PendingOp::ProgressBegin { percentage: 0, .. }
+    ));
+}
+
+#[test]
+fn test_handle_show_message_error() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 1, "message": "Error occurred"});
+
+    handle_show_message(&queue, "rust-analyzer", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].source.as_deref(), Some("rust-analyzer"));
+    assert!(matches!(
+        items[0].op,
+        PendingOp::Push { level: PendingLevel::Error, ref title } if title == "Error occurred"
+    ));
+}
+
+#[test]
+fn test_handle_show_message_warning() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 2, "message": "Warning msg"});
+
+    handle_show_message(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert!(matches!(
+        items[0].op,
+        PendingOp::Push { level: PendingLevel::Warning, .. }
+    ));
+}
+
+#[test]
+fn test_handle_show_message_info() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 3, "message": "Info msg"});
+
+    handle_show_message(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert!(matches!(
+        items[0].op,
+        PendingOp::Push { level: PendingLevel::Info, .. }
+    ));
+}
+
+#[test]
+fn test_handle_show_message_invalid_params() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"invalid": true});
+
+    handle_show_message(&queue, "ra", params);
+
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn test_handle_log_message_error_becomes_toast() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 1, "message": "Crash"});
+
+    handle_log_message(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(matches!(
+        items[0].op,
+        PendingOp::Push { level: PendingLevel::Error, .. }
+    ));
+}
+
+#[test]
+fn test_handle_log_message_warning_becomes_toast() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 2, "message": "Warn"});
+
+    handle_log_message(&queue, "ra", params);
+
+    let items = queue.drain();
+    assert_eq!(items.len(), 1);
+    assert!(matches!(
+        items[0].op,
+        PendingOp::Push { level: PendingLevel::Warning, .. }
+    ));
+}
+
+#[test]
+fn test_handle_log_message_info_no_toast() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"type": 3, "message": "Info"});
+
+    handle_log_message(&queue, "ra", params);
+
+    // Info log messages don't produce toasts
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn test_handle_log_message_invalid_params() {
+    let queue = PendingNotificationQueue::new();
+    let params = serde_json::json!({"bad": "data"});
+
+    handle_log_message(&queue, "ra", params);
+
+    assert!(queue.is_empty());
+}
+
+#[tokio::test]
+async fn test_handle_server_message_progress_notification() {
+    let client = make_test_client();
+    let cache = Arc::new(DiagnosticCache::new());
+    let queue = PendingNotificationQueue::new();
+
+    let notification = jsonrpc::Notification::new(
+        "$/progress",
+        Some(serde_json::json!({
+            "token": "t1",
+            "value": {"kind": "begin", "title": "Indexing"}
+        })),
+    );
+    let message = jsonrpc::Message::Notification(notification);
+
+    LspSaturator::handle_server_message(
+        &client, &cache, &make_test_capability_store(), message, Some(&queue), "rust-analyzer",
+    ).await;
+
+    assert_eq!(queue.len(), 1);
+}
+
+#[tokio::test]
+async fn test_handle_server_message_show_message_notification() {
+    let client = make_test_client();
+    let cache = Arc::new(DiagnosticCache::new());
+    let queue = PendingNotificationQueue::new();
+
+    let notification = jsonrpc::Notification::new(
+        "window/showMessage",
+        Some(serde_json::json!({"type": 1, "message": "Error!"})),
+    );
+    let message = jsonrpc::Message::Notification(notification);
+
+    LspSaturator::handle_server_message(
+        &client, &cache, &make_test_capability_store(), message, Some(&queue), "ra",
+    ).await;
+
+    assert_eq!(queue.len(), 1);
+}
+
+#[tokio::test]
+async fn test_handle_server_message_log_message_notification() {
+    let client = make_test_client();
+    let cache = Arc::new(DiagnosticCache::new());
+    let queue = PendingNotificationQueue::new();
+
+    let notification = jsonrpc::Notification::new(
+        "window/logMessage",
+        Some(serde_json::json!({"type": 1, "message": "Error log"})),
+    );
+    let message = jsonrpc::Message::Notification(notification);
+
+    LspSaturator::handle_server_message(
+        &client, &cache, &make_test_capability_store(), message, Some(&queue), "ra",
+    ).await;
+
+    // Error log messages become toasts
+    assert_eq!(queue.len(), 1);
+}
+
+#[tokio::test]
+async fn test_handle_server_message_progress_no_queue() {
+    let client = make_test_client();
+    let cache = Arc::new(DiagnosticCache::new());
+
+    let notification = jsonrpc::Notification::new(
+        "$/progress",
+        Some(serde_json::json!({
+            "token": "t1",
+            "value": {"kind": "begin", "title": "Indexing"}
+        })),
+    );
+    let message = jsonrpc::Message::Notification(notification);
+
+    // No queue — should not panic
+    LspSaturator::handle_server_message(
+        &client, &cache, &make_test_capability_store(), message, None, "ra",
+    ).await;
 }

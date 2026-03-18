@@ -12,7 +12,8 @@ use {
         uri_from_path,
     },
     reovim_driver_session::{
-        ClientId as DriverClientId, PendingLevel, PendingNotificationQueue, TickSchedulerHandle,
+        ClientId as DriverClientId, PendingLevel, PendingNotificationQueue, PendingOp,
+        TickSchedulerHandle,
     },
     reovim_kernel::api::v1::ServiceRegistry,
     tracing::{info, warn},
@@ -51,13 +52,19 @@ impl LspLifecycle for LspAutoStarter {
         let notify_queue = services.get::<PendingNotificationQueue>();
 
         if let Some(q) = &notify_queue {
-            q.push(PendingLevel::Info, format!("Starting {language_id} language server..."));
+            q.push_op(
+                Some(language_id.clone()),
+                PendingOp::Push {
+                    level: PendingLevel::Info,
+                    title: format!("Starting {language_id} language server..."),
+                },
+            );
         }
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 info!(lang = %language_id, "Auto-starting LSP server");
-                match LspSaturator::start(config, language_id.clone()).await {
+                match LspSaturator::start(config, language_id.clone(), notify_queue.clone()).await {
                     Ok(lsp_handle) => {
                         // Send DidOpen so the server knows about the file.
                         let uri = uri_from_path(std::path::Path::new(&file_path));
@@ -70,10 +77,17 @@ impl LspLifecycle for LspAutoStarter {
 
                         // Register in LspProviderRegistry.
                         let registry = services_clone.get_or_create::<LspProviderRegistry>();
+                        let lang_source = language_id.clone();
                         registry.register(LspKey::Language(language_id), Arc::new(lsp_handle));
                         info!("LSP server registered and ready");
                         if let Some(q) = &notify_queue {
-                            q.push(PendingLevel::Success, "Language server ready");
+                            q.push_op(
+                                Some(lang_source),
+                                PendingOp::Push {
+                                    level: PendingLevel::Success,
+                                    title: "Language server ready".to_owned(),
+                                },
+                            );
                         }
 
                         // Start diagnostic tick (#564). DiagnosticBridge is
@@ -92,9 +106,12 @@ impl LspLifecycle for LspAutoStarter {
                     Err(e) => {
                         warn!("Failed to start LSP server: {e}");
                         if let Some(q) = &notify_queue {
-                            q.push(
-                                PendingLevel::Warning,
-                                format!("Failed to start language server: {e}"),
+                            q.push_op(
+                                Some(language_id.clone()),
+                                PendingOp::Push {
+                                    level: PendingLevel::Warning,
+                                    title: format!("Failed to start language server: {e}"),
+                                },
                             );
                         }
                     }

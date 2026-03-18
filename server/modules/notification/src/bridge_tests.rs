@@ -143,3 +143,67 @@ fn test_level_str_all_variants() {
     assert_eq!(level_str(NotificationLevel::Warning), "warning");
     assert_eq!(level_str(NotificationLevel::Error), "error");
 }
+
+// ========================================================================
+// Source field serialization tests (#691)
+// ========================================================================
+
+#[test]
+fn test_snapshot_with_source() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<NotificationState>();
+    state.push_with_source(
+        Some("rust-analyzer".to_string()),
+        NotificationLevel::Info,
+        "Indexing",
+    );
+
+    let snap = NotificationBridge.snapshot(&map).unwrap();
+    let entry = &snap["entries"][0];
+    assert_eq!(entry["source"], "rust-analyzer");
+}
+
+#[test]
+fn test_snapshot_without_source() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<NotificationState>();
+    state.push(NotificationLevel::Info, "no source");
+
+    let snap = NotificationBridge.snapshot(&map).unwrap();
+    let entry = &snap["entries"][0];
+    assert!(entry.get("source").is_none());
+}
+
+#[test]
+fn test_snapshot_mixed_sources() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<NotificationState>();
+    state.push_with_source(
+        Some("rust-analyzer".to_string()),
+        NotificationLevel::Success,
+        "Ready",
+    );
+    state.push(NotificationLevel::Info, "generic");
+
+    let snap = NotificationBridge.snapshot(&map).unwrap();
+    let entries = snap["entries"].as_array().unwrap();
+    assert_eq!(entries[0]["source"], "rust-analyzer");
+    assert!(entries[1].get("source").is_none());
+}
+
+#[test]
+fn test_snapshot_progress_with_source() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<NotificationState>();
+    state.push_progress_with_source(
+        Some("rust-analyzer".to_string()),
+        "Indexing",
+        42,
+        "3/10 crates",
+    );
+
+    let snap = NotificationBridge.snapshot(&map).unwrap();
+    let entry = &snap["entries"][0];
+    assert_eq!(entry["source"], "rust-analyzer");
+    assert_eq!(entry["progress"]["percent"], 42);
+}

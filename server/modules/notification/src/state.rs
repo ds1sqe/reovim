@@ -47,6 +47,11 @@ pub struct Notification {
     pub body: String,
     /// Optional progress indicator.
     pub progress: Option<Progress>,
+    /// Optional producer name for grouped display (e.g., `"rust-analyzer"`).
+    ///
+    /// When set, the TUI groups all notifications from the same source
+    /// into a single bordered box (#691).
+    pub source: Option<String>,
 }
 
 /// Session extension for notification state.
@@ -86,7 +91,7 @@ impl SessionExtension for NotificationState {
 impl NotificationState {
     /// Push a new notification. Returns the assigned ID.
     pub fn push(&mut self, level: NotificationLevel, title: impl Into<String>) -> u64 {
-        self.push_full(level, title.into(), String::new(), None)
+        self.push_full(level, title.into(), String::new(), None, None)
     }
 
     /// Push a notification with body text. Returns the assigned ID.
@@ -96,7 +101,19 @@ impl NotificationState {
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> u64 {
-        self.push_full(level, title.into(), body.into(), None)
+        self.push_full(level, title.into(), body.into(), None, None)
+    }
+
+    /// Push a notification with source attribution. Returns the assigned ID.
+    ///
+    /// The source tag groups notifications by producer in the TUI (#691).
+    pub fn push_with_source(
+        &mut self,
+        source: Option<String>,
+        level: NotificationLevel,
+        title: impl Into<String>,
+    ) -> u64 {
+        self.push_full(level, title.into(), String::new(), None, source)
     }
 
     /// Push a progress notification. Returns the assigned ID.
@@ -110,7 +127,34 @@ impl NotificationState {
             percent: percent.min(100),
             detail: detail.into(),
         };
-        self.push_full(NotificationLevel::Info, title.into(), String::new(), Some(progress))
+        self.push_full(
+            NotificationLevel::Info,
+            title.into(),
+            String::new(),
+            Some(progress),
+            None,
+        )
+    }
+
+    /// Push a progress notification with source attribution. Returns the assigned ID.
+    pub fn push_progress_with_source(
+        &mut self,
+        source: Option<String>,
+        title: impl Into<String>,
+        percent: u8,
+        detail: impl Into<String>,
+    ) -> u64 {
+        let progress = Progress {
+            percent: percent.min(100),
+            detail: detail.into(),
+        };
+        self.push_full(
+            NotificationLevel::Info,
+            title.into(),
+            String::new(),
+            Some(progress),
+            source,
+        )
     }
 
     /// Update the progress on an existing notification.
@@ -154,6 +198,7 @@ impl NotificationState {
         title: String,
         body: String,
         progress: Option<Progress>,
+        source: Option<String>,
     ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -164,6 +209,7 @@ impl NotificationState {
             title,
             body,
             progress,
+            source,
         });
 
         // Evict oldest if over capacity

@@ -3165,10 +3165,12 @@ dependencies = [
 name = "reovim-module-notification"
 version = "0.14.1-dev"
 dependencies = [
+ "parking_lot",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

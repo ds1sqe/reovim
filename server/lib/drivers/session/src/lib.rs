@@ -153,8 +153,10 @@ pub use tab::{TabPage, TabPageSet};
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
 pub use {handler_key::SessionHandlerKey, handler_registry::SessionHandlerRegistry};
 
-// Pending notification queue (#542 - cross-module decoupling)
-pub use notification_queue::{PendingLevel, PendingNotification, PendingNotificationQueue};
+// Pending notification queue (#542 - cross-module decoupling, #691 - progress ops)
+pub use notification_queue::{
+    PendingEntry, PendingLevel, PendingNotification, PendingNotificationQueue, PendingOp,
+};
 
 // Notification drain trait (#542 - decouple completion from notification module)
 pub use notification_drain::{NotificationDrain, NotificationDrainRegistry};

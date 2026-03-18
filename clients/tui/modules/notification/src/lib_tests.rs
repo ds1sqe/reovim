@@ -256,3 +256,106 @@ fn parse_level_coverage() {
     assert_eq!(NotificationModule::parse_level("info"), Level::Info);
     assert_eq!(NotificationModule::parse_level("unknown"), Level::Info);
 }
+
+// =============================================================================
+// Source field and grouped rendering tests (#691)
+// =============================================================================
+
+fn sourced_toast(id: u64, title: &str, source: &str) -> String {
+    format!(
+        r#"{{"entries":[{{"id":{id},"level":"info","title":"{title}","body":"","source":"{source}"}}]}}"#,
+    )
+}
+
+fn multi_entry_json(entries: &[(&str, u64, &str, Option<&str>)]) -> String {
+    let items: Vec<String> = entries
+        .iter()
+        .map(|(level, id, title, source)| {
+            let source_field = source
+                .map(|s| format!(r#","source":"{s}""#))
+                .unwrap_or_default();
+            format!(r#"{{"id":{id},"level":"{level}","title":"{title}","body":""{source_field}}}"#)
+        })
+        .collect();
+    format!(r#"{{"entries":[{}]}}"#, items.join(","))
+}
+
+#[test]
+fn notification_parses_source() {
+    let (mut m, _clock) = test_module();
+    m.on_notification(&sourced_toast(1, "Ready", "rust-analyzer"));
+    assert_eq!(m.toasts.len(), 1);
+    assert_eq!(m.toasts[0].source.as_deref(), Some("rust-analyzer"));
+}
+
+#[test]
+fn notification_no_source_is_none() {
+    let (mut m, _clock) = test_module();
+    m.on_notification(&info_toast(1, "Hello"));
+    assert!(m.toasts[0].source.is_none());
+}
+
+#[test]
+fn render_grouped_source() {
+    let (mut m, _clock) = test_module();
+    let data = multi_entry_json(&[
+        ("success", 1, "Server ready", Some("rust-analyzer")),
+        ("info", 2, "Indexing", Some("rust-analyzer")),
+    ]);
+    m.on_notification(&data);
+
+    let surface = render(&m, 80, 24);
+    assert!(surface.has_content());
+    // Source name should appear in the rendered output
+    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    assert!(text.contains("rust-analyzer"), "grouped box should show source name: {text}");
+}
+
+#[test]
+fn render_mixed_sources_and_standalone() {
+    let (mut m, _clock) = test_module();
+    let data = multi_entry_json(&[
+        ("info", 1, "Indexing", Some("rust-analyzer")),
+        ("success", 2, "File saved", None),
+        ("info", 3, "cargo check", Some("rust-analyzer")),
+    ]);
+    m.on_notification(&data);
+
+    let surface = render(&m, 80, 24);
+    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    // Both grouped and standalone content visible
+    assert!(text.contains("rust-analyzer"));
+    assert!(text.contains("File saved"));
+}
+
+#[test]
+fn render_multiple_source_groups() {
+    let (mut m, _clock) = test_module();
+    let data = multi_entry_json(&[
+        ("info", 1, "Indexing", Some("rust-analyzer")),
+        ("info", 2, "Checking", Some("gopls")),
+    ]);
+    m.on_notification(&data);
+
+    let surface = render(&m, 80, 30);
+    let text: String = (0..30).map(|row| surface.text_at_row(row)).collect();
+    assert!(text.contains("rust-analyzer"));
+    assert!(text.contains("gopls"));
+}
+
+#[test]
+fn grouped_box_border_uses_highest_priority_level() {
+    let (mut m, _clock) = test_module();
+    let data = multi_entry_json(&[
+        ("info", 1, "Starting", Some("ra")),
+        ("error", 2, "Failed", Some("ra")),
+    ]);
+    m.on_notification(&data);
+
+    let surface = render(&m, 80, 24);
+    // The border should use error color (Red) since Error > Info
+    let toast_w = TOAST_WIDTH.min(78);
+    let toast_x = 80 - toast_w - 1;
+    // Top border at y=1 should have the border color
+    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Red));
+}
