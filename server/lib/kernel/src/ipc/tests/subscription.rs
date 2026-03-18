@@ -137,6 +137,38 @@ fn test_subscription_send_sync() {
 }
 
 #[test]
+fn test_subscription_detach_prevents_unsubscribe() {
+    let called = Arc::new(AtomicBool::new(false));
+    let called2 = called.clone();
+
+    {
+        let sub = Subscription::new::<i32>(SubscriptionId::new(), move || {
+            called2.store(true, Ordering::SeqCst);
+        });
+
+        sub.detach();
+        assert!(!sub.is_active()); // callback removed
+    } // Dropped here — should NOT invoke the callback
+
+    assert!(!called.load(Ordering::SeqCst));
+}
+
+#[test]
+fn test_subscription_detach_then_cancel_is_noop() {
+    let call_count = Arc::new(AtomicU64::new(0));
+    let call_count2 = call_count.clone();
+
+    let sub = Subscription::new::<i32>(SubscriptionId::new(), move || {
+        call_count2.fetch_add(1, Ordering::SeqCst);
+    });
+
+    sub.detach();
+    sub.cancel(); // Should be no-op after detach
+
+    assert_eq!(call_count.load(Ordering::SeqCst), 0);
+}
+
+#[test]
 fn test_subscription_move_between_threads() {
     let called = Arc::new(AtomicBool::new(false));
     let called2 = called.clone();

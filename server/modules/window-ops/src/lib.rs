@@ -105,6 +105,8 @@ impl Module for WindowOps {
                 // _ctx.request_render() available when needed
                 EventResult::Handled
             });
+        // Detach so handlers survive module drop (bootstrap drops modules after init).
+        sub_created.detach();
         self.subscriptions.push(sub_created);
 
         // Subscribe to window close events
@@ -115,6 +117,7 @@ impl Module for WindowOps {
                 // Future: Cleanup window-specific module state
                 EventResult::Handled
             });
+        sub_closed.detach();
         self.subscriptions.push(sub_closed);
 
         // Subscribe to window focus events
@@ -126,6 +129,7 @@ impl Module for WindowOps {
                 // _ctx.request_render() available when needed
                 EventResult::Handled
             });
+        sub_focused.detach();
         self.subscriptions.push(sub_focused);
 
         // Subscribe to viewport scroll events
@@ -143,6 +147,7 @@ impl Module for WindowOps {
                 // _ctx.request_render() available when needed
                 EventResult::Handled
             });
+        sub_scrolled.detach();
         self.subscriptions.push(sub_scrolled);
 
         pr_info!(

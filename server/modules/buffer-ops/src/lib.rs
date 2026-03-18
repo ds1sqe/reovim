@@ -76,6 +76,8 @@ impl Module for BufferOps {
                 // _ctx.request_render() available when needed
                 EventResult::Handled
             });
+        // Detach so handlers survive module drop (bootstrap drops modules after init).
+        sub_created.detach();
         self.subscriptions.push(sub_created);
 
         // Subscribe to buffer modification events
@@ -86,6 +88,7 @@ impl Module for BufferOps {
                 // Future: Trigger treesitter reparse, update dirty flags
                 EventResult::Handled
             });
+        sub_modified.detach();
         self.subscriptions.push(sub_modified);
 
         // Subscribe to buffer close events
@@ -96,6 +99,7 @@ impl Module for BufferOps {
                 // Future: Cleanup buffer-specific module state
                 EventResult::Handled
             });
+        sub_closed.detach();
         self.subscriptions.push(sub_closed);
 
         // Subscribe to buffer switch events
@@ -106,6 +110,7 @@ impl Module for BufferOps {
                 // Future: Update status line, trigger highlights
                 EventResult::Handled
             });
+        sub_switched.detach();
         self.subscriptions.push(sub_switched);
 
         pr_info!("BufferOps module initialized with {} subscriptions", self.subscriptions.len());

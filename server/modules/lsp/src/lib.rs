@@ -165,6 +165,9 @@ impl Module for LspModule {
                         );
                         EventResult::Handled
                     });
+            // Detach so the handler survives module drop (bootstrap drops
+            // module instances after init, which would unsubscribe RAII handles).
+            file_opened_sub.detach();
             self.file_opened_sub = Some(file_opened_sub);
         }
 
@@ -196,6 +199,7 @@ impl Module for LspModule {
 
                 EventResult::Handled
             });
+        sub.detach();
         self.buffer_saved_sub = Some(sub);
 
         pr_info!("LSP module initialized");

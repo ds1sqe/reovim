@@ -169,6 +169,28 @@ impl Subscription {
             callback();
         }
     }
+
+    /// Detach the subscription from RAII lifecycle management.
+    ///
+    /// After calling this, dropping the `Subscription` will NOT unsubscribe
+    /// the handler. The handler remains active until the `EventBus` is dropped.
+    ///
+    /// This is necessary when the owner of the `Subscription` has a shorter
+    /// lifetime than the desired handler lifetime (e.g., modules that are
+    /// dropped after initialization while their event handlers should persist
+    /// for the session).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let sub = bus.subscribe::<MyEvent, _>(100, handler);
+    /// sub.detach(); // Handler stays active even after `sub` is dropped
+    /// ```
+    pub fn detach(&self) {
+        // Remove the unsubscribe callback without invoking it.
+        // When self is later dropped, cancel() will find None and skip.
+        let _ = self.unsubscribe_fn.lock().take();
+    }
 }
 
 impl Drop for Subscription {

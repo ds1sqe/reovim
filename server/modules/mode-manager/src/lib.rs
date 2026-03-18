@@ -80,6 +80,8 @@ impl Module for ModeManager {
                 // _ctx.request_render() available when needed
                 EventResult::Handled
             });
+        // Detach so handler survives module drop (bootstrap drops modules after init).
+        sub_mode.detach();
         self.subscriptions.push(sub_mode);
 
         pr_info!("ModeManager module initialized with {} subscriptions", self.subscriptions.len());

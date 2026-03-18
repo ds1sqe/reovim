@@ -94,6 +94,8 @@ impl Module for FormatModule {
                     hook::format_on_save(event, &buffers, &options, &services);
                     EventResult::Handled
                 });
+        // Detach so handler survives module drop (bootstrap drops modules after init).
+        sub.detach();
         self.subscriptions.push(sub);
 
         ProbeResult::Success
