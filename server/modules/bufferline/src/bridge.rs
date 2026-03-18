@@ -67,8 +67,10 @@ impl ExtensionStateBridge for BufferlineBridge {
         }))
     }
 
-    fn is_active(&self, _extensions: &ExtensionMap) -> bool {
-        true
+    fn is_active(&self, extensions: &ExtensionMap) -> bool {
+        extensions
+            .get::<BufferlineSnapshot>()
+            .is_some_and(|snap| !snap.entries.is_empty())
     }
 
     fn tick(
@@ -96,8 +98,12 @@ impl ExtensionStateBridge for BufferlineBridge {
         pin_state.clean_stale(&live_ids);
         let pinned_ids = &pin_state.pinned;
         let pinned_set: HashSet<u64> = pinned_ids.iter().copied().collect();
-        let pinned_indices: HashMap<u64, usize> =
-            pinned_ids.iter().copied().enumerate().map(|(i, id)| (id, i)).collect();
+        let pinned_indices: HashMap<u64, usize> = pinned_ids
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, id)| (id, i))
+            .collect();
 
         // Build entries: pinned first (in pin order), then unpinned (by buffer ID).
         let mut pinned_entries = Vec::new();
@@ -105,10 +111,7 @@ impl ExtensionStateBridge for BufferlineBridge {
 
         for raw in &raw_entries {
             let is_pinned = pinned_set.contains(&raw.id);
-            let (error_count, warning_count) = diag_map
-                .get(&raw.id)
-                .copied()
-                .unwrap_or((0, 0));
+            let (error_count, warning_count) = diag_map.get(&raw.id).copied().unwrap_or((0, 0));
 
             let entry = BufferEntry {
                 id: raw.id,
@@ -129,12 +132,7 @@ impl ExtensionStateBridge for BufferlineBridge {
         }
 
         // Sort pinned entries by their position in the pin list.
-        pinned_entries.sort_by_key(|e| {
-            pinned_indices
-                .get(&e.id)
-                .copied()
-                .unwrap_or(usize::MAX)
-        });
+        pinned_entries.sort_by_key(|e| pinned_indices.get(&e.id).copied().unwrap_or(usize::MAX));
         // Unpinned entries stay in buffer ID order (from the service).
         let mut entries = pinned_entries;
         entries.append(&mut unpinned_entries);

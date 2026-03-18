@@ -104,6 +104,8 @@ impl Module for BufferlineModule {
                 }
                 EventResult::Handled
             });
+        // Detach so handlers survive module drop (bootstrap drops modules after init).
+        sub_created.detach();
         self.subscriptions.push(sub_created);
 
         // BufferClosed: remove entry.
@@ -115,6 +117,7 @@ impl Module for BufferlineModule {
                 }
                 EventResult::Handled
             });
+        sub_closed.detach();
         self.subscriptions.push(sub_closed);
 
         // BufferModified: mark as modified.
@@ -128,6 +131,7 @@ impl Module for BufferlineModule {
                 EventResult::Handled
             },
         );
+        sub_modified.detach();
         self.subscriptions.push(sub_modified);
 
         // BufferSaved: update path, filetype, and clear modified.
@@ -140,6 +144,7 @@ impl Module for BufferlineModule {
                 }
                 EventResult::Handled
             });
+        sub_saved.detach();
         self.subscriptions.push(sub_saved);
 
         ProbeResult::Success

@@ -22,8 +22,25 @@ fn bridge_scope_shared() {
 }
 
 #[test]
-fn bridge_is_active_always_true() {
+fn bridge_is_active_false_when_empty() {
     let extensions = ExtensionMap::new();
+    assert!(!BufferlineBridge.is_active(&extensions));
+}
+
+#[test]
+fn bridge_is_active_true_when_has_entries() {
+    let mut extensions = ExtensionMap::new();
+    let snap = extensions.get_or_insert::<BufferlineSnapshot>();
+    snap.entries.push(BufferEntry {
+        id: 1,
+        name: "test.rs".to_string(),
+        path: None,
+        modified: false,
+        pinned: false,
+        filetype: None,
+        error_count: 0,
+        warning_count: 0,
+    });
     assert!(BufferlineBridge.is_active(&extensions));
 }
 
