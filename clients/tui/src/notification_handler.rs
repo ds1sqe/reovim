@@ -95,6 +95,11 @@ pub trait NotificationContext {
 pub enum NotificationResult {
     /// Notification handled successfully, redraw needed.
     Redraw,
+    /// Redraw needed AND buffer metadata should be refreshed.
+    ///
+    /// Used for `BufferModified` and `LayoutChanged` — avoids calling
+    /// `dispatch_buffer_metadata` on every notification (#691).
+    RedrawWithMetadata,
     /// Notification handled, no redraw needed.
     NoRedraw,
     /// Client should stop (detach received).
@@ -240,9 +245,7 @@ pub async fn handle_notification<C: NotificationContext>(
             // Notify context for optional syntax refresh
             ctx.on_buffer_modified(buffer_id);
 
-            // Buffer metadata dispatched by TuiApp after this returns (#661)
-
-            Ok(NotificationResult::Redraw)
+            Ok(NotificationResult::RedrawWithMetadata)
         }
 
         Payload::LayoutChanged(layout) => {
@@ -330,9 +333,7 @@ pub async fn handle_notification<C: NotificationContext>(
                 }
             }
 
-            // Buffer metadata dispatched by TuiApp after this returns (#661)
-
-            Ok(NotificationResult::Redraw)
+            Ok(NotificationResult::RedrawWithMetadata)
         }
 
         Payload::RenderComplete(_) => Ok(NotificationResult::Redraw),

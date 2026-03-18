@@ -750,26 +750,35 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Handle server notification.
     async fn handle_server_notification(&mut self, notif: Notification) -> Result<(), TuiAppError> {
-        match handle_notification(self, notif).await {
+        let needs_metadata = match handle_notification(self, notif).await {
+            Ok(NotificationResult::RedrawWithMetadata) => {
+                self.state.set_needs_redraw(true);
+                true
+            }
             Ok(NotificationResult::Redraw) => {
                 self.state.set_needs_redraw(true);
+                false
             }
-            Ok(NotificationResult::NoRedraw) => {}
+            Ok(NotificationResult::NoRedraw) => false,
             Ok(NotificationResult::Stop) => {
                 self.running = false;
+                false
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Notification handling failed");
+                false
             }
-        }
+        };
 
         // Update layout mirror after any notification
         self.layout_mirror
             .apply_layout_changed(self.state.focused_window_id, &self.state.windows);
 
-        // Dispatch buffer metadata to statusline module (#661)
-        let exts = self.module_loader.modules_mut_slice();
-        dispatch_buffer_metadata(&self.state, &mut self.client, exts).await;
+        // Dispatch buffer metadata only when buffer/layout changed (#691)
+        if needs_metadata {
+            let exts = self.module_loader.modules_mut_slice();
+            dispatch_buffer_metadata(&self.state, &mut self.client, exts).await;
+        }
 
         Ok(())
     }
