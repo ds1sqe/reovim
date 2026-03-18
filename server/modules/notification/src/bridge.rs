@@ -5,11 +5,15 @@
 //! display toast popups with auto-dismiss and progress indicators.
 
 use {
-    crate::{KIND, NotificationLevel, NotificationState},
+    crate::{
+        KIND, NotificationLevel, NotificationState,
+        drain::{NotificationTokenMap, drain_entries},
+    },
     reovim_driver_session::{
-        ExtensionMap,
+        ExtensionMap, PendingNotificationQueue,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 /// Bridge for notification state.
@@ -78,6 +82,28 @@ impl ExtensionStateBridge for NotificationBridge {
         extensions
             .get::<NotificationState>()
             .is_some_and(NotificationState::is_active)
+    }
+
+    fn tick(
+        &self,
+        client_extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        services: &ServiceRegistry,
+    ) -> bool {
+        let Some(queue) = services.get::<PendingNotificationQueue>() else {
+            return false;
+        };
+        let pending = queue.drain();
+        if pending.is_empty() {
+            return false;
+        }
+
+        let token_map_svc = services.get_or_create::<NotificationTokenMap>();
+        let state = client_extensions.get_or_insert::<NotificationState>();
+        let mut token_map = token_map_svc.lock();
+        let changed = drain_entries(pending, state, &mut token_map);
+        drop(token_map);
+        changed
     }
 }
 

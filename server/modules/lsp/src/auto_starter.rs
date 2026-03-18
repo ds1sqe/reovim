@@ -100,7 +100,14 @@ impl LspLifecycle for LspAutoStarter {
                                 "diagnostics",
                                 Duration::from_millis(500),
                             );
-                            info!("Diagnostic tick started");
+                            // Notification tick (#691): drain PendingNotificationQueue
+                            // periodically so LSP progress/messages appear without keypress.
+                            tick_handle.start(
+                                DriverClientId::new(1),
+                                "notification",
+                                Duration::from_millis(200),
+                            );
+                            info!("Diagnostic and notification ticks started");
                         }
                     }
                     Err(e) => {

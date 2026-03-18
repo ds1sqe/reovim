@@ -15,8 +15,35 @@ fn drain_impl_implements_trait() {
 
 #[test]
 fn drain_impl_default() {
-    let drain = NotificationDrainImpl::default();
+    let drain = <NotificationDrainImpl as Default>::default();
     let _: &dyn NotificationDrain = &drain;
+}
+
+// ========================================================================
+// NotificationTokenMap service tests (#691)
+// ========================================================================
+
+#[test]
+fn token_map_default_is_empty() {
+    let tm = NotificationTokenMap::default();
+    assert!(tm.lock().is_empty());
+}
+
+#[test]
+fn token_map_debug() {
+    let tm = NotificationTokenMap::default();
+    let debug = format!("{tm:?}");
+    assert!(debug.contains("NotificationTokenMap"));
+}
+
+#[test]
+fn token_map_as_service() {
+    use reovim_kernel::api::v1::ServiceRegistry;
+    let registry = ServiceRegistry::new();
+    let tm = registry.get_or_create::<NotificationTokenMap>();
+    tm.lock().insert("tok".to_owned(), 42);
+    let tm2 = registry.get::<NotificationTokenMap>().unwrap();
+    assert_eq!(*tm2.lock().get("tok").unwrap(), 42);
 }
 
 // ========================================================================

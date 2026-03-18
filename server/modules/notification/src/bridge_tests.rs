@@ -207,3 +207,123 @@ fn test_snapshot_progress_with_source() {
     assert_eq!(entry["source"], "rust-analyzer");
     assert_eq!(entry["progress"]["percent"], 42);
 }
+
+// ========================================================================
+// Bridge tick() tests (#691 — periodic notification drain)
+// ========================================================================
+
+use reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp};
+use reovim_kernel::api::v1::ServiceRegistry;
+
+#[test]
+fn test_tick_no_queue_returns_false() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    assert!(!NotificationBridge.tick(&mut client, &mut shared, &services));
+}
+
+#[test]
+fn test_tick_empty_queue_returns_false() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let _ = services.get_or_create::<PendingNotificationQueue>();
+    assert!(!NotificationBridge.tick(&mut client, &mut shared, &services));
+}
+
+#[test]
+fn test_tick_drains_push_notification() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let queue = services.get_or_create::<PendingNotificationQueue>();
+    queue.push(PendingLevel::Info, "Hello from tick");
+
+    let changed = NotificationBridge.tick(&mut client, &mut shared, &services);
+    assert!(changed);
+
+    let state = client.get::<NotificationState>().unwrap();
+    assert_eq!(state.entries().len(), 1);
+    assert_eq!(state.entries()[0].title, "Hello from tick");
+}
+
+#[test]
+fn test_tick_drains_sourced_notification() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let queue = services.get_or_create::<PendingNotificationQueue>();
+    queue.push_op(
+        Some("rust-analyzer".to_owned()),
+        PendingOp::Push {
+            level: PendingLevel::Success,
+            title: "Ready".to_owned(),
+        },
+    );
+
+    NotificationBridge.tick(&mut client, &mut shared, &services);
+
+    let state = client.get::<NotificationState>().unwrap();
+    assert_eq!(state.entries()[0].source.as_deref(), Some("rust-analyzer"));
+}
+
+#[test]
+fn test_tick_progress_lifecycle() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let queue = services.get_or_create::<PendingNotificationQueue>();
+
+    // Begin
+    queue.push_op(
+        Some("ra".to_owned()),
+        PendingOp::ProgressBegin {
+            token: "t1".to_owned(),
+            title: "Indexing".to_owned(),
+            message: String::new(),
+            percentage: 0,
+        },
+    );
+    assert!(NotificationBridge.tick(&mut client, &mut shared, &services));
+    assert_eq!(client.get::<NotificationState>().unwrap().entries().len(), 1);
+
+    // Report
+    queue.push_op(
+        Some("ra".to_owned()),
+        PendingOp::ProgressReport {
+            token: "t1".to_owned(),
+            message: Some("50%".to_owned()),
+            percentage: Some(50),
+        },
+    );
+    assert!(NotificationBridge.tick(&mut client, &mut shared, &services));
+    let progress = client.get::<NotificationState>().unwrap().entries()[0]
+        .progress
+        .as_ref()
+        .unwrap();
+    assert_eq!(progress.percent, 50);
+
+    // End
+    queue.push_op(
+        Some("ra".to_owned()),
+        PendingOp::ProgressEnd {
+            token: "t1".to_owned(),
+            message: None,
+        },
+    );
+    assert!(NotificationBridge.tick(&mut client, &mut shared, &services));
+    assert!(client.get::<NotificationState>().unwrap().entries().is_empty());
+}
+
+#[test]
+fn test_tick_second_call_empty_returns_false() {
+    let mut client = ExtensionMap::new();
+    let mut shared = ExtensionMap::new();
+    let services = ServiceRegistry::new();
+    let queue = services.get_or_create::<PendingNotificationQueue>();
+    queue.push(PendingLevel::Info, "once");
+
+    assert!(NotificationBridge.tick(&mut client, &mut shared, &services));
+    assert!(!NotificationBridge.tick(&mut client, &mut shared, &services));
+}

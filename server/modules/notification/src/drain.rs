@@ -24,22 +24,43 @@ use {
 
 use crate::state::{NotificationLevel, NotificationState};
 
+/// Shared progress token-to-notification-ID mapping (#691).
+///
+/// Registered as a [`Service`] so both `NotificationDrainImpl` (command-handler
+/// path) and `NotificationBridge::tick()` (periodic path) share the same map.
+#[derive(Debug)]
+pub struct NotificationTokenMap {
+    map: Mutex<HashMap<String, u64>>,
+}
+
+impl NotificationTokenMap {
+    /// Lock and return mutable access to the token map.
+    pub fn lock(&self) -> parking_lot::MutexGuard<'_, HashMap<String, u64>> {
+        self.map.lock()
+    }
+}
+
+impl Default for NotificationTokenMap {
+    fn default() -> Self {
+        Self {
+            map: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl reovim_kernel::api::v1::Service for NotificationTokenMap {}
+
 /// Drains pending notifications into [`NotificationState`].
 ///
-/// Maintains a progress token-to-notification-ID mapping for `$/progress`
-/// lifecycle operations (#691).
-pub struct NotificationDrainImpl {
-    /// Maps progress tokens to `NotificationState` entry IDs.
-    token_map: Mutex<HashMap<String, u64>>,
-}
+/// Reads the shared [`NotificationTokenMap`] from `ServiceRegistry` for
+/// progress lifecycle operations (#691). The drain impl is stateless.
+pub struct NotificationDrainImpl;
 
 impl NotificationDrainImpl {
     /// Create a new drain.
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            token_map: Mutex::new(HashMap::new()),
-        }
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -52,15 +73,18 @@ impl Default for NotificationDrainImpl {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl NotificationDrain for NotificationDrainImpl {
     fn drain_pending(&self, runtime: &mut SessionRuntime<'_>) {
-        let queue = runtime.kernel().services.get::<PendingNotificationQueue>();
-        let Some(queue) = queue else { return };
+        let services = &runtime.kernel().services;
+        let Some(queue) = services.get::<PendingNotificationQueue>() else {
+            return;
+        };
         let pending = queue.drain();
         if pending.is_empty() {
             return;
         }
 
+        let token_map_svc = services.get_or_create::<NotificationTokenMap>();
         let state = runtime.ext_mut::<NotificationState>();
-        let mut token_map = self.token_map.lock();
+        let mut token_map = token_map_svc.lock();
         let changed = drain_entries(pending, state, &mut token_map);
         drop(token_map);
         if changed {
@@ -72,7 +96,7 @@ impl NotificationDrain for NotificationDrainImpl {
 }
 
 /// Convert a [`PendingLevel`] to a [`NotificationLevel`].
-const fn convert_level(level: PendingLevel) -> NotificationLevel {
+pub const fn convert_level(level: PendingLevel) -> NotificationLevel {
     match level {
         PendingLevel::Info => NotificationLevel::Info,
         PendingLevel::Success => NotificationLevel::Success,
@@ -85,7 +109,7 @@ const fn convert_level(level: PendingLevel) -> NotificationLevel {
 ///
 /// Extracted for testability — no `SessionRuntime` dependency.
 /// Returns `true` if any state was modified.
-fn drain_entries(
+pub fn drain_entries(
     pending: Vec<PendingEntry>,
     state: &mut NotificationState,
     token_map: &mut HashMap<String, u64>,
