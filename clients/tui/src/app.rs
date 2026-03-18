@@ -545,7 +545,12 @@ impl<O: TuiOutput> TuiApp<O> {
         let mut redraw_timer = interval(Duration::from_millis(16)); // 60 FPS max
 
         while self.running {
+            // Biased select: notification stream is prioritized over token
+            // stream so BufferModified updates buffer_cache before TokenUpdate
+            // tries to convert byte offsets to line/column positions.
             select! {
+                biased;
+
                 // Single input source: both TTY and TuiHandle feed here.
                 // None means all senders dropped → graceful shutdown.
                 result = self.input_rx.recv() => {

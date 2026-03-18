@@ -835,7 +835,7 @@ impl Session {
     ///
     /// # Returns
     ///
-    /// - `Some(BufferId)` if character was inserted into a buffer
+    /// - `Some((BufferId, Some(Modification)))` if character was inserted into a buffer
     /// - `None` if inserted into extension or failed
     #[allow(clippy::significant_drop_tightening)]
     pub fn insert_char_for_client(
@@ -843,11 +843,14 @@ impl Session {
         client_id: ClientId,
         ch: char,
         target: reovim_driver_input::InputTarget,
-    ) -> Option<reovim_kernel::api::v1::BufferId> {
+    ) -> Option<(
+        reovim_kernel::api::v1::BufferId,
+        Option<reovim_kernel::api::v1::events::kernel::Modification>,
+    )> {
         use {
             reovim_driver_input::InputTarget,
             reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-            reovim_kernel::api::v1::{Edit, Position},
+            reovim_kernel::api::v1::{Edit, Position, events::kernel::Modification},
         };
 
         match target {
@@ -873,8 +876,12 @@ impl Session {
                 let cursor_before =
                     Position::new(active_window.cursor.line, active_window.cursor.column);
 
+                // Compute start_byte BEFORE the mutation for incremental syntax parsing
+                let start_byte = buffer_arc.read().position_to_byte(cursor_before);
+
                 tracing::debug!(?buffer_id, ?ch, ?cursor_before, "Inserting into buffer");
-                buffer_arc.write().insert_at(cursor_before, &ch.to_string());
+                let ch_str = ch.to_string();
+                buffer_arc.write().insert_at(cursor_before, &ch_str);
 
                 // Update cursor position after insertion
                 // For regular characters, move cursor one position right
@@ -891,13 +898,21 @@ impl Session {
 
                 drop(clients);
 
+                // Build Modification for incremental syntax parsing
+                #[allow(clippy::cast_possible_truncation)] // cursor positions fit in u32
+                let modification = Modification::Insert {
+                    start: (cursor_before.line as u32, cursor_before.column as u32),
+                    text: ch_str.clone(),
+                    start_byte,
+                };
+
                 // Record edit for undo with client origin (#471)
                 if let Some(undo_reg) = undo_registry
                     && let Some(undo_provider) = undo_reg.get(&UndoKey::Buffer)
                 {
                     let edit = Edit::Insert {
                         position: cursor_before,
-                        text: ch.to_string(),
+                        text: ch_str,
                     };
                     undo_provider.record_for_client(
                         buffer_id,
@@ -908,7 +923,7 @@ impl Session {
                     );
                 }
 
-                Some(buffer_id)
+                Some((buffer_id, Some(modification)))
             }
             InputTarget::Extension(type_id) => {
                 // Phase #477: Check per-client extensions FIRST, then shared

@@ -1337,7 +1337,7 @@ fn test_insert_char_for_client_with_undo_recording() {
     assert_eq!(*cursor_before, Position::new(0, 0));
     assert_eq!(*cursor_after, Position::new(0, 1));
     // Buffer ID should match
-    assert_eq!(buf_id.as_usize(), result.unwrap().as_usize());
+    assert_eq!(buf_id.as_usize(), result.unwrap().0.as_usize());
     drop(recorded);
 }
 
