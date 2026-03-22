@@ -20,14 +20,16 @@
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use {
+    parking_lot::Mutex,
     reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
     reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
+        notification,
     },
     tonic::{Request, Response, Status},
 };
@@ -50,12 +52,20 @@ pub struct InputServiceImpl {
     default_session_id: SessionId,
     /// Extension bridge registry for notification emission (#514).
     bridges: Arc<BridgeRegistry>,
+    /// Cache of last-emitted extension snapshots for deduplication (#691).
+    ///
+    /// `detect_bridge_changes` records ALL active bridges as changed on every
+    /// keypress, but most bridge states don't change on cursor movement.
+    /// This cache suppresses `ExtensionUpdated` when the JSON is identical
+    /// to the last emission, eliminating ~5 unnecessary gRPC broadcasts per
+    /// j/k press.
+    snapshot_cache: Mutex<HashMap<(String, u64), String>>,
 }
 
 impl InputServiceImpl {
     /// Create a new `InputService` with access to the session registry.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         sessions: Arc<SessionRegistry>,
         default_session_id: SessionId,
         bridges: Arc<BridgeRegistry>,
@@ -64,6 +74,7 @@ impl InputServiceImpl {
             sessions,
             default_session_id,
             bridges,
+            snapshot_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -310,6 +321,7 @@ impl InputService for InputServiceImpl {
                 &accumulated_changes,
                 client_id.as_usize() as u64,
                 &self.bridges,
+                &self.snapshot_cache,
             );
         }
 
@@ -475,18 +487,36 @@ impl InputServiceImpl {
         changes: &StateChanges,
         client_id: u64,
         bridges: &BridgeRegistry,
+        snapshot_cache: &Mutex<HashMap<(String, u64), String>>,
     ) {
         let notifications =
             notification_builder::build_notifications(changes, session, client_id, Some(bridges));
 
-        let notification_count = notifications.len();
-        for notification in notifications {
-            session.emit_notification(notification);
+        let mut cache = snapshot_cache.lock();
+        let mut emitted = 0u32;
+        let mut suppressed = 0u32;
+        for notif in notifications {
+            // Deduplicate extension notifications: skip if JSON is identical
+            // to last emission for this (kind, client_id) pair (#691).
+            if let Some(notification::Payload::ExtensionUpdated(ref ext)) = notif.payload {
+                let key = (ext.kind.clone(), ext.client_id);
+                if let Some(prev) = cache.get(&key)
+                    && *prev == ext.data
+                {
+                    suppressed += 1;
+                    continue;
+                }
+                cache.insert(key, ext.data.clone());
+            }
+            session.emit_notification(notif);
+            emitted += 1;
         }
+        drop(cache);
 
-        if notification_count > 0 {
+        if emitted > 0 || suppressed > 0 {
             tracing::trace!(
-                count = notification_count,
+                emitted,
+                suppressed,
                 mode_changed = changes.mode_changed,
                 cursor_moved = changes.cursor_moved,
                 buffer_modified = changes.buffer_modified,

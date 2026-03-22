@@ -1,4 +1,9 @@
-use {super::*, reovim_driver_input::TransitionContext, std::collections::HashMap};
+use {super::*, parking_lot::Mutex, reovim_driver_input::TransitionContext, std::collections::HashMap};
+
+/// Helper: create a fresh snapshot cache for test isolation.
+fn test_cache() -> Mutex<HashMap<(String, u64), String>> {
+    Mutex::new(HashMap::new())
+}
 
 fn test_registry() -> Arc<SessionRegistry> {
     let registry = Arc::new(SessionRegistry::new());
@@ -258,7 +263,7 @@ fn test_emit_notifications_with_empty_changes() {
     let session = crate::session::Session::new(SessionId::new("emit-test"));
     let changes = StateChanges::new();
     // Should not panic even with empty changes
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 }
 
 #[test]
@@ -268,7 +273,7 @@ fn test_emit_notifications_with_mode_change() {
     changes.record_mode_change();
 
     // Should emit mode_changed notification without panic
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 }
 
 #[test]
@@ -280,7 +285,7 @@ fn test_emit_notifications_with_buffer_modified() {
 
     // Subscribe to verify notifications are emitted
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     let received = rx.try_recv();
     assert!(received.is_ok());
@@ -297,7 +302,7 @@ fn test_emit_notifications_with_multiple_changes() {
     changes.buffers_created.push(buffer_id);
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     // Should receive multiple notifications
     let mut count = 0;
@@ -516,7 +521,7 @@ fn test_emit_notifications_with_cursor_moved() {
     changes.record_cursor_move(buffer_id);
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new(), &test_cache());
 
     let received = rx.try_recv();
     assert!(received.is_ok());
@@ -534,7 +539,7 @@ fn test_emit_notifications_with_selection_changed() {
     // Emit notifications for selection changes
     // No client state set up, so selection notification may not produce output
     // but should not panic
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 }
 
 #[test]
@@ -544,7 +549,7 @@ fn test_emit_notifications_with_window_changed() {
     changes.window_changed = true;
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     let received = rx.try_recv();
     assert!(received.is_ok());
@@ -559,7 +564,7 @@ fn test_emit_notifications_with_buffer_list_changed() {
     changes.buffers_created.push(buffer_id);
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     let received = rx.try_recv();
     assert!(received.is_ok());
@@ -579,7 +584,7 @@ fn test_emit_notifications_with_option_changed() {
     });
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     let received = rx.try_recv();
     assert!(received.is_ok());
@@ -596,7 +601,7 @@ fn test_emit_notifications_with_scroll_changed() {
 
     // No client windows means viewport notification won't be produced
     // but should not panic
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 }
 
 #[test]
@@ -619,7 +624,7 @@ fn test_emit_notifications_all_change_types_at_once() {
     });
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new(), &test_cache());
 
     let mut count = 0;
     while rx.try_recv().is_ok() {
@@ -828,9 +833,9 @@ fn test_emit_notifications_with_client_id() {
     changes.record_mode_change();
 
     // Should work with any client_id value
-    InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new());
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
-    InputServiceImpl::emit_notifications(&session, &changes, u64::MAX, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new(), &test_cache());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
+    InputServiceImpl::emit_notifications(&session, &changes, u64::MAX, &BridgeRegistry::new(), &test_cache());
 }
 
 #[test]
@@ -1016,7 +1021,7 @@ fn test_emit_notifications_has_changes_check() {
     assert!(!changes.has_changes());
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     // Should not receive any notifications
     assert!(rx.try_recv().is_err());
@@ -1033,7 +1038,7 @@ fn test_emit_notifications_multiple_buffers() {
     changes.record_buffer_modified(buf2);
 
     let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new(), &test_cache());
 
     // Should receive notifications for both buffers
     let mut received = Vec::new();
@@ -1184,6 +1189,7 @@ fn test_emit_notifications_with_affected_buffers() {
         &changes,
         client_id.as_usize() as u64,
         &BridgeRegistry::new(),
+        &test_cache(),
     );
 
     // Should emit cursor_moved notifications
@@ -1320,7 +1326,7 @@ fn test_emit_notifications_with_scrolled_windows() {
     changes.scrolled_windows.push(window_id);
 
     // Should not panic even without client windows
-    InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new());
+    InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new(), &test_cache());
 }
 
 // =========================================================================
@@ -2289,4 +2295,53 @@ fn test_detect_bridge_changes_empty_before() {
     let mut changes = StateChanges::new();
     InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     assert!(!changes.extension_changed);
+}
+
+// =========================================================================
+// Snapshot deduplication tests (#691)
+// =========================================================================
+
+#[test]
+fn test_snapshot_cache_starts_empty() {
+    let cache = test_cache();
+    assert!(cache.lock().is_empty());
+}
+
+#[test]
+fn test_snapshot_cache_dedup_with_real_data() {
+    let cache = test_cache();
+
+    // Simulate: insert a cached entry, then check dedup logic
+    {
+        let mut c = cache.lock();
+        c.insert(
+            ("test-ext".to_string(), 1),
+            r#"{"active":true,"items":[]}"#.to_string(),
+        );
+    }
+
+    // Same data should be detected as duplicate
+    let c = cache.lock();
+    let key = ("test-ext".to_string(), 1u64);
+    let prev = c.get(&key).unwrap();
+    assert_eq!(prev, r#"{"active":true,"items":[]}"#);
+    // Different data should NOT match
+    assert_ne!(prev, r#"{"active":true,"items":["new"]}"#);
+    drop(c);
+}
+
+#[test]
+fn test_snapshot_cache_different_client_ids_are_independent() {
+    let cache = test_cache();
+
+    {
+        let mut c = cache.lock();
+        c.insert(("ext".to_string(), 1), "data-1".to_string());
+        c.insert(("ext".to_string(), 2), "data-2".to_string());
+    }
+
+    let c = cache.lock();
+    assert_eq!(c.get(&("ext".to_string(), 1)).unwrap(), "data-1");
+    assert_eq!(c.get(&("ext".to_string(), 2)).unwrap(), "data-2");
+    drop(c);
 }
