@@ -121,6 +121,8 @@ impl Picker for LspLocationPicker {
 /// Open a file by path, reusing existing buffers when possible.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
+    use reovim_kernel::api::v1::events::kernel::FileOpened;
+
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let path_str = canonical.to_string_lossy();
 
@@ -130,6 +132,7 @@ fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
             .is_some_and(|p| Path::new(&p) == canonical)
     });
 
+    let is_new = existing.is_none();
     let buf_id = existing.unwrap_or_else(|| {
         let content = runtime
             .kernel()
@@ -144,6 +147,17 @@ fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
 
     if let Some(win) = runtime.active_window() {
         let _ = runtime.set_window_buffer(win, buf_id);
+    }
+    runtime.set_active_buffer(Some(buf_id));
+
+    if is_new {
+        runtime.record_buffer_modified(buf_id);
+        #[allow(clippy::cast_possible_truncation)]
+        let buf_id_raw = buf_id.as_usize() as u64;
+        runtime.kernel().event_bus.emit(FileOpened {
+            buffer_id: buf_id_raw,
+            path: path_str.to_string(),
+        });
     }
 }
 

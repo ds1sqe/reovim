@@ -11,7 +11,7 @@ use {
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
-    reovim_driver_session::WindowApi,
+    reovim_driver_session::{BufferApi, WindowApi},
     reovim_kernel::api::v1::{
         BufferId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
@@ -87,6 +87,7 @@ impl Picker for BuffersPicker {
             if let Some(win) = runtime.active_window() {
                 let _ = runtime.set_window_buffer(win, buf);
             }
+            runtime.set_active_buffer(Some(buf));
         }
     }
 }

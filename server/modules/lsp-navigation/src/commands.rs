@@ -661,9 +661,17 @@ fn notify_info(runtime: &mut SessionRuntime<'_>, message: &str) {
 /// Jump to an LSP location (open file + set cursor).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Location) {
+    use reovim_kernel::api::v1::{JumpEntry, Position, events::kernel::FileOpened};
+
     let path = path_from_uri(&location.uri);
     let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
     let path_str = canonical.to_string_lossy();
+
+    // Push current position to jump list before jumping so Ctrl-O returns here.
+    if let (Some(old_buf), Some(old_win)) = (runtime.active_buffer(), runtime.windows().active()) {
+        let old_pos = Position::new(old_win.cursor.line, old_win.cursor.column);
+        runtime.jumplist_mut().push(JumpEntry::new(old_buf, old_pos));
+    }
 
     let existing = runtime.kernel().buffers.list().into_iter().find(|&id| {
         runtime
@@ -671,6 +679,7 @@ fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Loca
             .is_some_and(|p| Path::new(&p) == canonical)
     });
 
+    let is_new = existing.is_none();
     let buf_id = existing.unwrap_or_else(|| {
         use reovim_driver_vfs::VfsInstance;
         let content = runtime
@@ -687,10 +696,25 @@ fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Loca
     if let Some(win) = runtime.active_window() {
         let _ = runtime.set_window_buffer(win, buf_id);
     }
+    // Update active_buffer so subsequent commands (motions, operators)
+    // operate on the jumped-to buffer, not the original one.
+    runtime.set_active_buffer(Some(buf_id));
 
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor.line = location.range.start.line as usize;
         window.cursor.column = location.range.start.character as usize;
+    }
+
+    // For new buffers: record as modified so emit_syntax_updates fires
+    // (initializes tree-sitter), then emit FileOpened for LSP didOpen.
+    if is_new {
+        runtime.record_buffer_modified(buf_id);
+        #[allow(clippy::cast_possible_truncation)]
+        let buf_id_raw = buf_id.as_usize() as u64;
+        runtime.kernel().event_bus.emit(FileOpened {
+            buffer_id: buf_id_raw,
+            path: path_str.to_string(),
+        });
     }
 
     runtime.record_cursor_move(buf_id);
