@@ -1,47 +1,8 @@
 //! Bufferline state types.
 //!
-//! `BufferlineSnapshot` holds the computed buffer entries for client rendering.
 //! `BufferlineState` holds the pin list (session-wide shared extension).
-//! `BufferEntry` is the per-buffer data structure sent to clients.
 
 use reovim_driver_session::SessionExtension;
-
-/// A single buffer entry in the bufferline.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BufferEntry {
-    /// Buffer identifier.
-    pub id: u64,
-    /// Display name (filename or "[No Name]").
-    pub name: String,
-    /// Full file path, if file-backed.
-    pub path: Option<String>,
-    /// Whether the buffer has unsaved changes.
-    pub modified: bool,
-    /// Whether the buffer is pinned.
-    pub pinned: bool,
-    /// Filetype (e.g., "rust", "python").
-    pub filetype: Option<String>,
-    /// Number of error-severity diagnostics.
-    pub error_count: u32,
-    /// Number of warning-severity diagnostics.
-    pub warning_count: u32,
-}
-
-/// Computed snapshot of buffer entries for client rendering.
-///
-/// Stored in the shared `ExtensionMap`. Updated by `BufferlineBridge::tick()`.
-pub struct BufferlineSnapshot {
-    /// Ordered list of buffer entries.
-    pub entries: Vec<BufferEntry>,
-}
-
-impl SessionExtension for BufferlineSnapshot {
-    fn create() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
-    }
-}
 
 /// Session-wide bufferline state (pin list).
 ///

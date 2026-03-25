@@ -628,6 +628,68 @@ pub(crate) async fn dispatch_buffer_metadata(
     }
 }
 
+/// Dispatch buffer list to all client modules.
+///
+/// Fetches the full buffer list via `list_buffers()` gRPC, filters to
+/// buffers attached to the client's windows, and broadcasts a JSON payload
+/// to all modules via `on_notification()`. Each module decides whether the
+/// `buffer_list` payload is relevant. Called alongside
+/// `dispatch_buffer_metadata` on layout/buffer changes.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub(crate) async fn dispatch_buffer_list(
+    state: &TuiCoreState,
+    client: &mut TuiGrpcClient,
+    extensions: &mut [Box<dyn ClientModule>],
+) {
+    // Collect buffer IDs from client's windows.
+    let window_buf_ids: Vec<u64> = state
+        .windows
+        .iter()
+        .filter_map(|w| w.buffer_id)
+        .collect();
+    if window_buf_ids.is_empty() {
+        return;
+    }
+
+    let Ok(response) = client.list_buffers().await else {
+        return;
+    };
+
+    // Build JSON entries for buffers visible in client's windows.
+    let mut entries = String::from("[");
+    let mut first = true;
+    for info in &response.buffers {
+        if !window_buf_ids.contains(&info.id) {
+            continue;
+        }
+        let name = if info.name.is_empty() {
+            info.path.as_deref().unwrap_or("[No Name]")
+        } else {
+            &info.name
+        };
+        let filetype = guess_filetype(name);
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        if !first {
+            entries.push(',');
+        }
+        first = false;
+        let _ = std::fmt::Write::write_fmt(
+            &mut entries,
+            format_args!(
+                r#"{{"id":{},"name":"{escaped}","modified":{},"filetype":"{filetype}"}}"#,
+                info.id, info.modified
+            ),
+        );
+    }
+    entries.push(']');
+
+    let json = format!(r#"{{"type":"buffer_list","buffers":{entries}}}"#);
+
+    for ext in extensions {
+        ext.on_notification(&json);
+    }
+}
+
 /// Convert a proto `OptionValue` to a client-driver `OptionValue`.
 fn proto_to_client_option(value: OptionValue) -> ClientOptionValue {
     match value {

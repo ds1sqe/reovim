@@ -2,49 +2,38 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Bufferline module for reovim.
 //!
-//! Provides a tab/buffer bar showing open buffers with active highlight,
-//! modified markers, filetype metadata, and per-buffer diagnostic counts.
-//! Follows the extension-state-bridge pattern with `ExtensionScope::Shared`.
+//! Provides pin/unpin/close commands for the buffer tab bar. The buffer
+//! list itself is fetched client-side via `list_buffers()` gRPC — this
+//! module only manages server-owned pin state and a thin bridge that
+//! emits pin changes to clients.
 
 pub mod bridge;
 pub mod commands;
 pub mod ids;
-pub mod service;
 pub mod state;
-
-use std::sync::Arc;
 
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_input::KeybindingStore,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
-        EventResult, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
-        ProbeResult, Subscription, Version,
-        events::kernel::{BufferClosed, BufferCreated, BufferModified, BufferSaved, priority},
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
 };
-
-use service::{BufferEntrySnapshot, BufferListService};
 
 const KIND: &str = "bufferline";
 
 /// Bufferline module.
 ///
-/// Maintains a buffer list service populated via `EventBus` subscriptions
-/// and a bridge that serializes the buffer list to JSON for TUI/Web clients.
-pub struct BufferlineModule {
-    /// Active `EventBus` subscriptions (RAII — drop unsubscribes).
-    subscriptions: Vec<Subscription>,
-}
+/// Registers pin commands, keybindings, and a thin pin-state bridge.
+/// Buffer list data flows client-side (no server-side aggregation).
+pub struct BufferlineModule;
 
 impl BufferlineModule {
     /// Create a new instance.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            subscriptions: Vec::new(),
-        }
+        Self
     }
 }
 
@@ -64,16 +53,13 @@ impl Module for BufferlineModule {
     }
 
     fn version(&self) -> Version {
-        Version::new(0, 1, 0)
+        Version::new(0, 2, 0)
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        // Register bridge.
+        // Register pin-state bridge.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
-        provider.register(bridge::BufferlineBridge);
-
-        // Ensure BufferListService exists.
-        let _svc = ctx.services.get_or_create::<BufferListService>();
+        provider.register(bridge::PinBridge);
 
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
@@ -85,73 +71,10 @@ impl Module for BufferlineModule {
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
 
-        // Subscribe to buffer lifecycle events.
-        let bus = Arc::clone(&ctx.kernel.event_bus);
-        let services = Arc::clone(&ctx.services);
-
-        // BufferCreated: add entry to the buffer list.
-        let svc_ref = Arc::clone(&services);
-        let sub_created =
-            bus.subscribe_with_context::<BufferCreated, _>(priority::NORMAL, move |event, _ctx| {
-                if let Some(svc) = svc_ref.get::<BufferListService>() {
-                    svc.add(BufferEntrySnapshot {
-                        id: event.buffer_id,
-                        name: String::from("[No Name]"),
-                        path: None,
-                        modified: false,
-                        filetype: None,
-                    });
-                }
-                EventResult::Handled
-            });
-        // Detach so handlers survive module drop (bootstrap drops modules after init).
-        sub_created.detach();
-        self.subscriptions.push(sub_created);
-
-        // BufferClosed: remove entry.
-        let svc_ref = Arc::clone(&services);
-        let sub_closed =
-            bus.subscribe_with_context::<BufferClosed, _>(priority::NORMAL, move |event, _ctx| {
-                if let Some(svc) = svc_ref.get::<BufferListService>() {
-                    svc.remove(event.buffer_id);
-                }
-                EventResult::Handled
-            });
-        sub_closed.detach();
-        self.subscriptions.push(sub_closed);
-
-        // BufferModified: mark as modified.
-        let svc_ref = Arc::clone(&services);
-        let sub_modified = bus.subscribe_with_context::<BufferModified, _>(
-            priority::NORMAL,
-            move |event, _ctx| {
-                if let Some(svc) = svc_ref.get::<BufferListService>() {
-                    svc.set_modified(event.buffer_id, true);
-                }
-                EventResult::Handled
-            },
-        );
-        sub_modified.detach();
-        self.subscriptions.push(sub_modified);
-
-        // BufferSaved: update path, filetype, and clear modified.
-        let svc_ref = Arc::clone(&services);
-        let sub_saved =
-            bus.subscribe_with_context::<BufferSaved, _>(priority::NORMAL, move |event, _ctx| {
-                if let Some(svc) = svc_ref.get::<BufferListService>() {
-                    svc.set_path(event.buffer_id, event.path.clone());
-                    svc.set_modified(event.buffer_id, false);
-                }
-                EventResult::Handled
-            });
-        sub_saved.detach();
-        self.subscriptions.push(sub_saved);
-
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
-        self.subscriptions.clear();
         Ok(())
     }
 

@@ -7,23 +7,26 @@ fn test_caps() -> MockPlatformCapabilities {
     MockPlatformCapabilities::new()
 }
 
-fn bounds(width: u16) -> Rect {
+fn full_bounds() -> Rect {
     Rect {
         x: 0,
         y: 0,
-        width,
-        height: 1,
+        width: 80,
+        height: 24,
     }
 }
 
-fn sample_json(buffers: &str) -> String {
-    format!(r#"{{"active": true, "buffers": [{buffers}]}}"#)
+fn buffer_list_json(buffers: &str) -> String {
+    format!(r#"{{"type":"buffer_list","buffers":[{buffers}]}}"#)
 }
 
-fn one_buffer_json(id: u64, name: &str, modified: bool) -> String {
-    format!(
-        r#"{{"id": {id}, "name": "{name}", "modified": {modified}, "pinned": false, "errorCount": 0, "warningCount": 0}}"#,
-    )
+fn one_buf(id: u64, name: &str, modified: bool) -> String {
+    format!(r#"{{"id":{id},"name":"{name}","modified":{modified}}}"#)
+}
+
+fn pin_state_json(pins: &[u64]) -> String {
+    let pins_str: Vec<String> = pins.iter().map(ToString::to_string).collect();
+    format!(r#"{{"type":"pin_state","pins":[{}]}}"#, pins_str.join(","))
 }
 
 // =============================================================================
@@ -41,7 +44,7 @@ fn module_id() {
 #[test]
 fn module_version() {
     let m = BufferlineModule::new();
-    assert_eq!(m.version(), Version::new(0, 1, 0));
+    assert_eq!(m.version(), Version::new(0, 2, 0));
 }
 
 #[test]
@@ -61,15 +64,15 @@ fn has_chrome_true() {
 }
 
 #[test]
-fn chrome_position_top() {
+fn chrome_position_overlay() {
     let m = BufferlineModule::new();
-    assert_eq!(m.chrome_position(), ChromePosition::Top);
+    assert_eq!(m.chrome_position(), ChromePosition::Overlay);
 }
 
 #[test]
-fn chrome_size_one() {
+fn chrome_size_zero_overlay() {
     let m = BufferlineModule::new();
-    assert_eq!(m.chrome_requested_size(&test_caps()), 1);
+    assert_eq!(m.chrome_requested_size(&test_caps()), 0);
 }
 
 #[test]
@@ -89,83 +92,119 @@ fn server_kinds() {
 // =============================================================================
 
 #[test]
-fn init_succeeds() {
-    let mut m = BufferlineModule::new();
-    // ModuleContext has no Default impl, so we test through a simulated path.
-    // The init method is trivially ProbeResult::Success, verified via integration.
-    assert!(m.exit().is_ok());
-}
-
-#[test]
-fn exit_succeeds() {
+fn init_exit_succeeds() {
     let mut m = BufferlineModule::new();
     assert!(m.exit().is_ok());
 }
 
 // =============================================================================
-// on_notification tests
+// on_notification — buffer_list
 // =============================================================================
 
 #[test]
-fn on_notification_parses_valid_json() {
+fn buffer_list_populates_tabs() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
+    m.on_notification(&buffer_list_json(&one_buf(1, "main.rs", false)));
     assert_eq!(m.tabs.len(), 1);
     assert_eq!(m.tabs[0].name, "main.rs");
     assert!(!m.tabs[0].modified);
 }
 
 #[test]
-fn on_notification_inactive_clears_tabs() {
+fn buffer_list_replaces_tabs() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
-    assert_eq!(m.tabs.len(), 1);
+    m.on_notification(&buffer_list_json(&one_buf(1, "main.rs", false)));
 
-    m.on_notification(r#"{"active": false}"#);
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", false),
+        one_buf(2, "lib.rs", true)
+    )));
+    assert_eq!(m.tabs.len(), 2);
+}
+
+#[test]
+fn buffer_list_empty_clears() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&one_buf(1, "main.rs", false)));
+    m.on_notification(&buffer_list_json(""));
     assert!(m.tabs.is_empty());
 }
 
 #[test]
-fn on_notification_ignores_malformed_json() {
+fn buffer_list_merges_with_cached_pins() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
+    m.on_notification(&pin_state_json(&[2]));
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "a.rs", false),
+        one_buf(2, "b.rs", false)
+    )));
 
-    m.on_notification("not json");
-    assert_eq!(m.tabs.len(), 1, "Tabs should be unchanged after bad JSON");
-}
-
-#[test]
-fn on_notification_empty_buffers_clears() {
-    let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
-
-    m.on_notification(r#"{"active": true, "buffers": []}"#);
-    assert!(m.tabs.is_empty());
-}
-
-#[test]
-fn on_notification_parses_diagnostics() {
-    let mut m = BufferlineModule::new();
-    let json = r#"{"active": true, "buffers": [{"id": 1, "name": "a.rs", "modified": false, "pinned": false, "errorCount": 3, "warningCount": 1}]}"#;
-    m.on_notification(json);
-    assert_eq!(m.tabs[0].error_count, 3);
-    assert_eq!(m.tabs[0].warning_count, 1);
-}
-
-#[test]
-fn on_notification_parses_pinned() {
-    let mut m = BufferlineModule::new();
-    let json = r#"{"active": true, "buffers": [{"id": 1, "name": "a.rs", "modified": false, "pinned": true, "errorCount": 0, "warningCount": 0}]}"#;
-    m.on_notification(json);
+    assert_eq!(m.tabs[0].id, 2);
     assert!(m.tabs[0].pinned);
+    assert_eq!(m.tabs[1].id, 1);
+    assert!(!m.tabs[1].pinned);
 }
 
 // =============================================================================
-// on_buffer_focus tests
+// on_notification — pin_state
+// =============================================================================
+
+#[test]
+fn pin_state_updates_cache() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&pin_state_json(&[1, 3]));
+    assert_eq!(m.pinned_ids, vec![1, 3]);
+}
+
+#[test]
+fn pin_state_reapplies_to_existing_tabs() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "a.rs", false),
+        one_buf(2, "b.rs", false)
+    )));
+
+    m.on_notification(&pin_state_json(&[1]));
+    let tab1 = m.tabs.iter().find(|t| t.id == 1).unwrap();
+    assert!(tab1.pinned);
+}
+
+#[test]
+fn pin_state_empty_unpins_all() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&pin_state_json(&[1]));
+    m.on_notification(&buffer_list_json(&one_buf(1, "a.rs", false)));
+    assert!(m.tabs[0].pinned);
+
+    m.on_notification(&pin_state_json(&[]));
+    assert!(!m.tabs[0].pinned);
+}
+
+// =============================================================================
+// on_notification — malformed / unknown
+// =============================================================================
+
+#[test]
+fn malformed_json_ignored() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&one_buf(1, "a.rs", false)));
+    m.on_notification("not json");
+    assert_eq!(m.tabs.len(), 1);
+}
+
+#[test]
+fn unknown_type_ignored() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&one_buf(1, "a.rs", false)));
+    m.on_notification(r#"{"type":"unknown","data":42}"#);
+    assert_eq!(m.tabs.len(), 1);
+}
+
+// =============================================================================
+// on_buffer_focus
 // =============================================================================
 
 #[test]
@@ -176,121 +215,144 @@ fn on_buffer_focus_updates_active() {
 }
 
 // =============================================================================
-// chrome_render tests
+// chrome_render — overlay at top-right
 // =============================================================================
 
 #[test]
-fn render_empty_bar_no_tabs() {
-    let m = BufferlineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(80), &test_caps());
-    // Only the fill should occur — no tab writes.
+fn render_hidden_with_one_tab() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&one_buf(1, "main.rs", false)));
+
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
+
+    // Single tab — should not render.
     let has_tab = surface.writes().iter().any(|w| w.text.contains("main.rs"));
-    assert!(!has_tab);
+    assert!(!has_tab, "Should not render with only 1 tab");
 }
 
 #[test]
-fn render_one_tab() {
+fn render_visible_with_two_tabs() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", false),
+        one_buf(2, "lib.rs", false)
+    )));
 
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_name = surface.writes().iter().any(|w| w.text.contains("main.rs"));
-    assert!(has_name, "Expected 'main.rs' in renders");
+    let has_main = surface.writes().iter().any(|w| w.text.contains("main.rs"));
+    let has_lib = surface.writes().iter().any(|w| w.text.contains("lib.rs"));
+    assert!(has_main, "Expected main.rs");
+    assert!(has_lib, "Expected lib.rs");
+}
+
+#[test]
+fn render_at_top_right() {
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "a.rs", false),
+        one_buf(2, "b.rs", false)
+    )));
+
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
+
+    // All writes should be on row 0 (top) and right-aligned.
+    for w in surface.writes() {
+        assert_eq!(w.y, 0, "Should render on top row");
+    }
+
+    // Last write should end near the right edge.
+    let last = surface.writes().last().unwrap();
+    let end_x = last.x as usize + last.text.len();
+    assert_eq!(end_x, 80, "Should be right-aligned to screen edge");
 }
 
 #[test]
 fn render_active_tab_highlighted() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", false));
-    m.on_notification(&json);
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", false),
+        one_buf(2, "lib.rs", false)
+    )));
     m.on_buffer_focus(BufferId(1));
 
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let active_write = surface
+    // The active tab is overwritten on top of the bg — find the last
+    // write containing "main.rs" (the active-style overwrite).
+    let active = surface
         .writes()
         .iter()
-        .find(|w| w.text.contains("main.rs"))
+        .rfind(|w| w.text.contains("main.rs"))
         .expect("Expected main.rs tab");
-    assert_eq!(active_write.style.bg, Some(Color::Blue));
+    assert_eq!(active.style.bg, Some(Color::Blue));
 }
 
 #[test]
 fn render_modified_shows_marker() {
     let mut m = BufferlineModule::new();
-    let json = sample_json(&one_buffer_json(1, "main.rs", true));
-    m.on_notification(&json);
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", true),
+        one_buf(2, "lib.rs", false)
+    )));
 
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
     let has_modified = surface.writes().iter().any(|w| w.text.contains("[+]"));
     assert!(has_modified, "Expected [+] for modified buffer");
 }
 
 #[test]
-fn render_diagnostics() {
+fn render_pinned_shows_star() {
     let mut m = BufferlineModule::new();
-    let json = r#"{"active": true, "buffers": [{"id": 1, "name": "a.rs", "modified": false, "pinned": false, "errorCount": 2, "warningCount": 3}]}"#;
-    m.on_notification(json);
+    m.on_notification(&pin_state_json(&[1]));
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", false),
+        one_buf(2, "lib.rs", false)
+    )));
 
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_errors = surface.writes().iter().any(|w| w.text.contains("E:2"));
-    let has_warnings = surface.writes().iter().any(|w| w.text.contains("W:3"));
-    assert!(has_errors, "Expected E:2 in renders");
-    assert!(has_warnings, "Expected W:3 in renders");
+    let has_pin = surface.writes().iter().any(|w| w.text.contains('*'));
+    assert!(has_pin, "Expected * for pinned buffer");
 }
 
 #[test]
 fn render_zero_width_no_crash() {
-    let m = BufferlineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
-    m.chrome_render(&mut surface, bounds(0), &test_caps());
+    let mut m = BufferlineModule::new();
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "a.rs", false),
+        one_buf(2, "b.rs", false)
+    )));
+
+    let mut surface = WriteSurface::new(80, 24);
+    let zero_bounds = Rect { x: 0, y: 0, width: 0, height: 24 };
+    m.chrome_render(&mut surface, zero_bounds, &test_caps());
     assert!(surface.writes().is_empty());
 }
 
 #[test]
-fn render_overflow_truncates() {
-    let mut m = BufferlineModule::new();
-    // Create many buffers to overflow a narrow width.
-    let buffers: Vec<String> = (1..=10)
-        .map(|i| one_buffer_json(i, &format!("file{i}.rs"), false))
-        .collect();
-    let json = sample_json(&buffers.join(","));
-    m.on_notification(&json);
-
-    let mut surface = WriteSurface::new(30, 1);
-    m.chrome_render(&mut surface, bounds(30), &test_caps());
-
-    // Should render something without panicking.
-    let total_written: usize = surface.writes().iter().map(|w| w.text.len()).sum();
-    assert!(total_written > 0);
-}
-
-#[test]
-fn render_auto_scrolls_to_active() {
-    let mut m = BufferlineModule::new();
-    let buffers: Vec<String> = (1..=10)
-        .map(|i| one_buffer_json(i, &format!("file{i}.rs"), false))
-        .collect();
-    let json = sample_json(&buffers.join(","));
-    m.on_notification(&json);
-
-    // Focus on last buffer — should auto-scroll.
-    m.on_buffer_focus(BufferId(10));
-    // Scroll offset should not be past the active tab.
-    assert!(m.scroll_offset <= 9);
+fn render_empty_tabs_no_output() {
+    let m = BufferlineModule::new();
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
+    assert!(surface.writes().is_empty());
 }
 
 // =============================================================================
-// format_tab_label tests
+// format_tab_label
 // =============================================================================
 
 #[test]
@@ -300,8 +362,6 @@ fn format_tab_label_basic() {
         name: String::from("main.rs"),
         modified: false,
         pinned: false,
-        error_count: 0,
-        warning_count: 0,
     };
     assert_eq!(format_tab_label(&tab), " main.rs ");
 }
@@ -313,42 +373,8 @@ fn format_tab_label_modified() {
         name: String::from("main.rs"),
         modified: true,
         pinned: false,
-        error_count: 0,
-        warning_count: 0,
     };
     assert_eq!(format_tab_label(&tab), " main.rs [+] ");
-}
-
-#[test]
-fn format_tab_label_with_diagnostics() {
-    let tab = TabEntry {
-        id: 1,
-        name: String::from("main.rs"),
-        modified: false,
-        pinned: false,
-        error_count: 5,
-        warning_count: 2,
-    };
-    let label = format_tab_label(&tab);
-    assert!(label.contains("E:5"));
-    assert!(label.contains("W:2"));
-}
-
-#[test]
-fn format_tab_label_all_indicators() {
-    let tab = TabEntry {
-        id: 1,
-        name: String::from("x.rs"),
-        modified: true,
-        pinned: true,
-        error_count: 1,
-        warning_count: 1,
-    };
-    let label = format_tab_label(&tab);
-    assert!(label.contains("* x.rs"), "Pinned tab should have pin indicator");
-    assert!(label.contains("[+]"));
-    assert!(label.contains("E:1"));
-    assert!(label.contains("W:1"));
 }
 
 #[test]
@@ -358,56 +384,86 @@ fn format_tab_label_pinned() {
         name: String::from("main.rs"),
         modified: false,
         pinned: true,
-        error_count: 0,
-        warning_count: 0,
     };
     assert_eq!(format_tab_label(&tab), " * main.rs ");
 }
 
-// =============================================================================
-// ensure_active_visible tests
-// =============================================================================
-
 #[test]
-fn ensure_active_visible_scrolls_back() {
-    let mut m = BufferlineModule::new();
-    m.tabs = (0..5)
-        .map(|i| TabEntry {
-            id: i,
-            name: format!("f{i}.rs"),
-            modified: false,
-            pinned: false,
-            error_count: 0,
-            warning_count: 0,
-        })
-        .collect();
-    m.scroll_offset = 3;
-    m.active_buffer_id = Some(1);
-    m.ensure_active_visible();
-    assert_eq!(m.scroll_offset, 1);
-}
-
-#[test]
-fn ensure_active_visible_no_active() {
-    let mut m = BufferlineModule::new();
-    m.scroll_offset = 5;
-    m.ensure_active_visible();
-    assert_eq!(m.scroll_offset, 5, "Should not change without active buffer");
-}
-
-#[test]
-fn ensure_active_visible_active_not_in_tabs() {
-    let mut m = BufferlineModule::new();
-    m.tabs = vec![TabEntry {
+fn format_tab_label_all_indicators() {
+    let tab = TabEntry {
         id: 1,
-        name: String::from("a.rs"),
-        modified: false,
-        pinned: false,
-        error_count: 0,
-        warning_count: 0,
-    }];
-    m.active_buffer_id = Some(99);
-    m.scroll_offset = 0;
-    m.ensure_active_visible();
-    assert_eq!(m.scroll_offset, 0);
+        name: String::from("x.rs"),
+        modified: true,
+        pinned: true,
+    };
+    let label = format_tab_label(&tab);
+    assert!(label.contains("* x.rs"));
+    assert!(label.contains("[+]"));
+}
+
+// =============================================================================
+// build_tab_string
+// =============================================================================
+
+#[test]
+fn build_tab_string_empty() {
+    let m = BufferlineModule::new();
+    let (s, range) = m.build_tab_string();
+    assert!(s.is_empty());
+    assert!(range.is_none());
+}
+
+#[test]
+fn build_tab_string_single() {
+    let mut m = BufferlineModule::new();
+    m.tabs = vec![TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false }];
+    let (s, _) = m.build_tab_string();
+    assert_eq!(s, " a.rs ");
+}
+
+#[test]
+fn build_tab_string_active_range() {
+    let mut m = BufferlineModule::new();
+    m.active_buffer_id = Some(2);
+    m.tabs = vec![
+        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false },
+        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: false },
+    ];
+    let (s, range) = m.build_tab_string();
+    assert!(s.contains("a.rs"));
+    assert!(s.contains("b.rs"));
+    let (start, end) = range.unwrap();
+    assert_eq!(&s[start..end], " b.rs ");
+}
+
+// =============================================================================
+// sort_tabs
+// =============================================================================
+
+#[test]
+fn sort_tabs_pinned_first() {
+    let mut m = BufferlineModule::new();
+    m.pinned_ids = vec![2];
+    m.tabs = vec![
+        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false },
+        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: true },
+    ];
+    m.sort_tabs();
+    assert_eq!(m.tabs[0].id, 2);
+    assert_eq!(m.tabs[1].id, 1);
+}
+
+#[test]
+fn sort_tabs_pinned_order_preserved() {
+    let mut m = BufferlineModule::new();
+    m.pinned_ids = vec![3, 1];
+    m.tabs = vec![
+        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: true },
+        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: false },
+        TabEntry { id: 3, name: "c.rs".into(), modified: false, pinned: true },
+    ];
+    m.sort_tabs();
+    assert_eq!(m.tabs[0].id, 3);
+    assert_eq!(m.tabs[1].id, 1);
+    assert_eq!(m.tabs[2].id, 2);
 }

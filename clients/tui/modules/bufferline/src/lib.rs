@@ -1,8 +1,13 @@
 //! Bufferline chrome module for the TUI client.
 //!
-//! Renders a horizontal tab bar at `ChromePosition::Top` showing open buffers
-//! with active highlight, modified `[+]` markers, pinned indicators, and
-//! per-buffer diagnostic counts.
+//! Renders buffer tabs as a top-right overlay that floats over content
+//! without stealing a full row. Only visible when 2+ buffers are open.
+//!
+//! Data flows from two sources:
+//! - **Buffer list**: TUI broadcasts `{"type":"buffer_list","buffers":[...]}`
+//!   to all modules when buffers change.
+//! - **Pin state**: Server bridge sends `{"type":"pin_state","pins":[...]}`
+//!   when pin list changes.
 
 use {
     reovim_client_driver::{
@@ -15,26 +20,42 @@ use {
 /// Separator between tabs.
 const TAB_SEP: &str = "\u{2502}";
 
-/// JSON payload from the server bridge.
+// ============================================================================
+// Notification payloads
+// ============================================================================
+
+/// Typed notification envelope.
 #[derive(Debug, Deserialize)]
-struct Payload {
-    active: bool,
-    #[serde(default)]
-    buffers: Vec<BufferPayload>,
+struct TypedPayload {
+    #[serde(rename = "type")]
+    payload_type: String,
 }
 
-/// Per-buffer data from the server.
+/// Buffer list payload from `dispatch_buffer_list()`.
 #[derive(Debug, Deserialize)]
-struct BufferPayload {
+struct BufferListPayload {
+    #[serde(default)]
+    buffers: Vec<BufferEntry>,
+}
+
+/// Per-buffer data from the TUI dispatch.
+#[derive(Debug, Deserialize)]
+struct BufferEntry {
     id: u64,
     name: String,
     modified: bool,
-    pinned: bool,
-    #[serde(rename = "errorCount", default)]
-    error_count: u32,
-    #[serde(rename = "warningCount", default)]
-    warning_count: u32,
 }
+
+/// Pin state payload from the server bridge.
+#[derive(Debug, Deserialize)]
+struct PinStatePayload {
+    #[serde(default)]
+    pins: Vec<u64>,
+}
+
+// ============================================================================
+// Internal state
+// ============================================================================
 
 /// Internal tab state.
 #[derive(Debug, Clone)]
@@ -43,19 +64,16 @@ struct TabEntry {
     name: String,
     modified: bool,
     pinned: bool,
-    error_count: u32,
-    warning_count: u32,
 }
 
 /// Bufferline chrome module.
 ///
-/// Renders a 1-row tab bar at the top of the editor. Receives buffer list
-/// updates from the server via `on_notification()` and tracks active buffer
-/// via `on_buffer_focus()`.
+/// Renders buffer tabs as a top-right overlay. Only visible when 2+ buffers
+/// are attached to the client's windows.
 pub struct BufferlineModule {
     tabs: Vec<TabEntry>,
     active_buffer_id: Option<u64>,
-    scroll_offset: usize,
+    pinned_ids: Vec<u64>,
 }
 
 impl BufferlineModule {
@@ -64,8 +82,84 @@ impl BufferlineModule {
         Self {
             tabs: Vec::new(),
             active_buffer_id: None,
-            scroll_offset: 0,
+            pinned_ids: Vec::new(),
         }
+    }
+
+    /// Handle `{"type":"buffer_list","buffers":[...]}` from TUI dispatch.
+    fn handle_buffer_list(&mut self, data: &str) {
+        let Ok(payload) = serde_json::from_str::<BufferListPayload>(data) else {
+            return;
+        };
+
+        self.tabs = payload
+            .buffers
+            .into_iter()
+            .map(|b| {
+                let pinned = self.pinned_ids.contains(&b.id);
+                TabEntry {
+                    id: b.id,
+                    name: b.name,
+                    modified: b.modified,
+                    pinned,
+                }
+            })
+            .collect();
+
+        self.sort_tabs();
+    }
+
+    /// Handle `{"type":"pin_state","pins":[...]}` from server bridge.
+    fn handle_pin_state(&mut self, data: &str) {
+        let Ok(payload) = serde_json::from_str::<PinStatePayload>(data) else {
+            return;
+        };
+
+        self.pinned_ids = payload.pins;
+
+        for tab in &mut self.tabs {
+            tab.pinned = self.pinned_ids.contains(&tab.id);
+        }
+
+        self.sort_tabs();
+    }
+
+    /// Sort tabs: pinned first (in pin order), then unpinned (by ID).
+    fn sort_tabs(&mut self) {
+        self.tabs.sort_by(|a, b| match (a.pinned, b.pinned) {
+            (true, true) => {
+                let pos_a = self.pinned_ids.iter().position(|&id| id == a.id);
+                let pos_b = self.pinned_ids.iter().position(|&id| id == b.id);
+                pos_a.cmp(&pos_b)
+            }
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            (false, false) => a.id.cmp(&b.id),
+        });
+    }
+
+    /// Build the concatenated tab string for rendering.
+    /// Returns `(full_string, active_ranges)` where each range marks
+    /// the byte offsets of the active tab within the string.
+    fn build_tab_string(&self) -> (String, Option<(usize, usize)>) {
+        let mut result = String::new();
+        let mut active_range = None;
+
+        for (i, tab) in self.tabs.iter().enumerate() {
+            if i > 0 {
+                result.push_str(TAB_SEP);
+            }
+
+            let start = result.len();
+            let label = format_tab_label(tab);
+            result.push_str(&label);
+
+            if self.active_buffer_id == Some(tab.id) {
+                active_range = Some((start, result.len()));
+            }
+        }
+
+        (result, active_range)
     }
 }
 
@@ -89,7 +183,7 @@ impl ClientModule for BufferlineModule {
     }
 
     fn version(&self) -> Version {
-        Version::new(0, 1, 0)
+        Version::new(0, 2, 0)
     }
 
     fn server_kinds(&self) -> Vec<&'static str> {
@@ -109,11 +203,11 @@ impl ClientModule for BufferlineModule {
     }
 
     fn chrome_position(&self) -> ChromePosition {
-        ChromePosition::Top
+        ChromePosition::Overlay
     }
 
     fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
-        1
+        0 // Overlay — does not reserve space
     }
 
     fn chrome_priority(&self) -> u16 {
@@ -121,34 +215,19 @@ impl ClientModule for BufferlineModule {
     }
 
     fn on_notification(&mut self, data: &str) {
-        let Ok(payload) = serde_json::from_str::<Payload>(data) else {
+        let Ok(envelope) = serde_json::from_str::<TypedPayload>(data) else {
             return;
         };
 
-        if !payload.active {
-            self.tabs.clear();
-            return;
+        match envelope.payload_type.as_str() {
+            "buffer_list" => self.handle_buffer_list(data),
+            "pin_state" => self.handle_pin_state(data),
+            _ => {}
         }
-
-        self.tabs = payload
-            .buffers
-            .into_iter()
-            .map(|b| TabEntry {
-                id: b.id,
-                name: b.name,
-                modified: b.modified,
-                pinned: b.pinned,
-                error_count: b.error_count,
-                warning_count: b.warning_count,
-            })
-            .collect();
-
-        self.ensure_active_visible();
     }
 
     fn on_buffer_focus(&mut self, buffer_id: BufferId) {
         self.active_buffer_id = Some(buffer_id.0 as u64);
-        self.ensure_active_visible();
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -158,129 +237,50 @@ impl ClientModule for BufferlineModule {
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
-        let width = bounds.width as usize;
-        if width == 0 {
+        // Only show when 2+ tabs.
+        if self.tabs.len() < 2 || bounds.width == 0 {
             return;
         }
 
-        // Fill background.
-        let bg_style = Style::new().bg(Color::DarkGrey).fg(Color::Grey);
-        surface.fill(bounds, ' ', bg_style.clone());
+        let screen_width = bounds.width as usize;
+        let (tab_str, active_range) = self.build_tab_string();
 
-        if self.tabs.is_empty() {
-            return;
-        }
-
-        // Build tab labels and compute widths.
-        let labels: Vec<(String, bool)> = self
-            .tabs
-            .iter()
-            .map(|tab| {
-                let is_active = self.active_buffer_id == Some(tab.id);
-                let label = format_tab_label(tab);
-                (label, is_active)
-            })
-            .collect();
-
-        // Compute tab widths (label + separator).
-        let tab_widths: Vec<usize> = labels.iter().map(|(l, _)| l.len()).collect();
-        let total_width: usize =
-            tab_widths.iter().sum::<usize>() + tab_widths.len().saturating_sub(1); // separators
-
-        // Determine scroll offset.
-        let scroll = if total_width <= width {
-            0
+        // Truncate from the left if too wide — keep right portion visible.
+        let display_str = if tab_str.len() > screen_width {
+            &tab_str[tab_str.len() - screen_width..]
         } else {
-            self.scroll_offset
+            &tab_str
         };
+        let display_len = display_str.len();
 
-        // Render tabs with scroll.
-        let mut x = bounds.x;
-        let mut consumed = 0usize;
+        // Right-align: start x position.
+        let start_x = bounds.x + bounds.width - display_len as u16;
 
-        // Show left overflow indicator.
-        if scroll > 0 {
-            x += surface.write_styled(x, bounds.y, "<", bg_style.clone());
-            consumed += 1;
-        }
+        // Compute where in the original string the display starts.
+        let display_offset = tab_str.len() - display_len;
 
-        let mut skipped = 0usize;
-        for (i, (label, is_active)) in labels.iter().enumerate() {
-            let tab_start = if i == 0 {
-                0
-            } else {
-                tab_widths[..i].iter().sum::<usize>() + i // include separators
-            };
+        // Render character by character to apply active highlighting.
+        let bg_style = Style::new().bg(Color::DarkGrey).fg(Color::White);
+        let active_style = Style::new().bg(Color::Blue).fg(Color::White);
 
-            if tab_start + tab_widths[i] <= scroll {
-                skipped = i + 1;
-                continue;
+        // Render the whole string in background style first, then
+        // overwrite the active range with active style.
+        surface.write_styled(start_x, bounds.y, display_str, bg_style);
+
+        if let Some((a_start, a_end)) = active_range {
+            // Adjust range to display coordinates.
+            let vis_start = a_start.saturating_sub(display_offset);
+            let vis_end = a_end.saturating_sub(display_offset).min(display_len);
+            if vis_start < vis_end {
+                let active_text = &display_str[vis_start..vis_end];
+                let ax = start_x + vis_start as u16;
+                surface.write_styled(ax, bounds.y, active_text, active_style);
             }
-
-            // Separator before tab (except first visible).
-            if i > skipped.max(if scroll > 0 { skipped } else { 0 }) {
-                if consumed + 1 > width {
-                    break;
-                }
-                let sep_style = Style::new().fg(Color::Grey).bg(Color::DarkGrey);
-                x += surface.write_styled(x, bounds.y, TAB_SEP, sep_style);
-                consumed += 1;
-            }
-
-            let remaining = width.saturating_sub(consumed);
-            if remaining == 0 {
-                break;
-            }
-
-            let style = if *is_active {
-                Style::new().bg(Color::Blue).fg(Color::White)
-            } else {
-                Style::new().bg(Color::DarkGrey).fg(Color::White)
-            };
-
-            let display = if label.len() > remaining {
-                &label[..remaining]
-            } else {
-                label.as_str()
-            };
-
-            let written = surface.write_styled(x, bounds.y, display, style) as usize;
-            x += written as u16;
-            consumed += written;
-
-            if consumed >= width {
-                break;
-            }
-        }
-
-        // Show right overflow indicator.
-        if total_width > width && consumed < width && scroll + width < total_width {
-            surface.write_styled(bounds.x + bounds.width - 1, bounds.y, ">", bg_style);
         }
     }
 }
 
-impl BufferlineModule {
-    /// Adjust scroll to keep the active buffer tab visible.
-    fn ensure_active_visible(&mut self) {
-        let Some(active_id) = self.active_buffer_id else {
-            return;
-        };
-
-        let Some(active_idx) = self.tabs.iter().position(|t| t.id == active_id) else {
-            return;
-        };
-
-        // Simple: if active tab index is before scroll, scroll back.
-        if active_idx < self.scroll_offset {
-            self.scroll_offset = active_idx;
-        }
-        // Note: full pixel-level scroll requires knowing bounds width,
-        // which we don't have here. The render loop handles the rest.
-    }
-}
-
-/// Format a tab label: ` [pin] name [+] E:n W:n `
+/// Format a tab label: ` [pin] name [+] `
 fn format_tab_label(tab: &TabEntry) -> String {
     let mut label = if tab.pinned {
         format!(" * {} ", tab.name)
@@ -290,16 +290,6 @@ fn format_tab_label(tab: &TabEntry) -> String {
 
     if tab.modified {
         label.push_str("[+] ");
-    }
-
-    if tab.error_count > 0 {
-        use std::fmt::Write;
-        let _ = write!(label, "E:{} ", tab.error_count);
-    }
-
-    if tab.warning_count > 0 {
-        use std::fmt::Write;
-        let _ = write!(label, "W:{} ", tab.warning_count);
     }
 
     label

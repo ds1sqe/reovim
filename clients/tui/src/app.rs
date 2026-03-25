@@ -45,7 +45,8 @@ use crate::{
     handle::{ControlRequest, RawInputEvent, TuiHandle, TuiInput},
     layout_mirror::ServerLayoutMirror,
     notification_handler::{
-        NotificationContext, NotificationResult, dispatch_buffer_metadata, handle_notification,
+        NotificationContext, NotificationResult, dispatch_buffer_list, dispatch_buffer_metadata,
+        handle_notification,
     },
     render_backend::format_frame_buffer,
     render_engine::render_frame,
@@ -778,6 +779,7 @@ impl<O: TuiOutput> TuiApp<O> {
         if needs_metadata {
             let exts = self.module_loader.modules_mut_slice();
             dispatch_buffer_metadata(&self.state, &mut self.client, exts).await;
+            dispatch_buffer_list(&self.state, &mut self.client, exts).await;
         }
 
         Ok(())

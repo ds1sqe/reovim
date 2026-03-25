@@ -18,14 +18,12 @@ dynamic = []
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-driver-lsp = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde_json = "1.0"
-tracing.workspace = true
 
 [lints]
 workspace = true

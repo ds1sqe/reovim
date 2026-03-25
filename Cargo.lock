@@ -2704,12 +2704,10 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
- "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
- "tracing",
 ]
 
 [[package]]

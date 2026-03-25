@@ -15,12 +15,12 @@ fn module_name() {
 #[test]
 fn module_version() {
     let module = BufferlineModule::new();
-    assert_eq!(module.version(), Version::new(0, 1, 0));
+    assert_eq!(module.version(), Version::new(0, 2, 0));
 }
 
 #[test]
 fn module_default() {
-    let module = BufferlineModule::default();
+    let module = BufferlineModule;
     assert_eq!(module.id(), ids::MODULE);
 }
 
