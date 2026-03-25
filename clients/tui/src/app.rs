@@ -697,6 +697,12 @@ impl<O: TuiOutput> TuiApp<O> {
         match request {
             ControlRequest::SendKeys { keys, response } => {
                 let result = self.client.send_keys(&keys).await;
+                match &result {
+                    Ok(resp) if resp.should_quit => {
+                        self.running = false;
+                    }
+                    _ => {}
+                }
                 let _ = response.send(result.is_ok_and(|r| r.ok));
             }
             ControlRequest::Capture { format, response } => {

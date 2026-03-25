@@ -90,6 +90,20 @@ fn test_session_state_create_buffer() {
     let id = state.create_buffer("hello world");
     assert!(state.buffer(id).is_some());
     assert!(state.app.kernel.buffers.list().contains(&id));
+
+    // Freshly created buffer must NOT be modified (fixes :q on scratch buffer)
+    let not_modified = state.buffer(id).unwrap().read().is_modified();
+    assert!(!not_modified, "create_buffer must produce unmodified buffer");
+}
+
+#[test]
+fn test_create_buffer_empty_not_modified() {
+    let kernel = test_kernel();
+    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+    let id = state.create_buffer("");
+    let not_modified = state.buffer(id).unwrap().read().is_modified();
+    assert!(!not_modified, "empty scratch buffer must not be modified");
 }
 
 /// Test `resolve_key_for_client` uses per-client state (#471, #477).

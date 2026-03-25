@@ -318,10 +318,11 @@ impl SessionState {
     /// Create a new buffer with the given content.
     ///
     /// Returns the buffer ID. Per-client `active_buffer` is managed by
-    /// `EditingState` -- callers must set it there if needed.
+    /// `EditingState` — callers must set it there if needed.
+    ///
+    /// Uses `Buffer::from_string` so buffers start with `modified = false`.
     pub fn create_buffer(&mut self, content: &str) -> BufferId {
-        let mut buffer = Buffer::new();
-        buffer.set_content(content);
+        let buffer = Buffer::from_string(content);
         self.app.kernel.buffers.register(buffer)
     }
 

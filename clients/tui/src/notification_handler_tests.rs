@@ -306,7 +306,7 @@ async fn test_handle_layout_changed() {
     }));
 
     let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
+    assert!(matches!(result, NotificationResult::RedrawWithMetadata));
     assert_eq!(ctx.state.focused_window_id, 3);
     assert_eq!(ctx.state.windows.len(), 2);
 }
