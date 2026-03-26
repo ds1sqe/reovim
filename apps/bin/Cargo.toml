@@ -38,6 +38,8 @@ static-modules = [
     "dep:reovim-module-editor",
     "dep:reovim-module-motions",
     "dep:reovim-module-vim",
+    "dep:reovim-module-window-ops",
+    "dep:reovim-module-layout",
     "dep:reovim-module-git",
     "dep:reovim-module-git-signs",
     "dep:reovim-module-git-statusline",
@@ -81,6 +83,7 @@ reovim-server = { workspace = true }
 # Kernel and drivers for module loading
 reovim-kernel = { workspace = true }
 reovim-driver-buffer = { workspace = true }
+reovim-driver-layout = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-command = { workspace = true }
@@ -142,6 +145,7 @@ reovim-module-codec-legacy = { workspace = true, optional = true }
 reovim-module-codec-pdf = { workspace = true, optional = true }
 reovim-module-codec-binary-struct = { workspace = true, optional = true }
 reovim-module-codec-csv = { workspace = true, optional = true }
+reovim-module-layout = { workspace = true, optional = true }
 
 # Tier 2: Utility modules
 reovim-module-keymap = { workspace = true, optional = true }
@@ -151,6 +155,7 @@ reovim-module-commands = { workspace = true, optional = true }
 reovim-module-editor = { workspace = true, optional = true }
 reovim-module-motions = { workspace = true, optional = true }
 reovim-module-vim = { workspace = true, optional = true }
+reovim-module-window-ops = { workspace = true, optional = true }
 
 # Tier 3: Git provider and consumer modules (#530)
 reovim-module-git = { workspace = true, optional = true }

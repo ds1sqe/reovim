@@ -185,6 +185,31 @@ impl SessionState {
         }
     }
 
+    /// Ensure the compositor has at least one tiled window.
+    ///
+    /// Called after scratch buffer creation to handle the case where
+    /// `with_registries()` ran before any buffers existed.
+    pub fn ensure_initial_compositor_window(&mut self) {
+        if self.app.kernel.buffers.list().is_empty() {
+            return;
+        }
+        let Some(compositor) = self.driver_session.compositor_mut() else {
+            return;
+        };
+        let Some(active_layer) = compositor.active_layer() else {
+            return;
+        };
+        let Some(layer) = compositor.layer_compositor_mut(active_layer) else {
+            return;
+        };
+        if layer
+            .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+            .is_empty()
+        {
+            layer.add_tiled();
+        }
+    }
+
     /// Get a reference to the driver session (SSOT for session state).
     #[must_use]
     pub const fn driver_session(&self) -> &DriverSession {

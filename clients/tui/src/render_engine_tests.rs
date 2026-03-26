@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::{CursorPosition, RemoteClient, SelectionState},
+    crate::{CursorPosition, RemoteClient, SelectionState, layout_mirror::ServerLayoutMirror},
     reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan, ui::display_width},
     reovim_protocol::v2::WindowInfo,
 };
@@ -96,7 +96,8 @@ fn test_render_frame_basic() {
     // Statusline is now a chrome module — include it
     let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
     let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
-    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
 
     // Should have rendered statusline via chrome dispatch
     let last_row = fb.row(23).unwrap();
@@ -118,7 +119,8 @@ fn test_mode_style_moved_to_statusline_module() {
     let mut statusline = reovim_tui_mod_statusline::StatuslineModule::new();
     statusline.on_mode_change("NORMAL");
     let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
-    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
 
     // Statusline renders at bottom via chrome dispatch
     let cell = fb.get(1, 23).unwrap();
@@ -154,7 +156,8 @@ fn test_render_char_selection() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Columns 2..=4 should have dimmed selection bg.
     // Column 5 is the cursor position — cursor overwrites selection bg.
@@ -189,7 +192,8 @@ fn test_render_line_selection() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     let expected_bg = Some(dimmed_client_color(3));
 
@@ -240,7 +244,8 @@ fn test_render_block_selection() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     let expected_bg = Some(dimmed_client_color(4));
 
@@ -288,7 +293,8 @@ fn test_render_remote_selection_different_buffer() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // No selection background should appear — cells should have default bg
     let wrong_bg = Some(dimmed_client_color(5));
@@ -318,7 +324,8 @@ fn test_render_local_selection() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     let expected_bg = Some(reovim_client_driver::viewport::LOCAL_SELECTION_BG);
     for col in 3..=8u16 {
@@ -362,7 +369,8 @@ fn test_render_multiline_char_selection() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     let expected_bg = Some(dimmed_client_color(6));
 
@@ -417,7 +425,8 @@ fn test_remote_cursor_label_rendered_after_eol() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Label on cursor row (3), after "hello world" (len 11) + 1 gap = col 12
     let expected_fg = Some(client_color(2));
@@ -464,7 +473,8 @@ fn test_remote_cursor_label_at_line_zero() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Label on row 0 after "fn main()" (len 9) + 1 gap = col 10
     let expected_fg = Some(client_color(3));
@@ -504,7 +514,8 @@ fn test_remote_cursor_label_truncated() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Label should be truncated to MAX_LABEL_WIDTH
     let truncated_label = label_text("very-long-username-that-exceeds-limit", "NORMAL");
@@ -547,7 +558,8 @@ fn test_remote_cursor_label_skipped_when_no_room() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(20, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // "long content here!" is 18 chars, label_x = 19 (18+1).
     // Label " charlie [N] " is 14 chars. 19 + 14 = 33 > 20.
@@ -583,7 +595,8 @@ fn test_remote_cursor_label_different_buffer_not_shown() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(80, 24);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // No label should appear anywhere (client is in a different buffer)
     let label_fg = Some(client_color(6));
@@ -630,7 +643,8 @@ fn test_render_frame_with_buffer_content() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // First line should contain 'h' at position (0, 0)
     let cell = fb.get(0, 0).unwrap();
@@ -653,7 +667,8 @@ fn test_render_frame_tilde_for_empty_lines() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Row 1 should have tilde (line beyond buffer content)
     let cell = fb.get(0, 1).unwrap();
@@ -683,7 +698,8 @@ fn test_render_frame_with_line_numbers_absolute() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Content should be offset by gutter_width
     let cell = fb.get(4, 0).unwrap();
@@ -713,7 +729,8 @@ fn test_render_frame_with_line_numbers_relative() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Should render without panicking
     let cell = fb.get(4, 0).unwrap();
@@ -744,7 +761,8 @@ fn test_render_frame_with_line_numbers_hybrid() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Content at gutter offset
     let cell = fb.get(4, 0).unwrap();
@@ -767,7 +785,8 @@ fn test_render_self_cursor_headless() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Self cursor at (5, 2) should have inverse video style
     let cell = fb.get(5, 2).unwrap();
@@ -787,7 +806,8 @@ fn test_render_statusline_with_cursor() {
     statusline.on_mode_change("NORMAL");
     statusline.on_cursor_update(reovim_client_driver::BufferId(0), 3, 7);
     let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
-    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
 
     // Statusline at row 9 (height - 1)
     let cell = fb.get(1, 9).unwrap();
@@ -804,7 +824,8 @@ fn test_render_statusline_without_cursor() {
     // Create statusline module without cursor update (shows "?:?")
     let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
     let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
-    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
 
     // Statusline should be rendered (row 9)
     let last_row = fb.row(9).unwrap();
@@ -819,7 +840,8 @@ fn test_render_frame_no_windows() {
 
     // Should not panic with no windows
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 }
 
 #[test]
@@ -837,7 +859,8 @@ fn test_render_self_cursor_no_cursor_data() {
 
     // Should not panic (skips cursor rendering when no data)
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 }
 
 #[test]
@@ -881,7 +904,8 @@ fn test_render_line_content_truncation() {
 
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(10, 5);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // First character should be 'a'
     let cell = fb.get(0, 0).unwrap();
@@ -917,7 +941,8 @@ fn test_render_with_opacity_dims_content() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config_full, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config_full, &[], &tc, &tm, &mirror);
     let full_style = fb.get(0, 0).unwrap().style.clone();
 
     // Render at half opacity
@@ -926,7 +951,7 @@ fn test_render_with_opacity_dims_content() {
         opacity: 0.5,
         ..RenderConfig::default()
     };
-    render_frame(&mut fb_dim, &state, &config_dim, &[], &tc, &tm);
+    render_frame(&mut fb_dim, &state, &config_dim, &[], &tc, &tm, &mirror);
     let dim_style = fb_dim.get(0, 0).unwrap().style.clone();
 
     // Content characters should be the same
@@ -953,7 +978,8 @@ fn test_render_with_opacity_dims_tilde() {
         ..RenderConfig::default()
     };
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    let mirror = ServerLayoutMirror::new(40, 10);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // Row 1 should have a dimmed tilde
     let tilde_cell = fb.get(0, 1).unwrap();
@@ -1000,8 +1026,9 @@ fn test_render_frame_with_syntax_tokens() {
     state.focused_window_id = 1;
     state.buffer_cache.insert(42, vec!["fn main()".to_string()]);
     let config = RenderConfig::default();
+    let mirror = ServerLayoutMirror::new(40, 24);
 
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
 
     // "fn" at content area should have keyword color
     let keyword_style = tm.get_style("keyword");

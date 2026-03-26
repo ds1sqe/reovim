@@ -79,6 +79,11 @@ tier = 1
 library = "reovim_module_codec_csv"
 
 [[modules]]
+id = "layout"
+tier = 1
+library = "reovim_module_layout"
+
+[[modules]]
 id = "keymap"
 tier = 2
 library = "reovim_module_keymap"
@@ -102,6 +107,11 @@ library = "reovim_module_motions"
 id = "vim"
 tier = 3
 library = "reovim_module_vim"
+
+[[modules]]
+id = "window-ops"
+tier = 3
+library = "reovim_module_window_ops"
 
 [[modules]]
 id = "git"

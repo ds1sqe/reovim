@@ -2167,6 +2167,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-layout",
  "reovim-driver-log",
  "reovim-driver-module-config",
  "reovim-driver-module-loader",
@@ -2199,6 +2200,7 @@ dependencies = [
  "reovim-module-health-check",
  "reovim-module-illuminate",
  "reovim-module-keymap",
+ "reovim-module-layout",
  "reovim-module-lsp",
  "reovim-module-lsp-navigation",
  "reovim-module-microscope",
@@ -2218,6 +2220,7 @@ dependencies = [
  "reovim-module-vfs-local",
  "reovim-module-vim",
  "reovim-module-whichkey",
+ "reovim-module-window-ops",
  "reovim-picker-buffers",
  "reovim-picker-commands",
  "reovim-picker-files",
@@ -3056,6 +3059,14 @@ version = "0.14.1-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-layout"
+version = "0.14.1-dev"
+dependencies = [
+ "reovim-driver-layout",
+ "reovim-kernel",
 ]
 
 [[package]]

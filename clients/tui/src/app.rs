@@ -833,6 +833,7 @@ impl<O: TuiOutput> TuiApp<O> {
             self.module_loader.modules(),
             &self.token_cache_manager,
             &self.theme_manager,
+            &self.layout_mirror,
         );
 
         // Flush to display (terminal for interactive, no-op for headless)

@@ -360,6 +360,12 @@ pub fn create_session_state() -> SessionState {
         }
     }
 
+    // Extract compositor from CompositorRegistry (populated by layout module)
+    let compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>> = services
+        .get::<reovim_driver_layout::CompositorRegistry>()
+        .and_then(|reg| reg.get(&reovim_driver_layout::CompositorKey::Root))
+        .map(|arc| arc.boxed_clone());
+
     let mut state = SessionState::with_registries(
         kernel,
         initial_mode,
@@ -368,7 +374,7 @@ pub fn create_session_state() -> SessionState {
         command_registry,
         keymap_registry,
         resolver_registry,
-        None, // No compositor (client-side concern)
+        compositor,
     );
 
     // Extract syntax factory from SyntaxFactoryStore (populated by treesitter modules)
@@ -377,6 +383,11 @@ pub fn create_session_state() -> SessionState {
 
     // Trigger empty session handlers to create scratch buffer if needed
     trigger_empty_session_handlers(&mut state, &services);
+
+    // Ensure compositor has an initial window now that buffers exist.
+    // with_registries() checks for buffers but runs before scratch-buffer module,
+    // so we retry here after the scratch buffer has been created.
+    state.ensure_initial_compositor_window();
 
     state
 }

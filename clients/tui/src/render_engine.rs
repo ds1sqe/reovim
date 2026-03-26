@@ -16,6 +16,7 @@ use reovim_client_driver::ClientModule;
 
 use crate::{
     LineNumberMode, TuiCoreState,
+    layout_mirror::ServerLayoutMirror,
     render_backend::RenderBackend,
     render_engine_bridge::{self, BackendSurfaceAdapter, TuiPlatformCapabilities},
 };
@@ -89,6 +90,7 @@ pub const fn dimmed_client_color(client_id: u64) -> Color {
 /// Buffer content, selections, and cursors are delegated to
 /// `DefaultViewportRenderer` via the `ViewportRenderer` trait.
 /// Chrome is rendered by CORE dispatch (position-based allocation).
+#[allow(clippy::too_many_arguments)]
 pub fn render_frame<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
@@ -96,6 +98,7 @@ pub fn render_frame<B: RenderBackend>(
     extensions: &[Box<dyn ClientModule>],
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
+    mirror: &ServerLayoutMirror,
 ) {
     backend.clear();
 
@@ -105,48 +108,85 @@ pub fn render_frame<B: RenderBackend>(
     let caps = TuiPlatformCapabilities::for_test(width, height);
     let sidebar_width = render_engine_bridge::sidebar_width(extensions, &caps);
 
-    // Build ViewportContext from TUI state
+    // Shared context data (computed once, reused per viewport)
     let fold_ranges = render_engine_bridge::collect_fold_ranges(extensions);
     let virtual_lines = render_engine_bridge::collect_driver_virtual_lines(extensions);
     let remote_clients = build_remote_clients(state);
-    let local_selection = build_local_selection(state);
 
-    let buffer_id = state.get_focused_buffer_id();
-    let buffer_lines: Option<&[String]> =
-        buffer_id.and_then(|id| state.buffer_cache.get(&id).map(Vec::as_slice));
-
-    #[allow(clippy::cast_possible_truncation)]
-    let ctx = reovim_client_driver::ViewportContext {
-        buffer_id: buffer_id.map(|id| reovim_client_driver::BufferId(id as usize)),
-        buffer_lines,
-        cursor: state
-            .get_focused_cursor()
-            .map(|c| reovim_client_driver::CursorInfo {
-                line: c.line,
-                column: c.column,
-            }),
-        scroll_top: state.get_focused_scroll_top(),
-        local_selection,
-        remote_clients: &remote_clients,
-        fold_ranges: &fold_ranges,
-        virtual_lines: &virtual_lines,
-        opacity: config.opacity,
-        line_number_mode: convert_line_number_mode(config.line_number_mode),
-        gutter_width: config.gutter_width,
-        sidebar_width,
-        is_insert_mode: state.is_insert_mode(),
-        render_self_cursor: config.render_self_cursor,
-        my_client_id: state.my_client_id,
-    };
-
-    // Adapters for display-driver types → client-driver traits
     let token_provider = render_engine_bridge::TokenProviderAdapter::new(token_cache);
     let theme_provider = render_engine_bridge::ThemeProviderAdapter::new(theme);
-
-    // Viewport rendering (buffer content, selections, cursors)
-    let viewport = reovim_client_driver::Rect::new(0, 0, width, content_height);
     let renderer = reovim_client_driver::viewport::DefaultViewportRenderer;
-    {
+
+    if mirror.has_multiple_windows() {
+        // Multi-viewport rendering: iterate over layout placements
+        for placement in mirror.placements() {
+            let viewport = reovim_client_driver::Rect::new(
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+            );
+
+            let is_focused = placement.focused;
+            let ctx = build_viewport_context_for_window(
+                state,
+                placement.buffer_id,
+                placement.window_id,
+                is_focused,
+                &remote_clients,
+                &fold_ranges,
+                &virtual_lines,
+                config,
+                sidebar_width,
+            );
+
+            let mut surface = render_engine_bridge::TuiRenderSurface::new(backend);
+            reovim_client_driver::ViewportRenderer::render_viewport(
+                &renderer,
+                &mut surface,
+                viewport,
+                &ctx,
+                extensions,
+                &token_provider,
+                &theme_provider,
+                &caps,
+            );
+        }
+
+        // Draw window separators between adjacent panes
+        draw_window_separators(backend, mirror, content_height);
+    } else {
+        // Single-window fast path (original code)
+        let local_selection = build_local_selection(state);
+        let buffer_id = state.get_focused_buffer_id();
+        let buffer_lines: Option<&[String]> =
+            buffer_id.and_then(|id| state.buffer_cache.get(&id).map(Vec::as_slice));
+
+        #[allow(clippy::cast_possible_truncation)]
+        let ctx = reovim_client_driver::ViewportContext {
+            buffer_id: buffer_id.map(|id| reovim_client_driver::BufferId(id as usize)),
+            buffer_lines,
+            cursor: state
+                .get_focused_cursor()
+                .map(|c| reovim_client_driver::CursorInfo {
+                    line: c.line,
+                    column: c.column,
+                }),
+            scroll_top: state.get_focused_scroll_top(),
+            local_selection,
+            remote_clients: &remote_clients,
+            fold_ranges: &fold_ranges,
+            virtual_lines: &virtual_lines,
+            opacity: config.opacity,
+            line_number_mode: convert_line_number_mode(config.line_number_mode),
+            gutter_width: config.gutter_width,
+            sidebar_width,
+            is_insert_mode: state.is_insert_mode(),
+            render_self_cursor: config.render_self_cursor,
+            my_client_id: state.my_client_id,
+        };
+
+        let viewport = reovim_client_driver::Rect::new(0, 0, width, content_height);
         let mut surface = render_engine_bridge::TuiRenderSurface::new(backend);
         reovim_client_driver::ViewportRenderer::render_viewport(
             &renderer,
@@ -237,6 +277,91 @@ const fn convert_line_number_mode(mode: LineNumberMode) -> reovim_client_driver:
         LineNumberMode::Absolute => reovim_client_driver::LineNumberMode::Absolute,
         LineNumberMode::Relative => reovim_client_driver::LineNumberMode::Relative,
         LineNumberMode::Hybrid => reovim_client_driver::LineNumberMode::Hybrid,
+    }
+}
+
+// =============================================================================
+// Multi-viewport helpers
+// =============================================================================
+
+/// Build a `ViewportContext` for a specific window in multi-viewport mode.
+#[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
+fn build_viewport_context_for_window<'a>(
+    state: &'a TuiCoreState,
+    buffer_id: Option<u64>,
+    window_id: u64,
+    is_focused: bool,
+    remote_clients: &'a [reovim_client_driver::RemoteClientInfo],
+    fold_ranges: &'a [(usize, usize)],
+    virtual_lines: &'a [reovim_client_driver::VirtualLine],
+    config: &RenderConfig,
+    sidebar_width: u16,
+) -> reovim_client_driver::ViewportContext<'a> {
+    let buffer_lines: Option<&[String]> =
+        buffer_id.and_then(|id| state.buffer_cache.get(&id).map(Vec::as_slice));
+
+    let cursor = if is_focused {
+        state.get_focused_cursor()
+    } else {
+        state
+            .window_cursors
+            .get(&window_id)
+            .map(|c| crate::core_state::CursorPosition {
+                line: c.line,
+                column: c.column,
+            })
+    };
+
+    let scroll_top = state.scroll_tops.get(&window_id).copied().unwrap_or(0);
+
+    let local_selection = if is_focused {
+        build_local_selection(state)
+    } else {
+        None
+    };
+
+    reovim_client_driver::ViewportContext {
+        buffer_id: buffer_id.map(|id| reovim_client_driver::BufferId(id as usize)),
+        buffer_lines,
+        cursor: cursor.map(|c| reovim_client_driver::CursorInfo {
+            line: c.line,
+            column: c.column,
+        }),
+        scroll_top,
+        local_selection,
+        remote_clients,
+        fold_ranges,
+        virtual_lines,
+        opacity: config.opacity,
+        line_number_mode: convert_line_number_mode(config.line_number_mode),
+        gutter_width: config.gutter_width,
+        sidebar_width,
+        is_insert_mode: state.is_insert_mode(),
+        render_self_cursor: config.render_self_cursor,
+        my_client_id: state.my_client_id,
+    }
+}
+
+/// Draw separators between adjacent windows.
+fn draw_window_separators<B: RenderBackend>(
+    backend: &mut B,
+    mirror: &ServerLayoutMirror,
+    _content_height: u16,
+) {
+    let sep_style = reovim_driver_display::Style {
+        fg: Some(reovim_arch::Color::DarkGrey),
+        ..reovim_driver_display::Style::default()
+    };
+
+    let placements = mirror.placements();
+    for p in placements {
+        // Draw vertical separator on the left edge of non-leftmost windows
+        if p.x > 0 {
+            let sep_x = p.x - 1;
+            for y in p.y..p.y + p.height {
+                backend.set_cell(sep_x, y, '\u{2502}', &sep_style);
+            }
+        }
     }
 }
 

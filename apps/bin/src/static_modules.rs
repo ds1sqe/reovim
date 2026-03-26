@@ -21,7 +21,7 @@ pub type ModuleFactory = fn() -> Box<dyn Module>;
 /// Ordering comes from the `builtins.toml` manifest, not from this map.
 #[must_use]
 pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
-    let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(43);
+    let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(45);
 
     // Tier 1: Service modules
     map.insert("undo", || Box::new(reovim_module_undo::UndoModule::new()));
@@ -46,6 +46,7 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
         Box::new(reovim_module_codec_binary_struct::CodecBinaryStructModule::new())
     });
     map.insert("codec-csv", || Box::new(reovim_module_codec_csv::CodecCsvModule::new()));
+    map.insert("layout", || Box::new(reovim_module_layout::LayoutModule::new()));
 
     // Tier 2: Utility modules
     map.insert("keymap", || Box::new(reovim_module_keymap::KeymapModule));
@@ -55,6 +56,9 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("editor", || Box::new(reovim_module_editor::EditorModule));
     map.insert("motions", || Box::new(reovim_module_motions::MotionsModule));
     map.insert("vim", || Box::new(reovim_module_vim::VimModule::new()));
+    map.insert("window-ops", || {
+        Box::new(reovim_module_window_ops::WindowOps::new())
+    });
 
     // Tier 3: Git provider (#530) — must init before consumers and pickers
     map.insert("git", || Box::new(reovim_module_git::GitModule::new()));
