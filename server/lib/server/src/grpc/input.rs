@@ -827,7 +827,6 @@ impl InputServiceImpl {
     /// * `session` - The session
     /// * `client_id` - Client ID whose mode stack to modify
     /// * `transition` - The mode transition to apply
-    #[allow(clippy::unused_async)] // Kept async for consistency with other methods
     async fn apply_mode_transition_for_client(
         session: &Session,
         client_id: ClientId,
@@ -872,14 +871,55 @@ impl InputServiceImpl {
 
         // Handle pop result if provided (Phase #471: use per-client state)
         // Returns StateChanges from command execution (e.g., buffer_modified from delete)
-        if let ModeTransition::Pop {
+        let mut changes = if let ModeTransition::Pop {
             result: Some(pop_result),
         } = transition
         {
             Self::handle_pop_result_for_client(session, client_id, pop_result)
         } else {
             StateChanges::new()
+        };
+
+        // Deferred motion completion (#663): after a pop-result command (e.g.,
+        // jump-execute) moves the cursor, pending operators (d/c/y) need their
+        // on_command_complete callback invoked.  This mirrors the pattern at
+        // handle_resolve_result lines 684-691.
+        while let Some(complete_transition) =
+            session.try_on_command_complete_for_client(client_id).await
+        {
+            session.update_client_state(client_id, |editing_state| match &complete_transition {
+                ModeTransition::Pop { .. } => {
+                    if editing_state.mode_stack.depth() > 1 {
+                        editing_state.mode_stack.pop();
+                    }
+                }
+                ModeTransition::Push { mode, .. } => {
+                    editing_state.mode_stack.push(mode.clone());
+                }
+                ModeTransition::Set { mode, .. } => {
+                    while editing_state.mode_stack.depth() > 1 {
+                        editing_state.mode_stack.pop();
+                    }
+                    editing_state.mode_stack.set(mode.clone());
+                }
+            });
+
+            // Pop with a result (e.g., delete operator returning ExecuteCommand for
+            // the actual deletion): execute it and loop to check for further completions.
+            // Push/Set means "wait for more input" — apply and exit the loop.
+            if let ModeTransition::Pop {
+                result: Some(nested_result),
+            } = complete_transition
+            {
+                let nested_changes =
+                    Self::handle_pop_result_for_client(session, client_id, nested_result);
+                changes.merge(nested_changes);
+            } else {
+                break;
+            }
         }
+
+        changes
     }
 
     /// Handle a `PopResult` from a mode transition with per-client state (Phase #471).

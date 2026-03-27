@@ -139,8 +139,8 @@ impl CommandHandler for EnhancedFindCharCommand {
             return CommandResult::error("Buffer not found");
         };
 
-        // Multi-match with count=1: show jump labels
-        if matches.len() > 1 && count == 1 {
+        // Multi-match with count=1: show jump labels (skip for ; / , repeat)
+        if matches.len() > 1 && count == 1 && !args.bool_flag("is_repeat") {
             let labels = generate_labels(matches.len());
             let jump_matches: Vec<JumpMatch> = matches
                 .iter()

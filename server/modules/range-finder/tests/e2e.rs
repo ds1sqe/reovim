@@ -108,6 +108,49 @@ async fn test_s_key_step_by_step() {
     trace.assert_ok();
 }
 
+// ============================================================================
+// Regression tests — #663 leap bug fixes
+// ============================================================================
+
+/// Delete with leap: `dswo` on "hello world" should delete "hello " via
+/// operator-pending deferred motion. Regression test for #663 bug 2.
+#[tokio::test]
+async fn test_delete_with_leap_single_match() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello world")
+        .send_keys("dswo")
+        .run()
+        .await;
+
+    result.assert_buffer_eq("world");
+}
+
+/// After `fX` with multi-match label selection, `;` should advance to the
+/// next match instead of re-entering label mode. Regression for #663 bug 1.
+///
+/// Buffer "aXbXc": fX shows labels for col 1 and 3. Select first (label 's')
+/// -> cursor at col 1. Then `;` should advance to col 3.
+#[tokio::test]
+async fn test_find_char_repeat_after_label_selection() {
+    let trace = StepTest::new()
+        .await
+        .with_buffer("aXbXc")
+        .step("f")
+        .step("X")
+        // Multi-match: 2 X's, labels shown (JUMP-INPUT)
+        .step("s")
+        // Select first label -> cursor at col 1
+        .expect_cursor(0, 1)
+        .step(";")
+        // Repeat should advance to col 3 (next X), NOT re-enter labels
+        .expect_cursor(0, 3)
+        .run()
+        .await;
+
+    trace.assert_ok();
+}
+
 /// Verify fold keys `za` dispatch step-by-step.
 #[tokio::test]
 async fn test_za_step_by_step() {

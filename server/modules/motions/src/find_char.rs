@@ -238,6 +238,7 @@ impl CommandHandler for RepeatFindSame {
             ),
         );
         ctx.set("find_inclusive", ArgValue::Bang(record.inclusive()));
+        ctx.set("is_repeat", ArgValue::Bool(true));
 
         runtime.execute_command(EXECUTE_FIND_CHAR, ctx)
     }
@@ -286,6 +287,7 @@ impl CommandHandler for RepeatFindReverse {
             ),
         );
         ctx.set("find_inclusive", ArgValue::Bang(reversed.inclusive()));
+        ctx.set("is_repeat", ArgValue::Bool(true));
 
         runtime.execute_command(EXECUTE_FIND_CHAR, ctx)
     }
