@@ -183,19 +183,16 @@ async fn test_independent_cursor_positions() {
         .await
         .expect("TUI 2 failed to move cursor");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Capture frames - each TUI should show its own cursor position in statusline
+    // Wait for both TUIs to show buffer content (landing screen dismissed).
     let frame1 = tui1
-        .capture("plain_text")
+        .wait_for(Duration::from_secs(2), |f| f.contains("Line 1"))
         .await
-        .expect("TUI 1 failed to capture");
+        .expect("TUI 1 should see Line 1");
     let frame2 = tui2
-        .capture("plain_text")
+        .wait_for(Duration::from_secs(2), |f| f.contains("Line 1"))
         .await
-        .expect("TUI 2 failed to capture");
+        .expect("TUI 2 should see Line 1");
 
-    // The frames should have the content
     assert!(frame1.contains("Line 1"), "TUI 1 should see Line 1");
     assert!(frame2.contains("Line 1"), "TUI 2 should see Line 1");
 
