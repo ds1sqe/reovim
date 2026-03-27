@@ -301,19 +301,25 @@ async fn test_completion_escape_dismisses() {
         .await
         .expect("Failed to trigger");
 
+    // Wait for completion popup — must contain "hello" (buffer word) to
+    // distinguish from the landing screen overlay which also uses ╭.
     handle
-        .wait_for(Duration::from_secs(3), |frame| frame.contains('\u{256D}'))
+        .wait_for(Duration::from_secs(3), |frame| {
+            frame.contains('\u{256D}') && frame.contains("hello")
+        })
         .await
-        .expect("Popup should appear");
+        .expect("Completion popup should appear with 'hello' item");
 
-    // Escape exits insert mode. The popup may linger until the next
-    // extension update cycle, so we verify mode change instead.
+    // Escape exits insert mode and auto-dismisses the popup via
+    // on_mode_changed. Wait for both NORMAL mode and buffer text.
     handle.send_keys("<Esc>").await.expect("Failed to send Esc");
 
     let frame = handle
-        .wait_for(Duration::from_secs(2), |frame| frame.to_lowercase().contains("normal"))
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame.to_lowercase().contains("normal") && frame.contains("hel")
+        })
         .await
-        .expect("Should exit to NORMAL mode");
+        .expect("Should exit to NORMAL mode with buffer text intact");
 
     assert!(frame.contains("hel"), "Text should not change on Esc");
 
