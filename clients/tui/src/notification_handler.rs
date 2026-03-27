@@ -683,7 +683,10 @@ pub(crate) async fn dispatch_buffer_list(
     }
     entries.push(']');
 
-    let json = format!(r#"{{"type":"buffer_list","buffers":{entries}}}"#);
+    let window_count = state.windows.len();
+    let json = format!(
+        r#"{{"type":"buffer_list","buffers":{entries},"window_count":{window_count}}}"#,
+    );
 
     for ext in extensions {
         ext.on_notification(&json);

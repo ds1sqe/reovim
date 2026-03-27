@@ -1452,7 +1452,24 @@ impl CompositorApi for SessionRuntime<'_> {
             .split_tiled(from, direction)
             .ok_or(CompositorError::NotEnoughRoom)?;
 
-        // Focus moves to new window automatically in split_tiled
+        // Add new window to per-client WindowLayout with same buffer as source.
+        // The compositor tracks geometry; WindowLayout tracks buffer/cursor/selection.
+        let buffer_id = self.windows.get(from).and_then(|w| w.buffer_id);
+        if let Some(bid) = buffer_id {
+            let win = Window::with_id_and_buffer(new_window, bid);
+            self.windows.add(win);
+        }
+
+        // Vim behavior: focus stays on original window after split.
+        // Re-focus compositor back to original (split_tiled auto-focused new).
+        if let Some(compositor) = self.compositor.as_mut()
+            && let Some(active) = compositor.active_layer()
+            && let Some(layer) = compositor.layer_compositor_mut(active)
+        {
+            layer.set_focus(from);
+        }
+        self.windows.set_active(from);
+
         self.changes.record_window_created(new_window);
 
         // Emit layout changed event
@@ -1490,6 +1507,12 @@ impl CompositorApi for SessionRuntime<'_> {
         let neighbor = layer
             .close_tiled(current)
             .ok_or(CompositorError::CannotCloseLastWindow)?;
+
+        // Remove closed window from per-client WindowLayout
+        if let Some(idx) = self.windows.windows.iter().position(|w| w.id == current) {
+            self.windows.windows.remove(idx);
+        }
+        self.windows.set_active(neighbor);
 
         self.changes.record_window_closed(current);
 
@@ -1627,6 +1650,15 @@ impl CompositorApi for SessionRuntime<'_> {
 
         // set_focus also activates the layer containing the window
         compositor.set_focus(window);
+
+        // Sync per-client WindowLayout active window and active_buffer.
+        // Without this, cursor notifications use the old window's buffer_id
+        // and build_cursor_notification finds the wrong window.
+        self.windows.set_active(window);
+        if let Some(buffer_id) = self.windows.active().and_then(|w| w.buffer_id) {
+            *self.active_buffer = Some(buffer_id);
+        }
+
         self.changes.record_focus_change();
 
         // Emit layout changed event (only if focus actually changed)

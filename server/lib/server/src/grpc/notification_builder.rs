@@ -222,12 +222,22 @@ fn build_cursor_notification(
     // Phase #486: Get per-client windows for cursor position
     let editing_state = session.client_state(ClientId::new(client_id as usize))?;
 
-    // Find the window displaying this buffer in per-client state
+    // Find the ACTIVE window displaying this buffer in per-client state.
+    // When multiple windows share the same buffer (splits), prefer the
+    // active window so cursor notifications target the correct pane.
+    let active_id = editing_state.windows.active_id();
     let window = editing_state
         .windows
         .windows
         .iter()
-        .find(|w| w.buffer_id == Some(buffer_id))?;
+        .find(|w| w.buffer_id == Some(buffer_id) && Some(w.id) == active_id)
+        .or_else(|| {
+            editing_state
+                .windows
+                .windows
+                .iter()
+                .find(|w| w.buffer_id == Some(buffer_id))
+        })?;
 
     Some(Notification {
         event_type: "cursor_moved".to_string(),

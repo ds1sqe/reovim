@@ -820,10 +820,17 @@ impl<O: TuiOutput> TuiApp<O> {
             opacity: 1.0, // TODO(#400): read from server layout when compositor is wired
         };
 
-        // Compute scroll_top for focused window before rendering.
-        let content_height = height.saturating_sub(1);
-        self.state
-            .compute_scroll_top(self.state.focused_window_id, content_height);
+        // Compute scroll_top for all visible windows using their actual height.
+        if self.layout_mirror.has_multiple_windows() {
+            for placement in self.layout_mirror.placements() {
+                self.state
+                    .compute_scroll_top(placement.window_id, placement.height);
+            }
+        } else {
+            let content_height = height.saturating_sub(1);
+            self.state
+                .compute_scroll_top(self.state.focused_window_id, content_height);
+        }
 
         // Always render to FrameBuffer (common output)
         render_frame(

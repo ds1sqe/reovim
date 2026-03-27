@@ -98,6 +98,17 @@ impl EditorService for EditorServiceImpl {
 
         session.emit_notification(notification);
 
+        // Store terminal size in per-client state so compositor.composite()
+        // uses correct geometry for layout notifications.
+        #[allow(clippy::cast_possible_truncation)]
+        if let Some(cid) = client_id {
+            let w = req.width as u16;
+            let h = req.height as u16;
+            session.update_client_state(cid, |state| {
+                state.terminal_size = (w, h);
+            });
+        }
+
         tracing::debug!(width = req.width, height = req.height, "Resize relayed to TUI");
 
         Ok(Response::new(ResizeResponse { ok: true }))

@@ -36,6 +36,12 @@ struct TypedPayload {
 struct BufferListPayload {
     #[serde(default)]
     buffers: Vec<BufferEntry>,
+    #[serde(default = "one")]
+    window_count: usize,
+}
+
+const fn one() -> usize {
+    1
 }
 
 /// Per-buffer data from the TUI dispatch.
@@ -69,11 +75,13 @@ struct TabEntry {
 /// Bufferline chrome module.
 ///
 /// Renders buffer tabs as a top-right overlay. Only visible when 2+ buffers
-/// are attached to the client's windows.
+/// are attached to the client's windows and only a single window is visible
+/// (splits already identify which file is in each pane).
 pub struct BufferlineModule {
     tabs: Vec<TabEntry>,
     active_buffer_id: Option<u64>,
     pinned_ids: Vec<u64>,
+    window_count: usize,
 }
 
 impl BufferlineModule {
@@ -83,6 +91,7 @@ impl BufferlineModule {
             tabs: Vec::new(),
             active_buffer_id: None,
             pinned_ids: Vec::new(),
+            window_count: 1,
         }
     }
 
@@ -92,6 +101,7 @@ impl BufferlineModule {
             return;
         };
 
+        self.window_count = payload.window_count;
         self.tabs = payload
             .buffers
             .into_iter()
@@ -237,8 +247,9 @@ impl ClientModule for BufferlineModule {
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
-        // Only show when 2+ tabs.
-        if self.tabs.len() < 2 || bounds.width == 0 {
+        // Only show when 2+ tabs in single-window mode.
+        // Splits already identify which file is in each pane.
+        if self.tabs.len() < 2 || bounds.width == 0 || self.window_count > 1 {
             return;
         }
 
