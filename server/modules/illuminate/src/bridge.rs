@@ -193,8 +193,7 @@ fn find_word_occurrences(buffer: &Buffer, word: &str) -> Vec<HighlightRange> {
         let mut col = 0;
         while col + word_len <= line_chars.len() {
             if line_chars[col..col + word_len] == word_chars[..] {
-                let before_ok =
-                    col == 0 || char_kind(line_chars[col - 1]) != CharKind::Word;
+                let before_ok = col == 0 || char_kind(line_chars[col - 1]) != CharKind::Word;
                 let after_ok = col + word_len >= line_chars.len()
                     || char_kind(line_chars[col + word_len]) != CharKind::Word;
 

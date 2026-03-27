@@ -257,9 +257,9 @@ pub fn create_session_state() -> SessionState {
     let kernel = create_kernel_context(Arc::clone(&services));
 
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664)
-    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(
-        Arc::clone(&kernel.buffers),
-    )));
+    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(Arc::clone(
+        &kernel.buffers,
+    ))));
 
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));

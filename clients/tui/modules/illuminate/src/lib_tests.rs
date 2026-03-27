@@ -49,7 +49,8 @@ fn test_notification_deactivates_highlights() {
     let mut module = IlluminateModule::new();
 
     // Activate first
-    module.on_notification(r#"{
+    module.on_notification(
+        r#"{
         "active": true,
         "bufferId": 1,
         "word": "foo",
@@ -58,7 +59,8 @@ fn test_notification_deactivates_highlights() {
             {"startLine": 1, "startCol": 0, "endLine": 1, "endCol": 3, "kind": "text"}
         ],
         "sequence": 1
-    }"#);
+    }"#,
+    );
     assert!(module.has_buffer_contrib());
 
     // Deactivate
@@ -71,7 +73,8 @@ fn test_notification_deactivates_highlights() {
 fn test_duplicate_sequence_ignored() {
     let mut module = IlluminateModule::new();
 
-    module.on_notification(r#"{
+    module.on_notification(
+        r#"{
         "active": true,
         "bufferId": 1,
         "word": "x",
@@ -80,7 +83,8 @@ fn test_duplicate_sequence_ignored() {
             {"startLine": 1, "startCol": 0, "endLine": 1, "endCol": 1, "kind": "text"}
         ],
         "sequence": 5
-    }"#);
+    }"#,
+    );
     assert!(module.has_buffer_contrib());
 
     // Same sequence — should be ignored (highlights remain)

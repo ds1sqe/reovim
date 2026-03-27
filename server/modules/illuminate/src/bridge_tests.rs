@@ -403,9 +403,8 @@ fn services_with_buffer(content: &str) -> (ServiceRegistry, BufferId) {
     let bid = manager.register(buf);
 
     let services = ServiceRegistry::new();
-    services.register(Arc::new(BufferReadAccess::new(
-        Arc::clone(&manager) as Arc<dyn BufferManager>,
-    )));
+    services
+        .register(Arc::new(BufferReadAccess::new(Arc::clone(&manager) as Arc<dyn BufferManager>)));
 
     (services, bid)
 }

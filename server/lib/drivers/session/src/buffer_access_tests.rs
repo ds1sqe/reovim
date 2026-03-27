@@ -12,7 +12,7 @@ fn test_buffer_read_access_registered_and_retrieved() {
     let manager = Arc::new(TestBufferManager::new());
     let services = ServiceRegistry::new();
     services.register(Arc::new(BufferReadAccess::new(
-        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>,
+        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
     )));
 
     let access = services.get::<BufferReadAccess>();
@@ -25,7 +25,9 @@ fn test_buffer_read_access_reads_buffer() {
     let buf = reovim_kernel::api::v1::Buffer::from_string("hello\nworld");
     let bid = manager.register(buf);
 
-    let access = BufferReadAccess::new(Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>);
+    let access = BufferReadAccess::new(
+        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
+    );
     let buffer_lock = access.manager().get(bid);
     assert!(buffer_lock.is_some());
 
@@ -42,7 +44,9 @@ fn test_buffer_read_access_reads_buffer() {
 #[test]
 fn test_buffer_read_access_missing_buffer() {
     let manager = Arc::new(TestBufferManager::new());
-    let access = BufferReadAccess::new(Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>);
+    let access = BufferReadAccess::new(
+        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
+    );
 
     assert!(access.manager().get(BufferId::from_raw(999)).is_none());
 }

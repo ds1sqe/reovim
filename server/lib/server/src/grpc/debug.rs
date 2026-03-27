@@ -419,7 +419,16 @@ impl DebugService for DebugServiceImpl {
                     (active, snap)
                 })
                 .unwrap_or((false, None)),
-            ExtensionScope::Shared => (false, None),
+            ExtensionScope::Shared => {
+                session
+                    .with_state(|state| {
+                        let extensions = &state.app.extensions;
+                        let active = bridge.is_active(extensions);
+                        let snap = bridge.snapshot(extensions);
+                        (active, snap)
+                    })
+                    .await
+            }
         };
 
         Ok(Response::new(DebugGetExtensionStateResponse {

@@ -1,0 +1,12 @@
+[package]
+name = "lsp-test-fixture"
+version = "0.1.0"
+edition = "2021"
+
+# Standalone test fixture — NOT a workspace member.
+# Used by integration tests to exercise the LSP diagnostic pipeline
+# with a real language server (rust-analyzer).
+
+[workspace]
+# Explicit empty workspace makes this a standalone project,
+# preventing cargo from walking up to the parent workspace.

@@ -92,8 +92,8 @@
 //! ```
 
 pub mod api;
-mod buffer_access;
 pub mod bridges;
+mod buffer_access;
 mod empty_handler;
 mod extension;
 mod handler_key;

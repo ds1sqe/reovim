@@ -66,6 +66,7 @@ reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
