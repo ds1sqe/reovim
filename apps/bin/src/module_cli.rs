@@ -48,6 +48,9 @@ pub enum ModuleCommand {
 /// # Errors
 ///
 /// Returns an IO error wrapping any registry operation failure.
+// CLI glue: each arm calls workflow::* which shells out to git/cargo.
+// Covered by E2E tests, not unit tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn run(command: &ModuleCommand) -> std::io::Result<()> {
     let paths = RegistryPaths::default_paths();
 

@@ -1,3 +1,6 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 pub mod chrome_utils;
 pub mod conceal;
 pub mod discovery;

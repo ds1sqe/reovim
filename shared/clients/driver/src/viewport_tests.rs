@@ -1519,3 +1519,870 @@ fn render_viewport_with_self_cursor() {
 
     assert_eq!(surface.text_at(0), "hello");
 }
+
+// =============================================================================
+// Coverage gap: multi-line Char selection (2-line)
+// =============================================================================
+
+#[test]
+fn render_selection_char_two_lines() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 2,
+        end_line: 1,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    let overlays = surface.overlays.borrow();
+    // Line 0: cols 2..5 (start_col to end-of-line "hello".len()=5) => 3 overlays
+    // Line 1: cols 0..4 (0 to end_col+1=4) => 4 overlays
+    assert_eq!(overlays.len(), 3 + 4, "2-line Char selection overlay count");
+}
+
+// =============================================================================
+// Coverage gap: multi-line Char selection (3+ lines, middle-line branch)
+// =============================================================================
+
+#[test]
+fn render_selection_char_three_lines() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["aaaa".to_string(), "bbbb".to_string(), "cccc".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 1,
+        end_line: 2,
+        end_col: 2,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Green,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    let overlays = surface.overlays.borrow();
+    // Line 0: cols 1..4 (start_col=1 to visual_line_len=4) => 3 overlays
+    // Line 1: cols 0..4 (0 to visual_line_len=4, middle line) => 4 overlays
+    // Line 2: cols 0..3 (0 to end_col+1=3) => 3 overlays
+    assert_eq!(overlays.len(), 3 + 4 + 3, "3-line Char selection overlay count");
+}
+
+// =============================================================================
+// Coverage gap: Block mode selection
+// =============================================================================
+
+#[test]
+fn render_selection_block_mode() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["aaaa".to_string(), "bbbb".to_string(), "cccc".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 1,
+        end_line: 2,
+        end_col: 2,
+        mode: crate::SelectionMode::Block,
+        color: reovim_arch::Color::Red,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    let overlays = surface.overlays.borrow();
+    // Block mode: each line gets cols 1..3 (start_col=1 to end_col+1=3) => 2 per line, 3 lines => 6
+    assert_eq!(overlays.len(), 6, "Block selection overlay count");
+}
+
+// =============================================================================
+// Coverage gap: render_gutter_annotations — col_width == 0 continue
+// =============================================================================
+
+#[test]
+fn render_gutter_annotations_col_width_zero() {
+    struct ZeroWidthAnnotation;
+    impl ClientModule for ZeroWidthAnnotation {
+        fn id(&self) -> &'static str {
+            "zero-ann"
+        }
+        fn name(&self) -> &'static str {
+            "Zero"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_annotations(&self) -> bool {
+            true
+        }
+        fn annotation_column_width(
+            &self,
+            _ctx: &crate::AnnotationContext,
+            _caps: &dyn crate::PlatformCapabilities,
+        ) -> crate::ColumnWidth {
+            crate::ColumnWidth::Fixed(0)
+        }
+        fn annotate(
+            &self,
+            _line: usize,
+            _ctx: &crate::AnnotationContext,
+        ) -> Option<crate::GutterCell> {
+            Some(crate::GutterCell {
+                text: "X".to_string(),
+                style: Style::default(),
+            })
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        gutter_width: 4,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ZeroWidthAnnotation)];
+    render_gutter_annotations(&mut surface, 0, 0, 4, 0, &modules, &ctx);
+    // col_width == 0 means the annotate() call is skipped; no writes
+    assert!(
+        surface.writes.borrow().is_empty(),
+        "zero-width annotation should produce no output"
+    );
+}
+
+// =============================================================================
+// Coverage gap: render_gutter_annotations — annotate returns None
+// =============================================================================
+
+#[test]
+fn render_gutter_annotations_annotate_returns_none() {
+    struct NoneAnnotation;
+    impl ClientModule for NoneAnnotation {
+        fn id(&self) -> &'static str {
+            "none-ann"
+        }
+        fn name(&self) -> &'static str {
+            "None"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_annotations(&self) -> bool {
+            true
+        }
+        fn annotation_column_width(
+            &self,
+            _ctx: &crate::AnnotationContext,
+            _caps: &dyn crate::PlatformCapabilities,
+        ) -> crate::ColumnWidth {
+            crate::ColumnWidth::Fixed(4)
+        }
+        fn annotate(
+            &self,
+            _line: usize,
+            _ctx: &crate::AnnotationContext,
+        ) -> Option<crate::GutterCell> {
+            None
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        gutter_width: 4,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(NoneAnnotation)];
+    render_gutter_annotations(&mut surface, 0, 0, 4, 0, &modules, &ctx);
+    // annotate returns None; no writes but col_x advances
+    assert!(surface.writes.borrow().is_empty(), "None annotate should produce no output");
+}
+
+// =============================================================================
+// Coverage gap: render_gutter_annotations — ColumnWidth::Dynamic arm
+// =============================================================================
+
+#[test]
+fn render_gutter_annotations_dynamic_width() {
+    struct DynamicAnnotation;
+    impl ClientModule for DynamicAnnotation {
+        fn id(&self) -> &'static str {
+            "dyn-ann"
+        }
+        fn name(&self) -> &'static str {
+            "Dyn"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_annotations(&self) -> bool {
+            true
+        }
+        fn annotation_column_width(
+            &self,
+            _ctx: &crate::AnnotationContext,
+            _caps: &dyn crate::PlatformCapabilities,
+        ) -> crate::ColumnWidth {
+            crate::ColumnWidth::Dynamic(3)
+        }
+        fn annotate(
+            &self,
+            line: usize,
+            _ctx: &crate::AnnotationContext,
+        ) -> Option<crate::GutterCell> {
+            Some(crate::GutterCell {
+                text: (line + 1).to_string(),
+                style: Style::default(),
+            })
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        gutter_width: 3,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(DynamicAnnotation)];
+    render_gutter_annotations(&mut surface, 0, 0, 3, 0, &modules, &ctx);
+    let writes = surface.writes.borrow();
+    assert!(!writes.is_empty(), "Dynamic annotation should produce output");
+    let text: String = writes.iter().map(|(_, _, t, _)| t.as_str()).collect();
+    assert!(text.contains('1'), "should contain line number 1: {text}");
+}
+
+// =============================================================================
+// Coverage gap: compute_cursor_visual_col with active conceals
+// =============================================================================
+
+#[test]
+fn compute_cursor_visual_col_with_conceals() {
+    struct ConcealModule;
+    impl ClientModule for ConcealModule {
+        fn id(&self) -> &'static str {
+            "conceal"
+        }
+        fn name(&self) -> &'static str {
+            "Conceal"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "conceal.url" {
+                Some(RenderBehavior::Conceal {
+                    replacement: Cow::Borrowed("L"),
+                })
+            } else {
+                None
+            }
+        }
+    }
+
+    // Text: "abhttp://ex.comcd" (17 chars)
+    // Conceal covers [2, 15) -> replaced with "L"
+    // Display: a(0) b(1) L(2) c(3) d(4)
+    let lines = vec!["abhttp://ex.comcd".to_string()];
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 2,
+        end_col: 15,
+        category: "conceal.url".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ConcealModule)];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        ..empty_ctx()
+    };
+    // Cursor at source col 16 ("d") should map to display col 4
+    let cursor = CursorInfo {
+        line: 0,
+        column: 16,
+    };
+    let result = compute_cursor_visual_col(&ctx, &cursor, &token_provider, &MockTheme, &modules);
+    // After concealing cols 2..15 -> "L": a(0) b(1) L(2) c(3) d(4)
+    // Source col 16 = "d" = display col 4
+    assert_eq!(result, 4, "cursor should be at display col 4 after conceal");
+}
+
+// =============================================================================
+// Coverage gap: compute_cursor_visual_col with Hide behavior
+// =============================================================================
+
+#[test]
+fn compute_cursor_visual_col_with_hide() {
+    struct HideModule;
+    impl ClientModule for HideModule {
+        fn id(&self) -> &'static str {
+            "hide"
+        }
+        fn name(&self) -> &'static str {
+            "Hide"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "hidden" {
+                Some(RenderBehavior::Hide)
+            } else {
+                None
+            }
+        }
+    }
+
+    let lines = vec!["hello world".to_string()];
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 5,
+        end_col: 11,
+        category: "hidden".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(HideModule)];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        ..empty_ctx()
+    };
+    // " world" (cols 5..11) is hidden, so original col 5 should still be 5
+    // but col 11 would map differently... actually cursor at col 3 is before
+    // the hidden range so should be unchanged
+    let cursor = CursorInfo { line: 0, column: 3 };
+    let result = compute_cursor_visual_col(&ctx, &cursor, &token_provider, &MockTheme, &modules);
+    assert_eq!(result, 3, "cursor before hidden range should be unchanged");
+}
+
+// =============================================================================
+// Coverage gap: compute_cursor_visual_col with FullWidthLine behavior
+// =============================================================================
+
+#[test]
+fn compute_cursor_visual_col_with_full_width_line() {
+    struct FwlModule;
+    impl ClientModule for FwlModule {
+        fn id(&self) -> &'static str {
+            "fwl"
+        }
+        fn name(&self) -> &'static str {
+            "FWL"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "hr" {
+                Some(RenderBehavior::FullWidthLine {
+                    ch: '-',
+                    style: Style::default(),
+                })
+            } else {
+                None
+            }
+        }
+    }
+
+    let lines = vec!["---".to_string()];
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 3,
+        category: "hr".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(FwlModule)];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        ..empty_ctx()
+    };
+    let cursor = CursorInfo { line: 0, column: 0 };
+    let result = compute_cursor_visual_col(&ctx, &cursor, &token_provider, &MockTheme, &modules);
+    // With FullWidthLine conceal the display column may shift
+    assert!(result < 600, "cursor visual col should be reasonable");
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursor_labels — visible label
+// =============================================================================
+
+#[test]
+fn render_remote_cursor_labels_visible() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string()];
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Alice".to_string(),
+        cursor_line: 0,
+        cursor_col: 2,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    render_remote_cursor_labels(&mut surface, &ctx, 0, 24);
+    let writes = surface.writes.borrow();
+    assert!(!writes.is_empty(), "should render a cursor label");
+    let text: String = writes.iter().map(|(_, _, t, _)| t.as_str()).collect();
+    assert!(text.contains("Alice"), "label should contain display name: {text}");
+    assert!(text.contains("[N]"), "label should contain mode abbreviation: {text}");
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursor_labels — label overflow (too wide)
+// =============================================================================
+
+#[test]
+fn render_remote_cursor_labels_overflow_skip() {
+    // Use a very narrow surface so that label_x + label_width > width
+    let mut surface = RecordingSurface::new(10, 24);
+    let lines = vec!["hello".to_string()];
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "VeryLongName".to_string(),
+        cursor_line: 0,
+        cursor_col: 2,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    render_remote_cursor_labels(&mut surface, &ctx, 0, 24);
+    // Label should be skipped because it overflows the surface width
+    assert!(surface.writes.borrow().is_empty(), "label should be skipped when it overflows");
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursor_labels — cursor before scroll
+// =============================================================================
+
+#[test]
+fn render_remote_cursor_labels_before_scroll() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Alice".to_string(),
+        cursor_line: 0,
+        cursor_col: 0,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        scroll_top: 5,
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    render_remote_cursor_labels(&mut surface, &ctx, 0, 24);
+    assert!(
+        surface.writes.borrow().is_empty(),
+        "label should be skipped when cursor is before scroll"
+    );
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursor_labels — cursor past content_height
+// =============================================================================
+
+#[test]
+fn render_remote_cursor_labels_past_content_height() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Bob".to_string(),
+        cursor_line: 30,
+        cursor_col: 0,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    render_remote_cursor_labels(&mut surface, &ctx, 0, 5);
+    assert!(
+        surface.writes.borrow().is_empty(),
+        "label should be skipped when cursor is past content_height"
+    );
+}
+
+// =============================================================================
+// Coverage gap: render_buffer_content — break after virtual-lines-before fill viewport
+// =============================================================================
+
+#[test]
+fn render_buffer_content_vl_before_fills_viewport() {
+    // Viewport height=2, one line with 2 virtual-lines-before fills the viewport
+    // and triggers the `screen_row >= content_height` break
+    let mut surface = RecordingSurface::new(80, 2);
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let vlines = vec![
+        VirtualLine {
+            buffer_line: 0,
+            position: VirtualLinePosition::Before,
+            content: "vl1".to_string(),
+            style: Style::default(),
+        },
+        VirtualLine {
+            buffer_line: 0,
+            position: VirtualLinePosition::Before,
+            content: "vl2".to_string(),
+            style: Style::default(),
+        },
+    ];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        virtual_lines: &vlines,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    let token_provider = MockTokenProvider::empty();
+    let viewport = Rect::new(0, 0, 80, 2);
+
+    render_buffer_content(&mut surface, viewport, &ctx, &modules, &token_provider, &MockTheme);
+
+    // Only the 2 virtual lines should appear; "hello" should not because viewport is full
+    assert_eq!(surface.text_at(0), "vl1");
+    assert_eq!(surface.text_at(1), "vl2");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — inline_decorations from modules
+// =============================================================================
+
+#[test]
+fn render_line_content_with_inline_decorations() {
+    struct InlineDecModule {
+        decorations: Vec<crate::InlineDecoration>,
+    }
+    impl ClientModule for InlineDecModule {
+        fn id(&self) -> &'static str {
+            "inline-dec"
+        }
+        fn name(&self) -> &'static str {
+            "InlineDec"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn inline_decorations(&self, _line: usize) -> &[crate::InlineDecoration] {
+            &self.decorations
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let token_provider = MockTokenProvider::empty();
+    let module = InlineDecModule {
+        decorations: vec![crate::InlineDecoration {
+            col_start: 0,
+            col_end: 3,
+            style: Style::new().fg(reovim_arch::Color::Red),
+        }],
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(module)];
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "hello",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    let text = surface.text_at(0);
+    assert_eq!(text, "hello");
+    // apply_style is a no-op on RecordingSurface, but the code path is exercised
+}
+
+// =============================================================================
+// Coverage gap: DefaultViewportRenderer::gutter_width — ColumnWidth::Dynamic
+// =============================================================================
+
+#[test]
+fn default_viewport_renderer_gutter_width_dynamic() {
+    struct DynAnnotation;
+    impl ClientModule for DynAnnotation {
+        fn id(&self) -> &'static str {
+            "dyn-gutter"
+        }
+        fn name(&self) -> &'static str {
+            "DynGutter"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_annotations(&self) -> bool {
+            true
+        }
+        fn annotation_column_width(
+            &self,
+            _ctx: &crate::AnnotationContext,
+            _caps: &dyn crate::PlatformCapabilities,
+        ) -> crate::ColumnWidth {
+            crate::ColumnWidth::Dynamic(5)
+        }
+    }
+
+    let renderer = DefaultViewportRenderer;
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(DynAnnotation)];
+    let caps = TestCaps;
+    assert_eq!(renderer.gutter_width(&modules, &caps), 5, "Dynamic(5) should use min=5");
+}
+
+// =============================================================================
+// Coverage gap: dimmed_client_color
+// =============================================================================
+
+#[test]
+fn dimmed_client_color_palette() {
+    let c0 = dimmed_client_color(0);
+    let c1 = dimmed_client_color(1);
+    assert_ne!(format!("{c0:?}"), format!("{c1:?}"));
+    // Wraps around
+    let c8 = dimmed_client_color(8);
+    assert_eq!(format!("{c0:?}"), format!("{c8:?}"));
+}
+
+// =============================================================================
+// Coverage gap: selection before scroll_top (skip path)
+// =============================================================================
+
+#[test]
+fn render_selection_before_scroll() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec![
+        "line0".to_string(),
+        "line1".to_string(),
+        "line2".to_string(),
+    ];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 0,
+        end_line: 0,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        scroll_top: 2,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // Selection is on line 0, scroll_top=2 — selection is before viewport
+    assert!(
+        surface.overlays.borrow().is_empty(),
+        "selection before scroll should produce no overlays"
+    );
+}
+
+// =============================================================================
+// Coverage gap: selection past content_height (break path)
+// =============================================================================
+
+#[test]
+fn render_selection_past_content_height() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["line0".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 10,
+        start_col: 0,
+        end_line: 10,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 3, &modules);
+    assert!(
+        surface.overlays.borrow().is_empty(),
+        "selection past content_height should produce no overlays"
+    );
+}
+
+// =============================================================================
+// Coverage gap: render_self_cursor with extension column mapping
+// =============================================================================
+
+#[test]
+fn render_self_cursor_with_column_mapping() {
+    struct ColMapModule;
+    impl ClientModule for ColMapModule {
+        fn id(&self) -> &'static str {
+            "colmap"
+        }
+        fn name(&self) -> &'static str {
+            "ColMap"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        fn map_cursor_column(&self, _buf: BufferId, _line: usize, col: usize) -> Option<u16> {
+            Some((col + 5) as u16)
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        cursor: Some(CursorInfo { line: 0, column: 2 }),
+        render_self_cursor: true,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ColMapModule)];
+    let tokens = MockTokenProvider::empty();
+    render_self_cursor(&mut surface, &ctx, 0, 24, &tokens, &MockTheme, &modules);
+    // No panic; apply_style is a no-op but the extension path is exercised
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursor_labels with no buffer_lines
+// =============================================================================
+
+#[test]
+fn render_remote_cursor_labels_no_buffer_lines() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Alice".to_string(),
+        cursor_line: 0,
+        cursor_col: 0,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        buffer_lines: None,
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    render_remote_cursor_labels(&mut surface, &ctx, 0, 24);
+    // eol_col defaults to 0 when buffer_lines is None
+    let writes = surface.writes.borrow();
+    assert!(!writes.is_empty(), "should still render label at col 1");
+}

@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Module distribution registry for reovim (#621).
 //!
 //! Provides infrastructure for installing, updating, and removing third-party

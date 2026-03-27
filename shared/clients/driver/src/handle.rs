@@ -197,6 +197,7 @@ pub struct ClientModuleHandle {
 unsafe impl Send for ClientModuleHandle {}
 unsafe impl Sync for ClientModuleHandle {}
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModuleHandle {
     /// Create a handle wrapping a static `Box<dyn ClientModule>`.
     #[must_use]
@@ -239,6 +240,8 @@ impl ClientModuleHandle {
     /// - `ptr` must be a valid pointer from `reovim_client_module_entry()`
     /// - `library` must remain loaded for the lifetime of this handle
     /// - `ffi` symbols must be from the same library
+    // Requires a real .so with FFI exports — integration test territory.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub unsafe fn from_dynamic(
         library: libloading::Library,
@@ -705,6 +708,9 @@ impl ClientModuleHandle {
 /// handle does not carry a caps reference.
 struct NullCaps;
 
+// NullCaps is only constructed inside `chrome_requested_size()`. Its methods
+// are never called in tests because mocks ignore the caps argument.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl crate::traits::PlatformCapabilities for NullCaps {
     fn rendering_model(&self) -> crate::RenderingModel {
         crate::RenderingModel::CellGrid
@@ -750,6 +756,8 @@ impl crate::traits::PlatformCapabilities for NullCaps {
     }
 }
 
+// Dynamic cleanup path requires a real .so module.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for ClientModuleHandle {
     fn drop(&mut self) {
         // For dynamic modules: call destroy before unloading library

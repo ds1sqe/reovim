@@ -115,6 +115,8 @@ impl ModuleLoader {
     /// - Required symbols are missing
     /// - API version is incompatible
     /// - Module with same ID already loaded
+    // Requires a real .so with declare_module! FFI exports.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(unsafe_code)]
     pub unsafe fn load_dynamic(&mut self, path: &Path) -> Result<ModuleId, ModuleError> {
         // SAFETY: All operations in this function require the caller to ensure

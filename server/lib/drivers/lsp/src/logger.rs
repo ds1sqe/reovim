@@ -64,6 +64,8 @@ impl LspLogger {
     /// Create a logger from the `REOVIM_LSP_LOG` environment variable.
     ///
     /// Returns `None` if the variable is not set or the file cannot be created.
+    // coverage(off): depends on environment variable and filesystem state
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn from_env(language_id: &str) -> Option<Self> {
         let env_val = std::env::var("REOVIM_LSP_LOG").ok()?;

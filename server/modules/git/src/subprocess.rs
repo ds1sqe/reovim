@@ -30,6 +30,8 @@ impl SubprocessGitProvider {
     }
 }
 
+// coverage(off): all methods delegate to run_git (subprocess execution)
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl GitProvider for SubprocessGitProvider {
     fn current_branch(&self, cwd: &Path) -> Option<String> {
         let output = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
@@ -222,6 +224,8 @@ pub(crate) fn parse_branch_name(output: &str) -> Option<String> {
 }
 
 /// Run a git command and return stdout on success.
+// coverage(off): spawns std::process::Command — requires `git` binary
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn run_git(cwd: &Path, args: &[&str]) -> Option<String> {
     let output = Command::new("git")
         .args(args)
@@ -237,6 +241,8 @@ pub(crate) fn run_git(cwd: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// Run a git command with stdin input, returning true on success.
+// coverage(off): spawns std::process::Command with piped stdin
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> bool {
     use std::{io::Write as _, process::Stdio};
 

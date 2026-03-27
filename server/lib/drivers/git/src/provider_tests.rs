@@ -53,3 +53,52 @@ fn blame_default_returns_empty() {
     let result = provider.blame(Path::new("/tmp/test.rs"));
     assert!(result.is_empty());
 }
+
+/// Default `stage_file()` returns false.
+#[test]
+fn stage_file_default_returns_false() {
+    let provider = MinimalProvider;
+    assert!(!provider.stage_file(Path::new("/tmp/test.rs")));
+}
+
+/// Default `reset_file()` returns false.
+#[test]
+fn reset_file_default_returns_false() {
+    let provider = MinimalProvider;
+    assert!(!provider.reset_file(Path::new("/tmp/test.rs")));
+}
+
+/// Default `unstage_file()` returns false.
+#[test]
+fn unstage_file_default_returns_false() {
+    let provider = MinimalProvider;
+    assert!(!provider.unstage_file(Path::new("/tmp/test.rs")));
+}
+
+/// Default `stage_lines()` returns false.
+#[test]
+fn stage_lines_default_returns_false() {
+    let provider = MinimalProvider;
+    assert!(!provider.stage_lines(Path::new("/tmp"), "patch"));
+}
+
+/// Default `reset_lines()` returns false.
+#[test]
+fn reset_lines_default_returns_false() {
+    let provider = MinimalProvider;
+    assert!(!provider.reset_lines(Path::new("/tmp"), "patch"));
+}
+
+/// Default `diff_content()` returns None.
+#[test]
+fn diff_content_default_returns_none() {
+    let provider = MinimalProvider;
+    assert!(provider.diff_content(Path::new("/tmp/test.rs")).is_none());
+}
+
+/// Default `invalidate()` is a no-op (does not panic).
+#[test]
+fn invalidate_default_is_noop() {
+    let provider = MinimalProvider;
+    provider.invalidate(Path::new("/tmp/test.rs"));
+}

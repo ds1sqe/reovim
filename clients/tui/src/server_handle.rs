@@ -30,6 +30,9 @@ impl TuiServerHandle {
     }
 }
 
+// Async gRPC bridge: requires a live tokio runtime + gRPC connection.
+// Covered by integration tests, not unit tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ServerHandle for TuiServerHandle {
     #[allow(clippy::result_large_err)]
     fn get_options(&self, names: &[&str]) -> Vec<(String, OptionValue)> {

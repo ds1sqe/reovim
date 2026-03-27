@@ -490,6 +490,8 @@ impl Client {
     }
 
     /// Notify the server that a document was saved.
+    // coverage(off): thin wrapper sending notification over live LSP channel
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn did_save(&self, uri: Uri, text: Option<String>) {
         let params = lsp_types::DidSaveTextDocumentParams {
             text_document: TextDocumentIdentifier { uri },
@@ -505,6 +507,8 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails.
+    // coverage(off): async I/O — sends JSON-RPC request over live LSP channel
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn signature_help(
         &self,
         uri: Uri,
@@ -552,6 +556,8 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails.
+    // coverage(off): async I/O — sends JSON-RPC request over live LSP channel
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn formatting(
         &self,
         uri: Uri,
@@ -571,6 +577,8 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails.
+    // coverage(off): async I/O — sends JSON-RPC request over live LSP channel
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn range_formatting(
         &self,
         uri: Uri,

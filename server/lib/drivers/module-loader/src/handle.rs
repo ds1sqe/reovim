@@ -98,6 +98,9 @@ unsafe impl Send for ModuleHandle {}
 #[allow(unsafe_code)]
 unsafe impl Sync for ModuleHandle {}
 
+// Dynamic FFI paths require a real .so with declare_module! exports.
+// Static paths are covered by handle_tests.rs.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModuleHandle {
     /// Create a handle for a static (compile-time linked) module.
     #[must_use]

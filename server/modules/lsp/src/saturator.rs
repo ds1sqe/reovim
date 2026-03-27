@@ -592,6 +592,8 @@ impl LspSaturator {
     }
 
     /// Log an incoming message from the server.
+    // Requires LspLogger construction (file I/O + env setup).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn log_incoming(logger: Option<&Arc<LspLogger>>, message: &Message) {
         let Some(log) = logger else { return };
         match message {
@@ -610,6 +612,8 @@ impl LspSaturator {
     }
 
     /// Log an outgoing request to the server.
+    // Requires LspLogger construction (file I/O + env setup).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn log_outgoing(logger: Option<&Arc<LspLogger>>, request: &LspRequest) {
         let Some(log) = logger else { return };
         match request {

@@ -112,6 +112,8 @@ impl Default for TestSessionRuntime {
     }
 }
 
+// Test infrastructure — not production code.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TestSessionRuntime {
     /// Create a `KernelContext` that uses a real buffer manager for testing.
     fn make_test_kernel() -> KernelContext {

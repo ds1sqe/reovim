@@ -1,8 +1,9 @@
 use {
     super::*,
     crate::{CursorPosition, RemoteClient, SelectionState, layout_mirror::ServerLayoutMirror},
+    reovim_client_driver::{ChromePosition, PlatformCapabilities, Rect, RenderSurface},
     reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan, ui::display_width},
-    reovim_protocol::v2::WindowInfo,
+    reovim_protocol::v2::{WindowInfo, WindowRect},
 };
 
 /// Mirror of `viewport::label_text` for test assertions.
@@ -1035,4 +1036,347 @@ fn test_render_frame_with_syntax_tokens() {
     let cell = fb.get(0, 0).unwrap();
     assert_eq!(cell.char, 'f');
     assert_eq!(cell.style.fg, keyword_style.fg);
+}
+
+// =============================================================================
+// Multi-viewport rendering tests
+// =============================================================================
+
+/// Helper: create a `WindowInfo` with explicit rect for multi-window layouts.
+fn window_with_rect(
+    id: u64,
+    buffer_id: u64,
+    x: u64,
+    y: u64,
+    w: u64,
+    h: u64,
+    focused: bool,
+) -> WindowInfo {
+    WindowInfo {
+        window_id: id,
+        buffer_id: Some(buffer_id),
+        rect: Some(WindowRect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }),
+        focused,
+        opacity: None,
+    }
+}
+
+#[test]
+fn test_render_multi_viewport_two_windows() {
+    // Vertical split: left window (0,0,40,23) and right window (41,0,39,23)
+    let mut fb = FrameBuffer::new(80, 24);
+    let mut state = TuiCoreState::new(1);
+
+    // Buffer for left window
+    state
+        .buffer_cache
+        .insert(100, vec!["left window content".to_string()]);
+    // Buffer for right window
+    state
+        .buffer_cache
+        .insert(101, vec!["right window content".to_string()]);
+
+    // Set up windows in state
+    state
+        .windows
+        .push(window_with_rect(1, 100, 0, 0, 40, 23, true));
+    state
+        .windows
+        .push(window_with_rect(2, 101, 41, 0, 39, 23, false));
+    state.focused_window_id = 1;
+
+    // Set up layout mirror with two windows
+    let mut mirror = ServerLayoutMirror::new(80, 24);
+    mirror.apply_layout_changed(
+        1,
+        &[
+            window_with_rect(1, 100, 0, 0, 40, 23, true),
+            window_with_rect(2, 101, 41, 0, 39, 23, false),
+        ],
+    );
+
+    assert!(mirror.has_multiple_windows());
+
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
+
+    // Left window at (0,0) should show 'l' from "left window content"
+    let cell_left = fb.get(0, 0).unwrap();
+    assert_eq!(cell_left.char, 'l');
+
+    // Right window at (41,0) should show 'r' from "right window content"
+    let cell_right = fb.get(41, 0).unwrap();
+    assert_eq!(cell_right.char, 'r');
+}
+
+#[test]
+fn test_render_multi_viewport_draws_separators() {
+    // Right window starts at x=41 — separator should be drawn at x=40
+    let mut fb = FrameBuffer::new(80, 24);
+    let mut state = TuiCoreState::new(1);
+    state.buffer_cache.insert(100, vec!["left".to_string()]);
+    state.buffer_cache.insert(101, vec!["right".to_string()]);
+    state
+        .windows
+        .push(window_with_rect(1, 100, 0, 0, 40, 23, true));
+    state
+        .windows
+        .push(window_with_rect(2, 101, 41, 0, 39, 23, false));
+    state.focused_window_id = 1;
+
+    let mut mirror = ServerLayoutMirror::new(80, 24);
+    mirror.apply_layout_changed(
+        1,
+        &[
+            window_with_rect(1, 100, 0, 0, 40, 23, true),
+            window_with_rect(2, 101, 41, 0, 39, 23, false),
+        ],
+    );
+
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
+
+    // Separator at x=40 should be '│'
+    let sep_cell = fb.get(40, 0).unwrap();
+    assert_eq!(sep_cell.char, '\u{2502}');
+    assert_eq!(sep_cell.style.fg, Some(Color::DarkGrey));
+}
+
+#[test]
+fn test_render_multi_viewport_unfocused_cursor() {
+    // Unfocused window reads cursor from window_cursors
+    let mut fb = FrameBuffer::new(80, 24);
+    let mut state = TuiCoreState::new(1);
+    state.buffer_cache.insert(100, vec!["focused".to_string()]);
+    state
+        .buffer_cache
+        .insert(101, vec!["unfocused".to_string()]);
+    state
+        .windows
+        .push(window_with_rect(1, 100, 0, 0, 40, 23, true));
+    state
+        .windows
+        .push(window_with_rect(2, 101, 41, 0, 39, 23, false));
+    state.focused_window_id = 1;
+
+    // Add cursor for unfocused window
+    state
+        .window_cursors
+        .insert(2, CursorPosition { line: 0, column: 3 });
+    state.scroll_tops.insert(2, 0);
+
+    let mut mirror = ServerLayoutMirror::new(80, 24);
+    mirror.apply_layout_changed(
+        1,
+        &[
+            window_with_rect(1, 100, 0, 0, 40, 23, true),
+            window_with_rect(2, 101, 41, 0, 39, 23, false),
+        ],
+    );
+
+    let config = RenderConfig {
+        render_self_cursor: true,
+        ..RenderConfig::default()
+    };
+    let (tc, tm) = test_syntax();
+
+    // Should not panic — exercises the unfocused cursor path
+    render_frame(&mut fb, &state, &config, &[], &tc, &tm, &mirror);
+
+    // Content should be rendered in both windows
+    let cell_left = fb.get(0, 0).unwrap();
+    assert_eq!(cell_left.char, 'f');
+    let cell_right = fb.get(41, 0).unwrap();
+    assert_eq!(cell_right.char, 'u');
+}
+
+// =============================================================================
+// Reversed selection tests
+// =============================================================================
+
+#[test]
+fn test_build_remote_clients_reversed_selection() {
+    // Remote client with selection where end < start (reversed)
+    let mut state = TuiCoreState::new(1);
+    state.windows.push(window(1, 100));
+    state.focused_window_id = 1;
+
+    // Selection with end before start (reversed coordinates)
+    let remote = RemoteClient {
+        client_id: 2,
+        display_name: "Remote".to_string(),
+        cursor_line: 0,
+        cursor_col: 2,
+        buffer_id: Some(100),
+        mode: "VISUAL".to_string(),
+        selection: Some(selection(0, 5, 0, 2, "char")), // end < start
+    };
+    state.add_remote_client(remote);
+
+    let clients = build_remote_clients(&state);
+    assert_eq!(clients.len(), 1);
+
+    let sel = clients[0].selection.as_ref().unwrap();
+    // Should be normalized: start <= end
+    assert!(
+        (sel.start_line, sel.start_col) <= (sel.end_line, sel.end_col),
+        "Selection should be normalized: ({},{}) <= ({},{})",
+        sel.start_line,
+        sel.start_col,
+        sel.end_line,
+        sel.end_col
+    );
+    assert_eq!(sel.start_col, 2);
+    assert_eq!(sel.end_col, 5);
+}
+
+#[test]
+fn test_build_local_selection_reversed() {
+    let mut state = TuiCoreState::new(1);
+    state.windows.push(window(1, 100));
+    state.focused_window_id = 1;
+
+    // Reversed local selection (end before start)
+    state.window_selections.insert(
+        1,
+        SelectionState {
+            start: CursorPosition { line: 2, column: 5 },
+            end: CursorPosition { line: 0, column: 3 },
+            mode: "char".to_string(),
+        },
+    );
+
+    let sel = build_local_selection(&state).unwrap();
+    // Should be normalized
+    assert_eq!(sel.start_line, 0);
+    assert_eq!(sel.start_col, 3);
+    assert_eq!(sel.end_line, 2);
+    assert_eq!(sel.end_col, 5);
+}
+
+// =============================================================================
+// Chrome position arms tests
+// =============================================================================
+
+/// Stub chrome module for testing position-based allocation.
+struct StubChromeModule {
+    position: ChromePosition,
+    size: u16,
+    marker_char: char,
+}
+
+impl ClientModule for StubChromeModule {
+    fn id(&self) -> &'static str {
+        "stub-chrome"
+    }
+    fn name(&self) -> &'static str {
+        "Stub Chrome"
+    }
+    fn version(&self) -> reovim_client_driver::Version {
+        reovim_client_driver::Version::new(0, 1, 0)
+    }
+    fn init(
+        &mut self,
+        _ctx: &reovim_client_driver::ModuleContext,
+    ) -> reovim_client_driver::ProbeResult {
+        reovim_client_driver::ProbeResult::Success
+    }
+    fn exit(&mut self) -> Result<(), reovim_client_driver::ClientModuleError> {
+        Ok(())
+    }
+    fn has_chrome(&self) -> bool {
+        true
+    }
+    fn chrome_position(&self) -> ChromePosition {
+        self.position
+    }
+    fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
+        self.size
+    }
+    fn chrome_priority(&self) -> u16 {
+        100
+    }
+    fn chrome_render(
+        &self,
+        surface: &mut dyn RenderSurface,
+        bounds: Rect,
+        _caps: &dyn PlatformCapabilities,
+    ) {
+        // Paint marker char in first cell of bounds
+        let style = reovim_client_driver::Style::default();
+        surface.write_styled(bounds.x, bounds.y, &self.marker_char.to_string(), style);
+    }
+}
+
+#[test]
+fn test_render_chrome_top_position() {
+    let mut fb = FrameBuffer::new(40, 10);
+    let state = TuiCoreState::new(1);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let top_module = StubChromeModule {
+        position: ChromePosition::Top,
+        size: 2,
+        marker_char: 'T',
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(top_module)];
+
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Top chrome should render at row 0
+    let cell = fb.get(0, 0).unwrap();
+    assert_eq!(cell.char, 'T');
+}
+
+#[test]
+fn test_render_chrome_left_position() {
+    let mut fb = FrameBuffer::new(40, 10);
+    let state = TuiCoreState::new(1);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let left_module = StubChromeModule {
+        position: ChromePosition::Left,
+        size: 3,
+        marker_char: 'L',
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(left_module)];
+
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Left chrome should render at col 0, row 0
+    let cell = fb.get(0, 0).unwrap();
+    assert_eq!(cell.char, 'L');
+}
+
+#[test]
+fn test_render_chrome_right_position() {
+    let mut fb = FrameBuffer::new(40, 10);
+    let state = TuiCoreState::new(1);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let right_module = StubChromeModule {
+        position: ChromePosition::Right,
+        size: 5,
+        marker_char: 'R',
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(right_module)];
+
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Right chrome with size 5 should render at x = 40 - 5 = 35
+    let cell = fb.get(35, 0).unwrap();
+    assert_eq!(cell.char, 'R');
 }

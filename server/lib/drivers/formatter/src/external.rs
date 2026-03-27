@@ -40,6 +40,8 @@ impl ExternalFormatter {
     }
 }
 
+// coverage(off): spawns subprocess and thread for timeout enforcement
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl FormatterProvider for ExternalFormatter {
     fn format(&self, content: &str, path: &Path) -> Result<String, FormatError> {
         let mut args = self.config.args.clone();

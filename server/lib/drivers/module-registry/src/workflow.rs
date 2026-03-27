@@ -38,6 +38,8 @@ impl RegistryPaths {
     /// Default registry paths following XDG Base Directory.
     ///
     /// Uses `$XDG_DATA_HOME/reovim/modules/` or `~/.local/share/reovim/modules/`.
+    // Env var branches require unsafe set_var to test; deny(unsafe_code) applies.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn default_paths() -> Self {
         let base = std::env::var("XDG_DATA_HOME").map_or_else(
@@ -164,6 +166,8 @@ pub struct ModuleInfo {
 /// # Errors
 ///
 /// Returns [`RegistryError`] on git, build, manifest, or IO failures.
+// Shells out to git/cargo — integration test territory.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn install(
     source: &ModuleSource,
     paths: &RegistryPaths,
@@ -276,6 +280,8 @@ pub fn remove(id: &str, paths: &RegistryPaths) -> Result<(), RegistryError> {
 /// # Errors
 ///
 /// Returns [`RegistryError::NotInstalled`] if the module is not tracked.
+// Shells out to git/cargo — integration test territory.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn update(id: &str, paths: &RegistryPaths) -> Result<InstalledModule, RegistryError> {
     let mut installed = load_metadata(paths)?;
 
@@ -441,6 +447,8 @@ fn load_manifest(dir: &Path) -> Result<ModuleManifest, RegistryError> {
     ModuleManifest::load(&manifest_path).map_err(|e| RegistryError::Manifest(e.to_string()))
 }
 
+// Shells out to `git clone` — not testable without real git repos.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn git_clone(url: &str, rev: Option<&str>, dest: &Path) -> Result<(), RegistryError> {
     let mut cmd = Command::new("git");
     cmd.args(["clone", "--depth", "1"]);
@@ -460,6 +468,8 @@ fn git_clone(url: &str, rev: Option<&str>, dest: &Path) -> Result<(), RegistryEr
     Ok(())
 }
 
+// Shells out to `git pull` — not testable without real git repos.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn git_pull(dir: &Path) -> Result<(), RegistryError> {
     let output = Command::new("git")
         .args(["pull", "--ff-only"])
@@ -474,6 +484,8 @@ fn git_pull(dir: &Path) -> Result<(), RegistryError> {
     Ok(())
 }
 
+// Shells out to `cargo build` — not testable without a real Cargo project.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn build_module(source_dir: &Path, crate_name: &str) -> Result<PathBuf, RegistryError> {
     let output = Command::new("cargo")
         .args(["build", "--release", "--lib", "--features", "dynamic"])

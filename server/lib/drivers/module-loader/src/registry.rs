@@ -115,6 +115,8 @@ impl ModuleRegistry {
     /// # Errors
     ///
     /// Returns error if loading fails.
+    // Requires a real .so — integration test territory.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(unsafe_code)]
     pub unsafe fn load_dynamic(&self, path: &Path) -> Result<ModuleId, ModuleError> {
         let mut inner = self.inner.lock();

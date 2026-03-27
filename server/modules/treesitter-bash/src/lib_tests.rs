@@ -253,3 +253,26 @@ fn test_no_injections() {
     let injections = driver.injections();
     assert!(injections.is_empty());
 }
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_module_init() {
+    use reovim_kernel::api::v1::ServiceRegistry;
+
+    let mut module = TreesitterBashModule::new();
+    let kernel = reovim_kernel::api::v1::KernelContext::default();
+    let services = Arc::new(ServiceRegistry::new());
+    let ctx = ModuleContext::new(
+        kernel,
+        services.clone(),
+        std::path::PathBuf::from("/tmp/test-data"),
+        std::path::PathBuf::from("/tmp/test-cache"),
+    );
+    let result = module.init(&ctx);
+    assert_eq!(result, ProbeResult::Success);
+
+    // Verify that the factory was registered
+    let syntax_store = services.get_or_create::<SyntaxFactoryStore>();
+    let factory = syntax_store.find("bash");
+    assert!(factory.is_some(), "Bash factory should be available after module init");
+}
