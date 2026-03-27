@@ -5,14 +5,16 @@
 
 use {
     reovim_driver_session::{
-        CursorSnapshot, ExtensionMap,
+        BufferReadAccess, CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_kernel::api::v1::ServiceRegistry,
+    reovim_kernel::api::v1::{
+        Buffer, BufferId, CharKind, ServiceRegistry, WordType, char_kind, word_bounds,
+    },
     serde_json::json,
 };
 
-use crate::state::{HighlightKind, IlluminateState};
+use crate::state::{HighlightKind, HighlightRange, IlluminateState};
 
 /// Number of idle ticks before triggering highlight computation.
 ///
@@ -83,12 +85,12 @@ impl ExtensionStateBridge for IlluminateBridge {
         &self,
         client_extensions: &mut ExtensionMap,
         _shared_extensions: &mut ExtensionMap,
-        _services: &ServiceRegistry,
+        services: &ServiceRegistry,
     ) -> bool {
         // Read cursor position from snapshot (written by runner after each key event).
-        let (cursor_line, cursor_col) = {
+        let (cursor_line, cursor_col, raw_buffer_id) = {
             let snap = client_extensions.get_or_insert::<CursorSnapshot>();
-            (snap.line, snap.col)
+            (snap.line, snap.col, snap.buffer_id)
         };
 
         let state = client_extensions.get_or_insert::<IlluminateState>();
@@ -108,17 +110,112 @@ impl ExtensionStateBridge for IlluminateBridge {
             return false;
         }
 
-        // Cursor has been idle for >= HOLD_TICKS.
-        // Mark as computed so we don't re-trigger on next tick.
-        // Actual highlight computation (LSP or word-match) will be added
-        // when the full pipeline is wired. For now, the tick mechanism
-        // is in place and tested.
-        state.computed = true;
+        // Cursor has been idle for >= HOLD_TICKS — compute word highlights.
 
-        // Return false because we haven't actually computed highlights yet.
-        // This will return true once word-match/LSP integration is added.
-        false
+        let Some(buffer_access) = services.get::<BufferReadAccess>() else {
+            state.computed = true;
+            return false;
+        };
+
+        #[allow(clippy::cast_possible_truncation)]
+        let buffer_id = BufferId::from_raw(raw_buffer_id as usize);
+        let Some(buffer_lock) = buffer_access.manager().get(buffer_id) else {
+            state.computed = true;
+            return false;
+        };
+
+        // Scope the buffer read lock so it's dropped before mutating state.
+        let result = {
+            let buffer = buffer_lock.read();
+            extract_word_and_occurrences(&buffer, cursor_line, cursor_col)
+        };
+
+        match result {
+            Some((word, ranges)) if ranges.len() >= 2 => {
+                // Optimization: if same word and buffer, skip re-notification
+                if state.word == word && state.buffer_id == buffer_id && state.active {
+                    state.computed = true;
+                    return false;
+                }
+                state.set_highlights(buffer_id, word, ranges, cursor_line, cursor_col);
+                true
+            }
+            _ => {
+                // Not on a word, or only one occurrence — clear any existing highlights
+                let was_active = state.active;
+                state.clear();
+                state.computed = true;
+                was_active
+            }
+        }
     }
+}
+
+/// Extract the word under the cursor and find all whole-word occurrences.
+///
+/// Returns `None` if the cursor is not on a word character.
+fn extract_word_and_occurrences(
+    buffer: &Buffer,
+    cursor_line: u32,
+    cursor_col: u32,
+) -> Option<(String, Vec<HighlightRange>)> {
+    let line_text = buffer.line(cursor_line as usize)?;
+    let chars: Vec<char> = line_text.chars().collect();
+    let col = cursor_col as usize;
+
+    if col >= chars.len() || char_kind(chars[col]) != CharKind::Word {
+        return None;
+    }
+
+    let (start, end) = word_bounds(&chars, col, WordType::Small);
+    // word_bounds returns inclusive end
+    let word: String = chars[start..=end].iter().collect();
+
+    let ranges = find_word_occurrences(buffer, &word);
+    Some((word, ranges))
+}
+
+/// Scan all buffer lines for whole-word matches of `word`.
+///
+/// A match is "whole word" if the characters immediately before and after
+/// are not word characters (alphanumeric or underscore).
+fn find_word_occurrences(buffer: &Buffer, word: &str) -> Vec<HighlightRange> {
+    let word_chars: Vec<char> = word.chars().collect();
+    let word_len = word_chars.len();
+    let mut ranges = Vec::new();
+
+    for line_idx in 0..buffer.line_count() {
+        let Some(line_text) = buffer.line(line_idx) else {
+            continue;
+        };
+        let line_chars: Vec<char> = line_text.chars().collect();
+
+        let mut col = 0;
+        while col + word_len <= line_chars.len() {
+            if line_chars[col..col + word_len] == word_chars[..] {
+                let before_ok =
+                    col == 0 || char_kind(line_chars[col - 1]) != CharKind::Word;
+                let after_ok = col + word_len >= line_chars.len()
+                    || char_kind(line_chars[col + word_len]) != CharKind::Word;
+
+                if before_ok && after_ok {
+                    #[allow(clippy::cast_possible_truncation)]
+                    ranges.push(HighlightRange {
+                        start_line: line_idx as u32,
+                        start_col: col as u32,
+                        end_line: line_idx as u32,
+                        end_col: (col + word_len) as u32,
+                        kind: HighlightKind::Text,
+                    });
+                    col += word_len;
+                    continue;
+                }
+            }
+            col += 1;
+        }
+    }
+
+    ranges
 }
 
 /// Convert LSP `DocumentHighlightKind` to our `HighlightKind`.

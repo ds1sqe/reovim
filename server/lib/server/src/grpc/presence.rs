@@ -295,6 +295,19 @@ impl PresenceService for PresenceServiceImpl {
                 .collect()
         });
 
+        // Start per-client illuminate tick (#664)
+        session.with_state_mut_sync(|state| {
+            use reovim_driver_session::{ClientId as DriverClientId, TickSchedulerHandle};
+
+            if let Some(tick_handle) = state.app.services.get::<TickSchedulerHandle>() {
+                tick_handle.start(
+                    DriverClientId::new(client_id.as_usize()),
+                    "illuminate",
+                    std::time::Duration::from_millis(100),
+                );
+            }
+        });
+
         // Generate session token for this client (#483)
         let token = self.tokens.register(client_id);
 

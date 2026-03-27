@@ -92,6 +92,7 @@
 //! ```
 
 pub mod api;
+mod buffer_access;
 pub mod bridges;
 mod empty_handler;
 mod extension;
@@ -166,3 +167,5 @@ pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
 
 // Tick scheduler (#546 - periodic state advancement)
 pub use tick::{TickScheduler, TickSchedulerHandle};
+
+pub use buffer_access::BufferReadAccess;

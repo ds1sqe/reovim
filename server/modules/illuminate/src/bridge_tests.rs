@@ -1,8 +1,11 @@
 use {
     super::*,
     crate::state::{HighlightRange, IlluminateState},
-    reovim_driver_session::{CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge},
-    reovim_kernel::api::v1::{BufferId, ServiceRegistry},
+    reovim_driver_session::{
+        BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
+    },
+    reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, ServiceRegistry},
+    std::sync::Arc,
 };
 
 fn make_extensions_with_state(state_fn: impl FnOnce(&mut IlluminateState)) -> ExtensionMap {
@@ -386,4 +389,215 @@ fn test_tick_hold_then_move_resets() {
     let state = ext.get::<IlluminateState>().unwrap();
     assert!(!state.computed);
     assert_eq!(state.idle_ticks, 1);
+}
+
+// ========================================================================
+// Word-matching pipeline (#664)
+// ========================================================================
+
+fn services_with_buffer(content: &str) -> (ServiceRegistry, BufferId) {
+    use reovim_kernel::testing::TestBufferManager;
+
+    let manager = Arc::new(TestBufferManager::new());
+    let buf = Buffer::from_string(content);
+    let bid = manager.register(buf);
+
+    let services = ServiceRegistry::new();
+    services.register(Arc::new(BufferReadAccess::new(
+        Arc::clone(&manager) as Arc<dyn BufferManager>,
+    )));
+
+    (services, bid)
+}
+
+fn tick_until_hold(
+    ext: &mut ExtensionMap,
+    shared: &mut ExtensionMap,
+    services: &ServiceRegistry,
+) -> bool {
+    let mut changed = false;
+    for _ in 0..HOLD_TICKS {
+        changed = IlluminateBridge.tick(ext, shared, services);
+    }
+    changed
+}
+
+#[test]
+fn test_tick_produces_word_highlights() {
+    let (services, bid) = services_with_buffer("let foo = bar\nlet foo = baz");
+
+    let mut ext = ExtensionMap::new();
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 0;
+    snap.col = 4; // on "foo"
+    snap.buffer_id = bid.as_usize() as u64;
+
+    let mut shared = ExtensionMap::new();
+    let changed = tick_until_hold(&mut ext, &mut shared, &services);
+
+    assert!(changed);
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert!(state.active);
+    assert_eq!(state.word, "foo");
+    assert_eq!(state.ranges.len(), 2);
+    assert!(state.computed);
+
+    // Verify range positions
+    assert_eq!(state.ranges[0].start_line, 0);
+    assert_eq!(state.ranges[0].start_col, 4);
+    assert_eq!(state.ranges[0].end_col, 7);
+    assert_eq!(state.ranges[1].start_line, 1);
+    assert_eq!(state.ranges[1].start_col, 4);
+}
+
+#[test]
+fn test_tick_cursor_on_non_word_clears() {
+    let (services, bid) = services_with_buffer("hello world");
+
+    let mut ext = ExtensionMap::new();
+    // Pre-populate with active state to verify clearing
+    let state = ext.get_or_insert::<IlluminateState>();
+    state.set_highlights(
+        bid,
+        "hello".to_string(),
+        vec![HighlightRange {
+            start_line: 0,
+            start_col: 0,
+            end_line: 0,
+            end_col: 5,
+            kind: HighlightKind::Text,
+        }],
+        0,
+        0,
+    );
+
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 0;
+    snap.col = 5; // on space between "hello" and "world"
+    snap.buffer_id = bid.as_usize() as u64;
+
+    let mut shared = ExtensionMap::new();
+    let changed = tick_until_hold(&mut ext, &mut shared, &services);
+
+    assert!(changed); // was active, now cleared
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert!(!state.active);
+    assert!(state.ranges.is_empty());
+}
+
+#[test]
+fn test_tick_single_occurrence_no_highlight() {
+    let (services, bid) = services_with_buffer("unique word here");
+
+    let mut ext = ExtensionMap::new();
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 0;
+    snap.col = 0; // on "unique" (appears only once)
+    snap.buffer_id = bid.as_usize() as u64;
+
+    let mut shared = ExtensionMap::new();
+    let changed = tick_until_hold(&mut ext, &mut shared, &services);
+
+    assert!(!changed); // was not active before, so clearing returns false
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert!(!state.active);
+}
+
+#[test]
+fn test_tick_same_word_optimization() {
+    let (services, bid) = services_with_buffer("foo bar foo");
+
+    let mut ext = ExtensionMap::new();
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 0;
+    snap.col = 0; // on first "foo"
+    snap.buffer_id = bid.as_usize() as u64;
+
+    let mut shared = ExtensionMap::new();
+    let changed = tick_until_hold(&mut ext, &mut shared, &services);
+    assert!(changed);
+    assert!(ext.get::<IlluminateState>().unwrap().active);
+
+    // Move cursor to the other "foo" — same word, same buffer
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.col = 8; // second "foo"
+
+    // Tick again — should detect same word and skip
+    let changed2 = tick_until_hold(&mut ext, &mut shared, &services);
+    assert!(!changed2);
+    assert!(ext.get::<IlluminateState>().unwrap().active);
+}
+
+#[test]
+fn test_tick_no_buffer_access_degrades_gracefully() {
+    let services = ServiceRegistry::new(); // no BufferReadAccess registered
+
+    let mut ext = ExtensionMap::new();
+    let snap = ext.get_or_insert::<CursorSnapshot>();
+    snap.line = 0;
+    snap.col = 0;
+    snap.buffer_id = 0;
+
+    let mut shared = ExtensionMap::new();
+    let changed = tick_until_hold(&mut ext, &mut shared, &services);
+
+    assert!(!changed);
+    let state = ext.get::<IlluminateState>().unwrap();
+    assert!(state.computed);
+    assert!(!state.active);
+}
+
+// ========================================================================
+// find_word_occurrences unit tests
+// ========================================================================
+
+#[test]
+fn test_find_occurrences_whole_word_only() {
+    let buf = Buffer::from_string("counter count recount");
+    let ranges = find_word_occurrences(&buf, "count");
+
+    assert_eq!(ranges.len(), 1); // only standalone "count"
+    assert_eq!(ranges[0].start_col, 8);
+    assert_eq!(ranges[0].end_col, 13);
+}
+
+#[test]
+fn test_find_occurrences_multiline() {
+    let buf = Buffer::from_string("fn main() {\n    let x = main;\n}");
+    let ranges = find_word_occurrences(&buf, "main");
+
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(ranges[0].start_line, 0);
+    assert_eq!(ranges[0].start_col, 3);
+    assert_eq!(ranges[1].start_line, 1);
+    assert_eq!(ranges[1].start_col, 12);
+}
+
+#[test]
+fn test_find_occurrences_word_at_line_boundaries() {
+    let buf = Buffer::from_string("foo bar\nbaz foo");
+    let ranges = find_word_occurrences(&buf, "foo");
+
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(ranges[0].start_col, 0); // start of line
+    assert_eq!(ranges[1].start_col, 4); // end of line
+    assert_eq!(ranges[1].end_col, 7);
+}
+
+#[test]
+fn test_find_occurrences_adjacent_punctuation() {
+    let buf = Buffer::from_string("(foo) [foo] foo.bar");
+    let ranges = find_word_occurrences(&buf, "foo");
+
+    assert_eq!(ranges.len(), 3);
+    assert_eq!(ranges[0].start_col, 1); // inside parens
+    assert_eq!(ranges[1].start_col, 7); // inside brackets
+    assert_eq!(ranges[2].start_col, 12); // before dot
+}
+
+#[test]
+fn test_find_occurrences_empty_buffer() {
+    let buf = Buffer::from_string("");
+    let ranges = find_word_occurrences(&buf, "word");
+    assert!(ranges.is_empty());
 }

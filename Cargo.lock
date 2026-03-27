@@ -2331,6 +2331,7 @@ dependencies = [
  "reovim-tui-mod-explorer",
  "reovim-tui-mod-fold",
  "reovim-tui-mod-hover",
+ "reovim-tui-mod-illuminate",
  "reovim-tui-mod-jump",
  "reovim-tui-mod-landing",
  "reovim-tui-mod-line-numbers",
@@ -3755,6 +3756,15 @@ version = "0.14.1-dev"
 dependencies = [
  "reovim-client-driver",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-illuminate"
+version = "0.14.1-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-driver",
  "serde_json",
 ]
 

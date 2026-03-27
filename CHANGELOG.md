@@ -14,6 +14,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **microscope**: file type icons rendered next to picker results
 - **display**: `DiagnosticPresenter` registered in bootstrap — diagnostic gutter icons now appear
 - **display**: `mode_replace` highlight group added to all 3 builtin themes (Dark, Light, TokyoNight)
+- **illuminate**: word reference highlighting on cursor-hold — after 300ms idle, all occurrences of the word under cursor are highlighted with `]]`/`[[` navigation
 
 ### Fixed
 
