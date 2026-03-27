@@ -126,6 +126,17 @@ fn notification_preview_parsing() {
     assert_eq!(preview.highlight_line, Some(0));
 }
 
+#[test]
+fn notification_icon_parsing() {
+    let mut m = MicroscopeModule::new();
+    m.on_notification(
+        r#"{"active":true,"query":"","cursor":0,"selected":0,"scrollOffset":0,"pickerTitle":"F","prompt":"> ","items":[{"display":"main.rs","icon":"\ue7a8"},{"display":"readme.md"}],"totalCount":2,"matchedCount":2}"#,
+    );
+    assert_eq!(m.data.items.len(), 2);
+    assert_eq!(m.data.items[0].icon.as_deref(), Some("\u{e7a8}"));
+    assert!(m.data.items[1].icon.is_none());
+}
+
 // =============================================================================
 // Cursor position tests
 // =============================================================================

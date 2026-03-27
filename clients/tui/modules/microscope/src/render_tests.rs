@@ -17,10 +17,12 @@ fn make_data(active: bool) -> MicroscopeData {
             ItemData {
                 display: "main.rs".to_owned(),
                 detail: Some("src/main.rs".to_owned()),
+                icon: None,
             },
             ItemData {
                 display: "lib.rs".to_owned(),
                 detail: None,
+                icon: None,
             },
         ],
         total_count: 100,
@@ -123,6 +125,7 @@ fn render_items_overflow_panel_height() {
         .map(|i| ItemData {
             display: format!("item_{i}"),
             detail: None,
+            icon: None,
         })
         .collect();
     let data = MicroscopeData {
@@ -144,6 +147,7 @@ fn render_long_display_text_truncated() {
         items: vec![ItemData {
             display: "a".repeat(200),
             detail: None,
+            icon: None,
         }],
         matched_count: 1,
         prompt: "> ".to_owned(),
@@ -161,6 +165,7 @@ fn render_long_detail_text_truncated() {
         items: vec![ItemData {
             display: "x".to_owned(),
             detail: Some("d".repeat(200)),
+            icon: None,
         }],
         matched_count: 1,
         prompt: "> ".to_owned(),
@@ -258,6 +263,7 @@ fn selected_item_scrolled_into_view() {
         .map(|i| ItemData {
             display: format!("item_{i}"),
             detail: None,
+            icon: None,
         })
         .collect();
     let data = MicroscopeData {
@@ -303,6 +309,7 @@ fn scroll_shows_correct_items() {
         .map(|i| ItemData {
             display: format!("item_{i:02}"),
             detail: None,
+            icon: None,
         })
         .collect();
     let data = MicroscopeData {
@@ -335,6 +342,7 @@ fn no_scroll_when_selected_in_view() {
         .map(|i| ItemData {
             display: format!("item_{i}"),
             detail: None,
+            icon: None,
         })
         .collect();
     let data = MicroscopeData {
@@ -409,6 +417,7 @@ fn zero_panel_height_scroll() {
         items: vec![ItemData {
             display: "item".to_owned(),
             detail: None,
+            icon: None,
         }],
         selected: 5,
         matched_count: 1,
@@ -440,6 +449,7 @@ fn detail_skipped_when_no_room() {
         items: vec![ItemData {
             display: "longname".to_owned(), // 8 chars + 2 prefix = fills results_width=10
             detail: Some("detail".to_owned()),
+            icon: None,
         }],
         matched_count: 1,
         prompt: "> ".to_owned(),
@@ -447,4 +457,84 @@ fn detail_skipped_when_no_room() {
     };
     render_results(&mut surface, &data, &bounds);
     // Detail should be skipped because col + 2 >= results_width after display.
+}
+
+#[test]
+fn icon_rendered_before_display_text() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = LayoutBounds::calculate(80, 24);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "main.rs".to_owned(),
+            detail: None,
+            icon: Some("\u{e7a8}".to_owned()),
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_results(&mut surface, &data, &bounds);
+
+    // Layout: '>' ' ' icon ' ' 'm' 'a' 'i' 'n' ...
+    // col 0: '>' (selected), col 1: ' ', col 2: icon, col 3: ' ', col 4: 'm'
+    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
+    assert_eq!(surface.char_at(2, bounds.panel_start_y), '\u{e7a8}');
+    assert_eq!(surface.char_at(3, bounds.panel_start_y), ' ');
+    assert_eq!(surface.char_at(4, bounds.panel_start_y), 'm');
+}
+
+#[test]
+fn no_icon_same_position_as_before() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = LayoutBounds::calculate(80, 24);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "main.rs".to_owned(),
+            detail: None,
+            icon: None,
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_results(&mut surface, &data, &bounds);
+
+    // Without icon: '>' ' ' 'm' 'a' 'i' 'n' ...
+    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
+    assert_eq!(surface.char_at(2, bounds.panel_start_y), 'm');
+}
+
+#[test]
+fn icon_skipped_when_no_room() {
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 0,
+        width: 4,
+        total_height: 4,
+        query_row: 0,
+        panel_start_y: 2,
+        panel_height: 2,
+        results_width: 4,
+        show_preview: false,
+        preview_width: 0,
+        preview_x: 0,
+    };
+    let mut surface = RecordingSurface::new(10, 10);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "x".to_owned(),
+            detail: None,
+            icon: Some("\u{e7a8}".to_owned()),
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_results(&mut surface, &data, &bounds);
+    // col=2 after indicator, col+2=4 which is NOT < results_width=4, so icon skipped.
+    // Display text 'x' should be at col 2.
+    assert_eq!(surface.char_at(2, bounds.panel_start_y), 'x');
 }

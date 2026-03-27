@@ -100,6 +100,7 @@ export const lightTheme: Theme = {
     mode_insert: { fg: 'bg', bg: 'green', bold: true },
     mode_visual: { fg: 'bg', bg: 'purple', bold: true },
     mode_command: { fg: 'fg', bg: 'yellow', bold: true },
+    mode_replace: { fg: 'bg', bg: 'red', bold: true },
     border: { fg: 'border' },
     popup_bg: { bg: 'statusBg' },
     popup_fg: { fg: 'fg' },

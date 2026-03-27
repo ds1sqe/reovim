@@ -1,6 +1,8 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, WriteSurface},
+    reovim_client_driver::testing::{
+        MockPlatformCapabilities, MockThemeProvider, TestModuleContext, WriteSurface,
+    },
 };
 
 fn test_caps() -> MockPlatformCapabilities {
@@ -307,8 +309,11 @@ fn render_modified_shows_marker() {
     let mut surface = WriteSurface::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_modified = surface.writes().iter().any(|w| w.text.contains("[+]"));
-    assert!(has_modified, "Expected [+] for modified buffer");
+    let has_modified = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains(MODIFIED_ICON));
+    assert!(has_modified, "Expected modified icon for modified buffer");
 }
 
 #[test]
@@ -324,8 +329,8 @@ fn render_pinned_shows_star() {
     let mut surface = WriteSurface::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_pin = surface.writes().iter().any(|w| w.text.contains('*'));
-    assert!(has_pin, "Expected * for pinned buffer");
+    let has_pin = surface.writes().iter().any(|w| w.text.contains(PIN_ICON));
+    assert!(has_pin, "Expected pin icon for pinned buffer");
 }
 
 #[test]
@@ -338,7 +343,12 @@ fn render_zero_width_no_crash() {
     )));
 
     let mut surface = WriteSurface::new(80, 24);
-    let zero_bounds = Rect { x: 0, y: 0, width: 0, height: 24 };
+    let zero_bounds = Rect {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 24,
+    };
     m.chrome_render(&mut surface, zero_bounds, &test_caps());
     assert!(surface.writes().is_empty());
 }
@@ -374,7 +384,8 @@ fn format_tab_label_modified() {
         modified: true,
         pinned: false,
     };
-    assert_eq!(format_tab_label(&tab), " main.rs [+] ");
+    let label = format_tab_label(&tab);
+    assert_eq!(label, format!(" main.rs {MODIFIED_ICON} "));
 }
 
 #[test]
@@ -385,7 +396,7 @@ fn format_tab_label_pinned() {
         modified: false,
         pinned: true,
     };
-    assert_eq!(format_tab_label(&tab), " * main.rs ");
+    assert_eq!(format_tab_label(&tab), format!(" {PIN_ICON} main.rs "));
 }
 
 #[test]
@@ -397,8 +408,9 @@ fn format_tab_label_all_indicators() {
         pinned: true,
     };
     let label = format_tab_label(&tab);
-    assert!(label.contains("* x.rs"));
-    assert!(label.contains("[+]"));
+    assert!(label.contains(PIN_ICON));
+    assert!(label.contains("x.rs"));
+    assert!(label.contains(MODIFIED_ICON));
 }
 
 // =============================================================================
@@ -416,7 +428,12 @@ fn build_tab_string_empty() {
 #[test]
 fn build_tab_string_single() {
     let mut m = BufferlineModule::new();
-    m.tabs = vec![TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false }];
+    m.tabs = vec![TabEntry {
+        id: 1,
+        name: "a.rs".into(),
+        modified: false,
+        pinned: false,
+    }];
     let (s, _) = m.build_tab_string();
     assert_eq!(s, " a.rs ");
 }
@@ -426,8 +443,18 @@ fn build_tab_string_active_range() {
     let mut m = BufferlineModule::new();
     m.active_buffer_id = Some(2);
     m.tabs = vec![
-        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false },
-        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: false },
+        TabEntry {
+            id: 1,
+            name: "a.rs".into(),
+            modified: false,
+            pinned: false,
+        },
+        TabEntry {
+            id: 2,
+            name: "b.rs".into(),
+            modified: false,
+            pinned: false,
+        },
     ];
     let (s, range) = m.build_tab_string();
     assert!(s.contains("a.rs"));
@@ -445,8 +472,18 @@ fn sort_tabs_pinned_first() {
     let mut m = BufferlineModule::new();
     m.pinned_ids = vec![2];
     m.tabs = vec![
-        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: false },
-        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: true },
+        TabEntry {
+            id: 1,
+            name: "a.rs".into(),
+            modified: false,
+            pinned: false,
+        },
+        TabEntry {
+            id: 2,
+            name: "b.rs".into(),
+            modified: false,
+            pinned: true,
+        },
     ];
     m.sort_tabs();
     assert_eq!(m.tabs[0].id, 2);
@@ -458,12 +495,141 @@ fn sort_tabs_pinned_order_preserved() {
     let mut m = BufferlineModule::new();
     m.pinned_ids = vec![3, 1];
     m.tabs = vec![
-        TabEntry { id: 1, name: "a.rs".into(), modified: false, pinned: true },
-        TabEntry { id: 2, name: "b.rs".into(), modified: false, pinned: false },
-        TabEntry { id: 3, name: "c.rs".into(), modified: false, pinned: true },
+        TabEntry {
+            id: 1,
+            name: "a.rs".into(),
+            modified: false,
+            pinned: true,
+        },
+        TabEntry {
+            id: 2,
+            name: "b.rs".into(),
+            modified: false,
+            pinned: false,
+        },
+        TabEntry {
+            id: 3,
+            name: "c.rs".into(),
+            modified: false,
+            pinned: true,
+        },
     ];
     m.sort_tabs();
     assert_eq!(m.tabs[0].id, 3);
     assert_eq!(m.tabs[1].id, 1);
     assert_eq!(m.tabs[2].id, 2);
+}
+
+// =============================================================================
+// Theme caching
+// =============================================================================
+
+#[test]
+fn init_caches_theme_styles() {
+    let mut m = BufferlineModule::new();
+    let ctx_owner = TestModuleContext::builder()
+        .highlight(
+            "statusline_bg",
+            Style::new().bg(Color::Rgb {
+                r: 40,
+                g: 44,
+                b: 52,
+            }),
+        )
+        .highlight(
+            "statusline_fg",
+            Style::new().fg(Color::Rgb {
+                r: 171,
+                g: 178,
+                b: 191,
+            }),
+        )
+        .highlight(
+            "mode_normal",
+            Style::new()
+                .bg(Color::Rgb {
+                    r: 97,
+                    g: 175,
+                    b: 239,
+                })
+                .fg(Color::White),
+        )
+        .build();
+    m.init(&ctx_owner.as_context());
+
+    assert_eq!(
+        m.bg_style.fg,
+        Some(Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191
+        })
+    );
+    assert_eq!(
+        m.active_style.bg,
+        Some(Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239
+        })
+    );
+}
+
+#[test]
+fn on_theme_changed_updates_styles() {
+    let mut m = BufferlineModule::new();
+    let original_bg = m.bg_style.bg;
+
+    let theme = MockThemeProvider::new().with_highlight(
+        "statusline_bg",
+        Style::new().bg(Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 30,
+        }),
+    );
+    m.on_theme_changed(&theme);
+
+    assert_ne!(m.bg_style.bg, original_bg);
+}
+
+#[test]
+fn render_uses_theme_styles() {
+    let mut m = BufferlineModule::new();
+    let custom_mode = Style::new()
+        .bg(Color::Rgb {
+            r: 100,
+            g: 100,
+            b: 200,
+        })
+        .fg(Color::White);
+    let ctx_owner = TestModuleContext::builder()
+        .highlight(
+            "statusline_bg",
+            Style::new().bg(Color::Rgb {
+                r: 50,
+                g: 50,
+                b: 50,
+            }),
+        )
+        .highlight("mode_normal", custom_mode.clone())
+        .build();
+    m.init(&ctx_owner.as_context());
+    m.on_notification(&buffer_list_json(&format!(
+        "{},{}",
+        one_buf(1, "main.rs", false),
+        one_buf(2, "lib.rs", false)
+    )));
+    m.on_buffer_focus(BufferId(1));
+
+    let mut surface = WriteSurface::new(80, 24);
+    m.chrome_render(&mut surface, full_bounds(), &test_caps());
+
+    // Active tab should use mode_normal bg, not hardcoded Blue.
+    let active = surface
+        .writes()
+        .iter()
+        .rfind(|w| w.text.contains("main.rs"))
+        .expect("Expected main.rs tab");
+    assert_eq!(active.style.bg, custom_mode.bg);
 }

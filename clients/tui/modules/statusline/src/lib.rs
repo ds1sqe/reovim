@@ -16,7 +16,7 @@
 use {
     reovim_client_driver::{
         BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version,
+        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, ThemeProvider, Version,
         types::{BufferUpdateEvent, Color},
     },
     serde::Deserialize,
@@ -30,12 +30,35 @@ struct BufferMetadataPayload {
     encoding: Option<String>,
     modified: Option<bool>,
     readonly: Option<bool>,
+    diagnostics: Option<DiagnosticCountsPayload>,
+}
+
+/// Diagnostic counts embedded in buffer metadata.
+#[derive(Debug, Deserialize)]
+struct DiagnosticCountsPayload {
+    #[serde(default)]
+    error: u32,
+    #[serde(default)]
+    warning: u32,
+    #[serde(default)]
+    info: u32,
+    #[serde(default)]
+    hint: u32,
 }
 
 /// Separator character between right-side sections.
 const SECTION_SEP: &str = " \u{2502} ";
 /// Separator width in columns (space + box-drawing + space).
 const SECTION_SEP_WIDTH: usize = 3;
+
+// Inline icon constants (no dependency on reovim-driver-display).
+const GIT_BRANCH_ICON: &str = "\u{e0a0}";
+const MODIFIED_ICON: &str = "\u{25cf}";
+const READONLY_ICON: &str = "\u{f033e}";
+const ERROR_ICON: &str = "\u{f015a}";
+const WARNING_ICON: &str = "\u{f002a}";
+const INFO_ICON: &str = "\u{f02fd}";
+const HINT_ICON: &str = "\u{f0336}";
 
 /// Statusline chrome module.
 ///
@@ -62,13 +85,23 @@ pub struct StatuslineModule {
 
     // Section B: Git branch (Phase 3)
     git_branch: Option<String>,
+
+    // Section X: Diagnostic counts (Phase 4)
+    diag_error: u32,
+    diag_warning: u32,
+    diag_info: u32,
+    diag_hint: u32,
+
+    // Theme-cached styles
+    bg_style: Style,
+    sep_style: Style,
 }
 
 impl StatuslineModule {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            mode: String::from("NORMAL"),
+            mode: String::new(),
             cursor_line: 0,
             cursor_col: 0,
             total_lines: 0,
@@ -79,13 +112,32 @@ impl StatuslineModule {
             filetype: None,
             encoding: None,
             git_branch: None,
+            diag_error: 0,
+            diag_warning: 0,
+            diag_info: 0,
+            diag_hint: 0,
+            bg_style: Style::new().bg(Color::DarkGrey).fg(Color::White),
+            sep_style: Style::new().fg(Color::Grey).bg(Color::DarkGrey),
         }
+    }
+
+    fn cache_theme(&mut self, theme: &dyn ThemeProvider) {
+        let background = theme.highlight("statusline_bg");
+        let foreground = theme.highlight("statusline_fg");
+        self.bg_style = Style::new()
+            .bg(background.bg.unwrap_or(Color::DarkGrey))
+            .fg(foreground.fg.unwrap_or(Color::White));
+        self.sep_style = Style::new()
+            .fg(Color::Grey)
+            .bg(background.bg.unwrap_or(Color::DarkGrey));
     }
 }
 
 impl Default for StatuslineModule {
     fn default() -> Self {
-        Self::new()
+        let mut m = Self::new();
+        "NORMAL".clone_into(&mut m.mode);
+        m
     }
 }
 
@@ -110,7 +162,11 @@ impl ClientModule for StatuslineModule {
         vec![]
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        if self.mode.is_empty() {
+            "NORMAL".clone_into(&mut self.mode);
+        }
+        self.cache_theme(ctx.theme);
         ProbeResult::Success
     }
 
@@ -148,6 +204,10 @@ impl ClientModule for StatuslineModule {
         self.total_lines = event.total_lines;
     }
 
+    fn on_theme_changed(&mut self, theme: &dyn ThemeProvider) {
+        self.cache_theme(theme);
+    }
+
     fn on_notification(&mut self, data: &str) {
         if let Ok(payload) = serde_json::from_str::<BufferMetadataPayload>(data) {
             if let Some(name) = payload.filename {
@@ -165,6 +225,12 @@ impl ClientModule for StatuslineModule {
             if let Some(r) = payload.readonly {
                 self.readonly = r;
             }
+            if let Some(diag) = payload.diagnostics {
+                self.diag_error = diag.error;
+                self.diag_warning = diag.warning;
+                self.diag_info = diag.info;
+                self.diag_hint = diag.hint;
+            }
         }
     }
 
@@ -181,8 +247,7 @@ impl ClientModule for StatuslineModule {
         }
 
         // Fill background
-        let bg_style = Style::new().bg(Color::DarkGrey).fg(Color::White);
-        surface.fill(bounds, ' ', bg_style.clone());
+        surface.fill(bounds, ' ', self.bg_style.clone());
 
         // --- Left sections: A | B | C ---
         let mut x = bounds.x;
@@ -194,21 +259,23 @@ impl ClientModule for StatuslineModule {
 
         // Section B: Git branch (Phase 3)
         if let Some(branch) = &self.git_branch {
-            let branch_str = format!("  {branch} ");
-            x += surface.write_styled(x, bounds.y, &branch_str, bg_style.clone());
+            let branch_str = format!(" {GIT_BRANCH_ICON} {branch} ");
+            x += surface.write_styled(x, bounds.y, &branch_str, self.bg_style.clone());
         }
 
         // Section C: Filename + modified/readonly (Phase 2)
         if let Some(name) = &self.filename {
             let mut file_str = format!(" {name}");
             if self.modified {
-                file_str.push_str(" [+]");
+                file_str.push(' ');
+                file_str.push_str(MODIFIED_ICON);
             }
             if self.readonly {
-                file_str.push_str(" [RO]");
+                file_str.push(' ');
+                file_str.push_str(READONLY_ICON);
             }
             file_str.push(' ');
-            x += surface.write_styled(x, bounds.y, &file_str, bg_style);
+            x += surface.write_styled(x, bounds.y, &file_str, self.bg_style.clone());
         }
 
         // Suppress unused assignment warning — x marks left-section end
@@ -223,11 +290,10 @@ impl ClientModule for StatuslineModule {
             + right_sections.len().saturating_sub(1) * SECTION_SEP_WIDTH;
 
         if total_right_width < width {
-            let sep_style = Style::new().fg(Color::Grey).bg(Color::DarkGrey);
             let mut rx = bounds.x + bounds.width - total_right_width as u16;
             for (i, (text, style)) in right_sections.iter().enumerate() {
                 if i > 0 {
-                    rx += surface.write_styled(rx, bounds.y, SECTION_SEP, sep_style.clone());
+                    rx += surface.write_styled(rx, bounds.y, SECTION_SEP, self.sep_style.clone());
                 }
                 rx += surface.write_styled(rx, bounds.y, text, style.clone());
             }
@@ -239,8 +305,13 @@ impl StatuslineModule {
     /// Build right-side section content: X (diagnostics), Y (filetype+encoding), Z (pos+progress).
     /// Returns vec of (text, style) pairs in left-to-right order.
     fn build_right_sections(&self) -> Vec<(String, Style)> {
-        let bg_style = Style::new().bg(Color::DarkGrey).fg(Color::White);
         let mut sections = Vec::new();
+
+        // Section X: Diagnostic counts (Phase 4)
+        let diag_text = self.build_diagnostic_text();
+        if !diag_text.is_empty() {
+            sections.push((diag_text, self.bg_style.clone()));
+        }
 
         // Section Y: filetype | encoding (Phase 2)
         if let Some(ft) = &self.filetype {
@@ -248,7 +319,7 @@ impl StatuslineModule {
                 .encoding
                 .as_ref()
                 .map_or_else(|| ft.clone(), |enc| format!("{ft} {enc}"));
-            sections.push((y_text, bg_style.clone()));
+            sections.push((y_text, self.bg_style.clone()));
         }
 
         // Section Z: progress + line:col
@@ -258,9 +329,28 @@ impl StatuslineModule {
         } else {
             String::from("?:?")
         };
-        sections.push((z_text, bg_style));
+        sections.push((z_text, self.bg_style.clone()));
 
         sections
+    }
+
+    /// Build diagnostic count text for Section X.
+    /// Only includes counts > 0.
+    fn build_diagnostic_text(&self) -> String {
+        let mut parts = Vec::new();
+        if self.diag_error > 0 {
+            parts.push(format!("{ERROR_ICON} {}", self.diag_error));
+        }
+        if self.diag_warning > 0 {
+            parts.push(format!("{WARNING_ICON} {}", self.diag_warning));
+        }
+        if self.diag_info > 0 {
+            parts.push(format!("{INFO_ICON} {}", self.diag_info));
+        }
+        if self.diag_hint > 0 {
+            parts.push(format!("{HINT_ICON} {}", self.diag_hint));
+        }
+        parts.join(" ")
     }
 }
 

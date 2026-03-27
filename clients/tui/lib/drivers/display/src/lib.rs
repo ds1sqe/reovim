@@ -176,10 +176,10 @@ pub use annotation::{
     Annotation, AnnotationContext, AnnotationKind, AnnotationLayer, AnnotationPayload,
     AnnotationPresenter, AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry,
     AnnotationStore, AnnotationTarget, BlamePresenter, BufferAnnotationStore, ColumnConfig,
-    ColumnWidth, ComposedLine, ComposerBuilder, GitSignsPresenter, GutterCell, GutterComposer,
-    GutterConfig, GutterRenderer, GutterRendererKey, GutterRendererRegistry, KindPattern,
-    LineNumberPresenter, PresentedOutput, PresenterContext, PresenterRegistry, SourceId,
-    VisibilityMode,
+    ColumnWidth, ComposedLine, ComposerBuilder, DiagnosticPresenter, GitSignsPresenter, GutterCell,
+    GutterComposer, GutterConfig, GutterRenderer, GutterRendererKey, GutterRendererRegistry,
+    KindPattern, LineNumberPresenter, PresentedOutput, PresenterContext, PresenterRegistry,
+    SourceId, VisibilityMode,
 };
 
 // ============================================================================

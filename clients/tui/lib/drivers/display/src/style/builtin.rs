@@ -556,6 +556,21 @@ static DARK_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| {
             }) // Yellow
             .bold(),
     );
+    m.insert(
+        groups::MODE_REPLACE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 40,
+                g: 44,
+                b: 52,
+            })
+            .bg(Color::Rgb {
+                r: 224,
+                g: 108,
+                b: 117,
+            }) // Red
+            .bold(),
+    );
 
     // UI elements
     m.insert(
@@ -1229,6 +1244,17 @@ static LIGHT_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| 
             }) // Yellow
             .bold(),
     );
+    m.insert(
+        groups::MODE_REPLACE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 250,
+                g: 250,
+                b: 250,
+            })
+            .bg(Color::Rgb { r: 204, g: 0, b: 0 }) // Red
+            .bold(),
+    );
 
     // UI elements
     m.insert(
@@ -1899,6 +1925,21 @@ static TOKYO_NIGHT_ORANGE_PALETTE: LazyLock<HashMap<&'static str, Style>> = Lazy
                 g: 175,
                 b: 104,
             }) // Yellow
+            .bold(),
+    );
+    m.insert(
+        groups::MODE_REPLACE,
+        Style::new()
+            .fg(Color::Rgb {
+                r: 26,
+                g: 27,
+                b: 38,
+            })
+            .bg(Color::Rgb {
+                r: 247,
+                g: 118,
+                b: 142,
+            }) // Pink-red
             .bold(),
     );
 

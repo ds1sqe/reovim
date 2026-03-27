@@ -211,6 +211,9 @@ pub const MODE_VISUAL: &str = "mode_visual";
 /// Command mode indicator
 pub const MODE_COMMAND: &str = "mode_command";
 
+/// Replace mode indicator
+pub const MODE_REPLACE: &str = "mode_replace";
+
 /// UI borders
 pub const BORDER: &str = "border";
 
@@ -342,6 +345,7 @@ pub const ALL_GROUPS: &[&str] = &[
     MODE_INSERT,
     MODE_VISUAL,
     MODE_COMMAND,
+    MODE_REPLACE,
     BORDER,
     POPUP_BG,
     POPUP_FG,

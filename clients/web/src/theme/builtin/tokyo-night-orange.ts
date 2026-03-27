@@ -102,6 +102,7 @@ export const tokyoNightOrangeTheme: Theme = {
     mode_insert: { fg: 'bg', bg: 'green', bold: true },
     mode_visual: { fg: 'bg', bg: 'purple', bold: true },
     mode_command: { fg: 'bg', bg: 'yellow', bold: true },
+    mode_replace: { fg: 'bg', bg: 'red', bold: true },
     border: { fg: 'darkGray' },
     popup_bg: { bg: 'statusBg' },
     popup_fg: { fg: 'fg' },

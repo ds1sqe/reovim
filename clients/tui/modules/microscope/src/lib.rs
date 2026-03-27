@@ -49,6 +49,7 @@ struct MicroscopeData {
 struct ItemData {
     display: String,
     detail: Option<String>,
+    icon: Option<String>,
 }
 
 /// Deserialized preview content.
@@ -159,6 +160,7 @@ impl ClientModule for MicroscopeModule {
                     .map(|item| ItemData {
                         display: item["display"].as_str().unwrap_or("").to_owned(),
                         detail: item["detail"].as_str().map(str::to_owned),
+                        icon: item["icon"].as_str().map(str::to_owned),
                     })
                     .collect()
             })

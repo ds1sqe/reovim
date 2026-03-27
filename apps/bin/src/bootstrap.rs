@@ -321,8 +321,8 @@ pub fn create_session_state() -> SessionState {
     // The display layer creates presenters (Style, Color) and pairs them with sources.
     {
         use reovim_driver_display::{
-            AnnotationSourceRegistry, BlamePresenter, GitSignsPresenter, GutterRenderer,
-            GutterRendererKey, GutterRendererRegistry, LineNumberPresenter,
+            AnnotationSourceRegistry, BlamePresenter, DiagnosticPresenter, GitSignsPresenter,
+            GutterRenderer, GutterRendererKey, GutterRendererRegistry, LineNumberPresenter,
         };
         if let Some(source_registry) = services.get::<AnnotationSourceRegistry>() {
             let renderer = GutterRenderer::new();
@@ -332,6 +332,7 @@ pub fn create_session_state() -> SessionState {
             renderer.register_presenter(Arc::new(LineNumberPresenter::new()));
             renderer.register_presenter(Arc::new(GitSignsPresenter::new()));
             renderer.register_presenter(Arc::new(BlamePresenter::new()));
+            renderer.register_presenter(Arc::new(DiagnosticPresenter::new()));
 
             let renderer_registry = services.get_or_create::<GutterRendererRegistry>();
             renderer_registry.register(GutterRendererKey::Default, Arc::new(renderer));

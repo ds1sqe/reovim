@@ -1,7 +1,10 @@
 use {
     super::*,
     reovim_client_driver::{
-        testing::{MockPlatformCapabilities, RecordingSurface, WriteSurface},
+        testing::{
+            MockPlatformCapabilities, MockThemeProvider, RecordingSurface, TestModuleContext,
+            WriteSurface,
+        },
         types::Color,
     },
 };
@@ -239,7 +242,7 @@ fn statusline_renders_mode_with_correct_style() {
 
 #[test]
 fn statusline_renders_at_bounds_offset() {
-    let m = StatuslineModule::new();
+    let m = StatuslineModule::default();
     let mut surface = WriteSurface::new(80, 24);
     let bounds = Rect {
         x: 0,
@@ -338,8 +341,11 @@ fn statusline_renders_modified_indicator() {
     m.modified = true;
     let mut surface = WriteSurface::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_modified = surface.writes().iter().any(|w| w.text.contains("[+]"));
-    assert!(has_modified, "Expected [+] in writes");
+    let has_modified = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains(MODIFIED_ICON));
+    assert!(has_modified, "Expected modified icon in writes");
 }
 
 #[test]
@@ -349,8 +355,11 @@ fn statusline_renders_readonly_indicator() {
     m.readonly = true;
     let mut surface = WriteSurface::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_readonly = surface.writes().iter().any(|w| w.text.contains("[RO]"));
-    assert!(has_readonly, "Expected [RO] in writes");
+    let has_readonly = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains(READONLY_ICON));
+    assert!(has_readonly, "Expected readonly icon in writes");
 }
 
 #[test]
@@ -361,7 +370,7 @@ fn statusline_no_filename_no_section_c() {
     let has_filename = surface
         .writes()
         .iter()
-        .any(|w| w.text.contains("main.rs") || w.text.contains("[+]"));
+        .any(|w| w.text.contains("main.rs") || w.text.contains(MODIFIED_ICON));
     assert!(!has_filename, "Expected no filename section without data");
 }
 
@@ -401,12 +410,19 @@ fn statusline_renders_filetype_and_encoding() {
 
 #[test]
 fn statusline_renders_git_branch() {
-    let mut m = StatuslineModule::new();
-    m.git_branch = Some(String::from("main"));
+    let m = StatuslineModule {
+        git_branch: Some(String::from("main")),
+        ..Default::default()
+    };
     let mut surface = WriteSurface::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
     let has_branch = surface.writes().iter().any(|w| w.text.contains("main"));
     assert!(has_branch, "Expected git branch 'main' in writes");
+    let has_icon = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains(GIT_BRANCH_ICON));
+    assert!(has_icon, "Expected git branch icon in writes");
 }
 
 #[test]
@@ -561,4 +577,147 @@ fn pct_strings_last_entry() {
 #[test]
 fn pct_strings_midpoint() {
     assert_eq!(PCT_STRINGS[50], "50%");
+}
+
+// =============================================================================
+// Section X (diagnostic counts) tests — Phase 4
+// =============================================================================
+
+#[test]
+fn build_diagnostic_text_all_zero() {
+    let m = StatuslineModule::default();
+    assert!(m.build_diagnostic_text().is_empty());
+}
+
+#[test]
+fn build_diagnostic_text_errors_only() {
+    let m = StatuslineModule {
+        diag_error: 3,
+        ..Default::default()
+    };
+    let text = m.build_diagnostic_text();
+    assert!(text.contains(ERROR_ICON));
+    assert!(text.contains('3'));
+    assert!(!text.contains(WARNING_ICON));
+}
+
+#[test]
+fn build_diagnostic_text_mixed() {
+    let m = StatuslineModule {
+        diag_error: 1,
+        diag_warning: 2,
+        diag_hint: 5,
+        ..Default::default()
+    };
+    let text = m.build_diagnostic_text();
+    assert!(text.contains(ERROR_ICON));
+    assert!(text.contains(WARNING_ICON));
+    assert!(text.contains(HINT_ICON));
+    assert!(!text.contains(INFO_ICON));
+}
+
+#[test]
+fn statusline_renders_diagnostics_section() {
+    let mut m = StatuslineModule::default();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.diag_error = 2;
+    m.diag_warning = 1;
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_error = surface.writes().iter().any(|w| w.text.contains(ERROR_ICON));
+    assert!(has_error, "Expected error icon in writes");
+}
+
+#[test]
+fn statusline_no_diagnostics_when_zero() {
+    let m = StatuslineModule::default();
+    let mut surface = WriteSurface::new(80, 1);
+    m.chrome_render(&mut surface, bounds(80), &test_caps());
+    let has_diag = surface
+        .writes()
+        .iter()
+        .any(|w| w.text.contains(ERROR_ICON) || w.text.contains(WARNING_ICON));
+    assert!(!has_diag, "Expected no diagnostic icons when counts are zero");
+}
+
+#[test]
+fn on_notification_parses_diagnostic_counts() {
+    let mut m = StatuslineModule::default();
+    m.on_notification(r#"{"diagnostics":{"error":3,"warning":1,"info":0,"hint":2}}"#);
+    assert_eq!(m.diag_error, 3);
+    assert_eq!(m.diag_warning, 1);
+    assert_eq!(m.diag_info, 0);
+    assert_eq!(m.diag_hint, 2);
+}
+
+#[test]
+fn build_right_sections_includes_diagnostics() {
+    let mut m = StatuslineModule::default();
+    m.on_cursor_update(BufferId(0), 0, 0);
+    m.diag_error = 1;
+    let sections = m.build_right_sections();
+    // X + Z = 2 sections (no filetype)
+    assert_eq!(sections.len(), 2);
+    assert!(sections[0].0.contains(ERROR_ICON));
+}
+
+// =============================================================================
+// Theme caching tests
+// =============================================================================
+
+#[test]
+fn init_caches_theme_styles() {
+    let mut m = StatuslineModule::new();
+    let ctx_owner = TestModuleContext::builder()
+        .highlight(
+            "statusline_bg",
+            Style::new().bg(Color::Rgb {
+                r: 40,
+                g: 44,
+                b: 52,
+            }),
+        )
+        .highlight(
+            "statusline_fg",
+            Style::new().fg(Color::Rgb {
+                r: 171,
+                g: 178,
+                b: 191,
+            }),
+        )
+        .build();
+    m.init(&ctx_owner.as_context());
+
+    assert_eq!(
+        m.bg_style.bg,
+        Some(Color::Rgb {
+            r: 40,
+            g: 44,
+            b: 52
+        })
+    );
+    assert_eq!(
+        m.bg_style.fg,
+        Some(Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191
+        })
+    );
+}
+
+#[test]
+fn on_theme_changed_updates_styles() {
+    let mut m = StatuslineModule::default();
+    let original_bg = m.bg_style.bg;
+    let theme = MockThemeProvider::new().with_highlight(
+        "statusline_bg",
+        Style::new().bg(Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 30,
+        }),
+    );
+    m.on_theme_changed(&theme);
+    assert_ne!(m.bg_style.bg, original_bg);
 }

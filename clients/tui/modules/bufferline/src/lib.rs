@@ -12,13 +12,18 @@
 use {
     reovim_client_driver::{
         BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, ThemeProvider, Version,
+        types::Color,
     },
     serde::Deserialize,
 };
 
 /// Separator between tabs.
 const TAB_SEP: &str = "\u{2502}";
+
+// Inline icon constants (no dependency on reovim-driver-display).
+const PIN_ICON: &str = "\u{f0403}";
+const MODIFIED_ICON: &str = "\u{25cf}";
 
 // ============================================================================
 // Notification payloads
@@ -82,6 +87,8 @@ pub struct BufferlineModule {
     active_buffer_id: Option<u64>,
     pinned_ids: Vec<u64>,
     window_count: usize,
+    bg_style: Style,
+    active_style: Style,
 }
 
 impl BufferlineModule {
@@ -92,7 +99,22 @@ impl BufferlineModule {
             active_buffer_id: None,
             pinned_ids: Vec::new(),
             window_count: 1,
+            bg_style: Style::new().bg(Color::DarkGrey).fg(Color::White),
+            active_style: Style::new().bg(Color::Blue).fg(Color::White),
         }
+    }
+
+    fn cache_theme(&mut self, theme: &dyn ThemeProvider) {
+        let background = theme.highlight("statusline_bg");
+        let foreground = theme.highlight("statusline_fg");
+        self.bg_style = Style::new()
+            .bg(background.bg.unwrap_or(Color::DarkGrey))
+            .fg(foreground.fg.unwrap_or(Color::White));
+
+        let mode_normal = theme.highlight("mode_normal");
+        self.active_style = Style::new()
+            .bg(mode_normal.bg.unwrap_or(Color::Blue))
+            .fg(mode_normal.fg.unwrap_or(Color::White));
     }
 
     /// Handle `{"type":"buffer_list","buffers":[...]}` from TUI dispatch.
@@ -200,7 +222,8 @@ impl ClientModule for BufferlineModule {
         vec!["bufferline"]
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        self.cache_theme(ctx.theme);
         ProbeResult::Success
     }
 
@@ -240,6 +263,10 @@ impl ClientModule for BufferlineModule {
         self.active_buffer_id = Some(buffer_id.0 as u64);
     }
 
+    fn on_theme_changed(&mut self, theme: &dyn ThemeProvider) {
+        self.cache_theme(theme);
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
@@ -270,13 +297,9 @@ impl ClientModule for BufferlineModule {
         // Compute where in the original string the display starts.
         let display_offset = tab_str.len() - display_len;
 
-        // Render character by character to apply active highlighting.
-        let bg_style = Style::new().bg(Color::DarkGrey).fg(Color::White);
-        let active_style = Style::new().bg(Color::Blue).fg(Color::White);
-
         // Render the whole string in background style first, then
         // overwrite the active range with active style.
-        surface.write_styled(start_x, bounds.y, display_str, bg_style);
+        surface.write_styled(start_x, bounds.y, display_str, self.bg_style.clone());
 
         if let Some((a_start, a_end)) = active_range {
             // Adjust range to display coordinates.
@@ -285,22 +308,23 @@ impl ClientModule for BufferlineModule {
             if vis_start < vis_end {
                 let active_text = &display_str[vis_start..vis_end];
                 let ax = start_x + vis_start as u16;
-                surface.write_styled(ax, bounds.y, active_text, active_style);
+                surface.write_styled(ax, bounds.y, active_text, self.active_style.clone());
             }
         }
     }
 }
 
-/// Format a tab label: ` [pin] name [+] `
+/// Format a tab label: ` [pin] name [modified] `
 fn format_tab_label(tab: &TabEntry) -> String {
     let mut label = if tab.pinned {
-        format!(" * {} ", tab.name)
+        format!(" {PIN_ICON} {} ", tab.name)
     } else {
         format!(" {} ", tab.name)
     };
 
     if tab.modified {
-        label.push_str("[+] ");
+        label.push_str(MODIFIED_ICON);
+        label.push(' ');
     }
 
     label

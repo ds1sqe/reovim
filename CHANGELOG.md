@@ -4,6 +4,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.14.1-dev
 
+### Added
+
+- **statusline**: diagnostic counts section (Section X) with Nerd Font error/warning/info/hint icons — only shown when counts > 0
+- **statusline**: git branch icon (), modified icon (●), readonly icon (󰌾) replace plain text indicators
+- **statusline**: theme-aware colors via `statusline_bg`/`statusline_fg` highlight groups cached in `init()`
+- **bufferline**: Nerd Font pin icon (󰐃) and modified dot (●) replace ASCII `*` and `[+]`
+- **bufferline**: theme-aware colors via highlight groups cached in `init()`
+- **microscope**: file type icons rendered next to picker results
+- **display**: `DiagnosticPresenter` registered in bootstrap — diagnostic gutter icons now appear
+- **display**: `mode_replace` highlight group added to all 3 builtin themes (Dark, Light, TokyoNight)
+
 ### Fixed
 
 - **gutter**: add generic column priority for ordering — columns now sort by `priority` field (lower = further left) instead of Vec insertion order

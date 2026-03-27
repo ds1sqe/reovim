@@ -132,6 +132,9 @@ export const MODE_VISUAL = 'mode_visual';
 /** Command mode indicator */
 export const MODE_COMMAND = 'mode_command';
 
+/** Replace mode indicator */
+export const MODE_REPLACE = 'mode_replace';
+
 /** UI borders */
 export const BORDER = 'border';
 
@@ -260,6 +263,7 @@ export const ALL_GROUPS: readonly string[] = [
   MODE_INSERT,
   MODE_VISUAL,
   MODE_COMMAND,
+  MODE_REPLACE,
   BORDER,
   POPUP_BG,
   POPUP_FG,
@@ -318,6 +322,7 @@ export const UI_GROUPS: readonly string[] = [
   MODE_INSERT,
   MODE_VISUAL,
   MODE_COMMAND,
+  MODE_REPLACE,
   BORDER,
   POPUP_BG,
   POPUP_FG,

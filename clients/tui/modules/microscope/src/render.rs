@@ -142,6 +142,16 @@ pub fn render_results(
         surface.write_styled(col, row, " ", style.clone());
         col += 1;
 
+        // Icon (if present).
+        if let Some(ref icon) = item.icon
+            && col + 2 < bounds.results_width
+        {
+            surface.write_styled(col, row, icon, style.clone());
+            col += 1;
+            surface.write_styled(col, row, " ", style.clone());
+            col += 1;
+        }
+
         // Display text.
         for ch in item.display.chars() {
             if col >= bounds.results_width {
