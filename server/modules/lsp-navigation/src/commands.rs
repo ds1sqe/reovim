@@ -293,9 +293,7 @@ impl CommandHandler for HoverCommand {
             return CommandResult::Success;
         }
 
-        // Fire-and-forget: spawn async task to await LSP response (#662).
-        // The task stores the result in HoverCache; HoverBridge::tick()
-        // picks it up and pushes to the client.
+        // Fire-and-forget: store result in HoverCache, tick delivers (#662).
         let cache = services.get_or_create::<HoverCache>();
         let cache_arc = cache.shared();
         #[allow(clippy::cast_possible_truncation)]
@@ -305,9 +303,8 @@ impl CommandHandler for HoverCommand {
         #[allow(clippy::cast_possible_truncation)]
         let origin_col = cursor.column as u32;
 
-        // Start tick so HoverBridge::tick() polls for the result.
-        // Capture handle + client_id for the async task to stop the tick
-        // when done (prevents indefinite 50ms write-lock contention).
+        // Start tick for HoverBridge::tick() polling. On success the tick
+        // stays alive for delivery; cleaned up by next K or teardown (#693).
         let tick_stop = if let Some(client_id) = runtime.owner()
             && let Some(tick_handle) = services.get::<TickSchedulerHandle>()
         {
@@ -324,11 +321,12 @@ impl CommandHandler for HoverCommand {
                 // OneshotReceiver is crossbeam-based (not a Future), so use
                 // spawn_blocking to await it without holding a tokio thread.
                 let result = tokio::task::spawn_blocking(move || rx.recv_timeout(timeout)).await;
-                match result {
+
+                let cached = match result {
                     Ok(Ok(Ok(Some(hover)))) => {
                         let text = format_hover_content(&hover);
                         if text.is_empty() {
-                            debug!("K: hover returned empty content");
+                            false
                         } else {
                             let content_type = hover_content_type(&hover.contents);
                             cache_arc.store(Arc::new(Some(HoverSnapshot {
@@ -339,26 +337,18 @@ impl CommandHandler for HoverCommand {
                                 col: origin_col,
                             })));
                             info!("K: hover result cached for tick");
+                            true
                         }
                     }
-                    Ok(Ok(Ok(None))) => {
-                        debug!("K: server returned None (no hover)");
+                    other => {
+                        debug!("K: hover not available: {other:?}");
+                        false
                     }
-                    Ok(Ok(Err(e))) => {
-                        warn!("K: LSP error: {e}");
-                    }
-                    Ok(Err(_recv_err)) => {
-                        warn!("K: oneshot channel closed or timed out");
-                    }
-                    Err(join_err) => {
-                        warn!("K: spawn_blocking panicked: {join_err}");
-                    }
-                }
-                // Stop the tick — either the result was delivered or we timed
-                // out. No reason to keep taking session write locks.
-                if let Some((handle, cid)) = tick_stop {
+                };
+                // Stop tick only when nothing was cached — a cached result
+                // needs the tick alive for delivery (#693).
+                if !cached && let Some((handle, cid)) = tick_stop {
                     handle.stop(cid, "hover");
-                    debug!("K: hover tick stopped");
                 }
             });
         } else {
@@ -670,7 +660,9 @@ fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Loca
     // Push current position to jump list before jumping so Ctrl-O returns here.
     if let (Some(old_buf), Some(old_win)) = (runtime.active_buffer(), runtime.windows().active()) {
         let old_pos = Position::new(old_win.cursor.line, old_win.cursor.column);
-        runtime.jumplist_mut().push(JumpEntry::new(old_buf, old_pos));
+        runtime
+            .jumplist_mut()
+            .push(JumpEntry::new(old_buf, old_pos));
     }
 
     let existing = runtime.kernel().buffers.list().into_iter().find(|&id| {

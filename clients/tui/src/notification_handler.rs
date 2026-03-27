@@ -642,11 +642,7 @@ pub(crate) async fn dispatch_buffer_list(
     extensions: &mut [Box<dyn ClientModule>],
 ) {
     // Collect buffer IDs from client's windows.
-    let window_buf_ids: Vec<u64> = state
-        .windows
-        .iter()
-        .filter_map(|w| w.buffer_id)
-        .collect();
+    let window_buf_ids: Vec<u64> = state.windows.iter().filter_map(|w| w.buffer_id).collect();
     if window_buf_ids.is_empty() {
         return;
     }
@@ -684,9 +680,8 @@ pub(crate) async fn dispatch_buffer_list(
     entries.push(']');
 
     let window_count = state.windows.len();
-    let json = format!(
-        r#"{{"type":"buffer_list","buffers":{entries},"window_count":{window_count}}}"#,
-    );
+    let json =
+        format!(r#"{{"type":"buffer_list","buffers":{entries},"window_count":{window_count}}}"#);
 
     for ext in extensions {
         ext.on_notification(&json);
