@@ -7,6 +7,10 @@ use {
         api::{CommandExecutor, ExtensionApi},
         testing::StubExecutor,
     },
+    reovim_driver_syntax::{
+        Annotation, SyntaxEdit, SyntaxSessionState, TextObjectKind, TextObjectRange,
+        TextObjectScope,
+    },
     reovim_kernel::{
         api::{
             ModeStack,
@@ -334,4 +338,246 @@ fn test_all_14_commands_graceful_without_driver() {
             cmd.id()
         );
     }
+}
+
+// =========================================================================
+// Mock Syntax Driver for testing execute paths with actual range data
+// =========================================================================
+
+/// A mock syntax driver that always returns a fixed `TextObjectRange`.
+struct MockSyntaxDriver {
+    range: Option<TextObjectRange>,
+}
+
+impl MockSyntaxDriver {
+    fn with_range(range: TextObjectRange) -> Self {
+        Self { range: Some(range) }
+    }
+}
+
+impl reovim_driver_syntax::SyntaxDriver for MockSyntaxDriver {
+    fn language(&self) -> &str {
+        "mock"
+    }
+
+    fn parse(&mut self, _content: &str) {}
+
+    fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
+
+    fn highlights(&self, _byte_range: std::ops::Range<usize>) -> Vec<Annotation> {
+        Vec::new()
+    }
+
+    fn is_parsed(&self) -> bool {
+        true
+    }
+
+    fn textobject_range(
+        &self,
+        _kind: TextObjectKind,
+        _scope: TextObjectScope,
+        _line: u32,
+        _col: u32,
+    ) -> Option<TextObjectRange> {
+        self.range
+    }
+}
+
+/// Helper: install mock syntax driver for a buffer in the runtime's extension map.
+fn install_mock_driver(
+    runtime: &mut SessionRuntime<'_>,
+    buffer_id: BufferId,
+    range: TextObjectRange,
+) {
+    let syntax_state = runtime.ext_mut::<SyntaxSessionState>();
+    syntax_state.set(buffer_id, Box::new(MockSyntaxDriver::with_range(range)));
+}
+
+fn make_test_range() -> TextObjectRange {
+    TextObjectRange {
+        start_byte: 0,
+        end_byte: 10,
+        start_row: 0,
+        start_col: 3,
+        end_row: 2,
+        end_col: 7,
+    }
+}
+
+// =========================================================================
+// Operator-Pending Mode Tests (normal mode with syntax range)
+// =========================================================================
+
+#[test]
+fn test_linewise_operator_pending_with_range() {
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let executor = StubExecutor;
+    let mode = test_mode();
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    // Install mock driver
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    // InnerFunction is linewise=true
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = InnerFunction.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    // Verify operator pending state was set with linewise range
+    let op_state = runtime.ext::<OperatorPendingState>();
+    assert!(op_state.is_some());
+    assert!(op_state.unwrap().has_textobj_range());
+}
+
+#[test]
+fn test_characterwise_operator_pending_with_range() {
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "foo(bar, baz)");
+    let executor = StubExecutor;
+    let mode = test_mode();
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    // InnerArgument is linewise=false (characterwise)
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = InnerArgument.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    let op_state = runtime.ext::<OperatorPendingState>();
+    assert!(op_state.is_some());
+    assert!(op_state.unwrap().has_textobj_range());
+}
+
+// =========================================================================
+// Visual Mode Tests (with syntax range)
+// =========================================================================
+
+fn visual_mode() -> ModeId {
+    ModeId::new(reovim_kernel::api::v1::ModuleId::new("vim"), "visual")
+}
+
+fn visual_line_mode() -> ModeId {
+    ModeId::new(reovim_kernel::api::v1::ModuleId::new("vim"), "visual-line")
+}
+
+fn visual_block_mode() -> ModeId {
+    ModeId::new(reovim_kernel::api::v1::ModuleId::new("vim"), "visual-block")
+}
+
+#[test]
+fn test_visual_mode_sets_selection() {
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let executor = StubExecutor;
+    let mode = visual_mode();
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = InnerFunction.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    // In visual mode, selection should be set on the window
+    let window = runtime.windows().active().unwrap();
+    assert!(window.selection.is_some());
+
+    let sel = window.selection.as_ref().unwrap();
+    assert_eq!(sel.start, reovim_kernel::api::v1::Position::new(0, 3));
+    assert_eq!(sel.end, reovim_kernel::api::v1::Position::new(2, 7));
+
+    // Cursor should be at end_col.saturating_sub(1) = 6
+    assert_eq!(window.cursor.line, 2);
+    assert_eq!(window.cursor.column, 6);
+}
+
+#[test]
+fn test_visual_line_mode_sets_line_selection() {
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let executor = StubExecutor;
+    let mode = visual_line_mode();
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = AroundFunction.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    let window = runtime.windows().active().unwrap();
+    assert!(window.selection.is_some());
+
+    let sel = window.selection.as_ref().unwrap();
+    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+}
+
+#[test]
+fn test_visual_block_mode_sets_block_selection() {
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let executor = StubExecutor;
+    let mode = visual_block_mode();
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = InnerClass.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    let window = runtime.windows().active().unwrap();
+    assert!(window.selection.is_some());
+
+    let sel = window.selection.as_ref().unwrap();
+    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+}
+
+// =========================================================================
+// is_visual_mode / visual_selection_mode coverage (via normal mode)
+// =========================================================================
+
+#[test]
+fn test_normal_mode_not_visual() {
+    // Normal mode → is_visual_mode returns false → operator-pending path taken
+    let kernel = create_test_context();
+    let buffer_id = setup_buffer(&kernel, "fn main() {}");
+    let executor = StubExecutor;
+    let mode = test_mode(); // "normal"
+
+    let mut state = TestState::with_window(buffer_id, mode);
+    let mut runtime = state.runtime(&kernel, &executor);
+
+    install_mock_driver(&mut runtime, buffer_id, make_test_range());
+
+    let mut ctx = CommandContext::new();
+    ctx.set_buffer_id(buffer_id);
+    let result = AroundComment.execute(&mut runtime, &ctx);
+    assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+    // Should NOT set selection (not visual mode)
+    let window = runtime.windows().active().unwrap();
+    assert!(window.selection.is_none());
+
+    // Should set operator pending state
+    let op_state = runtime.ext::<OperatorPendingState>();
+    assert!(op_state.is_some());
+    assert!(op_state.unwrap().has_textobj_range());
 }

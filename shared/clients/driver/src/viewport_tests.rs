@@ -2386,3 +2386,898 @@ fn render_remote_cursor_labels_no_buffer_lines() {
     let writes = surface.writes.borrow();
     assert!(!writes.is_empty(), "should still render label at col 1");
 }
+
+// =============================================================================
+// Coverage gap: render_selection_range with module column mapping
+// =============================================================================
+
+#[test]
+fn render_selection_char_with_column_mapping_module() {
+    struct ColMapModule;
+    impl ClientModule for ColMapModule {
+        fn id(&self) -> &'static str {
+            "colmap"
+        }
+        fn name(&self) -> &'static str {
+            "ColMap"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        fn map_cursor_column(&self, _buf: BufferId, _line: usize, col: usize) -> Option<u16> {
+            // Shift columns right by 2 (simulates a table extension)
+            Some((col + 2) as u16)
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 1,
+        end_line: 0,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ColMapModule)];
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // map_col(1) = 3, map_col(3) = 5 => cols 3..6 (3 overlays)
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 3, "column-mapped Char selection overlay count");
+}
+
+#[test]
+fn render_selection_block_with_column_mapping_module() {
+    struct ColMapModule;
+    impl ClientModule for ColMapModule {
+        fn id(&self) -> &'static str {
+            "colmap"
+        }
+        fn name(&self) -> &'static str {
+            "ColMap"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        fn map_cursor_column(&self, _buf: BufferId, _line: usize, col: usize) -> Option<u16> {
+            Some((col + 2) as u16)
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 1,
+        end_line: 1,
+        end_col: 2,
+        mode: crate::SelectionMode::Block,
+        color: reovim_arch::Color::Red,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ColMapModule)];
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // Block: map_col(1)=3, map_col(2)+1=5, visual_line_len=5 => cols 3..5 = 2 per line, 2 lines => 4
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 4, "block selection with column mapping overlay count");
+}
+
+// =============================================================================
+// Coverage gap: render_selection_range with transform_line providing visual width
+// =============================================================================
+
+#[test]
+fn render_selection_with_transform_line_visual_width() {
+    struct TransformModule;
+    impl ClientModule for TransformModule {
+        fn id(&self) -> &'static str {
+            "transform"
+        }
+        fn name(&self) -> &'static str {
+            "Transform"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn transform_line(
+            &self,
+            _buf: BufferId,
+            _line: usize,
+            _text: &str,
+        ) -> Option<crate::TransformedLine> {
+            // Transform yields a shorter visual representation
+            Some(crate::TransformedLine {
+                segments: vec![("ab".to_string(), None), ("cd".to_string(), None)],
+            })
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 0,
+        end_line: 0,
+        end_col: 2,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(TransformModule)];
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // transform_line returns "abcd" (4 chars)
+    // Char single-line: cols 0..min(3, 4)=3 => 3 overlays
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 3, "selection with transform_line visual width");
+}
+
+// =============================================================================
+// Coverage gap: render_selection_range with no buffer_lines
+// =============================================================================
+
+#[test]
+fn render_selection_no_buffer_lines() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 0,
+        end_line: 0,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: None,
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // visual_line_len defaults to content_width when lines is None
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 4, "selection with no buffer_lines defaults to content_width");
+}
+
+// =============================================================================
+// Coverage gap: render_buffer_content with transformed line from module
+// =============================================================================
+
+#[test]
+fn render_buffer_content_with_transformed_line() {
+    struct TransformModule;
+    impl ClientModule for TransformModule {
+        fn id(&self) -> &'static str {
+            "transform"
+        }
+        fn name(&self) -> &'static str {
+            "Transform"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn transform_line(
+            &self,
+            _buf: BufferId,
+            _line: usize,
+            _text: &str,
+        ) -> Option<crate::TransformedLine> {
+            Some(crate::TransformedLine {
+                segments: vec![
+                    (">>".to_string(), Some(Style::new().fg(reovim_arch::Color::Red))),
+                    ("replaced".to_string(), None),
+                ],
+            })
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["original text".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(TransformModule)];
+    let token_provider = MockTokenProvider::empty();
+    let viewport = Rect::new(0, 0, 80, 24);
+
+    render_buffer_content(&mut surface, viewport, &ctx, &modules, &token_provider, &MockTheme);
+
+    let text = surface.text_at(0);
+    assert_eq!(text, ">>replaced", "buffer content should use transformed line");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — background token with opacity that
+// removes bg (bg.bg becomes None after dim_style)
+// =============================================================================
+
+#[test]
+fn render_line_content_bg_token_zero_opacity() {
+    struct BgModule;
+    impl ClientModule for BgModule {
+        fn id(&self) -> &'static str {
+            "bg"
+        }
+        fn name(&self) -> &'static str {
+            "Bg"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "bg.token" {
+                Some(RenderBehavior::Background(reovim_arch::Color::Red))
+            } else {
+                None
+            }
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "bg.token".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(BgModule)];
+    // opacity=0.0 should make the bg color blend to black (DEFAULT_BG),
+    // but the style may still have bg=Some(Black) or bg=None depending on dim_style
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "hello",
+        0.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    // Exercise the path; text should still render
+    let text = surface.text_at(0);
+    assert_eq!(text, "hello");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — Conceal/Hide/FWL tokens skipped when
+// skip_conceals=true, falling through to `_ => {}` arm
+// =============================================================================
+
+#[test]
+fn render_line_content_conceal_tokens_skip_all_types() {
+    struct AllBehaviorModule;
+    impl ClientModule for AllBehaviorModule {
+        fn id(&self) -> &'static str {
+            "all-behavior"
+        }
+        fn name(&self) -> &'static str {
+            "AllBehavior"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            match category {
+                "conceal" => Some(RenderBehavior::Conceal {
+                    replacement: Cow::Borrowed("X"),
+                }),
+                "hidden" => Some(RenderBehavior::Hide),
+                "hr" => Some(RenderBehavior::FullWidthLine {
+                    ch: '-',
+                    style: Style::default(),
+                }),
+                _ => None,
+            }
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let tokens = vec![
+        SyntaxToken {
+            line: 0,
+            start_col: 0,
+            end_col: 2,
+            category: "conceal".to_owned(),
+        },
+        SyntaxToken {
+            line: 0,
+            start_col: 3,
+            end_col: 5,
+            category: "hidden".to_owned(),
+        },
+        SyntaxToken {
+            line: 0,
+            start_col: 6,
+            end_col: 8,
+            category: "hr".to_owned(),
+        },
+    ];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(AllBehaviorModule)];
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "ab cd efgh",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        true, // skip conceals — all Conceal/Hide/FWL fall through to `_ => {}`
+        &modules,
+    );
+    // All text should be visible (conceals skipped)
+    let text = surface.text_at(0);
+    assert_eq!(text, "ab cd efgh", "all conceals should be skipped in insert mode");
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursors — cursor col beyond surface width
+// =============================================================================
+
+#[test]
+fn render_remote_cursors_col_beyond_width() {
+    let mut surface = RecordingSurface::new(20, 24);
+    let lines = vec!["hello".to_string()];
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Alice".to_string(),
+        cursor_line: 0,
+        cursor_col: 100, // far beyond width=20
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    // screen_col = 100 + 0 = 100, which is >= width=20
+    // The if condition fails, so apply_style is not called
+    render_remote_cursors(&mut surface, &ctx, 0, 24);
+    // No panic; the cursor is simply not rendered
+}
+
+// =============================================================================
+// Coverage gap: render_remote_cursors — cursor past content_height
+// =============================================================================
+
+#[test]
+fn render_remote_cursors_past_content_height() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let remote = crate::RemoteClientInfo {
+        client_id: 1,
+        display_name: "Alice".to_string(),
+        cursor_line: 30,
+        cursor_col: 0,
+        mode: "normal".to_string(),
+        cursor_color: reovim_arch::Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let ctx = ViewportContext {
+        remote_clients: &remotes,
+        ..empty_ctx()
+    };
+    // cursor_line=30, content_height=5 => screen_line=30 >= 5, if condition fails
+    render_remote_cursors(&mut surface, &ctx, 0, 5);
+}
+
+// =============================================================================
+// Coverage gap: render_self_cursor — cursor past content_height
+// =============================================================================
+
+#[test]
+fn render_self_cursor_past_content_height() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let ctx = ViewportContext {
+        cursor: Some(CursorInfo {
+            line: 50,
+            column: 0,
+        }),
+        render_self_cursor: true,
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    let tokens = MockTokenProvider::empty();
+    // content_height=5, cursor at line 50 => screen_line=50 >= 5
+    render_self_cursor(&mut surface, &ctx, 0, 5, &tokens, &MockTheme, &modules);
+}
+
+// =============================================================================
+// Coverage gap: render_self_cursor — screen_col beyond width
+// =============================================================================
+
+#[test]
+fn render_self_cursor_col_beyond_width() {
+    let mut surface = RecordingSurface::new(10, 24);
+    let lines = vec!["hello".to_string()];
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        cursor: Some(CursorInfo {
+            line: 0,
+            column: 100,
+        }),
+        render_self_cursor: true,
+        is_insert_mode: true, // use insert mode path for visual_col = column
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    let tokens = MockTokenProvider::empty();
+    // visual_col=100, content_x=0, screen_col=100 >= width=10
+    render_self_cursor(&mut surface, &ctx, 0, 24, &tokens, &MockTheme, &modules);
+}
+
+// =============================================================================
+// Coverage gap: render_selection_range — multi-line char with no buffer_id
+// (map_col closure returns buf_col as u16)
+// =============================================================================
+
+#[test]
+fn render_selection_char_multiline_no_buffer_id() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 2,
+        end_line: 1,
+        end_col: 3,
+        mode: crate::SelectionMode::Char,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: None, // No buffer ID — map_col just returns buf_col
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    let overlays = surface.overlays.borrow();
+    // Line 0: cols 2..5 = 3 overlays
+    // Line 1: cols 0..4 = 4 overlays
+    assert_eq!(overlays.len(), 7, "multi-line char selection without buffer_id");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — conceal style lookup in render loop
+// (conceal_style is Some vs None, and source_col mapping with highlight)
+// =============================================================================
+
+#[test]
+fn render_line_content_conceal_with_style_and_unmapped_cols() {
+    struct ConcealModule;
+    impl ClientModule for ConcealModule {
+        fn id(&self) -> &'static str {
+            "conceal"
+        }
+        fn name(&self) -> &'static str {
+            "Conceal"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "conceal.url" {
+                Some(RenderBehavior::Conceal {
+                    replacement: Cow::Borrowed("LINK"),
+                })
+            } else {
+                None
+            }
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    // "ab" (0..2), then conceal covers 2..7 ("cdefg"), then "hi" (7..9)
+    let tokens = vec![
+        SyntaxToken {
+            line: 0,
+            start_col: 0,
+            end_col: 2,
+            category: "keyword".to_owned(),
+        },
+        SyntaxToken {
+            line: 0,
+            start_col: 2,
+            end_col: 7,
+            category: "conceal.url".to_owned(),
+        },
+    ];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(ConcealModule)];
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "abcdefghi",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    let text = surface.text_at(0);
+    // "ab" + "LINK" + "hi" = "abLINKhi"
+    assert!(
+        text.contains("LINK"),
+        "conceal replacement should appear: {text}"
+    );
+    assert!(text.contains("ab"), "prefix should remain: {text}");
+    assert!(text.contains("hi"), "suffix should remain: {text}");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — background token with bg beyond line length
+// =============================================================================
+
+#[test]
+fn render_line_content_bg_token_end_beyond_line() {
+    struct BgModule;
+    impl ClientModule for BgModule {
+        fn id(&self) -> &'static str {
+            "bg"
+        }
+        fn name(&self) -> &'static str {
+            "Bg"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "bg.token" {
+                Some(RenderBehavior::Background(reovim_arch::Color::Red))
+            } else {
+                None
+            }
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 100, // beyond "hi" length
+        category: "bg.token".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(BgModule)];
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "hi",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    // min(end_col=100, line_char_count=2) => only 2 bg overlays
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 2, "bg overlay clamped to line length");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — background token col_u16 >= width
+// =============================================================================
+
+#[test]
+fn render_line_content_bg_token_col_beyond_width() {
+    struct BgModule;
+    impl ClientModule for BgModule {
+        fn id(&self) -> &'static str {
+            "bg"
+        }
+        fn name(&self) -> &'static str {
+            "Bg"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            if category == "bg.token" {
+                Some(RenderBehavior::Background(reovim_arch::Color::Red))
+            } else {
+                None
+            }
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let tokens = vec![SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "bg.token".to_owned(),
+    }];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(BgModule)];
+    // width=3 means display cols >= 3 should be skipped by the `col_u16 < width` check
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        3, // narrow width
+        "hello",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    // Only cols 0..3 should get overlays (clamped by width check)
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 3, "bg overlay clamped to content width");
+}
+
+// =============================================================================
+// Coverage gap: render_line_content — inline decoration col_end clamped by width
+// =============================================================================
+
+#[test]
+fn render_line_content_inline_dec_clamped_by_width() {
+    struct InlineDecModule {
+        decorations: Vec<crate::InlineDecoration>,
+    }
+    impl ClientModule for InlineDecModule {
+        fn id(&self) -> &'static str {
+            "inline-dec"
+        }
+        fn name(&self) -> &'static str {
+            "InlineDec"
+        }
+        fn version(&self) -> crate::Version {
+            crate::Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+            Ok(())
+        }
+        fn has_buffer_contrib(&self) -> bool {
+            true
+        }
+        fn inline_decorations(&self, _line: usize) -> &[crate::InlineDecoration] {
+            &self.decorations
+        }
+    }
+
+    let mut surface = RecordingSurface::new(80, 24);
+    let module = InlineDecModule {
+        decorations: vec![crate::InlineDecoration {
+            col_start: 0,
+            col_end: 100, // far beyond width
+            style: Style::new().fg(reovim_arch::Color::Red),
+        }],
+    };
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(module)];
+    let token_provider = MockTokenProvider::empty();
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        5, // narrow width
+        "hello world",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+    // col_end.min(width) = 5, so only cols 0..5 get decorations
+    let text = surface.text_at(0);
+    assert_eq!(text, "hello", "content should be truncated to width");
+}
+
+// =============================================================================
+// Coverage gap: render_positioned_virtual_lines — VL past content_height
+// =============================================================================
+
+#[test]
+fn render_positioned_vl_past_content_height() {
+    let mut surface = RecordingSurface::new(80, 2);
+    let vlines = vec![
+        VirtualLine {
+            buffer_line: 0,
+            position: VirtualLinePosition::After,
+            content: "after1".to_string(),
+            style: Style::default(),
+        },
+        VirtualLine {
+            buffer_line: 0,
+            position: VirtualLinePosition::After,
+            content: "after2".to_string(),
+            style: Style::default(),
+        },
+        VirtualLine {
+            buffer_line: 0,
+            position: VirtualLinePosition::After,
+            content: "after3".to_string(),
+            style: Style::default(),
+        },
+    ];
+    let ctx = ViewportContext {
+        virtual_lines: &vlines,
+        ..empty_ctx()
+    };
+    // content_height=2, screen_row=1, so only 1 VL fits before reaching content_height
+    let rows = render_positioned_virtual_lines(&mut surface, &ctx, 0, 0, 1, 80, 2, 0, VirtualLinePosition::After);
+    assert_eq!(rows, 1, "only 1 VL should fit within remaining viewport height");
+}
+
+// =============================================================================
+// Coverage gap: DummyCaps coverage (render_gutter_annotations uses it)
+// =============================================================================
+
+#[test]
+fn dummy_caps_coverage() {
+    let caps = DummyCaps;
+    assert_eq!(caps.rendering_model(), crate::RenderingModel::CellGrid);
+    assert_eq!(caps.grid_size(), None);
+    assert_eq!(caps.color_depth(), crate::ColorDepth::TrueColor);
+    assert_eq!(caps.pixel_size(), None);
+    assert!(caps.reliable_unicode_width());
+    assert!(caps.dark_mode());
+    assert!(!caps.smooth_scroll());
+    assert!(!caps.pointer_events());
+    assert!(!caps.touch_input());
+    assert!(!caps.haptic());
+    assert_eq!(caps.safe_area(), crate::Insets::ZERO);
+    assert!(caps.has_focus());
+    assert!(caps.clipboard_available());
+    assert!(!caps.screen_reader_active());
+}
+
+// =============================================================================
+// Coverage gap: render_selection_range — Line mode multi-line
+// =============================================================================
+
+#[test]
+fn render_selection_line_mode_multi_line() {
+    let mut surface = RecordingSurface::new(20, 24);
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let local_sel = SelectionInfo {
+        start_line: 0,
+        start_col: 0,
+        end_line: 1,
+        end_col: 0,
+        mode: crate::SelectionMode::Line,
+        color: reovim_arch::Color::Blue,
+    };
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(0)),
+        buffer_lines: Some(&lines),
+        local_selection: Some(local_sel),
+        ..empty_ctx()
+    };
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_selections(&mut surface, &ctx, 0, 24, &modules);
+    // Line mode: each line gets full content_width=20 overlay, 2 lines => 40
+    let overlays = surface.overlays.borrow();
+    assert_eq!(overlays.len(), 40, "Line mode multi-line selection");
+}

@@ -635,3 +635,238 @@ fn test_format_report_all_statuses() {
     assert!(report.contains("[!!] warn: caution"));
     assert!(report.contains("[--] info: note"));
 }
+
+// ========================================================================
+// collect_treesitter - with factories
+// ========================================================================
+
+#[test]
+fn test_collect_treesitter_with_factories() {
+    use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+
+    struct StubFactory;
+    impl SyntaxDriverFactory for StubFactory {
+        fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+            None
+        }
+        fn supported_languages(&self) -> Vec<&str> {
+            vec!["test"]
+        }
+    }
+
+    let kernel = test_kernel();
+    let store = SyntaxFactoryStore::new();
+    store.add(Arc::new(StubFactory));
+    kernel.services.register(Arc::new(store));
+
+    let section = collect_treesitter(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Syntax factories" && e.detail.contains("1"))
+    );
+}
+
+#[test]
+fn test_collect_treesitter_with_language_defs() {
+    use reovim_driver_syntax::CommentTokens;
+
+    let kernel = test_kernel();
+    let store = LanguageInfoStore::new();
+    store.add(reovim_driver_syntax::LanguageInfo {
+        id: "rust".to_string(),
+        name: "Rust".to_string(),
+        extensions: vec!["rs".to_string()],
+        mime_types: vec![],
+        comment_tokens: CommentTokens::default(),
+    });
+    kernel.services.register(Arc::new(store));
+
+    let section = collect_treesitter(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Language definitions" && e.detail.contains("1"))
+    );
+}
+
+#[test]
+fn test_collect_treesitter_both_factories_and_langs() {
+    use reovim_driver_syntax::{CommentTokens, SyntaxDriver, SyntaxDriverFactory};
+
+    struct StubFactory;
+    impl SyntaxDriverFactory for StubFactory {
+        fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+            None
+        }
+        fn supported_languages(&self) -> Vec<&str> {
+            vec!["test"]
+        }
+    }
+
+    let kernel = test_kernel();
+    let factory_store = SyntaxFactoryStore::new();
+    factory_store.add(Arc::new(StubFactory));
+    kernel.services.register(Arc::new(factory_store));
+
+    let lang_store = LanguageInfoStore::new();
+    lang_store.add(reovim_driver_syntax::LanguageInfo {
+        id: "rust".to_string(),
+        name: "Rust".to_string(),
+        extensions: vec!["rs".to_string()],
+        mime_types: vec![],
+        comment_tokens: CommentTokens::default(),
+    });
+    kernel.services.register(Arc::new(lang_store));
+
+    let section = collect_treesitter(&kernel);
+    assert_eq!(section.entries.len(), 2);
+    assert!(section.entries.iter().any(|e| e.label == "Syntax factories"));
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Language definitions")
+    );
+}
+
+// ========================================================================
+// collect_clipboard - with providers
+// ========================================================================
+
+use reovim_driver_clipboard::ClipboardProvider;
+
+/// Mock clipboard provider for testing diagnostics.
+struct MockClipboardProvider {
+    clipboard_available: bool,
+    selection_available: bool,
+}
+
+impl ClipboardProvider for MockClipboardProvider {
+    fn clipboard_available(&self) -> bool {
+        self.clipboard_available
+    }
+
+    fn selection_available(&self) -> bool {
+        self.selection_available
+    }
+
+    fn copy_to_clipboard(&self, _text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+        Ok(())
+    }
+
+    fn paste_from_clipboard(&self) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+        Ok(None)
+    }
+
+    fn copy_to_selection(&self, _text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+        Ok(())
+    }
+
+    fn paste_from_selection(&self) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn test_collect_clipboard_both_available() {
+    let kernel = test_kernel();
+    let registry = ClipboardProviderRegistry::new();
+    registry.register(
+        ClipboardKey::Default,
+        Arc::new(MockClipboardProvider {
+            clipboard_available: true,
+            selection_available: true,
+        }),
+    );
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_clipboard(&kernel);
+    assert_eq!(section.entries.len(), 2);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert!(section.entries[0].detail.contains("available"));
+    assert_eq!(section.entries[1].status, Status::Ok);
+    assert!(section.entries[1].detail.contains("available"));
+}
+
+#[test]
+fn test_collect_clipboard_none_available() {
+    let kernel = test_kernel();
+    let registry = ClipboardProviderRegistry::new();
+    registry.register(
+        ClipboardKey::Default,
+        Arc::new(MockClipboardProvider {
+            clipboard_available: false,
+            selection_available: false,
+        }),
+    );
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_clipboard(&kernel);
+    assert_eq!(section.entries.len(), 2);
+    assert_eq!(section.entries[0].status, Status::Warning);
+    assert!(section.entries[0].detail.contains("not available"));
+    assert_eq!(section.entries[1].status, Status::Info);
+    assert!(section.entries[1].detail.contains("not available"));
+}
+
+#[test]
+fn test_collect_clipboard_only_clipboard() {
+    let kernel = test_kernel();
+    let registry = ClipboardProviderRegistry::new();
+    registry.register(
+        ClipboardKey::Default,
+        Arc::new(MockClipboardProvider {
+            clipboard_available: true,
+            selection_available: false,
+        }),
+    );
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_clipboard(&kernel);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert_eq!(section.entries[1].status, Status::Info);
+}
+
+// ========================================================================
+// collect_lsp - additional edge cases
+// ========================================================================
+
+#[test]
+fn test_collect_lsp_active_no_server_info() {
+    let kernel = test_kernel();
+    let registry = LspProviderRegistry::new();
+    registry.register(LspKey::Default, Arc::new(MockLspProvider::new(true, None)));
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_lsp(&kernel);
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert!(section.entries[0].detail.contains("active"));
+    assert!(section.entries[0].detail.contains("no server info"));
+}
+
+#[test]
+fn test_collect_lsp_inactive_with_version_none() {
+    let kernel = test_kernel();
+    let registry = LspProviderRegistry::new();
+    registry.register(
+        LspKey::Language("go".to_string()),
+        Arc::new(MockLspProvider::new(
+            false,
+            Some(ServerInfo {
+                name: "gopls".to_string(),
+                version: None,
+            }),
+        )),
+    );
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_lsp(&kernel);
+    assert_eq!(section.entries[0].status, Status::Warning);
+    assert!(section.entries[0].detail.contains("gopls"));
+    assert!(section.entries[0].detail.contains("unknown"));
+    assert!(section.entries[0].detail.contains("inactive"));
+}

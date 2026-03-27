@@ -345,6 +345,8 @@ impl ModuleRegistry {
     /// - Module is static (cannot reload)
     /// - Module path is unknown
     /// - Reload fails
+    // Requires a real .so — integration test territory.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(
         unsafe_code,
         clippy::missing_panics_doc,

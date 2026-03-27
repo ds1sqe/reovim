@@ -876,3 +876,339 @@ fn convert_mouse_event_scroll_left_maps_to_scroll_down() {
         panic!("Expected Pointer event");
     }
 }
+
+#[test]
+fn convert_mouse_event_scroll_right_maps_to_scroll_down() {
+    use crossterm::event::MouseEventKind;
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 5,
+        row: 3,
+        kind: MouseEventKind::ScrollRight,
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+// =============================================================================
+// convert_display_style_to_driver_style tests (reverse direction)
+// =============================================================================
+
+#[test]
+fn convert_display_to_driver_style_default() {
+    let display_style = DisplayStyle::default();
+    let driver_style = convert_display_style_to_driver_style(&display_style);
+    assert_eq!(driver_style.fg, None);
+    assert_eq!(driver_style.bg, None);
+    assert_eq!(driver_style.attributes, reovim_client_driver::Attributes::new());
+}
+
+#[test]
+fn convert_display_to_driver_style_with_colors() {
+    let display_style = DisplayStyle {
+        fg: Some(Color::Rgb { r: 255, g: 128, b: 0 }),
+        bg: Some(Color::Blue),
+        attributes: DisplayAttributes::new(),
+        underline_color: None,
+    };
+    let driver_style = convert_display_style_to_driver_style(&display_style);
+    assert_eq!(driver_style.fg, Some(Color::Rgb { r: 255, g: 128, b: 0 }));
+    assert_eq!(driver_style.bg, Some(Color::Blue));
+}
+
+#[test]
+fn convert_display_to_driver_style_all_attributes() {
+    let mut attrs = DisplayAttributes::new();
+    attrs.set(DisplayAttributes::BOLD);
+    attrs.set(DisplayAttributes::ITALIC);
+    attrs.set(DisplayAttributes::UNDERLINE);
+    attrs.set(DisplayAttributes::STRIKETHROUGH);
+    attrs.set(DisplayAttributes::REVERSE);
+    attrs.set(DisplayAttributes::DIM);
+
+    let display_style = DisplayStyle {
+        fg: None,
+        bg: None,
+        attributes: attrs,
+        underline_color: None,
+    };
+    let driver_style = convert_display_style_to_driver_style(&display_style);
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::BOLD));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::ITALIC));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::UNDERLINE));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::STRIKETHROUGH));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::REVERSE));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::DIM));
+}
+
+#[test]
+fn convert_display_to_driver_style_partial_attributes() {
+    let mut attrs = DisplayAttributes::new();
+    attrs.set(DisplayAttributes::BOLD);
+    attrs.set(DisplayAttributes::DIM);
+
+    let display_style = DisplayStyle {
+        fg: None,
+        bg: None,
+        attributes: attrs,
+        underline_color: None,
+    };
+    let driver_style = convert_display_style_to_driver_style(&display_style);
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::BOLD));
+    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::ITALIC));
+    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::UNDERLINE));
+    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::STRIKETHROUGH));
+    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::REVERSE));
+    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::DIM));
+}
+
+// =============================================================================
+// ThemeProviderAdapter tests
+// =============================================================================
+
+/// Minimal display-side ThemeProvider for testing the adapter.
+struct TestDisplayTheme {
+    styles: std::collections::HashMap<String, DisplayStyle>,
+}
+
+impl TestDisplayTheme {
+    fn new() -> Self {
+        Self {
+            styles: std::collections::HashMap::new(),
+        }
+    }
+
+    fn with_style(mut self, group: &str, style: DisplayStyle) -> Self {
+        self.styles.insert(group.to_string(), style);
+        self
+    }
+}
+
+impl reovim_driver_display::style::ThemeProvider for TestDisplayTheme {
+    fn get_style(&self, group: &str) -> Option<DisplayStyle> {
+        self.styles.get(group).cloned()
+    }
+    fn name(&self) -> &str {
+        "test-theme"
+    }
+}
+
+#[test]
+fn theme_provider_adapter_highlight() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Keyword",
+        {
+            let mut attrs = DisplayAttributes::new();
+            attrs.set(DisplayAttributes::BOLD);
+            DisplayStyle {
+                fg: Some(Color::Cyan),
+                bg: None,
+                attributes: attrs,
+                underline_color: None,
+            }
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+
+    let style = reovim_client_driver::ThemeProvider::highlight(&adapter, "Keyword");
+    assert_eq!(style.fg, Some(Color::Cyan));
+    assert!(style.attributes.contains(reovim_client_driver::Attributes::BOLD));
+}
+
+#[test]
+fn theme_provider_adapter_highlight_with_fallback_first_match() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Function",
+        DisplayStyle {
+            fg: Some(Color::Yellow),
+            bg: None,
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+
+    let style =
+        reovim_client_driver::ThemeProvider::highlight_with_fallback(&adapter, &["Function", "Normal"]);
+    assert_eq!(style.fg, Some(Color::Yellow));
+}
+
+#[test]
+fn theme_provider_adapter_highlight_with_fallback_no_match() {
+    let theme = TestDisplayTheme::new();
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+
+    let style = reovim_client_driver::ThemeProvider::highlight_with_fallback(
+        &adapter,
+        &["NonExistent", "AlsoMissing"],
+    );
+    assert_eq!(style, reovim_client_driver::Style::default());
+}
+
+#[test]
+fn theme_provider_adapter_foreground() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Normal",
+        DisplayStyle {
+            fg: Some(Color::White),
+            bg: Some(Color::Rgb { r: 30, g: 30, b: 30 }),
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+
+    let style = reovim_client_driver::ThemeProvider::foreground(&adapter);
+    assert_eq!(style.fg, Some(Color::White));
+    assert_eq!(style.bg, Some(Color::Rgb { r: 30, g: 30, b: 30 }));
+}
+
+#[test]
+fn theme_provider_adapter_background() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Normal",
+        DisplayStyle {
+            fg: Some(Color::White),
+            bg: Some(Color::Rgb { r: 10, g: 10, b: 10 }),
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+
+    let style = reovim_client_driver::ThemeProvider::background(&adapter);
+    assert_eq!(style.fg, None);
+    assert_eq!(style.bg, Some(Color::Rgb { r: 10, g: 10, b: 10 }));
+    assert_eq!(style.attributes, reovim_client_driver::Attributes::new());
+}
+
+#[test]
+fn theme_provider_adapter_is_dark_no_normal() {
+    let theme = TestDisplayTheme::new();
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+    // No Normal style => bg is None => dark
+    assert!(reovim_client_driver::ThemeProvider::is_dark(&adapter));
+}
+
+#[test]
+fn theme_provider_adapter_is_dark_dark_bg() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Normal",
+        DisplayStyle {
+            fg: None,
+            bg: Some(Color::Rgb { r: 20, g: 20, b: 20 }),
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+    assert!(reovim_client_driver::ThemeProvider::is_dark(&adapter));
+}
+
+#[test]
+fn theme_provider_adapter_is_dark_light_bg() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Normal",
+        DisplayStyle {
+            fg: None,
+            bg: Some(Color::Rgb { r: 200, g: 200, b: 200 }),
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+    assert!(!reovim_client_driver::ThemeProvider::is_dark(&adapter));
+}
+
+#[test]
+fn theme_provider_adapter_is_dark_non_rgb_bg() {
+    let theme = TestDisplayTheme::new().with_style(
+        "Normal",
+        DisplayStyle {
+            fg: None,
+            bg: Some(Color::Red),
+            attributes: DisplayAttributes::new(),
+            underline_color: None,
+        },
+    );
+    let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
+    let adapter = ThemeProviderAdapter::new(&manager);
+    // Non-RGB color => returns true (dark)
+    assert!(reovim_client_driver::ThemeProvider::is_dark(&adapter));
+}
+
+// =============================================================================
+// TokenProviderAdapter tests
+// =============================================================================
+
+#[test]
+fn token_provider_adapter_empty_cache() {
+    let cache = reovim_driver_display::AnnotationCacheManager::new();
+    let adapter = TokenProviderAdapter::new(&cache);
+    let tokens =
+        reovim_client_driver::TokenProvider::tokens_for_line(&adapter, reovim_client_driver::BufferId(0), 0);
+    assert!(tokens.is_empty());
+}
+
+// =============================================================================
+// collect_driver_virtual_lines - additional tests
+// =============================================================================
+
+#[test]
+fn collect_driver_virtual_lines_ignores_non_buffer_contrib() {
+    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
+        buffer_contrib: false,
+        virtual_lines_data: vec![reovim_client_driver::VirtualLine {
+            buffer_line: 5,
+            position: reovim_client_driver::VirtualLinePosition::After,
+            content: "ignored".to_string(),
+            style: reovim_client_driver::Style::default(),
+        }],
+        ..StubModule::default()
+    })];
+    assert!(collect_driver_virtual_lines(&exts).is_empty());
+}
+
+#[test]
+fn sidebar_width_multiple_left_modules() {
+    let exts: Vec<Box<dyn ClientModule>> = vec![
+        Box::new(StubModule {
+            chrome: true,
+            position: ChromePosition::Left,
+            requested_size: 4,
+            ..StubModule::default()
+        }),
+        Box::new(StubModule {
+            id: "stub2",
+            chrome: true,
+            position: ChromePosition::Left,
+            requested_size: 6,
+            ..StubModule::default()
+        }),
+    ];
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
+    assert_eq!(sidebar_width(&exts, &caps), 10);
+}
+
+#[test]
+fn sidebar_width_non_chrome_module_ignored() {
+    let exts: Vec<Box<dyn ClientModule>> = vec![Box::new(StubModule {
+        chrome: false,
+        position: ChromePosition::Left,
+        requested_size: 100,
+        ..StubModule::default()
+    })];
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
+    assert_eq!(sidebar_width(&exts, &caps), 0);
+}

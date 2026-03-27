@@ -322,3 +322,165 @@ fn style_config_debug_clone_eq() {
     assert_eq!(a, b);
     assert!(format!("{a:?}").contains("WhichKeyStyleConfig"));
 }
+
+// =============================================================================
+// Rendering edge cases
+// =============================================================================
+
+#[test]
+fn render_no_categories_path() {
+    // All hints in same "other" category → no category headers
+    let (mut m, clock) = test_module();
+    let payload = hint_payload("g", &[("g", "goto_top", ""), ("j", "down", "")]);
+    m.on_notification(&payload);
+    clock.advance(Duration::from_millis(200));
+    m.tick();
+
+    let surface = render(&m, 80, 24);
+    assert!(surface.has_content());
+}
+
+#[test]
+fn render_multiple_categories() {
+    // Multiple categories → category headers rendered
+    let (mut m, clock) = test_module();
+    let payload = hint_payload(
+        "g",
+        &[
+            ("g", "goto_top", "motion"),
+            ("d", "delete", "operator"),
+            ("w", "word", "textobject"),
+        ],
+    );
+    m.on_notification(&payload);
+    clock.advance(Duration::from_millis(200));
+    m.tick();
+
+    let surface = render(&m, 80, 24);
+    assert!(surface.has_content());
+}
+
+#[test]
+fn render_with_empty_prefix() {
+    // Empty prefix → no title in border
+    let (mut m, clock) = test_module();
+    let payload = r#"{"active":true,"prefix":"","hints":[{"key":"g","command":"goto","category":"motion"}]}"#;
+    m.on_notification(payload);
+    clock.advance(Duration::from_millis(200));
+    m.tick();
+
+    let surface = render(&m, 80, 24);
+    assert!(surface.has_content());
+}
+
+#[test]
+fn render_narrow_terminal() {
+    // Very narrow terminal — cmd truncation path
+    let (mut m, clock) = test_module();
+    let payload = hint_payload("g", &[("g", "a_very_long_command_name_here", "motion")]);
+    m.on_notification(&payload);
+    clock.advance(Duration::from_millis(200));
+    m.tick();
+
+    // Render in narrow terminal
+    let surface = render(&m, 30, 24);
+    assert!(surface.has_content());
+}
+
+#[test]
+fn render_many_hints() {
+    // Many hints to exercise popup height calculation
+    let (mut m, clock) = test_module();
+    let payload = hint_payload(
+        "g",
+        &[
+            ("a", "cmd_a", "motion"),
+            ("b", "cmd_b", "motion"),
+            ("c", "cmd_c", "operator"),
+            ("d", "cmd_d", "operator"),
+            ("e", "cmd_e", "textobject"),
+        ],
+    );
+    m.on_notification(&payload);
+    clock.advance(Duration::from_millis(200));
+    m.tick();
+
+    let surface = render(&m, 80, 40);
+    assert!(surface.has_content());
+}
+
+#[test]
+fn tick_already_visible_returns_false() {
+    let (mut m, clock) = test_module();
+    m.on_notification(&hint_payload("g", &[("g", "goto_top", "motion")]));
+    clock.advance(Duration::from_millis(200));
+
+    // First tick promotes to visible
+    assert!(m.tick());
+    assert!(m.visible);
+
+    // Second tick: already visible, should return false
+    clock.advance(Duration::from_millis(100));
+    assert!(!m.tick());
+}
+
+#[test]
+fn tick_not_active_returns_false() {
+    let (mut m, _clock) = test_module();
+    // Not activated, just tick
+    assert!(!m.tick());
+}
+
+#[test]
+fn notification_hints_without_category() {
+    let (mut m, _clock) = test_module();
+    // Hints array with entries missing category field
+    let payload = r#"{"active":true,"prefix":"z","hints":[{"key":"z","command":"center"}]}"#;
+    m.on_notification(payload);
+    assert!(m.server_active);
+    assert_eq!(m.hints.len(), 1);
+    assert_eq!(m.hints[0].category, "");
+}
+
+#[test]
+fn notification_hints_missing_fields_filtered() {
+    let (mut m, _clock) = test_module();
+    // One valid hint, one missing "key" field
+    let payload = r#"{"active":true,"prefix":"z","hints":[{"key":"z","command":"center"},{"command":"missing_key"}]}"#;
+    m.on_notification(payload);
+    assert_eq!(m.hints.len(), 1);
+}
+
+#[test]
+fn notification_reactivation_without_deactivation() {
+    let (mut m, _clock) = test_module();
+    // First activation
+    m.on_notification(&hint_payload("g", &[("g", "goto", "motion")]));
+    assert!(m.server_active);
+
+    // Second activation without deactivation — timer should NOT restart
+    m.on_notification(&hint_payload("g", &[("g", "goto", "motion"), ("j", "down", "motion")]));
+    assert!(m.server_active);
+    assert_eq!(m.hints.len(), 2);
+}
+
+#[test]
+fn grouped_hints_unknown_category_sorts_last() {
+    let hints = vec![
+        WhichKeyHint {
+            key: "a".into(),
+            command: "cmd".into(),
+            category: "zzz_unknown".into(),
+        },
+        WhichKeyHint {
+            key: "b".into(),
+            command: "cmd".into(),
+            category: "motion".into(),
+        },
+    ];
+    let groups = grouped_hints(&hints);
+    assert_eq!(groups.len(), 2);
+    // "motion" is in CATEGORY_ORDER, "zzz_unknown" is not → motion first
+    assert_eq!(groups[0].0, "motion");
+    assert_eq!(groups[1].0, "zzz_unknown");
+}

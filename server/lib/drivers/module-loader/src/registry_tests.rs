@@ -413,3 +413,236 @@ fn notify_all_loaded_does_not_panic() {
     registry.notify_all_loaded(&ctx);
     // No panic = success
 }
+
+// ============================================================================
+// init_module — error paths
+// ============================================================================
+
+#[test]
+fn init_module_already_running_fails() {
+    let registry = ModuleRegistry::new();
+    let id = registry.register(TestModule::new("m")).unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_module(&id, &ctx).unwrap();
+
+    // Module is now Running; cannot transition to Initializing again
+    let result = registry.init_module(&id, &ctx);
+    assert!(result.is_err());
+}
+
+#[test]
+fn init_module_not_found_fails() {
+    let registry = ModuleRegistry::new();
+    let ctx = ModuleContext::default();
+    let result = registry.init_module(&ModuleId::new("nonexistent"), &ctx);
+    assert!(result.is_err());
+}
+
+#[test]
+fn init_module_fail_module_records_failed_state() {
+    let registry = ModuleRegistry::new();
+    let id = registry.register(FailModule).unwrap();
+
+    let ctx = ModuleContext::default();
+    let result = registry.init_module(&id, &ctx);
+    assert!(result.is_err());
+    assert!(matches!(
+        registry.state(&id),
+        Some(ModuleState::Failed(_))
+    ));
+}
+
+// ============================================================================
+// notify_all_loaded — skip non-running
+// ============================================================================
+
+#[test]
+fn notify_all_loaded_skips_non_running() {
+    let registry = ModuleRegistry::new();
+    registry.register(TestModule::new("good")).unwrap();
+    registry.register(FailModule).unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_all(&ctx).unwrap();
+
+    // "fail-module" is Failed, "good" is Running
+    // notify_all_loaded should skip the failed module without panic
+    registry.notify_all_loaded(&ctx);
+}
+
+// ============================================================================
+// shutdown — exit failure continues
+// ============================================================================
+
+#[test]
+fn shutdown_continues_on_exit_failure() {
+    struct ExitFailModule;
+
+    impl Module for ExitFailModule {
+        fn id(&self) -> ModuleId {
+            ModuleId::new("exit-fail")
+        }
+        fn name(&self) -> &'static str {
+            "Exit Fail"
+        }
+        fn version(&self) -> Version {
+            Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _: &ModuleContext) -> ProbeResult {
+            ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), ModuleError> {
+            Err(ModuleError::InitFailed("exit failed".into()))
+        }
+    }
+
+    let registry = ModuleRegistry::new();
+    registry.register(TestModule::new("ok")).unwrap();
+    registry.register(ExitFailModule).unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_all(&ctx).unwrap();
+
+    // Shutdown should not panic even when exit() fails
+    registry.shutdown();
+
+    // "ok" transitions to Loaded; "exit-fail" stays Running because exit() failed
+    assert_eq!(
+        registry.state(&ModuleId::new("ok")),
+        Some(ModuleState::Loaded)
+    );
+    assert_eq!(
+        registry.state(&ModuleId::new("exit-fail")),
+        Some(ModuleState::Running)
+    );
+}
+
+#[test]
+fn shutdown_skips_non_running_modules() {
+    let registry = ModuleRegistry::new();
+    registry.register(TestModule::new("loaded-only")).unwrap();
+
+    let ctx = ModuleContext::default();
+    // init_all sets init_order but "loaded-only" transitions to Running.
+    // Let's just register and not init — shutdown should skip Loaded modules.
+    // But init_order is empty if we don't call init_all.
+    // Call init_all, then shutdown, then shutdown again — second time they're Loaded.
+    registry.init_all(&ctx).unwrap();
+    registry.shutdown();
+    // Now all are Loaded — second shutdown is a no-op
+    registry.shutdown();
+
+    assert_eq!(
+        registry.state(&ModuleId::new("loaded-only")),
+        Some(ModuleState::Loaded)
+    );
+}
+
+// ============================================================================
+// deferred probing — retry pass with failure
+// ============================================================================
+
+#[test]
+fn deferred_then_fail_on_retry() {
+    static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct DeferThenFail;
+
+    impl Module for DeferThenFail {
+        fn id(&self) -> ModuleId {
+            ModuleId::new("defer-then-fail")
+        }
+        fn name(&self) -> &'static str {
+            "DeferThenFail"
+        }
+        fn version(&self) -> Version {
+            Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _: &ModuleContext) -> ProbeResult {
+            let count = CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+            if count == 0 {
+                ProbeResult::Defer("not ready".into())
+            } else {
+                ProbeResult::Failed(ModuleError::InitFailed("failed on retry".into()))
+            }
+        }
+        fn exit(&mut self) -> Result<(), ModuleError> {
+            Ok(())
+        }
+    }
+
+    CALL_COUNT.store(0, Ordering::SeqCst);
+
+    let registry = ModuleRegistry::new();
+    registry.register(DeferThenFail).unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_all(&ctx).unwrap();
+
+    assert!(matches!(
+        registry.state(&ModuleId::new("defer-then-fail")),
+        Some(ModuleState::Failed(_))
+    ));
+}
+
+// ============================================================================
+// module_path / discover
+// ============================================================================
+
+#[test]
+fn module_path_static_returns_none() {
+    let registry = ModuleRegistry::new();
+    let id = registry.register(TestModule::new("static-mod")).unwrap();
+    assert!(registry.module_path(&id).is_none());
+}
+
+#[test]
+fn module_path_unknown_returns_none() {
+    let registry = ModuleRegistry::new();
+    assert!(registry.module_path(&ModuleId::new("nope")).is_none());
+}
+
+#[test]
+fn discover_returns_vec() {
+    let registry = ModuleRegistry::new();
+    // discover scans default search paths; result depends on environment
+    // but should not panic
+    let _paths = registry.discover();
+}
+
+// ============================================================================
+// register_boxed — duplicate
+// ============================================================================
+
+#[test]
+fn register_boxed_duplicate_fails() {
+    let registry = ModuleRegistry::new();
+    let m1: Box<dyn Module> = Box::new(TestModule::new("dup"));
+    let m2: Box<dyn Module> = Box::new(TestModule::new("dup"));
+    registry.register_boxed(m1).unwrap();
+    let result = registry.register_boxed(m2);
+    assert!(matches!(result, Err(ModuleError::LoadFailed(_))));
+}
+
+// ============================================================================
+// unload — module not in registry
+// ============================================================================
+
+#[test]
+fn unload_nonexistent_module() {
+    let registry = ModuleRegistry::new();
+    let ctx = ModuleContext::default();
+    // Register and init so dependents map exists
+    registry.register(TestModule::new("x")).unwrap();
+    registry.init_all(&ctx).unwrap();
+
+    // Unloading a module that doesn't exist — the handle lookup fails
+    // but the code continues to remove from states/dependents maps
+    let unknown = ModuleId::new("unknown");
+    // No dependents for "unknown" so the dependents check passes,
+    // handle lookup returns None so exit() is skipped, then remove calls
+    // are no-ops.
+    let result = registry.unload(&unknown);
+    assert!(result.is_ok());
+}

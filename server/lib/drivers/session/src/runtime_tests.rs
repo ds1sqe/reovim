@@ -6081,3 +6081,191 @@ fn test_record_cursor_move_multiple_updates_snapshot() {
     assert_eq!(captured[1], (0, 0, 5, 10));
     drop(captured);
 }
+
+// =========================================================================
+// Tab page operations (#401)
+// =========================================================================
+
+#[test]
+fn test_tab_new() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        assert_eq!(runtime.tab_count(), 1);
+        let id = runtime.tab_new().expect("tab_new should succeed");
+        assert_eq!(runtime.tab_count(), 2);
+        // New tab becomes active
+        assert_eq!(runtime.active_tab_id(), Some(id));
+    });
+    assert!(harness.changes().window_changed);
+}
+
+#[test]
+fn test_tab_close() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        // Create a second tab so we can close one
+        runtime.tab_new().expect("tab_new should succeed");
+        assert_eq!(runtime.tab_count(), 2);
+
+        runtime.tab_close().expect("tab_close should succeed");
+        assert_eq!(runtime.tab_count(), 1);
+    });
+    assert!(harness.changes().window_changed);
+}
+
+#[test]
+fn test_tab_close_last_tab_fails() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        assert_eq!(runtime.tab_count(), 1);
+        let result = runtime.tab_close();
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_tab_next() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let tab1_id = runtime.active_tab_id().unwrap();
+        let tab2_id = runtime.tab_new().expect("tab_new should succeed");
+        assert_eq!(runtime.active_tab_id(), Some(tab2_id));
+
+        // tab_next wraps around or goes to next
+        let next_id = runtime.tab_next().expect("tab_next should succeed");
+        // After tab_new, active is tab2 (index 1). Next cycles back to tab1 (index 0).
+        assert_eq!(next_id, tab1_id);
+    });
+    assert!(harness.changes().window_changed);
+}
+
+#[test]
+fn test_tab_prev() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let tab1_id = runtime.active_tab_id().unwrap();
+        runtime.tab_new().expect("tab_new should succeed");
+        // Active is now tab2 (index 1). Prev goes to tab1 (index 0).
+        let prev_id = runtime.tab_prev().expect("tab_prev should succeed");
+        assert_eq!(prev_id, tab1_id);
+    });
+    assert!(harness.changes().window_changed);
+}
+
+#[test]
+fn test_tab_goto_valid() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let tab1_id = runtime.active_tab_id().unwrap();
+        runtime.tab_new().expect("tab_new should succeed");
+        // tab_new makes tab2 active; goto index 0 goes back to tab1
+        let result = runtime.tab_goto(0);
+        assert!(result.is_ok());
+        assert_eq!(runtime.active_tab_id(), Some(tab1_id));
+    });
+    assert!(harness.changes().window_changed);
+}
+
+#[test]
+fn test_tab_goto_invalid_index() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        // Only 1 tab, index 5 is out of bounds
+        let result = runtime.tab_goto(5);
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_tab_count_and_active_tab_id() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        assert_eq!(runtime.tab_count(), 1);
+        assert!(runtime.active_tab_id().is_some());
+    });
+}
+
+// =========================================================================
+// Jumplist accessor coverage (#654)
+// =========================================================================
+
+#[test]
+fn test_jumplist_accessor() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let jl = runtime.jumplist();
+        assert!(jl.is_empty());
+    });
+}
+
+#[test]
+fn test_jumplist_mut_accessor() {
+    use crate::testing::TestSessionRuntime;
+    use reovim_kernel::api::v1::JumpEntry;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let jl = runtime.jumplist_mut();
+        jl.push(JumpEntry::new(BufferId::new(), Position::new(5, 10)));
+        assert!(!jl.is_empty());
+    });
+}
+
+// =========================================================================
+// kernel_and_registers() borrow-split accessor (#515)
+// =========================================================================
+
+#[test]
+fn test_kernel_and_registers_accessor() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    harness.with_runtime(|runtime| {
+        let (kernel, regs, history) = runtime.kernel_and_registers();
+        // Kernel is accessible
+        assert!(kernel.buffers.count() > 0);
+        // Registers are accessible mutably
+        regs.set_by_name(
+            Some('a'),
+            crate::api::RegisterContent::characterwise("test"),
+        );
+        assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("test"));
+        // History is accessible mutably
+        assert!(history.is_empty());
+    });
+}
+
+// =========================================================================
+// record_buffer_modified() inherent method
+// =========================================================================
+
+#[test]
+fn test_record_buffer_modified_inherent() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    let changes = harness.with_runtime(|runtime| {
+        let buf = runtime.active_buffer().unwrap();
+        runtime.record_buffer_modified(buf);
+        runtime.take_changes()
+    });
+    assert!(!changes.modified_buffers.is_empty());
+}

@@ -2,7 +2,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::testing::TestSessionRuntime,
+    reovim_driver_session::{testing::TestSessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::Position,
 };
 
@@ -354,4 +354,268 @@ fn test_goto_mark_exact_command_id() {
     assert_eq!(cmd.id(), crate::ids::GOTO_MARK_EXACT);
     assert!(!cmd.description().is_empty());
     assert_eq!(cmd.args().len(), 1);
+}
+
+// =============================================================================
+// GotoMarkExact — missing error path
+// =============================================================================
+
+#[test]
+fn test_goto_mark_exact_no_char() {
+    let mut test = TestSessionRuntime::with_buffer("hello\n");
+    let cmd = GotoMarkExact;
+    let buf_id = test.active_buffer().unwrap();
+
+    let mut args = CommandContext::new();
+    args.set_buffer_id(buf_id);
+    // No mark_char set
+
+    test.with_runtime(|runtime| {
+        let result = cmd.execute(runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    });
+}
+
+// =============================================================================
+// Global mark goto tests
+// =============================================================================
+
+#[test]
+fn test_goto_mark_line_global() {
+    let mut test = TestSessionRuntime::with_buffer("line 0\nline 1\nline 2\n");
+    let buf_id = test.active_buffer().unwrap();
+
+    // Set global mark 'A' at (2, 4)
+    test.with_runtime(|runtime| {
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.cursor.line = 2;
+            w.cursor.column = 4;
+        }
+    });
+
+    let mut set_args = CommandContext::new();
+    set_args.set("mark_char", ArgValue::Char('A'));
+    set_args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = SetMark.execute(runtime, &set_args);
+        assert_eq!(result, CommandResult::Success);
+    });
+
+    // Move cursor elsewhere
+    test.with_runtime(|runtime| {
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.cursor.line = 0;
+            w.cursor.column = 0;
+        }
+    });
+
+    // GotoMarkLine with global mark — should jump to (2, 0)
+    let mut goto_args = CommandContext::new();
+    goto_args.set("mark_char", ArgValue::Char('A'));
+    goto_args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkLine.execute(runtime, &goto_args);
+        assert_eq!(result, CommandResult::Success);
+    });
+
+    test.assert_cursor(2, 0);
+}
+
+#[test]
+fn test_goto_mark_exact_global() {
+    let mut test = TestSessionRuntime::with_buffer("line 0\nline 1\nline 2\n");
+    let buf_id = test.active_buffer().unwrap();
+
+    // Set global mark 'B' at (1, 3)
+    test.with_runtime(|runtime| {
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.cursor.line = 1;
+            w.cursor.column = 3;
+        }
+    });
+
+    let mut set_args = CommandContext::new();
+    set_args.set("mark_char", ArgValue::Char('B'));
+    set_args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = SetMark.execute(runtime, &set_args);
+        assert_eq!(result, CommandResult::Success);
+    });
+
+    // Move cursor elsewhere
+    test.with_runtime(|runtime| {
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.cursor.line = 0;
+            w.cursor.column = 0;
+        }
+    });
+
+    // GotoMarkExact with global mark — should jump to (1, 3)
+    let mut goto_args = CommandContext::new();
+    goto_args.set("mark_char", ArgValue::Char('B'));
+    goto_args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkExact.execute(runtime, &goto_args);
+        assert_eq!(result, CommandResult::Success);
+    });
+
+    test.assert_cursor(1, 3);
+}
+
+#[test]
+fn test_goto_mark_global_nonexistent() {
+    let mut test = TestSessionRuntime::with_buffer("hello\n");
+    let buf_id = test.active_buffer().unwrap();
+
+    let mut args = CommandContext::new();
+    args.set("mark_char", ArgValue::Char('Z'));
+    args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkLine.execute(runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    });
+}
+
+// =============================================================================
+// Special mark (non-alphanumeric) tests
+// =============================================================================
+
+#[test]
+fn test_goto_special_mark_not_set() {
+    let mut test = TestSessionRuntime::with_buffer("hello\nworld\n");
+    let buf_id = test.active_buffer().unwrap();
+
+    // Try jumping to a special mark that hasn't been set
+    let mut args = CommandContext::new();
+    args.set("mark_char", ArgValue::Char('.'));
+    args.set_buffer_id(buf_id);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkLine.execute(runtime, &args);
+        // Special mark '.' not set → "Mark not set"
+        assert!(matches!(result, CommandResult::Error(_)));
+    });
+}
+
+// =============================================================================
+// Cross-buffer mark jump
+// =============================================================================
+
+#[test]
+fn test_goto_global_mark_cross_buffer() {
+    use reovim_kernel::api::v1::{Buffer, Mark};
+
+    let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
+    let buf1 = test.active_buffer().unwrap();
+
+    // Create a second buffer
+    let buffer2 = Buffer::from_string("buffer 2\n");
+    let buf2 = test.kernel().buffers.register(buffer2);
+
+    // Set global mark 'C' pointing to buffer 2 at (0, 5)
+    test.with_runtime(|runtime| {
+        let mark = Mark::new(Position::new(0, 5), buf2);
+        runtime
+            .kernel()
+            .global_marks
+            .write()
+            .set_global('C', mark);
+    });
+
+    // Current buffer is buf1, goto mark 'C' which is in buf2
+    let mut goto_args = CommandContext::new();
+    goto_args.set("mark_char", ArgValue::Char('C'));
+    goto_args.set_buffer_id(buf1);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkExact.execute(runtime, &goto_args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Active buffer should have switched to buf2
+        assert_eq!(runtime.active_buffer(), Some(buf2));
+
+        // Window's buffer_id should be updated
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.buffer_id, Some(buf2));
+
+        // Cursor should be at (0, 5)
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 5);
+    });
+}
+
+#[test]
+fn test_goto_global_mark_cross_buffer_line_mode() {
+    use reovim_kernel::api::v1::{Buffer, Mark};
+
+    let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
+    let buf1 = test.active_buffer().unwrap();
+
+    // Create a second buffer
+    let buffer2 = Buffer::from_string("buffer 2\nline 2\n");
+    let buf2 = test.kernel().buffers.register(buffer2);
+
+    // Set global mark 'D' pointing to buffer 2 at (1, 3)
+    test.with_runtime(|runtime| {
+        let mark = Mark::new(Position::new(1, 3), buf2);
+        runtime
+            .kernel()
+            .global_marks
+            .write()
+            .set_global('D', mark);
+    });
+
+    // GotoMarkLine: cross-buffer, line_only=true → column should be 0
+    let mut goto_args = CommandContext::new();
+    goto_args.set("mark_char", ArgValue::Char('D'));
+    goto_args.set_buffer_id(buf1);
+
+    test.with_runtime(|runtime| {
+        let result = GotoMarkLine.execute(runtime, &goto_args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.active_buffer(), Some(buf2));
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 0);
+    });
+}
+
+// =============================================================================
+// Debug / trait derive tests
+// =============================================================================
+
+#[test]
+fn test_mark_commands_debug_derive() {
+    assert_eq!(format!("{:?}", SetMark), "SetMark");
+    assert_eq!(format!("{:?}", GotoMarkLine), "GotoMarkLine");
+    assert_eq!(format!("{:?}", GotoMarkExact), "GotoMarkExact");
+}
+
+#[test]
+fn test_mark_commands_default_derive() {
+    fn assert_default<T: Default>(_: T) {}
+    assert_default(SetMark);
+    assert_default(GotoMarkLine);
+    assert_default(GotoMarkExact);
+}
+
+#[test]
+fn test_mark_commands_copy_clone() {
+    let a = SetMark;
+    let _b = a;
+    let _c = a.clone();
+
+    let d = GotoMarkLine;
+    let _e = d;
+    let _f = d.clone();
+
+    let g = GotoMarkExact;
+    let _h = g;
+    let _i = g.clone();
 }

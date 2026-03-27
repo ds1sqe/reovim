@@ -1,3 +1,4 @@
+mod case;
 mod change;
 mod commandline;
 mod delete;
