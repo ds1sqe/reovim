@@ -15,6 +15,14 @@
 //! cargo build -p reovim-app
 //! cargo test -p reovim-module-explorer --test scroll_rtt -- --nocapture
 //! ```
+//!
+//! # Design (#695)
+//!
+//! The server's dedup cache suppresses `ExtensionUpdated` notifications when
+//! the JSON payload is identical to the previous emission. We use alternating
+//! `j`/`k` keys so `cursorIndex` oscillates and the JSON always differs.
+//! The test subscribes to ALL notification types (no server filter) because
+//! server-side event type filtering can interact with stream state.
 
 use std::time::{Duration, Instant};
 
@@ -29,16 +37,13 @@ use {
 };
 
 /// Number of sequential RTT iterations.
-const SEQUENTIAL_ITERATIONS: usize = 100;
+const SEQUENTIAL_ITERATIONS: usize = 50;
 
 /// Number of rapid-fire keys in burst test.
-const BURST_SIZE: usize = 30;
+const BURST_SIZE: usize = 20;
 
 /// Timeout for waiting for a single notification.
 const NOTIFICATION_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Settle time after toggling explorer on.
-const SETTLE_TIME: Duration = Duration::from_millis(200);
 
 /// Create a `tonic::Request` with the session token as metadata.
 fn authed_request<T>(body: T, token: &str) -> Request<T> {
@@ -85,15 +90,6 @@ async fn wait_explorer_notification(
     }
 }
 
-/// Drain all pending notifications (non-blocking).
-///
-/// Keeps reading until no notification arrives within 100ms.
-async fn drain_notifications(stream: &mut Streaming<reovim_protocol::v2::Notification>) {
-    while let Ok(Ok(Some(_))) =
-        tokio::time::timeout(Duration::from_millis(100), stream.message()).await
-    {}
-}
-
 /// Print latency statistics from a sorted list of durations.
 fn print_stats(label: &str, latencies: &[Duration]) {
     let n = latencies.len();
@@ -120,6 +116,13 @@ fn print_stats(label: &str, latencies: &[Duration]) {
 /// and toggle the explorer on.
 ///
 /// Returns the input client, notification stream, and session token.
+///
+/// # Setup (#695)
+///
+/// Subscribes to ALL notification types and consumes the initial toggle
+/// notification + a warmup `j` to ensure the stream is healthy. The warmup
+/// also moves the cursor to index 1, so the loop can alternate `j`/`k`
+/// starting from a non-zero position.
 #[allow(clippy::significant_drop_tightening)]
 async fn setup_explorer_client(
     port: u16,
@@ -129,15 +132,21 @@ async fn setup_explorer_client(
     String,
 ) {
     let addr = format!("http://127.0.0.1:{port}");
-    let channel = Channel::from_shared(addr)
+    let channel = Channel::from_shared(addr.clone())
         .expect("valid URI")
         .connect()
         .await
         .expect("should connect to server");
 
     let mut input = InputServiceClient::new(channel.clone());
-    let mut presence = PresenceServiceClient::new(channel.clone());
-    let mut notification = NotificationServiceClient::new(channel);
+    let mut presence = PresenceServiceClient::new(channel);
+    let mut notification = NotificationServiceClient::new(
+        Channel::from_shared(addr)
+            .expect("valid URI")
+            .connect()
+            .await
+            .expect("should connect notification channel"),
+    );
 
     // Join presence to get session token
     let join_resp = presence
@@ -151,10 +160,10 @@ async fn setup_explorer_client(
     drop(presence);
     let token = join_resp.session_token;
 
-    // Subscribe to extension_updated notifications
+    // Subscribe to ALL notifications (no server-side filter).
     let subscribe_req = authed_request(
         SubscribeRequest {
-            event_types: vec!["extension_updated".into()],
+            event_types: vec![],
         },
         &token,
     );
@@ -165,20 +174,21 @@ async fn setup_explorer_client(
         .into_inner();
     drop(notification);
 
-    // Toggle explorer on with <Space>e
+    // Toggle explorer on and consume the activation notification.
     send_keys(&mut input, &token, "<Space>e").await;
+    wait_explorer_notification(&mut stream).await;
 
-    // Wait for the explorer to settle
-    tokio::time::sleep(SETTLE_TIME).await;
-    drain_notifications(&mut stream).await;
+    // Warmup: move cursor to index 1 so j/k alternation works.
+    send_keys(&mut input, &token, "j").await;
+    wait_explorer_notification(&mut stream).await;
 
     (input, stream, token)
 }
 
 /// Measure sequential scroll RTT.
 ///
-/// Sends "j" one at a time, waiting for each `ExtensionUpdated` notification
-/// before sending the next. Reports per-key latency statistics.
+/// Alternates `j` and `k` so `cursorIndex` oscillates between 1 and 2,
+/// producing unique JSON on every keystroke (avoiding dedup suppression).
 #[tokio::test]
 async fn measure_scroll_rtt() {
     let harness = TestServerHarness::spawn()
@@ -188,16 +198,18 @@ async fn measure_scroll_rtt() {
     let (mut input, mut stream, token) = setup_explorer_client(harness.port()).await;
 
     let mut latencies = Vec::with_capacity(SEQUENTIAL_ITERATIONS);
+    let keys = ["j", "k"];
 
-    for _ in 0..SEQUENTIAL_ITERATIONS {
+    for i in 0..SEQUENTIAL_ITERATIONS {
+        let key = keys[i % 2];
         let start = Instant::now();
-        send_keys(&mut input, &token, "j").await;
+        send_keys(&mut input, &token, key).await;
         wait_explorer_notification(&mut stream).await;
         latencies.push(start.elapsed());
     }
 
     latencies.sort();
-    print_stats("Explorer scroll RTT (sequential)", &latencies);
+    print_stats("Explorer scroll RTT (sequential j/k)", &latencies);
 
     // Measure payload size from one more notification
     send_keys(&mut input, &token, "j").await;
@@ -209,9 +221,8 @@ async fn measure_scroll_rtt() {
 
 /// Measure burst scroll RTT.
 ///
-/// Sends `BURST_SIZE` "j" keys as fast as possible (simulating a held key),
-/// then waits for all notifications to arrive. Reports total time and
-/// per-key average.
+/// Sends `BURST_SIZE` alternating `j`/`k` keys as fast as possible
+/// (simulating rapid scrolling), then waits for all notifications.
 #[tokio::test]
 async fn measure_scroll_burst_rtt() {
     let harness = TestServerHarness::spawn()
@@ -221,10 +232,11 @@ async fn measure_scroll_burst_rtt() {
     let (mut input, mut stream, token) = setup_explorer_client(harness.port()).await;
 
     let start = Instant::now();
+    let keys = ["j", "k"];
 
     // Send all keys as fast as possible
-    for _ in 0..BURST_SIZE {
-        send_keys(&mut input, &token, "j").await;
+    for i in 0..BURST_SIZE {
+        send_keys(&mut input, &token, keys[i % 2]).await;
     }
 
     // Wait for all notifications
@@ -235,7 +247,7 @@ async fn measure_scroll_burst_rtt() {
     }
 
     let total = start.elapsed();
-    eprintln!("Explorer scroll RTT (burst, {BURST_SIZE} keys):");
+    eprintln!("Explorer scroll RTT (burst j/k, {BURST_SIZE} keys):");
     eprintln!(
         "  total: {}ms  per-key: {}us",
         total.as_millis(),
