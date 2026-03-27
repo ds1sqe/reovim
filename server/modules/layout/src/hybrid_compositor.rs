@@ -42,9 +42,10 @@ impl HybridCompositor {
 
     /// Find the layer index containing a window.
     fn layer_index_of(&self, window: WindowId) -> Option<usize> {
-        self.layers
-            .iter()
-            .position(|(_, comp)| comp.windows_in_zone(reovim_driver_layout::Zone::Tiled).contains(&window))
+        self.layers.iter().position(|(_, comp)| {
+            comp.windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .contains(&window)
+        })
     }
 
     /// Get mutable reference to a layer pair by ID.
@@ -199,7 +200,10 @@ impl RootCompositor for HybridCompositor {
     fn window_count(&self) -> usize {
         self.layers
             .iter()
-            .map(|(_, comp)| comp.windows_in_zone(reovim_driver_layout::Zone::Tiled).len())
+            .map(|(_, comp)| {
+                comp.windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                    .len()
+            })
             .sum()
     }
 
@@ -213,8 +217,7 @@ impl RootCompositor for HybridCompositor {
     }
 
     fn layer_of(&self, window: WindowId) -> Option<LayerId> {
-        self.layer_index_of(window)
-            .map(|idx| self.layers[idx].0.id)
+        self.layer_index_of(window).map(|idx| self.layers[idx].0.id)
     }
 
     fn boxed_clone(&self) -> Box<dyn RootCompositor> {

@@ -362,7 +362,14 @@ fn render_grouped_box(
     let border_style = Style::new().fg(border_color);
 
     // Draw border with source name in top border
-    reovim_client_driver::chrome_utils::render_box_border(surface, x, y, width, box_height, &border_style);
+    reovim_client_driver::chrome_utils::render_box_border(
+        surface,
+        x,
+        y,
+        width,
+        box_height,
+        &border_style,
+    );
 
     // Write source name into top border
     if let Some(name) = source {
@@ -424,7 +431,14 @@ fn render_standalone_toast(
     let border_color = NotificationModule::level_color(toast.level);
     let border_style = Style::new().fg(border_color);
 
-    reovim_client_driver::chrome_utils::render_box_border(surface, x, y, width, toast_height, &border_style);
+    reovim_client_driver::chrome_utils::render_box_border(
+        surface,
+        x,
+        y,
+        width,
+        toast_height,
+        &border_style,
+    );
 
     let content_x = x + 2;
     let content_width = width.saturating_sub(4);

@@ -48,21 +48,13 @@ impl WindowLayerCompositor for HybridLayerCompositor {
         id
     }
 
-    fn split_tiled(
-        &mut self,
-        from: WindowId,
-        direction: SplitDirection,
-    ) -> Option<WindowId> {
+    fn split_tiled(&mut self, from: WindowId, direction: SplitDirection) -> Option<WindowId> {
         let new_id = self.tiled.split(from, direction)?;
         self.focused = Some(new_id);
         Some(new_id)
     }
 
-    fn navigate_tiled(
-        &self,
-        from: WindowId,
-        direction: NavigateDirection,
-    ) -> Option<WindowId> {
+    fn navigate_tiled(&self, from: WindowId, direction: NavigateDirection) -> Option<WindowId> {
         let bounds = Rect::new(0, 0, 1000, 1000);
         let views = self.tiled.arrange(bounds);
         self.tiled.navigate(from, direction, &views)

@@ -177,8 +177,15 @@ async fn test_handle_server_message_with_response() {
     let message = jsonrpc::Message::Response(response);
 
     // No pending request for ID 99 — logs warning, no panic
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -199,8 +206,15 @@ async fn test_handle_server_message_with_diagnostics_notification() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
     assert!(cache.has(&uri));
 }
 
@@ -212,8 +226,15 @@ async fn test_handle_server_message_diagnostics_no_params() {
     let notification = jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
     assert!(cache.is_empty());
 }
 
@@ -228,8 +249,15 @@ async fn test_handle_server_message_diagnostics_invalid_params() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
     assert!(cache.is_empty());
 }
 
@@ -244,8 +272,15 @@ async fn test_handle_server_message_unhandled_notification() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -256,8 +291,15 @@ async fn test_handle_server_message_with_request() {
     let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
     let message = jsonrpc::Message::Request(request);
 
-    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message, None, "test")
-        .await;
+    LspSaturator::handle_server_message(
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "test",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -598,10 +640,7 @@ fn test_handle_progress_begin_no_percentage() {
     handle_progress_notification(&queue, "ra", params);
 
     let items = queue.drain();
-    assert!(matches!(
-        items[0].op,
-        PendingOp::ProgressBegin { percentage: 0, .. }
-    ));
+    assert!(matches!(items[0].op, PendingOp::ProgressBegin { percentage: 0, .. }));
 }
 
 #[test]
@@ -630,7 +669,10 @@ fn test_handle_show_message_warning() {
     let items = queue.drain();
     assert!(matches!(
         items[0].op,
-        PendingOp::Push { level: PendingLevel::Warning, .. }
+        PendingOp::Push {
+            level: PendingLevel::Warning,
+            ..
+        }
     ));
 }
 
@@ -644,7 +686,10 @@ fn test_handle_show_message_info() {
     let items = queue.drain();
     assert!(matches!(
         items[0].op,
-        PendingOp::Push { level: PendingLevel::Info, .. }
+        PendingOp::Push {
+            level: PendingLevel::Info,
+            ..
+        }
     ));
 }
 
@@ -669,7 +714,10 @@ fn test_handle_log_message_error_becomes_toast() {
     assert_eq!(items.len(), 1);
     assert!(matches!(
         items[0].op,
-        PendingOp::Push { level: PendingLevel::Error, .. }
+        PendingOp::Push {
+            level: PendingLevel::Error,
+            ..
+        }
     ));
 }
 
@@ -684,7 +732,10 @@ fn test_handle_log_message_warning_becomes_toast() {
     assert_eq!(items.len(), 1);
     assert!(matches!(
         items[0].op,
-        PendingOp::Push { level: PendingLevel::Warning, .. }
+        PendingOp::Push {
+            level: PendingLevel::Warning,
+            ..
+        }
     ));
 }
 
@@ -725,8 +776,14 @@ async fn test_handle_server_message_progress_notification() {
     let message = jsonrpc::Message::Notification(notification);
 
     LspSaturator::handle_server_message(
-        &client, &cache, &make_test_capability_store(), message, Some(&queue), "rust-analyzer",
-    ).await;
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        Some(&queue),
+        "rust-analyzer",
+    )
+    .await;
 
     assert_eq!(queue.len(), 1);
 }
@@ -744,8 +801,14 @@ async fn test_handle_server_message_show_message_notification() {
     let message = jsonrpc::Message::Notification(notification);
 
     LspSaturator::handle_server_message(
-        &client, &cache, &make_test_capability_store(), message, Some(&queue), "ra",
-    ).await;
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        Some(&queue),
+        "ra",
+    )
+    .await;
 
     assert_eq!(queue.len(), 1);
 }
@@ -763,8 +826,14 @@ async fn test_handle_server_message_log_message_notification() {
     let message = jsonrpc::Message::Notification(notification);
 
     LspSaturator::handle_server_message(
-        &client, &cache, &make_test_capability_store(), message, Some(&queue), "ra",
-    ).await;
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        Some(&queue),
+        "ra",
+    )
+    .await;
 
     // Error log messages become toasts
     assert_eq!(queue.len(), 1);
@@ -786,6 +855,12 @@ async fn test_handle_server_message_progress_no_queue() {
 
     // No queue — should not panic
     LspSaturator::handle_server_message(
-        &client, &cache, &make_test_capability_store(), message, None, "ra",
-    ).await;
+        &client,
+        &cache,
+        &make_test_capability_store(),
+        message,
+        None,
+        "ra",
+    )
+    .await;
 }

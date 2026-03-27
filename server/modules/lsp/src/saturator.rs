@@ -278,42 +278,40 @@ impl LspSaturator {
                 );
                 client.handle_response(response).await;
             }
-            Message::Notification(notification) => {
-                match notification.method.as_str() {
-                    "textDocument/publishDiagnostics" => {
-                        if let Some(params) = notification.params
-                            && let Ok(diag_params) =
-                                serde_json::from_value::<PublishDiagnosticsParams>(params)
-                        {
-                            Self::handle_diagnostics(cache, diag_params);
-                        }
-                    }
-                    "$/progress" => {
-                        if let Some(queue) = queue
-                            && let Some(params) = notification.params
-                        {
-                            handle_progress_notification(queue, server_name, params);
-                        }
-                    }
-                    "window/showMessage" => {
-                        if let Some(queue) = queue
-                            && let Some(params) = notification.params
-                        {
-                            handle_show_message(queue, server_name, params);
-                        }
-                    }
-                    "window/logMessage" => {
-                        if let Some(queue) = queue
-                            && let Some(params) = notification.params
-                        {
-                            handle_log_message(queue, server_name, params);
-                        }
-                    }
-                    _ => {
-                        debug!(method = %notification.method, "Unhandled notification");
+            Message::Notification(notification) => match notification.method.as_str() {
+                "textDocument/publishDiagnostics" => {
+                    if let Some(params) = notification.params
+                        && let Ok(diag_params) =
+                            serde_json::from_value::<PublishDiagnosticsParams>(params)
+                    {
+                        Self::handle_diagnostics(cache, diag_params);
                     }
                 }
-            }
+                "$/progress" => {
+                    if let Some(queue) = queue
+                        && let Some(params) = notification.params
+                    {
+                        handle_progress_notification(queue, server_name, params);
+                    }
+                }
+                "window/showMessage" => {
+                    if let Some(queue) = queue
+                        && let Some(params) = notification.params
+                    {
+                        handle_show_message(queue, server_name, params);
+                    }
+                }
+                "window/logMessage" => {
+                    if let Some(queue) = queue
+                        && let Some(params) = notification.params
+                    {
+                        handle_log_message(queue, server_name, params);
+                    }
+                }
+                _ => {
+                    debug!(method = %notification.method, "Unhandled notification");
+                }
+            },
             Message::Request(request) => {
                 Self::handle_server_request(client, capabilities, request);
             }
@@ -774,9 +772,7 @@ fn handle_progress_notification(
         }
         WorkDoneProgress::Report(report) => {
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let percentage = report
-                .percentage
-                .map(|p| p.clamp(0, 100) as u8);
+            let percentage = report.percentage.map(|p| p.clamp(0, 100) as u8);
             queue.push_op(
                 source,
                 PendingOp::ProgressReport {

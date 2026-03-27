@@ -127,13 +127,7 @@ impl NotificationState {
             percent: percent.min(100),
             detail: detail.into(),
         };
-        self.push_full(
-            NotificationLevel::Info,
-            title.into(),
-            String::new(),
-            Some(progress),
-            None,
-        )
+        self.push_full(NotificationLevel::Info, title.into(), String::new(), Some(progress), None)
     }
 
     /// Push a progress notification with source attribution. Returns the assigned ID.
@@ -148,13 +142,7 @@ impl NotificationState {
             percent: percent.min(100),
             detail: detail.into(),
         };
-        self.push_full(
-            NotificationLevel::Info,
-            title.into(),
-            String::new(),
-            Some(progress),
-            source,
-        )
+        self.push_full(NotificationLevel::Info, title.into(), String::new(), Some(progress), source)
     }
 
     /// Update the progress on an existing notification.

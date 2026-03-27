@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_layout::{LayerId, Rect, SplitDirection, TiledLayer, NavigateDirection},
+    reovim_driver_layout::{LayerId, NavigateDirection, Rect, SplitDirection, TiledLayer},
 };
 
 fn zone() -> TiledZone {

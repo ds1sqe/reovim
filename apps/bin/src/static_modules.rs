@@ -56,9 +56,7 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("editor", || Box::new(reovim_module_editor::EditorModule));
     map.insert("motions", || Box::new(reovim_module_motions::MotionsModule));
     map.insert("vim", || Box::new(reovim_module_vim::VimModule::new()));
-    map.insert("window-ops", || {
-        Box::new(reovim_module_window_ops::WindowOps::new())
-    });
+    map.insert("window-ops", || Box::new(reovim_module_window_ops::WindowOps::new()));
 
     // Tier 3: Git provider (#530) — must init before consumers and pickers
     map.insert("git", || Box::new(reovim_module_git::GitModule::new()));

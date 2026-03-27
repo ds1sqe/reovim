@@ -340,10 +340,7 @@ fn drain_full_progress_lifecycle() {
         &mut state,
         &mut token_map,
     );
-    assert_eq!(
-        state.entries()[0].progress.as_ref().unwrap().percent,
-        30
-    );
+    assert_eq!(state.entries()[0].progress.as_ref().unwrap().percent, 30);
 
     // Report 2
     drain_entries(
@@ -358,10 +355,7 @@ fn drain_full_progress_lifecycle() {
         &mut state,
         &mut token_map,
     );
-    assert_eq!(
-        state.entries()[0].progress.as_ref().unwrap().percent,
-        90
-    );
+    assert_eq!(state.entries()[0].progress.as_ref().unwrap().percent, 90);
 
     // End
     drain_entries(
@@ -441,16 +435,7 @@ fn drain_empty_returns_false() {
 #[test]
 fn convert_level_all_variants() {
     assert_eq!(convert_level(PendingLevel::Info), NotificationLevel::Info);
-    assert_eq!(
-        convert_level(PendingLevel::Success),
-        NotificationLevel::Success
-    );
-    assert_eq!(
-        convert_level(PendingLevel::Warning),
-        NotificationLevel::Warning
-    );
-    assert_eq!(
-        convert_level(PendingLevel::Error),
-        NotificationLevel::Error
-    );
+    assert_eq!(convert_level(PendingLevel::Success), NotificationLevel::Success);
+    assert_eq!(convert_level(PendingLevel::Warning), NotificationLevel::Warning);
+    assert_eq!(convert_level(PendingLevel::Error), NotificationLevel::Error);
 }

@@ -5,8 +5,8 @@
 //! splits and leaves represent windows.
 
 use reovim_driver_layout::{
-    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Rect, SplitDirection, TiledLayer,
-    WindowId, WindowPlacement, LayerId, ZOrder, Zone,
+    LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Rect, SplitDirection,
+    TiledLayer, WindowId, WindowPlacement, ZOrder, Zone,
 };
 
 /// A node in the binary split tree.
@@ -40,23 +40,21 @@ impl SplitNode {
     fn contains(&self, target: WindowId) -> bool {
         match self {
             Self::Leaf(id) => *id == target,
-            Self::Split { first, second, .. } => {
-                first.contains(target) || second.contains(target)
-            }
+            Self::Split { first, second, .. } => first.contains(target) || second.contains(target),
         }
     }
 
     /// Compute placements by recursively partitioning bounds.
-    fn arrange(&self, bounds: Rect, layer_id: LayerId, z_base: ZOrder, placements: &mut Vec<WindowPlacement>) {
+    fn arrange(
+        &self,
+        bounds: Rect,
+        layer_id: LayerId,
+        z_base: ZOrder,
+        placements: &mut Vec<WindowPlacement>,
+    ) {
         match self {
             Self::Leaf(id) => {
-                placements.push(WindowPlacement::new(
-                    *id,
-                    layer_id,
-                    Zone::Tiled,
-                    bounds,
-                    z_base,
-                ));
+                placements.push(WindowPlacement::new(*id, layer_id, Zone::Tiled, bounds, z_base));
             }
             Self::Split {
                 direction,
@@ -265,11 +263,7 @@ impl TiledLayer for TiledZone {
         id
     }
 
-    fn split(
-        &mut self,
-        target: WindowId,
-        direction: SplitDirection,
-    ) -> Option<WindowId> {
+    fn split(&mut self, target: WindowId, direction: SplitDirection) -> Option<WindowId> {
         let root = self.root.as_mut()?;
         // We need bounds for minimum-size checks. Use a large default;
         // the actual bounds are provided by `arrange()` at render time.
@@ -351,18 +345,15 @@ impl TiledLayer for TiledZone {
         self.root.is_none()
     }
 
-    fn cycle(
-        &self,
-        from: WindowId,
-        forward: bool,
-        views: &[WindowPlacement],
-    ) -> Option<WindowId> {
+    fn cycle(&self, from: WindowId, forward: bool, views: &[WindowPlacement]) -> Option<WindowId> {
         if views.len() < 2 {
             return None;
         }
         // Sort by winnr order: top-to-bottom, left-to-right
-        let mut view_map: Vec<(u16, u16, WindowId)> =
-            views.iter().map(|p| (p.bounds.y, p.bounds.x, p.window_id)).collect();
+        let mut view_map: Vec<(u16, u16, WindowId)> = views
+            .iter()
+            .map(|p| (p.bounds.y, p.bounds.x, p.window_id))
+            .collect();
         view_map.sort_by_key(|&(y, x, _)| (y, x));
         let sorted: Vec<WindowId> = view_map.iter().map(|&(_, _, id)| id).collect();
 

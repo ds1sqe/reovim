@@ -152,11 +152,7 @@ fn test_level_str_all_variants() {
 fn test_snapshot_with_source() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<NotificationState>();
-    state.push_with_source(
-        Some("rust-analyzer".to_string()),
-        NotificationLevel::Info,
-        "Indexing",
-    );
+    state.push_with_source(Some("rust-analyzer".to_string()), NotificationLevel::Info, "Indexing");
 
     let snap = NotificationBridge.snapshot(&map).unwrap();
     let entry = &snap["entries"][0];
@@ -178,11 +174,7 @@ fn test_snapshot_without_source() {
 fn test_snapshot_mixed_sources() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<NotificationState>();
-    state.push_with_source(
-        Some("rust-analyzer".to_string()),
-        NotificationLevel::Success,
-        "Ready",
-    );
+    state.push_with_source(Some("rust-analyzer".to_string()), NotificationLevel::Success, "Ready");
     state.push(NotificationLevel::Info, "generic");
 
     let snap = NotificationBridge.snapshot(&map).unwrap();
@@ -212,8 +204,10 @@ fn test_snapshot_progress_with_source() {
 // Bridge tick() tests (#691 — periodic notification drain)
 // ========================================================================
 
-use reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp};
-use reovim_kernel::api::v1::ServiceRegistry;
+use {
+    reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp},
+    reovim_kernel::api::v1::ServiceRegistry,
+};
 
 #[test]
 fn test_tick_no_queue_returns_false() {
@@ -313,7 +307,13 @@ fn test_tick_progress_lifecycle() {
         },
     );
     assert!(NotificationBridge.tick(&mut client, &mut shared, &services));
-    assert!(client.get::<NotificationState>().unwrap().entries().is_empty());
+    assert!(
+        client
+            .get::<NotificationState>()
+            .unwrap()
+            .entries()
+            .is_empty()
+    );
 }
 
 #[test]

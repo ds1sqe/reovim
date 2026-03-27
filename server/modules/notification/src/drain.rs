@@ -127,12 +127,8 @@ pub fn drain_entries(
                 message,
                 percentage,
             } => {
-                let id = state.push_progress_with_source(
-                    entry.source,
-                    &title,
-                    percentage,
-                    &message,
-                );
+                let id =
+                    state.push_progress_with_source(entry.source, &title, percentage, &message);
                 token_map.insert(token, id);
                 changed = true;
             }
