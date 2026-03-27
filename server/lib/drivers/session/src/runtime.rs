@@ -1452,11 +1452,11 @@ impl CompositorApi for SessionRuntime<'_> {
             .split_tiled(from, direction)
             .ok_or(CompositorError::NotEnoughRoom)?;
 
-        // Add new window to per-client WindowLayout with same buffer as source.
-        // The compositor tracks geometry; WindowLayout tracks buffer/cursor/selection.
-        let buffer_id = self.windows.get(from).and_then(|w| w.buffer_id);
-        if let Some(bid) = buffer_id {
-            let win = Window::with_id_and_buffer(new_window, bid);
+        // Add new window to per-client WindowLayout inheriting cursor/viewport
+        // from source. The compositor tracks geometry; WindowLayout tracks
+        // buffer/cursor/selection. (#692)
+        if let Some(source) = self.windows.get(from) {
+            let win = Window::split_from(new_window, source);
             self.windows.add(win);
         }
 

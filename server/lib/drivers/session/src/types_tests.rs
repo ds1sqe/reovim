@@ -801,6 +801,61 @@ fn test_window_with_id_and_buffer() {
 }
 
 // =========================================================================
+// Window::split_from() tests (#692)
+// =========================================================================
+
+#[test]
+fn test_window_split_from_inherits_cursor() {
+    let mut source = Window::new();
+    source.buffer_id = Some(BufferId::new());
+    source.cursor = CursorPosition::new(42, 7);
+
+    let new_id = WindowId::new();
+    let split = Window::split_from(new_id, &source);
+
+    assert_eq!(split.id, new_id);
+    assert_eq!(split.buffer_id, source.buffer_id);
+    assert_eq!(split.cursor.line, 42);
+    assert_eq!(split.cursor.column, 7);
+}
+
+#[test]
+fn test_window_split_from_inherits_viewport() {
+    let mut source = Window::new();
+    source.buffer_id = Some(BufferId::new());
+    source.viewport = Viewport {
+        scroll_top: 100,
+        scroll_left: 5,
+        ..Viewport::new(80, 24)
+    };
+
+    let split = Window::split_from(WindowId::new(), &source);
+
+    assert_eq!(split.viewport.scroll_top, 100);
+    assert_eq!(split.viewport.scroll_left, 5);
+}
+
+#[test]
+fn test_window_split_from_no_selection() {
+    use {
+        crate::api::{Selection, SelectionMode},
+        reovim_kernel::api::v1::Position,
+    };
+
+    let mut source = Window::new();
+    source.buffer_id = Some(BufferId::new());
+    source.selection = Some(Selection::new(
+        Position::new(0, 0),
+        Position::new(5, 10),
+        SelectionMode::Character,
+    ));
+
+    let split = Window::split_from(WindowId::new(), &source);
+
+    assert!(split.selection.is_none(), "split_from must not copy selection (Vim behavior)");
+}
+
+// =========================================================================
 // WindowLayout::remove() tests
 // =========================================================================
 

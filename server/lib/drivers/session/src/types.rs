@@ -558,6 +558,22 @@ impl Window {
             selection: None,
         }
     }
+
+    /// Create a window that inherits state from a source window (#692).
+    ///
+    /// Used when splitting: the new pane gets the same buffer, cursor position,
+    /// and viewport scroll offset as the source. Selection is NOT copied —
+    /// splitting does not clone visual mode state.
+    #[must_use]
+    pub const fn split_from(id: WindowId, source: &Self) -> Self {
+        Self {
+            id,
+            buffer_id: source.buffer_id,
+            cursor: source.cursor,
+            viewport: source.viewport,
+            selection: None,
+        }
+    }
 }
 
 impl Default for Window {
