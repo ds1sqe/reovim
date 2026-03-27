@@ -171,7 +171,8 @@ async fn test_independent_cursor_positions() {
         .await
         .expect("Failed to add content");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for content to propagate to tui2 and be rendered
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // TUI 1 moves cursor to line 2
     tui1.send_keys("gg2j")
@@ -182,6 +183,8 @@ async fn test_independent_cursor_positions() {
     tui2.send_keys("gg4j")
         .await
         .expect("TUI 2 failed to move cursor");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Wait for both TUIs to show buffer content (landing screen dismissed).
     let frame1 = tui1
