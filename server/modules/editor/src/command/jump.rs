@@ -33,6 +33,7 @@ impl Command for JumpBackward {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for JumpBackward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let Some(entry) = runtime.jumplist_mut().backward().cloned() else {
@@ -80,6 +81,7 @@ impl Command for JumpForward {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for JumpForward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let Some(entry) = runtime.jumplist_mut().forward().cloned() else {

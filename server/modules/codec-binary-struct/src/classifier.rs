@@ -40,6 +40,7 @@ impl ElfClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for ElfClassifier {
     fn default() -> Self {
         Self::new()
@@ -84,6 +85,7 @@ impl ZipClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for ZipClassifier {
     fn default() -> Self {
         Self::new()

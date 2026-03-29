@@ -17,6 +17,7 @@ impl Utf8CodecFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for Utf8CodecFactory {
     fn default() -> Self {
         Self::new()

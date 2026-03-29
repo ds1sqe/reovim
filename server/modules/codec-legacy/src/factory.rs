@@ -20,6 +20,7 @@ impl LegacyCodecFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for LegacyCodecFactory {
     fn default() -> Self {
         Self::new()

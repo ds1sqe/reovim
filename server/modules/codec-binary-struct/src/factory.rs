@@ -21,6 +21,7 @@ impl BinaryStructCodecFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for BinaryStructCodecFactory {
     fn default() -> Self {
         Self::new()

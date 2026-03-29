@@ -50,6 +50,7 @@ use crate::{
 ///
 /// - `text` must be a valid null-terminated C string or null
 /// - Must be called during a command callback (`RuntimeGuard` active)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_copy_to_clipboard(text: *const c_char) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -87,6 +88,7 @@ pub unsafe extern "C" fn reovim_copy_to_clipboard(text: *const c_char) -> i32 {
 ///
 /// - `text` must be a valid null-terminated C string or null
 /// - Must be called during a command callback (`RuntimeGuard` active)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_copy_to_selection(text: *const c_char) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -128,6 +130,7 @@ pub unsafe extern "C" fn reovim_copy_to_selection(text: *const c_char) -> i32 {
 /// - `buf` must point to at least `buf_len` writable bytes, or be null
 /// - `out_result` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_paste_from_clipboard(
     buf: *mut u8,
@@ -172,6 +175,7 @@ pub unsafe extern "C" fn reovim_paste_from_clipboard(
 /// - `buf` must point to at least `buf_len` writable bytes, or be null
 /// - `out_result` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_paste_from_selection(
     buf: *mut u8,

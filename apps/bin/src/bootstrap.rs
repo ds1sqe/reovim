@@ -853,6 +853,8 @@ fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId])
 /// Collects `version_constraints()` from each module and validates them
 /// against actual module versions. Violations are logged as warnings.
 /// Non-fatal — modules still load but constraints are surfaced.
+// Runtime-only validation with tracing — not unit testable.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn check_module_version_constraints(builtins: &[ModuleHandle], external: &ModuleLoader) {
     // Build version map: module_id -> (major, minor, patch)
     let mut versions: Vec<(ModuleId, (u32, u32, u32))> = builtins

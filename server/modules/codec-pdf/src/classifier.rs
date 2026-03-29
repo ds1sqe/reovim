@@ -25,6 +25,7 @@ impl PdfClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for PdfClassifier {
     fn default() -> Self {
         Self::new()

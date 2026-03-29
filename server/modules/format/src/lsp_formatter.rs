@@ -40,6 +40,8 @@ pub fn language_from_path(path: &str) -> &'static str {
 }
 
 /// Find an active LSP provider for the given file path.
+// Needs real LSP registry — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn find_provider(
     services: &Arc<ServiceRegistry>,
     file_path: &str,

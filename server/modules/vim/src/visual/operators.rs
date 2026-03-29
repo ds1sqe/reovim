@@ -437,6 +437,8 @@ impl Command for ToggleCaseSelection {
     }
 }
 
+// Needs visual mode + buffer state — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ToggleCaseSelection {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_case_selection(runtime, args, |s| {
@@ -469,6 +471,7 @@ impl Command for LowercaseSelection {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for LowercaseSelection {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_case_selection(runtime, args, str::to_lowercase)
@@ -489,6 +492,7 @@ impl Command for UppercaseSelection {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for UppercaseSelection {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_case_selection(runtime, args, str::to_uppercase)

@@ -191,6 +191,7 @@ pub trait SyntaxDriver: Send + Sync {
     /// # Default
     ///
     /// Returns `SyntaxContext::Code`. Override for context-aware behavior.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn context_at_byte(&self, _byte_offset: usize) -> SyntaxContext {
         SyntaxContext::Code
     }
@@ -211,6 +212,7 @@ pub trait SyntaxDriver: Send + Sync {
     /// # Default
     ///
     /// Returns `None`. Override for drivers with treesitter query support.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn textobject_range(
         &self,
         _kind: TextObjectKind,

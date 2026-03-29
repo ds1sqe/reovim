@@ -62,6 +62,7 @@ impl LegacyClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for LegacyClassifier {
     fn default() -> Self {
         Self::new()

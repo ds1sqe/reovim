@@ -138,6 +138,7 @@ pub trait ClientModule: Send + Sync + 'static {
     }
 
     /// Render chrome into the given surface region.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn chrome_render(
         &self,
         surface: &mut dyn RenderSurface,
@@ -349,6 +350,7 @@ pub trait ServerHandle: Send + Sync {
     /// List available command names.
     ///
     /// Default: empty list (for backward compatibility with existing impls).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn list_commands(&self) -> Vec<String> {
         Vec::new()
     }
@@ -356,6 +358,7 @@ pub trait ServerHandle: Send + Sync {
     /// Get metadata about a named option.
     ///
     /// Default: `None` (for backward compatibility with existing impls).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn get_option_metadata(&self, name: &str) -> Option<crate::OptionMetadata> {
         None
     }

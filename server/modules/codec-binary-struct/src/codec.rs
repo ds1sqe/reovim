@@ -39,6 +39,7 @@ impl ElfCodec {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for ElfCodec {
     fn default() -> Self {
         Self::new()
@@ -87,6 +88,7 @@ impl ZipCodec {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for ZipCodec {
     fn default() -> Self {
         Self::new()

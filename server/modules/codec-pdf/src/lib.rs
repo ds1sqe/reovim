@@ -51,6 +51,7 @@ impl CodecPdfModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecPdfModule {
     fn default() -> Self {
         Self::new()

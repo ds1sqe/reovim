@@ -39,6 +39,8 @@ impl Command for EditCommand {
     }
 }
 
+// Needs VFS + codec pipeline — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for EditCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
         // Get the filename argument
@@ -126,6 +128,7 @@ impl CommandHandler for EditCommand {
 /// if no codec modules are loaded.
 ///
 /// Stores codec metadata in `CodecSessionState` for round-trip save.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn decode_file_content(
     bytes: &[u8],
     filename: &str,

@@ -235,6 +235,7 @@ fn lerp_color(from: reovim_arch::Color, to: reovim_arch::Color, t: f32) -> reovi
 ///
 /// Named colors are mapped to approximate RGB values.
 #[allow(clippy::match_same_arms)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn color_to_rgb(color: reovim_arch::Color) -> (u8, u8, u8) {
     match color {
         reovim_arch::Color::Rgb { r, g, b } => (r, g, b),

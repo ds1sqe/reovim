@@ -58,6 +58,7 @@ const fn window_id_from_ffi(id: ReovimWindowId) -> WindowId {
 ///
 /// - `out_id` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_active_window(out_id: *mut ReovimWindowId) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -89,6 +90,7 @@ pub unsafe extern "C" fn reovim_active_window(out_id: *mut ReovimWindowId) -> i3
 ///
 /// - `out_pos` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_cursor_position(out_pos: *mut ReovimPosition) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -119,6 +121,7 @@ pub unsafe extern "C" fn reovim_cursor_position(out_pos: *mut ReovimPosition) ->
 ///
 /// - `out_count` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_window_count(out_count: *mut u32) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -152,6 +155,7 @@ pub unsafe extern "C" fn reovim_window_count(out_count: *mut u32) -> i32 {
 ///
 /// - `out_buffer` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_window_buffer(
     window_id: ReovimWindowId,
@@ -193,6 +197,7 @@ pub unsafe extern "C" fn reovim_window_buffer(
 ///
 /// - `out_id` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_create_window(
     buffer_id: ReovimBufferId,
@@ -232,6 +237,7 @@ pub unsafe extern "C" fn reovim_create_window(
 /// # Safety
 ///
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_close_window(window_id: ReovimWindowId) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -262,6 +268,7 @@ pub unsafe extern "C" fn reovim_close_window(window_id: ReovimWindowId) -> i32 {
 /// # Safety
 ///
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_focus_window(window_id: ReovimWindowId) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {

@@ -39,6 +39,7 @@ impl BinaryClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for BinaryClassifier {
     fn default() -> Self {
         Self::new()

@@ -52,6 +52,7 @@ impl CodecCjkModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecCjkModule {
     fn default() -> Self {
         Self::new()

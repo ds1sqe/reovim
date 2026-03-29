@@ -17,6 +17,7 @@ impl HexCodecFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for HexCodecFactory {
     fn default() -> Self {
         Self::new()

@@ -148,6 +148,8 @@ pub fn sha256_file(path: &Path) -> Result<String, io::Error> {
 // ModulesLock
 // ============================================================================
 
+// Filesystem operations (checksums, paths) — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModulesLock {
     /// Generate a lock file from registry state.
     #[must_use]

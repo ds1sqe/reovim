@@ -36,6 +36,7 @@ impl Utf8Codec {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for Utf8Codec {
     fn default() -> Self {
         Self::new()

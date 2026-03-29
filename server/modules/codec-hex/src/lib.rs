@@ -51,6 +51,7 @@ impl CodecHexModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecHexModule {
     fn default() -> Self {
         Self::new()

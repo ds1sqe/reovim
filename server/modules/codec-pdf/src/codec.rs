@@ -32,6 +32,7 @@ impl PdfCodec {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for PdfCodec {
     fn default() -> Self {
         Self::new()

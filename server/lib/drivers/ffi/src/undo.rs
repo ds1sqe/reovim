@@ -49,6 +49,7 @@ use crate::{
 ///
 /// - `out_cursor` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_undo(
     buffer_id: ReovimBufferId,
@@ -87,6 +88,7 @@ pub unsafe extern "C" fn reovim_undo(
 ///
 /// - `out_cursor` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_redo(
     buffer_id: ReovimBufferId,

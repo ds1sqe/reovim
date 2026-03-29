@@ -50,6 +50,7 @@ impl CodecLegacyModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecLegacyModule {
     fn default() -> Self {
         Self::new()

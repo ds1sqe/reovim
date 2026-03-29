@@ -21,6 +21,7 @@ impl CsvCodecFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CsvCodecFactory {
     fn default() -> Self {
         Self::new()

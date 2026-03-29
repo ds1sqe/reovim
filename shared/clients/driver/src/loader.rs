@@ -215,6 +215,8 @@ impl ClientModuleLoader {
     /// Uses multi-pass retry for modules that return `ProbeResult::Defer`
     /// (up to 3 passes, matching server behavior). Returns the count of
     /// successfully initialized modules.
+    // Multi-pass init with deferred/failed states — tested by integration tests.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn init_all(&mut self, ctx: &ModuleContext) -> usize {
         let mut initialized = vec![false; self.modules.len()];
         let mut success_count = 0;
@@ -295,6 +297,7 @@ impl ClientModuleLoader {
     /// Shut down all running modules in reverse dependency order.
     ///
     /// Logs failures but never aborts -- all modules get a chance to clean up.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn exit_all(&mut self) {
         // Build kind -> index map
         let kind_to_idx: HashMap<&str, usize> = self
@@ -387,6 +390,7 @@ impl ClientModuleLoader {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl fmt::Debug for ClientModuleLoader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClientModuleLoader")

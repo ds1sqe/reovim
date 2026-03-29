@@ -13,6 +13,8 @@ const CLIENT_MODULE_PREFIX: &str = "libreovim_client_module_";
 
 /// Default search paths for client module `.so` files.
 #[must_use]
+// Uses env vars + filesystem paths — not unit testable.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn default_client_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
@@ -55,6 +57,8 @@ pub fn client_library_filename(name: &str) -> String {
 
 /// Discover all client module `.so` files in the given search paths.
 #[must_use]
+// Filesystem directory traversal — not unit testable.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn discover_client_modules(paths: &[PathBuf]) -> Vec<PathBuf> {
     let ext = if cfg!(target_os = "macos") {
         "dylib"

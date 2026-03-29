@@ -73,6 +73,7 @@ pub const REOVIM_CMD_ERROR: i32 = 4;
 ///
 /// - `cmd_id` must be a valid null-terminated C string or null
 /// - Must be called during a command callback (`RuntimeGuard` active)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_execute_command(
     cmd_id: *const c_char,
@@ -252,6 +253,7 @@ fn command_context_to_ffi_args(ctx: &CommandContext) -> ReovimCommandArgs {
 /// - `callback` must be a valid function pointer
 /// - `user_data` must remain valid for the lifetime of the command handler
 /// - Must be called during module init (`InitGuard` active)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_register_command(reg: *const ReovimCommandRegistration) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {

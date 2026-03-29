@@ -57,6 +57,7 @@ impl CodecBinaryStructModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecBinaryStructModule {
     fn default() -> Self {
         Self::new()

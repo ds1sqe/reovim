@@ -1003,3 +1003,15 @@ fn test_delete_commands_count() {
     let cmds = delete_commands();
     assert_eq!(cmds.len(), 5);
 }
+
+#[test]
+fn test_mark_commands_count() {
+    let cmds = mark_commands();
+    assert_eq!(cmds.len(), 3);
+}
+
+#[test]
+fn test_jump_commands_count() {
+    let cmds = jump_commands();
+    assert_eq!(cmds.len(), 2);
+}

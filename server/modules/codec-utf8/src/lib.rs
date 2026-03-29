@@ -48,6 +48,7 @@ impl CodecUtf8Module {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecUtf8Module {
     fn default() -> Self {
         Self::new()

@@ -124,6 +124,7 @@ impl Command for ScreenMiddle {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ScreenMiddle {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(window) = runtime.windows().active() else {

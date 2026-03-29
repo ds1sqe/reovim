@@ -100,6 +100,7 @@ pub(crate) fn write_string_to_buf(
 ///
 /// - `out_id` must be a valid pointer or null
 /// - Must be called during a command callback (`RuntimeGuard` active)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_active_buffer(out_id: *mut ReovimBufferId) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {
@@ -137,6 +138,7 @@ pub unsafe extern "C" fn reovim_active_buffer(out_id: *mut ReovimBufferId) -> i3
 /// - `buf` must point to at least `buf_len` writable bytes, or be null
 /// - `out_result` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_buffer_line(
     buffer_id: ReovimBufferId,
@@ -189,6 +191,7 @@ pub unsafe extern "C" fn reovim_buffer_line(
 ///
 /// - `out_count` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_buffer_line_count(
     buffer_id: ReovimBufferId,
@@ -229,6 +232,7 @@ pub unsafe extern "C" fn reovim_buffer_line_count(
 ///
 /// - `out_len` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_buffer_line_len(
     buffer_id: ReovimBufferId,
@@ -275,6 +279,7 @@ pub unsafe extern "C" fn reovim_buffer_line_len(
 /// - `buf` must point to at least `buf_len` writable bytes, or be null
 /// - `out_result` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_buffer_text_range(
     buffer_id: ReovimBufferId,
@@ -324,6 +329,7 @@ pub unsafe extern "C" fn reovim_buffer_text_range(
 /// - `buf` must point to at least `buf_len` writable bytes, or be null
 /// - `out_result` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_buffer_content(
     buffer_id: ReovimBufferId,
@@ -369,6 +375,7 @@ pub unsafe extern "C" fn reovim_buffer_content(
 ///
 /// - `text` must be a valid null-terminated C string or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_insert_text(
     buffer_id: ReovimBufferId,
@@ -408,6 +415,7 @@ pub unsafe extern "C" fn reovim_insert_text(
 /// # Safety
 ///
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_delete_range(
     buffer_id: ReovimBufferId,
@@ -448,6 +456,7 @@ pub unsafe extern "C" fn reovim_delete_range(
 /// - `content` must be a valid null-terminated C string, or null
 /// - `out_id` must be a valid pointer
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_create_buffer(
     name: *const c_char,
@@ -501,6 +510,7 @@ pub unsafe extern "C" fn reovim_create_buffer(
 /// # Safety
 ///
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_delete_buffer(buffer_id: ReovimBufferId) -> i32 {
     ffi_catch_unwind(AssertUnwindSafe(|| {

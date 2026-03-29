@@ -53,6 +53,7 @@ impl CsvClassifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CsvClassifier {
     fn default() -> Self {
         Self::new()

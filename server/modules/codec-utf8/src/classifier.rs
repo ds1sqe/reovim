@@ -20,6 +20,7 @@ impl Utf8Classifier {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for Utf8Classifier {
     fn default() -> Self {
         Self::new()

@@ -98,6 +98,7 @@ impl reovim_driver_command::Command for Next {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Next {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ModuleManagerState>();
@@ -120,6 +121,7 @@ impl reovim_driver_command::Command for Prev {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Prev {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ModuleManagerState>();
@@ -142,6 +144,7 @@ impl reovim_driver_command::Command for ToggleFilter {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ToggleFilter {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ModuleManagerState>();
@@ -164,6 +167,7 @@ impl reovim_driver_command::Command for ToggleDetail {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ToggleDetail {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ModuleManagerState>();

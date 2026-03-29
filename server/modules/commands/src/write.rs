@@ -45,6 +45,8 @@ impl Command for WriteCommand {
     }
 }
 
+// Needs VFS + codec factories — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for WriteCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
         let Some(buffer_id) = ctx.buffer_id() else {
@@ -105,6 +107,7 @@ impl CommandHandler for WriteCommand {
 ///
 /// If codec metadata exists for the buffer, uses the codec to encode
 /// back to the original format. Otherwise falls back to writing UTF-8 bytes.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn encode_and_write(
     runtime: &mut SessionRuntime<'_>,
     path: &str,
@@ -170,6 +173,8 @@ impl Command for WriteQuitCommand {
     }
 }
 
+// Re-entrant command execution — tested by integration tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for WriteQuitCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
         // Write first via re-entrant execution

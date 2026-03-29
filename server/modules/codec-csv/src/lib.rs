@@ -52,6 +52,7 @@ impl CodecCsvModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for CodecCsvModule {
     fn default() -> Self {
         Self::new()
