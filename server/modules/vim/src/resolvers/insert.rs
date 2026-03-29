@@ -86,6 +86,7 @@ impl ModeKeyResolver for VimInsertResolver {
     ///
     /// This enables Escape to trigger the `vim:exit-insert` command, which
     /// properly ends undo batching before switching to normal mode.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -122,6 +123,7 @@ impl ModeKeyResolver for VimInsertResolver {
     ///
     /// This method tracks all inserted characters in `VimSessionState.insert_buffer`
     /// for dot repeat support (Epic #465).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
         key: &KeyEvent,

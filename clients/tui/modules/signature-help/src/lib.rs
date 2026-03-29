@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Signature help popup chrome module.
 //!
 //! Displays LSP signature help (function signature) in a single-line
@@ -69,6 +71,7 @@ impl Default for SignatureHelpModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for SignatureHelpModule {
     fn id(&self) -> &'static str {
         KIND

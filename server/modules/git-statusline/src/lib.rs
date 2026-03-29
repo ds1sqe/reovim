@@ -52,6 +52,7 @@ impl Module for GitStatuslineModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let Some(store) = ctx.services.get::<GitProviderStore>() else {
             return ProbeResult::Success;

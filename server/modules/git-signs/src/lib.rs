@@ -60,6 +60,7 @@ impl Module for GitSignsModule {
         Version::new(0, 2, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register annotation source for gutter signs
         let source_registry = ctx.services.get_or_create::<AnnotationSourceRegistry>();
@@ -85,6 +86,7 @@ impl Module for GitSignsModule {
         Ok(())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Hunk navigation

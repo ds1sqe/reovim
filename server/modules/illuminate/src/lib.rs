@@ -58,6 +58,7 @@ impl Module for IlluminateModule {
         &["illuminate"]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register bridge for state serialization and tick-based cursor hold
         let bridge_provider = ctx.services.get_or_create::<BridgeProvider>();

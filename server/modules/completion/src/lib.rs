@@ -69,6 +69,7 @@ impl Module for CompletionModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register CompletionBridge via BridgeProvider.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
@@ -130,6 +131,7 @@ impl Module for CompletionModule {
 ///
 /// Popup menu height and width for the completion UI.
 /// Registered during `CompletionModule::init()`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn completion_option_specs() -> Vec<OptionSpec> {
     vec![
         OptionSpec::new(
@@ -152,6 +154,7 @@ fn completion_option_specs() -> Vec<OptionSpec> {
 /// Reads `pumheight` and `pumwidth` from the module's config section and
 /// overrides the option defaults via `set_global()`. Type mismatches are
 /// logged as warnings but do not fail init.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn apply_completion_config(ctx: &ModuleContext) {
     let Some(store) = ctx.services.get::<ModuleConfigStore>() else {
         return;

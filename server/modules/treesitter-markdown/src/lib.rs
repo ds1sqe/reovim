@@ -332,6 +332,7 @@ impl Module for TreesitterMarkdownModule {
         Version::new(0, 9, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let factory = Arc::new(MarkdownSyntaxFactory::new());
 

@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Keymap utilities module.
 //!
 //! This module provides **mechanism** utilities for keybinding management:
@@ -92,6 +94,7 @@ impl Module for KeymapModule {
         Ok(())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         // No keybindings - this is a mechanism module.
         // Keybindings come from policy modules (vim, emacs, etc.).

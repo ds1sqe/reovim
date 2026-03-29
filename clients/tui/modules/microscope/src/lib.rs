@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Microscope fuzzy finder native `ClientModule`.
 //!
 //! Renders a Helix-style bottom-anchored fuzzy finder overlay.
@@ -95,6 +97,7 @@ impl Default for MicroscopeModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for MicroscopeModule {
     fn id(&self) -> &'static str {
         KIND

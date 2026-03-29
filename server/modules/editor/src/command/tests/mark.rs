@@ -592,9 +592,9 @@ fn test_goto_global_mark_cross_buffer_line_mode() {
 
 #[test]
 fn test_mark_commands_debug_derive() {
-    assert_eq!(format!("{:?}", SetMark), "SetMark");
-    assert_eq!(format!("{:?}", GotoMarkLine), "GotoMarkLine");
-    assert_eq!(format!("{:?}", GotoMarkExact), "GotoMarkExact");
+    assert_eq!(format!("{SetMark:?}"), "SetMark");
+    assert_eq!(format!("{GotoMarkLine:?}"), "GotoMarkLine");
+    assert_eq!(format!("{GotoMarkExact:?}"), "GotoMarkExact");
 }
 
 #[test]
@@ -607,15 +607,8 @@ fn test_mark_commands_default_derive() {
 
 #[test]
 fn test_mark_commands_copy_clone() {
-    let a = SetMark;
-    let _b = a;
-    let _c = a.clone();
-
-    let d = GotoMarkLine;
-    let _e = d;
-    let _f = d.clone();
-
-    let g = GotoMarkExact;
-    let _h = g;
-    let _i = g.clone();
+    fn assert_copy<T: Copy>(_val: T) {}
+    assert_copy(SetMark);
+    assert_copy(GotoMarkLine);
+    assert_copy(GotoMarkExact);
 }

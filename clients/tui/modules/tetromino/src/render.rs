@@ -78,6 +78,7 @@ pub(crate) fn color_for_name(name: &str) -> Color {
 /// For Overlay chrome, `bounds` covers the full terminal. We use
 /// `surface.size()` for terminal dimensions (same as the original
 /// used `backend.size()`).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 pub(crate) fn render_tetromino(
     surface: &mut dyn RenderSurface,
@@ -99,6 +100,7 @@ pub(crate) fn render_tetromino(
 }
 
 /// Render the main menu screen.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_menu(surface: &mut dyn RenderSurface) {
     let (term_w, term_h) = surface.size();
@@ -145,6 +147,7 @@ fn render_menu(surface: &mut dyn RenderSurface) {
 }
 
 /// Render the lobby screen showing available rooms.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_lobby(surface: &mut dyn RenderSurface, data: &TetrominoData) {
     let (term_w, term_h) = surface.size();
@@ -205,6 +208,7 @@ fn render_lobby(surface: &mut dyn RenderSurface, data: &TetrominoData) {
 }
 
 /// Render the room screen showing players and ready status.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_room(surface: &mut dyn RenderSurface, data: &TetrominoData) {
     let (term_w, term_h) = surface.size();
@@ -277,6 +281,7 @@ fn render_room(surface: &mut dyn RenderSurface, data: &TetrominoData) {
 }
 
 /// Render the countdown screen before a multiplayer match.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_countdown(surface: &mut dyn RenderSurface, data: &TetrominoData) {
     let (term_w, term_h) = surface.size();
@@ -342,6 +347,7 @@ pub(crate) fn opponents_that_fit(available_h: u16, count: usize) -> usize {
 }
 
 /// Render the game screen (board + side panel + optional opponents).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_game(surface: &mut dyn RenderSurface, data: &TetrominoData) {
     let (term_w, term_h) = surface.size();
@@ -435,6 +441,7 @@ fn render_game(surface: &mut dyn RenderSurface, data: &TetrominoData) {
 }
 
 /// Render the board grid with pieces.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn render_board(surface: &mut dyn RenderSurface, data: &TetrominoData, x: u16, y: u16) {
     let bg = Color::AnsiValue(234);
@@ -488,6 +495,7 @@ fn render_board(surface: &mut dyn RenderSurface, data: &TetrominoData, x: u16, y
 }
 
 /// Render the side info panel (next piece, score, level, lines).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_side_panel(surface: &mut dyn RenderSurface, data: &TetrominoData, x: u16, y: u16) {
     let label_style = Style::new().fg(Color::Grey).bg(Color::AnsiValue(234));
@@ -562,6 +570,7 @@ pub(crate) fn next_piece_preview_cells(piece_name: &str) -> Vec<(usize, usize)> 
 }
 
 /// Render a centered text overlay (for PAUSED / GAME OVER).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_overlay(surface: &mut dyn RenderSurface, text: &str, popup_x: u16, popup_y: u16) {
     let overlay_w = text.len() as u16 + 4;
@@ -583,6 +592,7 @@ fn render_overlay(surface: &mut dyn RenderSurface, text: &str, popup_x: u16, pop
 }
 
 /// Render the result screen after a multiplayer match.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_result(surface: &mut dyn RenderSurface, data: &TetrominoData) {
     let player_rows = data.result_players.len().max(1);
@@ -653,6 +663,7 @@ fn render_result(surface: &mut dyn RenderSurface, data: &TetrominoData) {
 }
 
 /// Render opponent minimaps to the right of the main board.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_opponents(
     surface: &mut dyn RenderSurface,

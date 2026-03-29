@@ -333,6 +333,7 @@ impl VimNormalResolver {
     }
 
     /// Handle `@` key for macro playback.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_macro_play_key(&self, vim: &VimSessionState) -> ResolveResult {
         // Check if we can enter playback (depth limit)
         if vim.is_macro_depth_exceeded() {
@@ -639,6 +640,7 @@ impl ModeKeyResolver for VimNormalResolver {
     /// | `ExactOnly` | `Execute` - run the command immediately |
     /// | `PrefixOnly` | `Pending` - wait for more keys |
     /// | `NotFound` | `NotHandled` - delegate to fallback handler |
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,

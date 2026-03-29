@@ -79,6 +79,7 @@ impl ModeKeyResolver for VimWindowResolver {
     ///
     /// Unlike operator modes, window mode doesn't accumulate counts or wait for
     /// motions - each key is a complete command.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,

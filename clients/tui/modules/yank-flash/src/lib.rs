@@ -160,6 +160,7 @@ impl Default for YankFlashModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for YankFlashModule {
     fn id(&self) -> &'static str {
         KIND

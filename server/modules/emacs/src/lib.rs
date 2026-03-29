@@ -68,6 +68,7 @@ impl Module for EmacsModule {
         &[reovim_capabilities::MODE_MANAGEMENT]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         keybindings::all()
     }

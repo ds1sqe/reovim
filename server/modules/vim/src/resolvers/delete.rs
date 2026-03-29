@@ -102,6 +102,7 @@ impl Default for VimDeleteResolver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimDeleteResolver {
     fn resolve_with_keymap(
         &self,

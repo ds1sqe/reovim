@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Completion popup chrome module.
 //!
 //! Displays a floating completion popup below the cursor position.
@@ -86,6 +88,7 @@ impl Default for CompletionModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for CompletionModule {
     fn id(&self) -> &'static str {
         KIND

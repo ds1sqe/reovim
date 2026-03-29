@@ -969,7 +969,7 @@ fn convert_display_to_driver_style_partial_attributes() {
 // ThemeProviderAdapter tests
 // =============================================================================
 
-/// Minimal display-side ThemeProvider for testing the adapter.
+/// Minimal display-side `ThemeProvider` for testing the adapter.
 struct TestDisplayTheme {
     styles: std::collections::HashMap<String, DisplayStyle>,
 }
@@ -991,7 +991,7 @@ impl reovim_driver_display::style::ThemeProvider for TestDisplayTheme {
     fn get_style(&self, group: &str) -> Option<DisplayStyle> {
         self.styles.get(group).cloned()
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "test-theme"
     }
 }

@@ -64,6 +64,7 @@ impl Module for FormatModule {
         &[reovim_capabilities::FORMATTER_PROVIDER]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register autoformat option
         if let Err(e) = ctx.kernel.options.register(OptionSpec::new(

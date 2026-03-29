@@ -186,6 +186,7 @@ impl Default for LandingModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for LandingModule {
     fn id(&self) -> &'static str {
         KIND

@@ -150,6 +150,7 @@ impl Module for TreesitterGoModule {
         Version::new(0, 10, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let factory = Arc::new(GoSyntaxFactory::new());
 

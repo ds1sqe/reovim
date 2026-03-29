@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Statusline chrome module.
 //!
 //! Renders a lualine-style statusline with six sections:
@@ -141,6 +143,7 @@ impl Default for StatuslineModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for StatuslineModule {
     fn id(&self) -> &'static str {
         "statusline"

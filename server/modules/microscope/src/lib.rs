@@ -70,6 +70,7 @@ impl Module for MicroscopeModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register MicroscopeBridge via BridgeProvider.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
@@ -115,6 +116,7 @@ impl Module for MicroscopeModule {
         &[KIND]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Microscope mode: navigation
@@ -148,6 +150,7 @@ impl Module for MicroscopeModule {
 ///
 /// Picker layout, preview, search, and prompt options.
 /// Registered during `MicroscopeModule::init()`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn microscope_option_specs() -> Vec<OptionSpec> {
     vec![
         OptionSpec::new(

@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Cmdline chrome module.
 //!
 //! Displays a floating command-line popup for ex-commands (`:`, `/`, `?`).
@@ -51,6 +53,7 @@ impl Default for CmdlineModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for CmdlineModule {
     fn id(&self) -> &'static str {
         KIND

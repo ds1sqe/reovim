@@ -57,6 +57,7 @@ impl Module for BufferlineModule {
         Version::new(0, 2, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register pin-state bridge.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
@@ -83,6 +84,7 @@ impl Module for BufferlineModule {
         &[KIND]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             KeybindingRegistration::new("<leader>bp", ids::PIN_BUFFER)

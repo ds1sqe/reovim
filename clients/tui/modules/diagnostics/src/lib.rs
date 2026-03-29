@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Diagnostics inline rendering module.
 //!
 //! Renders LSP diagnostic markers (underlines + virtual text) at buffer
@@ -153,6 +155,7 @@ impl Default for DiagnosticsModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for DiagnosticsModule {
     fn id(&self) -> &'static str {
         "diagnostics"

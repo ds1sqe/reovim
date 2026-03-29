@@ -21,7 +21,7 @@ struct CountingProvider {
     branches_calls: AtomicUsize,
     log_calls: AtomicUsize,
     stash_calls: AtomicUsize,
-    /// Whether stage/reset/unstage/stage_lines/reset_lines should succeed.
+    /// Whether `stage`/`reset`/`unstage`/`stage_lines`/`reset_lines` should succeed.
     mutation_result: bool,
     diff_content_calls: AtomicUsize,
     stage_file_calls: AtomicUsize,
@@ -619,7 +619,7 @@ fn hunks_cache_miss_after_ttl() {
 #[test]
 fn cache_entry_new_is_not_expired_with_long_ttl() {
     let entry = CacheEntry::new(42);
-    assert!(!entry.is_expired(Duration::from_secs(60)));
+    assert!(!entry.is_expired(Duration::from_mins(1)));
     assert_eq!(entry.value, 42);
 }
 

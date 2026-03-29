@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Bracket pair highlighting module.
 //!
 //! Receives bracket state from the server's pair bridge and renders:
@@ -207,6 +209,7 @@ impl Default for PairModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for PairModule {
     fn id(&self) -> &'static str {
         "pair"

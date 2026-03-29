@@ -252,6 +252,7 @@ impl WriteSurface {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl RenderSurface for WriteSurface {
     #[allow(clippy::cast_possible_truncation)]
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {

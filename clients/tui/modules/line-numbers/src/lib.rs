@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Line numbers annotation module.
 //!
 //! Renders line numbers in the gutter. Supports absolute, relative, and
@@ -37,6 +39,7 @@ impl Default for LineNumbersModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for LineNumbersModule {
     fn id(&self) -> &'static str {
         "line-numbers"

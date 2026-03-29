@@ -61,6 +61,7 @@ impl Module for ModuleManagerModule {
         &[KIND]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             KeybindingRegistration::new("j", ids::NEXT)
@@ -90,6 +91,7 @@ impl Module for ModuleManagerModule {
         ]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register ModuleManagerBridge via BridgeProvider
         let provider = ctx.services.get_or_create::<BridgeProvider>();

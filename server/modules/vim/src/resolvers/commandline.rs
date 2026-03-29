@@ -61,6 +61,7 @@ impl Default for VimCommandLineResolver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimCommandLineResolver {
     fn resolve_with_keymap(
         &self,

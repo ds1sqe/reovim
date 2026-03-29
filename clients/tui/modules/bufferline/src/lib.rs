@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Bufferline chrome module for the TUI client.
 //!
 //! Renders buffer tabs as a top-right overlay that floats over content
@@ -201,6 +203,7 @@ impl Default for BufferlineModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for BufferlineModule {
     fn id(&self) -> &'static str {
         "bufferline"

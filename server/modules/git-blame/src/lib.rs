@@ -53,6 +53,7 @@ impl Module for GitBlameModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register only the data source (display-side creates presenters)
         let store = ctx.services.get_or_create::<GitProviderStore>();

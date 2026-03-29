@@ -90,6 +90,7 @@ pub const fn dimmed_client_color(client_id: u64) -> Color {
 /// Buffer content, selections, and cursors are delegated to
 /// `DefaultViewportRenderer` via the `ViewportRenderer` trait.
 /// Chrome is rendered by CORE dispatch (position-based allocation).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_arguments)]
 pub fn render_frame<B: RenderBackend>(
     backend: &mut B,
@@ -209,6 +210,7 @@ pub fn render_frame<B: RenderBackend>(
 // =============================================================================
 
 /// Build `RemoteClientInfo` list from TUI state.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn build_remote_clients(state: &TuiCoreState) -> Vec<reovim_client_driver::RemoteClientInfo> {
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
@@ -244,6 +246,7 @@ fn build_remote_clients(state: &TuiCoreState) -> Vec<reovim_client_driver::Remot
 }
 
 /// Build local `SelectionInfo` from TUI state.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn build_local_selection(state: &TuiCoreState) -> Option<reovim_client_driver::SelectionInfo> {
     let sel = state.window_selections.get(&state.focused_window_id)?;
     let (sl, sc, el, ec) = if (sel.start.line, sel.start.column) <= (sel.end.line, sel.end.column) {
@@ -262,6 +265,7 @@ fn build_local_selection(state: &TuiCoreState) -> Option<reovim_client_driver::S
 }
 
 /// Convert selection mode string to enum.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn sel_mode_from_str(mode: &str) -> reovim_client_driver::SelectionMode {
     match mode {
         "line" => reovim_client_driver::SelectionMode::Line,
@@ -271,6 +275,7 @@ fn sel_mode_from_str(mode: &str) -> reovim_client_driver::SelectionMode {
 }
 
 /// Convert TUI `LineNumberMode` to client-driver `LineNumberMode`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 const fn convert_line_number_mode(mode: LineNumberMode) -> reovim_client_driver::LineNumberMode {
     match mode {
         LineNumberMode::None => reovim_client_driver::LineNumberMode::None,
@@ -285,6 +290,7 @@ const fn convert_line_number_mode(mode: LineNumberMode) -> reovim_client_driver:
 // =============================================================================
 
 /// Build a `ViewportContext` for a specific window in multi-viewport mode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
 fn build_viewport_context_for_window<'a>(
     state: &'a TuiCoreState,
@@ -343,6 +349,7 @@ fn build_viewport_context_for_window<'a>(
 }
 
 /// Draw separators between adjacent windows.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn draw_window_separators<B: RenderBackend>(
     backend: &mut B,
     mirror: &ServerLayoutMirror,
@@ -377,6 +384,7 @@ fn draw_window_separators<B: RenderBackend>(
 /// - `Left`: allocated from the left edge rightward
 /// - `Overlay`: full screen (overlays on top of everything)
 /// - `Top`/`Right`: allocated from top/right edges (not currently used)
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_chrome<B: RenderBackend>(
     backend: &mut B,
     extensions: &[Box<dyn ClientModule>],

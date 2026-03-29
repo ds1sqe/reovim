@@ -1573,3 +1573,165 @@ fn is_client_compatible_v02_module_against_v01_loader() {
     // 0.2.x module (requires 0.2.0) is NOT compatible with 0.1.0 loader
     assert!(!is_client_compatible(Version::new(0, 2, 0), Version::new(0, 1, 0)));
 }
+
+// =============================================================================
+// Rect::intersect
+// =============================================================================
+
+#[test]
+fn rect_intersect_overlapping() {
+    let a = Rect::new(0, 0, 10, 10);
+    let b = Rect::new(5, 5, 10, 10);
+    let result = a.intersect(&b).unwrap();
+    assert_eq!(result, Rect::new(5, 5, 5, 5));
+}
+
+#[test]
+fn rect_intersect_no_overlap_x() {
+    // x1 >= x2 (no horizontal overlap)
+    let a = Rect::new(0, 0, 5, 10);
+    let b = Rect::new(5, 0, 5, 10);
+    assert!(a.intersect(&b).is_none());
+}
+
+#[test]
+fn rect_intersect_no_overlap_y() {
+    // y1 >= y2 (no vertical overlap)
+    let a = Rect::new(0, 0, 10, 5);
+    let b = Rect::new(0, 5, 10, 5);
+    assert!(a.intersect(&b).is_none());
+}
+
+#[test]
+fn rect_intersect_contained() {
+    let outer = Rect::new(0, 0, 20, 20);
+    let inner = Rect::new(5, 5, 5, 5);
+    let result = outer.intersect(&inner).unwrap();
+    assert_eq!(result, inner);
+}
+
+#[test]
+fn rect_intersect_same() {
+    let r = Rect::new(3, 3, 10, 10);
+    let result = r.intersect(&r).unwrap();
+    assert_eq!(result, r);
+}
+
+#[test]
+fn rect_intersect_no_overlap_both() {
+    // Both x and y don't overlap
+    let a = Rect::new(0, 0, 5, 5);
+    let b = Rect::new(10, 10, 5, 5);
+    assert!(a.intersect(&b).is_none());
+}
+
+// =============================================================================
+// Rect::contains_point
+// =============================================================================
+
+#[test]
+fn rect_contains_point_inside() {
+    let r = Rect::new(5, 5, 10, 10);
+    assert!(r.contains_point(5, 5));   // top-left corner
+    assert!(r.contains_point(10, 10)); // interior
+    assert!(r.contains_point(14, 14)); // just inside
+}
+
+#[test]
+fn rect_contains_point_outside_left() {
+    let r = Rect::new(5, 5, 10, 10);
+    assert!(!r.contains_point(4, 10)); // x < self.x
+}
+
+#[test]
+fn rect_contains_point_outside_above() {
+    let r = Rect::new(5, 5, 10, 10);
+    assert!(!r.contains_point(10, 4)); // y < self.y
+}
+
+#[test]
+fn rect_contains_point_outside_right() {
+    let r = Rect::new(5, 5, 10, 10);
+    assert!(!r.contains_point(15, 10)); // x >= self.x + self.width
+}
+
+#[test]
+fn rect_contains_point_outside_below() {
+    let r = Rect::new(5, 5, 10, 10);
+    assert!(!r.contains_point(10, 15)); // y >= self.y + self.height
+}
+
+#[test]
+fn rect_contains_point_at_origin() {
+    let r = Rect::new(0, 0, 10, 10);
+    assert!(r.contains_point(0, 0));
+    assert!(!r.contains_point(10, 0));
+    assert!(!r.contains_point(0, 10));
+}
+
+// =============================================================================
+// Style builder methods
+// =============================================================================
+
+#[test]
+fn style_builder_fg() {
+    let s = Style::new().fg(Color::Red);
+    assert_eq!(s.fg, Some(Color::Red));
+    assert!(s.bg.is_none());
+}
+
+#[test]
+fn style_builder_bg() {
+    let s = Style::new().bg(Color::Blue);
+    assert!(s.fg.is_none());
+    assert_eq!(s.bg, Some(Color::Blue));
+}
+
+#[test]
+fn style_builder_bold() {
+    let s = Style::new().bold();
+    assert!(s.attributes.contains(Attributes::BOLD));
+}
+
+#[test]
+fn style_builder_italic() {
+    let s = Style::new().italic();
+    assert!(s.attributes.contains(Attributes::ITALIC));
+}
+
+#[test]
+fn style_builder_underline() {
+    let s = Style::new().underline();
+    assert!(s.attributes.contains(Attributes::UNDERLINE));
+}
+
+#[test]
+fn style_builder_dim() {
+    let s = Style::new().dim();
+    assert!(s.attributes.contains(Attributes::DIM));
+}
+
+#[test]
+fn style_builder_reverse() {
+    let s = Style::new().reverse();
+    assert!(s.attributes.contains(Attributes::REVERSE));
+}
+
+#[test]
+fn style_builder_chained() {
+    let s = Style::new()
+        .fg(Color::Red)
+        .bg(Color::Blue)
+        .bold()
+        .italic()
+        .underline()
+        .dim()
+        .reverse();
+    assert_eq!(s.fg, Some(Color::Red));
+    assert_eq!(s.bg, Some(Color::Blue));
+    assert!(s.attributes.contains(Attributes::BOLD));
+    assert!(s.attributes.contains(Attributes::ITALIC));
+    assert!(s.attributes.contains(Attributes::UNDERLINE));
+    assert!(s.attributes.contains(Attributes::DIM));
+    assert!(s.attributes.contains(Attributes::REVERSE));
+}

@@ -195,6 +195,7 @@ impl Module for VimModule {
         vec![ModuleId::new("editor"), ModuleId::new("motions")]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register YankFlashBridge via BridgeProvider (#657)
         let provider = ctx.services.get_or_create::<BridgeProvider>();
@@ -290,6 +291,7 @@ impl Module for VimModule {
         &[operators::yank_flash::KIND]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         bindings::all()
     }

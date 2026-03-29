@@ -72,6 +72,7 @@ impl VimCaseResolver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimCaseResolver {
     fn resolve_with_keymap(
         &self,

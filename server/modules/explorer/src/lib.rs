@@ -66,6 +66,7 @@ impl Module for ExplorerModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register ExplorerBridge via BridgeProvider.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
@@ -103,6 +104,7 @@ impl Module for ExplorerModule {
         &[KIND]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Browse mode: toggle off

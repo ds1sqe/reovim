@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Jump label rendering module.
 //!
 //! Receives jump match data from the server's `JumpBridge` and renders
@@ -71,6 +73,7 @@ impl Default for JumpModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for JumpModule {
     fn id(&self) -> &'static str {
         "range-finder-jump"

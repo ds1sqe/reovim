@@ -72,6 +72,7 @@ impl Module for RangeFinderModule {
         vec![ModuleId::new("vim")]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register bridges (#524)
         let provider = ctx

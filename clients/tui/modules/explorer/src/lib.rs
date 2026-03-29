@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! File explorer sidebar native module for reovim TUI.
 //!
 //! Renders a sidebar tree view on the left side of the terminal.
@@ -83,6 +85,7 @@ impl Default for ExplorerModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for ExplorerModule {
     fn id(&self) -> &'static str {
         "explorer"

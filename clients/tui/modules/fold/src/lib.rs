@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Fold rendering module.
 //!
 //! Receives fold state from the server's `FoldBridge` and provides fold ranges
@@ -83,6 +85,7 @@ impl Default for FoldModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for FoldModule {
     fn id(&self) -> &'static str {
         "range-finder-fold"

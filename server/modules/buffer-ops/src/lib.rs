@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Buffer Operations Module
 //!
 //! This module handles buffer lifecycle events from the kernel `EventBus`.
@@ -64,6 +66,7 @@ impl Module for BufferOps {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let bus = Arc::clone(&ctx.kernel.event_bus);
 

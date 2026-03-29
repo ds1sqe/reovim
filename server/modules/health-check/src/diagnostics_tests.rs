@@ -664,7 +664,7 @@ fn test_collect_treesitter_with_factories() {
         section
             .entries
             .iter()
-            .any(|e| e.label == "Syntax factories" && e.detail.contains("1"))
+            .any(|e| e.label == "Syntax factories" && e.detail.contains('1'))
     );
 }
 
@@ -688,7 +688,7 @@ fn test_collect_treesitter_with_language_defs() {
         section
             .entries
             .iter()
-            .any(|e| e.label == "Language definitions" && e.detail.contains("1"))
+            .any(|e| e.label == "Language definitions" && e.detail.contains('1'))
     );
 }
 

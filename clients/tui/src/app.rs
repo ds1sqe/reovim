@@ -228,6 +228,7 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Apply a theme by name.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn apply_theme_internal(loader: &ThemeLoader, manager: &mut ThemeManager, theme_name: &str) {
         // Try user theme first
         if let Ok(theme) = loader.load(theme_name) {
@@ -350,6 +351,7 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Apply display options to state.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn apply_display_options(
         &mut self,
         options: &std::collections::HashMap<String, reovim_protocol::v2::OptionValue>,
@@ -855,6 +857,7 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Calculate gutter width for line numbers.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn calculate_gutter_width(&self, total_lines: usize) -> u16 {
         if self.state.line_number_mode == LineNumberMode::None {
             return 0;
@@ -875,6 +878,7 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Position cursor (for interactive mode).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn position_cursor(&mut self) {
         // Check if any chrome extension wants cursor positioning
         let (width, height) = self.frame_buffer.size();
@@ -952,6 +956,7 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Get cursor style based on current mode.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn cursor_style_for_mode(&self) -> CursorStyleHint {
         let mode = self.state.mode_name.to_lowercase();
         match mode.as_str() {

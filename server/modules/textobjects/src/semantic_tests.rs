@@ -356,7 +356,7 @@ impl MockSyntaxDriver {
 }
 
 impl reovim_driver_syntax::SyntaxDriver for MockSyntaxDriver {
-    fn language(&self) -> &str {
+    fn language(&self) -> &'static str {
         "mock"
     }
 

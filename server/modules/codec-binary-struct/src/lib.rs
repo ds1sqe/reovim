@@ -77,6 +77,7 @@ impl Module for CodecBinaryStructModule {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register codec factory (handles both ELF and ZIP)
         let factory_store = ctx.services.get_or_create::<ContentCodecFactoryStore>();

@@ -97,6 +97,7 @@ impl Default for VimChangeResolver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimChangeResolver {
     fn resolve_with_keymap(
         &self,

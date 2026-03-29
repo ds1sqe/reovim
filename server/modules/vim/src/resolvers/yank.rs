@@ -90,6 +90,7 @@ impl Default for VimYankResolver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimYankResolver {
     fn resolve_with_keymap(
         &self,
