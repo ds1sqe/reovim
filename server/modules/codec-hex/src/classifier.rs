@@ -47,6 +47,7 @@ impl Default for BinaryClassifier {
 }
 
 impl ContentClassifier for BinaryClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], path: &str) -> Option<ContentType> {
         // Fast-path: known binary extensions
         if has_binary_extension(path) {

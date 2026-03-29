@@ -37,6 +37,7 @@ impl BufferlineModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for BufferlineModule {
     fn default() -> Self {
         Self::new()

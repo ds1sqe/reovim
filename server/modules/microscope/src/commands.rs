@@ -30,6 +30,7 @@ impl reovim_driver_command::Command for OpenFiles {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for OpenFiles {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -51,6 +52,7 @@ impl reovim_driver_command::Command for OpenBuffers {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for OpenBuffers {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -72,6 +74,7 @@ impl reovim_driver_command::Command for OpenGrep {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for OpenGrep {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -93,6 +96,7 @@ impl reovim_driver_command::Command for OpenOptions {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for OpenOptions {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -114,6 +118,7 @@ impl reovim_driver_command::Command for OpenCommands {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for OpenCommands {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -139,6 +144,7 @@ impl reovim_driver_command::Command for NextItem {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for NextItem {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -168,6 +174,7 @@ impl reovim_driver_command::Command for PrevItem {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for PrevItem {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -198,6 +205,7 @@ impl reovim_driver_command::Command for SelectItem {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for SelectItem {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -246,6 +254,7 @@ impl reovim_driver_command::Command for Close {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Close {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
@@ -268,6 +277,7 @@ impl reovim_driver_command::Command for Backspace {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Backspace {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {

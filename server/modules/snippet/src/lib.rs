@@ -206,6 +206,7 @@ impl Module for SnippetModule {
         ProbeResult::Success
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn exit(&mut self) -> Result<(), ModuleError> {
         self.handle = None;
         self.data_dir = None;

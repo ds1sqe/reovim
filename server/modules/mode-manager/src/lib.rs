@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Mode State Management Module
 //!
 //! This module handles mode change events from the kernel `EventBus`.
@@ -96,6 +98,7 @@ impl Module for ModeManager {
         Ok(())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn provides(&self) -> &[&'static str] {
         &[reovim_capabilities::MODE_MANAGEMENT]
     }

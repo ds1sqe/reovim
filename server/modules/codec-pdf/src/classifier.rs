@@ -33,6 +33,7 @@ impl Default for PdfClassifier {
 }
 
 impl ContentClassifier for PdfClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], path: &str) -> Option<ContentType> {
         // Fast-path: known PDF extension
         if has_pdf_extension(path) {

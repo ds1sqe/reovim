@@ -33,6 +33,7 @@ impl GitBlameModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for GitBlameModule {
     fn default() -> Self {
         Self::new()

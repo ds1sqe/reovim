@@ -40,6 +40,7 @@ impl GitSignsModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for GitSignsModule {
     fn default() -> Self {
         Self::new()

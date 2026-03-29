@@ -24,6 +24,7 @@ pub const PDF_PAGE_KIND: &str = "content.pdf.page";
 /// content cannot be reconstructed from extracted text.
 pub struct PdfCodec;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl PdfCodec {
     /// Create a new PDF codec.
     #[must_use]

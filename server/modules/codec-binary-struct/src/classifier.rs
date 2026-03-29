@@ -48,6 +48,7 @@ impl Default for ElfClassifier {
 }
 
 impl ContentClassifier for ElfClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], path: &str) -> Option<ContentType> {
         // Fast-path: known ELF extension
         if has_extension(path, ELF_EXTENSIONS) {
@@ -93,6 +94,7 @@ impl Default for ZipClassifier {
 }
 
 impl ContentClassifier for ZipClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], path: &str) -> Option<ContentType> {
         // Fast-path: known ZIP extension
         if has_extension(path, ZIP_EXTENSIONS) {

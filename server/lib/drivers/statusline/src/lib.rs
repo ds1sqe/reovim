@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Display-agnostic statusline data types for reovim.
 //!
 //! This crate provides the data contract between server modules and the

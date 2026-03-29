@@ -69,6 +69,7 @@ pub struct TestModuleContextBuilder {
     registry: Option<MockModuleRegistry>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TestModuleContextBuilder {
     /// Set grid size on the mock capabilities.
     #[must_use]

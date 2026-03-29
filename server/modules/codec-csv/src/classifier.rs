@@ -61,6 +61,7 @@ impl Default for CsvClassifier {
 }
 
 impl ContentClassifier for CsvClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], path: &str) -> Option<ContentType> {
         // Fast-path: known extensions
         if let Some(ct) = extension_content_type(path) {

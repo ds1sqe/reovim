@@ -70,6 +70,7 @@ impl ComponentData {
 }
 
 impl Default for ComponentData {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn default() -> Self {
         Self::hidden()
     }

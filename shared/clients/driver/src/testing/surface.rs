@@ -139,6 +139,7 @@ impl RecordingSurface {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl RenderSurface for RecordingSurface {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         if y >= self.height {

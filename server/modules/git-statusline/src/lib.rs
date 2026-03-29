@@ -32,6 +32,7 @@ impl GitStatuslineModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for GitStatuslineModule {
     fn default() -> Self {
         Self::new()

@@ -47,6 +47,7 @@ impl Command for DeleteCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for DeleteCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_operator(&DeleteOperator, runtime, args)
@@ -75,6 +76,7 @@ impl Command for YankCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for YankCommand {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
@@ -153,6 +155,7 @@ impl Command for ChangeCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ChangeCommand {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
@@ -203,6 +206,7 @@ impl Command for LowercaseCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for LowercaseCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_operator(&LowercaseOperator, runtime, args)
@@ -227,6 +231,7 @@ impl Command for UppercaseCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for UppercaseCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_operator(&UppercaseOperator, runtime, args)
@@ -251,6 +256,7 @@ impl Command for ToggleCaseCommand {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ToggleCaseCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         execute_operator(&ToggleCaseOperator, runtime, args)

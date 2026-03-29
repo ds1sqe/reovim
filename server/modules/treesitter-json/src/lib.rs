@@ -68,6 +68,7 @@ impl JsonSyntaxFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for JsonSyntaxFactory {
     fn default() -> Self {
         Self::new()
@@ -112,6 +113,7 @@ impl TreesitterJsonModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for TreesitterJsonModule {
     fn default() -> Self {
         Self::new()

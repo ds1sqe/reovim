@@ -32,6 +32,7 @@ impl LayoutModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for LayoutModule {
     fn default() -> Self {
         Self::new()

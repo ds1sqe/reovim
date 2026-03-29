@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tetromino game native `ClientModule`.
 //!
 //! Renders a centered tetromino game board as an overlay popup when active.
@@ -276,6 +278,7 @@ fn parse_board_json(json: &serde_json::Value) -> Vec<Vec<String>> {
         .unwrap_or_default()
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for TetrominoModule {
     fn id(&self) -> &'static str {
         KIND

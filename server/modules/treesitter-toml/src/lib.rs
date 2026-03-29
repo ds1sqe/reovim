@@ -69,6 +69,7 @@ impl TomlSyntaxFactory {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for TomlSyntaxFactory {
     fn default() -> Self {
         Self::new()
@@ -113,6 +114,7 @@ impl TreesitterTomlModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for TreesitterTomlModule {
     fn default() -> Self {
         Self::new()

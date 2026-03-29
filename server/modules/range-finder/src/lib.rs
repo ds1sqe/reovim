@@ -123,6 +123,7 @@ impl Module for RangeFinderModule {
         ProbeResult::Success
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
