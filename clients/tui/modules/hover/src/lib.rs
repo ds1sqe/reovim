@@ -3,7 +3,10 @@
 //! Displays LSP hover information in a bordered popup near the cursor.
 //! Native `ClientModule` implementation (no `TuiExtension` bridge).
 
+mod markdown;
+
 use {
+    markdown::StyledSpan,
     reovim_client_driver::{
         BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
         PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
@@ -48,7 +51,7 @@ struct HoverPayload {
 /// Hover popup chrome module.
 pub struct HoverModule {
     active: bool,
-    lines: Vec<String>,
+    styled_lines: Vec<Vec<StyledSpan>>,
     content_type: ContentType,
     origin_line: u32,
     origin_col: u32,
@@ -59,7 +62,7 @@ impl HoverModule {
     pub const fn new() -> Self {
         Self {
             active: false,
-            lines: Vec::new(),
+            styled_lines: Vec::new(),
             content_type: ContentType::Plaintext,
             origin_line: 0,
             origin_col: 0,
@@ -76,7 +79,12 @@ impl HoverModule {
             .max(MIN_WIDTH)
             .min(terminal_width.saturating_sub(2));
 
-        let longest_line = self.lines.iter().map(String::len).max().unwrap_or(0);
+        let longest_line = self
+            .styled_lines
+            .iter()
+            .map(|spans| spans.iter().map(StyledSpan::display_width).sum::<usize>())
+            .max()
+            .unwrap_or(0);
 
         #[allow(clippy::cast_possible_truncation)]
         let desired = (longest_line + 4).min(u16::MAX as usize) as u16;
@@ -135,7 +143,7 @@ impl ClientModule for HoverModule {
         self.active = payload.active;
 
         if !self.active {
-            self.lines.clear();
+            self.styled_lines.clear();
             self.origin_line = 0;
             self.origin_col = 0;
             return;
@@ -148,7 +156,7 @@ impl ClientModule for HoverModule {
             self.origin_col = col;
         }
 
-        self.lines = payload
+        let raw_lines: Vec<String> = payload
             .content
             .as_deref()
             .unwrap_or("")
@@ -157,16 +165,30 @@ impl ClientModule for HoverModule {
             .map(String::from)
             .collect();
 
-        if self.lines.is_empty() {
+        if raw_lines.is_empty() {
             self.active = false;
+            return;
         }
+
+        self.styled_lines = match self.content_type {
+            ContentType::Markdown => markdown::parse_markdown(&raw_lines),
+            ContentType::Plaintext => raw_lines
+                .into_iter()
+                .map(|line| {
+                    vec![StyledSpan {
+                        text: line,
+                        style: Style::new().fg(Color::White),
+                    }]
+                })
+                .collect(),
+        };
     }
 
     #[allow(clippy::cast_possible_truncation)]
     fn on_cursor_update(&mut self, _buffer_id: BufferId, line: usize, col: usize) {
         if self.active && (line as u32 != self.origin_line || col as u32 != self.origin_col) {
             self.active = false;
-            self.lines.clear();
+            self.styled_lines.clear();
         }
     }
 
@@ -177,13 +199,13 @@ impl ClientModule for HoverModule {
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
-        if !self.active || self.lines.is_empty() {
+        if !self.active || self.styled_lines.is_empty() {
             return;
         }
 
         let (width, height) = (bounds.width, bounds.height);
         let popup_w = self.popup_width(width);
-        let content_lines = self.lines.len().min(MAX_LINES) as u16;
+        let content_lines = self.styled_lines.len().min(MAX_LINES) as u16;
         let popup_h = content_lines + 2;
 
         let px = self
@@ -214,9 +236,13 @@ impl ClientModule for HoverModule {
 
         let content_x = px + 1;
         let content_w = popup_w.saturating_sub(2);
-        let text_style = Style::new().fg(Color::White);
 
-        for (i, line) in self.lines.iter().take(content_lines as usize).enumerate() {
+        for (i, spans) in self
+            .styled_lines
+            .iter()
+            .take(content_lines as usize)
+            .enumerate()
+        {
             let row = py + 1 + i as u16;
 
             // Clear interior row
@@ -231,8 +257,23 @@ impl ClientModule for HoverModule {
                 Style::new(),
             );
 
-            let display = reovim_client_driver::ui::truncate_end(line, content_w as usize);
-            surface.write_styled(content_x, row, &display, text_style.clone());
+            // Render styled spans
+            let mut col = content_x;
+            let end_col = content_x + content_w;
+            for span in spans {
+                if col >= end_col {
+                    break;
+                }
+                let available = (end_col - col) as usize;
+                let text = if span.text.len() > available {
+                    &span.text[..available]
+                } else {
+                    &span.text
+                };
+                if !text.is_empty() {
+                    col = surface.write_styled(col, row, text, span.style.clone());
+                }
+            }
         }
     }
 }

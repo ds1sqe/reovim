@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory},
+    reovim_driver_syntax::{
+        Annotation, HighlightCategory, Injection, SyntaxDriver, SyntaxDriverFactory,
+        decoration::DecorationRule,
+    },
     tree_sitter::Query,
 };
 
@@ -371,17 +374,17 @@ fn test_strip_doc_comment_prefix_no_prefix() {
 }
 
 // ========================================================================
-// translate_combined_highlight tests
+// translate_combined_annotation tests
 // ========================================================================
 
 #[test]
-fn test_translate_combined_highlight_single_chunk() {
+fn test_translate_combined_annotation_single_chunk() {
     let highlight = Annotation::new(0, 5, reovim_driver_syntax::HighlightCategory::new("variable"));
     let range_offsets = [(100, 0, 4)]; // src_start=100, dst_start=0, prefix_len=4
     #[allow(clippy::single_range_in_vec_init)]
     let source_ranges = vec![100..120];
 
-    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    let result = translate_combined_annotation(&highlight, &range_offsets, &source_ranges);
     assert!(result.is_some());
     let ann = result.unwrap();
     assert_eq!(ann.start_byte, 104); // 100 + 4 + 0
@@ -389,7 +392,7 @@ fn test_translate_combined_highlight_single_chunk() {
 }
 
 #[test]
-fn test_translate_combined_highlight_second_chunk() {
+fn test_translate_combined_annotation_second_chunk() {
     let range_offsets = vec![
         (10, 0, 4), // first chunk: src 10..20, dst 0..6, prefix 4
         (30, 7, 4), // second chunk: src 30..40, dst 7..13, prefix 4
@@ -400,7 +403,7 @@ fn test_translate_combined_highlight_second_chunk() {
     let highlight =
         Annotation::new(8, 10, reovim_driver_syntax::HighlightCategory::new("variable"));
 
-    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    let result = translate_combined_annotation(&highlight, &range_offsets, &source_ranges);
     assert!(result.is_some());
     let ann = result.unwrap();
     assert_eq!(ann.start_byte, 35); // 30 + 4 + 1
@@ -408,14 +411,14 @@ fn test_translate_combined_highlight_second_chunk() {
 }
 
 #[test]
-fn test_translate_combined_highlight_not_found() {
+fn test_translate_combined_annotation_not_found() {
     let highlight =
         Annotation::new(100, 105, reovim_driver_syntax::HighlightCategory::new("variable"));
     let range_offsets = [(10, 0, 4)];
     #[allow(clippy::single_range_in_vec_init)]
     let source_ranges = vec![10..20];
 
-    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    let result = translate_combined_annotation(&highlight, &range_offsets, &source_ranges);
     assert!(result.is_none());
 }
 
@@ -456,4 +459,173 @@ fn test_highlight_combined_injection() {
             len = content.len()
         );
     }
+}
+
+// ========================================================================
+// Test factory for creating drivers WITH decoration queries
+// ========================================================================
+
+/// Factory that produces Rust drivers with a decoration query that marks
+/// `fn` keywords as `markup.keyword` decorations.
+struct TestDecorationFactory {
+    language: tree_sitter::Language,
+    highlight_query: Arc<Query>,
+    decoration_query: Arc<Query>,
+    decoration_rules: Vec<DecorationRule>,
+}
+
+impl TestDecorationFactory {
+    fn new() -> Self {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let decoration_query = Arc::new(
+            Query::new(&language, "(function_item name: (identifier) @decoration.fn_name)")
+                .unwrap(),
+        );
+        let decoration_rules = vec![DecorationRule {
+            capture_name: "decoration.fn_name".into(),
+            category: HighlightCategory::new("markup.keyword"),
+        }];
+        Self {
+            language,
+            highlight_query,
+            decoration_query,
+            decoration_rules,
+        }
+    }
+}
+
+impl SyntaxDriverFactory for TestDecorationFactory {
+    fn create(&self, language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+        use crate::TreeSitterDriver;
+        if language_id != "rust" {
+            return None;
+        }
+        TreeSitterDriver::builder("rust", &self.language, self.highlight_query.clone())
+            .decoration(self.decoration_query.clone(), self.decoration_rules.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+    }
+
+    fn supported_languages(&self) -> Vec<&str> {
+        vec!["rust"]
+    }
+}
+
+// ========================================================================
+// decorate_injections tests
+// ========================================================================
+
+#[test]
+fn test_decorate_injections_empty() {
+    let mut manager = InjectionManager::new();
+    let injections: Vec<Injection> = vec![];
+    let decorations = manager.decorate_injections(&injections, "content", 0..100);
+    assert!(decorations.is_empty());
+}
+
+#[test]
+fn test_decorate_injections_no_child() {
+    let mut manager = InjectionManager::new();
+    let injections = vec![Injection::new("rust", 10..50, 0, 0, 2, 10)];
+    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..100);
+    assert!(decorations.is_empty());
+}
+
+#[test]
+fn test_decorate_injections_non_overlapping() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let injections = vec![Injection::new("rust", 100..200, 5, 0, 10, 0)];
+    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..50);
+    assert!(decorations.is_empty());
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_decorate_single_range() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    // "# Title\n\n" = 9 bytes, then "fn main() {}" = 13 bytes at 9..22
+    let content = "# Title\n\nfn main() {}extra";
+    let injection = Injection::new("rust", 9..22, 1, 0, 1, 13);
+
+    let decorations = manager.decorate_injections(&[injection], content, 0..content.len());
+
+    // The child driver should find the `main` function name decoration
+    assert!(!decorations.is_empty(), "Expected decorations from single-range injection");
+
+    // Verify decorations are in parent coordinates
+    for d in &decorations {
+        assert!(d.start_byte >= 9, "Decoration should be offset to parent coords");
+        assert!(d.end_byte <= 22);
+    }
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_decorate_combined_ranges() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    // Simulate doc comments with Rust code:
+    // "/// fn foo() {}\n/// fn bar() {}\n"
+    let content = "/// fn foo() {}\n/// fn bar() {}\n";
+    let injection = Injection::combined("rust", vec![0..15, 16..31], 0, 0, 1, 15);
+
+    let decorations = manager.decorate_injections(&[injection], content, 0..content.len());
+
+    // After prefix stripping, child sees "fn foo() {}\nfn bar() {}\n"
+    // Should produce decorations for `fn` keywords
+    assert!(!decorations.is_empty(), "Expected decorations from combined injection");
+
+    // Verify decorations are in parent coordinates (not concatenated coordinates)
+    for d in &decorations {
+        assert!(
+            d.start_byte < content.len(),
+            "Decoration start {start} out of bounds {len}",
+            start = d.start_byte,
+            len = content.len()
+        );
+    }
+}
+
+#[test]
+fn test_decorate_single_injection_empty_ranges() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let injection = Injection::combined("rust", vec![], 0, 0, 0, 0);
+    let decorations = manager.decorate_injections(&[injection], "fn main() {}", 0..100);
+    assert!(decorations.is_empty());
+}
+
+#[test]
+fn test_decorate_single_injection_out_of_bounds() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let injection = Injection::new("rust", 100..200, 0, 0, 0, 0);
+    let decorations = manager.decorate_injections(&[injection], "short", 0..200);
+    assert!(decorations.is_empty());
+}
+
+#[test]
+fn test_ensure_children_shared_between_highlight_and_decorate() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestDecorationFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let content = "fn main() {}";
+    let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
+
+    // First call via highlight creates the child
+    let _ =
+        manager.highlight_injections(std::slice::from_ref(&injection), content, 0..content.len());
+    assert_eq!(manager.child_count(), 1);
+
+    // Second call via decorate reuses the same child
+    let _ = manager.decorate_injections(&[injection], content, 0..content.len());
+    assert_eq!(manager.child_count(), 1);
 }

@@ -20,6 +20,7 @@ reovim-driver-picker = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
+reovim-driver-syntax = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde_json = { workspace = true }
 

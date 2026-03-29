@@ -1,7 +1,21 @@
 use {
     super::*,
+    markdown::StyledSpan,
     reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
 };
+
+/// Concatenate all span texts in a styled line into a single string.
+fn line_text(spans: &[StyledSpan]) -> String {
+    spans.iter().map(|s| s.text.as_str()).collect()
+}
+
+/// Create a single plain-text styled line for direct assignment to `styled_lines`.
+fn plain_line(text: &str) -> Vec<StyledSpan> {
+    vec![StyledSpan {
+        text: text.to_owned(),
+        style: Style::new().fg(Color::White),
+    }]
+}
 
 // =============================================================================
 // Helpers
@@ -78,8 +92,8 @@ fn notification_activates_plaintext() {
     let mut m = HoverModule::new();
     m.on_notification(&active_plaintext("fn foo() -> bool"));
     assert!(m.active);
-    assert_eq!(m.lines.len(), 1);
-    assert_eq!(m.lines[0], "fn foo() -> bool");
+    assert_eq!(m.styled_lines.len(), 1);
+    assert_eq!(line_text(&m.styled_lines[0]), "fn foo() -> bool");
     assert_eq!(m.content_type, ContentType::Plaintext);
     assert_eq!(m.origin_line, 5);
     assert_eq!(m.origin_col, 10);
@@ -100,7 +114,7 @@ fn notification_deactivates() {
     m.on_notification(&active_plaintext("hello"));
     m.on_notification(&inactive());
     assert!(!m.active);
-    assert!(m.lines.is_empty());
+    assert!(m.styled_lines.is_empty());
 }
 
 #[test]
@@ -125,7 +139,7 @@ fn notification_multiline() {
     m.on_notification(
         r#"{"active":true,"content":"line1\nline2\nline3","contentType":"plaintext","origin":{"BufferPosition":{"buffer_id":1,"line":0,"col":0}}}"#,
     );
-    assert_eq!(m.lines.len(), 3);
+    assert_eq!(m.styled_lines.len(), 3);
 }
 
 #[test]
@@ -150,7 +164,7 @@ fn notification_overwrites() {
     let mut m = HoverModule::new();
     m.on_notification(&active_plaintext("first"));
     m.on_notification(&active_markdown("second"));
-    assert_eq!(m.lines[0], "second");
+    assert_eq!(line_text(&m.styled_lines[0]), "second");
     assert_eq!(m.content_type, ContentType::Markdown);
 }
 
@@ -163,7 +177,7 @@ fn notification_caps_at_max_lines() {
         r#"{{"active":true,"content":"{content}","contentType":"plaintext","origin":{{"BufferPosition":{{"buffer_id":1,"line":0,"col":0}}}}}}"#
     );
     m.on_notification(&data);
-    assert_eq!(m.lines.len(), MAX_LINES);
+    assert_eq!(m.styled_lines.len(), MAX_LINES);
 }
 
 #[test]
@@ -197,21 +211,21 @@ fn popup_width_min() {
 #[test]
 fn popup_width_adapts_to_content() {
     let mut m = HoverModule::new();
-    m.lines = vec!["a".repeat(30)];
+    m.styled_lines = vec![plain_line(&"a".repeat(30))];
     assert_eq!(m.popup_width(80), 34);
 }
 
 #[test]
 fn popup_width_clamped_to_max() {
     let mut m = HoverModule::new();
-    m.lines = vec!["a".repeat(200)];
+    m.styled_lines = vec![plain_line(&"a".repeat(200))];
     assert_eq!(m.popup_width(80), 48);
 }
 
 #[test]
 fn popup_width_narrow_terminal() {
     let mut m = HoverModule::new();
-    m.lines = vec!["hello".to_owned()];
+    m.styled_lines = vec![plain_line("hello")];
     assert_eq!(m.popup_width(22), MIN_WIDTH);
 }
 
@@ -361,7 +375,7 @@ fn cursor_update_dismisses_when_moved() {
     // Cursor moved to a different line
     m.on_cursor_update(BufferId(0), 10, 5);
     assert!(!m.active);
-    assert!(m.lines.is_empty());
+    assert!(m.styled_lines.is_empty());
 }
 
 #[test]
@@ -373,7 +387,7 @@ fn cursor_update_keeps_popup_at_origin() {
     // Cursor at same origin (line=5, col=10)
     m.on_cursor_update(BufferId(0), 5, 10);
     assert!(m.active);
-    assert!(!m.lines.is_empty());
+    assert!(!m.styled_lines.is_empty());
 }
 
 #[test]

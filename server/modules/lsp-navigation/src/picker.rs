@@ -95,6 +95,7 @@ impl Picker for LspLocationPicker {
             lines,
             highlight_line: Some(highlight),
             file_path: Some(path.clone()),
+            ..Default::default()
         })
     }
 

@@ -65,6 +65,7 @@ impl Picker for CustomPromptPicker {
             lines: vec!["preview line".to_owned()],
             highlight_line: Some(0),
             file_path: None,
+            ..Default::default()
         })
     }
 

@@ -75,6 +75,21 @@ impl ExtensionStateBridge for MicroscopeBridge {
             if let Some(ref path) = preview.file_path {
                 preview_json["filePath"] = serde_json::json!(path.to_string_lossy());
             }
+            if !preview.highlights.is_empty() {
+                let highlights: Vec<serde_json::Value> = preview
+                    .highlights
+                    .iter()
+                    .map(|h| {
+                        serde_json::json!({
+                            "line": h.line,
+                            "colStart": h.col_start,
+                            "colEnd": h.col_end,
+                            "category": h.category,
+                        })
+                    })
+                    .collect();
+                preview_json["highlights"] = serde_json::json!(highlights);
+            }
             json["preview"] = preview_json;
         }
 

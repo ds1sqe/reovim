@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::{ItemData, PreviewData},
+    crate::{ItemData, PreviewData, PreviewHighlightData},
     reovim_client_driver::testing::RecordingSurface,
 };
 
@@ -66,6 +66,7 @@ fn render_with_preview() {
     data.preview = Some(PreviewData {
         lines: vec!["fn main() {".to_owned(), "}".to_owned()],
         highlight_line: Some(0),
+        highlights: Vec::new(),
     });
     let bounds = LayoutBounds::calculate(100, 30);
 
@@ -183,6 +184,7 @@ fn render_preview_overflow_panel_height() {
         preview: Some(PreviewData {
             lines: (0..100).map(|i| format!("preview line {i}")).collect(),
             highlight_line: Some(5),
+            highlights: Vec::new(),
         }),
         matched_count: 0,
         prompt: "> ".to_owned(),
@@ -200,6 +202,7 @@ fn render_preview_long_line_truncated() {
         preview: Some(PreviewData {
             lines: vec!["x".repeat(200)],
             highlight_line: None,
+            highlights: Vec::new(),
         }),
         matched_count: 0,
         prompt: "> ".to_owned(),
@@ -229,6 +232,7 @@ fn render_preview_line_num_overflow() {
         preview: Some(PreviewData {
             lines: vec!["hello".to_owned()],
             highlight_line: None,
+            highlights: Vec::new(),
         }),
         matched_count: 0,
         prompt: "> ".to_owned(),
@@ -537,4 +541,89 @@ fn icon_skipped_when_no_room() {
     // col=2 after indicator, col+2=4 which is NOT < results_width=4, so icon skipped.
     // Display text 'x' should be at col 2.
     assert_eq!(surface.char_at(2, bounds.panel_start_y), 'x');
+}
+
+// ========================================================================
+// Syntax highlighting tests
+// ========================================================================
+
+#[test]
+fn syntax_category_color_mapping() {
+    assert_eq!(syntax_category_color("keyword"), Some(Color::AnsiValue(141)));
+    assert_eq!(syntax_category_color("keyword.control"), Some(Color::AnsiValue(141)));
+    assert_eq!(syntax_category_color("string"), Some(Color::AnsiValue(114)));
+    assert_eq!(syntax_category_color("string.escape"), Some(Color::AnsiValue(114)));
+    assert_eq!(syntax_category_color("comment"), Some(Color::AnsiValue(245)));
+    assert_eq!(syntax_category_color("type"), Some(Color::AnsiValue(221)));
+    assert_eq!(syntax_category_color("type.builtin"), Some(Color::AnsiValue(221)));
+    assert_eq!(syntax_category_color("function"), Some(Color::AnsiValue(81)));
+    assert_eq!(syntax_category_color("function.method"), Some(Color::AnsiValue(81)));
+    assert_eq!(syntax_category_color("number"), Some(Color::AnsiValue(208)));
+    assert_eq!(syntax_category_color("boolean"), Some(Color::AnsiValue(208)));
+    assert_eq!(syntax_category_color("operator"), Some(Color::AnsiValue(250)));
+    assert_eq!(syntax_category_color("punctuation"), Some(Color::AnsiValue(250)));
+    assert_eq!(syntax_category_color("variable"), Some(Color::AnsiValue(253)));
+    assert_eq!(syntax_category_color("constant"), Some(Color::AnsiValue(208)));
+    assert_eq!(syntax_category_color("attribute"), Some(Color::AnsiValue(114)));
+    assert_eq!(syntax_category_color("unknown_category"), None);
+}
+
+#[test]
+fn syntax_color_at_finds_matching_highlight() {
+    let highlights = vec![
+        PreviewHighlightData {
+            line: 0,
+            col_start: 0,
+            col_end: 2,
+            category: "keyword".to_owned(),
+        },
+        PreviewHighlightData {
+            line: 0,
+            col_start: 3,
+            col_end: 7,
+            category: "function".to_owned(),
+        },
+    ];
+    assert_eq!(syntax_color_at(&highlights, 0, 0), Some(Color::AnsiValue(141)));
+    assert_eq!(syntax_color_at(&highlights, 0, 1), Some(Color::AnsiValue(141)));
+    assert_eq!(syntax_color_at(&highlights, 0, 2), None); // between spans
+    assert_eq!(syntax_color_at(&highlights, 0, 3), Some(Color::AnsiValue(81)));
+    assert_eq!(syntax_color_at(&highlights, 0, 6), Some(Color::AnsiValue(81)));
+    assert_eq!(syntax_color_at(&highlights, 0, 7), None); // past end
+    assert_eq!(syntax_color_at(&highlights, 1, 0), None); // different line
+}
+
+#[test]
+fn render_preview_with_syntax_highlights() {
+    let mut surface = RecordingSurface::new(100, 30);
+    let bounds = LayoutBounds::calculate(100, 30);
+    let data = MicroscopeData {
+        active: true,
+        preview: Some(PreviewData {
+            lines: vec!["fn main() {}".to_owned()],
+            highlight_line: None,
+            highlights: vec![PreviewHighlightData {
+                line: 0,
+                col_start: 0,
+                col_end: 2,
+                category: "keyword".to_owned(),
+            }],
+        }),
+        matched_count: 0,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+
+    // The "fn" text should be rendered with keyword color (AnsiValue 141)
+    // Line number takes 4 chars, so "f" is at preview_x + 4.
+    let content_col = bounds.preview_x + 4;
+    let row = bounds.panel_start_y;
+    let style = surface.style_at(content_col, row);
+    assert_eq!(style.fg, Some(Color::AnsiValue(141)));
+
+    // "m" in "main" (byte index 3) has no highlight, so uses default fg
+    let main_col = content_col + 3;
+    let main_style = surface.style_at(main_col, row);
+    assert_eq!(main_style.fg, Some(Color::AnsiValue(250)));
 }

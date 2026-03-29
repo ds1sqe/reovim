@@ -100,6 +100,7 @@ fn snapshot_active_with_preview() {
         lines: vec!["fn main() {".to_owned(), "}".to_owned()],
         highlight_line: Some(0),
         file_path: Some(PathBuf::from("main.rs")),
+        ..Default::default()
     });
 
     let snap = MicroscopeBridge.snapshot(&map).unwrap();
@@ -118,12 +119,68 @@ fn snapshot_preview_without_highlight_or_path() {
         lines: vec!["line".to_owned()],
         highlight_line: None,
         file_path: None,
+        ..Default::default()
     });
 
     let snap = MicroscopeBridge.snapshot(&map).unwrap();
     let preview = &snap["preview"];
     assert!(preview.get("highlightLine").is_none());
     assert!(preview.get("filePath").is_none());
+}
+
+#[test]
+fn snapshot_preview_with_highlights() {
+    use reovim_driver_picker::PreviewHighlight;
+
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<MicroscopeState>();
+    state.active = true;
+    state.preview = Some(PreviewContent {
+        lines: vec!["fn main() {}".to_owned()],
+        highlight_line: None,
+        file_path: None,
+        highlights: vec![
+            PreviewHighlight {
+                line: 0,
+                col_start: 0,
+                col_end: 2,
+                category: "keyword".to_owned(),
+            },
+            PreviewHighlight {
+                line: 0,
+                col_start: 3,
+                col_end: 7,
+                category: "function".to_owned(),
+            },
+        ],
+    });
+
+    let snap = MicroscopeBridge.snapshot(&map).unwrap();
+    let preview = &snap["preview"];
+    let highlights = preview["highlights"].as_array().unwrap();
+    assert_eq!(highlights.len(), 2);
+    assert_eq!(highlights[0]["line"], 0);
+    assert_eq!(highlights[0]["colStart"], 0);
+    assert_eq!(highlights[0]["colEnd"], 2);
+    assert_eq!(highlights[0]["category"], "keyword");
+    assert_eq!(highlights[1]["category"], "function");
+}
+
+#[test]
+fn snapshot_preview_empty_highlights_omitted() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<MicroscopeState>();
+    state.active = true;
+    state.preview = Some(PreviewContent {
+        lines: vec!["text".to_owned()],
+        highlight_line: None,
+        file_path: None,
+        ..Default::default()
+    });
+
+    let snap = MicroscopeBridge.snapshot(&map).unwrap();
+    let preview = &snap["preview"];
+    assert!(preview.get("highlights").is_none());
 }
 
 #[test]

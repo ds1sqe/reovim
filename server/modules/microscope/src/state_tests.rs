@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use super::*;
 
 #[test]
@@ -367,4 +369,129 @@ fn insert_multiple_unicode() {
     TextInputSink::insert_char(&mut state, '語');
     assert_eq!(state.query, "日本語");
     assert_eq!(state.cursor, 3);
+}
+
+// ========================================================================
+// language_id_from_path tests
+// ========================================================================
+
+#[test]
+fn language_id_rust() {
+    assert_eq!(language_id_from_path(Path::new("main.rs")), Some("rust"));
+}
+
+#[test]
+fn language_id_markdown() {
+    assert_eq!(language_id_from_path(Path::new("README.md")), Some("markdown"));
+    assert_eq!(language_id_from_path(Path::new("doc.markdown")), Some("markdown"));
+}
+
+#[test]
+fn language_id_python() {
+    assert_eq!(language_id_from_path(Path::new("app.py")), Some("python"));
+    assert_eq!(language_id_from_path(Path::new("stubs.pyi")), Some("python"));
+}
+
+#[test]
+fn language_id_go() {
+    assert_eq!(language_id_from_path(Path::new("main.go")), Some("go"));
+}
+
+#[test]
+fn language_id_c() {
+    assert_eq!(language_id_from_path(Path::new("foo.c")), Some("c"));
+    assert_eq!(language_id_from_path(Path::new("foo.h")), Some("c"));
+}
+
+#[test]
+fn language_id_bash() {
+    assert_eq!(language_id_from_path(Path::new("run.sh")), Some("bash"));
+    assert_eq!(language_id_from_path(Path::new("script.bash")), Some("bash"));
+}
+
+#[test]
+fn language_id_json() {
+    assert_eq!(language_id_from_path(Path::new("config.json")), Some("json"));
+}
+
+#[test]
+fn language_id_toml() {
+    assert_eq!(language_id_from_path(Path::new("Cargo.toml")), Some("toml"));
+}
+
+#[test]
+fn language_id_javascript() {
+    assert_eq!(language_id_from_path(Path::new("app.js")), Some("javascript"));
+    assert_eq!(language_id_from_path(Path::new("module.mjs")), Some("javascript"));
+    assert_eq!(language_id_from_path(Path::new("require.cjs")), Some("javascript"));
+}
+
+#[test]
+fn language_id_typescript() {
+    assert_eq!(language_id_from_path(Path::new("app.ts")), Some("typescript"));
+    assert_eq!(language_id_from_path(Path::new("module.mts")), Some("typescript"));
+    assert_eq!(language_id_from_path(Path::new("require.cts")), Some("typescript"));
+}
+
+#[test]
+fn language_id_unknown() {
+    assert_eq!(language_id_from_path(Path::new("image.png")), None);
+    assert_eq!(language_id_from_path(Path::new("noext")), None);
+}
+
+// ========================================================================
+// apply_syntax_highlights tests
+// ========================================================================
+
+#[test]
+fn apply_syntax_highlights_no_path() {
+    let services = ServiceRegistry::new();
+    let mut preview = PreviewContent {
+        lines: vec!["fn main() {}".to_owned()],
+        highlight_line: None,
+        file_path: None,
+        ..Default::default()
+    };
+    MicroscopeState::apply_syntax_highlights(&mut preview, &services);
+    assert!(preview.highlights.is_empty());
+}
+
+#[test]
+fn apply_syntax_highlights_unknown_extension() {
+    let services = ServiceRegistry::new();
+    let mut preview = PreviewContent {
+        lines: vec!["data".to_owned()],
+        highlight_line: None,
+        file_path: Some(PathBuf::from("file.xyz")),
+        ..Default::default()
+    };
+    MicroscopeState::apply_syntax_highlights(&mut preview, &services);
+    assert!(preview.highlights.is_empty());
+}
+
+#[test]
+fn apply_syntax_highlights_no_factory_store() {
+    let services = ServiceRegistry::new();
+    let mut preview = PreviewContent {
+        lines: vec!["fn main() {}".to_owned()],
+        highlight_line: None,
+        file_path: Some(PathBuf::from("main.rs")),
+        ..Default::default()
+    };
+    MicroscopeState::apply_syntax_highlights(&mut preview, &services);
+    // No SyntaxFactoryStore registered, so no highlights
+    assert!(preview.highlights.is_empty());
+}
+
+#[test]
+fn apply_syntax_highlights_too_many_lines() {
+    let services = ServiceRegistry::new();
+    let mut preview = PreviewContent {
+        lines: (0..600).map(|i| format!("line {i}")).collect(),
+        highlight_line: None,
+        file_path: Some(PathBuf::from("big.rs")),
+        ..Default::default()
+    };
+    MicroscopeState::apply_syntax_highlights(&mut preview, &services);
+    assert!(preview.highlights.is_empty());
 }

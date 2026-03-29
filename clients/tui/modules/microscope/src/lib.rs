@@ -57,6 +57,16 @@ struct ItemData {
 struct PreviewData {
     lines: Vec<String>,
     highlight_line: Option<usize>,
+    highlights: Vec<PreviewHighlightData>,
+}
+
+/// A syntax highlight span in preview content.
+#[derive(Debug)]
+struct PreviewHighlightData {
+    line: u16,
+    col_start: u16,
+    col_end: u16,
+    category: String,
 }
 
 /// Module kind identifier.
@@ -172,9 +182,26 @@ impl ClientModule for MicroscopeModule {
                 .iter()
                 .filter_map(|l| l.as_str().map(str::to_owned))
                 .collect();
+            let highlights = p
+                .get("highlights")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|h| {
+                            Some(PreviewHighlightData {
+                                line: u16::try_from(h["line"].as_u64()?).ok()?,
+                                col_start: u16::try_from(h["colStart"].as_u64()?).ok()?,
+                                col_end: u16::try_from(h["colEnd"].as_u64()?).ok()?,
+                                category: h["category"].as_str()?.to_owned(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             Some(PreviewData {
                 lines,
                 highlight_line: p["highlightLine"].as_u64().map(|n| n as usize),
+                highlights,
             })
         });
     }

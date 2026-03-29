@@ -8,9 +8,11 @@ use std::sync::Arc;
 
 use {
     reovim_driver_picker::{
-        PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, push_items,
+        PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, PreviewHighlight,
+        push_items,
     },
     reovim_driver_session::{SessionExtension, TextInputSink},
+    reovim_driver_syntax::{SyntaxFactoryStore, language_id_from_path},
     reovim_kernel::api::v1::ServiceRegistry,
 };
 
@@ -194,8 +196,82 @@ impl MicroscopeState {
             && self.selected < self.full_items.len()
         {
             self.preview = picker.preview(&self.full_items[self.selected], services);
+            // Compute syntax highlights if the preview has a file path hint.
+            if let Some(preview) = &mut self.preview {
+                Self::apply_syntax_highlights(preview, services);
+            }
         } else {
             self.preview = None;
+        }
+    }
+
+    /// Apply syntax highlighting to preview content using tree-sitter.
+    ///
+    /// Looks up a syntax driver via `SyntaxFactoryStore`, parses the
+    /// preview content, and converts byte-range annotations into
+    /// line/column `PreviewHighlight` entries.
+    fn apply_syntax_highlights(preview: &mut PreviewContent, services: &ServiceRegistry) {
+        // Skip if no file path or too many lines (avoid blocking the event loop).
+        const MAX_HIGHLIGHT_LINES: usize = 500;
+        let Some(ref path) = preview.file_path else {
+            return;
+        };
+        if preview.lines.len() > MAX_HIGHLIGHT_LINES {
+            return;
+        }
+        let Some(lang_id) = language_id_from_path(path) else {
+            return;
+        };
+        let Some(store) = services.get::<SyntaxFactoryStore>() else {
+            return;
+        };
+        let Some(factory) = store.find(lang_id) else {
+            return;
+        };
+        let Some(mut driver) = factory.create(lang_id) else {
+            return;
+        };
+
+        // Build full content from lines (re-join with newlines).
+        let content: String = preview.lines.join("\n");
+        driver.parse(&content);
+
+        let annotations = driver.highlights(0..content.len());
+
+        // Build line-start byte offset table.
+        let mut line_starts: Vec<usize> = Vec::with_capacity(preview.lines.len());
+        let mut offset = 0;
+        for line in &preview.lines {
+            line_starts.push(offset);
+            offset += line.len() + 1; // +1 for the newline
+        }
+
+        // Convert byte-range annotations to line/col highlights.
+        preview.highlights.reserve(annotations.len());
+        for ann in annotations {
+            // Find the line containing the annotation start.
+            let line_idx = match line_starts.binary_search(&ann.start_byte) {
+                Ok(i) => i,
+                Err(i) => i.saturating_sub(1),
+            };
+            if line_idx >= preview.lines.len() {
+                continue;
+            }
+            let line_start = line_starts[line_idx];
+            let line_len = preview.lines[line_idx].len();
+            let col_start = ann.start_byte.saturating_sub(line_start);
+            // Clamp end to the current line (don't span across lines).
+            let col_end = ann.end_byte.saturating_sub(line_start).min(line_len);
+            if col_start >= col_end {
+                continue;
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            preview.highlights.push(PreviewHighlight {
+                line: line_idx as u16,
+                col_start: col_start as u16,
+                col_end: col_end as u16,
+                category: ann.category.as_str().to_owned(),
+            });
         }
     }
 }

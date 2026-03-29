@@ -14,6 +14,7 @@ fn preview_construction() {
         lines: vec!["fn main() {".to_owned(), "}".to_owned()],
         highlight_line: Some(0),
         file_path: Some(PathBuf::from("main.rs")),
+        ..Default::default()
     };
     assert_eq!(preview.lines.len(), 2);
     assert_eq!(preview.highlight_line, Some(0));
@@ -26,6 +27,7 @@ fn preview_clone() {
         lines: vec!["line 1".to_owned()],
         highlight_line: Some(0),
         file_path: None,
+        ..Default::default()
     };
     let cloned = preview.clone();
     assert_eq!(cloned.lines, preview.lines);

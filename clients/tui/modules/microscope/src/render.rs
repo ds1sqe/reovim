@@ -2,7 +2,7 @@
 
 use reovim_client_driver::{Rect, RenderSurface, Style, types::Color};
 
-use crate::{MicroscopeData, layout::LayoutBounds};
+use crate::{MicroscopeData, PreviewHighlightData, layout::LayoutBounds};
 
 /// Render the microscope overlay.
 pub fn render_microscope(
@@ -178,6 +178,49 @@ pub fn render_results(
     }
 }
 
+/// Map a syntax category to a foreground color.
+///
+/// Uses a simple prefix-match to determine the color for each category.
+fn syntax_category_color(category: &str) -> Option<Color> {
+    if category.starts_with("keyword") {
+        Some(Color::AnsiValue(141)) // purple
+    } else if category.starts_with("string") {
+        Some(Color::AnsiValue(114)) // green
+    } else if category.starts_with("comment") {
+        Some(Color::AnsiValue(245)) // grey
+    } else if category.starts_with("type") {
+        Some(Color::AnsiValue(221)) // yellow
+    } else if category.starts_with("function") {
+        Some(Color::AnsiValue(81)) // blue
+    } else if category.starts_with("number") || category.starts_with("boolean") {
+        Some(Color::AnsiValue(208)) // orange
+    } else if category.starts_with("operator") || category.starts_with("punctuation") {
+        Some(Color::AnsiValue(250)) // light
+    } else if category.starts_with("variable") {
+        Some(Color::AnsiValue(253)) // white-ish
+    } else if category.starts_with("constant") {
+        Some(Color::AnsiValue(208)) // orange
+    } else if category.starts_with("attribute") {
+        Some(Color::AnsiValue(114)) // green
+    } else {
+        None
+    }
+}
+
+/// Find the syntax highlight color for a byte offset within a line.
+fn syntax_color_at(
+    highlights: &[PreviewHighlightData],
+    line_idx: u16,
+    byte_col: u16,
+) -> Option<Color> {
+    for h in highlights {
+        if h.line == line_idx && h.col_start <= byte_col && byte_col < h.col_end {
+            return syntax_category_color(&h.category);
+        }
+    }
+    None
+}
+
 /// Render the preview panel.
 #[allow(clippy::cast_possible_truncation)]
 fn render_preview(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds: &LayoutBounds) {
@@ -185,13 +228,10 @@ fn render_preview(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds
         return;
     };
 
-    let normal_style = Style::new()
-        .fg(Color::AnsiValue(250))
-        .bg(Color::AnsiValue(235));
-    let highlight_style = Style::new().fg(Color::White).bg(Color::AnsiValue(237));
-    let line_num_style = Style::new()
-        .fg(Color::AnsiValue(240))
-        .bg(Color::AnsiValue(235));
+    let bg_normal = Color::AnsiValue(235);
+    let bg_highlight = Color::AnsiValue(237);
+    let fg_normal = Color::AnsiValue(250);
+    let line_num_style = Style::new().fg(Color::AnsiValue(240)).bg(bg_normal);
 
     for (i, line) in preview.lines.iter().enumerate() {
         if i as u16 >= bounds.panel_height {
@@ -200,11 +240,6 @@ fn render_preview(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds
 
         let row = bounds.panel_start_y + i as u16;
         let is_highlight = preview.highlight_line == Some(i);
-        let style = if is_highlight {
-            &highlight_style
-        } else {
-            &normal_style
-        };
 
         // Line number.
         let line_num = format!("{:>3} ", i + 1);
@@ -217,12 +252,19 @@ fn render_preview(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds
             col += 1;
         }
 
-        // Line content.
-        for ch in line.chars() {
+        // Line content — apply syntax highlighting per character.
+        for (byte_idx, ch) in line.char_indices() {
             if col >= bounds.preview_x + bounds.preview_width {
                 break;
             }
-            surface.write_styled(col, row, &ch.to_string(), style.clone());
+            let fg = syntax_color_at(&preview.highlights, i as u16, byte_idx as u16)
+                .unwrap_or(fg_normal);
+            let style = if is_highlight {
+                Style::new().fg(fg).bg(bg_highlight)
+            } else {
+                Style::new().fg(fg).bg(bg_normal)
+            };
+            surface.write_styled(col, row, &ch.to_string(), style);
             col += 1;
         }
     }

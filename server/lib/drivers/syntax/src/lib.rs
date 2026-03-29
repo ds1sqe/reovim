@@ -71,6 +71,7 @@ pub mod bracket;
 mod cache;
 mod composite;
 pub mod decoration;
+mod detect;
 mod driver;
 mod edit;
 mod error;
@@ -92,8 +93,9 @@ pub mod textobject;
 
 // Core traits
 pub use {
-    cache::SyntaxCache, composite::CompositeFactory, driver::SyntaxDriver,
-    factory::SyntaxDriverFactory, registry::LanguageRegistry, store::SyntaxFactoryStore,
+    cache::SyntaxCache, composite::CompositeFactory, detect::language_id_from_path,
+    driver::SyntaxDriver, factory::SyntaxDriverFactory, registry::LanguageRegistry,
+    store::SyntaxFactoryStore,
 };
 
 // Types

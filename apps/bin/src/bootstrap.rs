@@ -1041,6 +1041,12 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
         return;
     }
 
+    // Re-add factories to the store so runtime consumers (e.g., microscope
+    // preview highlighting) can still look up drivers via `find()`.
+    for factory in &factories {
+        store.add(Arc::clone(factory));
+    }
+
     let composite = CompositeFactory::new(factories);
     let count = composite.factory_count();
     let factory = Arc::new(composite);

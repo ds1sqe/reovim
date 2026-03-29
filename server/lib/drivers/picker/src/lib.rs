@@ -27,7 +27,7 @@ pub use {
     engine::{EngineItem, PickerEngine, TickStatus, push_item, push_items},
     item::{PickerData, PickerItem, file_type_icon, icon_for_path},
     picker::Picker,
-    preview::PreviewContent,
+    preview::{PreviewContent, PreviewHighlight},
     registry::PickerRegistry,
     reovim_driver_session::SessionRuntime,
 };

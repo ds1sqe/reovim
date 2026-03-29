@@ -895,6 +895,19 @@ impl SyntaxDriver for TreeSitterDriver {
             result.extend(provider_decos);
         }
 
+        // 4. Injection decorations (child driver decorations, e.g., markdown in doc comments)
+        if let Some(ref manager_mutex) = self.injection_manager {
+            let injections = self.injections();
+
+            if !injections.is_empty() {
+                let content = self.content.read();
+                let mut manager = manager_mutex.lock();
+                let injection_decorations =
+                    manager.decorate_injections(&injections, &content, byte_range);
+                result.extend(injection_decorations);
+            }
+        }
+
         result
     }
 

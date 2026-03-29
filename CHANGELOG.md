@@ -15,6 +15,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **display**: `DiagnosticPresenter` registered in bootstrap — diagnostic gutter icons now appear
 - **display**: `mode_replace` highlight group added to all 3 builtin themes (Dark, Light, TokyoNight)
 - **illuminate**: word reference highlighting on cursor-hold — after 300ms idle, all occurrences of the word under cursor are highlighted with `]]`/`[[` navigation
+- **syntax-treesitter**: injection decorations — doc comments (`///`, `//!`) now inherit markdown decorations from child drivers (#696)
+- **hover**: markdown rendering in hover popups — bold, italic, code spans, headings, fenced code blocks, and horizontal rules are styled instead of shown as raw syntax (#697)
+- **microscope**: syntax highlighting in preview panel — file previews show tree-sitter-based syntax colors for all supported languages (#698)
 
 ### Fixed
 

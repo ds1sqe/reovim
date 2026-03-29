@@ -97,6 +97,7 @@ impl Picker for OptionsPicker {
             lines,
             highlight_line: Some(0),
             file_path: None,
+            ..Default::default()
         })
     }
 }

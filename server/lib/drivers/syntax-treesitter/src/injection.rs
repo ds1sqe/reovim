@@ -119,6 +119,27 @@ impl InjectionManager {
         self.children.len()
     }
 
+    /// Ensure child drivers exist for all injected languages.
+    ///
+    /// Creates child drivers on demand via the factory, configuring each
+    /// for recursive injection up to [`MAX_INJECTION_DEPTH`].
+    fn ensure_children(&mut self, injections: &[Injection]) {
+        if let Some(factory) = &self.factory {
+            for injection in injections {
+                if !self.children.contains_key(&injection.language_id)
+                    && let Some(mut driver) = factory.create(&injection.language_id)
+                {
+                    let child_depth = self.depth + 1;
+                    if child_depth < MAX_INJECTION_DEPTH {
+                        driver.set_injection_factory(factory.clone());
+                    }
+                    driver.set_injection_depth(child_depth);
+                    self.children.insert(injection.language_id.clone(), driver);
+                }
+            }
+        }
+    }
+
     /// Highlight all injections that overlap the given byte range.
     ///
     /// For each injection:
@@ -133,29 +154,12 @@ impl InjectionManager {
         full_content: &str,
         byte_range: Range<usize>,
     ) -> Vec<Annotation> {
-        // Phase 1: Ensure child drivers exist for all injected languages
-        if let Some(factory) = &self.factory {
-            for injection in injections {
-                if !self.children.contains_key(&injection.language_id)
-                    && let Some(mut driver) = factory.create(&injection.language_id)
-                {
-                    // Configure child for recursive injection if not at max depth
-                    let child_depth = self.depth + 1;
-                    if child_depth < MAX_INJECTION_DEPTH {
-                        driver.set_injection_factory(factory.clone());
-                    }
-                    driver.set_injection_depth(child_depth);
-                    self.children.insert(injection.language_id.clone(), driver);
-                }
-            }
-        }
+        self.ensure_children(injections);
 
-        // Phase 2: Highlight with all available child drivers
         let mut all_highlights = Vec::new();
 
         for injection in injections {
             let inj_range = injection.byte_range();
-            // Check if injection overlaps the requested range
             if inj_range.end <= byte_range.start || inj_range.start >= byte_range.end {
                 continue;
             }
@@ -170,18 +174,67 @@ impl InjectionManager {
         all_highlights
     }
 
+    /// Collect decorations from all injections that overlap the given byte range.
+    ///
+    /// Mirrors [`highlight_injections`] but calls `decorations()` on child
+    /// drivers instead of `highlights()`.
+    pub fn decorate_injections(
+        &mut self,
+        injections: &[Injection],
+        full_content: &str,
+        byte_range: Range<usize>,
+    ) -> Vec<Annotation> {
+        self.ensure_children(injections);
+
+        let mut all_decorations = Vec::new();
+
+        for injection in injections {
+            let inj_range = injection.byte_range();
+            if inj_range.end <= byte_range.start || inj_range.start >= byte_range.end {
+                continue;
+            }
+
+            if let Some(driver) = self.children.get_mut(&injection.language_id) {
+                let decorations =
+                    Self::decorate_single_injection(&mut **driver, injection, full_content);
+                all_decorations.extend(decorations);
+            }
+        }
+
+        all_decorations
+    }
+
     /// Highlight a single injection using the child driver.
-    ///
-    /// For single-range injections: extracts the substring, parses, highlights,
-    /// then offsets annotations to parent document coordinates.
-    ///
-    /// For multi-range (combined) injections: concatenates content from all
-    /// ranges (stripping doc comment prefixes), parses as one document, then
-    /// translates annotations back to parent coordinates.
     fn highlight_single_injection(
         driver: &mut dyn SyntaxDriver,
         injection: &Injection,
         full_content: &str,
+    ) -> Vec<Annotation> {
+        Self::annotate_injection(driver, injection, full_content, |d, r| d.highlights(r))
+    }
+
+    /// Collect decorations from a single injection using the child driver.
+    fn decorate_single_injection(
+        driver: &mut dyn SyntaxDriver,
+        injection: &Injection,
+        full_content: &str,
+    ) -> Vec<Annotation> {
+        Self::annotate_injection(driver, injection, full_content, |d, r| d.decorations(r))
+    }
+
+    /// Generic annotation extraction for a single injection.
+    ///
+    /// For single-range injections: extracts the substring, parses, runs
+    /// the `extract` function, then offsets annotations to parent coordinates.
+    ///
+    /// For multi-range (combined) injections: concatenates content from all
+    /// ranges (stripping doc comment prefixes), parses as one document, runs
+    /// `extract`, then translates annotations back to parent coordinates.
+    fn annotate_injection(
+        driver: &mut dyn SyntaxDriver,
+        injection: &Injection,
+        full_content: &str,
+        extract: impl Fn(&dyn SyntaxDriver, Range<usize>) -> Vec<Annotation>,
     ) -> Vec<Annotation> {
         if injection.ranges.is_empty() {
             return Vec::new();
@@ -193,17 +246,18 @@ impl InjectionManager {
         }
 
         if injection.ranges.len() == 1 {
-            Self::highlight_single_range(driver, &injection.ranges[0], full_content)
+            Self::annotate_single_range(driver, &injection.ranges[0], full_content, &extract)
         } else {
-            Self::highlight_combined_ranges(driver, &injection.ranges, full_content)
+            Self::annotate_combined_ranges(driver, &injection.ranges, full_content, &extract)
         }
     }
 
-    /// Highlight a single-range injection (e.g., a fenced code block).
-    fn highlight_single_range(
+    /// Extract annotations from a single-range injection (e.g., a fenced code block).
+    fn annotate_single_range(
         driver: &mut dyn SyntaxDriver,
         range: &Range<usize>,
         full_content: &str,
+        extract: &impl Fn(&dyn SyntaxDriver, Range<usize>) -> Vec<Annotation>,
     ) -> Vec<Annotation> {
         let content = &full_content[range.clone()];
         if content.is_empty() {
@@ -211,29 +265,25 @@ impl InjectionManager {
         }
 
         driver.parse(content);
-        let mut highlights = driver.highlights(0..content.len());
+        let mut annotations = extract(driver, 0..content.len());
 
-        // Offset highlights to parent document coordinates
-        for h in &mut highlights {
-            h.start_byte += range.start;
-            h.end_byte += range.start;
+        for a in &mut annotations {
+            a.start_byte += range.start;
+            a.end_byte += range.start;
         }
 
-        highlights
+        annotations
     }
 
-    /// Highlight a combined (multi-range) injection (e.g., doc comment lines).
-    ///
-    /// Concatenates content from all ranges (stripping doc comment prefixes),
-    /// parses as one document, then translates annotations back to parent
-    /// coordinates.
-    fn highlight_combined_ranges(
+    /// Extract annotations from a combined (multi-range) injection
+    /// (e.g., doc comment lines).
+    fn annotate_combined_ranges(
         driver: &mut dyn SyntaxDriver,
         ranges: &[Range<usize>],
         full_content: &str,
+        extract: &impl Fn(&dyn SyntaxDriver, Range<usize>) -> Vec<Annotation>,
     ) -> Vec<Annotation> {
         let mut combined_content = String::new();
-        // (src_start, dst_start, prefix_len) for offset translation
         let mut range_offsets: Vec<(usize, usize, usize)> = Vec::new();
 
         for range in ranges {
@@ -253,12 +303,11 @@ impl InjectionManager {
         }
 
         driver.parse(&combined_content);
-        let highlights = driver.highlights(0..combined_content.len());
+        let annotations = extract(driver, 0..combined_content.len());
 
-        // Translate highlights from concatenated coordinates back to parent
         let mut result = Vec::new();
-        for h in highlights {
-            if let Some(translated) = translate_combined_highlight(&h, &range_offsets, ranges) {
+        for a in annotations {
+            if let Some(translated) = translate_combined_annotation(&a, &range_offsets, ranges) {
                 result.push(translated);
             }
         }
@@ -315,7 +364,7 @@ fn strip_doc_comment_prefix(line: &str) -> (&str, usize) {
 
 /// Translate a highlight from concatenated content coordinates to parent
 /// document coordinates.
-fn translate_combined_highlight(
+fn translate_combined_annotation(
     highlight: &Annotation,
     range_offsets: &[(usize, usize, usize)], // (src_start, dst_start, prefix_len)
     source_ranges: &[Range<usize>],

@@ -3129,6 +3129,7 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-picker",
  "reovim-driver-session",
+ "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",

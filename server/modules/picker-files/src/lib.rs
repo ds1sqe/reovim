@@ -125,6 +125,7 @@ impl Picker for FilesPicker {
             lines,
             highlight_line: None,
             file_path: Some(path.clone()),
+            ..Default::default()
         })
     }
 
