@@ -94,6 +94,7 @@ impl ThemeProvider for MockTheme {
         match group {
             "keyword" => Style::new().fg(reovim_arch::Color::Blue),
             "string" => Style::new().fg(reovim_arch::Color::Green),
+            "comment" => Style::new().fg(reovim_arch::Color::DarkGreen),
             "bg.token" => Style::new().bg(reovim_arch::Color::Red),
             _ => Style::default(),
         }
@@ -397,6 +398,64 @@ fn render_line_content_with_highlight_tokens() {
         writes[0].3.fg,
         Some(reovim_arch::Color::Blue),
         "first char should be keyword-styled"
+    );
+}
+
+#[test]
+fn render_line_content_narrowest_token_wins() {
+    // When a broad `comment` token and a narrow `keyword` token overlap,
+    // the narrowest (most specific) token should win. This is the key
+    // behavior for injection highlighting in doc comment code blocks.
+    let mut surface = RecordingSurface::new(80, 24);
+    let tokens = vec![
+        SyntaxToken {
+            line: 0,
+            start_col: 0,
+            end_col: 15, // broad: "comment" spans entire line
+            category: "comment".to_owned(),
+        },
+        SyntaxToken {
+            line: 0,
+            start_col: 4,
+            end_col: 6, // narrow: "keyword" spans just "fn"
+            category: "keyword".to_owned(),
+        },
+    ];
+    let token_provider = MockTokenProvider::with_tokens(tokens);
+    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    render_line_content(
+        &mut surface,
+        0,
+        0,
+        80,
+        "/// fn main() {}",
+        1.0,
+        Some(BufferId(0)),
+        0,
+        &token_provider,
+        &MockTheme,
+        false,
+        &modules,
+    );
+
+    let writes = surface.writes.borrow();
+    // Col 0-3 ("/// "): only comment overlaps → comment style (DarkGreen)
+    assert_eq!(
+        writes[0].3.fg,
+        Some(reovim_arch::Color::DarkGreen),
+        "col 0 should be comment-styled (DarkGreen)"
+    );
+    // Col 4 ("f"): both comment and keyword overlap → keyword wins (narrower)
+    assert_eq!(
+        writes[4].3.fg,
+        Some(reovim_arch::Color::Blue),
+        "col 4 should be keyword-styled (Blue), not comment"
+    );
+    // Col 6 ("m"): only comment overlaps again → comment style
+    assert_eq!(
+        writes[6].3.fg,
+        Some(reovim_arch::Color::DarkGreen),
+        "col 6 should be comment-styled"
     );
 }
 
