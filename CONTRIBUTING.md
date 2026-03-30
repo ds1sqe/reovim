@@ -18,7 +18,7 @@ No warnings are acceptable. This is non-negotiable.
 - Keep functions focused and small
 - Prefer clarity over cleverness
 
-For detailed development setup, see [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
+For detailed development setup, see [Getting Started](./docs/contributing/getting-started.md).
 
 ## Testing
 
@@ -31,7 +31,7 @@ cargo test
 When adding new functionality:
 - Add tests for new code paths
 - Ensure existing tests pass
-- See [docs/TESTING.md](./docs/TESTING.md) for testing guidelines
+- See the [Testing Guide](./docs/contributing/guides/testing.md) for testing guidelines
 
 ## Development Workflow
 

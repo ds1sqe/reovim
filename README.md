@@ -27,7 +27,7 @@ A Rust-powered neovim-like text editor.
   - **Multi-char jump** (`s` + 2 chars) - Leap-style navigation with smart auto-jump
   - **Enhanced f/t motions** (`f`/`F`/`t`/`T`) - Single-char search with label selection
   - **Code folding** (`za`/`zo`/`zc`/`zR`/`zM`) - Collapse/expand code blocks
-- **Telescope fuzzy finder** - Files, buffers, grep (`Space f`)
+- **Microscope fuzzy finder** - Files, buffers, grep (`Space f`)
 - **Explorer file browser** - Tree view (`Space e`)
 - Jump list navigation (`Ctrl-O`, `Ctrl-I`)
 
@@ -59,31 +59,22 @@ A Rust-powered neovim-like text editor.
 
 ### Performance
 
-v0.8.0 introduces priority channels for dramatically improved input responsiveness:
+Kernel-level benchmarks (v0.14.0):
 
-| Metric | v0.6.0 | v0.7.10 | v0.8.0 |
-|--------|--------|---------|--------|
-| Window render (10 lines) | 10 µs | 5.3 µs | 5.1 µs |
-| Window render (10k lines) | 56 µs | 26 µs | 23 µs |
-| Full scroll cycle | 85 µs | 55 µs | 48 µs |
-| Large file (5k lines) | 174 µs | 87 µs | 87 µs |
-| Throughput | 18k/sec | 38k/sec | 40k/sec |
-| **Auto-pair latency** | - | ~100ms | **~92µs** |
+| Operation | 10 lines | 1k lines | 10k lines |
+|-----------|----------|----------|-----------|
+| Insert char | 353 ns | 415 ns | 531 ns |
+| Delete char | 441 ns | 510 ns | 690 ns |
+| Buffer from string | 658 ns | 99 µs | 1.06 ms |
+| Event dispatch (5 handlers) | 247 ns | — | — |
 
-**v0.8.0 highlights:**
-- **~1000x input latency improvement** - Priority channels separate user input from background tasks
 - **Zero flickering** - Diff-based rendering sends only changed cells
-- **2x faster rendering** - Optimized render pipeline since v0.6.0
-- Async architecture with tokio runtime
-- Cross-platform terminal support via crossterm
+- **Async architecture** with tokio runtime
+- **Cross-platform** terminal support via crossterm
+
+See [perf/](./perf/) for full versioned benchmark reports.
 
 ## Installation
-
-```bash
-cargo install reovim
-```
-
-## Building from Source
 
 ```bash
 git clone https://github.com/ds1sqe/reovim.git
@@ -91,65 +82,117 @@ cd reovim
 cargo build --release
 ```
 
+The binary is at `target/release/reovim`.
+
 ## Usage
 
 ```bash
-reovim [file]
+reovim
 ```
+
+This launches in **integrated mode**: an embedded gRPC server + interactive TUI in one process. Open files with `:e <file>` from within the editor.
+
+**Global Options:**
+| Flag | Description |
+|------|-------------|
+| `-v`, `--verbose` | Enable debug-level logging |
+| `--log <PATH>` | Custom log file path |
 
 ### Server Mode
 
-Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integration with external tools, IDEs, and automation scripts. The server accepts multiple sequential connections - clients can connect, disconnect, and reconnect without restarting the server.
-
-**Multi-instance support**: Multiple reovim servers can run concurrently. When the default port (12521) is in use, the server automatically tries 12522, 12523, etc. Each server writes a port file to `~/.local/share/reovim/servers/<pid>.port` for discovery.
+Reovim can run as a gRPC server for programmatic control, enabling integration with external tools, IDEs, and automation scripts. The server accepts multiple client connections with independent viewports and cursors.
 
 ```bash
-# Start server (TCP on 127.0.0.1:12521 by default)
+# Start server (TCP with auto port fallback)
 reovim server
 
-# Custom TCP port
-reovim server --tcp 9000
+# gRPC transport (recommended for CLI/TUI clients)
+reovim server --grpc 12540
+
+# Specific TCP port
+reovim server --tcp 12521
 
 # Unix socket
 reovim server --socket /tmp/reovim.sock
-
-# Stdio transport (for process piping)
-reovim server --stdio
 ```
 
 **Server Options:**
 | Flag | Description |
 |------|-------------|
-| `--tcp <PORT>` | Listen on custom TCP port (default: 12521) |
-| `--socket <PATH>` | Listen on Unix socket |
-| `--stdio` | Use stdio instead of TCP (for process piping) |
+| `--grpc <PORT>` | gRPC transport (recommended for multi-client use) |
+| `--tcp <PORT>` | TCP transport |
+| `--socket <PATH>` | Unix domain socket |
+| `--session <NAME>` | Default session name (default: "main") |
+| `--instance <NAME>` | Instance name for discovery (default: "default") |
 
-**Default port:** `12521` (derived from ASCII: 'r'×100 + 'e'×10 + 'o')
+When no transport flag is given, the server binds TCP with automatic port fallback.
 
 #### CLI Client
 
 The built-in CLI client provides command-line access to running servers:
 
 ```bash
-# List running servers
-reovim cli list
-
-# Inject keys
-reovim cli keys 'iHello<Esc>'
+# Inject keys (--client targets a connected TUI)
+reovim cli keys 'iHello<Esc>' --client 1
 
 # Query state
-reovim cli mode                           # Get current mode
-reovim cli cursor                         # Get cursor position
+reovim cli mode --client 1
+reovim cli cursor --client 1
 
-# JSON output format
-reovim cli --format json mode
+# List connected clients
+reovim cli clients
 
-# Connect to custom address
-reovim cli --tcp localhost:9000 keys 'j'
-reovim cli --socket /tmp/reovim.sock keys 'j'
+# List open buffers
+reovim cli buffers
 
-# Interactive REPL
-reovim cli -i
+# JSON output
+reovim cli --format json mode --client 1
+
+# Connect to custom server (--grpc takes host:port, default: 127.0.0.1:12540)
+reovim cli --grpc 127.0.0.1:9000 keys 'j' --client 1
+
+# Buffer content
+reovim cli buffer --id 1
+
+# Register contents
+reovim cli registers
+
+# Capture screen (raw ANSI, plain text, cell grid, png, html)
+reovim cli capture --client 1 --capture-format plain_text
+
+# Server version
+reovim cli version
+
+# Tail server logs (with filters)
+reovim cli log-tail --count 100 --level warn --target reovim_server --grep "connection"
+
+# Ping server
+reovim cli ping
+
+# List extensions / query extension state
+reovim cli extensions
+reovim cli extension-state whichkey --client 1
+```
+
+#### Module Management
+
+Manage third-party modules offline (no running server required):
+
+```bash
+# Install from git URL or local path
+reovim module install https://github.com/user/my-module.git
+reovim module install ./local-module --rev v1.0
+
+# List / update / remove
+reovim module list
+reovim module update                      # Update all
+reovim module update my-module            # Update one
+reovim module remove my-module
+
+# Diagnostics
+reovim module check                       # Verify .so integrity
+reovim module info my-module              # Detailed info
+reovim module resolve                     # Resolve dependencies
 ```
 
 #### TUI Client
@@ -157,11 +200,17 @@ reovim cli -i
 Connect to a running server with a full terminal UI:
 
 ```bash
-# Auto-discover and connect
+# Connect to default address (127.0.0.1:12540)
 reovim tui
 
-# Connect to specific server
-reovim tui --tcp 127.0.0.1:12521
+# Connect to specific server (--grpc takes host:port, default: 127.0.0.1:12540)
+reovim tui --grpc 127.0.0.1:9000
+
+# Headless mode (for scripting/testing)
+reovim tui --grpc 127.0.0.1:12540 --headless
+
+# Custom viewport size (headless only, default: 120x40)
+reovim tui --grpc 127.0.0.1:12540 --headless --width 200 --height 50
 ```
 
 ### Key Bindings
@@ -189,9 +238,9 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 | `f/F` | Find char forward/backward with labels |
 | `t/T` | Till char forward/backward with labels |
 | `Space e` | Toggle explorer |
-| `Space f f` | Telescope find files |
-| `Space f g` | Telescope live grep |
-| `Space f b` | Telescope buffers |
+| `Space f f` | Microscope find files |
+| `Space f g` | Microscope live grep |
+| `Space f b` | Microscope buffers |
 | `Ctrl-Space` | Trigger completion |
 | `za` | Toggle fold at cursor |
 | `zo` | Open fold at cursor |
@@ -237,21 +286,21 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  RUNNER (runner/)                              APPLICATION  │
+│  APPLICATION (apps/bin/, clients/)                           │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Server    │  │   Client    │  │   Event Loop        │  │
-│  │  (RPC/TCP)  │  │  (CLI/TUI)  │  │   Module Loader     │  │
+│  │   Server    │  │   Clients   │  │   Event Loop        │  │
+│  │  (gRPC/TCP) │  │(TUI/CLI/Web)│  │   Module Loader     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
-│  MODULES (modules/)                             POLICY      │
+│  MODULES (server/modules/)                        POLICY    │
 │  Keymap, Operators, Layout, Options, Mode-Manager           │
 │  → Decide HOW things behave (keybindings, defaults)         │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (lib/drivers/)                         MECHANISM   │
-│  syntax/, input/, display/, lsp/, net/, vfs/, command/      │
+│  DRIVERS (server/lib/drivers/)                    MECHANISM  │
+│  syntax/, input/, session/, lsp/, vfs/, command/            │
 │  → Provide services, define trait contracts                 │
 ├─────────────────────────────────────────────────────────────┤
-│  KERNEL (lib/kernel/)                           MECHANISM   │
+│  KERNEL (server/lib/kernel/)                      MECHANISM  │
 │  mm/ (Buffer, Position), ipc/ (EventBus), core/ (Mode)      │
 │  block/ (UndoTree), sched/ (Runtime), api/ (public API)     │
 │  → Core primitives, WHAT can be done                        │
@@ -259,10 +308,11 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 ```
 
 **Crate Structure:**
-- `reovim` (runner/) - Main binary, server/client modes, module loading
-- `reovim-kernel` (lib/kernel/) - Core mechanisms: buffers, events, modes, undo
-- `reovim-driver-*` (lib/drivers/) - Services: syntax, input, display, LSP, network
-- `reovim-module-*` (modules/) - Policy modules: keymap, operators, layout
+- `reovim-app` (apps/bin/) - Main binary, server/client modes, module loading
+- `reovim-kernel` (server/lib/kernel/) - Core mechanisms: buffers, events, modes, undo
+- `reovim-driver-*` (server/lib/drivers/) - Services: syntax, input, session, LSP, network
+- `reovim-module-*` (server/modules/) - Policy modules: keymap, operators, layout
+- `reovim-client-*` (clients/) - Client applications: TUI, CLI, Web
 
 **Key Design Principles:**
 - **Mechanism vs Policy** - Kernel provides WHAT (traits), modules decide HOW (behavior)
@@ -309,7 +359,7 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Troubleshooting](./docs/user-guide/troubleshooting.md) - Common issues
 
 **Archive (v0.8.x legacy):**
-- [Legacy Documentation](./archive/docs/) - Pre-v0.9.0 documentation
+- [Legacy Documentation](./archive/pre_kernel/docs/) - Pre-v0.9.0 documentation
 
 ## License
 
