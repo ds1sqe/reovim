@@ -34,6 +34,7 @@ use {
     },
     reovim_driver_module_config::{BuiltinManifest, ModulesConfig},
     reovim_driver_module_loader::{handle::ModuleHandle, loader::ModuleLoader},
+    reovim_driver_session::LeaderKeyProvider,
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
@@ -449,13 +450,21 @@ fn extract_registries(
     } else {
         keymap_registry.set_default_policy(Arc::new(EagerLookupPolicy));
     }
+    // #700: Retrieve leader key provider for <leader> expansion before parsing.
+    let leader_provider = services.get::<LeaderKeyProvider>();
+
     if let Some(store) = services.get::<KeybindingStore>() {
         let mut wired = 0usize;
         for binding in store.take_keybindings() {
             if !binding.enabled {
                 continue;
             }
-            let Some(keys) = KeySequence::parse(binding.keys) else {
+            // #700: Expand <leader> tokens before KeySequence::parse().
+            let expanded_keys = match leader_provider {
+                Some(ref provider) => provider.expand(binding.keys),
+                None => binding.keys.to_owned(),
+            };
+            let Some(keys) = KeySequence::parse(&expanded_keys) else {
                 tracing::warn!(keys = binding.keys, "Failed to parse keybinding");
                 continue;
             };

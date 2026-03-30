@@ -99,6 +99,7 @@ mod extension;
 mod handler_key;
 mod handler_registry;
 mod initial_mode;
+mod leader_key;
 mod mode;
 mod notification_drain;
 mod notification_queue;
@@ -116,6 +117,9 @@ pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHan
 
 // Initial mode provider for cross-personality support (#623)
 pub use initial_mode::InitialModeProvider;
+
+// Leader key provider for personality-aware binding expansion (#700)
+pub use leader_key::{LeaderKeyProvider, expand_leader};
 
 // Session extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};

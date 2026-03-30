@@ -15,6 +15,7 @@
 pub mod bridge;
 pub mod commands;
 pub mod ids;
+mod keybinding;
 pub mod modes;
 pub mod resolver;
 pub mod state;
@@ -106,7 +107,10 @@ impl Module for ExplorerModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
+        // Normal-mode bindings from personality adapter (#700)
+        let mut bindings = keybinding::all();
+        // Explorer-mode bindings (module-owned, already qualified)
+        bindings.extend([
             // Browse mode: toggle off
             KeybindingRegistration::new("<Space>e", ids::TOGGLE)
                 .with_modes(&["explorer:EXPLORER"])
@@ -196,7 +200,8 @@ impl Module for ExplorerModule {
             KeybindingRegistration::new("<BS>", ids::INPUT_BACKSPACE)
                 .with_modes(&["explorer:EXPLORER_INPUT"])
                 .with_description("Delete character"),
-        ]
+        ]);
+        bindings
     }
 }
 

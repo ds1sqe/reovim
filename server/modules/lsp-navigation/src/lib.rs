@@ -10,6 +10,7 @@ pub mod commands;
 pub mod hover_bridge;
 pub mod hover_state;
 pub mod ids;
+mod keybinding;
 mod picker;
 pub mod signature_help_bridge;
 pub mod signature_help_state;
@@ -18,9 +19,12 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::CommandHandlerStore,
+    reovim_driver_input::KeybindingStore,
     reovim_driver_picker::PickerRegistry,
     reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_kernel::api::v1::{
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    },
 };
 
 use picker::LspLocationPicker;
@@ -84,6 +88,10 @@ impl Module for LspNavigationModule {
         // Ensure TickSchedulerHandle exists for hover tick (#662).
         let _ = ctx.services.get_or_create::<TickSchedulerHandle>();
 
+        // #700: Register keybindings from personality adapters
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 
@@ -93,6 +101,11 @@ impl Module for LspNavigationModule {
 
     fn extension_kinds(&self) -> &[&'static str] {
         &[KIND_HOVER, KIND_SIGNATURE_HELP]
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn keybindings(&self) -> Vec<KeybindingRegistration> {
+        keybinding::all()
     }
 }
 

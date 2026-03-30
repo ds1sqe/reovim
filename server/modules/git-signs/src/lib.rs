@@ -20,6 +20,7 @@ use {
 pub mod commands;
 mod hunk;
 pub mod ids;
+mod keybinding;
 pub mod navigation;
 mod source;
 
@@ -88,38 +89,7 @@ impl Module for GitSignsModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            // Hunk navigation
-            KeybindingRegistration::new("]h", ids::NEXT_HUNK)
-                .with_modes(&["normal"])
-                .with_description("Next git hunk"),
-            KeybindingRegistration::new("[h", ids::PREV_HUNK)
-                .with_modes(&["normal"])
-                .with_description("Previous git hunk"),
-            // Hunk operations
-            KeybindingRegistration::new("<leader>ghs", ids::STAGE_HUNK)
-                .with_modes(&["normal"])
-                .with_description("Stage hunk"),
-            KeybindingRegistration::new("<leader>ghr", ids::RESET_HUNK)
-                .with_modes(&["normal"])
-                .with_description("Reset hunk"),
-            KeybindingRegistration::new("<leader>ghS", ids::STAGE_BUFFER)
-                .with_modes(&["normal"])
-                .with_description("Stage buffer"),
-            KeybindingRegistration::new("<leader>ghR", ids::RESET_BUFFER)
-                .with_modes(&["normal"])
-                .with_description("Reset buffer"),
-            KeybindingRegistration::new("<leader>ghu", ids::UNSTAGE_FILE)
-                .with_modes(&["normal"])
-                .with_description("Unstage file"),
-            // Preview
-            KeybindingRegistration::new("<leader>ghp", ids::PREVIEW_HUNK)
-                .with_modes(&["normal"])
-                .with_description("Preview hunk"),
-            KeybindingRegistration::new("<leader>ghd", ids::DIFF_THIS)
-                .with_modes(&["normal"])
-                .with_description("Diff this file"),
-        ]
+        keybinding::all()
     }
 }
 

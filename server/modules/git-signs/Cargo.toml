@@ -13,10 +13,12 @@ categories.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
+default = ["vim-keybindings"]
+vim-keybindings = ["dep:reovim-module-vim"]
 dynamic = []
 
 [dependencies]
+reovim-module-vim = { workspace = true, optional = true }
 reovim-kernel = { workspace = true }
 reovim-driver-git = { workspace = true }
 reovim-driver-annotation = { workspace = true }

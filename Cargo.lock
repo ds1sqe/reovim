@@ -2711,6 +2711,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "serde_json",
 ]
 
@@ -2865,11 +2866,13 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-completion",
+ "reovim-driver-input",
  "reovim-driver-lsp",
  "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "serde_json",
  "tokio",
  "toml 0.8.23",
@@ -2901,6 +2904,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "serde_json",
  "tracing",
 ]
@@ -2944,6 +2948,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "reovim-protocol",
  "reovim-testing",
  "serde_json",
@@ -2999,6 +3004,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "tracing",
 ]
 
@@ -3034,10 +3040,12 @@ version = "0.14.3"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
+ "reovim-driver-input",
  "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "serde_json",
  "tracing",
 ]
@@ -3096,6 +3104,7 @@ dependencies = [
  "lsp-types",
  "reovim-driver-command",
  "reovim-driver-command-types",
+ "reovim-driver-input",
  "reovim-driver-lsp",
  "reovim-driver-picker",
  "reovim-driver-session",
@@ -3104,6 +3113,7 @@ dependencies = [
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-notification",
+ "reovim-module-vim",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3132,6 +3142,7 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "serde_json",
 ]
 
@@ -3226,6 +3237,7 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "reovim-testing",
  "serde",
  "serde_json",
@@ -3279,6 +3291,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-module-vim",
  "reovim-testing",
  "serde",
  "serde_json",

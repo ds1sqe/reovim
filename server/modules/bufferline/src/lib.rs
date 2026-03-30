@@ -10,6 +10,7 @@
 pub mod bridge;
 pub mod commands;
 pub mod ids;
+mod keybinding;
 pub mod state;
 
 use {
@@ -86,17 +87,7 @@ impl Module for BufferlineModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            KeybindingRegistration::new("<leader>bp", ids::PIN_BUFFER)
-                .with_modes(&["normal"])
-                .with_description("Toggle buffer pin"),
-            KeybindingRegistration::new("<leader>bu", ids::UNPIN_BUFFER)
-                .with_modes(&["normal"])
-                .with_description("Unpin buffer"),
-            KeybindingRegistration::new("<leader>bc", ids::CLOSE_BUFFER)
-                .with_modes(&["normal"])
-                .with_description("Close buffer"),
-        ]
+        keybinding::all()
     }
 }
 

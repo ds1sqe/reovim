@@ -49,7 +49,7 @@ use {
         ModeProviderRegistry, ResolverRegistry,
     },
     reovim_driver_manifest::ModeBridgeStore,
-    reovim_driver_session::{InitialModeProvider, bridges::BridgeProvider},
+    reovim_driver_session::{InitialModeProvider, LeaderKeyProvider, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,
@@ -248,6 +248,12 @@ impl Module for VimModule {
         let initial_mode_provider = ctx.services.get_or_create::<InitialModeProvider>();
         if let Some(prev) = initial_mode_provider.set(ModeId::new(VIM_MODULE, "normal")) {
             tracing::warn!(previous = %prev, "VimModule overrode existing initial mode");
+        }
+
+        // #700: Register leader key for personality-aware binding expansion
+        let leader_provider = ctx.services.get_or_create::<LeaderKeyProvider>();
+        if let Some(prev) = leader_provider.set("<Space>") {
+            tracing::warn!(previous = prev, "VimModule overrode existing leader key");
         }
 
         // Epic #417 Part 3: Self-register commands

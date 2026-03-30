@@ -32,6 +32,7 @@ pub mod engine;
 mod expander;
 pub mod ids;
 pub mod inheritance;
+mod keybinding;
 pub mod loader;
 pub mod loader_friendly;
 pub mod parser;
@@ -219,7 +220,10 @@ impl Module for SnippetModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
+        // Vim-mode bindings from personality adapter (#700)
+        let mut bindings = keybinding::all();
+        // Snippet-mode bindings (module-owned, already qualified)
+        bindings.extend([
             // Snippet navigating mode: tab stop navigation
             KeybindingRegistration::new("<Tab>", ids::JUMP_NEXT)
                 .with_modes(&["snippet:navigating"])
@@ -235,7 +239,8 @@ impl Module for SnippetModule {
                 .with_modes(&["snippet:navigating"])
                 .with_description("Cancel snippet navigation")
                 .with_category("snippet"),
-        ]
+        ]);
+        bindings
     }
 }
 

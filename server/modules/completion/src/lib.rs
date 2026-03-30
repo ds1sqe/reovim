@@ -15,6 +15,7 @@ pub mod bridge;
 pub mod buffer_words;
 pub mod commands;
 pub mod ids;
+mod keybinding;
 pub mod lsp_source;
 pub mod notification_queue;
 pub mod state;
@@ -26,11 +27,12 @@ const KIND: &str = "completion";
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_completion::CompletionSourceRegistry,
+    reovim_driver_input::KeybindingStore,
     reovim_driver_module_config::ModuleConfigStore,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
-        Module, ModuleContext, ModuleError, ModuleId, OptionConstraint, OptionSpec, OptionValue,
-        ProbeResult, Version,
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
+        OptionSpec, OptionValue, ProbeResult, Version,
     },
     std::sync::Arc,
 };
@@ -111,6 +113,10 @@ impl Module for CompletionModule {
         // #610: Apply user config overrides from modules.toml
         apply_completion_config(ctx);
 
+        // #700: Register keybindings from personality adapters
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 
@@ -124,6 +130,11 @@ impl Module for CompletionModule {
 
     fn extension_kinds(&self) -> &[&'static str] {
         &[KIND]
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn keybindings(&self) -> Vec<KeybindingRegistration> {
+        keybinding::all()
     }
 }
 

@@ -10,13 +10,17 @@
 
 use {
     reovim_driver_command::CommandHandlerStore,
+    reovim_driver_input::KeybindingStore,
     reovim_driver_session::bridges::BridgeProvider,
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_kernel::api::v1::{
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    },
 };
 
 pub mod bridge;
 pub mod commands;
 pub mod ids;
+mod keybinding;
 pub mod state;
 
 pub use state::{HighlightKind, HighlightRange, IlluminateState};
@@ -70,11 +74,20 @@ impl Module for IlluminateModule {
             command_store.add(handler);
         }
 
+        // #700: Register keybindings from personality adapters
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn keybindings(&self) -> Vec<KeybindingRegistration> {
+        keybinding::all()
     }
 }
 
