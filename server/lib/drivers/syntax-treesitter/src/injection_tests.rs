@@ -166,7 +166,6 @@ fn test_injection_manager_highlight_injection_start_at_end_of_range() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn test_injection_manager_dynamic_child_creation() {
     let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
     let mut manager = InjectionManager::with_factory(factory, 0);
@@ -186,7 +185,6 @@ fn test_injection_manager_dynamic_child_creation() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn test_injection_manager_reuses_cached_child() {
     let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
     let mut manager = InjectionManager::with_factory(factory, 0);
@@ -261,6 +259,20 @@ fn test_injection_manager_depth_propagation_to_children() {
         "test",
     );
     assert_eq!(manager_near_max.child_count(), 1);
+}
+
+#[test]
+fn test_injection_manager_propagates_parent_language() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let content = "fn main() { let x = 1; }";
+    let injection = Injection::new("rust", 0..24, 0, 0, 0, 24);
+
+    // Pass "markdown" as parent language — child driver should inherit it
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len(), "markdown");
+    assert_eq!(manager.child_count(), 1);
+    assert!(manager.has_child("rust"));
 }
 
 #[test]

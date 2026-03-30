@@ -1189,3 +1189,26 @@ fn test_textobject_range_unknown_capture() {
     let range = driver.textobject_range(TextObjectKind::Class, TextObjectScope::Inner, 0, 5);
     assert!(range.is_none(), "undefined capture should return None");
 }
+
+#[test]
+fn test_set_default_injection_language() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+    let mut driver =
+        TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+
+    assert!(driver.default_injection_language.is_none());
+
+    driver.set_default_injection_language("rust");
+    assert_eq!(
+        driver.default_injection_language.as_deref(),
+        Some("rust")
+    );
+
+    driver.set_default_injection_language("python");
+    assert_eq!(
+        driver.default_injection_language.as_deref(),
+        Some("python")
+    );
+}

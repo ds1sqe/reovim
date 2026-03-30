@@ -286,7 +286,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  APPLICATION (apps/bin/, clients/)                           │
+│  APPLICATION (apps/bin/, clients/)                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Server    │  │   Clients   │  │   Event Loop        │  │
 │  │  (gRPC/TCP) │  │(TUI/CLI/Web)│  │   Module Loader     │  │
@@ -296,11 +296,11 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  Keymap, Operators, Layout, Options, Mode-Manager           │
 │  → Decide HOW things behave (keybindings, defaults)         │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (server/lib/drivers/)                    MECHANISM  │
+│  DRIVERS (server/lib/drivers/)                    MECHANISM │
 │  syntax/, input/, session/, lsp/, vfs/, command/            │
 │  → Provide services, define trait contracts                 │
 ├─────────────────────────────────────────────────────────────┤
-│  KERNEL (server/lib/kernel/)                      MECHANISM  │
+│  KERNEL (server/lib/kernel/)                      MECHANISM │
 │  mm/ (Buffer, Position), ipc/ (EventBus), core/ (Mode)      │
 │  block/ (UndoTree), sched/ (Runtime), api/ (public API)     │
 │  → Core primitives, WHAT can be done                        │
