@@ -28,6 +28,11 @@ pub struct ParsedCmdline {
 ///
 /// Grammar: `[name][!] [arg1 arg2 ...]`
 ///
+/// Command names are alphabetic. Arguments start at the first non-alpha
+/// character after the name (or at whitespace). This allows vim-style
+/// commands like `:s/pat/rep/` where there is no space between the
+/// command name and arguments.
+///
 /// Returns `None` for empty or whitespace-only input.
 ///
 /// # Examples
@@ -47,6 +52,10 @@ pub struct ParsedCmdline {
 /// assert!(parsed.args.is_empty());
 /// assert!(parsed.raw_args.is_empty());
 ///
+/// let parsed = parse_cmdline("s/foo/bar/g").unwrap();
+/// assert_eq!(parsed.name, "s");
+/// assert_eq!(parsed.raw_args, "/foo/bar/g");
+///
 /// assert!(parse_cmdline("").is_none());
 /// ```
 #[must_use]
@@ -56,20 +65,22 @@ pub fn parse_cmdline(input: &str) -> Option<ParsedCmdline> {
         return None;
     }
 
-    // Split at first whitespace: command part vs args part
-    let (cmd_part, args_part) =
-        input
-            .find(|c: char| c.is_whitespace())
-            .map_or((input, ""), |space_idx| {
-                let cmd = &input[..space_idx];
-                let args = input[space_idx..].trim();
-                (cmd, args)
-            });
+    // Find where the command name ends. Ex-command names are alphabetic.
+    // The name ends at the first character that is not a letter, giving us
+    // correct parsing for `:s/pat/rep/` (name="s", args="/pat/rep/").
+    let name_end = input
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(input.len());
 
-    // Extract bang if present (e.g., "q!" -> ("q", true))
-    let (name, bang) = cmd_part
-        .strip_suffix('!')
-        .map_or((cmd_part, false), |stripped| (stripped, true));
+    let cmd_part = &input[..name_end];
+    let rest = &input[name_end..];
+
+    // Extract bang if the rest starts with '!'
+    let (bang, args_part) = rest
+        .strip_prefix('!')
+        .map_or_else(|| (false, rest.trim_start()), |after| (true, after.trim_start()));
+
+    let name = cmd_part;
 
     let args = if args_part.is_empty() {
         vec![]

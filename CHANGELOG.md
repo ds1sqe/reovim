@@ -36,3 +36,4 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **hover**: fix crash on multi-byte characters (box-drawing `─` from markdown horizontal rules) — truncation now uses character-aware slicing instead of byte offsets (#692)
 - **hover**: `display_width()` returns character count instead of byte length for correct popup sizing (#692)
 - **lsp**: stabilize flaky diagnostic count assertion — relaxed to `>= 1` with at least one error check (#692)
+- **cmdline**: `:s/pattern/replacement/` now dispatches correctly — ex-command parser splits name at first non-alpha character instead of whitespace (#705)
