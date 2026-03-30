@@ -167,12 +167,8 @@ fn get_buffer_scope_returns_buffer_local_over_global() {
     let buf = BufferId::new();
     reg.set("expandtab", OptionValue::Bool(true), OptionScopeId::Global)
         .unwrap();
-    reg.set(
-        "expandtab",
-        OptionValue::Bool(false),
-        OptionScopeId::Buffer(buf),
-    )
-    .unwrap();
+    reg.set("expandtab", OptionValue::Bool(false), OptionScopeId::Buffer(buf))
+        .unwrap();
 
     // Buffer-local wins
     let val = reg.get("expandtab", OptionScopeId::Buffer(buf));
@@ -201,12 +197,8 @@ fn get_window_scope_returns_window_local_over_global() {
     let win = WindowId::new();
     reg.set("number", OptionValue::Bool(true), OptionScopeId::Global)
         .unwrap();
-    reg.set(
-        "number",
-        OptionValue::Bool(false),
-        OptionScopeId::Window(win),
-    )
-    .unwrap();
+    reg.set("number", OptionValue::Bool(false), OptionScopeId::Window(win))
+        .unwrap();
 
     let val = reg.get("number", OptionScopeId::Window(win));
     assert_eq!(val, Some(OptionValue::Bool(false)));
@@ -247,10 +239,7 @@ fn get_for_buffer_shortcut() {
     let reg = OptionRegistry::new();
     reg.register(make_buffer_bool_spec("expandtab")).unwrap();
     let buf = BufferId::new();
-    assert_eq!(
-        reg.get_for_buffer("expandtab", buf),
-        Some(OptionValue::Bool(false))
-    );
+    assert_eq!(reg.get_for_buffer("expandtab", buf), Some(OptionValue::Bool(false)));
 }
 
 #[test]
@@ -258,10 +247,7 @@ fn get_for_window_shortcut() {
     let reg = OptionRegistry::new();
     reg.register(make_window_bool_spec("number")).unwrap();
     let win = WindowId::new();
-    assert_eq!(
-        reg.get_for_window("number", win),
-        Some(OptionValue::Bool(false))
-    );
+    assert_eq!(reg.get_for_window("number", win), Some(OptionValue::Bool(false)));
 }
 
 // =========================================================================
@@ -301,10 +287,7 @@ fn set_type_mismatch_errors() {
 
     let result = reg.set("wrap", OptionValue::Integer(42), OptionScopeId::Global);
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        OptionError::TypeMismatch { .. }
-    ));
+    assert!(matches!(result.unwrap_err(), OptionError::TypeMismatch { .. }));
 }
 
 #[test]
@@ -316,10 +299,7 @@ fn set_scope_mismatch_buffer_for_global_only() {
     let buf = BufferId::new();
     let result = reg.set("wrap", OptionValue::Bool(true), OptionScopeId::Buffer(buf));
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        OptionError::ScopeMismatch { .. }
-    ));
+    assert!(matches!(result.unwrap_err(), OptionError::ScopeMismatch { .. }));
 }
 
 #[test]
@@ -330,10 +310,7 @@ fn set_scope_mismatch_window_for_global_only() {
     let win = WindowId::new();
     let result = reg.set("wrap", OptionValue::Bool(true), OptionScopeId::Window(win));
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        OptionError::ScopeMismatch { .. }
-    ));
+    assert!(matches!(result.unwrap_err(), OptionError::ScopeMismatch { .. }));
 }
 
 #[test]
@@ -352,10 +329,7 @@ fn set_for_buffer_shortcut() {
     let buf = BufferId::new();
     let result = reg.set_for_buffer("expandtab", OptionValue::Bool(true), buf);
     assert!(result.is_ok());
-    assert_eq!(
-        reg.get_for_buffer("expandtab", buf),
-        Some(OptionValue::Bool(true))
-    );
+    assert_eq!(reg.get_for_buffer("expandtab", buf), Some(OptionValue::Bool(true)));
 }
 
 #[test]
@@ -365,10 +339,7 @@ fn set_for_window_shortcut() {
     let win = WindowId::new();
     let result = reg.set_for_window("number", OptionValue::Bool(true), win);
     assert!(result.is_ok());
-    assert_eq!(
-        reg.get_for_window("number", win),
-        Some(OptionValue::Bool(true))
-    );
+    assert_eq!(reg.get_for_window("number", win), Some(OptionValue::Bool(true)));
 }
 
 #[test]
@@ -408,9 +379,7 @@ fn reset_buffer() {
     reg.set_for_buffer("expandtab", OptionValue::Bool(true), buf)
         .unwrap();
 
-    let removed = reg
-        .reset("expandtab", OptionScopeId::Buffer(buf))
-        .unwrap();
+    let removed = reg.reset("expandtab", OptionScopeId::Buffer(buf)).unwrap();
     assert_eq!(removed, Some(OptionValue::Bool(true)));
 }
 
@@ -466,14 +435,8 @@ fn clear_buffer_removes_all_values_for_buffer() {
     reg.clear_buffer(buf);
 
     // Both should be back to defaults (no buffer-local overrides)
-    assert_eq!(
-        reg.get_for_buffer("expandtab", buf),
-        Some(OptionValue::Bool(false))
-    );
-    assert_eq!(
-        reg.get_for_buffer("tabwidth", buf),
-        Some(OptionValue::Integer(4))
-    );
+    assert_eq!(reg.get_for_buffer("expandtab", buf), Some(OptionValue::Bool(false)));
+    assert_eq!(reg.get_for_buffer("tabwidth", buf), Some(OptionValue::Integer(4)));
 }
 
 #[test]
@@ -487,10 +450,7 @@ fn clear_window_removes_all_values_for_window() {
 
     reg.clear_window(win);
 
-    assert_eq!(
-        reg.get_for_window("number", win),
-        Some(OptionValue::Bool(false))
-    );
+    assert_eq!(reg.get_for_window("number", win), Some(OptionValue::Bool(false)));
 }
 
 // =========================================================================
@@ -525,10 +485,7 @@ fn toggle_non_bool_errors() {
 
     let result = reg.toggle("tabwidth", OptionScopeId::Global);
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        OptionError::TypeMismatch { .. }
-    ));
+    assert!(matches!(result.unwrap_err(), OptionError::TypeMismatch { .. }));
 }
 
 // =========================================================================
@@ -680,8 +637,7 @@ fn spec_validate_wrong_type() {
 
 #[test]
 fn spec_validate_constraint() {
-    let spec = make_int_spec("tabwidth")
-        .with_constraint(OptionConstraint::range(1, 32));
+    let spec = make_int_spec("tabwidth").with_constraint(OptionConstraint::range(1, 32));
     assert!(spec.validate(&OptionValue::Integer(4)).is_ok());
     assert!(spec.validate(&OptionValue::Integer(0)).is_err());
     assert!(spec.validate(&OptionValue::Integer(33)).is_err());

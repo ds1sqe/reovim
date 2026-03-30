@@ -10,3 +10,10 @@
   (info_string
     (language) @injection.language)
   (code_fence_content) @injection.content)
+
+; Bare fenced code blocks (no language annotation)
+; No @injection.language capture — the driver falls back to the parent's
+; language via `default_injection_language` (e.g., bare ``` in Rust doc
+; comments defaults to Rust).
+(fenced_code_block
+  (code_fence_content) @injection.content)

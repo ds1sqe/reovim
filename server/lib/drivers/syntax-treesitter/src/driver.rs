@@ -120,6 +120,12 @@ pub struct TreeSitterDriver {
 
     /// Last parse error (if any)
     parse_error: RwLock<Option<String>>,
+
+    /// Default injection language for bare code blocks (no language tag).
+    ///
+    /// Set by the injection pipeline to the parent driver's language ID.
+    /// Used as fallback in `injections()` when `@injection.language` is absent.
+    default_injection_language: Option<String>,
 }
 
 impl TreeSitterDriver {
@@ -164,6 +170,7 @@ impl TreeSitterDriver {
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
+            default_injection_language: None,
         })
     }
 
@@ -215,6 +222,7 @@ impl TreeSitterDriver {
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
+            default_injection_language: None,
         })
     }
 
@@ -540,8 +548,12 @@ impl SyntaxDriver for TreeSitterDriver {
 
                 // Get injection highlights from manager
                 let mut manager = manager_mutex.lock();
-                let injection_highlights =
-                    manager.highlight_injections(&injections, &content, byte_range.clone());
+                let injection_highlights = manager.highlight_injections(
+                    &injections,
+                    &content,
+                    byte_range.clone(),
+                    &self.language_id,
+                );
 
                 injection_count = injection_highlights.len();
                 highlights.extend(injection_highlights);
@@ -618,6 +630,11 @@ impl SyntaxDriver for TreeSitterDriver {
             Vec<(std::ops::Range<usize>, u32, u32, u32, u32)>,
         > = std::collections::HashMap::new();
 
+        // Track seen content ranges for dedup (bare fence patterns may match
+        // annotated fences too — skip if already captured with explicit language).
+        let mut seen_ranges: std::collections::HashSet<(usize, usize)> =
+            std::collections::HashSet::new();
+
         // Query injections
         let mut matches = cursor.matches(injections_query, tree.root_node(), content.as_bytes());
         while let Some(match_) = matches.next() {
@@ -647,9 +664,22 @@ impl SyntaxDriver for TreeSitterDriver {
                 }
             }
 
+            // Fallback: use default injection language (parent's language ID)
+            // for bare code blocks with no explicit language tag.
+            if injection_language.is_none() {
+                injection_language.clone_from(&self.default_injection_language);
+            }
+
             // Create injection if we have both content and language
             if let (Some(content_node), Some(language_id)) = (injection_content, injection_language)
             {
+                // Dedup: skip if this content range was already captured by
+                // an earlier (more specific) pattern match.
+                let range_key = (content_node.start_byte(), content_node.end_byte());
+                if !seen_ranges.insert(range_key) {
+                    continue;
+                }
+
                 let start_point = content_node.start_position();
                 let end_point = content_node.end_position();
                 let byte_range = content_node.start_byte()..content_node.end_byte();
@@ -902,8 +932,12 @@ impl SyntaxDriver for TreeSitterDriver {
             if !injections.is_empty() {
                 let content = self.content.read();
                 let mut manager = manager_mutex.lock();
-                let injection_decorations =
-                    manager.decorate_injections(&injections, &content, byte_range);
+                let injection_decorations = manager.decorate_injections(
+                    &injections,
+                    &content,
+                    byte_range,
+                    &self.language_id,
+                );
                 result.extend(injection_decorations);
             }
         }
@@ -926,6 +960,10 @@ impl SyntaxDriver for TreeSitterDriver {
             let mut manager = manager_mutex.lock();
             manager.set_depth(depth);
         }
+    }
+
+    fn set_default_injection_language(&mut self, language: &str) {
+        self.default_injection_language = Some(language.to_owned());
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -1357,6 +1395,7 @@ impl TreeSitterDriverBuilder {
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
+            default_injection_language: None,
         })
     }
 }

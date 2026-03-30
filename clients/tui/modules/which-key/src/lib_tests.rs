@@ -364,7 +364,8 @@ fn render_multiple_categories() {
 fn render_with_empty_prefix() {
     // Empty prefix → no title in border
     let (mut m, clock) = test_module();
-    let payload = r#"{"active":true,"prefix":"","hints":[{"key":"g","command":"goto","category":"motion"}]}"#;
+    let payload =
+        r#"{"active":true,"prefix":"","hints":[{"key":"g","command":"goto","category":"motion"}]}"#;
     m.on_notification(payload);
     clock.advance(Duration::from_millis(200));
     m.tick();

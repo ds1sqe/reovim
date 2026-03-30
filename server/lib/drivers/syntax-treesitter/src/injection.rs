@@ -123,7 +123,12 @@ impl InjectionManager {
     ///
     /// Creates child drivers on demand via the factory, configuring each
     /// for recursive injection up to [`MAX_INJECTION_DEPTH`].
-    fn ensure_children(&mut self, injections: &[Injection]) {
+    ///
+    /// `parent_language_id` is the language of the driver that owns this
+    /// manager. It is forwarded to child drivers as the default injection
+    /// language so that bare code blocks (no language tag) inherit the
+    /// parent language.
+    fn ensure_children(&mut self, injections: &[Injection], parent_language_id: &str) {
         if let Some(factory) = &self.factory {
             for injection in injections {
                 if !self.children.contains_key(&injection.language_id)
@@ -134,6 +139,7 @@ impl InjectionManager {
                         driver.set_injection_factory(factory.clone());
                     }
                     driver.set_injection_depth(child_depth);
+                    driver.set_default_injection_language(parent_language_id);
                     self.children.insert(injection.language_id.clone(), driver);
                 }
             }
@@ -153,8 +159,9 @@ impl InjectionManager {
         injections: &[Injection],
         full_content: &str,
         byte_range: Range<usize>,
+        parent_language_id: &str,
     ) -> Vec<Annotation> {
-        self.ensure_children(injections);
+        self.ensure_children(injections, parent_language_id);
 
         let mut all_highlights = Vec::new();
 
@@ -176,15 +183,16 @@ impl InjectionManager {
 
     /// Collect decorations from all injections that overlap the given byte range.
     ///
-    /// Mirrors [`highlight_injections`] but calls `decorations()` on child
+    /// Mirrors [`Self::highlight_injections`] but calls `decorations()` on child
     /// drivers instead of `highlights()`.
     pub fn decorate_injections(
         &mut self,
         injections: &[Injection],
         full_content: &str,
         byte_range: Range<usize>,
+        parent_language_id: &str,
     ) -> Vec<Annotation> {
-        self.ensure_children(injections);
+        self.ensure_children(injections, parent_language_id);
 
         let mut all_decorations = Vec::new();
 

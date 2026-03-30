@@ -164,6 +164,19 @@ pub trait SyntaxDriver: Send + Sync {
     /// No-op. Override for drivers that support injection highlighting.
     fn set_injection_depth(&mut self, _depth: u8) {}
 
+    /// Set the default injection language for bare code blocks.
+    ///
+    /// When a child driver encounters an injection region with no explicit
+    /// language tag (e.g., bare ` ``` ` in Markdown), it falls back to this
+    /// value. The injection pipeline sets this to the parent driver's
+    /// language ID, so bare fences in Rust doc comments default to Rust,
+    /// bare fences in Python docstrings default to Python, etc.
+    ///
+    /// # Default
+    ///
+    /// No-op. Override for drivers that support injection highlighting.
+    fn set_default_injection_language(&mut self, _language: &str) {}
+
     /// Get the enclosing scope hierarchy at a position.
     ///
     /// Returns the scope boundaries (function, class, module, etc.)

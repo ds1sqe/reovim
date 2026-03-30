@@ -6218,8 +6218,7 @@ fn test_jumplist_accessor() {
 
 #[test]
 fn test_jumplist_mut_accessor() {
-    use crate::testing::TestSessionRuntime;
-    use reovim_kernel::api::v1::JumpEntry;
+    use {crate::testing::TestSessionRuntime, reovim_kernel::api::v1::JumpEntry};
 
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {
@@ -6243,10 +6242,7 @@ fn test_kernel_and_registers_accessor() {
         // Kernel is accessible
         assert!(kernel.buffers.count() > 0);
         // Registers are accessible mutably
-        regs.set_by_name(
-            Some('a'),
-            crate::api::RegisterContent::characterwise("test"),
-        );
+        regs.set_by_name(Some('a'), crate::api::RegisterContent::characterwise("test"));
         assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("test"));
         // History is accessible mutably
         assert!(history.is_empty());

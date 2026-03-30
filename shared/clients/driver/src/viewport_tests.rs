@@ -3056,10 +3056,7 @@ fn render_line_content_conceal_with_style_and_unmapped_cols() {
     );
     let text = surface.text_at(0);
     // "ab" + "LINK" + "hi" = "abLINKhi"
-    assert!(
-        text.contains("LINK"),
-        "conceal replacement should appear: {text}"
-    );
+    assert!(text.contains("LINK"), "conceal replacement should appear: {text}");
     assert!(text.contains("ab"), "prefix should remain: {text}");
     assert!(text.contains("hi"), "suffix should remain: {text}");
 }
@@ -3285,7 +3282,17 @@ fn render_positioned_vl_past_content_height() {
         ..empty_ctx()
     };
     // content_height=2, screen_row=1, so only 1 VL fits before reaching content_height
-    let rows = render_positioned_virtual_lines(&mut surface, &ctx, 0, 0, 1, 80, 2, 0, VirtualLinePosition::After);
+    let rows = render_positioned_virtual_lines(
+        &mut surface,
+        &ctx,
+        0,
+        0,
+        1,
+        80,
+        2,
+        0,
+        VirtualLinePosition::After,
+    );
     assert_eq!(rows, 1, "only 1 VL should fit within remaining viewport height");
 }
 

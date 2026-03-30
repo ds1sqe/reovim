@@ -1632,7 +1632,7 @@ fn rect_intersect_no_overlap_both() {
 #[test]
 fn rect_contains_point_inside() {
     let r = Rect::new(5, 5, 10, 10);
-    assert!(r.contains_point(5, 5));   // top-left corner
+    assert!(r.contains_point(5, 5)); // top-left corner
     assert!(r.contains_point(10, 10)); // interior
     assert!(r.contains_point(14, 14)); // just inside
 }
@@ -1743,12 +1743,8 @@ fn style_builder_chained() {
 #[test]
 fn client_module_probe_id_truncated_at_64() {
     let long_id = "a".repeat(100);
-    let probe = ClientModuleProbe::new(
-        &long_id,
-        "name",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    );
+    let probe =
+        ClientModuleProbe::new(&long_id, "name", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION);
     let id = probe.id_str();
     assert_eq!(id.len(), 64);
 }
@@ -1756,50 +1752,34 @@ fn client_module_probe_id_truncated_at_64() {
 #[test]
 fn client_module_probe_name_truncated_at_128() {
     let long_name = "b".repeat(200);
-    let probe = ClientModuleProbe::new(
-        "id",
-        &long_name,
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    );
+    let probe =
+        ClientModuleProbe::new("id", &long_name, Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION);
     let name = probe.name_str();
     assert_eq!(name.len(), 128);
 }
 
 #[test]
 fn client_module_probe_with_required_dep_index_out_of_range() {
-    let probe = ClientModuleProbe::new(
-        "id",
-        "name",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_required_dep(8, "dep");
+    let probe =
+        ClientModuleProbe::new("id", "name", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_required_dep(8, "dep");
     assert!(probe.required_deps().is_empty());
 }
 
 #[test]
 fn client_module_probe_with_optional_dep_index_out_of_range() {
-    let probe = ClientModuleProbe::new(
-        "id",
-        "name",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_optional_dep(8, "dep");
+    let probe =
+        ClientModuleProbe::new("id", "name", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_optional_dep(8, "dep");
     assert!(probe.optional_deps().is_empty());
 }
 
 #[test]
 fn client_module_probe_with_required_dep_long_name() {
     let long_dep = "x".repeat(100);
-    let probe = ClientModuleProbe::new(
-        "id",
-        "name",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_required_dep(0, &long_dep);
+    let probe =
+        ClientModuleProbe::new("id", "name", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_required_dep(0, &long_dep);
     let deps = probe.required_deps();
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].len(), 64);
@@ -1808,13 +1788,9 @@ fn client_module_probe_with_required_dep_long_name() {
 #[test]
 fn client_module_probe_with_optional_dep_long_name() {
     let long_dep = "y".repeat(100);
-    let probe = ClientModuleProbe::new(
-        "id",
-        "name",
-        Version::new(1, 0, 0),
-        CLIENT_MODULE_API_VERSION,
-    )
-    .with_optional_dep(0, &long_dep);
+    let probe =
+        ClientModuleProbe::new("id", "name", Version::new(1, 0, 0), CLIENT_MODULE_API_VERSION)
+            .with_optional_dep(0, &long_dep);
     let deps = probe.optional_deps();
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].len(), 64);
