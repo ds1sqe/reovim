@@ -666,8 +666,6 @@ impl SyntaxDriver for TreeSitterDriver {
 
             // Fallback: use default injection language (parent's language ID)
             // for bare code blocks with no explicit language tag.
-            // Covered by e2e_bare_fence integration test (requires real markdown queries).
-            #[cfg_attr(coverage_nightly, coverage(off))]
             if injection_language.is_none() {
                 injection_language.clone_from(&self.default_injection_language);
             }
@@ -677,9 +675,7 @@ impl SyntaxDriver for TreeSitterDriver {
             {
                 // Dedup: skip if this content range was already captured by
                 // an earlier (more specific) pattern match.
-                // Covered by e2e_bare_fence integration test (requires duplicate query patterns).
                 let range_key = (content_node.start_byte(), content_node.end_byte());
-                #[cfg_attr(coverage_nightly, coverage(off))]
                 if !seen_ranges.insert(range_key) {
                     continue;
                 }
