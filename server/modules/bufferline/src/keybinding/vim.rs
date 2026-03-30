@@ -20,6 +20,16 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
         KeybindingRegistration::new("<leader>bc", ids::CLOSE_BUFFER)
             .with_modes(&["vim:normal"])
             .with_description("Close buffer"),
+        KeybindingRegistration::new("<leader>bd", ids::CLOSE_BUFFER)
+            .with_modes(&["vim:normal"])
+            .with_description("Delete buffer"),
+        // Buffer navigation — H/L for prev/next (#699)
+        KeybindingRegistration::new("H", ids::PREV_BUFFER)
+            .with_modes(&["vim:normal"])
+            .with_description("Previous buffer"),
+        KeybindingRegistration::new("L", ids::NEXT_BUFFER)
+            .with_modes(&["vim:normal"])
+            .with_description("Next buffer"),
     ]
 }
 

@@ -37,3 +37,6 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **hover**: `display_width()` returns character count instead of byte length for correct popup sizing (#692)
 - **lsp**: stabilize flaky diagnostic count assertion — relaxed to `>= 1` with at least one error check (#692)
 - **cmdline**: `:s/pattern/replacement/` now dispatches correctly — ex-command parser splits name at first non-alpha character instead of whitespace (#705)
+- **bufferline**: `H`/`L` buffer prev/next, `:bnext`/`:bprevious`/`:bd`/`:qa` ex-commands, `<Space>bd` binding (#699)
+- **motions**: screen-high/low relocated from `H`/`L` to `gH`/`gL` (#699)
+- **window**: `<C-h/j/k/l>` direct window focus navigation in normal mode (#699)

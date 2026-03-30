@@ -40,7 +40,7 @@ fn exit_succeeds() {
 fn keybindings_count() {
     let module = BufferlineModule::new();
     let bindings = module.keybindings();
-    assert_eq!(bindings.len(), 3);
+    assert_eq!(bindings.len(), 6);
 }
 
 #[test]

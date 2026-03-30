@@ -14,6 +14,12 @@ pub const UNPIN_BUFFER: CommandId = CommandId::new(MODULE, "unpin");
 /// Close the active buffer.
 pub const CLOSE_BUFFER: CommandId = CommandId::new(MODULE, "close");
 
+/// Switch to the next buffer.
+pub const NEXT_BUFFER: CommandId = CommandId::new(MODULE, "next");
+
+/// Switch to the previous buffer.
+pub const PREV_BUFFER: CommandId = CommandId::new(MODULE, "prev");
+
 #[cfg(test)]
 #[path = "ids_tests.rs"]
 mod tests;
