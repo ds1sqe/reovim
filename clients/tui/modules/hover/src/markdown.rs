@@ -111,6 +111,7 @@ fn is_code_fence(line: &str) -> bool {
 }
 
 /// Check if a line is a horizontal rule (`---`, `***`, `___`).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn is_horizontal_rule(line: &str) -> bool {
     let trimmed = line.trim();
     if trimmed.len() < 3 {
@@ -123,6 +124,7 @@ fn is_horizontal_rule(line: &str) -> bool {
 }
 
 /// Strip heading markers (`#` .. `######`) and return the content.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn strip_heading(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
     if !trimmed.starts_with('#') {

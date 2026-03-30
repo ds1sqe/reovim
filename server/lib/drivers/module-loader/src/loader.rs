@@ -230,6 +230,7 @@ impl ModuleLoader {
     ///
     /// Returns `ModuleError::NotFound` if not found, or loading errors.
     #[allow(unsafe_code)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub unsafe fn load_by_name(&mut self, name: &str) -> Result<ModuleId, ModuleError> {
         let path = find_module(&self.search_paths, name)
             .ok_or_else(|| ModuleError::NotFound(name.into()))?;

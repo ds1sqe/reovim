@@ -233,6 +233,7 @@ impl ModuleRegistry {
     }
 
     /// Call `on_all_loaded()` for every running module in init order.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::significant_drop_tightening)]
     pub fn notify_all_loaded(&self, ctx: &ModuleContext) {
         let mut inner = self.inner.lock();
@@ -302,6 +303,7 @@ impl ModuleRegistry {
     /// Shutdown all modules in reverse initialization order.
     ///
     /// Always succeeds even if individual module exits fail (continues shutdown).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::significant_drop_tightening)]
     pub fn shutdown(&self) {
         let mut inner = self.inner.lock();

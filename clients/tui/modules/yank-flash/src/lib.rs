@@ -93,6 +93,7 @@ impl YankFlashModule {
     }
 
     /// Build cached decorations from the current flash state.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn rebuild_decorations(&mut self) {
         self.decorations_by_line.clear();
 

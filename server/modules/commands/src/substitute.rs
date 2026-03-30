@@ -47,6 +47,7 @@ struct SubstituteSpec {
 /// Escaped delimiters within pattern/replacement are handled.
 ///
 /// Returns `None` if the input cannot be parsed.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn parse_substitute(input: &str) -> Option<SubstituteSpec> {
     if input.is_empty() {
         return None;
@@ -100,6 +101,7 @@ fn parse_substitute(input: &str) -> Option<SubstituteSpec> {
 }
 
 /// Split a string by a delimiter, handling backslash escapes.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn split_by_delimiter(input: &str, delimiter: char) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();

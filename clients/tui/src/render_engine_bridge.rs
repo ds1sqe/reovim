@@ -201,6 +201,7 @@ impl TuiPlatformCapabilities {
 /// Returns `true` (dark) as the default when the variable is absent or
 /// cannot be parsed.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn detect_dark_mode() -> bool {
     std::env::var("COLORFGBG")
         .ok()

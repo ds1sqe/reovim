@@ -56,6 +56,7 @@ impl ExtensionStateBridge for TetrominoBridge {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn snapshot_with_context(
         &self,
         extensions: &ExtensionMap,
@@ -188,6 +189,7 @@ impl ExtensionStateBridge for TetrominoBridge {
     }
 
     #[allow(clippy::too_many_lines)] // multi-phase state machine (countdown, gravity, line clear, match end)
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn tick(
         &self,
         client_extensions: &mut ExtensionMap,

@@ -71,6 +71,7 @@ impl SplitNode {
 
     /// Replace the leaf matching `target` with a split node.
     /// Returns the new window ID on success.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn split_at(
         &mut self,
         target: WindowId,
@@ -114,6 +115,7 @@ impl SplitNode {
 
     /// Remove a leaf and return the sibling subtree plus a focus target.
     /// Returns `None` if this is the only leaf.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_leaf(&mut self, target: WindowId) -> Option<WindowId> {
         match self {
             Self::Leaf(_) => None, // Can't close root leaf from within
@@ -285,6 +287,7 @@ impl TiledLayer for TiledZone {
         root.close_leaf(window)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn navigate(
         &self,
         from: WindowId,

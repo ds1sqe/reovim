@@ -162,6 +162,7 @@ impl FileTree {
     /// # Errors
     ///
     /// Returns `VfsError` if the directory's children cannot be loaded.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn expand(&mut self, path: &Path, vfs: &dyn VfsDriver) -> Result<(), VfsError> {
         if let Some(node) = self.get_node_mut(path)
             && node.is_dir()

@@ -68,6 +68,7 @@ impl InstalledModules {
     /// # Errors
     ///
     /// Returns an error for IO errors (other than not-found) or invalid JSON.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn load(path: &std::path::Path) -> Result<Self, String> {
         match std::fs::read_to_string(path) {
             Ok(contents) => Self::parse(&contents),

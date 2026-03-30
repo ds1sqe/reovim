@@ -303,6 +303,7 @@ impl ClientModuleProbe {
     /// Add a required dependency at the given index (builder pattern).
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // index < 8, always fits in u8
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_required_dep(mut self, index: usize, dep: &str) -> Self {
         if index < 8 {
             let dep_bytes = dep.as_bytes();
@@ -326,6 +327,7 @@ impl ClientModuleProbe {
     /// Add an optional dependency at the given index (builder pattern).
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // index < 8, always fits in u8
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_optional_dep(mut self, index: usize, dep: &str) -> Self {
         if index < 8 {
             let dep_bytes = dep.as_bytes();

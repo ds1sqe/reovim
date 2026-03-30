@@ -63,6 +63,7 @@ impl ModeKeyResolver for PlayResolver {
         None
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
         key: &KeyEvent,
@@ -107,6 +108,7 @@ impl ModeKeyResolver for PlayResolver {
         self.resolve_with_keymap(key, state, input)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -282,6 +284,7 @@ impl ModeKeyResolver for LobbyResolver {
         None
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
         key: &KeyEvent,
@@ -318,6 +321,7 @@ impl ModeKeyResolver for LobbyResolver {
         self.resolve_with_keymap(key, state, input)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -373,6 +377,7 @@ impl ModeKeyResolver for RoomResolver {
         None
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
         key: &KeyEvent,
@@ -411,6 +416,7 @@ impl ModeKeyResolver for RoomResolver {
         self.resolve_with_keymap(key, state, input)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,

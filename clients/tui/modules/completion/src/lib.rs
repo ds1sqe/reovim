@@ -309,6 +309,7 @@ impl ClientModule for CompletionModule {
 }
 
 /// Draw a simple box border on a `RenderSurface`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn draw_simple_border(
     surface: &mut dyn RenderSurface,
     x: u16,

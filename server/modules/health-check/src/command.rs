@@ -42,6 +42,7 @@ impl Command for CheckHealthCommand {
 }
 
 impl CommandHandler for CheckHealthCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let sections = diagnostics::collect_all(runtime.kernel());
         let report = diagnostics::format_report(&sections);

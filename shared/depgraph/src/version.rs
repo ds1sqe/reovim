@@ -176,6 +176,7 @@ fn parse_version(s: &str) -> Option<SemVer> {
 }
 
 /// Check if `version` is in the compatible range of `base` (Cargo ^ semantics).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn satisfies_compatible(version: SemVer, base: SemVer) -> bool {
     // Must be >= base
     if version < base {

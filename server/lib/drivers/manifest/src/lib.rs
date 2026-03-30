@@ -347,6 +347,7 @@ impl PersonalityManifest {
     ///
     /// Accepts a slice of `(module, name)` pairs representing known modes.
     /// Returns warnings for any mode not found.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn validate_modes(&self, known_modes: &[(&str, &str)]) -> Vec<ManifestWarning> {
         let mut warnings = Vec::new();

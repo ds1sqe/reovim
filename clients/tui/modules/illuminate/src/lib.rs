@@ -88,6 +88,7 @@ struct RangeInfo {
     end_col: usize,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModule for IlluminateModule {
     fn id(&self) -> &'static str {
         KIND

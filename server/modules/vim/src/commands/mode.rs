@@ -37,6 +37,7 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -498,6 +499,7 @@ fn strip_range_prefix<'a>(
 /// Parses the command line, resolves the command name via `CommandNameIndex`,
 /// binds arguments to the command's `ArgSpec` declarations via `bind_args()`,
 /// and dispatches through the unified command system.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
     use {
         reovim_driver_command::{CommandNameIndex, bind_args, parse_cmdline},

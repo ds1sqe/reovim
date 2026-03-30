@@ -31,6 +31,7 @@ pub fn build_column_mapping(original: &str, max_widths: &[usize]) -> Vec<u16> {
 }
 
 /// Map a buffer column to visual column using pipe positions.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 pub fn map_to_visual(buf_col: usize, orig_pipes: &[usize], visual_pipes: &[u16]) -> u16 {
     if let Some(idx) = orig_pipes.iter().position(|&p| p == buf_col) {

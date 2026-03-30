@@ -29,6 +29,7 @@ pub struct BracketInfo {
 ///
 /// Panics if a bracket character matches a pair but its opener stack was not
 /// initialized. This is a programming error — all pair openers are pre-inserted.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn compute_bracket_depths(
     content: &str,

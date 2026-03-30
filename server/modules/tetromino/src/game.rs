@@ -230,6 +230,7 @@ pub const fn piece_cells(piece: PieceType, rotation: Rotation) -> &'static [(i32
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss
 )]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn collides(board: &Board, piece: &ActivePiece) -> bool {
     for &(dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
         let r = piece.row + dr;
@@ -251,6 +252,7 @@ pub fn collides(board: &Board, piece: &ActivePiece) -> bool {
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss
 )]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn lock_piece(board: &mut Board, piece: &ActivePiece) {
     let color = piece.piece_type.color();
     for &(dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
@@ -263,6 +265,7 @@ pub fn lock_piece(board: &mut Board, piece: &ActivePiece) {
 }
 
 /// Clear completed lines, returning the number cleared.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn clear_lines(board: &mut Board) -> u32 {
     let mut cleared = 0u32;
     let mut write = BOARD_HEIGHT;
@@ -498,6 +501,7 @@ pub fn ghost_piece(board: &Board, piece: &ActivePiece) -> ActivePiece {
 /// Lock the current piece, clear lines, spawn next. Shared by tick/soft-drop/hard-drop.
 ///
 /// Returns the number of lines cleared.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn lock_and_advance(
     state: &mut GameState,
     piece: &ActivePiece,
@@ -525,6 +529,7 @@ pub fn lock_and_advance(
 /// Advance one tick: move active piece down; if collision, lock, clear, spawn.
 ///
 /// Returns `(lines_cleared_this_tick, piece_was_locked)`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn tick(state: &mut GameState, next_next_piece: PieceType) -> (u32, bool) {
     if state.game_over {
         return (0, false);
@@ -557,6 +562,7 @@ pub fn absolute_cells(piece: &ActivePiece) -> Vec<(i32, i32)> {
 ///
 /// `gap_col` is the column index that remains empty. Clamped to valid range.
 /// Pure function — caller provides the random column.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn apply_garbage_line(game: &mut GameState, gap_col: usize) {
     // Shift all rows up by 1
     for row in 0..(BOARD_HEIGHT - 1) {

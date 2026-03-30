@@ -322,3 +322,61 @@ fn rect_contains_point_zero_size() {
     let r = Rect::new(5, 5, 0, 0);
     assert!(!r.contains_point(5, 5));
 }
+
+// =============================================================================
+// MC/DC branch: empty text after truncation
+// =============================================================================
+
+#[test]
+fn write_styled_empty_text_is_noop() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = Rect::new(0, 0, 10, 10);
+    {
+        let mut scoped = ScopedSurface::new(&mut surface, bounds);
+        let cols = scoped.write_styled(0, 0, "", Style::default());
+        assert_eq!(cols, 0);
+    }
+    assert!(surface.ops().is_empty());
+}
+
+// =============================================================================
+// MC/DC branch: y-only clipping
+// =============================================================================
+
+#[test]
+fn apply_style_clipped_by_y_alone() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = Rect::new(0, 0, 10, 5);
+    {
+        let mut scoped = ScopedSurface::new(&mut surface, bounds);
+        // x=0 is within bounds, but y=5 is outside height=5
+        scoped.apply_style(0, 5, Style::default());
+    }
+    assert!(surface.ops().is_empty());
+}
+
+#[test]
+fn overlay_bg_clipped_by_y_alone() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = Rect::new(0, 0, 10, 5);
+    {
+        let mut scoped = ScopedSurface::new(&mut surface, bounds);
+        scoped.overlay_bg(0, 5, Color::Red);
+    }
+    assert!(surface.ops().is_empty());
+}
+
+// =============================================================================
+// MC/DC branch: clear with no intersection
+// =============================================================================
+
+#[test]
+fn clear_no_overlap_is_noop() {
+    let mut surface = RecordingSurface::new(80, 24);
+    let bounds = Rect::new(10, 10, 5, 5);
+    {
+        let mut scoped = ScopedSurface::new(&mut surface, bounds);
+        scoped.clear(Rect::new(50, 50, 5, 5));
+    }
+    assert!(surface.ops().is_empty());
+}

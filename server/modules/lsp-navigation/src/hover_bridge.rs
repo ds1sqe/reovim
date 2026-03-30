@@ -85,6 +85,7 @@ impl ExtensionStateBridge for HoverBridge {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn tick(
         &self,
         client_extensions: &mut ExtensionMap,

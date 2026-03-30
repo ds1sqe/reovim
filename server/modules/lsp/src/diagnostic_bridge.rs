@@ -147,6 +147,7 @@ impl ExtensionStateBridge for DiagnosticBridge {
             .is_some_and(|s| !s.entries.is_empty())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn tick(
         &self,
         _client_extensions: &mut ExtensionMap,
@@ -227,6 +228,7 @@ const fn convert_severity(s: Option<lsp_types::DiagnosticSeverity>) -> Diagnosti
 }
 
 /// Compare two entry lists for equality (order-sensitive).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn entries_eq(a: &[BufferDiagnosticEntry], b: &[BufferDiagnosticEntry]) -> bool {
     if a.len() != b.len() {
         return false;

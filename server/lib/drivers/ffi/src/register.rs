@@ -72,6 +72,7 @@ const fn register_name_from_ffi(name: u8) -> Option<char> {
 /// - `out_result` must be a valid pointer
 /// - `out_yank_type` must be a valid pointer or null
 /// - Must be called during a command callback
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_get_register(
     name: u8,

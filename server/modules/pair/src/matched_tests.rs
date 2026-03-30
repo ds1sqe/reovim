@@ -84,3 +84,39 @@ fn matched_pair_debug_clone_eq() {
     let debug = format!("{pair:?}");
     assert!(debug.contains("MatchedPair"));
 }
+
+#[test]
+fn symmetric_pairs_are_skipped() {
+    // Symmetric pairs like quotes should be skipped
+    let mut pairs = default_pairs();
+    pairs.push(BracketPair::new('"', '"'));
+    let brackets = compute_bracket_depths("\"hello\"", &pairs);
+    // Only asymmetric pairs should be found
+    let result = find_innermost_pair(&brackets, &pairs, 0, 3);
+    // No asymmetric pair surrounds cursor, so should be None
+    assert!(result.is_none());
+}
+
+#[test]
+fn unmatched_opener_returns_none() {
+    // Single opener with no closer
+    let brackets = compute_bracket_depths("(hello", &default_pairs());
+    let result = find_innermost_pair(&brackets, &default_pairs(), 0, 3);
+    assert!(result.is_none());
+}
+
+#[test]
+fn cursor_before_open_bracket() {
+    // Cursor at col 0, before the opening bracket at col 2
+    let brackets = compute_bracket_depths("xx(hello)xx", &default_pairs());
+    let result = find_innermost_pair(&brackets, &default_pairs(), 0, 0);
+    assert!(result.is_none());
+}
+
+#[test]
+fn cursor_after_close_bracket() {
+    // Cursor at col 10, after the closing bracket at col 8
+    let brackets = compute_bracket_depths("xx(hello)xx", &default_pairs());
+    let result = find_innermost_pair(&brackets, &default_pairs(), 0, 10);
+    assert!(result.is_none());
+}

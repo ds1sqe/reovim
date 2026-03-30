@@ -487,3 +487,17 @@ fn test_capability_no_caps_no_change() {
     let result = resolve_dependencies(&entries).unwrap();
     assert_eq!(result.order, vec!["a", "b"]);
 }
+
+#[test]
+fn test_unsatisfied_capability_display_multiple() {
+    let err: DepgraphError<&str> = DepgraphError::UnsatisfiedCapability(vec![
+        ("mod-a", "cap-x".into()),
+        ("mod-b", "cap-y".into()),
+    ]);
+    let msg = format!("{err}");
+    assert!(msg.contains("mod-a"));
+    assert!(msg.contains("cap-x"));
+    assert!(msg.contains(", "));
+    assert!(msg.contains("mod-b"));
+    assert!(msg.contains("cap-y"));
+}

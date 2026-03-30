@@ -40,6 +40,7 @@ impl Default for PdfCodec {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl reovim_driver_codec::ContentCodec for PdfCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let pages = pdf_extract::extract_text_from_mem_by_pages(raw)

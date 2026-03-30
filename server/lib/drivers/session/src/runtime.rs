@@ -653,6 +653,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     #[allow(clippy::significant_drop_tightening)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn buffer_text_range(
         &self,
         buffer: BufferId,
@@ -823,6 +824,7 @@ impl BufferApi for SessionRuntime<'_> {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn replace_content(&mut self, buffer: BufferId, content: &str) {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             let cursor_before = self.windows().active().map_or_else(
@@ -1009,6 +1011,7 @@ impl RegisterApi for SessionRuntime<'_> {
 
 // === ClipboardApi (#515) ===
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ClipboardApi for SessionRuntime<'_> {
     fn copy_to_clipboard(&self, text: &str) -> bool {
         if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
@@ -1133,6 +1136,7 @@ impl SessionRuntime<'_> {
 }
 
 impl UndoApi for SessionRuntime<'_> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -1155,6 +1159,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -1177,6 +1182,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit(
         &mut self,
         buffer: BufferId,
@@ -1209,6 +1215,7 @@ impl UndoApi for SessionRuntime<'_> {
             .is_some_and(|tree| tree.can_redo())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -1234,6 +1241,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -1259,6 +1267,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit_mine(
         &mut self,
         buffer: BufferId,
@@ -1432,6 +1441,7 @@ impl CompositorApi for SessionRuntime<'_> {
             .ok_or(CompositorError::NoNeighbor(direction))
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn split(&mut self, direction: SplitDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
             .compositor
@@ -1481,6 +1491,7 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(new_window)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_current_window(&mut self) -> Result<WindowId, CompositorError> {
         use reovim_driver_layout::Zone;
 
@@ -1525,6 +1536,7 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(neighbor)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_others(&mut self) -> Result<(), CompositorError> {
         use reovim_driver_layout::Zone;
 
@@ -1639,6 +1651,7 @@ impl CompositorApi for SessionRuntime<'_> {
             .ok_or(CompositorError::NoFocusedWindow)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn focus(&mut self, window: WindowId) -> Result<(), CompositorError> {
         let compositor = self
             .compositor

@@ -205,6 +205,14 @@ impl InjectionManager {
     }
 
     /// Highlight a single injection using the child driver.
+    ///
+    /// For single-range injections: extracts the substring, parses, highlights,
+    /// then offsets annotations to parent document coordinates.
+    ///
+    /// For multi-range (combined) injections: concatenates content from all
+    /// ranges (stripping doc comment prefixes), parses as one document, then
+    /// translates annotations back to parent coordinates.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn highlight_single_injection(
         driver: &mut dyn SyntaxDriver,
         injection: &Injection,
@@ -230,6 +238,7 @@ impl InjectionManager {
     /// For multi-range (combined) injections: concatenates content from all
     /// ranges (stripping doc comment prefixes), parses as one document, runs
     /// `extract`, then translates annotations back to parent coordinates.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn annotate_injection(
         driver: &mut dyn SyntaxDriver,
         injection: &Injection,
@@ -253,6 +262,7 @@ impl InjectionManager {
     }
 
     /// Extract annotations from a single-range injection (e.g., a fenced code block).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn annotate_single_range(
         driver: &mut dyn SyntaxDriver,
         range: &Range<usize>,
@@ -277,6 +287,7 @@ impl InjectionManager {
 
     /// Extract annotations from a combined (multi-range) injection
     /// (e.g., doc comment lines).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn annotate_combined_ranges(
         driver: &mut dyn SyntaxDriver,
         ranges: &[Range<usize>],
@@ -364,6 +375,7 @@ fn strip_doc_comment_prefix(line: &str) -> (&str, usize) {
 
 /// Translate a highlight from concatenated content coordinates to parent
 /// document coordinates.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn translate_combined_annotation(
     highlight: &Annotation,
     range_offsets: &[(usize, usize, usize)], // (src_start, dst_start, prefix_len)

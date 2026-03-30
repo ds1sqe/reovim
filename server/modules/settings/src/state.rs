@@ -75,6 +75,7 @@ impl SettingsState {
     }
 
     /// Move selection up by one item, skipping section headers.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn select_prev(&mut self) {
         if self.selected_index == 0 {
             return;

@@ -94,6 +94,7 @@ impl RecordingSurface {
     /// # Panics
     ///
     /// Panics if the text at position doesn't match expected.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::cast_possible_truncation)] // expected.len() bounded by surface width
     pub fn assert_text_at(&self, x: u16, y: u16, expected: &str) {
         let actual: String = (0..expected.len())
@@ -117,6 +118,7 @@ impl RecordingSurface {
     /// # Panics
     ///
     /// Panics if the style at position doesn't match expected.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn assert_style_at(&self, x: u16, y: u16, expected: &Style) {
         let actual = self.style_at(x, y);
         assert_eq!(
@@ -130,6 +132,7 @@ impl RecordingSurface {
     /// # Panics
     ///
     /// Panics if the character at position doesn't match expected.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn assert_char_at(&self, x: u16, y: u16, expected: char) {
         let actual = self.char_at(x, y);
         assert_eq!(
@@ -236,6 +239,7 @@ impl WriteSurface {
     }
 
     /// Get the style of the most recent write at (x, y).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn style_at(&self, x: u16, y: u16) -> Option<&Style> {
         self.writes

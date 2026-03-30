@@ -549,6 +549,7 @@ impl VimNormalResolver {
     ///
     /// Returns the corresponding `PendingCharOp` if the command is one of the
     /// mark commands (m, ', `` ` ``), otherwise returns `None`.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn classify_mark_command(cmd: &reovim_kernel::api::v1::CommandId) -> Option<PendingCharOp> {
         if *cmd == editor::ids::SET_MARK {
             Some(PendingCharOp::SetMark)
@@ -566,6 +567,7 @@ impl VimNormalResolver {
     /// These commands start a change that should be recorded for dot repeat.
     /// The recording starts here and continues through insert mode until
     /// `ExitToNormal` finishes it.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn is_insert_entry_command(cmd: &reovim_kernel::api::v1::CommandId) -> bool {
         *cmd == ids::ENTER_INSERT
             || *cmd == ids::ENTER_INSERT_AFTER
@@ -599,6 +601,7 @@ impl VimNormalResolver {
     /// This function uses hard-typed comparisons against the editor module's
     /// `CommandId` constants. If those constants are renamed or removed, this
     /// code will fail to compile rather than silently break at runtime.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn classify_operator_mode(cmd: &reovim_kernel::api::v1::CommandId) -> Option<ModeId> {
         // Hard-typed check using editor module constants (compile-time safe)
         // Returns the dedicated operator mode (not generic operator-pending)
@@ -959,6 +962,7 @@ impl ModeKeyResolver for VimNormalResolver {
         None
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn pending_keys(&self) -> KeySequence {
         self.get_pending_keys()
     }

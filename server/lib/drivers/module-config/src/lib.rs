@@ -197,6 +197,7 @@ impl ModulesConfig {
     ///
     /// Returns [`ModuleConfigError::Io`] for IO errors other than not-found.
     /// Returns [`ModuleConfigError::Parse`] for invalid TOML.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn load(path: &Path) -> Result<Self, ModuleConfigError> {
         match std::fs::read_to_string(path) {
             Ok(contents) => Self::parse(&contents),

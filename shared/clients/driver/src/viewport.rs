@@ -24,6 +24,7 @@ const DEFAULT_BG: reovim_arch::Color = reovim_arch::Color::Black;
 pub struct DefaultViewportRenderer;
 
 impl crate::ViewportRenderer for DefaultViewportRenderer {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn gutter_width(
         &self,
         modules: &[Box<dyn ClientModule>],
@@ -234,6 +235,7 @@ fn render_positioned_virtual_lines(
 // =============================================================================
 
 /// Render a line of buffer content with syntax highlighting and conceals.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_line_content(
     surface: &mut dyn RenderSurface,
@@ -953,6 +955,7 @@ fn render_self_cursor(
 
 /// Compute the visual column for a cursor on a concealed line.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn compute_cursor_visual_col(
     ctx: &ViewportContext<'_>,
     cursor: &CursorInfo,

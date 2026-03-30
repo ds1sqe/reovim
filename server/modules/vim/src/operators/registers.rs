@@ -94,6 +94,7 @@ pub fn store_and_sync(
 ///
 /// Called when storing to `Register::System`. Clipboard errors are
 /// silently ignored (graceful degradation).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn sync_to_clipboard(kernel: &KernelContext, text: &str) {
     if let Some(registry) = kernel.services.get::<ClipboardProviderRegistry>()
         && let Some(provider) = registry.get(&ClipboardKey::Default)

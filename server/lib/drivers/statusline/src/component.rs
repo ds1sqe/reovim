@@ -113,6 +113,7 @@ impl ComponentDataProviderKey {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ServiceKey for ComponentDataProviderKey {
     fn service_name() -> &'static str {
         "ComponentDataProvider"

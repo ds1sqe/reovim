@@ -427,6 +427,7 @@ fn open_picker(
 /// Format an `OptionConstraint` as a human-readable string.
 ///
 /// Returns `None` for unconstrained options.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_constraint(c: &reovim_kernel::api::v1::OptionConstraint) -> Option<String> {
     match (c.min, c.max, c.min_length, c.max_length) {
         (Some(min), Some(max), _, _) => Some(format!("{min}..{max}")),

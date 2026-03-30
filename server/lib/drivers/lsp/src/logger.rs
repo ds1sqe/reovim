@@ -50,6 +50,7 @@ impl LspLogger {
     /// # Errors
     ///
     /// Returns an error if the file cannot be created.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn new(path: &std::path::Path, language_id: &str) -> std::io::Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -141,6 +142,7 @@ impl LspLogger {
 }
 
 /// Default log directory following XDG Base Directory specification.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn default_log_dir() -> PathBuf {
     std::env::var("XDG_DATA_HOME").map_or_else(
         |_| {

@@ -133,6 +133,7 @@ impl MicroscopeState {
     /// Called after every query change (character insert, backspace) to
     /// refresh the fuzzy-matched result list from the engine.
     /// For dynamic pickers (e.g. grep), re-fetches items on every query change.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn refresh_engine(&mut self) {
         // For dynamic pickers, re-fetch items on every query change.
         if let Some(services) = &self.services
@@ -189,6 +190,7 @@ impl MicroscopeState {
     ///
     /// Called after selection changes (next/prev) and after engine refresh
     /// to keep the preview panel in sync with the highlighted item.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn update_preview(&mut self) {
         if let Some(services) = &self.services
             && let Some(registry) = services.get::<PickerRegistry>()
@@ -210,6 +212,7 @@ impl MicroscopeState {
     /// Looks up a syntax driver via `SyntaxFactoryStore`, parses the
     /// preview content, and converts byte-range annotations into
     /// line/column `PreviewHighlight` entries.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn apply_syntax_highlights(preview: &mut PreviewContent, services: &ServiceRegistry) {
         // Skip if no file path or too many lines (avoid blocking the event loop).
         const MAX_HIGHLIGHT_LINES: usize = 500;

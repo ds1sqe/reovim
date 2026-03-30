@@ -69,6 +69,7 @@ impl Command for ColorschemeCommand {
 }
 
 impl CommandHandler for ColorschemeCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
         let kernel = runtime.kernel();
 

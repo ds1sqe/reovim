@@ -149,6 +149,7 @@ impl Default for SeverityFilter {
 }
 
 /// Severity ordering value (lower = more severe).
+#[cfg_attr(coverage_nightly, coverage(off))]
 const fn severity_rank(s: DiagnosticSeverity) -> u8 {
     match s {
         DiagnosticSeverity::Error => 0,

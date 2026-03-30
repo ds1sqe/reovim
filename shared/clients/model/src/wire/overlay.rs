@@ -107,6 +107,7 @@ impl LogicalOverlay {
 
     /// Set the initial state.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_state(mut self, state: OverlayState) -> Self {
         self.state = state;
         self

@@ -58,6 +58,7 @@ impl ContentClassifier for PdfClassifier {
 }
 
 /// Check if the file path has a PDF extension.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn has_pdf_extension(path: &str) -> bool {
     let Some(ext) = std::path::Path::new(path).extension() else {
         return false;

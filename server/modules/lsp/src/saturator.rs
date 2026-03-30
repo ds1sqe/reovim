@@ -261,6 +261,7 @@ impl LspSaturator {
     }
 
     /// Handle an incoming message from the language server.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn handle_server_message(
         client: &Arc<Client>,
         cache: &Arc<DiagnosticCache>,

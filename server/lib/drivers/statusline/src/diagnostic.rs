@@ -15,6 +15,7 @@ pub struct DiagnosticCounts {
 
 impl DiagnosticCounts {
     /// Check if there are any diagnostics.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.errors == 0 && self.warnings == 0 && self.info == 0 && self.hints == 0

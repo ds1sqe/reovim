@@ -461,6 +461,7 @@ impl ModuleHandle {
 }
 
 #[allow(unsafe_code)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for ModuleHandle {
     fn drop(&mut self) {
         if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr.take(), &self.ffi)

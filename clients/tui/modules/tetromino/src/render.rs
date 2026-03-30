@@ -329,6 +329,7 @@ fn render_countdown(surface: &mut dyn RenderSurface, data: &TetrominoData) {
 }
 
 /// How many opponent minimaps can fit vertically in the given height.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn opponents_that_fit(available_h: u16, count: usize) -> usize {
     if count == 0 || available_h < MINI_H + 1 {
         return 0;

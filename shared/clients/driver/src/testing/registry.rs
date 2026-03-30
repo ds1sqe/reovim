@@ -28,6 +28,7 @@ impl MockModuleRegistry {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for MockModuleRegistry {
     fn default() -> Self {
         Self::new()
@@ -39,6 +40,7 @@ impl ClientModuleRegistry for MockModuleRegistry {
         self.running.contains(kind)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn module_state(&self, kind: &str) -> Option<ClientModuleState> {
         if self.running.contains(kind) {
             Some(ClientModuleState::Running)

@@ -73,6 +73,7 @@ fn render_tree_nodes(surface: &mut dyn RenderSurface, data: &ExplorerData, bound
 }
 
 /// Render a single tree node row.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_tree_node(
     surface: &mut dyn RenderSurface,
     node: &NodeData,

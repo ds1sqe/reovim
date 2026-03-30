@@ -35,6 +35,7 @@ impl LegacyCodec {
 }
 
 impl reovim_driver_codec::ContentCodec for LegacyCodec {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let content = if self.is_windows_1252 {
             let (decoded, _, had_errors) = encoding_rs::WINDOWS_1252.decode(raw);

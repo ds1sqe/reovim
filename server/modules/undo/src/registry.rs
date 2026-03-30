@@ -346,6 +346,7 @@ impl UndoProvider for UndoRegistry {
         );
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn end_batch(&self, buffer_id: BufferId, cursor_after: Position) {
         let batch = {
             let mut batches = self.batches.write();

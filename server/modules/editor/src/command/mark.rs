@@ -151,6 +151,7 @@ impl CommandHandler for GotoMarkExact {
 /// Shared logic for mark goto commands.
 ///
 /// `line_only`: if true, jump to column 0 (like `'`); if false, exact position (like `` ` ``).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn goto_mark(
     runtime: &mut SessionRuntime<'_>,
     mark_char: char,

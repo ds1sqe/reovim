@@ -103,6 +103,7 @@ fn find_all_char_matches(
 }
 
 impl CommandHandler for EnhancedFindCharCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(target_char) = args.char("find_char") else {

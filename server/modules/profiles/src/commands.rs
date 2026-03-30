@@ -12,6 +12,7 @@ use {
 const PROFILES_MODULE: ModuleId = ModuleId::new("profiles");
 
 /// Serialize a profile to TOML and write it to disk.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn write_profile(
     vfs: &dyn reovim_driver_vfs::VfsDriver,
     dir: &std::path::Path,

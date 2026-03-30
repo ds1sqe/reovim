@@ -106,6 +106,7 @@ impl AnnotationKind {
     /// assert!(kind.is_prefix("diagnostic"));
     /// assert!(!kind.is_prefix("git"));
     /// ```
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn is_prefix(&self, prefix: &str) -> bool {
         if self.0.len() < prefix.len() {

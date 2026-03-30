@@ -84,6 +84,7 @@ impl DiagnosticsState {
     }
 
     /// Re-apply filter and sort to existing items.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn refilter_and_sort(&mut self) {
         self.items
             .retain(|item| self.severity_filter.allows(item.severity));

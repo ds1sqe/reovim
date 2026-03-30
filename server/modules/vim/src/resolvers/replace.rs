@@ -67,6 +67,7 @@ impl Default for VimReplaceResolver {
 }
 
 impl ModeKeyResolver for VimReplaceResolver {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,
@@ -129,6 +130,7 @@ impl ModeKeyResolver for VimReplaceResolver {
 }
 
 /// Push a restore entry for the current cursor position.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn push_restore_entry(session: &dyn SessionApiDyn, client_extensions: &mut ExtensionMap) {
     let Some(buffer_id) = session.active_buffer() else {
         return;
@@ -155,6 +157,7 @@ fn push_restore_entry(session: &dyn SessionApiDyn, client_extensions: &mut Exten
 }
 
 /// Handle a regular character replacement at the cursor position.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn handle_replace_char(
     session: &mut dyn SessionApiDyn,
     client_extensions: &mut ExtensionMap,

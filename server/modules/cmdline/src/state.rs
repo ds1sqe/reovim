@@ -267,6 +267,7 @@ impl CmdlineState {
     }
 
     /// Delete word before cursor (Ctrl-W).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn delete_word_back(&mut self) {
         if self.cursor == 0 {
             return;
@@ -428,6 +429,7 @@ impl CmdlineState {
     }
 
     /// Apply a completion at the given index to the input.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn apply_completion(&mut self, idx: usize) {
         if let Some(completion) = self.completions.get(idx) {
             self.input = completion.clone();

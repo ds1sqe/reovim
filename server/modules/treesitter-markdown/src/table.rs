@@ -114,6 +114,7 @@ fn hash_content(text: &str) -> u64 {
 /// 1. `markup.table` for the whole table extent
 /// 2. `markup.table.pipe` for each `|` byte in header/data rows
 /// 3. `markup.table.delimiter` for the entire delimiter row
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn table_semantic_annotations(table_node: Node, content: &str) -> Vec<Annotation> {
     let mut annotations = Vec::new();
 

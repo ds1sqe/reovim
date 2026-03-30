@@ -94,6 +94,7 @@ pub fn collect_system() -> DiagnosticSection {
 }
 
 /// Collect LSP provider information.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn collect_lsp(kernel: &KernelContext) -> DiagnosticSection {
     let mut section = DiagnosticSection::new("Language Servers");
@@ -234,6 +235,7 @@ pub fn collect_clipboard(kernel: &KernelContext) -> DiagnosticSection {
 }
 
 /// Collect option registry state.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn collect_options(kernel: &KernelContext) -> DiagnosticSection {
     let mut section = DiagnosticSection::new("Options");

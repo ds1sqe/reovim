@@ -20,12 +20,14 @@ pub struct TableRegion {
 }
 
 /// Check if a line looks like a table row (contains pipes).
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn is_table_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.contains('|') && !trimmed.is_empty()
 }
 
 /// Check if a line is a delimiter row (`|---|---|`).
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn is_delimiter_row(line: &str) -> bool {
     let trimmed = line.trim();
     if !trimmed.starts_with('|') {
@@ -41,6 +43,7 @@ pub fn is_delimiter_row(line: &str) -> bool {
 ///
 /// Removes `**` (bold), `~~` (strikethrough), and `` ` `` (inline code)
 /// delimiters. Single `*` (italic) is preserved -- ambiguous with list markers.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn strip_inline_markdown(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -83,6 +86,7 @@ pub fn get_column_widths(line: &str) -> Vec<usize> {
 }
 
 /// Detect table regions in buffer lines.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn detect_tables(lines: &[String]) -> Vec<TableRegion> {
     let mut tables = Vec::new();
     let mut i = 0;

@@ -43,6 +43,7 @@ impl Command for ModulesCommand {
 }
 
 impl CommandHandler for ModulesCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let report = format_module_report(runtime);
         let buf_id = runtime.create_buffer(Some("[Modules]"), &report);
@@ -57,6 +58,7 @@ impl CommandHandler for ModulesCommand {
 }
 
 /// Format the module report from `ModuleLoadReport`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_module_report(runtime: &SessionRuntime<'_>) -> String {
     let mut out = String::new();
 

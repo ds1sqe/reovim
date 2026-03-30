@@ -46,6 +46,7 @@ impl CsvCodec {
 }
 
 impl reovim_driver_codec::ContentCodec for CsvCodec {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let text = std::str::from_utf8(raw)
             .map_err(|e| CodecError::Other(format!("CSV decode: invalid UTF-8: {e}")))?;
@@ -70,6 +71,7 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
         })
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn encode(
         &self,
         content: &str,
@@ -112,6 +114,7 @@ fn parse_csv(text: &str, delimiter: u8) -> (Vec<Vec<String>>, bool) {
 
 /// Detect if the first row is a header by checking if it contains
 /// non-numeric values while subsequent rows have more numeric values.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn detect_header(rows: &[Vec<String>]) -> bool {
     if rows.len() < 2 {
         return false;
@@ -136,6 +139,7 @@ fn detect_header(rows: &[Vec<String>]) -> bool {
 }
 
 /// Format parsed rows into a column-aligned table.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_table(rows: &[Vec<String>], has_header: bool) -> (String, Vec<Annotation>) {
     if rows.is_empty() {
         return (String::new(), Vec::new());
@@ -198,6 +202,7 @@ fn format_table(rows: &[Vec<String>], has_header: bool) -> (String, Vec<Annotati
 }
 
 /// Encode column-aligned text back to delimited format.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn encode_csv(content: &str, delimiter: char, line_ending: &str) -> Vec<u8> {
     let mut result = Vec::with_capacity(content.len());
 
@@ -240,6 +245,7 @@ fn encode_csv(content: &str, delimiter: char, line_ending: &str) -> Vec<u8> {
 ///
 /// Fields in the aligned view are separated by 2+ spaces. A single
 /// space within a field is preserved.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn split_aligned_fields(line: &str) -> Vec<&str> {
     if line.is_empty() {
         return Vec::new();

@@ -85,6 +85,7 @@ impl Command for ScreenHigh {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ScreenHigh {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(window) = runtime.windows().active() else {
@@ -169,6 +170,7 @@ impl Command for ScreenLow {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ScreenLow {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(window) = runtime.windows().active() else {

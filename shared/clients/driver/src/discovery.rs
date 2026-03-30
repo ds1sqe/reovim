@@ -46,6 +46,7 @@ pub fn default_client_search_paths() -> Vec<PathBuf> {
 /// - Linux: `libreovim_client_module_{name}.so`
 /// - macOS: `libreovim_client_module_{name}.dylib`
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn client_library_filename(name: &str) -> String {
     let ext = if cfg!(target_os = "macos") {
         "dylib"

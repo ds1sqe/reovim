@@ -53,6 +53,7 @@ pub enum DepgraphError<K> {
     UnsatisfiedCapability(Vec<(K, String)>),
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<K: fmt::Debug> fmt::Display for DepgraphError<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -110,6 +111,7 @@ impl<K: fmt::Debug> std::error::Error for DepgraphError<K> {}
 /// 5. Detect cycles (any remaining nodes with in-degree > 0)
 /// 6. Build reverse dependency map for shutdown ordering
 #[allow(clippy::too_many_lines)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn resolve_dependencies<K>(
     entries: &[DepEntry<K>],
 ) -> Result<DependencyOrder<K>, DepgraphError<K>>

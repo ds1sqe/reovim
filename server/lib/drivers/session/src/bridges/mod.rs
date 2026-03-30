@@ -151,6 +151,7 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     /// Default implementation is a no-op.
     ///
     /// Only called for [`ExtensionScope::Client`] bridges.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_cursor_moved(&self, _line: usize, _col: usize, _extensions: &mut ExtensionMap) {}
 
     /// Snapshot with cross-client context (multiplayer support, #543).

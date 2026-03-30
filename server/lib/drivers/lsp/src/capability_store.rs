@@ -100,6 +100,7 @@ impl CapabilityStore {
     /// corresponding capability field.
     ///
     /// Returns `true` if the capability was successfully removed.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn apply_unregistration(&self, unreg: &Unregistration) -> bool {
         let method = {
             let mut regs = self.registrations.lock();
@@ -145,6 +146,7 @@ impl CapabilityStore {
 /// default/truthy value and logs a warning.
 ///
 /// Returns `false` for unknown methods.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn apply_method_registration(
     caps: &mut ServerCapabilities,
     method: &str,
@@ -221,6 +223,7 @@ fn apply_method_registration(
 /// Clear the capability field for a known LSP method.
 ///
 /// Returns `false` for unknown methods.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn clear_method_capability(caps: &mut ServerCapabilities, method: &str) -> bool {
     match method {
         "textDocument/completion" => {

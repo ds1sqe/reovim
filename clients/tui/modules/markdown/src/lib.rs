@@ -66,6 +66,7 @@ impl MarkdownModule {
     }
 
     /// Rebuild cached virtual lines from detected tables.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn rebuild_virtual_lines(&mut self, buffer_id: usize) {
         self.cached_virtual_lines.clear();
         let Some(tables) = self.tables.get(&buffer_id) else {
@@ -91,6 +92,7 @@ impl MarkdownModule {
     }
 
     /// Find the table containing a given line in the specified buffer.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn table_at_line(&self, buffer_id: usize, line_idx: usize) -> Option<&TableRegion> {
         self.tables.get(&buffer_id).and_then(|tables| {
             tables

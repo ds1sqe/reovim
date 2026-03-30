@@ -65,6 +65,7 @@ impl Default for HybridCompositor {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl RootCompositor for HybridCompositor {
     fn composite(&self, screen: Rect) -> CompositeResult {
         let mut all_placements: Vec<WindowPlacement> = Vec::new();

@@ -32,6 +32,7 @@ use crate::ids;
 /// 3. Calls `textobject_range()` on the driver
 /// 4. Stores the result in `OperatorPendingState` (operator-pending mode)
 ///    or updates the selection (visual mode)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn execute_semantic_textobj(
     runtime: &mut SessionRuntime<'_>,

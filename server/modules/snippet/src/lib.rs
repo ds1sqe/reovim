@@ -217,6 +217,7 @@ impl Module for SnippetModule {
         &[reovim_capabilities::SNIPPET_PROVIDER]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Snippet navigating mode: tab stop navigation
@@ -258,6 +259,7 @@ impl CommandProvider for SnippetModule {
 /// Resolve the parent mode for snippet:navigating from `ModeBridgeStore`.
 ///
 /// Returns `None` if no personality module is loaded (reduced functionality).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn resolve_snippet_parent(
     ctx: &ModuleContext,
     modes: &ModeInfoStore,

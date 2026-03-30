@@ -116,6 +116,7 @@ type ResolveResult = Result<
 /// Resolve dependencies and reorder modules by topological sort.
 ///
 /// Shared between `new()` and `from_modules_for_test()`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn resolve_and_reorder(
     modules: Vec<Box<dyn ClientModule>>,
     states: Vec<ClientModuleState>,

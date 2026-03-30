@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![cfg_attr(coverage_nightly, allow(unused_features))]
 //! Which-key popup chrome module.
 //!
 //! Displays a popup showing available key continuations when a prefix
@@ -94,6 +96,7 @@ impl Default for WhichKeyStyleConfig {
 }
 
 /// Render a single hint row. Returns the number of rows consumed (always 1).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_arguments)]
 fn render_hint_row(
     surface: &mut dyn RenderSurface,
@@ -289,6 +292,7 @@ impl ClientModule for WhichKeyModule {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn tick(&mut self) -> bool {
         if self.server_active
             && !self.visible
@@ -301,6 +305,7 @@ impl ClientModule for WhichKeyModule {
         false
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,

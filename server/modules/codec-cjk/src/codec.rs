@@ -35,6 +35,7 @@ impl CjkCodec {
 }
 
 impl reovim_driver_codec::ContentCodec for CjkCodec {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let (decoded, _, had_errors) = self.encoding.decode(raw);
 

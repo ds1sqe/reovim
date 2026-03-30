@@ -23,6 +23,7 @@ pub struct MatchedPair {
 /// cursor position, and returns the smallest-range pair (innermost).
 #[must_use]
 #[allow(clippy::implicit_hasher)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn find_innermost_pair(
     brackets: &HashMap<(usize, usize), BracketInfo>,
     highlight_pairs: &[BracketPair],

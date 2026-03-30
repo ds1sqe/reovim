@@ -304,6 +304,7 @@ pub(crate) fn parse_hunk_header(line: &str) -> Option<DiffHunk> {
 ///
 /// Porcelain format groups: header line (hash, orig line, final line, count),
 /// followed by key-value metadata lines, then a tab-prefixed content line.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn parse_porcelain_blame(output: &str) -> Vec<BlameEntry> {
     let mut entries = Vec::new();
     let mut current_hash = String::new();

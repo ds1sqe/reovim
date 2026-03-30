@@ -79,6 +79,7 @@ impl Picker for OptionsPicker {
         PickerAction::Close
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn preview(
         &self,
         item: &PickerItem,

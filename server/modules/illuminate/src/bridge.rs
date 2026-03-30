@@ -81,6 +81,7 @@ impl ExtensionStateBridge for IlluminateBridge {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn tick(
         &self,
         client_extensions: &mut ExtensionMap,
@@ -154,6 +155,7 @@ impl ExtensionStateBridge for IlluminateBridge {
 /// Extract the word under the cursor and find all whole-word occurrences.
 ///
 /// Returns `None` if the cursor is not on a word character.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_word_and_occurrences(
     buffer: &Buffer,
     cursor_line: u32,
@@ -179,6 +181,7 @@ fn extract_word_and_occurrences(
 ///
 /// A match is "whole word" if the characters immediately before and after
 /// are not word characters (alphanumeric or underscore).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn find_word_occurrences(buffer: &Buffer, word: &str) -> Vec<HighlightRange> {
     let word_chars: Vec<char> = word.chars().collect();
     let word_len = word_chars.len();

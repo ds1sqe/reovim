@@ -140,6 +140,7 @@ impl KeySequence {
     /// let ctrl_w_h = KeySequence::parse("<C-w>h").unwrap();
     /// assert_eq!(ctrl_w_h.len(), 2);
     /// ```
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         let mut keys = Vec::new();

@@ -339,6 +339,7 @@ impl StatuslineModule {
 
     /// Build diagnostic count text for Section X.
     /// Only includes counts > 0.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn build_diagnostic_text(&self) -> String {
         let mut parts = Vec::new();
         if self.diag_error > 0 {

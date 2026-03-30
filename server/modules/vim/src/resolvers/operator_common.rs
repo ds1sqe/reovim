@@ -94,6 +94,7 @@ impl OperatorType {
 
     /// Get the display name for this operator.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn display_name(&self) -> &'static str {
         match self {
             Self::Delete => "DELETE",

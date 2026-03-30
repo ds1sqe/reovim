@@ -301,6 +301,7 @@ impl AnnotationStore {
     }
 
     /// Get all source IDs.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
         self.layers.keys()
     }

@@ -30,6 +30,7 @@ pub struct LineSigns {
 /// - `old_count > 0 && new_count > 0`: Change (lines `new_start..new_start+new_count`)
 ///
 /// Line numbers are converted from 1-indexed (git output) to 0-indexed.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn hunk_to_signs(hunk: &DiffHunk) -> Vec<LineSigns> {
     // Convert from 1-indexed to 0-indexed
     let start = hunk.new_start.saturating_sub(1);

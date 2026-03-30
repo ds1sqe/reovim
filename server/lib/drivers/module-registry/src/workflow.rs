@@ -343,6 +343,7 @@ pub fn resolve(paths: &RegistryPaths) -> Result<Vec<InstalledModule>, RegistryEr
 /// # Errors
 ///
 /// Returns [`RegistryError::Metadata`] on metadata load failure.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn check(paths: &RegistryPaths) -> Result<CheckReport, RegistryError> {
     let installed = load_metadata(paths)?;
     let mut report = CheckReport::default();

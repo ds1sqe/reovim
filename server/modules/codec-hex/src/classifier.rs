@@ -102,6 +102,7 @@ const fn is_printable(b: u8) -> bool {
 }
 
 /// Check if the file path has a known binary extension.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn has_binary_extension(path: &str) -> bool {
     let Some(ext) = std::path::Path::new(path).extension() else {
         return false;

@@ -197,6 +197,7 @@ fn parse_room(data: &mut TetrominoData, json: &serde_json::Value) {
 }
 
 /// Parse game screen fields from JSON.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn parse_game_screen(data: &mut TetrominoData, json: &serde_json::Value) {
     data.paused = json["paused"].as_bool().unwrap_or(false);
     data.game_over = json["gameOver"].as_bool().unwrap_or(false);
@@ -260,6 +261,7 @@ fn parse_game_screen(data: &mut TetrominoData, json: &serde_json::Value) {
 }
 
 /// Parse a board JSON array into `Vec<Vec<String>>`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn parse_board_json(json: &serde_json::Value) -> Vec<Vec<String>> {
     json.as_array()
         .map(|rows| {

@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![cfg_attr(coverage_nightly, allow(unused_features))]
 //! Generic dependency resolution via Kahn's topological sort.
 //!
 //! This crate provides a standalone, zero-dependency topological sort algorithm

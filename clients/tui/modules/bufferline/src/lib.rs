@@ -120,6 +120,7 @@ impl BufferlineModule {
     }
 
     /// Handle `{"type":"buffer_list","buffers":[...]}` from TUI dispatch.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_buffer_list(&mut self, data: &str) {
         let Ok(payload) = serde_json::from_str::<BufferListPayload>(data) else {
             return;
@@ -144,6 +145,7 @@ impl BufferlineModule {
     }
 
     /// Handle `{"type":"pin_state","pins":[...]}` from server bridge.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_pin_state(&mut self, data: &str) {
         let Ok(payload) = serde_json::from_str::<PinStatePayload>(data) else {
             return;

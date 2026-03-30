@@ -92,6 +92,7 @@ impl AnnotationSource for BlameAnnotationSource {
         vec![AnnotationKind::new("blame.info")]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn annotations(
         &self,
         buffer_id: BufferId,

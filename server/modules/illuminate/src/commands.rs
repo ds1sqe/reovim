@@ -24,6 +24,7 @@ impl Command for NextReferenceCommand {
 }
 
 impl CommandHandler for NextReferenceCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let Some(state) = runtime.ext::<IlluminateState>() else {
@@ -72,6 +73,7 @@ impl Command for PrevReferenceCommand {
 }
 
 impl CommandHandler for PrevReferenceCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let Some(state) = runtime.ext::<IlluminateState>() else {

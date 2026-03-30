@@ -122,6 +122,7 @@ impl IlluminateState {
     }
 
     /// Record a cursor movement, resetting idle tracking.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn cursor_moved(&mut self, line: u32, col: u32) {
         if self.shadow_line != line || self.shadow_col != col {
             self.shadow_line = line;

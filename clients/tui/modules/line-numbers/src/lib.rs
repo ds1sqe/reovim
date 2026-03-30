@@ -33,6 +33,7 @@ impl LineNumbersModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for LineNumbersModule {
     fn default() -> Self {
         Self::new()

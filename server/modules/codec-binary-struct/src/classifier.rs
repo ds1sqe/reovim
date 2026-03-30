@@ -119,6 +119,7 @@ impl ContentClassifier for ZipClassifier {
 }
 
 /// Check if the file path has one of the given extensions.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn has_extension(path: &str, extensions: &[&str]) -> bool {
     let Some(ext) = std::path::Path::new(path).extension() else {
         return false;

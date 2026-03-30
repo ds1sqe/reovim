@@ -1,4 +1,5 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![cfg_attr(coverage_nightly, allow(unused_features))]
 //! Notification toast chrome module.
 //!
 //! Displays stacked toast notifications in the top-right corner.
@@ -327,6 +328,7 @@ impl ClientModule for NotificationModule {
 /// │  42% ████████░░░░ Indexing       │
 /// └──────────────────────────────────┘
 /// ```
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::cast_possible_truncation)]
 fn render_grouped_box(
     module: &NotificationModule,
@@ -502,6 +504,7 @@ fn render_toast_content(
 /// Layout: `NNN% [bar...] detail`
 /// If detail is non-empty, the bar shrinks to make room.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_progress_bar(
     surface: &mut dyn RenderSurface,
     x: u16,

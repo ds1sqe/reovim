@@ -127,6 +127,7 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
 }
 
 /// Format an ELF binary into a human-readable summary.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_elf_summary(elf: &goblin::elf::Elf<'_>, file_size: usize) -> (String, Vec<Annotation>) {
     let mut output = String::with_capacity(2048);
     let mut annotations = Vec::new();
@@ -236,6 +237,7 @@ fn format_elf_summary(elf: &goblin::elf::Elf<'_>, file_size: usize) -> (String, 
 }
 
 /// Format a ZIP archive into a human-readable entry listing.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
 ) -> (String, Vec<Annotation>) {

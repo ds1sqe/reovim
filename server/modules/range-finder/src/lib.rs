@@ -137,6 +137,7 @@ impl Module for RangeFinderModule {
 /// Resolve the parent mode for jump-input from `ModeBridgeStore`.
 ///
 /// Returns `None` if no personality module is loaded (reduced functionality).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn resolve_parent_mode(
     ctx: &ModuleContext,
     modes: &ModeInfoStore,

@@ -19,6 +19,7 @@ pub const MODULE_PATH_ENV: &str = "REOVIM_MODULE_PATH";
 /// 2. `$XDG_DATA_HOME/reovim/modules/` (user-installed)
 /// 3. `/usr/local/lib/reovim/modules/` (locally-compiled)
 /// 4. `/usr/lib/reovim/modules/` (system packages)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn default_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
@@ -102,6 +103,7 @@ pub fn library_filename(name: &str) -> String {
 /// naming convention. Non-existent directories are silently skipped.
 ///
 /// Returns paths to discovered library files (does not load them).
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn discover_modules(search_paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut found = Vec::new();

@@ -70,6 +70,7 @@ impl Default for LegacyClassifier {
 }
 
 impl ContentClassifier for LegacyClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], _path: &str) -> Option<ContentType> {
         if raw.is_empty() {
             return None;

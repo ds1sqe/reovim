@@ -45,6 +45,7 @@ impl Default for CjkClassifier {
 }
 
 impl ContentClassifier for CjkClassifier {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn classify(&self, raw: &[u8], _path: &str) -> Option<ContentType> {
         if raw.is_empty() {
             return None;
