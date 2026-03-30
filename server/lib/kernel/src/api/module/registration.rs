@@ -15,7 +15,7 @@ const CAP_IS_TEXT_MODIFYING: u8 = 1 << 3;
 ///
 /// Linux equivalent: Like `struct file_operations` - declares command capabilities.
 ///
-/// Fields align with `CommandTrait` from the original design (see `archive/pre_kernel/lib/core/src/command/traits.rs`).
+/// Fields align with `CommandTrait` from the original design (see [`archive/pre_kernel/lib/core/src/command/traits.rs`](https://github.com/ds1sqe/reovim/blob/81806439/archive/pre_kernel/lib/core/src/command/traits.rs)).
 ///
 /// Command capabilities (accepts count, accepts motion, is jump, is text-modifying)
 /// are stored as a `u8` bitfield to preserve kernel purity (zero external deps).

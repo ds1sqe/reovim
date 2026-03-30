@@ -1,6 +1,6 @@
 //! File tree data structure.
 //!
-//! Port of `archive/pre_kernel/plugins/features/explorer/src/tree.rs`
+//! Port of [`archive/pre_kernel/plugins/features/explorer/src/tree.rs`](https://github.com/ds1sqe/reovim/blob/81806439/archive/pre_kernel/plugins/features/explorer/src/tree.rs)
 //! adapted to use `VfsDriver` instead of `std::fs`.
 
 use {

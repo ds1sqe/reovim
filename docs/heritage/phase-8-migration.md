@@ -47,8 +47,6 @@ reovim/
 │   ├── log/              # Logging infrastructure
 │   ├── module-macros/    # FFI macros
 │   └── testing/          # Integration test utilities
-└── archive/
-    └── pre_kernel/       # v0.8.x code (historical reference)
 ```
 
 ## Path Mapping
@@ -133,22 +131,12 @@ reovim/
 | `reovim-arch` | `reovim-arch` | Moved to `shared/arch/` |
 | `reovim-module-macros` | `reovim-module-macros` | Moved to `shared/module-macros/` |
 
-## Archive Structure
+## Archive (Removed)
 
-The `archive/` directory contains legacy code for reference:
+The `archive/` directory was removed from the tree in v0.14.3. Historical code remains accessible via git history:
 
-### `archive/pre_kernel/` (v0.8.x)
-
-- `lib/core/` - Old core library (monolithic)
-- `lib/sys/` - Old system abstraction
-- `plugins/` - Old plugin system (19 plugins)
-- `runner/` - Old monolithic runner
-
-### Removed Archives
-
-The `archive/post_kernel/` directory (v0.9.0 pre-Phase 8B code) was removed in January 2026.
-It contained intermediate architecture that has been fully superseded by the current gRPC v2 implementation.
-Historical code remains accessible via git history.
+- [`archive/pre_kernel/`](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel) (v0.8.x) — Old core library, system abstraction, plugin system, runner
+- `archive/post_kernel/` (v0.9.0 pre-Phase 8B) — Removed in January 2026, superseded by gRPC v2
 
 ## Key Architectural Changes
 

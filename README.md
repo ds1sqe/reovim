@@ -359,7 +359,7 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Troubleshooting](./docs/user-guide/troubleshooting.md) - Common issues
 
 **Archive (v0.8.x legacy):**
-- [Legacy Documentation](./archive/pre_kernel/docs/) - Pre-v0.9.0 documentation
+- [Legacy Documentation](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel/docs) - Pre-v0.9.0 documentation (removed from tree, preserved in git history)
 
 ## License
 

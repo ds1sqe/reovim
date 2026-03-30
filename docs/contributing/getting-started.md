@@ -105,9 +105,7 @@ reovim/
 ├── tools/
 │   ├── bench/             # Performance benchmarks (criterion)
 │   └── perf-report/       # Performance report generator
-├── perf/                  # Versioned performance reports
-└── archive/               # Legacy code (reference only)
-    └── pre_kernel/        # v0.8.x code (lib/core, lib/sys, plugins)
+└── perf/                  # Versioned performance reports
 ```
 
 ### Module Architecture

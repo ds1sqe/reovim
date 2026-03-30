@@ -1,6 +1,6 @@
 # Feature Parity: v0.8.1 vs Current
 
-Audit comparing the pre-kernel v0.8.1 archive (`archive/pre_kernel/`) against
+Audit comparing the pre-kernel v0.8.1 archive ([archive/pre_kernel](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel)) against
 the current codebase (v0.14.0). Created for issue #652, updated for #653.
 
 Status key:
