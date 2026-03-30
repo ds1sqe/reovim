@@ -16,3 +16,12 @@ pub fn add(a: i32, b: i32) -> i32 {
 pub fn broken() -> i32 {
     "not an integer"
 }
+
+/// Documented function for hover tests.
+///
+/// rust-analyzer includes a `---` separator between doc comment and
+/// signature in hover responses. This triggers the markdown horizontal
+/// rule path in the TUI hover renderer.
+pub fn documented(x: i32) -> i32 {
+    x * 2
+}
