@@ -1,18 +1,19 @@
-//! Buffer operation benchmarks.
+//! Buffer operation benchmarks — v0.14.3 baseline.
 //!
-//! Measures performance of core buffer operations at various sizes.
+//! Measures core buffer operations at 100-100K lines to establish
+//! performance baselines before the rope migration.
 //!
-//! # Note (#471)
-//!
-//! Buffer no longer has a cursor - cursor is per-window/per-client.
-//! These benchmarks use explicit positions instead of cursor-based methods.
+//! Run: `cargo bench -p reovim-bench --bench buffer_ops`
 
 use {
     criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main},
     reovim_kernel::api::v1::*,
 };
 
-/// Generate a buffer with N lines.
+/// Standard sizes: 100, 1K, 10K, 100K lines.
+const SIZES: &[usize] = &[100, 1_000, 10_000, 100_000];
+
+/// Generate a buffer with N lines (~40 chars each).
 fn generate_buffer(lines: usize) -> Buffer {
     let content = (0..lines)
         .map(|i| format!("This is line number {} with some content", i))
@@ -21,16 +22,17 @@ fn generate_buffer(lines: usize) -> Buffer {
     Buffer::from_string(&content)
 }
 
-/// Benchmark: Single character insertion at various buffer sizes.
+// =========================================================================
+// Mutation benchmarks — expected O(1) with rope, O(n) with Vec<String>
+// =========================================================================
+
 fn bench_insert_char(c: &mut Criterion) {
     let mut group = c.benchmark_group("buffer/insert_char");
-
-    for &lines in &[10, 100, 1000, 10000] {
+    for &lines in SIZES {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
                 || generate_buffer(lines),
                 |buf| {
-                    // Insert at middle of buffer using explicit position
                     let pos = Position::new(lines / 2, 10);
                     buf.insert_at(pos, "X");
                 },
@@ -38,20 +40,16 @@ fn bench_insert_char(c: &mut Criterion) {
             );
         });
     }
-
     group.finish();
 }
 
-/// Benchmark: Multi-character insertion (simulating a word).
 fn bench_insert_word(c: &mut Criterion) {
     let mut group = c.benchmark_group("buffer/insert_word");
-
-    for &lines in &[10, 100, 1000] {
+    for &lines in SIZES {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
                 || generate_buffer(lines),
                 |buf| {
-                    // Insert at middle of buffer using explicit position
                     let pos = Position::new(lines / 2, 10);
                     buf.insert_at(pos, "benchmark");
                 },
@@ -59,20 +57,33 @@ fn bench_insert_word(c: &mut Criterion) {
             );
         });
     }
-
     group.finish();
 }
 
-/// Benchmark: Delete single character.
-fn bench_delete_char(c: &mut Criterion) {
-    let mut group = c.benchmark_group("buffer/delete_char");
-
-    for &lines in &[10, 100, 1000, 10000] {
+fn bench_insert_line(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/insert_line");
+    for &lines in SIZES {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
                 || generate_buffer(lines),
                 |buf| {
-                    // Delete at middle of buffer using explicit position
+                    let pos = Position::new(lines / 2, 0);
+                    buf.insert_at(pos, "new line inserted here\n");
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}
+
+fn bench_delete_char(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/delete_char");
+    for &lines in SIZES {
+        group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
+            b.iter_batched_ref(
+                || generate_buffer(lines),
+                |buf| {
                     let pos = Position::new(lines / 2, 10);
                     let _ = buf.delete_at(pos, 1);
                 },
@@ -80,20 +91,16 @@ fn bench_delete_char(c: &mut Criterion) {
             );
         });
     }
-
     group.finish();
 }
 
-/// Benchmark: Delete range (simulating line deletion).
 fn bench_delete_range(c: &mut Criterion) {
     let mut group = c.benchmark_group("buffer/delete_range");
-
-    for &lines in &[100, 1000, 10000] {
+    for &lines in SIZES {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
                 || generate_buffer(lines),
                 |buf| {
-                    // Delete a line in the middle
                     let mid = lines / 2;
                     let _ = buf.delete_range(Position::new(mid, 0), Position::new(mid + 1, 0));
                 },
@@ -101,37 +108,17 @@ fn bench_delete_range(c: &mut Criterion) {
             );
         });
     }
-
     group.finish();
 }
 
-/// Benchmark: Buffer creation from string.
-fn bench_from_string(c: &mut Criterion) {
-    let mut group = c.benchmark_group("buffer/from_string");
+// =========================================================================
+// Read benchmarks — expected O(1) with Vec, O(log n) with rope
+// =========================================================================
 
-    for &lines in &[10, 100, 1000, 10000] {
-        let content = (0..lines)
-            .map(|i| format!("Line {} content", i))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        group.bench_with_input(BenchmarkId::new("lines", lines), &content, |b, content| {
-            b.iter(|| {
-                let _ = Buffer::from_string(content);
-            });
-        });
-    }
-
-    group.finish();
-}
-
-/// Benchmark: Line access by index.
 fn bench_line_access(c: &mut Criterion) {
     let mut group = c.benchmark_group("buffer/line_access");
-
-    for &lines in &[100, 1000, 10000] {
+    for &lines in SIZES {
         let buffer = generate_buffer(lines);
-
         group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
             let mid = lines / 2;
             b.iter(|| {
@@ -139,46 +126,121 @@ fn bench_line_access(c: &mut Criterion) {
             });
         });
     }
-
     group.finish();
 }
 
-/// Benchmark: Position to byte offset conversion.
-fn bench_position_to_byte(c: &mut Criterion) {
-    let mut group = c.benchmark_group("buffer/position_to_byte");
+// =========================================================================
+// Materialization benchmarks — the heavy hitters
+// =========================================================================
 
-    for &lines in &[100, 1000, 10000] {
+fn bench_content(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/content");
+    for &lines in SIZES {
         let buffer = generate_buffer(lines);
-        let mid = lines / 2;
-
-        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
-            b.iter(|| {
-                let _ = buffer.position_to_byte(Position::new(mid, 10));
-            });
-        });
-    }
-
-    group.finish();
-}
-
-/// Benchmark: Buffer content join (lines.join("\n")).
-///
-/// This measures the cost of `buffer.content()` which is called on every edit
-/// in `emit_syntax_updates()`. For a 5000-line file, this creates a ~200KB
-/// string allocation per keystroke.
-fn bench_content_join(c: &mut Criterion) {
-    let mut group = c.benchmark_group("buffer/content_join");
-
-    for &lines in &[100, 500, 1000, 5000, 10000] {
-        let buffer = generate_buffer(lines);
-
         group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
             b.iter(|| {
                 let _ = std::hint::black_box(buffer.content());
             });
         });
     }
+    group.finish();
+}
 
+fn bench_clone(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/clone");
+    for &lines in SIZES {
+        let buffer = generate_buffer(lines);
+        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
+            b.iter(|| {
+                let _ = std::hint::black_box(buffer.clone());
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_from_string(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/from_string");
+    for &lines in SIZES {
+        let content = (0..lines)
+            .map(|i| format!("Line {} content", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        group.bench_with_input(BenchmarkId::new("lines", lines), &content, |b, content| {
+            b.iter(|| {
+                let _ = Buffer::from_string(content);
+            });
+        });
+    }
+    group.finish();
+}
+
+// =========================================================================
+// Position conversion — O(lines) with Vec, O(log n) with rope
+// =========================================================================
+
+fn bench_position_to_byte(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/position_to_byte");
+    for &lines in SIZES {
+        let buffer = generate_buffer(lines);
+        let target = lines - 1; // worst case: near end of file
+        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
+            b.iter(|| {
+                let _ = buffer.position_to_byte(Position::new(target, 10));
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_byte_to_position(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/byte_to_position");
+    for &lines in SIZES {
+        let buffer = generate_buffer(lines);
+        let content = buffer.content();
+        let target_byte = content.len() * 3 / 4; // 75% into the file
+        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
+            b.iter(|| {
+                let _ = buffer.byte_to_position(target_byte);
+            });
+        });
+    }
+    group.finish();
+}
+
+// =========================================================================
+// Motion hot path — Vec<char> allocation cost
+// =========================================================================
+
+fn bench_vec_char_alloc(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/vec_char_alloc");
+    let short = "hello world";
+    let medium = "The quick brown fox jumps over the lazy dog. Hello world! More text here for a longer line padding.";
+    let long: String = "x".repeat(1000);
+    for (name, line) in [("11_chars", short), ("99_chars", medium), ("1000_chars", &long)] {
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                let _: Vec<char> = std::hint::black_box(line).chars().collect();
+            });
+        });
+    }
+    group.finish();
+}
+
+// =========================================================================
+// Line hash — used for diff detection
+// =========================================================================
+
+fn bench_line_hashes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("buffer/line_hashes");
+    for &lines in SIZES {
+        let buffer = generate_buffer(lines);
+        group.bench_with_input(BenchmarkId::new("lines", lines), &buffer, |b, buffer| {
+            b.iter(|| {
+                let _ = std::hint::black_box(buffer.line_hashes());
+            });
+        });
+    }
     group.finish();
 }
 
@@ -186,11 +248,16 @@ criterion_group!(
     benches,
     bench_insert_char,
     bench_insert_word,
+    bench_insert_line,
     bench_delete_char,
     bench_delete_range,
-    bench_from_string,
     bench_line_access,
+    bench_content,
+    bench_clone,
+    bench_from_string,
     bench_position_to_byte,
-    bench_content_join,
+    bench_byte_to_position,
+    bench_vec_char_alloc,
+    bench_line_hashes,
 );
 criterion_main!(benches);
