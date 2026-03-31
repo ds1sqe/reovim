@@ -116,6 +116,32 @@ fn decode_result_truncated_field() {
     assert!(!not_truncated.truncated);
 }
 
+#[test]
+fn codec_view_default_has_expected_values() {
+    assert_eq!(CodecView::DEFAULT.name, "default");
+    assert_eq!(CodecView::DEFAULT.display, "Default");
+}
+
+#[test]
+fn codec_view_equality() {
+    let a = CodecView {
+        name: "hex",
+        display: "Hex Dump",
+    };
+    let b = CodecView {
+        name: "hex",
+        display: "Hex Dump",
+    };
+    assert_eq!(a, b);
+}
+
+#[test]
+fn codec_view_debug() {
+    let v = CodecView::DEFAULT;
+    let debug = format!("{v:?}");
+    assert!(debug.contains("default"));
+}
+
 /// Mock codec for testing the trait.
 struct MockCodec {
     bidirectional: bool,
@@ -180,6 +206,27 @@ fn mock_codec_decode_error() {
     };
     let result = codec.decode(&[0xFF, 0xFE]);
     assert!(result.is_err());
+}
+
+#[test]
+fn views_default_returns_single_default() {
+    let codec = MockCodec {
+        bidirectional: true,
+    };
+    let views = codec.views();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0], CodecView::DEFAULT);
+}
+
+#[test]
+fn decode_view_default_delegates_to_decode() {
+    let codec = MockCodec {
+        bidirectional: true,
+    };
+    let direct = codec.decode(b"test").unwrap();
+    let via_view = codec.decode_view(b"test", "default").unwrap();
+    assert_eq!(direct.content, via_view.content);
+    assert_eq!(direct.lossy, via_view.lossy);
 }
 
 #[test]

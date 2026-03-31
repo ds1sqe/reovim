@@ -68,7 +68,10 @@ pub use {
 
 // Types
 pub use {
-    codec::DecodeResult, content_type::ContentType, error::CodecError, metadata::CodecMetadata,
+    codec::{CodecView, DecodeResult},
+    content_type::ContentType,
+    error::CodecError,
+    metadata::CodecMetadata,
 };
 
 // Per-session state

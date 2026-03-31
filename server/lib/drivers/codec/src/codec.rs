@@ -66,6 +66,26 @@ impl DecodeResult {
     }
 }
 
+/// A named view that a codec can produce.
+///
+/// Codecs that support multiple views (e.g., structured metadata + hex dump)
+/// return multiple `CodecView` entries from [`ContentCodec::views()`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodecView {
+    /// Machine-readable view name (e.g., `"default"`, `"hex"`, `"meta"`).
+    pub name: &'static str,
+    /// Human-readable display label (e.g., `"Default"`, `"Hex Dump"`, `"Metadata"`).
+    pub display: &'static str,
+}
+
+impl CodecView {
+    /// The default view — every codec has at least this one.
+    pub const DEFAULT: Self = Self {
+        name: "default",
+        display: "Default",
+    };
+}
+
 /// Trait for encoding and decoding file content.
 ///
 /// Implementations handle the translation between on-disk byte
@@ -106,6 +126,30 @@ pub trait ContentCodec: Send + Sync {
         content: &str,
         metadata: &CodecMetadata,
     ) -> Option<Result<Vec<u8>, CodecError>>;
+
+    /// Available views for this codec.
+    ///
+    /// Returns the list of named views this codec can produce.
+    /// The default implementation returns a single "default" view.
+    /// Codecs with multiple views (e.g., structured metadata + hex dump)
+    /// override this to list all available views.
+    fn views(&self) -> &[CodecView] {
+        &[CodecView::DEFAULT]
+    }
+
+    /// Decode raw bytes using a specific named view.
+    ///
+    /// The `view` parameter must match one of the names returned by
+    /// [`views()`](Self::views). The default implementation ignores
+    /// the view name and delegates to [`decode()`](Self::decode).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CodecError`] if the bytes cannot be decoded or the
+    /// view name is not recognized.
+    fn decode_view(&self, raw: &[u8], _view: &str) -> Result<DecodeResult, CodecError> {
+        self.decode(raw)
+    }
 }
 
 #[cfg(test)]
