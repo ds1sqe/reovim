@@ -611,3 +611,23 @@ fn extract_byte_range_spanning_multiple_chunks() {
     // The extracted text should start with line 100
     assert!(deleted.starts_with("data line 00100"));
 }
+
+// === Coverage: clamp_position on empty buffer (L346:br0, L347) ===
+
+#[test]
+fn delete_range_on_empty_buffer() {
+    // delete_range calls clamp_position without an empty-buffer guard,
+    // so this hits the `self.text.is_empty()` true branch (L346:br0).
+    let mut buf = Buffer::new();
+    let deleted = buf.delete_range(Position::new(0, 0), Position::new(1, 5));
+    assert!(deleted.is_empty());
+}
+
+// === Coverage: normalize_to_rope joined empty (L376:br0, L377) ===
+
+#[test]
+fn from_string_single_newline() {
+    // "\n".lines() → [""], joined → "". joined.is_empty() → true (L376:br0).
+    let buf = Buffer::from_string("\n");
+    assert_eq!(buf.line_count(), 0, "single newline normalizes to empty");
+}

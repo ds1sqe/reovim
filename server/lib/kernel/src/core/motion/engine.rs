@@ -1468,4 +1468,19 @@ mod b9_repro {
         let pos = ge(&buf, 0, 2).unwrap();
         assert_eq!(pos.column, 0, "ge punct skip should stop at underscore");
     }
+
+    // === Coverage: L504:br1 — punct skip loop not entered (x==0) ===
+
+    #[test]
+    fn ge_punct_skip_at_col_zero() {
+        // Phase 3 punct skip with x=0 → `while x > 0` is false (L504:br1).
+        // ".." from col 1. After backing to col 0 ('.').
+        // Phase 1: '.' not ws.
+        // Phase 2: chars[0]='.', chars[1]='.'. Both punct → same class → not end.
+        // Phase 3: '.' not word → punct skip. x=0 → while loop not entered.
+        // x==0, pos.line=0 → pos.column=0, break.
+        let buf = Buffer::from_string("..");
+        let pos = ge(&buf, 0, 1).unwrap();
+        assert_eq!(pos.column, 0, "ge punct skip at col 0 should stay at 0");
+    }
 }

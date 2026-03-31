@@ -815,10 +815,10 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
         NodeKind::Leaf { text } => {
             let s = range.start.min(text.len());
             let e = range.end.min(text.len());
-            debug_assert!(
-                text.is_char_boundary(s) && text.is_char_boundary(e),
-                "remove range not on char boundaries"
-            );
+            // Invariant: s and e are always on char boundaries because the
+            // Rope API computes byte offsets via position_to_byte (char→byte).
+            debug_assert!(text.is_char_boundary(s), "remove start not on char boundary");
+            debug_assert!(text.is_char_boundary(e), "remove end not on char boundary");
             if s == 0 && e >= text.len() {
                 return vec![];
             }

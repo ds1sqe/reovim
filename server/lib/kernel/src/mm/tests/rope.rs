@@ -1997,3 +1997,72 @@ fn remove_range_internal_no_overlap_with_any_child() {
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].metrics.byte_len, 8, "no bytes should be removed");
 }
+
+// ─── Coverage: floor_char_boundary with idx=0 (L519:br1) ───────────────────
+
+#[test]
+fn floor_char_boundary_at_zero() {
+    // byte_idx=0 on a non-empty string: idx starts at 0, while loop
+    // condition `idx > 0` is immediately false (L519:br1).
+    assert_eq!(floor_char_boundary("abc", 0), 0);
+}
+
+// ─── Coverage: fixup_alignment both-non-leaf merge (L942, L945) ─────────────
+
+#[test]
+fn fixup_alignment_two_internals_large_merge() {
+    // Two adjacent internal nodes whose merged text exceeds MAX_CHUNK_BYTES,
+    // producing > 1 leaf. Both children[i] are internal → is_leaf() false
+    // at L942 → br1 taken → falls to L945.
+    let left_text = "a".repeat(600); // no trailing '\n'
+    let right_text = format!("\n{}", "b".repeat(600));
+    let left = RopeNode::new_internal(vec![RopeNode::new_leaf(left_text)]);
+    let right = RopeNode::new_internal(vec![RopeNode::new_leaf(right_text)]);
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    // Merged text is "aaa...\nbbb..." (1201 bytes) → chunk_text splits at '\n'
+    // → 2 leaves → wrapped in new_internal (L945)
+    let mut text = String::new();
+    for c in &children {
+        collect_text(c, &mut text);
+    }
+    assert_eq!(text.len(), 1201);
+    assert!(text.starts_with("aaa"));
+    assert!(text.contains('\n'));
+}
+
+#[test]
+fn fixup_alignment_leaf_and_internal_large_merge() {
+    // Left is leaf, right is internal → children[i].is_leaf() true but
+    // children[i+1].is_leaf() false → L942:br3 taken → L945.
+    let left_text = "x".repeat(600);
+    let right_text = format!("\n{}", "y".repeat(600));
+    let left = RopeNode::new_leaf(left_text);
+    let right = RopeNode::new_internal(vec![RopeNode::new_leaf(right_text)]);
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    let mut text = String::new();
+    for c in &children {
+        collect_text(c, &mut text);
+    }
+    assert_eq!(text.len(), 1201);
+}
+
+// ─── Coverage: remove_range debug_assert branches (L819) ────────────────────
+
+#[test]
+#[should_panic(expected = "remove start not on char boundary")]
+fn remove_range_panics_on_non_char_start_boundary() {
+    // "α" is 2 bytes (0xCE 0xB1). Byte 1 is a continuation byte.
+    let leaf = RopeNode::new_leaf("α".to_string());
+    remove_range(&leaf, 1..2);
+}
+
+#[test]
+#[should_panic(expected = "remove end not on char boundary")]
+fn remove_range_panics_on_non_char_end_boundary() {
+    // "αβ" is 4 bytes. Byte 3 (0xB2) is a continuation byte.
+    // Start=0 is valid, end=3 is not on a char boundary.
+    let leaf = RopeNode::new_leaf("αβ".to_string());
+    remove_range(&leaf, 0..3);
+}
