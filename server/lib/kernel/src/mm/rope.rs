@@ -459,7 +459,7 @@ impl PartialEq for Rope {
                     // first (L452), so left exhausts before or simultaneously
                     // with right. When left is exhausted, r_remaining is always
                     // empty and right has no more chunks.
-                    None => return r_remaining.is_empty() && right.next().is_none(), // LCOV_EXCL_LINE
+                    None => return r_remaining.is_empty() && right.next().is_none(),
                 }
             }
             if r_remaining.is_empty() {
@@ -469,7 +469,7 @@ impl PartialEq for Rope {
                     // iterators yield the same total byte_len (guarded at L443).
                     // Left is consumed first (L452 checked before L458), so
                     // left's None branch at L455 always fires before this one.
-                    None => return l_remaining.is_empty(), // LCOV_EXCL_LINE
+                    None => return l_remaining.is_empty(),
                 }
             }
             let cmp_len = l_remaining.len().min(r_remaining.len());
@@ -600,7 +600,7 @@ fn build_tree(mut nodes: Vec<Arc<RopeNode>>) -> Arc<RopeNode> {
     // ceil(2/8)=1 would require entering the loop with nodes.len() > 8, which 2 is
     // not. Therefore nodes.len() is always 2..=8 here.
     if nodes.len() == 1 {
-        nodes.into_iter().next().expect("checked non-empty") // LCOV_EXCL_LINE
+        nodes.into_iter().next().expect("checked non-empty")
     } else {
         RopeNode::new_internal(nodes)
     }
@@ -877,7 +877,7 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
             // which returns early. By this point, s > 0 OR e < text.len(),
             // so at least one slice is non-empty.
             if new_text.is_empty() {
-                vec![] // LCOV_EXCL_LINE
+                vec![]
             } else {
                 chunk_text_to_leaves(&new_text)
             }

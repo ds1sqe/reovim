@@ -285,11 +285,9 @@ impl Buffer {
         // (`byte_start >= byte_end`) returns early on zero-width ranges.
         // By this point byte_start < byte_end, so extract_byte_range
         // always returns non-empty text.
-        // LCOV_EXCL_START
         if !deleted.is_empty() {
             self.modified = true;
         }
-        // LCOV_EXCL_STOP
 
         deleted
     }
@@ -321,11 +319,9 @@ impl Buffer {
         // (`byte_start >= byte_end`) returns early on zero-width ranges.
         // By this point byte_start < byte_end, so extract_byte_range
         // always returns non-empty text.
-        // LCOV_EXCL_START
         if !deleted.is_empty() {
             self.modified = true;
         }
-        // LCOV_EXCL_STOP
 
         deleted
     }
