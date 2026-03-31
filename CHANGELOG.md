@@ -15,6 +15,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **vim**: `load_personality_manifest` now propagates parse errors instead of swallowing them — module correctly fails to init if vim.toml is corrupted (#718)
 - **lsp**: monitor LSP saturator task with watcher — if the task panics, `active` flag is cleared and user is notified instead of silently losing all LSP features (#719)
 - **trace**: `init_profiling_with_filter` now uses the filter argument via `TracingProfiler::with_filter` instead of discarding it (#716)
+- **kernel**: `OptionRegistry::register` holds write lock for entire check-and-insert, fixing TOCTOU race between read and write locks (#721)
 
 ## [0.14.3] - 2026-03-30
 

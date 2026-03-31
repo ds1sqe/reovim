@@ -124,11 +124,14 @@ impl OptionRegistry {
     /// Returns error if:
     /// - Option with same name already exists
     /// - Short alias conflicts with existing name or alias
+    #[allow(clippy::significant_drop_tightening)] // intentional: hold lock for atomicity
     pub fn register(&self, spec: OptionSpec) -> Result<(), OptionError> {
         let name = spec.name.to_string();
 
-        // Check for duplicate name first
-        if self.specs.read().contains_key(&name) {
+        // Hold write lock for entire check-and-insert to prevent TOCTOU race.
+        let mut specs = self.specs.write();
+
+        if specs.contains_key(&name) {
             return Err(OptionError::AlreadyExists(name));
         }
 
@@ -136,22 +139,19 @@ impl OptionRegistry {
         if let Some(ref short) = spec.short_form {
             let short_str = short.to_string();
 
-            // Alias conflicts with existing full name
-            if self.specs.read().contains_key(&short_str) {
+            if specs.contains_key(&short_str) {
                 return Err(OptionError::AliasConflict(short_str));
             }
 
-            // Alias conflicts with existing alias
-            if self.aliases.read().contains_key(&short_str) {
+            let mut aliases = self.aliases.write();
+            if aliases.contains_key(&short_str) {
                 return Err(OptionError::AliasConflict(short_str));
             }
 
-            // Register the alias
-            self.aliases.write().insert(short_str, name.clone());
+            aliases.insert(short_str, name.clone());
         }
 
-        // Finally insert the spec
-        self.specs.write().insert(name, spec);
+        specs.insert(name, spec);
         Ok(())
     }
 
