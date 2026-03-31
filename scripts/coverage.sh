@@ -164,6 +164,8 @@ if ! $LCOV; then
 fi
 
 # ─── Threshold enforcement ───────────────────────────────────────────────────
+# Super strict: checks BOTH line coverage AND branch coverage per file.
+# Any uncovered line or untaken branch is a failure.
 
 if [ -n "$FAIL_UNDER" ]; then
   LCOV_FILE="target/llvm-cov/lcov.${MODE}.info"
@@ -172,62 +174,116 @@ if [ -n "$FAIL_UNDER" ]; then
     exit 1
   fi
 
-  echo -e "\033[1;33m==> Checking coverage threshold (${FAIL_UNDER}%)...\033[0m"
+  echo -e "\033[1;33m==> Checking coverage threshold (${FAIL_UNDER}% lines + branches)...\033[0m"
 
-  # Parse LCOV: for each file compute line hit rate.
-  # Print files below threshold sorted by coverage ascending.
-  FAILED_FILES=$(awk -v threshold="$FAIL_UNDER" '
+  # Parse LCOV: per-file line + branch hit rates, collect uncovered lines and branches.
+  REPORT=$(awk -v threshold="$FAIL_UNDER" '
+    function make_rel(f) {
+      sub(/.*\/server\//, "server/", f)
+      sub(/.*\/clients\//, "clients/", f)
+      sub(/.*\/shared\//, "shared/", f)
+      sub(/.*\/apps\//, "apps/", f)
+      sub(/.*\/tools\//, "tools/", f)
+      return f
+    }
     /^SF:/ {
-      file = substr($0, 4)
-      # Make path relative
-      rel = file
-      sub(/.*\/server\//, "server/", rel)
-      sub(/.*\/clients\//, "clients/", rel)
-      sub(/.*\/shared\//, "shared/", rel)
-      sub(/.*\/apps\//, "apps/", rel)
-      sub(/.*\/tools\//, "tools/", rel)
-      lf = 0; lh = 0
+      if (rel != "") flush()
+      rel = make_rel(substr($0, 4))
+      lf = 0; lh = 0; brf = 0; brh = 0
+      delete uncov_lines; uncov_lines_n = 0
+      delete uncov_br; uncov_br_n = 0
       next
     }
-    /^LF:/ { lf = substr($0, 4) + 0; next }
-    /^LH:/ { lh = substr($0, 4) + 0; next }
-    /^end_of_record/ {
-      if (lf > 0) {
-        pct = (lh / lf) * 100.0
-        if (pct < threshold + 0) {
-          printf "  %6.2f%%  %4d/%4d  %s\n", pct, lh, lf, rel
-          fail_count++
+    /^DA:/ {
+      split(substr($0, 4), a, ",")
+      lf++
+      if (a[2] + 0 > 0) lh++
+      else uncov_lines[++uncov_lines_n] = a[1] + 0
+      next
+    }
+    /^BRDA:/ {
+      # BRDA:line,block,branch,count
+      split(substr($0, 6), a, ",")
+      brf++
+      if (a[4] != "-" && a[4] + 0 > 0) brh++
+      else uncov_br[++uncov_br_n] = a[1] ":" a[3]
+      next
+    }
+    /^end_of_record/ { if (rel != "") flush(); rel = ""; next }
+
+    function flush() {
+      total_lf += lf; total_lh += lh
+      total_brf += brf; total_brh += brh
+
+      line_pct = (lf > 0) ? (lh / lf) * 100.0 : 100.0
+      br_pct = (brf > 0) ? (brh / brf) * 100.0 : 100.0
+      file_fail = (line_pct < threshold + 0 || br_pct < threshold + 0)
+
+      if (file_fail) {
+        fail_count++
+        printf "FILE\t%s\tlines=%d/%d (%.1f%%)\tbranches=%d/%d (%.1f%%)\n", \
+          rel, lh, lf, line_pct, brh, brf, br_pct
+
+        if (uncov_lines_n > 0) {
+          s = ""
+          for (i = 1; i <= uncov_lines_n; i++) {
+            if (s != "") s = s ","
+            s = s uncov_lines[i]
+          }
+          printf "MISS_LINE\t%s\t%s\n", rel, s
         }
-        total_lf += lf
-        total_lh += lh
+        if (uncov_br_n > 0) {
+          s = ""
+          for (i = 1; i <= uncov_br_n; i++) {
+            if (s != "") s = s ","
+            s = s uncov_br[i]
+          }
+          printf "MISS_BR\t%s\t%s\n", rel, s
+        }
       }
-      next
     }
+
     END {
-      if (total_lf > 0) {
-        overall = (total_lh / total_lf) * 100.0
-        printf "SUMMARY\t%d\t%d\t%.2f\t%d\n", total_lh, total_lf, overall, fail_count + 0
-      }
+      line_overall = (total_lf > 0) ? (total_lh / total_lf) * 100.0 : 100.0
+      br_overall = (total_brf > 0) ? (total_brh / total_brf) * 100.0 : 100.0
+      printf "SUMMARY\t%d\t%d\t%.2f\t%d\t%d\t%.2f\t%d\n", \
+        total_lh, total_lf, line_overall, total_brh, total_brf, br_overall, fail_count + 0
     }
   ' "$LCOV_FILE")
 
-  # Extract summary line
-  SUMMARY=$(echo "$FAILED_FILES" | grep '^SUMMARY' | head -1)
-  TOTAL_LH=$(echo "$SUMMARY" | cut -f2)
-  TOTAL_LF=$(echo "$SUMMARY" | cut -f3)
-  OVERALL=$(echo "$SUMMARY" | cut -f4)
-  FAIL_COUNT=$(echo "$SUMMARY" | cut -f5)
+  # Parse summary
+  SUMMARY=$(echo "$REPORT" | grep '^SUMMARY' | head -1)
+  L_HIT=$(echo "$SUMMARY" | cut -f2)
+  L_TOTAL=$(echo "$SUMMARY" | cut -f3)
+  L_PCT=$(echo "$SUMMARY" | cut -f4)
+  B_HIT=$(echo "$SUMMARY" | cut -f5)
+  B_TOTAL=$(echo "$SUMMARY" | cut -f6)
+  B_PCT=$(echo "$SUMMARY" | cut -f7)
+  FAIL_COUNT=$(echo "$SUMMARY" | cut -f8)
 
-  echo "  Overall: ${OVERALL}% (${TOTAL_LH}/${TOTAL_LF} lines)"
+  echo "  Lines:    ${L_PCT}% (${L_HIT}/${L_TOTAL})"
+  echo "  Branches: ${B_PCT}% (${B_HIT}/${B_TOTAL})"
 
   if [ "${FAIL_COUNT:-0}" -gt 0 ]; then
     echo ""
     echo -e "\033[1;31m  Files below ${FAIL_UNDER}% threshold:\033[0m"
-    echo "$FAILED_FILES" | grep -v '^SUMMARY' | sort
+    echo "$REPORT" | grep '^FILE' | while IFS=$'\t' read -r _ file lines branches; do
+      echo -e "    \033[0;33m${file}\033[0m  ${lines}  ${branches}"
+    done
     echo ""
-    echo -e "\033[1;31m✗ ${FAIL_COUNT} file(s) below ${FAIL_UNDER}% coverage\033[0m"
+    echo -e "\033[1;33m  Uncovered lines:\033[0m"
+    echo "$REPORT" | grep '^MISS_LINE' | while IFS=$'\t' read -r _ file lines; do
+      echo -e "    \033[0;31m${file}\033[0m: ${lines}"
+    done
+    echo ""
+    echo -e "\033[1;33m  Untaken branches (line:branch):\033[0m"
+    echo "$REPORT" | grep '^MISS_BR' | while IFS=$'\t' read -r _ file branches; do
+      echo -e "    \033[0;31m${file}\033[0m: ${branches}"
+    done
+    echo ""
+    echo -e "\033[1;31m✗ ${FAIL_COUNT} file(s) below ${FAIL_UNDER}% (lines + branches)\033[0m"
     exit 1
   else
-    echo -e "\033[1;32m✓ All files meet ${FAIL_UNDER}% coverage threshold\033[0m"
+    echo -e "\033[1;32m✓ All files meet ${FAIL_UNDER}% coverage (lines + branches)\033[0m"
   fi
 fi
