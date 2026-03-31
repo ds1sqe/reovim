@@ -909,13 +909,24 @@ fn convert_display_to_driver_style_default() {
 #[test]
 fn convert_display_to_driver_style_with_colors() {
     let display_style = DisplayStyle {
-        fg: Some(Color::Rgb { r: 255, g: 128, b: 0 }),
+        fg: Some(Color::Rgb {
+            r: 255,
+            g: 128,
+            b: 0,
+        }),
         bg: Some(Color::Blue),
         attributes: DisplayAttributes::new(),
         underline_color: None,
     };
     let driver_style = convert_display_style_to_driver_style(&display_style);
-    assert_eq!(driver_style.fg, Some(Color::Rgb { r: 255, g: 128, b: 0 }));
+    assert_eq!(
+        driver_style.fg,
+        Some(Color::Rgb {
+            r: 255,
+            g: 128,
+            b: 0
+        })
+    );
     assert_eq!(driver_style.bg, Some(Color::Blue));
 }
 
@@ -936,12 +947,36 @@ fn convert_display_to_driver_style_all_attributes() {
         underline_color: None,
     };
     let driver_style = convert_display_style_to_driver_style(&display_style);
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::BOLD));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::ITALIC));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::UNDERLINE));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::STRIKETHROUGH));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::REVERSE));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::DIM));
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::BOLD)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::ITALIC)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::UNDERLINE)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::STRIKETHROUGH)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::REVERSE)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::DIM)
+    );
 }
 
 #[test]
@@ -957,12 +992,36 @@ fn convert_display_to_driver_style_partial_attributes() {
         underline_color: None,
     };
     let driver_style = convert_display_style_to_driver_style(&display_style);
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::BOLD));
-    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::ITALIC));
-    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::UNDERLINE));
-    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::STRIKETHROUGH));
-    assert!(!driver_style.attributes.contains(reovim_client_driver::Attributes::REVERSE));
-    assert!(driver_style.attributes.contains(reovim_client_driver::Attributes::DIM));
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::BOLD)
+    );
+    assert!(
+        !driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::ITALIC)
+    );
+    assert!(
+        !driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::UNDERLINE)
+    );
+    assert!(
+        !driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::STRIKETHROUGH)
+    );
+    assert!(
+        !driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::REVERSE)
+    );
+    assert!(
+        driver_style
+            .attributes
+            .contains(reovim_client_driver::Attributes::DIM)
+    );
 }
 
 // =============================================================================
@@ -998,25 +1057,26 @@ impl reovim_driver_display::style::ThemeProvider for TestDisplayTheme {
 
 #[test]
 fn theme_provider_adapter_highlight() {
-    let theme = TestDisplayTheme::new().with_style(
-        "Keyword",
-        {
-            let mut attrs = DisplayAttributes::new();
-            attrs.set(DisplayAttributes::BOLD);
-            DisplayStyle {
-                fg: Some(Color::Cyan),
-                bg: None,
-                attributes: attrs,
-                underline_color: None,
-            }
-        },
-    );
+    let theme = TestDisplayTheme::new().with_style("Keyword", {
+        let mut attrs = DisplayAttributes::new();
+        attrs.set(DisplayAttributes::BOLD);
+        DisplayStyle {
+            fg: Some(Color::Cyan),
+            bg: None,
+            attributes: attrs,
+            underline_color: None,
+        }
+    });
     let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
     let adapter = ThemeProviderAdapter::new(&manager);
 
     let style = reovim_client_driver::ThemeProvider::highlight(&adapter, "Keyword");
     assert_eq!(style.fg, Some(Color::Cyan));
-    assert!(style.attributes.contains(reovim_client_driver::Attributes::BOLD));
+    assert!(
+        style
+            .attributes
+            .contains(reovim_client_driver::Attributes::BOLD)
+    );
 }
 
 #[test]
@@ -1033,8 +1093,10 @@ fn theme_provider_adapter_highlight_with_fallback_first_match() {
     let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
     let adapter = ThemeProviderAdapter::new(&manager);
 
-    let style =
-        reovim_client_driver::ThemeProvider::highlight_with_fallback(&adapter, &["Function", "Normal"]);
+    let style = reovim_client_driver::ThemeProvider::highlight_with_fallback(
+        &adapter,
+        &["Function", "Normal"],
+    );
     assert_eq!(style.fg, Some(Color::Yellow));
 }
 
@@ -1057,7 +1119,11 @@ fn theme_provider_adapter_foreground() {
         "Normal",
         DisplayStyle {
             fg: Some(Color::White),
-            bg: Some(Color::Rgb { r: 30, g: 30, b: 30 }),
+            bg: Some(Color::Rgb {
+                r: 30,
+                g: 30,
+                b: 30,
+            }),
             attributes: DisplayAttributes::new(),
             underline_color: None,
         },
@@ -1067,7 +1133,14 @@ fn theme_provider_adapter_foreground() {
 
     let style = reovim_client_driver::ThemeProvider::foreground(&adapter);
     assert_eq!(style.fg, Some(Color::White));
-    assert_eq!(style.bg, Some(Color::Rgb { r: 30, g: 30, b: 30 }));
+    assert_eq!(
+        style.bg,
+        Some(Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 30
+        })
+    );
 }
 
 #[test]
@@ -1076,7 +1149,11 @@ fn theme_provider_adapter_background() {
         "Normal",
         DisplayStyle {
             fg: Some(Color::White),
-            bg: Some(Color::Rgb { r: 10, g: 10, b: 10 }),
+            bg: Some(Color::Rgb {
+                r: 10,
+                g: 10,
+                b: 10,
+            }),
             attributes: DisplayAttributes::new(),
             underline_color: None,
         },
@@ -1086,7 +1163,14 @@ fn theme_provider_adapter_background() {
 
     let style = reovim_client_driver::ThemeProvider::background(&adapter);
     assert_eq!(style.fg, None);
-    assert_eq!(style.bg, Some(Color::Rgb { r: 10, g: 10, b: 10 }));
+    assert_eq!(
+        style.bg,
+        Some(Color::Rgb {
+            r: 10,
+            g: 10,
+            b: 10
+        })
+    );
     assert_eq!(style.attributes, reovim_client_driver::Attributes::new());
 }
 
@@ -1105,7 +1189,11 @@ fn theme_provider_adapter_is_dark_dark_bg() {
         "Normal",
         DisplayStyle {
             fg: None,
-            bg: Some(Color::Rgb { r: 20, g: 20, b: 20 }),
+            bg: Some(Color::Rgb {
+                r: 20,
+                g: 20,
+                b: 20,
+            }),
             attributes: DisplayAttributes::new(),
             underline_color: None,
         },
@@ -1121,7 +1209,11 @@ fn theme_provider_adapter_is_dark_light_bg() {
         "Normal",
         DisplayStyle {
             fg: None,
-            bg: Some(Color::Rgb { r: 200, g: 200, b: 200 }),
+            bg: Some(Color::Rgb {
+                r: 200,
+                g: 200,
+                b: 200,
+            }),
             attributes: DisplayAttributes::new(),
             underline_color: None,
         },
@@ -1156,8 +1248,11 @@ fn theme_provider_adapter_is_dark_non_rgb_bg() {
 fn token_provider_adapter_empty_cache() {
     let cache = reovim_driver_display::AnnotationCacheManager::new();
     let adapter = TokenProviderAdapter::new(&cache);
-    let tokens =
-        reovim_client_driver::TokenProvider::tokens_for_line(&adapter, reovim_client_driver::BufferId(0), 0);
+    let tokens = reovim_client_driver::TokenProvider::tokens_for_line(
+        &adapter,
+        reovim_client_driver::BufferId(0),
+        0,
+    );
     assert!(tokens.is_empty());
 }
 

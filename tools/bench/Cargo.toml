@@ -23,9 +23,14 @@ reovim-driver-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
 serde_json = { workspace = true }
+regex = "1"
 
 [[bench]]
 name = "buffer_ops"
+harness = false
+
+[[bench]]
+name = "search_ops"
 harness = false
 
 [[bench]]

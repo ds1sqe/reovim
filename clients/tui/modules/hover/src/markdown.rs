@@ -22,9 +22,12 @@ impl StyledSpan {
         }
     }
 
-    /// Display width of this span (byte length, sufficient for ASCII hover content).
-    pub const fn display_width(&self) -> usize {
-        self.text.len()
+    /// Display width of this span in characters.
+    ///
+    /// Uses `chars().count()` rather than byte length so multi-byte characters
+    /// (e.g., box-drawing `─` from horizontal rules) are measured correctly.
+    pub fn display_width(&self) -> usize {
+        self.text.chars().count()
     }
 }
 

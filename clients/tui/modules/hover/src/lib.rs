@@ -268,8 +268,15 @@ impl ClientModule for HoverModule {
                     break;
                 }
                 let available = (end_col - col) as usize;
-                let text = if span.text.len() > available {
-                    &span.text[..available]
+                let text = if span.display_width() > available {
+                    // Truncate by character count, not byte offset, to avoid
+                    // panicking on multi-byte characters (e.g., box-drawing `─`).
+                    let byte_end = span
+                        .text
+                        .char_indices()
+                        .nth(available)
+                        .map_or(span.text.len(), |(i, _)| i);
+                    &span.text[..byte_end]
                 } else {
                     &span.text
                 };

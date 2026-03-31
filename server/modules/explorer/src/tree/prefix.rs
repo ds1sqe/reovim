@@ -1,6 +1,6 @@
 //! Tree structure rendering with box-drawing characters.
 //!
-//! Port of `archive/pre_kernel/plugins/features/explorer/src/tree_render.rs`.
+//! Port of [`archive/pre_kernel/plugins/features/explorer/src/tree_render.rs`](https://github.com/ds1sqe/reovim/blob/81806439/archive/pre_kernel/plugins/features/explorer/src/tree_render.rs).
 //! Provides visual hierarchy for file trees using Unicode box-drawing chars.
 
 /// Information needed to render tree connection lines for a node.

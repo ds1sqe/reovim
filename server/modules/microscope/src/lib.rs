@@ -18,6 +18,7 @@
 pub mod bridge;
 pub mod commands;
 pub mod ids;
+mod keybinding;
 pub mod modes;
 pub mod resolver;
 pub mod state;
@@ -118,7 +119,10 @@ impl Module for MicroscopeModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
+        // Normal-mode bindings from personality adapter (#700)
+        let mut bindings = keybinding::all();
+        // Microscope-mode bindings (module-owned, already qualified)
+        bindings.extend([
             // Microscope mode: navigation
             KeybindingRegistration::new("<C-n>", ids::NEXT_ITEM)
                 .with_modes(&["microscope:MICROSCOPE"])
@@ -142,7 +146,8 @@ impl Module for MicroscopeModule {
             KeybindingRegistration::new("<BS>", ids::BACKSPACE)
                 .with_modes(&["microscope:MICROSCOPE"])
                 .with_description("Delete character"),
-        ]
+        ]);
+        bindings
     }
 }
 

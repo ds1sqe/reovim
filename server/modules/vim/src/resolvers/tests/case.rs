@@ -9,8 +9,7 @@ use {
 };
 
 use {
-    super::super::case::*,
-    super::super::operator_common::OperatorType,
+    super::super::{case::*, operator_common::OperatorType},
     crate::modes::VimMode,
 };
 
@@ -144,8 +143,7 @@ fn escape_cancels_lowercase() {
     let keymap = NotFoundKeymap;
     let input = resolve_input_lowercase(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut mstate, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut mstate, &input);
 
     if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
         assert!(matches!(r, PopResult::Cancelled));
@@ -228,10 +226,7 @@ fn line_operator_guu() {
                 args.get("linewise"),
                 Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
-            assert_eq!(
-                args.get("count"),
-                Some(&reovim_driver_command_types::ArgValue::Count(1))
-            );
+            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(1)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -313,10 +308,7 @@ fn line_operator_with_motion_count() {
                 Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
             // count = operator_count(1) * motion_count(3) = 3
-            assert_eq!(
-                args.get("count"),
-                Some(&reovim_driver_command_types::ArgValue::Count(3))
-            );
+            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(3)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -358,10 +350,7 @@ fn prefix_match_returns_pending() {
     let input = resolve_input_lowercase(&keymap);
 
     let result = resolver.resolve_with_keymap(&key('g'), &mut mstate, &input);
-    assert!(
-        matches!(result, ResolveResult::Pending),
-        "PrefixOnly should return Pending"
-    );
+    assert!(matches!(result, ResolveResult::Pending), "PrefixOnly should return Pending");
 }
 
 // ============================================================================

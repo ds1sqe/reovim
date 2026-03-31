@@ -551,7 +551,7 @@ async fn test_range_finder_s_then_escape() {
 // Microscope Picker Tests (#522)
 // ============================================================================
 
-/// Test that `<Space>f` opens the file picker with the prompt and title visible.
+/// Test that `<Space>ff` opens the file picker with the prompt and title visible (#700).
 #[tokio::test]
 async fn test_picker_opens_on_space_f() {
     let harness = TestServerHarness::spawn()
@@ -567,7 +567,7 @@ async fn test_picker_opens_on_space_f() {
 
     // Send <Space>f to open file picker
     handle
-        .send_keys("<Space>f")
+        .send_keys("<Space>ff")
         .await
         .expect("Failed to send keys");
 
@@ -606,7 +606,7 @@ async fn test_picker_query_input() {
 
     // Open file picker and type a query
     handle
-        .send_keys("<Space>f")
+        .send_keys("<Space>ff")
         .await
         .expect("Failed to send keys");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -651,7 +651,7 @@ async fn test_picker_closes_on_escape() {
 
     // Open file picker
     handle
-        .send_keys("<Space>f")
+        .send_keys("<Space>ff")
         .await
         .expect("Failed to send keys");
 
@@ -708,7 +708,7 @@ async fn test_picker_backspace_removes_char() {
 
     // Open file picker and type "ab"
     handle
-        .send_keys("<Space>f")
+        .send_keys("<Space>ff")
         .await
         .expect("Failed to send keys");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -752,7 +752,7 @@ async fn test_picker_backspace_removes_char() {
     handle.stop().await;
 }
 
-/// Test that `<Space>g` opens the grep picker with the "rg> " prompt.
+/// Test that `<Space>sg` opens the grep picker with the "rg> " prompt (#700).
 #[tokio::test]
 async fn test_grep_picker_opens() {
     let harness = TestServerHarness::spawn()
@@ -766,9 +766,9 @@ async fn test_grep_picker_opens() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Open grep picker
+    // Open grep picker (#700: <Space>sg to avoid conflict with git-signs <Space>gh* bindings)
     handle
-        .send_keys("<Space>g")
+        .send_keys("<Space>sg")
         .await
         .expect("Failed to send keys");
 
@@ -793,7 +793,7 @@ async fn test_grep_picker_opens() {
     handle.stop().await;
 }
 
-/// Test that `<Space>b` opens the buffer picker.
+/// Test that `<Space>fb` opens the buffer picker (#700: moved from `<Space>b`).
 #[tokio::test]
 async fn test_buffer_picker_opens() {
     let harness = TestServerHarness::spawn()
@@ -807,9 +807,9 @@ async fn test_buffer_picker_opens() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Open buffer picker
+    // Open buffer picker (#700: <Space>fb to avoid conflict with bufferline <Space>bp/bu/bc)
     handle
-        .send_keys("<Space>b")
+        .send_keys("<Space>fb")
         .await
         .expect("Failed to send keys");
 

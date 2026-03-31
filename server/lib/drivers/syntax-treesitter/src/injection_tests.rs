@@ -117,7 +117,7 @@ fn test_injection_manager_invalidate() {
 fn test_injection_manager_highlight_injections_empty() {
     let mut manager = InjectionManager::new();
     let injections: Vec<Injection> = vec![];
-    let highlights = manager.highlight_injections(&injections, "content", 0..100);
+    let highlights = manager.highlight_injections(&injections, "content", 0..100, "test");
     assert!(highlights.is_empty());
 }
 
@@ -126,7 +126,7 @@ fn test_injection_manager_highlight_injections_no_child() {
     let mut manager = InjectionManager::new();
     // Injection for a language we don't have a factory for
     let injections = vec![Injection::new("rust", 10..50, 0, 0, 2, 10)];
-    let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..100);
+    let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..100, "test");
     // No factory, no child created
     assert!(highlights.is_empty());
 }
@@ -138,7 +138,7 @@ fn test_injection_manager_highlight_non_overlapping() {
 
     // Injection range 100..200, query range 0..50 => no overlap
     let injections = vec![Injection::new("rust", 100..200, 5, 0, 10, 0)];
-    let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..50);
+    let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..50, "test");
     assert!(highlights.is_empty());
 }
 
@@ -149,7 +149,7 @@ fn test_injection_manager_highlight_injection_end_at_start_of_range() {
 
     // Injection ends exactly where query range starts: no overlap
     let injections = vec![Injection::new("rust", 0..10, 0, 0, 0, 10)];
-    let highlights = manager.highlight_injections(&injections, "let x = 1;", 10..20);
+    let highlights = manager.highlight_injections(&injections, "let x = 1;", 10..20, "test");
     assert!(highlights.is_empty());
 }
 
@@ -161,12 +161,11 @@ fn test_injection_manager_highlight_injection_start_at_end_of_range() {
     // Injection starts exactly where query range ends: no overlap
     let injections = vec![Injection::new("rust", 20..30, 0, 0, 0, 10)];
     let highlights =
-        manager.highlight_injections(&injections, "let x = 1;let y = 2;let z = 3;", 0..20);
+        manager.highlight_injections(&injections, "let x = 1;let y = 2;let z = 3;", 0..20, "test");
     assert!(highlights.is_empty());
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn test_injection_manager_dynamic_child_creation() {
     let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
     let mut manager = InjectionManager::with_factory(factory, 0);
@@ -177,7 +176,7 @@ fn test_injection_manager_dynamic_child_creation() {
     assert_eq!(manager.child_count(), 0);
 
     let highlights =
-        manager.highlight_injections(&[injection], full_content, 0..full_content.len());
+        manager.highlight_injections(&[injection], full_content, 0..full_content.len(), "test");
 
     // Child was dynamically created
     assert_eq!(manager.child_count(), 1);
@@ -186,7 +185,6 @@ fn test_injection_manager_dynamic_child_creation() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn test_injection_manager_reuses_cached_child() {
     let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
     let mut manager = InjectionManager::with_factory(factory, 0);
@@ -199,12 +197,13 @@ fn test_injection_manager_reuses_cached_child() {
         std::slice::from_ref(&injection),
         full_content,
         0..full_content.len(),
+        "test",
     );
     assert_eq!(manager.child_count(), 1);
 
     // Second call reuses cached child
     let highlights =
-        manager.highlight_injections(&[injection], full_content, 0..full_content.len());
+        manager.highlight_injections(&[injection], full_content, 0..full_content.len(), "test");
     assert_eq!(manager.child_count(), 1); // Not duplicated
     assert!(!highlights.is_empty());
 }
@@ -216,7 +215,7 @@ fn test_injection_manager_skips_unsupported_language() {
 
     let content = "print('hello')";
     let injection = Injection::new("python", 0..14, 0, 0, 0, 14);
-    let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
+    let highlights = manager.highlight_injections(&[injection], content, 0..content.len(), "test");
 
     assert!(highlights.is_empty());
     assert_eq!(manager.child_count(), 0);
@@ -242,8 +241,12 @@ fn test_injection_manager_depth_propagation_to_children() {
     // At depth 0, child should be created at depth 1 (with factory)
     let mut manager = InjectionManager::with_factory(factory.clone(), 0);
     let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
-    let _ =
-        manager.highlight_injections(std::slice::from_ref(&injection), content, 0..content.len());
+    let _ = manager.highlight_injections(
+        std::slice::from_ref(&injection),
+        content,
+        0..content.len(),
+        "test",
+    );
     assert_eq!(manager.child_count(), 1);
 
     // At depth MAX - 1, child should be created at depth MAX (without factory)
@@ -253,8 +256,23 @@ fn test_injection_manager_depth_propagation_to_children() {
         std::slice::from_ref(&injection2),
         content,
         0..content.len(),
+        "test",
     );
     assert_eq!(manager_near_max.child_count(), 1);
+}
+
+#[test]
+fn test_injection_manager_propagates_parent_language() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let content = "fn main() { let x = 1; }";
+    let injection = Injection::new("rust", 0..24, 0, 0, 0, 24);
+
+    // Pass "markdown" as parent language — child driver should inherit it
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len(), "markdown");
+    assert_eq!(manager.child_count(), 1);
+    assert!(manager.has_child("rust"));
 }
 
 #[test]
@@ -264,7 +282,7 @@ fn test_injection_manager_invalidate_with_children() {
 
     let content = "fn main() { let x = 1; }";
     let injection = Injection::new("rust", 0..24, 0, 0, 0, 24);
-    let _ = manager.highlight_injections(&[injection], content, 0..content.len());
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len(), "test");
     assert_eq!(manager.child_count(), 1);
 
     manager.invalidate();
@@ -278,7 +296,7 @@ fn test_injection_manager_debug_with_children() {
 
     let content = "fn main() {}";
     let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
-    let _ = manager.highlight_injections(&[injection], content, 0..content.len());
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len(), "test");
 
     let debug = format!("{manager:?}");
     assert!(debug.contains("InjectionManager"));
@@ -297,7 +315,7 @@ fn test_highlight_single_injection_empty_ranges() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injection = Injection::combined("rust", vec![], 0, 0, 0, 0);
-    let highlights = manager.highlight_injections(&[injection], "fn main() {}", 0..100);
+    let highlights = manager.highlight_injections(&[injection], "fn main() {}", 0..100, "test");
     // Empty ranges -> no highlights (but child may be created if factory returns Some)
     assert!(highlights.is_empty());
 }
@@ -308,7 +326,7 @@ fn test_highlight_single_injection_out_of_bounds() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injection = Injection::new("rust", 100..200, 0, 0, 0, 0);
-    let highlights = manager.highlight_injections(&[injection], "short", 0..200);
+    let highlights = manager.highlight_injections(&[injection], "short", 0..200, "test");
     assert!(highlights.is_empty());
 }
 
@@ -444,7 +462,7 @@ fn test_highlight_combined_injection() {
         14,
     );
 
-    let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
+    let highlights = manager.highlight_injections(&[injection], content, 0..content.len(), "test");
 
     // After prefix stripping, child sees "let x = 1;\nlet y = 2;\n"
     // Should produce highlights for identifiers x, y
@@ -520,7 +538,7 @@ impl SyntaxDriverFactory for TestDecorationFactory {
 fn test_decorate_injections_empty() {
     let mut manager = InjectionManager::new();
     let injections: Vec<Injection> = vec![];
-    let decorations = manager.decorate_injections(&injections, "content", 0..100);
+    let decorations = manager.decorate_injections(&injections, "content", 0..100, "test");
     assert!(decorations.is_empty());
 }
 
@@ -528,7 +546,7 @@ fn test_decorate_injections_empty() {
 fn test_decorate_injections_no_child() {
     let mut manager = InjectionManager::new();
     let injections = vec![Injection::new("rust", 10..50, 0, 0, 2, 10)];
-    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..100);
+    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..100, "test");
     assert!(decorations.is_empty());
 }
 
@@ -538,7 +556,7 @@ fn test_decorate_injections_non_overlapping() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injections = vec![Injection::new("rust", 100..200, 5, 0, 10, 0)];
-    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..50);
+    let decorations = manager.decorate_injections(&injections, "fn main() {}", 0..50, "test");
     assert!(decorations.is_empty());
 }
 
@@ -552,7 +570,7 @@ fn test_decorate_single_range() {
     let content = "# Title\n\nfn main() {}extra";
     let injection = Injection::new("rust", 9..22, 1, 0, 1, 13);
 
-    let decorations = manager.decorate_injections(&[injection], content, 0..content.len());
+    let decorations = manager.decorate_injections(&[injection], content, 0..content.len(), "test");
 
     // The child driver should find the `main` function name decoration
     assert!(!decorations.is_empty(), "Expected decorations from single-range injection");
@@ -575,7 +593,7 @@ fn test_decorate_combined_ranges() {
     let content = "/// fn foo() {}\n/// fn bar() {}\n";
     let injection = Injection::combined("rust", vec![0..15, 16..31], 0, 0, 1, 15);
 
-    let decorations = manager.decorate_injections(&[injection], content, 0..content.len());
+    let decorations = manager.decorate_injections(&[injection], content, 0..content.len(), "test");
 
     // After prefix stripping, child sees "fn foo() {}\nfn bar() {}\n"
     // Should produce decorations for `fn` keywords
@@ -598,7 +616,7 @@ fn test_decorate_single_injection_empty_ranges() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injection = Injection::combined("rust", vec![], 0, 0, 0, 0);
-    let decorations = manager.decorate_injections(&[injection], "fn main() {}", 0..100);
+    let decorations = manager.decorate_injections(&[injection], "fn main() {}", 0..100, "test");
     assert!(decorations.is_empty());
 }
 
@@ -608,7 +626,7 @@ fn test_decorate_single_injection_out_of_bounds() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injection = Injection::new("rust", 100..200, 0, 0, 0, 0);
-    let decorations = manager.decorate_injections(&[injection], "short", 0..200);
+    let decorations = manager.decorate_injections(&[injection], "short", 0..200, "test");
     assert!(decorations.is_empty());
 }
 
@@ -621,11 +639,15 @@ fn test_ensure_children_shared_between_highlight_and_decorate() {
     let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
 
     // First call via highlight creates the child
-    let _ =
-        manager.highlight_injections(std::slice::from_ref(&injection), content, 0..content.len());
+    let _ = manager.highlight_injections(
+        std::slice::from_ref(&injection),
+        content,
+        0..content.len(),
+        "test",
+    );
     assert_eq!(manager.child_count(), 1);
 
     // Second call via decorate reuses the same child
-    let _ = manager.decorate_injections(&[injection], content, 0..content.len());
+    let _ = manager.decorate_injections(&[injection], content, 0..content.len(), "test");
     assert_eq!(manager.child_count(), 1);
 }

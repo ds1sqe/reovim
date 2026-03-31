@@ -2,14 +2,14 @@
 
 > *In memory of `lib/core` and `plugins/` — the foundation upon which we built.*
 
-This document honors the legacy codebase (v0.1.0–v0.8.x) that served as the reference for Reovim's architecture overhaul. Though the code is archived, the concepts and lessons live on in the new architecture.
+This document honors the legacy codebase (v0.1.0–v0.8.x) that served as the reference for Reovim's architecture overhaul. The archive was removed from the tree in v0.14.3; the concepts and lessons live on in the new architecture. Historical code: [archive/pre_kernel](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel).
 
 ---
 
 ## The Legacy Architecture
 
 ```
-archive/
+archive/pre_kernel/  (removed from tree in v0.14.3)
 ├── lib/
 │   ├── core/          # The heart of v0.8.x
 │   ├── lsp/           # Language Server Protocol

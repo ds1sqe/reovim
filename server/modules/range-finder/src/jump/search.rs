@@ -1,7 +1,7 @@
 //! Jump search engine - pure functions for label generation and match finding.
 //!
 //! This module contains no state; all functions are pure and fully testable
-//! in isolation. Ported from `archive/pre_kernel/plugins/features/range-finder/`.
+//! in isolation. Ported from [`archive/pre_kernel/plugins/features/range-finder/`](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel/plugins/features/range-finder).
 
 /// Search direction relative to cursor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

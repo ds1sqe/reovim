@@ -5,11 +5,9 @@
 )]
 use super::super::*;
 
-use {
-    reovim_kernel::{
-        api::v1::{Buffer, BufferId, HistoryRing, Position, Register, RegisterBank},
-        testing::create_test_context,
-    },
+use reovim_kernel::{
+    api::v1::{Buffer, BufferId, HistoryRing, Position, Register, RegisterBank},
+    testing::create_test_context,
 };
 
 // ============================================================================

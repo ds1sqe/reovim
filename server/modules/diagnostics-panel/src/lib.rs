@@ -10,6 +10,7 @@ pub mod bridge;
 pub mod commands;
 pub mod ids;
 pub mod items;
+mod keybinding;
 pub mod modes;
 pub mod resolver;
 pub mod state;
@@ -101,12 +102,11 @@ impl Module for DiagnosticsPanelModule {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            // Normal mode: toggle panel
-            KeybindingRegistration::new("<leader>xx", ids::TROUBLE_TOGGLE)
-                .with_modes(&["normal"])
-                .with_description("Toggle diagnostics panel"),
-            // Panel mode: navigation
+        // Normal-mode bindings from personality adapter (#700)
+        let mut bindings = keybinding::all();
+        // Panel-mode bindings (module-owned, already qualified)
+        bindings.extend([
+            // Navigation
             KeybindingRegistration::new("j", ids::TROUBLE_NEXT)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Next item"),
@@ -119,7 +119,7 @@ impl Module for DiagnosticsPanelModule {
             KeybindingRegistration::new("<Up>", ids::TROUBLE_PREV)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Previous item"),
-            // Panel mode: actions
+            // Actions
             KeybindingRegistration::new("<CR>", ids::TROUBLE_SELECT)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Jump to diagnostic"),
@@ -129,7 +129,7 @@ impl Module for DiagnosticsPanelModule {
             KeybindingRegistration::new("<Esc>", ids::TROUBLE_CLOSE)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Close panel"),
-            // Panel mode: filtering
+            // Filtering
             KeybindingRegistration::new("e", ids::TROUBLE_FILTER_ERROR)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Show only errors"),
@@ -139,14 +139,15 @@ impl Module for DiagnosticsPanelModule {
             KeybindingRegistration::new("a", ids::TROUBLE_FILTER_ALL)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Show all severities"),
-            // Panel mode: sort and refresh
+            // Sort and refresh
             KeybindingRegistration::new("s", ids::TROUBLE_SORT)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Cycle sort order"),
             KeybindingRegistration::new("r", ids::TROUBLE_REFRESH)
                 .with_modes(&[PANEL_MODE_STR])
                 .with_description("Refresh diagnostics"),
-        ]
+        ]);
+        bindings
     }
 }
 

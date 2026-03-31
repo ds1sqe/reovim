@@ -71,7 +71,10 @@ fn test_exit_ok_when_no_handle() {
 #[test]
 fn test_keybindings_count() {
     let module = SnippetModule::new();
-    // Only snippet:navigating bindings remain (Tab, S-Tab, Esc)
+    // 3 vim personality bindings (#700) + 3 snippet:navigating bindings
+    #[cfg(feature = "vim-keybindings")]
+    assert_eq!(module.keybindings().len(), 6);
+    #[cfg(not(feature = "vim-keybindings"))]
     assert_eq!(module.keybindings().len(), 3);
 }
 
@@ -79,8 +82,10 @@ fn test_keybindings_count() {
 fn test_keybindings_jump_next() {
     let module = SnippetModule::new();
     let bindings = module.keybindings();
-    let next = &bindings[0];
-    assert_eq!(next.keys, "<Tab>");
+    let next = bindings
+        .iter()
+        .find(|b| b.keys == "<Tab>")
+        .expect("<Tab> binding missing");
     assert_eq!(next.command_id, ids::JUMP_NEXT);
 }
 
@@ -88,8 +93,10 @@ fn test_keybindings_jump_next() {
 fn test_keybindings_jump_prev() {
     let module = SnippetModule::new();
     let bindings = module.keybindings();
-    let prev = &bindings[1];
-    assert_eq!(prev.keys, "<S-Tab>");
+    let prev = bindings
+        .iter()
+        .find(|b| b.keys == "<S-Tab>")
+        .expect("<S-Tab> binding missing");
     assert_eq!(prev.command_id, ids::JUMP_PREV);
 }
 
@@ -97,8 +104,10 @@ fn test_keybindings_jump_prev() {
 fn test_keybindings_cancel() {
     let module = SnippetModule::new();
     let bindings = module.keybindings();
-    let cancel = &bindings[2];
-    assert_eq!(cancel.keys, "<Esc>");
+    let cancel = bindings
+        .iter()
+        .find(|b| b.keys == "<Esc>")
+        .expect("<Esc> binding missing");
     assert_eq!(cancel.command_id, ids::CANCEL);
 }
 

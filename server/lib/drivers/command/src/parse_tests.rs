@@ -137,6 +137,38 @@ fn test_parse_bang_only() {
     assert!(parsed.raw_args.is_empty());
 }
 
+// === substitute-style parsing (no space between name and args) ===
+
+#[test]
+fn test_parse_substitute_basic() {
+    let parsed = parse_cmdline("s/foo/bar/").unwrap();
+    assert_eq!(parsed.name, "s");
+    assert!(!parsed.bang);
+    assert_eq!(parsed.raw_args, "/foo/bar/");
+}
+
+#[test]
+fn test_parse_substitute_with_flags() {
+    let parsed = parse_cmdline("s/foo/bar/g").unwrap();
+    assert_eq!(parsed.name, "s");
+    assert_eq!(parsed.raw_args, "/foo/bar/g");
+}
+
+#[test]
+fn test_parse_substitute_full_name() {
+    let parsed = parse_cmdline("substitute/foo/bar/").unwrap();
+    assert_eq!(parsed.name, "substitute");
+    assert_eq!(parsed.raw_args, "/foo/bar/");
+}
+
+#[test]
+fn test_parse_set_with_space() {
+    // Existing behavior preserved: space-separated args still work
+    let parsed = parse_cmdline("set nu").unwrap();
+    assert_eq!(parsed.name, "set");
+    assert_eq!(parsed.raw_args, "nu");
+}
+
 // === tokenize_args tests ===
 
 #[test]

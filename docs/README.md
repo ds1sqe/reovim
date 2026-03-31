@@ -208,6 +208,6 @@ Foundational documents that shaped Reovim's architecture.
 | Version | Architecture | Documentation |
 |---------|--------------|---------------|
 | v0.9.0+ | `lib/kernel` + `lib/drivers` + modules | This documentation |
-| v0.8.x | `lib/core` (legacy) | See `archive/docs/` |
+| v0.8.x | `lib/core` (legacy) | See [archive/pre_kernel/docs](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel/docs) |
 
-Legacy documentation has been moved to `archive/docs/` for historical reference.
+Legacy documentation was removed from the tree in v0.14.3. Historical reference available via [git permalink](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel).

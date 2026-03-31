@@ -387,9 +387,7 @@ fn notification_entry_missing_id() {
 // =============================================================================
 
 fn toast_with_body(id: u64, title: &str, body: &str) -> String {
-    format!(
-        r#"{{"entries":[{{"id":{id},"level":"info","title":"{title}","body":"{body}"}}]}}"#,
-    )
+    format!(r#"{{"entries":[{{"id":{id},"level":"info","title":"{title}","body":"{body}"}}]}}"#)
 }
 
 #[test]
@@ -407,10 +405,7 @@ fn render_toast_with_body() {
     let surface = render(&m, 80, 24);
     let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
     assert!(text.contains("Alert"), "should contain title: {text}");
-    assert!(
-        text.contains("Something happened"),
-        "should contain body: {text}"
-    );
+    assert!(text.contains("Something happened"), "should contain body: {text}");
 }
 
 // =============================================================================
@@ -452,10 +447,7 @@ fn render_progress_toast_percent_over_100() {
         r#"{"entries":[{"id":1,"level":"info","title":"Over","body":"","progress":{"percent":120,"detail":"test"}}]}"#,
     );
     assert_eq!(m.toasts.len(), 1);
-    assert_eq!(
-        m.toasts[0].progress,
-        Some((120, "test".to_string()))
-    );
+    assert_eq!(m.toasts[0].progress, Some((120, "test".to_string())));
     // Rendering should still work (percent.min(100) in render_progress_bar)
     let surface = render(&m, 80, 24);
     assert!(surface.has_content());
@@ -516,10 +508,7 @@ fn render_standalone_toast_with_body_and_progress() {
     let surface = render(&m, 80, 24);
     let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
     assert!(text.contains("Indexing"), "should contain title: {text}");
-    assert!(
-        text.contains("workspace files"),
-        "should contain body: {text}"
-    );
+    assert!(text.contains("workspace files"), "should contain body: {text}");
     assert!(text.contains("33%"), "should contain percentage: {text}");
 }
 
@@ -543,10 +532,7 @@ fn render_grouped_box_with_body_and_progress() {
     let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
     assert!(text.contains("ra"), "grouped box should show source name: {text}");
     assert!(text.contains("Server ready"), "should contain first title: {text}");
-    assert!(
-        text.contains("rust-analyzer v0.3"),
-        "should contain first body: {text}"
-    );
+    assert!(text.contains("rust-analyzer v0.3"), "should contain first body: {text}");
     assert!(text.contains("Indexing"), "should contain second title: {text}");
     assert!(text.contains("55%"), "should contain progress percentage: {text}");
 }
@@ -687,10 +673,7 @@ fn notification_progress_update_missing_percent() {
         r#"{"entries":[{"id":1,"level":"info","title":"Build","body":"","progress":{"detail":"linking"}}]}"#,
     );
     // percent defaults to 0 via unwrap_or(0), then u8::try_from(0)=Ok(0)
-    assert_eq!(
-        m.toasts[0].progress,
-        Some((0, "linking".to_string()))
-    );
+    assert_eq!(m.toasts[0].progress, Some((0, "linking".to_string())));
 }
 
 // =============================================================================

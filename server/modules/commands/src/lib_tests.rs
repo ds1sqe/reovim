@@ -7,7 +7,7 @@ use {super::*, reovim_driver_command::Command};
 #[test]
 fn test_command_handlers_count() {
     let cmds = command_handlers();
-    assert_eq!(cmds.len(), 10); // 7 base + 3 session commands
+    assert_eq!(cmds.len(), 14); // 7 base + 3 session + 4 buffer commands
 }
 
 #[test]
@@ -24,6 +24,10 @@ fn test_command_handlers_contains_all_ids() {
     assert!(ids.contains(&"servers"));
     assert!(ids.contains(&"kill-server"));
     assert!(ids.contains(&"substitute"));
+    assert!(ids.contains(&"bnext"));
+    assert!(ids.contains(&"bprevious"));
+    assert!(ids.contains(&"bdelete"));
+    assert!(ids.contains(&"qall"));
 }
 
 #[test]
@@ -129,7 +133,7 @@ fn test_module_init_registers_commands() {
 
     // Verify commands were registered in the CommandHandlerStore
     let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-    assert_eq!(store.len(), 10);
+    assert_eq!(store.len(), 14);
 }
 
 #[test]
@@ -144,5 +148,5 @@ fn test_module_init_idempotent_stores_accumulate() {
     module.init(&ctx);
 
     let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-    assert_eq!(store.len(), 20); // 10 + 10
+    assert_eq!(store.len(), 28); // 14 + 14
 }

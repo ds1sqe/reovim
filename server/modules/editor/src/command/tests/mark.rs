@@ -2,7 +2,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{testing::TestSessionRuntime, api::BufferApi},
+    reovim_driver_session::{api::BufferApi, testing::TestSessionRuntime},
     reovim_kernel::api::v1::Position,
 };
 
@@ -520,11 +520,7 @@ fn test_goto_global_mark_cross_buffer() {
     // Set global mark 'C' pointing to buffer 2 at (0, 5)
     test.with_runtime(|runtime| {
         let mark = Mark::new(Position::new(0, 5), buf2);
-        runtime
-            .kernel()
-            .global_marks
-            .write()
-            .set_global('C', mark);
+        runtime.kernel().global_marks.write().set_global('C', mark);
     });
 
     // Current buffer is buf1, goto mark 'C' which is in buf2
@@ -563,11 +559,7 @@ fn test_goto_global_mark_cross_buffer_line_mode() {
     // Set global mark 'D' pointing to buffer 2 at (1, 3)
     test.with_runtime(|runtime| {
         let mark = Mark::new(Position::new(1, 3), buf2);
-        runtime
-            .kernel()
-            .global_marks
-            .write()
-            .set_global('D', mark);
+        runtime.kernel().global_marks.write().set_global('D', mark);
     });
 
     // GotoMarkLine: cross-buffer, line_only=true → column should be 0

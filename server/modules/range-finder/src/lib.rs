@@ -19,12 +19,14 @@
 pub mod find_char;
 pub mod fold;
 pub mod jump;
+mod keybinding;
 
 use {
-    reovim_driver_input::{ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
-        CursorStyle, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+        CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
+        ProbeResult, Version,
     },
 };
 
@@ -121,6 +123,10 @@ impl Module for RangeFinderModule {
             is_entry: false,
         });
 
+        // #700: Register keybindings from personality adapters
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 
@@ -131,6 +137,11 @@ impl Module for RangeFinderModule {
 
     fn extension_kinds(&self) -> &[&'static str] {
         &[KIND_JUMP, KIND_FOLD]
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn keybindings(&self) -> Vec<KeybindingRegistration> {
+        keybinding::all()
     }
 }
 

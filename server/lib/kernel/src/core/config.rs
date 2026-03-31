@@ -16,7 +16,7 @@
 //!
 //! The kernel does NOT parse TOML directly (no serde dependency).
 //! TOML parsing is provided by modules (not the kernel).
-//! See `archive/pre_kernel/lib/core/src/config/loader.rs` for the original implementation.
+//! See [`archive/pre_kernel/lib/core/src/config/loader.rs`](https://github.com/ds1sqe/reovim/blob/81806439/archive/pre_kernel/lib/core/src/config/loader.rs) for the original implementation.
 //! This keeps the kernel dependency-free and policy-agnostic.
 //!
 //! # Example

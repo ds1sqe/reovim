@@ -723,7 +723,12 @@ fn test_collect_treesitter_both_factories_and_langs() {
 
     let section = collect_treesitter(&kernel);
     assert_eq!(section.entries.len(), 2);
-    assert!(section.entries.iter().any(|e| e.label == "Syntax factories"));
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Syntax factories")
+    );
     assert!(
         section
             .entries
@@ -753,19 +758,29 @@ impl ClipboardProvider for MockClipboardProvider {
         self.selection_available
     }
 
-    fn copy_to_clipboard(&self, _text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_clipboard(
+        &self,
+        _text: &str,
+    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         Ok(())
     }
 
-    fn paste_from_clipboard(&self) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    fn paste_from_clipboard(
+        &self,
+    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
         Ok(None)
     }
 
-    fn copy_to_selection(&self, _text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_selection(
+        &self,
+        _text: &str,
+    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         Ok(())
     }
 
-    fn paste_from_selection(&self) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    fn paste_from_selection(
+        &self,
+    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
         Ok(None)
     }
 }

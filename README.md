@@ -286,7 +286,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  APPLICATION (apps/bin/, clients/)                           │
+│  APPLICATION (apps/bin/, clients/)                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Server    │  │   Clients   │  │   Event Loop        │  │
 │  │  (gRPC/TCP) │  │(TUI/CLI/Web)│  │   Module Loader     │  │
@@ -296,11 +296,11 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  Keymap, Operators, Layout, Options, Mode-Manager           │
 │  → Decide HOW things behave (keybindings, defaults)         │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (server/lib/drivers/)                    MECHANISM  │
+│  DRIVERS (server/lib/drivers/)                    MECHANISM │
 │  syntax/, input/, session/, lsp/, vfs/, command/            │
 │  → Provide services, define trait contracts                 │
 ├─────────────────────────────────────────────────────────────┤
-│  KERNEL (server/lib/kernel/)                      MECHANISM  │
+│  KERNEL (server/lib/kernel/)                      MECHANISM │
 │  mm/ (Buffer, Position), ipc/ (EventBus), core/ (Mode)      │
 │  block/ (UndoTree), sched/ (Runtime), api/ (public API)     │
 │  → Core primitives, WHAT can be done                        │
@@ -359,7 +359,7 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Troubleshooting](./docs/user-guide/troubleshooting.md) - Common issues
 
 **Archive (v0.8.x legacy):**
-- [Legacy Documentation](./archive/pre_kernel/docs/) - Pre-v0.9.0 documentation
+- [Legacy Documentation](https://github.com/ds1sqe/reovim/tree/81806439/archive/pre_kernel/docs) - Pre-v0.9.0 documentation (removed from tree, preserved in git history)
 
 ## License
 

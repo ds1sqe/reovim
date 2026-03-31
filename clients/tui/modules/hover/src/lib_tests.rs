@@ -409,3 +409,53 @@ fn cursor_update_same_line_different_col_dismisses() {
     m.on_cursor_update(BufferId(0), 5, 15);
     assert!(!m.active);
 }
+
+// =============================================================================
+// Crash regression tests
+// =============================================================================
+
+/// Regression: hover markdown with horizontal rule (`---`) creates non-ASCII
+/// content (box-drawing character `─`). The render truncation logic used
+/// byte-offset slicing (`&span.text[..available]`), which panics when the
+/// offset falls inside a multi-byte character.
+#[test]
+fn render_horizontal_rule_no_panic() {
+    let mut m = HoverModule::new();
+    // Markdown with `---` triggers horizontal rule rendering → `─` characters
+    m.on_notification(&active_markdown("docs\\n---\\nsignature"));
+    assert!(m.active);
+
+    // The `─` character (U+2500) is 3 bytes in UTF-8.
+    // With a narrow terminal, the truncation path triggers and would panic
+    // if slicing at a non-char-boundary.
+    // Width=30: popup_w ~20, content_w ~18, available ~18. Horizontal rule
+    // text is 120 bytes / 40 chars. Byte offset 18 is NOT a char boundary
+    // (char boundaries are at 0,3,6,9,12,15,18 — 18 IS a boundary for this
+    // case, but let's use width=31 where available=19, which is NOT).
+    let surface = render_hover(&m, 31, 24);
+    // Verify no panic — render completed successfully
+    let _ = surface;
+}
+
+/// Same bug but with explicit non-ASCII styled content.
+#[test]
+fn render_multibyte_truncation_no_panic() {
+    let mut m = HoverModule::new();
+    m.active = true;
+    m.origin_line = 0;
+    m.origin_col = 0;
+    m.content_type = ContentType::Markdown;
+    // Directly inject a styled line with multi-byte characters
+    // Each `─` is 3 bytes. 20 chars = 60 bytes.
+    let rule = "\u{2500}".repeat(20);
+    m.styled_lines = vec![vec![StyledSpan {
+        text: rule,
+        style: Style::new().fg(Color::White),
+    }]];
+
+    // Render with narrow width where truncation happens.
+    // content_w will be ~12. 12 is a multiple of 3 (char boundary).
+    // Try width=15: popup_w=15, content_w=13. 13 is NOT a char boundary.
+    let surface = render_hover(&m, 15, 10);
+    let _ = surface;
+}

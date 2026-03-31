@@ -311,13 +311,18 @@ fn render_line_content(
             let source_col = concealed.col_mapping.get(display_col).copied().unwrap_or(0);
             let source_col = u32::from(source_col);
 
+            // Pick the most specific (narrowest) overlapping highlight token.
+            // Injection-produced tokens (e.g., `keyword` inside a doc comment
+            // code block) are always narrower than the parent `comment` span,
+            // so smallest-span-wins correctly resolves injection precedence.
             tokens
                 .iter()
-                .find(|t| {
+                .filter(|t| {
                     matches!(classify_with_modules(modules, &t.category), RenderBehavior::Highlight)
                         && source_col >= t.start_col
                         && source_col < t.end_col
                 })
+                .min_by_key(|t| t.end_col - t.start_col)
                 .map_or_else(
                     || default_style.clone(),
                     |t| apply_opacity(&theme.highlight(&t.category), opacity),

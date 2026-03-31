@@ -28,3 +28,18 @@ fn signature_help_id() {
     assert_eq!(SIGNATURE_HELP.name(), "signature-help");
     assert_eq!(*SIGNATURE_HELP.module(), MODULE);
 }
+
+#[test]
+fn diagnostic_nav_ids() {
+    for (id, name) in [
+        (NEXT_DIAGNOSTIC, "next-diagnostic"),
+        (PREV_DIAGNOSTIC, "prev-diagnostic"),
+        (NEXT_ERROR, "next-error"),
+        (PREV_ERROR, "prev-error"),
+        (NEXT_WARNING, "next-warning"),
+        (PREV_WARNING, "prev-warning"),
+    ] {
+        assert_eq!(id.name(), name);
+        assert_eq!(*id.module(), MODULE);
+    }
+}

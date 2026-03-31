@@ -20,6 +20,7 @@ pub type ModuleFactory = fn() -> Box<dyn Module>;
 /// Bootstrap iterates this registry and calls factories for enabled modules only.
 /// Ordering comes from the `builtins.toml` manifest, not from this map.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(45);
 

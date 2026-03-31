@@ -447,10 +447,7 @@ fn init_module_fail_module_records_failed_state() {
     let ctx = ModuleContext::default();
     let result = registry.init_module(&id, &ctx);
     assert!(result.is_err());
-    assert!(matches!(
-        registry.state(&id),
-        Some(ModuleState::Failed(_))
-    ));
+    assert!(matches!(registry.state(&id), Some(ModuleState::Failed(_))));
 }
 
 // ============================================================================
@@ -508,14 +505,8 @@ fn shutdown_continues_on_exit_failure() {
     registry.shutdown();
 
     // "ok" transitions to Loaded; "exit-fail" stays Running because exit() failed
-    assert_eq!(
-        registry.state(&ModuleId::new("ok")),
-        Some(ModuleState::Loaded)
-    );
-    assert_eq!(
-        registry.state(&ModuleId::new("exit-fail")),
-        Some(ModuleState::Running)
-    );
+    assert_eq!(registry.state(&ModuleId::new("ok")), Some(ModuleState::Loaded));
+    assert_eq!(registry.state(&ModuleId::new("exit-fail")), Some(ModuleState::Running));
 }
 
 #[test]
@@ -533,10 +524,7 @@ fn shutdown_skips_non_running_modules() {
     // Now all are Loaded — second shutdown is a no-op
     registry.shutdown();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("loaded-only")),
-        Some(ModuleState::Loaded)
-    );
+    assert_eq!(registry.state(&ModuleId::new("loaded-only")), Some(ModuleState::Loaded));
 }
 
 // ============================================================================
