@@ -474,3 +474,45 @@ fn multiple_newline_inserts() {
     assert_eq!(buf.line(1), Some("Line2"));
     assert_eq!(buf.line(2), Some("Line3"));
 }
+
+/// Trace substitute-style delete+insert on multiline buffer.
+#[test]
+fn substitute_delete_insert_preserves_lines() {
+    let mut buf = Buffer::from_string("aaa\nbbb\naaa");
+    assert_eq!(buf.line_count(), 3);
+
+    // Substitute line 2: delete "aaa", insert "zzz"
+    let deleted = buf.delete_range(Position::new(2, 0), Position::new(2, 3));
+    eprintln!("After delete line 2: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(deleted, "aaa");
+
+    buf.insert_at(Position::new(2, 0), "zzz");
+    eprintln!("After insert line 2: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(buf.line(0), Some("aaa"), "line 0 after step 1");
+    assert_eq!(buf.line(1), Some("bbb"), "line 1 after step 1");
+    assert_eq!(buf.line(2), Some("zzz"), "line 2 after step 1");
+
+    // Substitute line 0: delete "aaa", insert "zzz"
+    let deleted = buf.delete_range(Position::new(0, 0), Position::new(0, 3));
+    eprintln!("After delete line 0: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(deleted, "aaa");
+
+    buf.insert_at(Position::new(0, 0), "zzz");
+    eprintln!("After insert line 0: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(buf.line(0), Some("zzz"), "line 0 final");
+    assert_eq!(buf.line(1), Some("bbb"), "line 1 final");
+    assert_eq!(buf.line(2), Some("zzz"), "line 2 final");
+    assert_eq!(buf.content(), "zzz\nbbb\nzzz");
+}
