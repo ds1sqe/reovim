@@ -161,7 +161,7 @@ impl LspSaturator {
         let logger_clone = logger.clone();
         let queue_clone = queue.clone();
         let lang_id_clone = language_id.clone();
-        tokio::spawn(Self::run(
+        let run_handle = tokio::spawn(Self::run(
             client_clone,
             stdout_reader,
             request_rx,
@@ -172,6 +172,25 @@ impl LspSaturator {
             queue_clone,
             lang_id_clone,
         ));
+
+        // Monitor the run task: if it panics, clear active and notify user.
+        let active_watcher = Arc::clone(&active);
+        let queue_watcher = queue.clone();
+        tokio::spawn(async move {
+            if let Err(e) = run_handle.await {
+                active_watcher.store(false, Ordering::Relaxed);
+                tracing::error!("LSP saturator task panicked: {e}");
+                if let Some(ref q) = queue_watcher {
+                    q.push_op(
+                        None,
+                        PendingOp::Push {
+                            level: PendingLevel::Error,
+                            title: format!("LSP server crashed: {e}"),
+                        },
+                    );
+                }
+            }
+        });
 
         // Spawn stderr reader if available
         if let Some(stderr) = stderr {
