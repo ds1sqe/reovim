@@ -455,25 +455,3 @@ pub const AROUND_TAG: CommandId = CommandId::new(MODULE, "around-tag");
 pub const AROUND_SENTENCE: CommandId = CommandId::new(MODULE, "around-sentence");
 /// Around paragraph text object.
 pub const AROUND_PARAGRAPH: CommandId = CommandId::new(MODULE, "around-paragraph");
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // === Coverage: lines 107-109 — OperatorId::name_owned() ===
-
-    #[test]
-    fn operator_id_name_owned_static() {
-        // Constant uses Cow::Borrowed — name_owned() clones the Cow.
-        let owned = DELETE.name_owned();
-        assert_eq!(owned, "delete");
-    }
-
-    #[test]
-    fn operator_id_name_owned_dynamic() {
-        // from_qualified uses Cow::Owned — name_owned() clones the Cow.
-        let op = OperatorId::from_qualified("mymod:custom-op".to_string());
-        let owned = op.name_owned();
-        assert_eq!(owned, "custom-op");
-    }
-}

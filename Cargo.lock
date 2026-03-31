@@ -2394,7 +2394,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-codec-xxd"
-version = "0.14.4-dev"
+version = "0.14.4"
 dependencies = [
  "reovim-driver-annotation",
  "reovim-driver-codec",
@@ -2837,7 +2837,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-codec-rlib"
-version = "0.14.4-dev"
+version = "0.14.4"
 dependencies = [
  "goblin",
  "reovim-capabilities",

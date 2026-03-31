@@ -454,3 +454,20 @@ fn test_macro_command_ids_names() {
     assert_eq!(PLAY_MACRO.name(), "play-macro");
     assert_eq!(REPEAT_MACRO.name(), "repeat-macro");
 }
+
+// ========================================================================
+// OperatorId::name_owned() coverage
+// ========================================================================
+
+#[test]
+fn operator_id_name_owned_static() {
+    let owned = DELETE.name_owned();
+    assert_eq!(owned, "delete");
+}
+
+#[test]
+fn operator_id_name_owned_dynamic() {
+    let op = OperatorId::from_qualified("mymod:custom-op".to_string());
+    let owned = op.name_owned();
+    assert_eq!(owned, "custom-op");
+}
