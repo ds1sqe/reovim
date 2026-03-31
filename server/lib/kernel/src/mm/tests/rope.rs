@@ -1906,3 +1906,154 @@ fn build_tree_large_leaf_count() {
         assert!(content.contains(&format!("L{i:03}\n")));
     }
 }
+
+// ─── Coverage: line_at internal node fallthrough None (line 642) ──────────────
+
+#[test]
+fn line_at_internal_node_past_all_children() {
+    // Call line_at directly on an internal node with an index beyond
+    // all children's line counts. This exercises the `None` return at
+    // line 642 (internal node falls through the for loop without matching).
+    let internal = RopeNode::new_internal(vec![
+        RopeNode::new_leaf("hello\n".to_string()), // line_count = 1
+        RopeNode::new_leaf("world".to_string()),   // line_count = 1
+    ]);
+    // Total line_count = 2. Requesting line 5 should fall through.
+    assert_eq!(line_at(&internal, 5), None);
+    // Also test just past the end (line 2)
+    assert_eq!(line_at(&internal, 2), None);
+}
+
+// ─── Coverage: chunk_text empty string (L509:br1 false branch) ────────────────
+
+#[test]
+fn chunk_text_empty_string() {
+    // chunk_text("") should return an empty vec because the while loop
+    // condition `!remaining.is_empty()` is false on the first check.
+    let chunks = chunk_text("");
+    assert!(chunks.is_empty(), "chunk_text of empty string should return empty vec");
+}
+
+// ─── Coverage: fixup_alignment skip when left ends with newline (L959:br1) ────
+
+#[test]
+fn fixup_alignment_skips_when_left_ends_with_newline() {
+    // When left child ends with '\n', fixup_alignment should NOT merge.
+    // This exercises the false branch of line 959:
+    // `left_last.is_some() && left_last != Some(b'\n')` → false when left ends '\n'
+    let left = RopeNode::new_leaf("hello\n".to_string());
+    let right = RopeNode::new_leaf("world".to_string());
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    // Should remain 2 children (no merge needed)
+    assert_eq!(children.len(), 2, "aligned children should not be merged");
+    if let NodeKind::Leaf { text } = &children[0].kind {
+        assert_eq!(text, "hello\n");
+    }
+    if let NodeKind::Leaf { text } = &children[1].kind {
+        assert_eq!(text, "world");
+    }
+}
+
+#[test]
+fn fixup_alignment_skips_when_left_is_empty() {
+    // When left child is empty, left_last is None, so the condition
+    // `left_last.is_some() && ...` is false → skip.
+    let left = RopeNode::new_leaf(String::new());
+    let right = RopeNode::new_leaf("world".to_string());
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    assert_eq!(children.len(), 2, "empty left should not trigger merge");
+}
+
+// ─── Coverage: PartialEq L455:br1/br3 and L461 — dead code analysis ──────────
+
+#[test]
+fn eq_unequal_ropes_same_bytelen_different_chunk_layout() {
+    // Two ropes with same byte_len but different content AND different
+    // chunk layouts. The mismatch at line 465 catches it before 455/461.
+    let left = Rope {
+        root: RopeNode::new_internal(vec![
+            RopeNode::new_leaf("ab".to_string()),
+            RopeNode::new_leaf("cd".to_string()),
+        ]),
+    };
+    let right = Rope {
+        root: RopeNode::new_internal(vec![
+            RopeNode::new_leaf("ax".to_string()),
+            RopeNode::new_leaf("cd".to_string()),
+        ]),
+    };
+    assert_ne!(left, right, "different content should not be equal");
+}
+
+// ─── Coverage: fixup_alignment L972:br1/br3 — both-leaf and mixed paths ───────
+
+#[test]
+fn fixup_alignment_left_internal_right_internal() {
+    // Both children are internal → line 972 condition is false → line 975.
+    let left = RopeNode::new_internal(vec![
+        RopeNode::new_leaf("aaa\n".to_string()),
+        RopeNode::new_leaf("bbb".to_string()), // no trailing \n
+    ]);
+    let right = RopeNode::new_internal(vec![
+        RopeNode::new_leaf("ccc\n".to_string()),
+        RopeNode::new_leaf("ddd\n".to_string()),
+    ]);
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    // Left doesn't end with '\n' → merge triggered. Since neither is a leaf,
+    // result wraps in new_internal (line 975).
+    let total: String = children
+        .iter()
+        .map(|n| {
+            let mut s = String::new();
+            collect_text(n, &mut s);
+            s
+        })
+        .collect();
+    assert_eq!(total, "aaa\nbbbccc\nddd\n");
+}
+
+#[test]
+fn fixup_alignment_left_leaf_right_internal() {
+    // Left is leaf (no \n), right is internal → line 972: children[i].is_leaf()
+    // is true but children[i+1].is_leaf() is false → line 975.
+    let left = RopeNode::new_leaf("hello".to_string());
+    let right = RopeNode::new_internal(vec![
+        RopeNode::new_leaf(" world\n".to_string()),
+        RopeNode::new_leaf("more\n".to_string()),
+    ]);
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    let total: String = children
+        .iter()
+        .map(|n| {
+            let mut s = String::new();
+            collect_text(n, &mut s);
+            s
+        })
+        .collect();
+    assert_eq!(total, "hello world\nmore\n");
+}
+
+// ─── Coverage: remove_range internal → no overlap (L889:br1 false) ────────────
+
+#[test]
+fn remove_range_internal_no_overlap_with_any_child() {
+    // Call remove_range on an internal node where the range is entirely
+    // AFTER all children. This exercises the `if modified` false branch (L889).
+    // With proper clamping in Rope::remove, this path is unreachable from
+    // the public API, but we can test it directly.
+    let internal = RopeNode::new_internal(vec![
+        RopeNode::new_leaf("aaa\n".to_string()), // 4 bytes, offset 0..4
+        RopeNode::new_leaf("bbb\n".to_string()), // 4 bytes, offset 4..8
+    ]);
+    // Range 8..10 is entirely past both children. The loop condition
+    // `range.end <= cs || range.start >= ce` catches every child.
+    let result = remove_range(&internal, 8..10);
+    // No child overlaps → modified stays false → line 889 false branch.
+    // Returns the original children wrapped in a single internal node.
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].metrics.byte_len, 8, "no bytes should be removed");
+}

@@ -1320,4 +1320,119 @@ mod b9_repro {
         assert_eq!(pos.line, 0);
         assert_eq!(pos.column, 0);
     }
+
+    // === Coverage: L482:br2, L483:br2 — underscore as word char ===
+
+    #[test]
+    fn ge_word_boundary_with_underscores() {
+        // Exercise `chars[x] == '_'` (L482:br2) and `next == '_'` (L483:br2).
+        // "a__b" from 'b' (col 3). After backing to col 2.
+        // Phase 1: chars[2]='_' not ws → skip.
+        // Phase 2: chars[2]='_', chars[3]='b'. Word boundary check:
+        //   x_is_word: '_' is not alphanumeric, but '_' == '_' → true (L482:br2)
+        //   next_is_word: 'b'.is_alphanumeric() → true
+        //   x_is_word != next_is_word → false → not at word end.
+        // Phase 3: is_word('_') → true. Skip back: chars[1]='_'=='_' → true (L500 br4).
+        //   x=2→1. chars[0]='a' is alphanumeric → true. x=1→0. Loop exits.
+        // x==0, line 0 → pos.column=0.
+        let buf = Buffer::from_string("a__b");
+        let pos = ge(&buf, 0, 3).unwrap();
+        assert_eq!(pos.column, 0, "ge should treat underscores as word chars");
+    }
+
+    #[test]
+    fn ge_word_boundary_underscore_next_is_underscore() {
+        // Exercise `next == '_'` specifically (L483:br2).
+        // "ab_c" from 'b' (col 1). After backing to col 0.
+        // Phase 1: chars[0]='a' not ws.
+        // Phase 2: chars[0]='a', chars[1]='b'. Both word → same class → not word end.
+        // Phase 3: 'a' is word. Skip: x=0, loop exits (x>0 false).
+        // x==0, line 0 → col 0.
+        //
+        // Better: "ab__cd" from 'd' (col 5). After backing to col 4.
+        // Phase 1: chars[4]='c' not ws.
+        // Phase 2: chars[4]='c', chars[5]='d'. Both word (alphanumeric) → same → not end.
+        // Phase 3: 'c' is word. Skip: chars[3]='_'=='_'→true. x=4→3.
+        //   chars[2]='_'=='_'→true. x=3→2.
+        //   chars[1]='b'.is_alphanumeric()→true. x=2→1.
+        //   chars[0]='a'.is_alphanumeric()→true. x=1→0. Loop exits.
+        // x==0, line 0 → col 0.
+        let buf = Buffer::from_string("ab__cd");
+        let pos = ge(&buf, 0, 5).unwrap();
+        assert_eq!(pos.column, 0, "ge skips backward through underscores");
+    }
+
+    // === Coverage: L498:br2 — BigWord in phase 3 hitting specific branches ===
+
+    #[test]
+    fn ge_big_word_phase3_from_deep_inside_word() {
+        // "foo.bar_baz test" from 'a' in "baz" (col 9). After backing to col 8.
+        // Phase 1: chars[8]='a' not ws.
+        // Phase 2: BigWord, chars[9]='z' not ws → false → phase 3.
+        // Phase 3 BigWord (L498:br2 false): skip non-ws backward:
+        //   x=8,7('_'),6('r'),5('a'),4('b'),3('.'),2('o'),1('o'),0('f').
+        //   x=0, loop exits.
+        // x==0, line 0 → col 0.
+        let buf = Buffer::from_string("foo.bar_baz test");
+        let pos = g_big_e(&buf, 0, 9).unwrap();
+        assert_eq!(pos.column, 0, "gE skips entire WORD backward to col 0");
+    }
+
+    // === Coverage: L504:br1, L505:br1, L506:br2 — punct skip with mixed chars ===
+
+    #[test]
+    fn ge_punct_skip_stops_at_whitespace() {
+        // Exercise the punctuation skip loop where chars[x-1] is whitespace.
+        // "a .!b" from '!' (col 3). After backing to col 2.
+        // Phase 1: chars[2]='.' not ws.
+        // Phase 2: chars[2]='.', chars[3]='!' both punct → same → not end.
+        // Phase 3: '.' not word → punct skip (L504-509):
+        //   x=2, chars[1]=' ' is whitespace → loop condition false (L505:br1).
+        //   Loop exits. x=2.
+        // x==2>0, x-=1→1. chars[1]=' ' ws.
+        // Skip ws: x=1>0, chars[1]=' '→x=0. chars[0]='a' not ws? No wait,
+        // after x-=1 we have x=1. The ws skip is `while x > 0 && chars[x].is_whitespace()`.
+        // chars[1]=' ' → x=0. chars[0]='a' not ws → loop exits.
+        // chars[0].is_whitespace() → false → pos.column=0.
+        let buf = Buffer::from_string("a .!b");
+        let pos = ge(&buf, 0, 3).unwrap();
+        assert_eq!(pos.column, 0, "ge from punct run with ws to left should reach col 0");
+    }
+
+    #[test]
+    fn ge_punct_skip_stops_at_word_char() {
+        // Exercise the punctuation skip where chars[x-1] is a word char (L506:br2 true).
+        // "abc..def" from second '.' (col 4). After backing to col 3.
+        // Phase 1: chars[3]='.' not ws.
+        // Phase 2: chars[3]='.', chars[4]='.' both punct → same → not end.
+        // Phase 3: '.' not word → punct skip:
+        //   x=3, chars[2]='c' → is alphanumeric (word) → L506:br2 true → loop exits.
+        //   x stays 3.
+        // x==3>0, x-=1→2. chars[2]='c' not ws → pos.column=2.
+        let buf = Buffer::from_string("abc..def");
+        let pos = ge(&buf, 0, 4).unwrap();
+        assert_eq!(pos.column, 2, "ge from punct should land on end of word 'abc'");
+    }
+
+    // === Coverage: L500:br4 — word skip with underscore in chars[x-1] ===
+
+    #[test]
+    fn ge_word_skip_through_underscores() {
+        // Phase 3 word skip where chars[x-1] == '_' → the `chars[x-1] == '_'` branch
+        // in line 500 evaluates to true (br4).
+        // ".a_b" from 'b' (col 3). After backing to col 2.
+        // Phase 1: chars[2]='_' not ws.
+        // Phase 2: chars[2]='_', chars[3]='b'. x_is_word('_')=true, next_is_word('b')=true.
+        //   Same class → not word end.
+        // Phase 3: is_word('_')=true. while x>0 && chars[x-1] is word:
+        //   x=2, chars[1]='a' alphanumeric → true. x=1.
+        //   x=1, chars[0]='.' → not alphanumeric, not '_' → false. Loop exits.
+        // x==1>0, x-=1→0. chars[0]='.' not ws → pos.column=0.
+        let buf = Buffer::from_string(".a_b");
+        let pos = ge(&buf, 0, 3).unwrap();
+        assert_eq!(
+            pos.column, 0,
+            "ge should skip backward through word chars including underscores"
+        );
+    }
 }
