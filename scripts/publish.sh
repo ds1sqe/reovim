@@ -210,14 +210,15 @@ PUBLISHED=0
 SKIPPED=0
 FAILED=0
 
-# crates.io rate limit: ~1 publish/minute for new crates.
-# publish_crate retries up to MAX_RETRIES with exponential backoff on 429s.
-MAX_RETRIES=5
-INDEX_WAIT=30  # seconds to wait for crates.io indexing between publishes
+# crates.io rate limit: ~1 publish/minute for new crates, stricter for bulk.
+# publish_crate retries up to MAX_RETRIES with 2x exponential backoff on 429s.
+# Rerunning the script is safe — already-published versions are skipped via cargo search.
+MAX_RETRIES=10
+INDEX_WAIT=10  # seconds to wait for crates.io indexing between publishes
 
 publish_crate() {
     local attempt=1
-    local wait=30
+    local wait=35
 
     while [ $attempt -le $MAX_RETRIES ]; do
         local output
