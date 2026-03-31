@@ -181,9 +181,6 @@ impl Module for ExplorerModule {
             KeybindingRegistration::new("y", ids::YANK_PATH)
                 .with_modes(&["explorer:EXPLORER"])
                 .with_description("Copy path to clipboard"),
-            KeybindingRegistration::new("I", ids::TOGGLE_GITIGNORED)
-                .with_modes(&["explorer:EXPLORER"])
-                .with_description("Toggle gitignored files"),
             KeybindingRegistration::new("x", ids::CUT_MARK)
                 .with_modes(&["explorer:EXPLORER"])
                 .with_description("Cut (mark for move)"),

@@ -66,7 +66,6 @@ impl ExtensionStateBridge for ExplorerBridge {
             "inputMode": input_mode_str,
             "inputBuffer": state.input_buffer,
             "showHidden": state.show_hidden,
-            "showGitignored": state.show_gitignored,
         });
 
         if !is_delta {
@@ -76,7 +75,7 @@ impl ExtensionStateBridge for ExplorerBridge {
                     .tree
                     .as_ref()
                     .map(|tree| {
-                        tree.flatten_with_metadata(state.show_hidden, state.show_gitignored)
+                        tree.flatten_with_metadata(state.show_hidden)
                             .into_iter()
                             .map(|flat| {
                                 let (is_dir, is_expanded, size) = match &flat.node.node_type {

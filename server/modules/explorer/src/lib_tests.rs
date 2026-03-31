@@ -88,8 +88,8 @@ fn keybindings_have_browse_mode_actions() {
         .iter()
         .filter(|b| b.modes.contains(&"explorer:EXPLORER"))
         .count();
-    // <Space>e, q, Esc, k, Up, j, Down, gg, G, l, Right, h, Left, CR, -, H, R, a, A, r, d, y, I, x, p
-    assert_eq!(count, 25);
+    // <Space>e, q, Esc, k, Up, j, Down, gg, G, l, Right, h, Left, CR, -, H, R, a, A, r, d, y, x, p
+    assert_eq!(count, 24);
 }
 
 #[test]

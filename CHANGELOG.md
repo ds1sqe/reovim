@@ -14,6 +14,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **codec**: rlib structured binary codec — opens `.rlib` files with archive member listing, rustc version, and dependency extraction (#733)
 - **kernel**: rope data structure (`mm/rope.rs`) — custom B-tree with O(log n) insert/delete, O(1) clone via `Arc` structural sharing, and O(log n) position conversion. Zero external dependencies. (#711)
 
+### Refactored
+
+- **explorer**: merged `H` (dotfiles) and `I` (gitignored) toggles into single `H` command — both hidden and gitignored files are now controlled by one toggle (#734)
+
 ### Changed
 
 - **kernel**: `Buffer` internal storage replaced from `Vec<String>` to `Rope` — all public API signatures unchanged, `Buffer::clone()` is now O(1) (~16ns vs ~8ms for 100K-line buffer) (#711)

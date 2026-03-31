@@ -9,7 +9,6 @@ fn state_create_defaults() {
     assert_eq!(state.visible_height, 24);
     assert_eq!(state.width, 30);
     assert!(!state.show_hidden);
-    assert!(!state.show_gitignored);
     assert!(state.cut_path.is_none());
     assert_eq!(state.input_mode, ExplorerInputMode::None);
     assert!(state.input_buffer.is_empty());

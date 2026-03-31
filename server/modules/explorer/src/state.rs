@@ -63,10 +63,8 @@ pub struct ExplorerState {
     pub visible_height: u16,
     /// Width of the sidebar in columns.
     pub width: u16,
-    /// Whether to show hidden files (dotfiles).
+    /// Whether to show hidden files (dotfiles and gitignored).
     pub show_hidden: bool,
-    /// Whether to show gitignored files.
-    pub show_gitignored: bool,
     /// Current input operation type.
     pub input_mode: ExplorerInputMode,
     /// Text buffer for input operations.
@@ -113,7 +111,7 @@ impl ExplorerState {
         let count = self
             .tree
             .as_ref()
-            .map_or(0, |t| t.flatten(self.show_hidden, self.show_gitignored).len());
+            .map_or(0, |t| t.flatten(self.show_hidden).len());
         *guard = Some(count);
         count
     }
@@ -227,7 +225,6 @@ impl SessionExtension for ExplorerState {
             visible_height: 24,
             width: 30,
             show_hidden: false,
-            show_gitignored: false,
             input_mode: ExplorerInputMode::None,
             input_buffer: String::new(),
             message: None,

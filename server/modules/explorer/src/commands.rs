@@ -235,7 +235,7 @@ impl CommandHandler for Expand {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -283,7 +283,7 @@ impl CommandHandler for Collapse {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -336,7 +336,7 @@ impl CommandHandler for Open {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -420,7 +420,7 @@ impl CommandHandler for GotoParent {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -582,7 +582,7 @@ impl CommandHandler for Rename {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -650,7 +650,7 @@ impl CommandHandler for ConfirmInput {
         };
 
         // Determine the parent path for the operation.
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let cursor_path = nodes.get(state.cursor_index).map(|n| n.path.clone());
 
         let Some(vfs) = args.vfs() else {
@@ -786,7 +786,7 @@ impl CommandHandler for YankPath {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -805,33 +805,8 @@ impl CommandHandler for YankPath {
 }
 
 // ============================================================================
-// Gitignore / Cut-Paste
+// Cut-Paste
 // ============================================================================
-
-/// Toggle display of gitignored files.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ToggleGitignored;
-
-impl reovim_driver_command::Command for ToggleGitignored {
-    fn id(&self) -> CommandId {
-        ids::TOGGLE_GITIGNORED
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle gitignored files"
-    }
-}
-
-impl CommandHandler for ToggleGitignored {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        let state = runtime.ext_mut::<ExplorerState>();
-        state.show_gitignored = !state.show_gitignored;
-        state.invalidate_tree_cache();
-        state.update_scroll();
-        CommandResult::Success
-    }
-}
 
 /// Mark the selected item for a cut (move) operation.
 #[derive(Debug, Clone, Copy, Default)]
@@ -855,7 +830,7 @@ impl CommandHandler for CutMark {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -896,7 +871,7 @@ impl CommandHandler for Paste {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let nodes = tree.flatten(state.show_hidden);
         let target_dir = cursor_dir_path(&nodes, state.cursor_index);
 
         let file_name = cut_path.file_name().map_or_else(
@@ -978,7 +953,6 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(CancelInput),
         Box::new(InputBackspace),
         Box::new(YankPath),
-        Box::new(ToggleGitignored),
         Box::new(CutMark),
         Box::new(Paste),
     ]

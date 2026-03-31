@@ -28,7 +28,6 @@ fn command_ids_have_correct_module() {
         CANCEL_INPUT,
         INPUT_BACKSPACE,
         YANK_PATH,
-        TOGGLE_GITIGNORED,
         CUT_MARK,
         PASTE,
     ];
@@ -60,7 +59,6 @@ fn command_ids_are_unique() {
         CANCEL_INPUT.name_owned(),
         INPUT_BACKSPACE.name_owned(),
         YANK_PATH.name_owned(),
-        TOGGLE_GITIGNORED.name_owned(),
         CUT_MARK.name_owned(),
         PASTE.name_owned(),
     ];
