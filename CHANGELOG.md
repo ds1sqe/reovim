@@ -40,3 +40,4 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **bufferline**: `H`/`L` buffer prev/next, `:bnext`/`:bprevious`/`:bd`/`:qa` ex-commands, `<Space>bd` binding (#699)
 - **motions**: screen-high/low relocated from `H`/`L` to `gH`/`gL` (#699)
 - **window**: `<C-h/j/k/l>` direct window focus navigation in normal mode (#699)
+- **lsp-navigation**: diagnostic navigation `]d`/`[d`, `]e`/`[e`, `]w`/`[w` for next/prev diagnostic/error/warning (#699)

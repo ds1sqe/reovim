@@ -7,6 +7,7 @@
 //! references open in the microscope picker.
 
 pub mod commands;
+pub mod diagnostic_nav;
 pub mod hover_bridge;
 pub mod hover_state;
 pub mod ids;
@@ -74,6 +75,9 @@ impl Module for LspNavigationModule {
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
         for handler in commands::command_handlers() {
+            command_store.add(handler);
+        }
+        for handler in diagnostic_nav::command_handlers() {
             command_store.add(handler);
         }
 

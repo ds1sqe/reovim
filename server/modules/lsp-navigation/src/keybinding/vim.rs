@@ -30,6 +30,25 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
         KeybindingRegistration::new("<C-k>", ids::SIGNATURE_HELP)
             .with_modes(&["vim:insert"])
             .with_description("Show signature help (LSP)"),
+        // Diagnostic navigation (#699)
+        KeybindingRegistration::new("]d", ids::NEXT_DIAGNOSTIC)
+            .with_modes(&["vim:normal"])
+            .with_description("Next diagnostic"),
+        KeybindingRegistration::new("[d", ids::PREV_DIAGNOSTIC)
+            .with_modes(&["vim:normal"])
+            .with_description("Previous diagnostic"),
+        KeybindingRegistration::new("]e", ids::NEXT_ERROR)
+            .with_modes(&["vim:normal"])
+            .with_description("Next error"),
+        KeybindingRegistration::new("[e", ids::PREV_ERROR)
+            .with_modes(&["vim:normal"])
+            .with_description("Previous error"),
+        KeybindingRegistration::new("]w", ids::NEXT_WARNING)
+            .with_modes(&["vim:normal"])
+            .with_description("Next warning"),
+        KeybindingRegistration::new("[w", ids::PREV_WARNING)
+            .with_modes(&["vim:normal"])
+            .with_description("Previous warning"),
     ]
 }
 
