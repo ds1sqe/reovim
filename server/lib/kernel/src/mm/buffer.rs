@@ -281,7 +281,11 @@ impl Buffer {
         let deleted = extract_byte_range(&self.text, byte_start, byte_end);
         self.text = self.text.remove(byte_start..byte_end);
 
-        if !deleted.is_empty() {
+        // DEAD BRANCH: `deleted.is_empty()` false — the guard at L277
+        // (`byte_start >= byte_end`) returns early on zero-width ranges.
+        // By this point byte_start < byte_end, so extract_byte_range
+        // always returns non-empty text.
+        if !deleted.is_empty() { // LCOV_EXCL_BR_LINE
             self.modified = true;
         }
 
@@ -311,7 +315,11 @@ impl Buffer {
         let deleted = extract_byte_range(&self.text, byte_start, byte_end);
         self.text = self.text.remove(byte_start..byte_end);
 
-        if !deleted.is_empty() {
+        // DEAD BRANCH: `deleted.is_empty()` false — the guard at L311
+        // (`byte_start >= byte_end`) returns early on zero-width ranges.
+        // By this point byte_start < byte_end, so extract_byte_range
+        // always returns non-empty text.
+        if !deleted.is_empty() { // LCOV_EXCL_BR_LINE
             self.modified = true;
         }
 

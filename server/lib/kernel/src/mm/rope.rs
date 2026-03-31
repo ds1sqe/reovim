@@ -452,13 +452,24 @@ impl PartialEq for Rope {
             if l_remaining.is_empty() {
                 match left.next() {
                     Some(chunk) => l_remaining = chunk,
-                    None => return r_remaining.is_empty() && right.next().is_none(),
+                    // DEAD BRANCH (partial): `r_remaining.is_empty()` false /
+                    // `right.next().is_none()` false — cannot happen because
+                    // the byte_len equality guard at L443 ensures both iterators
+                    // consume the same total bytes. Left always calls `.next()`
+                    // first (L452), so left exhausts before or simultaneously
+                    // with right. When left is exhausted, r_remaining is always
+                    // empty and right has no more chunks.
+                    None => return r_remaining.is_empty() && right.next().is_none(), // LCOV_EXCL_LINE
                 }
             }
             if r_remaining.is_empty() {
                 match right.next() {
                     Some(chunk) => r_remaining = chunk,
-                    None => return l_remaining.is_empty(),
+                    // DEAD CODE: right cannot exhaust before left. Both
+                    // iterators yield the same total byte_len (guarded at L443).
+                    // Left is consumed first (L452 checked before L458), so
+                    // left's None branch at L455 always fires before this one.
+                    None => return l_remaining.is_empty(), // LCOV_EXCL_LINE
                 }
             }
             let cmp_len = l_remaining.len().min(r_remaining.len());
@@ -582,8 +593,14 @@ fn build_tree(mut nodes: Vec<Arc<RopeNode>>) -> Arc<RopeNode> {
         nodes = parents;
     }
 
+    // DEAD BRANCH: With B_MAX=8, the while loop exits when nodes.len() <= 8.
+    // `build_tree` is only called from `nodes_to_root` when n > B_MAX (i.e. n >= 9).
+    // Each grouping pass produces ceil(n / B_MAX) groups, minimum 2 (for n=9: groups
+    // of 5+4). Subsequent passes also never reduce to exactly 1 because
+    // ceil(2/8)=1 would require entering the loop with nodes.len() > 8, which 2 is
+    // not. Therefore nodes.len() is always 2..=8 here.
     if nodes.len() == 1 {
-        nodes.into_iter().next().expect("checked non-empty")
+        nodes.into_iter().next().expect("checked non-empty") // LCOV_EXCL_LINE
     } else {
         RopeNode::new_internal(nodes)
     }
@@ -853,8 +870,14 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
             let mut new_text = String::with_capacity(text.len() - (e - s));
             new_text.push_str(&text[..s]);
             new_text.push_str(&text[e..]);
+            // DEAD BRANCH: `new_text.is_empty()` cannot be true here.
+            // For new_text to be empty, both text[..s] and text[e..] must be
+            // empty, i.e. s == 0 AND e >= text.len(). But that exact condition
+            // is caught by the guard at L850 (`if s == 0 && e >= text.len()`)
+            // which returns early. By this point, s > 0 OR e < text.len(),
+            // so at least one slice is non-empty.
             if new_text.is_empty() {
-                vec![]
+                vec![] // LCOV_EXCL_LINE
             } else {
                 chunk_text_to_leaves(&new_text)
             }
