@@ -8,8 +8,10 @@
 // Intentional: benchmarking regex compilation cost (the bug IS recompiling in loops).
 #![allow(clippy::regex_creation_in_loops)]
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use reovim_kernel::api::v1::Buffer;
+use {
+    criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
+    reovim_kernel::api::v1::Buffer,
+};
 
 const SIZES: &[usize] = &[1_000, 10_000, 100_000];
 
@@ -94,35 +96,27 @@ fn bench_backward_search(c: &mut Criterion) {
         let cursor_byte = content.len() / 2;
 
         // Current: collect ALL matches, take last before cursor
-        group.bench_with_input(
-            BenchmarkId::new("collect_all", lines),
-            &lines,
-            |b, _| {
-                b.iter(|| {
-                    let matches: Vec<_> = re.find_iter(&content).collect();
-                    let found = matches.iter().rev().find(|m| m.start() < cursor_byte);
-                    found.map(|m| m.start())
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("collect_all", lines), &lines, |b, _| {
+            b.iter(|| {
+                let matches: Vec<_> = re.find_iter(&content).collect();
+                let found = matches.iter().rev().find(|m| m.start() < cursor_byte);
+                found.map(|m| m.start())
+            });
+        });
 
         // Optimal: iterate forward, stop at cursor
-        group.bench_with_input(
-            BenchmarkId::new("early_stop", lines),
-            &lines,
-            |b, _| {
-                b.iter(|| {
-                    let mut last = None;
-                    for m in re.find_iter(&content) {
-                        if m.start() >= cursor_byte {
-                            break;
-                        }
-                        last = Some(m);
+        group.bench_with_input(BenchmarkId::new("early_stop", lines), &lines, |b, _| {
+            b.iter(|| {
+                let mut last = None;
+                for m in re.find_iter(&content) {
+                    if m.start() >= cursor_byte {
+                        break;
                     }
-                    last
-                });
-            },
-        );
+                    last = Some(m);
+                }
+                last
+            });
+        });
     }
     group.finish();
 }
@@ -138,37 +132,29 @@ fn bench_full_search(c: &mut Criterion) {
         let buf = generate_buffer(lines);
 
         // Current: content() + Regex::new() + match + content() again
-        group.bench_with_input(
-            BenchmarkId::new("current", lines),
-            &lines,
-            |b, _| {
-                b.iter(|| {
-                    let content = buf.content();
-                    let re = regex::Regex::new("handle_request").unwrap();
-                    let _m = re.find(&content);
-                    let _content2 = buf.content();
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("current", lines), &lines, |b, _| {
+            b.iter(|| {
+                let content = buf.content();
+                let re = regex::Regex::new("handle_request").unwrap();
+                let _m = re.find(&content);
+                let _content2 = buf.content();
+            });
+        });
 
         // Optimal: cached regex + line iteration
-        group.bench_with_input(
-            BenchmarkId::new("optimal", lines),
-            &lines,
-            |b, _| {
-                let re = regex::Regex::new("handle_request").unwrap();
-                b.iter(|| {
-                    for i in 0..buf.line_count() {
-                        if let Some(line) = buf.line(i)
-                            && re.is_match(line)
-                        {
-                            return Some((i, re.find(line)));
-                        }
+        group.bench_with_input(BenchmarkId::new("optimal", lines), &lines, |b, _| {
+            let re = regex::Regex::new("handle_request").unwrap();
+            b.iter(|| {
+                for i in 0..buf.line_count() {
+                    if let Some(line) = buf.line(i)
+                        && re.is_match(line)
+                    {
+                        return Some((i, re.find(line)));
                     }
-                    None::<(usize, Option<regex::Match<'_>>)>
-                });
-            },
-        );
+                }
+                None::<(usize, Option<regex::Match<'_>>)>
+            });
+        });
     }
     group.finish();
 }

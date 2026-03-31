@@ -217,7 +217,11 @@ fn bench_vec_char_alloc(c: &mut Criterion) {
     let short = "hello world";
     let medium = "The quick brown fox jumps over the lazy dog. Hello world! More text here for a longer line padding.";
     let long: String = "x".repeat(1000);
-    for (name, line) in [("11_chars", short), ("99_chars", medium), ("1000_chars", &long)] {
+    for (name, line) in [
+        ("11_chars", short),
+        ("99_chars", medium),
+        ("1000_chars", &long),
+    ] {
         group.bench_function(name, |b| {
             b.iter(|| {
                 let _: Vec<char> = std::hint::black_box(line).chars().collect();
