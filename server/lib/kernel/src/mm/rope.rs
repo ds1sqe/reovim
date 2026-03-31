@@ -215,19 +215,34 @@ impl Rope {
 
     /// Number of lines in the rope.
     ///
-    /// Matches the convention of `Buffer::line_count()`: an empty rope
-    /// has 0 lines, `"hello"` has 1 line, `"hello\nworld"` has 2 lines.
+    /// Uses line-separator semantics: an empty rope has 0 lines,
+    /// `"hello"` has 1 line, `"hello\n"` has 2 lines (trailing empty line),
+    /// `"hello\nworld"` has 2 lines.
     pub fn line_count(&self) -> usize {
-        self.root.metrics.line_count
+        let count = self.root.metrics.line_count;
+        // Trailing \n produces an empty line (line-separator semantics).
+        // The internal Metrics use terminator semantics for correct tree
+        // summation, so we adjust at the public API boundary.
+        if count > 0 && last_byte(&self.root) == Some(b'\n') {
+            count + 1
+        } else {
+            count
+        }
     }
 
     /// Get a line by index (0-based).
     ///
     /// Returns `None` if `idx >= line_count()`.
     /// The returned `&str` borrows from a single leaf node — zero allocation.
+    /// For the trailing empty line after a final `'\n'`, returns `Some("")`.
     pub fn line(&self, idx: usize) -> Option<&str> {
-        if idx >= self.root.metrics.line_count {
+        if idx >= self.line_count() {
             return None;
+        }
+        // Trailing empty line: exists only when text ends with \n.
+        // Not stored in any leaf, so return a static empty str.
+        if idx == self.root.metrics.line_count {
+            return Some("");
         }
         line_at(&self.root, idx)
     }
@@ -590,6 +605,14 @@ fn nodes_to_root(nodes: Vec<Arc<RopeNode>>) -> Arc<RopeNode> {
 }
 
 // ─── Navigation Helpers ─────────────────────────────────────────────────────
+
+/// Return the last byte in the tree (O(log n) — walks to rightmost leaf).
+fn last_byte(node: &RopeNode) -> Option<u8> {
+    match &node.kind {
+        NodeKind::Leaf { text } => text.as_bytes().last().copied(),
+        NodeKind::Internal { children } => children.last().and_then(|c| last_byte(c)),
+    }
+}
 
 /// Find line `idx` within a node's subtree.
 fn line_at(node: &RopeNode, idx: usize) -> Option<&str> {

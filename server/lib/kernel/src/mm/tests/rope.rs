@@ -43,27 +43,30 @@ fn from_two_lines() {
 
 #[test]
 fn from_trailing_newline() {
-    // "abc\n" → 1 line ("abc"), matching Rust's str::lines()
+    // "abc\n" → 2 lines ("abc", ""), line-separator semantics
     let r = Rope::from_str("abc\n");
-    assert_eq!(r.line_count(), 1);
-    assert_eq!(r.line(0), Some("abc"));
-}
-
-#[test]
-fn from_multiple_trailing_newlines() {
-    let r = Rope::from_str("abc\n\n");
     assert_eq!(r.line_count(), 2);
     assert_eq!(r.line(0), Some("abc"));
     assert_eq!(r.line(1), Some(""));
 }
 
 #[test]
+fn from_multiple_trailing_newlines() {
+    let r = Rope::from_str("abc\n\n");
+    assert_eq!(r.line_count(), 3);
+    assert_eq!(r.line(0), Some("abc"));
+    assert_eq!(r.line(1), Some(""));
+    assert_eq!(r.line(2), Some(""));
+}
+
+#[test]
 fn from_only_newlines() {
     let r = Rope::from_str("\n\n\n");
-    assert_eq!(r.line_count(), 3);
+    assert_eq!(r.line_count(), 4);
     assert_eq!(r.line(0), Some(""));
     assert_eq!(r.line(1), Some(""));
     assert_eq!(r.line(2), Some(""));
+    assert_eq!(r.line(3), Some(""));
 }
 
 #[test]
@@ -93,7 +96,8 @@ fn large_rope_roundtrip() {
     let r = Rope::from_str(&text);
 
     assert_eq!(r.content(), text);
-    assert_eq!(r.line_count(), 100);
+    // 100 lines of content + 1 trailing empty line (text ends with \n)
+    assert_eq!(r.line_count(), 101);
     for i in 0..100 {
         assert_eq!(
             r.line(i),
@@ -111,7 +115,8 @@ fn large_rope_line_count() {
         writeln!(text, "line {i}").unwrap();
     }
     let r = Rope::from_str(&text);
-    assert_eq!(r.line_count(), 1000);
+    // 1000 lines of content + 1 trailing empty line (writeln! ends each with \n)
+    assert_eq!(r.line_count(), 1001);
 }
 
 // ─── Unicode ────────────────────────────────────────────────────────────────
@@ -644,7 +649,8 @@ fn stress_sequential_inserts() {
         let text = format!("line {i}\n");
         r = r.insert(r.byte_len(), &text);
     }
-    assert_eq!(r.line_count(), 100);
+    // 100 lines + trailing empty line
+    assert_eq!(r.line_count(), 101);
     for i in 0..100 {
         assert_eq!(r.line(i), Some(format!("line {i}").as_str()));
     }
@@ -697,15 +703,16 @@ fn single_char() {
 #[test]
 fn single_newline() {
     let r = Rope::from_str("\n");
-    assert_eq!(r.line_count(), 1);
+    assert_eq!(r.line_count(), 2);
     assert_eq!(r.line(0), Some(""));
+    assert_eq!(r.line(1), Some(""));
 }
 
 #[test]
 fn empty_lines() {
     let r = Rope::from_str("\n\n\n");
-    assert_eq!(r.line_count(), 3);
-    for i in 0..3 {
+    assert_eq!(r.line_count(), 4);
+    for i in 0..4 {
         assert_eq!(r.line(i), Some(""));
     }
 }
@@ -742,19 +749,20 @@ fn position_on_empty() {
 // ─── Property: line(i) matches str::lines().nth(i) ─────────────────────────
 
 #[test]
-fn lines_match_str_lines() {
+fn lines_match_split_newline() {
+    // Rope uses line-separator semantics: split('\n'), NOT str::lines().
+    // "abc\n" → ["abc", ""], not ["abc"].
     let texts = [
         "hello\nworld",
         "abc",
         "abc\ndef\nghi\n",
         "\n\n\n",
-        "",
         "single",
         "a\nb\nc\nd\ne\nf",
     ];
     for text in texts {
         let r = Rope::from_str(text);
-        let expected: Vec<&str> = text.lines().collect();
+        let expected: Vec<&str> = text.split('\n').collect();
         for (i, &exp) in expected.iter().enumerate() {
             assert_eq!(
                 r.line(i),
@@ -768,4 +776,7 @@ fn lines_match_str_lines() {
             "line_count mismatch for text {text:?}"
         );
     }
+    // Empty rope: 0 lines (special case — split('\n') on "" gives [""])
+    let r = Rope::from_str("");
+    assert_eq!(r.line_count(), 0);
 }
