@@ -7,7 +7,7 @@ use {
     reovim_kernel::api::v1::{Edit, RegisterContent},
 };
 
-use super::{Operator, OperatorContext, OperatorError, Range, registers};
+use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
 
 /// Delete operator - cuts text to register.
 ///
@@ -51,19 +51,18 @@ impl Operator for DeleteOperator {
         // - deleted_text: for undo (exact bytes deleted)
         let mut register_text = String::new();
         let mut deleted_text = String::new();
-        let lines = buffer.lines();
 
         if range.is_linewise {
             // Linewise deletion: delete entire lines from start.line to end.line (inclusive)
             // Ignore column values - always delete full lines
-            let line_count = lines.len();
+            let line_count = buffer.line_count();
 
             // Clamp end.line to last valid line to handle counts exceeding buffer
             let clamped_end = end.line.min(line_count.saturating_sub(1));
 
             // Build register_text as "line\n" for each line (for paste to work correctly)
             for line_idx in start.line..=clamped_end {
-                if let Some(line) = lines.get(line_idx) {
+                if let Some(line) = buffer.line(line_idx) {
                     register_text.push_str(line);
                     register_text.push('\n');
                 }
@@ -101,30 +100,31 @@ impl Operator for DeleteOperator {
             } else if start.line > 0 {
                 // Case 2: Deleting last line(s) but not all
                 // Include the preceding newline (from end of previous line)
-                // Use .chars().count() for UTF-8 safety
-                let prev_line_len = lines.get(start.line - 1).map_or(0, |l| l.chars().count());
-                delete_start = reovim_kernel::api::v1::Position::new(start.line - 1, prev_line_len);
-                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
-                let last_line = &lines[clamped_end];
+                let prev_line_len =
+                    buffer.line(start.line - 1).map_or(0, |l| l.chars().count());
+                delete_start =
+                    reovim_kernel::api::v1::Position::new(start.line - 1, prev_line_len);
+                let last_line_char_len =
+                    buffer.line(clamped_end).map_or(0, |l| l.chars().count());
                 delete_end =
-                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count());
+                    reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len);
                 // Build deleted_text as "\nline" (preceding newline + content, no trailing newline)
                 // This matches what we're actually deleting for correct undo
                 for line_idx in start.line..=clamped_end {
                     deleted_text.push('\n');
-                    if let Some(line) = lines.get(line_idx) {
+                    if let Some(line) = buffer.line(line_idx) {
                         deleted_text.push_str(line);
                     }
                 }
             } else {
                 // Case 3: Deleting all lines (start.line == 0 and clamped_end is last line)
                 delete_start = reovim_kernel::api::v1::Position::new(0, 0);
-                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
-                let last_line = &lines[clamped_end];
+                let last_line_char_len =
+                    buffer.line(clamped_end).map_or(0, |l| l.chars().count());
                 delete_end =
-                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count());
+                    reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len);
                 // deleted_text is just the content (no newlines - single line)
-                if let Some(line) = lines.get(clamped_end) {
+                if let Some(line) = buffer.line(clamped_end) {
                     deleted_text.push_str(line);
                 }
             }
@@ -154,8 +154,6 @@ impl Operator for DeleteOperator {
             // Case 3 (delete all lines): Buffer is empty, cursor at (0, 0).
             let line_count = buffer.line_count();
             let final_line = start.line.min(line_count.saturating_sub(1));
-            // Note: Buffer always maintains at least one line (even if empty),
-            // so line_count is always >= 1 after delete_range.
             let final_col = if is_deleting_last_line {
                 // Case 2: Cursor at last valid column of the new last line
                 let line_len = buffer.line_len(final_line).unwrap_or(0);
@@ -187,29 +185,35 @@ impl Operator for DeleteOperator {
             // Characterwise deletion
             if start.line == end.line {
                 // Single line deletion
-                // start.line is valid: buffer exists and lines were just obtained from it
-                let line = &lines[start.line];
-                let start_col = start.column.min(line.len());
-                let end_col = end.column.min(line.len());
-                if start_col < end_col {
-                    deleted_text.push_str(&line[start_col..end_col]);
+                if let Some(line) = buffer.line(start.line) {
+                    let char_len = line.chars().count();
+                    let start_col = start.column.min(char_len);
+                    let end_col = end.column.min(char_len);
+                    if start_col < end_col {
+                        let start_byte = char_col_to_byte(line, start_col);
+                        let end_byte = char_col_to_byte(line, end_col);
+                        deleted_text.push_str(&line[start_byte..end_byte]);
+                    }
                 }
             } else {
                 // Multi-line deletion
-                // All indices in start.line..=end.line are valid: lines were obtained
-                // from the same buffer snapshot and end.line <= last valid line
-                for (line_idx, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line)
-                {
-                    if line_idx == start.line {
-                        let start_col = start.column.min(line.len());
-                        deleted_text.push_str(&line[start_col..]);
-                        deleted_text.push('\n');
-                    } else if line_idx == end.line {
-                        let end_col = end.column.min(line.len());
-                        deleted_text.push_str(&line[..end_col]);
-                    } else {
-                        deleted_text.push_str(line);
-                        deleted_text.push('\n');
+                for line_idx in start.line..=end.line {
+                    if let Some(line) = buffer.line(line_idx) {
+                        if line_idx == start.line {
+                            let char_len = line.chars().count();
+                            let start_col = start.column.min(char_len);
+                            let start_byte = char_col_to_byte(line, start_col);
+                            deleted_text.push_str(&line[start_byte..]);
+                            deleted_text.push('\n');
+                        } else if line_idx == end.line {
+                            let char_len = line.chars().count();
+                            let end_col = end.column.min(char_len);
+                            let end_byte = char_col_to_byte(line, end_col);
+                            deleted_text.push_str(&line[..end_byte]);
+                        } else {
+                            deleted_text.push_str(line);
+                            deleted_text.push('\n');
+                        }
                     }
                 }
             }

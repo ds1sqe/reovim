@@ -572,7 +572,7 @@ fn test_delete_selection_noop_without_selection() {
     // Buffer should be unchanged
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], "hello world");
+    assert_eq!(buffer.line(0).unwrap(), "hello world");
 }
 
 #[test]
@@ -623,7 +623,7 @@ fn test_delete_selection_deletes_text() {
     // Buffer should have "hello" deleted
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], " world");
+    assert_eq!(buffer.line(0).unwrap(), " world");
 
     // Selection should be cleared after delete
     assert!(windows.active().unwrap().selection.is_none());
@@ -649,9 +649,9 @@ fn test_indent_selection_adds_indentation() {
     // Lines 0-1 should be indented
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert!(buffer.lines()[0].starts_with("    ")); // 4 spaces
-    assert!(buffer.lines()[1].starts_with("    "));
-    assert!(!buffer.lines()[2].starts_with("    ")); // Line 3 not selected
+    assert!(buffer.line(0).unwrap().starts_with("    ")); // 4 spaces
+    assert!(buffer.line(1).unwrap().starts_with("    "));
+    assert!(!buffer.line(2).unwrap().starts_with("    ")); // Line 3 not selected
 }
 
 #[test]
@@ -674,9 +674,9 @@ fn test_dedent_selection_removes_indentation() {
     // Lines 0-1 should be dedented
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], "line1");
-    assert_eq!(buffer.lines()[1], "line2");
-    assert_eq!(buffer.lines()[2], "line3"); // Line 3 unchanged
+    assert_eq!(buffer.line(0).unwrap(), "line1");
+    assert_eq!(buffer.line(1).unwrap(), "line2");
+    assert_eq!(buffer.line(2).unwrap(), "line3"); // Line 3 unchanged
 }
 
 // ========================================================================
@@ -703,7 +703,7 @@ fn test_yank_selection_yanks_text() {
     // Buffer content should remain unchanged (yank doesn't delete)
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], "hello world");
+    assert_eq!(buffer.line(0).unwrap(), "hello world");
 
     // Selection should be cleared after yank
     assert!(windows.active().unwrap().selection.is_none());
@@ -729,7 +729,7 @@ fn test_change_selection_changes_text() {
     // Buffer should have "hello" deleted (like delete, but followed by insert mode)
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], " world");
+    assert_eq!(buffer.line(0).unwrap(), " world");
 
     // Selection should be cleared after change
     assert!(windows.active().unwrap().selection.is_none());
@@ -756,7 +756,7 @@ fn test_delete_selection_line_mode_deletes_entire_lines() {
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line_count(), 1);
-    assert_eq!(buffer.lines()[0], "line three");
+    assert_eq!(buffer.line(0).unwrap(), "line three");
 }
 
 // =========================================================================
@@ -847,7 +847,7 @@ fn test_indent_selection_noop_without_selection() {
     // Buffer unchanged
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], "hello");
+    assert_eq!(buffer.line(0).unwrap(), "hello");
 }
 
 #[test]
@@ -865,7 +865,7 @@ fn test_dedent_selection_noop_without_selection() {
     // Buffer unchanged
     let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
     let buffer = buffer_arc.read();
-    assert_eq!(buffer.lines()[0], "    hello");
+    assert_eq!(buffer.line(0).unwrap(), "    hello");
 }
 
 #[test]

@@ -204,7 +204,7 @@ fn test_delete_command_execute() {
     // Check buffer was modified
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[" world"]);
+    assert_eq!(buf.content(), " world");
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn test_yank_command_execute() {
     // Buffer should be unchanged (yank does not modify)
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello world"]);
+    assert_eq!(buf.content(), "hello world");
 
     // Register should have yanked text
     drop(runtime);
@@ -304,7 +304,7 @@ fn test_change_command_execute() {
     // Buffer should have text deleted
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[" world"]);
+    assert_eq!(buf.content(), " world");
 }
 
 #[test]
@@ -326,7 +326,7 @@ fn test_delete_command_linewise() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["line2", "line3"]);
+    assert_eq!(buf.content(), "line2\nline3");
 }
 
 #[test]
@@ -349,7 +349,7 @@ fn test_yank_command_linewise() {
     // Buffer should be unchanged
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["line1", "line2", "line3"]);
+    assert_eq!(buf.content(), "line1\nline2\nline3");
 
     // Register should contain yanked line
     drop(runtime);

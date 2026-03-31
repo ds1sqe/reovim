@@ -4,7 +4,7 @@
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use super::{Operator, OperatorContext, OperatorError, Range, registers};
+use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
 
 /// Yank operator - copies text to register.
 ///
@@ -42,45 +42,51 @@ impl Operator for YankOperator {
         let start = range.start;
         let end = range.end;
         let mut yanked_text = String::new();
-        let lines = buffer.lines();
 
         if range.is_linewise {
             // Linewise yank: copy entire lines from start.line to end.line (inclusive)
             // Ignore column values - always yank full lines
             // Clamp end.line to last valid line to handle counts exceeding buffer
-            let line_count = lines.len();
+            let line_count = buffer.line_count();
             let clamped_end = end.line.min(line_count.saturating_sub(1));
 
             for line_idx in start.line..=clamped_end {
-                if let Some(line) = lines.get(line_idx) {
+                if let Some(line) = buffer.line(line_idx) {
                     yanked_text.push_str(line);
                     yanked_text.push('\n');
                 }
             }
         } else if start.line == end.line {
             // Single line characterwise yank
-            // start.line is valid: buffer exists and lines were just obtained from it
-            let line = &lines[start.line];
-            let start_col = start.column.min(line.len());
-            let end_col = end.column.min(line.len());
-            if start_col < end_col {
-                yanked_text.push_str(&line[start_col..end_col]);
+            if let Some(line) = buffer.line(start.line) {
+                let char_len = line.chars().count();
+                let start_col = start.column.min(char_len);
+                let end_col = end.column.min(char_len);
+                if start_col < end_col {
+                    let start_byte = char_col_to_byte(line, start_col);
+                    let end_byte = char_col_to_byte(line, end_col);
+                    yanked_text.push_str(&line[start_byte..end_byte]);
+                }
             }
         } else {
             // Multi-line characterwise yank
-            // All indices in start.line..=end.line are valid: lines were obtained
-            // from the same buffer snapshot and end.line <= last valid line
-            for (line_idx, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
-                if line_idx == start.line {
-                    let start_col = start.column.min(line.len());
-                    yanked_text.push_str(&line[start_col..]);
-                    yanked_text.push('\n');
-                } else if line_idx == end.line {
-                    let end_col = end.column.min(line.len());
-                    yanked_text.push_str(&line[..end_col]);
-                } else {
-                    yanked_text.push_str(line);
-                    yanked_text.push('\n');
+            for line_idx in start.line..=end.line {
+                if let Some(line) = buffer.line(line_idx) {
+                    if line_idx == start.line {
+                        let char_len = line.chars().count();
+                        let start_col = start.column.min(char_len);
+                        let start_byte = char_col_to_byte(line, start_col);
+                        yanked_text.push_str(&line[start_byte..]);
+                        yanked_text.push('\n');
+                    } else if line_idx == end.line {
+                        let char_len = line.chars().count();
+                        let end_col = end.column.min(char_len);
+                        let end_byte = char_col_to_byte(line, end_col);
+                        yanked_text.push_str(&line[..end_byte]);
+                    } else {
+                        yanked_text.push_str(line);
+                        yanked_text.push('\n');
+                    }
                 }
             }
         }

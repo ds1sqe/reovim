@@ -133,7 +133,7 @@ fn test_delete_characterwise_single_line() {
     // Check buffer content
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[" world"]);
+    assert_eq!(buf.content(), " world");
 
     // Check register has deleted text
     drop(op_ctx);
@@ -166,7 +166,7 @@ fn test_delete_characterwise_partial() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello "]);
+    assert_eq!(buf.content(), "hello ");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "world");
@@ -226,7 +226,7 @@ fn test_delete_linewise_first_line_of_multiple() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["line2", "line3"]);
+    assert_eq!(buf.content(), "line2\nline3");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "line1\n");
@@ -258,7 +258,7 @@ fn test_delete_linewise_last_line_not_only() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["line1"]);
+    assert_eq!(buf.content(), "line1");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "line2\n");
@@ -288,10 +288,10 @@ fn test_delete_linewise_only_line() {
     let result = delete.execute(&mut op_ctx, range);
     assert!(result.is_ok());
 
-    // After deleting all content, buffer has one empty line
+    // After deleting all content, buffer is empty
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "only line\n");
@@ -323,7 +323,7 @@ fn test_delete_linewise_multiple_lines() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["a", "d"]);
+    assert_eq!(buf.content(), "a\nd");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "b\nc\n");
@@ -381,10 +381,10 @@ fn test_delete_linewise_clamped_end() {
     let result = delete.execute(&mut op_ctx, range);
     assert!(result.is_ok());
 
-    // After deleting all lines, buffer has one empty line
+    // After deleting all lines, buffer is empty
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn test_delete_characterwise_empty_range() {
     // Buffer should be unchanged
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello"]);
+    assert_eq!(buf.content(), "hello");
 }
 
 #[test]
@@ -443,7 +443,7 @@ fn test_delete_linewise_last_two_of_three() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["a"]);
+    assert_eq!(buf.content(), "a");
 }
 
 #[test]
@@ -500,7 +500,7 @@ fn test_delete_linewise_middle_line_of_three() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["first", "third"]);
+    assert_eq!(buf.content(), "first\nthird");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "second\n");
@@ -532,7 +532,7 @@ fn test_delete_characterwise_single_char() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["ello"]);
+    assert_eq!(buf.content(), "ello");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "h");
@@ -591,7 +591,7 @@ fn test_delete_linewise_all_lines_three() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "a\nb\nc\n");
@@ -643,7 +643,7 @@ fn test_delete_characterwise_entire_line_content() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "hello");
@@ -675,7 +675,7 @@ fn test_delete_characterwise_column_beyond_line() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "hi");

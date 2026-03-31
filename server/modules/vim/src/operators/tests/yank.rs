@@ -326,7 +326,7 @@ fn test_yank_does_not_modify_buffer() {
     // Buffer content should be unchanged
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello world"]);
+    assert_eq!(buf.content(), "hello world");
 }
 
 #[test]
