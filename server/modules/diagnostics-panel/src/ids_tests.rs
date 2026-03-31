@@ -27,18 +27,18 @@ fn command_ids_belong_to_module() {
 
 #[test]
 fn command_ids_unique() {
-    let ids: Vec<&str> = vec![
-        TROUBLE_OPEN.name(),
-        TROUBLE_CLOSE.name(),
-        TROUBLE_TOGGLE.name(),
-        TROUBLE_NEXT.name(),
-        TROUBLE_PREV.name(),
-        TROUBLE_SELECT.name(),
-        TROUBLE_FILTER_ERROR.name(),
-        TROUBLE_FILTER_WARNING.name(),
-        TROUBLE_FILTER_ALL.name(),
-        TROUBLE_SORT.name(),
-        TROUBLE_REFRESH.name(),
+    let ids: Vec<std::borrow::Cow<'static, str>> = vec![
+        TROUBLE_OPEN.name_owned(),
+        TROUBLE_CLOSE.name_owned(),
+        TROUBLE_TOGGLE.name_owned(),
+        TROUBLE_NEXT.name_owned(),
+        TROUBLE_PREV.name_owned(),
+        TROUBLE_SELECT.name_owned(),
+        TROUBLE_FILTER_ERROR.name_owned(),
+        TROUBLE_FILTER_WARNING.name_owned(),
+        TROUBLE_FILTER_ALL.name_owned(),
+        TROUBLE_SORT.name_owned(),
+        TROUBLE_REFRESH.name_owned(),
     ];
     let count = ids.len();
     let mut unique = ids.clone();

@@ -310,7 +310,7 @@ fn leak_str(s: &str) -> &'static str {
 /// Leaks all string fields to `&'static str` (bounded startup cost).
 fn convert_keybinding(kb: &ManifestKeybinding) -> KeybindingRegistration {
     let keys = leak_str(&kb.key);
-    let command_id = CommandId::from_qualified_leaked(kb.command.clone());
+    let command_id = CommandId::from_qualified(kb.command.clone());
     let description = leak_str(&kb.description);
     let category = leak_str(&kb.category);
 

@@ -77,7 +77,7 @@ impl Picker for CommandsPicker {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, action: PickerAction, runtime: &mut SessionRuntime<'_>) {
         if let PickerAction::ExecuteCommand(qualified) = action {
-            let cmd = CommandId::from_qualified_leaked(qualified);
+            let cmd = CommandId::from_qualified(qualified);
             let ctx = CommandContext::new();
             runtime.execute_command(cmd, ctx);
         }

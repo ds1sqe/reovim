@@ -13,21 +13,21 @@ fn test_command_handlers_count() {
 #[test]
 fn test_command_handlers_contains_all_ids() {
     let cmds = command_handlers();
-    let ids: Vec<_> = cmds.iter().map(|c| c.id().name()).collect();
-    assert!(ids.contains(&"edit"));
-    assert!(ids.contains(&"quit"));
-    assert!(ids.contains(&"write"));
-    assert!(ids.contains(&"write-quit"));
-    assert!(ids.contains(&"colorscheme"));
-    assert!(ids.contains(&"set"));
-    assert!(ids.contains(&"detach"));
-    assert!(ids.contains(&"servers"));
-    assert!(ids.contains(&"kill-server"));
-    assert!(ids.contains(&"substitute"));
-    assert!(ids.contains(&"bnext"));
-    assert!(ids.contains(&"bprevious"));
-    assert!(ids.contains(&"bdelete"));
-    assert!(ids.contains(&"qall"));
+    let ids: Vec<_> = cmds.iter().map(|c| c.id().name_owned()).collect();
+    assert!(ids.iter().any(|n| n == "edit"));
+    assert!(ids.iter().any(|n| n == "quit"));
+    assert!(ids.iter().any(|n| n == "write"));
+    assert!(ids.iter().any(|n| n == "write-quit"));
+    assert!(ids.iter().any(|n| n == "colorscheme"));
+    assert!(ids.iter().any(|n| n == "set"));
+    assert!(ids.iter().any(|n| n == "detach"));
+    assert!(ids.iter().any(|n| n == "servers"));
+    assert!(ids.iter().any(|n| n == "kill-server"));
+    assert!(ids.iter().any(|n| n == "substitute"));
+    assert!(ids.iter().any(|n| n == "bnext"));
+    assert!(ids.iter().any(|n| n == "bprevious"));
+    assert!(ids.iter().any(|n| n == "bdelete"));
+    assert!(ids.iter().any(|n| n == "qall"));
 }
 
 #[test]

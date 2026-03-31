@@ -33,15 +33,15 @@ fn test_operator_id_equality() {
 }
 
 #[test]
-fn test_operator_id_from_qualified_leaked() {
-    let op = OperatorId::from_qualified_leaked("vim:delete".to_string());
+fn test_operator_id_from_qualified() {
+    let op = OperatorId::from_qualified("vim:delete".to_string());
     assert_eq!(op.module().as_str(), "vim");
     assert_eq!(op.name(), "delete");
 }
 
 #[test]
-fn test_operator_id_from_qualified_leaked_no_colon() {
-    let op = OperatorId::from_qualified_leaked("delete".to_string());
+fn test_operator_id_from_qualified_no_colon() {
+    let op = OperatorId::from_qualified("delete".to_string());
     assert_eq!(op.module().as_str(), "unknown");
     assert_eq!(op.name(), "delete");
 }
@@ -340,22 +340,22 @@ fn test_operator_id_all_different() {
 }
 
 #[test]
-fn test_operator_id_from_qualified_leaked_different_module() {
-    let op = OperatorId::from_qualified_leaked("custom:my-op".to_string());
+fn test_operator_id_from_qualified_different_module() {
+    let op = OperatorId::from_qualified("custom:my-op".to_string());
     assert_eq!(op.module().as_str(), "custom");
     assert_eq!(op.name(), "my-op");
 }
 
 #[test]
-fn test_operator_id_from_qualified_leaked_empty_name() {
-    let op = OperatorId::from_qualified_leaked("vim:".to_string());
+fn test_operator_id_from_qualified_empty_name() {
+    let op = OperatorId::from_qualified("vim:".to_string());
     assert_eq!(op.module().as_str(), "vim");
     assert_eq!(op.name(), "");
 }
 
 #[test]
-fn test_operator_id_from_qualified_leaked_colon_only() {
-    let op = OperatorId::from_qualified_leaked(":".to_string());
+fn test_operator_id_from_qualified_colon_only() {
+    let op = OperatorId::from_qualified(":".to_string());
     assert_eq!(op.module().as_str(), "");
     assert_eq!(op.name(), "");
 }

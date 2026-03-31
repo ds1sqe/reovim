@@ -90,7 +90,7 @@ pub unsafe extern "C" fn reovim_execute_command(
             return REOVIM_ERR_INVALID_UTF8;
         };
 
-        let command_id = CommandId::from_qualified_leaked(cmd_str.to_string());
+        let command_id = CommandId::from_qualified(cmd_str.to_string());
 
         let mut ctx = CommandContext::new();
         if count >= 0 {
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn reovim_register_command(reg: *const ReovimCommandRegist
             return REOVIM_ERR_INVALID_UTF8;
         };
 
-        let command_id = CommandId::from_qualified_leaked(id_str.to_string());
+        let command_id = CommandId::from_qualified(id_str.to_string());
         // SAFETY: intentional leak — description lives for program lifetime.
         let description: &'static str = Box::leak(desc_str.to_string().into_boxed_str());
 

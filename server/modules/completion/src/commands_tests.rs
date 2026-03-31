@@ -46,8 +46,8 @@ fn command_handlers_unique_ids() {
     let handlers = command_handlers();
     let ids: Vec<CommandId> = handlers.iter().map(|h| h.id()).collect();
     let mut deduped = ids.clone();
-    deduped.sort_by_key(CommandId::name);
-    deduped.dedup_by_key(|id| id.name());
+    deduped.sort_by_key(CommandId::name_owned);
+    deduped.dedup_by_key(|id| id.name_owned());
     assert_eq!(ids.len(), deduped.len());
 }
 

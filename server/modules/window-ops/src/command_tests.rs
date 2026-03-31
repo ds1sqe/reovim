@@ -303,7 +303,8 @@ fn test_commands_with_args_are_expected() {
     let commands = all_commands();
     for cmd in &commands {
         let has_args = !cmd.args().is_empty();
-        let name = cmd.id().name();
+        let id = cmd.id();
+        let name = id.name();
         if expected_with_args.contains(&name) {
             assert!(has_args, "Command '{name}' should have args");
         } else {
@@ -328,7 +329,8 @@ fn test_commands_with_aliases_are_expected() {
     let commands = all_commands();
     for cmd in &commands {
         let has_aliases = !cmd.names().is_empty();
-        let name = cmd.id().name();
+        let id = cmd.id();
+        let name = id.name();
         if expected_with_aliases.contains(&name) {
             assert!(has_aliases, "Command '{name}' should have aliases");
         } else {

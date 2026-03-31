@@ -381,18 +381,18 @@ fn test_mode_id_static_vs_dynamic_module() {
     assert_eq!(map.get(&mode_b), Some(&"from_a"), "Lookup with equivalent ModeId should work");
 }
 
-// === CommandId::from_qualified_leaked without colon ===
+// === CommandId::from_qualified without colon ===
 
 #[test]
-fn test_command_id_from_qualified_leaked_with_colon() {
-    let cmd = CommandId::from_qualified_leaked("editor:cursor-down".to_string());
+fn test_command_id_from_qualified_with_colon() {
+    let cmd = CommandId::from_qualified("editor:cursor-down".to_string());
     assert_eq!(cmd.module().as_str(), "editor");
     assert_eq!(cmd.name(), "cursor-down");
 }
 
 #[test]
-fn test_command_id_from_qualified_leaked_without_colon() {
-    let cmd = CommandId::from_qualified_leaked("cursor-down".to_string());
+fn test_command_id_from_qualified_without_colon() {
+    let cmd = CommandId::from_qualified("cursor-down".to_string());
     assert_eq!(cmd.module().as_str(), "unknown");
     assert_eq!(cmd.name(), "cursor-down");
 }

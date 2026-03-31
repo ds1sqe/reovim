@@ -25,16 +25,16 @@ fn command_ids_belong_to_module() {
 
 #[test]
 fn command_ids_unique() {
-    let ids: Vec<&str> = vec![
-        NEXT_HUNK.name(),
-        PREV_HUNK.name(),
-        STAGE_HUNK.name(),
-        RESET_HUNK.name(),
-        STAGE_BUFFER.name(),
-        RESET_BUFFER.name(),
-        UNSTAGE_FILE.name(),
-        PREVIEW_HUNK.name(),
-        DIFF_THIS.name(),
+    let ids: Vec<std::borrow::Cow<'static, str>> = vec![
+        NEXT_HUNK.name_owned(),
+        PREV_HUNK.name_owned(),
+        STAGE_HUNK.name_owned(),
+        RESET_HUNK.name_owned(),
+        STAGE_BUFFER.name_owned(),
+        RESET_BUFFER.name_owned(),
+        UNSTAGE_FILE.name_owned(),
+        PREVIEW_HUNK.name_owned(),
+        DIFF_THIS.name_owned(),
     ];
     let count = ids.len();
     let mut unique = ids.clone();
