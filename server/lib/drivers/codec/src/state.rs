@@ -40,10 +40,19 @@ use crate::CodecMetadata;
 /// Maps buffer IDs to their codec metadata. Each buffer can have
 /// at most one codec metadata entry (the result of its most recent
 /// decode operation).
+///
+/// Also caches raw bytes per-buffer for view switching: when a codec
+/// supports multiple views (e.g., structured summary + hex dump),
+/// switching views requires re-decoding the same raw bytes with a
+/// different view name. The raw bytes cache avoids re-reading from disk.
 #[derive(Default)]
 pub struct CodecSessionState {
     /// Metadata per buffer (`BufferId.as_usize()` -> `CodecMetadata`).
     metadata: HashMap<usize, CodecMetadata>,
+    /// Cached raw bytes per buffer for view switching.
+    raw_bytes: HashMap<usize, Vec<u8>>,
+    /// Active view name per buffer (e.g., `"default"`, `"hex"`).
+    active_view: HashMap<usize, String>,
 }
 
 impl SessionExtension for CodecSessionState {
@@ -72,11 +81,14 @@ impl CodecSessionState {
         self.metadata.get(&buffer_id.as_usize())
     }
 
-    /// Remove metadata for a buffer.
+    /// Remove metadata, raw bytes, and active view for a buffer.
     ///
     /// Call this when a buffer is closed.
     pub fn remove(&mut self, buffer_id: BufferId) -> Option<CodecMetadata> {
-        self.metadata.remove(&buffer_id.as_usize())
+        let key = buffer_id.as_usize();
+        self.raw_bytes.remove(&key);
+        self.active_view.remove(&key);
+        self.metadata.remove(&key)
     }
 
     /// Check if a buffer has codec metadata.
@@ -97,9 +109,40 @@ impl CodecSessionState {
         self.metadata.is_empty()
     }
 
-    /// Clear all metadata.
+    /// Clear all metadata, raw bytes, and active views.
     pub fn clear(&mut self) {
         self.metadata.clear();
+        self.raw_bytes.clear();
+        self.active_view.clear();
+    }
+
+    /// Store raw bytes for a buffer (for view switching).
+    pub fn insert_raw(&mut self, buffer_id: BufferId, raw: Vec<u8>) {
+        self.raw_bytes.insert(buffer_id.as_usize(), raw);
+    }
+
+    /// Get cached raw bytes for a buffer.
+    #[must_use]
+    pub fn get_raw(&self, buffer_id: BufferId) -> Option<&[u8]> {
+        self.raw_bytes.get(&buffer_id.as_usize()).map(Vec::as_slice)
+    }
+
+    /// Remove cached raw bytes for a buffer.
+    pub fn remove_raw(&mut self, buffer_id: BufferId) {
+        self.raw_bytes.remove(&buffer_id.as_usize());
+    }
+
+    /// Set the active view name for a buffer.
+    pub fn set_active_view(&mut self, buffer_id: BufferId, view: String) {
+        self.active_view.insert(buffer_id.as_usize(), view);
+    }
+
+    /// Get the active view name for a buffer.
+    #[must_use]
+    pub fn active_view(&self, buffer_id: BufferId) -> Option<&str> {
+        self.active_view
+            .get(&buffer_id.as_usize())
+            .map(String::as_str)
     }
 }
 
@@ -107,6 +150,8 @@ impl std::fmt::Debug for CodecSessionState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CodecSessionState")
             .field("buffer_count", &self.metadata.len())
+            .field("cached_raw_count", &self.raw_bytes.len())
+            .field("active_view_count", &self.active_view.len())
             .finish()
     }
 }

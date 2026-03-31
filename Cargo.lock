@@ -2393,6 +2393,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-codec-xxd"
+version = "0.14.4-dev"
+dependencies = [
+ "reovim-driver-annotation",
+ "reovim-driver-codec",
+]
+
+[[package]]
 name = "reovim-driver-command"
 version = "0.14.4"
 dependencies = [
@@ -2793,6 +2801,7 @@ dependencies = [
  "reovim-capabilities",
  "reovim-driver-annotation",
  "reovim-driver-codec",
+ "reovim-driver-codec-xxd",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",

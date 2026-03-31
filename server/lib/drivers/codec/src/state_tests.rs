@@ -111,4 +111,94 @@ fn debug_format() {
     let debug = format!("{state:?}");
     assert!(debug.contains("CodecSessionState"));
     assert!(debug.contains("buffer_count"));
+    assert!(debug.contains("cached_raw_count"));
+    assert!(debug.contains("active_view_count"));
+}
+
+// --- Raw bytes cache tests ---
+
+#[test]
+fn insert_and_get_raw() {
+    let mut state = CodecSessionState::new();
+    let data = vec![0x7f, 0x45, 0x4c, 0x46];
+    state.insert_raw(buf(1), data.clone());
+    assert_eq!(state.get_raw(buf(1)), Some(data.as_slice()));
+}
+
+#[test]
+fn get_raw_missing() {
+    let state = CodecSessionState::new();
+    assert!(state.get_raw(buf(1)).is_none());
+}
+
+#[test]
+fn remove_raw_standalone() {
+    let mut state = CodecSessionState::new();
+    state.insert_raw(buf(1), vec![1, 2, 3]);
+    state.remove_raw(buf(1));
+    assert!(state.get_raw(buf(1)).is_none());
+}
+
+#[test]
+fn remove_clears_raw_and_view() {
+    let mut state = CodecSessionState::new();
+    state.insert(buf(1), test_metadata());
+    state.insert_raw(buf(1), vec![1, 2, 3]);
+    state.set_active_view(buf(1), "hex".to_string());
+
+    state.remove(buf(1));
+
+    assert!(state.get(buf(1)).is_none());
+    assert!(state.get_raw(buf(1)).is_none());
+    assert!(state.active_view(buf(1)).is_none());
+}
+
+#[test]
+fn clear_clears_raw_and_views() {
+    let mut state = CodecSessionState::new();
+    state.insert(buf(1), test_metadata());
+    state.insert_raw(buf(1), vec![1, 2]);
+    state.set_active_view(buf(1), "default".to_string());
+    state.insert(buf(2), test_metadata());
+    state.insert_raw(buf(2), vec![3, 4]);
+    state.set_active_view(buf(2), "hex".to_string());
+
+    state.clear();
+
+    assert!(state.is_empty());
+    assert!(state.get_raw(buf(1)).is_none());
+    assert!(state.get_raw(buf(2)).is_none());
+    assert!(state.active_view(buf(1)).is_none());
+    assert!(state.active_view(buf(2)).is_none());
+}
+
+// --- Active view tests ---
+
+#[test]
+fn active_view_default_none() {
+    let state = CodecSessionState::new();
+    assert!(state.active_view(buf(1)).is_none());
+}
+
+#[test]
+fn set_and_get_active_view() {
+    let mut state = CodecSessionState::new();
+    state.set_active_view(buf(1), "hex".to_string());
+    assert_eq!(state.active_view(buf(1)), Some("hex"));
+}
+
+#[test]
+fn active_view_replaces() {
+    let mut state = CodecSessionState::new();
+    state.set_active_view(buf(1), "default".to_string());
+    state.set_active_view(buf(1), "hex".to_string());
+    assert_eq!(state.active_view(buf(1)), Some("hex"));
+}
+
+#[test]
+fn insert_raw_replaces() {
+    let mut state = CodecSessionState::new();
+    state.insert_raw(buf(1), vec![1, 2, 3]);
+    state.insert_raw(buf(1), vec![4, 5]);
+    assert_eq!(state.get_raw(buf(1)), Some([4u8, 5].as_slice()));
 }

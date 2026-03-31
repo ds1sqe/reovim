@@ -36,6 +36,7 @@ members = [
     "server/lib/drivers/annotation",
     "server/lib/drivers/statusline",
     "server/lib/drivers/codec",
+    "server/lib/drivers/codec-xxd",
 
     # Server modules
     "server/modules/vim",
@@ -261,6 +262,7 @@ reovim-driver-layout = { path = "./server/lib/drivers/layout", version = "0.14.5
 reovim-driver-annotation = { path = "./server/lib/drivers/annotation", version = "0.14.5-dev" }
 reovim-driver-statusline = { path = "./server/lib/drivers/statusline", version = "0.14.5-dev" }
 reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.14.5-dev" }
+reovim-driver-codec-xxd = { path = "./server/lib/drivers/codec-xxd", version = "0.14.5-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.14.5-dev" }

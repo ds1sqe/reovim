@@ -28,6 +28,12 @@ service BufferService {
 
   // Set buffer content.
   rpc SetContent(SetContentRequest) returns (SetContentResponse);
+
+  // Get available codec views for a buffer.
+  rpc GetCodecViews(GetCodecViewsRequest) returns (GetCodecViewsResponse);
+
+  // Switch the active codec view for a buffer.
+  rpc SwitchCodecView(SwitchCodecViewRequest) returns (SwitchCodecViewResponse);
 }
 
 // Raw content
@@ -131,4 +137,31 @@ message SetContentRequest {
 
 message SetContentResponse {
   bool ok = 1;
+}
+
+// Codec views
+
+message CodecViewInfo {
+  string name = 1;       // Machine key (e.g., "hex", "meta", "default")
+  string display = 2;    // Human label (e.g., "Hex Dump", "Metadata")
+}
+
+message GetCodecViewsRequest {
+  optional uint64 buffer_id = 1;  // Default: active buffer
+}
+
+message GetCodecViewsResponse {
+  uint64 buffer_id = 1;
+  repeated CodecViewInfo views = 2;
+  string active_view = 3;
+}
+
+message SwitchCodecViewRequest {
+  optional uint64 buffer_id = 1;  // Default: active buffer
+  string view_name = 2;
+}
+
+message SwitchCodecViewResponse {
+  bool ok = 1;
+  optional string error = 2;
 }

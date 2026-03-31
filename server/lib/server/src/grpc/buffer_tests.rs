@@ -447,6 +447,176 @@ fn test_buffer_service_get_session_found() {
     assert!(result.is_ok());
 }
 
+// --- GetCodecViews tests ---
+
+#[tokio::test]
+async fn test_get_codec_views_no_session() {
+    let registry = Arc::new(SessionRegistry::new());
+    let service = BufferServiceImpl::new(registry, SessionId::new("nonexistent"));
+
+    let request = Request::new(GetCodecViewsRequest { buffer_id: None });
+    let response = service.get_codec_views(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_get_codec_views_no_buffer() {
+    let registry = test_registry();
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    let request = Request::new(GetCodecViewsRequest { buffer_id: None });
+    let response = service.get_codec_views(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_get_codec_views_no_codec_state() {
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    session
+        .with_state_mut(|state| {
+            state.create_buffer("content");
+        })
+        .await;
+
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    let request = Request::new(GetCodecViewsRequest { buffer_id: None });
+    let response = service.get_codec_views(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_get_codec_views_with_codec_state() {
+    use reovim_driver_codec::{CodecMetadata, CodecSessionState, ContentType};
+
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    let buffer_id = session
+        .with_state_mut(|state| {
+            let bid = state.create_buffer("hex content");
+            let codec_state = state.app.extensions.get_or_insert::<CodecSessionState>();
+            codec_state.insert(bid, CodecMetadata::new(ContentType::new("text/utf-8")));
+            codec_state.set_active_view(bid, "default".to_string());
+            bid
+        })
+        .await;
+
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let request = Request::new(GetCodecViewsRequest {
+        buffer_id: Some(buffer_id.as_usize() as u64),
+    });
+    let response = service.get_codec_views(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    assert_eq!(resp.buffer_id, buffer_id.as_usize() as u64);
+    assert_eq!(resp.active_view, "default");
+    // No factory store registered, so views list is empty (factory not found)
+    assert!(resp.views.is_empty());
+}
+
+// --- SwitchCodecView tests ---
+
+#[tokio::test]
+async fn test_switch_codec_view_no_session() {
+    let registry = Arc::new(SessionRegistry::new());
+    let service = BufferServiceImpl::new(registry, SessionId::new("nonexistent"));
+
+    let request = Request::new(SwitchCodecViewRequest {
+        buffer_id: None,
+        view_name: "hex".to_string(),
+    });
+    let response = service.switch_codec_view(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_switch_codec_view_no_codec_state() {
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    session
+        .with_state_mut(|state| {
+            state.create_buffer("content");
+        })
+        .await;
+
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    let request = Request::new(SwitchCodecViewRequest {
+        buffer_id: None,
+        view_name: "hex".to_string(),
+    });
+    let response = service.switch_codec_view(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_switch_codec_view_no_raw_bytes() {
+    use reovim_driver_codec::{CodecMetadata, CodecSessionState, ContentType};
+
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    session
+        .with_state_mut(|state| {
+            let bid = state.create_buffer("content");
+            let codec_state = state.app.extensions.get_or_insert::<CodecSessionState>();
+            codec_state.insert(bid, CodecMetadata::new(ContentType::new("text/utf-8")));
+            // No raw bytes cached
+        })
+        .await;
+
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    let request = Request::new(SwitchCodecViewRequest {
+        buffer_id: None,
+        view_name: "hex".to_string(),
+    });
+    let response = service.switch_codec_view(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::FailedPrecondition);
+}
+
+#[tokio::test]
+async fn test_switch_codec_view_no_codec_factory() {
+    use reovim_driver_codec::{CodecMetadata, CodecSessionState, ContentType};
+
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    session
+        .with_state_mut(|state| {
+            let bid = state.create_buffer("content");
+            let codec_state = state.app.extensions.get_or_insert::<CodecSessionState>();
+            codec_state.insert(bid, CodecMetadata::new(ContentType::new("text/utf-8")));
+            codec_state.insert_raw(bid, b"raw bytes".to_vec());
+        })
+        .await;
+
+    let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+    let request = Request::new(SwitchCodecViewRequest {
+        buffer_id: None,
+        view_name: "hex".to_string(),
+    });
+    let response = service.switch_codec_view(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+}
+
 /// Per-client `active_buffer` (#471): when two buffers exist and a client
 /// has `active_buffer` set to the second one, `get_raw_content(None)`
 /// should return the second buffer's content, not the first.

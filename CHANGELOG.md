@@ -8,6 +8,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **codec**: multi-view codec API — `ContentCodec` trait extended with `views()` and `decode_view()` methods for codecs that produce multiple views (e.g., structured summary + hex dump) (#736)
+- **codec**: standalone xxd hex dump driver crate (`reovim-driver-codec-xxd`) — configurable bytes-per-line, group size, and max input size, used by `codec-hex` and available for any binary codec's hex view (#736)
+- **protocol**: `GetCodecViews` and `SwitchCodecView` RPCs on BufferService for querying and switching codec views (#736)
 - **codec**: rlib structured binary codec — opens `.rlib` files with archive member listing, rustc version, and dependency extraction (#733)
 - **kernel**: rope data structure (`mm/rope.rs`) — custom B-tree with O(log n) insert/delete, O(1) clone via `Arc` structural sharing, and O(log n) position conversion. Zero external dependencies. (#711)
 

@@ -8,14 +8,15 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_codec::CodecSessionState,
+    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore},
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
-        BufferInfo, CodecMetadata, GetAnnotationsRequest, GetAnnotationsResponse,
-        GetLineCountRequest, GetLineCountResponse, GetRawContentRequest, GetRawContentResponse,
-        LineAnnotation, ListBuffersRequest, ListBuffersResponse, OpenFileRequest, OpenFileResponse,
-        SetContentRequest, SetContentResponse, WriteFileRequest, WriteFileResponse,
-        buffer_service_server::BufferService,
+        BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest, GetAnnotationsResponse,
+        GetCodecViewsRequest, GetCodecViewsResponse, GetLineCountRequest, GetLineCountResponse,
+        GetRawContentRequest, GetRawContentResponse, LineAnnotation, ListBuffersRequest,
+        ListBuffersResponse, OpenFileRequest, OpenFileResponse, SetContentRequest,
+        SetContentResponse, SwitchCodecViewRequest, SwitchCodecViewResponse, WriteFileRequest,
+        WriteFileResponse, buffer_service_server::BufferService,
     },
     tonic::{Request, Response, Status},
 };
@@ -254,6 +255,156 @@ impl BufferService for BufferServiceImpl {
         _request: Request<SetContentRequest>,
     ) -> Result<Response<SetContentResponse>, Status> {
         Err(Status::unimplemented("SetContent not yet implemented"))
+    }
+
+    /// Get available codec views for a buffer.
+    #[allow(clippy::cast_possible_truncation)]
+    async fn get_codec_views(
+        &self,
+        request: Request<GetCodecViewsRequest>,
+    ) -> Result<Response<GetCodecViewsResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
+
+        session
+            .with_state(|state| {
+                let buffer_id = req
+                    .buffer_id
+                    .map(|id| BufferId::from_raw(id as usize))
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
+                    .ok_or_else(|| Status::not_found("No active buffer"))?;
+
+                let codec_state = state
+                    .app
+                    .extensions
+                    .get::<CodecSessionState>()
+                    .ok_or_else(|| Status::not_found("No codec state"))?;
+
+                let metadata = codec_state
+                    .get(buffer_id)
+                    .ok_or_else(|| Status::not_found("No codec metadata for buffer"))?;
+
+                let content_type = metadata.content_type().clone();
+                let active_view = codec_state
+                    .active_view(buffer_id)
+                    .unwrap_or("default")
+                    .to_string();
+
+                // Find the codec factory and get views
+                let factory_store = state.app.kernel.services.get::<ContentCodecFactoryStore>();
+                let views = factory_store
+                    .and_then(|store| store.find(&content_type))
+                    .map(|codec| {
+                        codec
+                            .views()
+                            .iter()
+                            .map(|v| CodecViewInfo {
+                                name: v.name.to_string(),
+                                display: v.display.to_string(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                Ok(Response::new(GetCodecViewsResponse {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    views,
+                    active_view,
+                }))
+            })
+            .await
+    }
+
+    /// Switch the active codec view for a buffer.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::significant_drop_tightening)]
+    async fn switch_codec_view(
+        &self,
+        request: Request<SwitchCodecViewRequest>,
+    ) -> Result<Response<SwitchCodecViewResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
+
+        session
+            .with_state_mut(|state| {
+                let buffer_id = req
+                    .buffer_id
+                    .map(|id| BufferId::from_raw(id as usize))
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
+                    .ok_or_else(|| Status::not_found("No active buffer"))?;
+
+                // Get raw bytes and content type from codec state
+                let codec_state = state
+                    .app
+                    .extensions
+                    .get::<CodecSessionState>()
+                    .ok_or_else(|| Status::not_found("No codec state"))?;
+
+                let raw_bytes = codec_state
+                    .get_raw(buffer_id)
+                    .ok_or_else(|| Status::failed_precondition("No cached raw bytes for buffer"))?
+                    .to_vec();
+
+                let content_type = codec_state
+                    .get(buffer_id)
+                    .ok_or_else(|| Status::not_found("No codec metadata for buffer"))?
+                    .content_type()
+                    .clone();
+
+                // Find the codec and validate the view name
+                let factory_store = state.app.kernel.services.get::<ContentCodecFactoryStore>();
+                let codec = factory_store
+                    .and_then(|store| store.find(&content_type))
+                    .ok_or_else(|| Status::not_found("No codec for content type"))?;
+
+                let view_name = &req.view_name;
+                if !codec.views().iter().any(|v| v.name == view_name) {
+                    return Ok(Response::new(SwitchCodecViewResponse {
+                        ok: false,
+                        error: Some(format!("View '{view_name}' not available")),
+                    }));
+                }
+
+                // Decode with the requested view
+                let result = codec
+                    .decode_view(&raw_bytes, view_name)
+                    .map_err(|e| Status::internal(format!("Codec decode_view failed: {e}")))?;
+
+                // Update buffer content
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
+                    Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
+                })?;
+
+                {
+                    let mut buffer = buffer_arc.write();
+                    buffer.set_content(&result.content);
+                    buffer.set_modified(false);
+                }
+
+                // Update codec state
+                if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
+                    codec_state.insert(buffer_id, result.metadata);
+                    codec_state.set_active_view(buffer_id, view_name.clone());
+                }
+
+                Ok(Response::new(SwitchCodecViewResponse {
+                    ok: true,
+                    error: None,
+                }))
+            })
+            .await
     }
 }
 
