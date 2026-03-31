@@ -54,7 +54,6 @@ impl TransportConfig {
 
     /// Maximum port in fallback range.
     pub const MAX_PORT: u16 = 12530;
-
 }
 
 #[cfg(test)]
