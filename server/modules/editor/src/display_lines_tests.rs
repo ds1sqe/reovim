@@ -494,9 +494,8 @@ fn b6_repro_cjk_chars_miscounted() {
     let cjk_40 = "\u{4E2D}".repeat(40); // 40 x '中'
     assert_eq!(cjk_40.chars().count(), 40);
 
-    // BUG: display_line_count counts 40 chars / 40 cols = 1 line
-    // CORRECT: 80 display columns / 40 cols = 2 lines
-    assert_eq!(display_line_count(&cjk_40, 40), 1, "#717: says 1 line (should be 2)");
+    // 80 display columns / 40 cols = 2 lines
+    assert_eq!(display_line_count(&cjk_40, 40), 2);
 }
 
 #[test]
@@ -505,8 +504,6 @@ fn b6_repro_mixed_ascii_cjk() {
     let mixed = "Hello\u{4E2D}\u{6587}World";
     assert_eq!(mixed.chars().count(), 12);
 
-    // On 12-col terminal:
-    // BUG: 12 chars / 12 cols = 1 line
-    // CORRECT: 14 display cols / 12 cols = 2 lines
-    assert_eq!(display_line_count(mixed, 12), 1, "#717: says 1 line (should be 2)");
+    // On 12-col terminal: 14 display cols / 12 cols = 2 lines
+    assert_eq!(display_line_count(mixed, 12), 2);
 }
