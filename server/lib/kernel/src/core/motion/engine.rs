@@ -812,8 +812,7 @@ impl MotionEngine {
 
 #[cfg(test)]
 mod b9_repro {
-    use super::*;
-    use crate::mm::Cursor;
+    use {super::*, crate::mm::Cursor};
 
     // "foo::bar baz" — '::' is punctuation, separating two words but one WORD.
     // ge from 'b' in "baz" (col 9): should stop at 'r' in "bar" (col 7)
@@ -865,10 +864,7 @@ mod b9_repro {
         );
 
         // BUG: both return the same position because _boundary is ignored
-        assert_eq!(
-            ge, g_big_e,
-            "#720: ge and gE return identical result — WordBoundary ignored"
-        );
+        assert_eq!(ge, g_big_e, "#720: ge and gE return identical result — WordBoundary ignored");
     }
 
     #[test]

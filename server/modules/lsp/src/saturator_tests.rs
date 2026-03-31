@@ -886,8 +886,10 @@ async fn b8_repro_stored_handle_detects_panic() {
 async fn b8_repro_dropped_handle_loses_error() {
     // saturator.rs:164 pattern: spawn returns JoinHandle but it's immediately dropped.
     // We can't detect the panic — the error is silently lost.
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     let panic_detected = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&panic_detected);

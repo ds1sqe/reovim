@@ -680,8 +680,10 @@ fn spec_owner() {
 
 #[test]
 fn b10_repro_toctou_race_detection() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     // Run the race multiple times to increase chance of triggering.
     let race_triggered = Arc::new(AtomicUsize::new(0));
@@ -696,9 +698,7 @@ fn b10_repro_toctou_race_detection() {
             let bar = Arc::clone(&barrier);
             handles.push(std::thread::spawn(move || {
                 bar.wait();
-                reg.register(
-                    OptionSpec::new("race_target", "race test", OptionValue::Bool(false)),
-                )
+                reg.register(OptionSpec::new("race_target", "race test", OptionValue::Bool(false)))
             }));
         }
 

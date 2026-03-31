@@ -4,6 +4,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.14.4-dev
 
+### Fixed
+
+- **input**: remove gratuitous `Box::leak` in `handle_pop_result` — `CommandContext::set()` accepts `&str`, no static lifetime needed (#714)
+
 ## [0.14.3] - 2026-03-30
 
 ### Added
