@@ -2186,6 +2186,7 @@ dependencies = [
  "reovim-module-codec-hex",
  "reovim-module-codec-legacy",
  "reovim-module-codec-pdf",
+ "reovim-module-codec-rlib",
  "reovim-module-codec-utf8",
  "reovim-module-commands",
  "reovim-module-completion",
@@ -2816,6 +2817,20 @@ name = "reovim-module-codec-pdf"
 version = "0.14.4"
 dependencies = [
  "pdf-extract",
+ "reovim-capabilities",
+ "reovim-driver-annotation",
+ "reovim-driver-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-codec-rlib"
+version = "0.14.4-dev"
+dependencies = [
+ "goblin",
  "reovim-capabilities",
  "reovim-driver-annotation",
  "reovim-driver-codec",

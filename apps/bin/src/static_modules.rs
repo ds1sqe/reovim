@@ -46,6 +46,7 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("codec-binary-struct", || {
         Box::new(reovim_module_codec_binary_struct::CodecBinaryStructModule::new())
     });
+    map.insert("codec-rlib", || Box::new(reovim_module_codec_rlib::CodecRlibModule::new()));
     map.insert("codec-csv", || Box::new(reovim_module_codec_csv::CodecCsvModule::new()));
     map.insert("layout", || Box::new(reovim_module_layout::LayoutModule::new()));
 

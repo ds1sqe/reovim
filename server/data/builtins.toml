@@ -74,6 +74,11 @@ tier = 1
 library = "reovim_module_codec_binary_struct"
 
 [[modules]]
+id = "codec-rlib"
+tier = 1
+library = "reovim_module_codec_rlib"
+
+[[modules]]
 id = "codec-csv"
 tier = 1
 library = "reovim_module_codec_csv"

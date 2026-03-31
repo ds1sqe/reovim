@@ -32,6 +32,7 @@ static-modules = [
     "dep:reovim-module-codec-legacy",
     "dep:reovim-module-codec-pdf",
     "dep:reovim-module-codec-binary-struct",
+    "dep:reovim-module-codec-rlib",
     "dep:reovim-module-codec-csv",
     "dep:reovim-module-keymap",
     "dep:reovim-module-commands",
@@ -144,6 +145,7 @@ reovim-module-codec-cjk = { workspace = true, optional = true }
 reovim-module-codec-legacy = { workspace = true, optional = true }
 reovim-module-codec-pdf = { workspace = true, optional = true }
 reovim-module-codec-binary-struct = { workspace = true, optional = true }
+reovim-module-codec-rlib = { workspace = true, optional = true }
 reovim-module-codec-csv = { workspace = true, optional = true }
 reovim-module-layout = { workspace = true, optional = true }
 

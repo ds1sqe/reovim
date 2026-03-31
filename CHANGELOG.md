@@ -8,6 +8,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **codec**: rlib structured binary codec — opens `.rlib` files with archive member listing, rustc version, and dependency extraction (#733)
 - **kernel**: rope data structure (`mm/rope.rs`) — custom B-tree with O(log n) insert/delete, O(1) clone via `Arc` structural sharing, and O(log n) position conversion. Zero external dependencies. (#711)
 
 ### Changed

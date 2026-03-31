@@ -107,6 +107,7 @@ members = [
     "server/modules/codec-legacy",
     "server/modules/codec-pdf",
     "server/modules/codec-binary-struct",
+    "server/modules/codec-rlib",
     "server/modules/codec-csv",
 
     # Client layer - TUI
@@ -351,6 +352,7 @@ reovim-module-codec-cjk = { path = "./server/modules/codec-cjk", version = "0.14
 reovim-module-codec-legacy = { path = "./server/modules/codec-legacy", version = "0.14.5-dev" }
 reovim-module-codec-pdf = { path = "./server/modules/codec-pdf", version = "0.14.5-dev" }
 reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-struct", version = "0.14.5-dev" }
+reovim-module-codec-rlib = { path = "./server/modules/codec-rlib", version = "0.14.5-dev" }
 reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.14.5-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
