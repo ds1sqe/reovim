@@ -12,6 +12,10 @@ mod selection;
 mod snapshot;
 mod word;
 
+mod line_index;
+mod piece_table;
+mod virtual_buffer;
+
 // === BufferId Tests ===
 
 mod buffer_id_tests {

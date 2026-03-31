@@ -336,6 +336,20 @@ pub trait VfsDriver: Send + Sync {
     ///
     /// Replaces: `std::fs::File::open()`, `std::fs::File::create()`
     fn open(&self, path: &Path, options: OpenOptions) -> Result<Box<dyn FileHandle>, VfsError>;
+
+    // ========================================================================
+    // Memory-Mapped I/O (large file support)
+    // ========================================================================
+
+    /// Memory-map a file for zero-copy read access.
+    ///
+    /// Returns a [`MappedFile`](crate::MappedFile) that implements the
+    /// kernel's `FileMapping` trait.  The default implementation falls back
+    /// to reading the whole file into a heap-copied `MappedFile`.
+    fn mmap_read(&self, path: &Path) -> Result<crate::MappedFile, VfsError> {
+        let bytes = self.read(path)?;
+        Ok(crate::MappedFile::from_vec(&bytes, path))
+    }
 }
 
 /// Directory entry from `list_dir`.

@@ -48,6 +48,14 @@ pub use crate::mm::{
     text_dimensions, transform_position,
 };
 
+// Virtual buffer (large file support)
+pub use crate::mm::{
+    FileMapping, HeapMapping, InvalidUtf8, LineIndex, VirtualBuffer, VirtualSnapshot,
+};
+pub use super::virtual_buffer_registry::{
+    SimpleVirtualBufferRegistry, VirtualBufferRegistry,
+};
+
 // Selection types
 pub use crate::mm::{Selection, SelectionMode};
 

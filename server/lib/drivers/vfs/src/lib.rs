@@ -70,6 +70,7 @@
 mod error;
 mod filetype;
 mod instance;
+mod mapped_file;
 mod metadata;
 mod mock;
 mod module_ext;
@@ -101,6 +102,9 @@ pub use path::{PathNormalizer, StandardPathNormalizer};
 
 // Re-export watch types
 pub use watch::{WatchEvent, WatchHandle, WatchId};
+
+// Re-export memory-mapped file type
+pub use mapped_file::MappedFile;
 
 // Re-export traits and related types
 pub use traits::{DirEntry, FileHandle, FileWatcher, OpenOptions, SeekFrom, VfsDriver};

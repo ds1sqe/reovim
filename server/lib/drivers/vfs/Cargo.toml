@@ -15,3 +15,5 @@ workspace = true
 [dependencies]
 # Only depends on kernel layer
 reovim-kernel = { workspace = true }
+# Memory-mapped I/O for large file support
+memmap2 = "0.9"

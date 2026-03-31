@@ -185,6 +185,22 @@ impl crate::VfsDriver for StandardVfs {
         let file = std_opts.open(path).map_err(VfsError::Io)?;
         Ok(Box::new(StandardFileHandle::new(file, path.to_path_buf())))
     }
+
+    fn mmap_read(&self, path: &Path) -> Result<crate::MappedFile, VfsError> {
+        let file = File::open(path).map_err(VfsError::Io)?;
+        let meta = file.metadata().map_err(VfsError::Io)?;
+        let mtime = meta.modified().map_err(VfsError::Io)?;
+        let size = meta.len();
+
+        // SAFETY: File is opened read-only. SIGBUS can occur if the file is
+        // truncated externally while mapped. Callers must check is_stale()
+        // before accessing bytes on any write path.
+        #[allow(unsafe_code)]
+        let mmap = unsafe { memmap2::Mmap::map(&file) }
+            .map_err(VfsError::Io)?;
+
+        Ok(crate::MappedFile::new(mmap, path, mtime, size))
+    }
 }
 
 /// Standard file handle wrapping `std::fs::File`.
