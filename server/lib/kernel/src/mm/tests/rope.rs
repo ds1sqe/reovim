@@ -1401,11 +1401,11 @@ fn chunks_iter_multiple_empty_leaves() {
     assert_eq!(chunks, vec!["aaa\n", "bbb"]);
 }
 
-// ─── Coverage: PartialEq chunk-by-chunk comparison (lines 457, 461, 463) ─────
+// ─── PartialEq with different internal structure ────────────────────────────
 
 #[test]
 fn eq_multi_chunk_different_boundaries_same_content() {
-    // Build two ropes with identical content but different internal structure.
+    // Two ropes with identical content but different tree structure.
     // Rope 1: from_str (balanced tree).
     // Rope 2: built by repeated inserts (different chunk boundaries).
     use std::fmt::Write;
@@ -1426,12 +1426,7 @@ fn eq_multi_chunk_different_boundaries_same_content() {
 
 #[test]
 fn eq_left_exhausted_right_has_more() {
-    // Exercise the `None => return r_remaining.is_empty() && right.next().is_none()`
-    // branch (line 455): left chunks exhausted but right still has data.
-    // Same byte_len check will short-circuit for different lengths,
-    // so we need same byte_len but left exhausts first.
-    // We can't easily do that with from_str (same content = same chunks).
-    // Instead, construct manually:
+    // Left has fewer chunks than right (same content, different structure).
     let left = Rope {
         root: RopeNode::new_internal(vec![RopeNode::new_leaf("abc".to_string())]),
     };
@@ -1447,9 +1442,7 @@ fn eq_left_exhausted_right_has_more() {
 
 #[test]
 fn eq_right_exhausted_left_has_remaining() {
-    // Exercise the `None => return l_remaining.is_empty()` branch (line 461):
-    // right chunks exhausted while left still has remaining bytes.
-    // Two ropes with same byte_len=3 but right has fewer chunks.
+    // Right has fewer chunks than left (same content, different structure).
     let left = Rope {
         root: RopeNode::new_internal(vec![
             RopeNode::new_leaf("ab".to_string()),
@@ -1633,64 +1626,12 @@ fn remove_range_empty_on_internal_node() {
     }
 }
 
-// ─── Coverage: remove_range leaf partial → empty (line 857) ───────────────────
+// ─── remove_range: full leaf removal ────────────────────────────────────────
 
 #[test]
-fn remove_range_leaf_partial_resulting_in_empty() {
-    // Remove all content from a leaf via partial range logic.
-    // When s=0 and e=text.len(), the early return on line 850 fires.
-    // For line 857, we need s > 0 or e < text.len() initially,
-    // but the resulting new_text is empty.
-    // Actually, line 856-857: `if new_text.is_empty() { vec![] }`
-    // This happens when text[..s] and text[e..] are both empty.
-    // That means s=0 and e=text.len(), which is caught by line 850.
-    // Wait — re-read: line 850 checks `if s == 0 && e >= text.len()`.
-    // So for line 857, we need a case where after clamping:
-    // - NOT (s == 0 && e >= text.len()), i.e., s > 0 or e < text.len()
-    // - BUT text[..s] + text[e..] is empty
-    // That's impossible unless s > 0 and text[..s] is empty, which can't happen.
-    //
-    // Actually, looking more carefully: the leaf text could be something like
-    // where s > 0, e < text.len(), but both slices are empty — that can't happen
-    // with s > 0.
-    //
-    // Let me re-examine: remove_range is called from the internal node path too.
-    // The internal node calculates ls and le which could result in removing
-    // everything from a leaf. For example, range covers entirely:
-    // `range.start <= cs && range.end >= ce` → that's the "entirely within range" check.
-    // But if partially overlapping from both sides?
-    //
-    // Actually, the path to line 857 is: leaf partial remove where text[..s]
-    // is empty AND text[e..] is empty. That requires s=0 and e=text.len(),
-    // which IS caught by line 850. So line 857 may be dead code or only
-    // reachable through a very specific internal recursion path.
-    //
-    // Let me test it by directly calling remove_range on a leaf with
-    // a range that removes all characters but where s != 0.
-    // E.g., leaf "ab", remove range 0..2 → line 850 catches it.
-    // leaf "ab", remove range 0..3 → e clamped to 2, s=0, e=2=len → line 850.
-    //
-    // The only way: leaf has text "a", range 1..1 → empty range (line 830).
-    // Actually wait, text could have length 0 after construction somehow.
-    // Or: in the internal node recursion, a child leaf gets ls=0, le=cb,
-    // which means s=0, e=text.len() → line 850.
-    //
-    // I think line 857 is only reachable when remove produces empty text
-    // from partial slicing. That can happen if the rope node was an
-    // "unclean" leaf with empty text — but Rope::from_str never creates those.
-    // Let me just call remove_range directly on a crafted node.
+fn remove_range_leaf_full_removal() {
+    // Removing all content from a leaf (s=0, e>=len) returns empty vec.
     let leaf = RopeNode::new_leaf("x".to_string());
-    // remove_range with range that leaves empty text via partial paths.
-    // With text="x", s=0, e=1: line 850 catches (s==0 && e>=1).
-    // Hmm, it does. Let's verify we at least have the code compile.
-    // The real path: internal node calls remove_range(child, 0..cb).
-    // That hits line 850 → returns vec![]. Fine, line 857 is defensive.
-    //
-    // Let's just verify the defensive empty-check works by constructing
-    // a scenario where a leaf's content is reduced to empty through the
-    // non-early-return path. This isn't possible in normal execution,
-    // but we can test the branch exists and the logic is correct.
-    // At minimum, exercise the surrounding code.
     let result = remove_range(&leaf, 0..1);
     assert!(result.is_empty(), "removing all content from leaf should return empty vec");
 }
@@ -1966,12 +1907,11 @@ fn fixup_alignment_skips_when_left_is_empty() {
     assert_eq!(children.len(), 2, "empty left should not trigger merge");
 }
 
-// ─── Coverage: PartialEq L455:br1/br3 and L461 — dead code analysis ──────────
+// ─── PartialEq mismatch paths ───────────────────────────────────────────────
 
 #[test]
 fn eq_unequal_ropes_same_bytelen_different_chunk_layout() {
-    // Two ropes with same byte_len but different content AND different
-    // chunk layouts. The mismatch at line 465 catches it before 455/461.
+    // Same byte_len, different content, different chunk layout → not equal.
     let left = Rope {
         root: RopeNode::new_internal(vec![
             RopeNode::new_leaf("ab".to_string()),

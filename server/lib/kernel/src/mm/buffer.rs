@@ -280,14 +280,8 @@ impl Buffer {
 
         let deleted = extract_byte_range(&self.text, byte_start, byte_end);
         self.text = self.text.remove(byte_start..byte_end);
-
-        // DEAD BRANCH: `deleted.is_empty()` false — the guard at L277
-        // (`byte_start >= byte_end`) returns early on zero-width ranges.
-        // By this point byte_start < byte_end, so extract_byte_range
-        // always returns non-empty text.
-        if !deleted.is_empty() {
-            self.modified = true;
-        }
+        // byte_start < byte_end (guard above), so deleted is always non-empty.
+        self.modified = true;
 
         deleted
     }
@@ -314,14 +308,8 @@ impl Buffer {
 
         let deleted = extract_byte_range(&self.text, byte_start, byte_end);
         self.text = self.text.remove(byte_start..byte_end);
-
-        // DEAD BRANCH: `deleted.is_empty()` false — the guard at L311
-        // (`byte_start >= byte_end`) returns early on zero-width ranges.
-        // By this point byte_start < byte_end, so extract_byte_range
-        // always returns non-empty text.
-        if !deleted.is_empty() {
-            self.modified = true;
-        }
+        // byte_start < byte_end (guard above), so deleted is always non-empty.
+        self.modified = true;
 
         deleted
     }

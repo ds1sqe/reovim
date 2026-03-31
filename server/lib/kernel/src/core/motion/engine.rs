@@ -1435,4 +1435,37 @@ mod b9_repro {
             "ge should skip backward through word chars including underscores"
         );
     }
+
+    // === Coverage: L483 — next_is_word when next char is '_' ===
+
+    #[test]
+    fn ge_phase2_next_char_is_underscore() {
+        // Exercise `next == '_'` true path in L483 `next.is_alphanumeric() || next == '_'`.
+        // "a._b" from '_' (col 2). After backing to col 1 ('.').
+        // Phase 1: '.' not ws.
+        // Phase 2: chars[1]='.', chars[2]='_'.
+        //   x_is_word: '.'.is_alphanumeric()=false, '.'=='_'=false → false.
+        //   next_is_word: '_'.is_alphanumeric()=false, '_'=='_'=true → true (L483 B2).
+        //   Different → at_word_end=true. Return col 1.
+        let buf = Buffer::from_string("a._b");
+        let pos = ge(&buf, 0, 2).unwrap();
+        assert_eq!(pos.column, 1, "ge should detect word end when next is underscore");
+    }
+
+    // === Coverage: L506 — punct skip stops when chars[x-1] is '_' ===
+
+    #[test]
+    fn ge_punct_skip_stops_at_underscore() {
+        // Exercise `chars[x-1] == '_'` true in L506 punct skip loop.
+        // "_.." from '.' (col 2). After backing to col 1 ('.').
+        // Phase 1: '.' not ws.
+        // Phase 2: chars[1]='.', chars[2]='.' — same class (both punct) → not end.
+        // Phase 3: '.' not word → punct skip:
+        //   x=1, chars[0]='_': is_alphanumeric=false, '_'=='_'=true →
+        //   !(false || true) = false → exit loop (L506 B2).
+        // x=1>0, x-=1→0. chars[0]='_' not ws → pos.column=0.
+        let buf = Buffer::from_string("_..a");
+        let pos = ge(&buf, 0, 2).unwrap();
+        assert_eq!(pos.column, 0, "ge punct skip should stop at underscore");
+    }
 }

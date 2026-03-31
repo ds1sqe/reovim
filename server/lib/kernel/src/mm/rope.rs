@@ -440,45 +440,8 @@ impl fmt::Debug for Rope {
 
 impl PartialEq for Rope {
     fn eq(&self, other: &Self) -> bool {
-        if self.byte_len() != other.byte_len() {
-            return false;
-        }
-        // Compare chunk by chunk
-        let mut left = self.chunks();
-        let mut right = other.chunks();
-        let mut l_remaining: &str = "";
-        let mut r_remaining: &str = "";
-        loop {
-            if l_remaining.is_empty() {
-                match left.next() {
-                    Some(chunk) => l_remaining = chunk,
-                    // DEAD BRANCH (partial): `r_remaining.is_empty()` false /
-                    // `right.next().is_none()` false — cannot happen because
-                    // the byte_len equality guard at L443 ensures both iterators
-                    // consume the same total bytes. Left always calls `.next()`
-                    // first (L452), so left exhausts before or simultaneously
-                    // with right. When left is exhausted, r_remaining is always
-                    // empty and right has no more chunks.
-                    None => return r_remaining.is_empty() && right.next().is_none(),
-                }
-            }
-            if r_remaining.is_empty() {
-                match right.next() {
-                    Some(chunk) => r_remaining = chunk,
-                    // DEAD CODE: right cannot exhaust before left. Both
-                    // iterators yield the same total byte_len (guarded at L443).
-                    // Left is consumed first (L452 checked before L458), so
-                    // left's None branch at L455 always fires before this one.
-                    None => return l_remaining.is_empty(),
-                }
-            }
-            let cmp_len = l_remaining.len().min(r_remaining.len());
-            if l_remaining[..cmp_len] != r_remaining[..cmp_len] {
-                return false;
-            }
-            l_remaining = &l_remaining[cmp_len..];
-            r_remaining = &r_remaining[cmp_len..];
-        }
+        self.byte_len() == other.byte_len()
+            && Iterator::eq(self.chunks().flat_map(str::bytes), other.chunks().flat_map(str::bytes))
     }
 }
 
@@ -593,17 +556,9 @@ fn build_tree(mut nodes: Vec<Arc<RopeNode>>) -> Arc<RopeNode> {
         nodes = parents;
     }
 
-    // DEAD BRANCH: With B_MAX=8, the while loop exits when nodes.len() <= 8.
-    // `build_tree` is only called from `nodes_to_root` when n > B_MAX (i.e. n >= 9).
-    // Each grouping pass produces ceil(n / B_MAX) groups, minimum 2 (for n=9: groups
-    // of 5+4). Subsequent passes also never reduce to exactly 1 because
-    // ceil(2/8)=1 would require entering the loop with nodes.len() > 8, which 2 is
-    // not. Therefore nodes.len() is always 2..=8 here.
-    if nodes.len() == 1 {
-        nodes.into_iter().next().expect("checked non-empty")
-    } else {
-        RopeNode::new_internal(nodes)
-    }
+    // Loop exits when nodes.len() <= B_MAX. Called only when n > B_MAX,
+    // so each pass produces >= 2 groups. nodes.len() is always 2..=B_MAX here.
+    RopeNode::new_internal(nodes)
 }
 
 /// Convert a list of replacement nodes (from insert/remove) into a root.
@@ -870,17 +825,9 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
             let mut new_text = String::with_capacity(text.len() - (e - s));
             new_text.push_str(&text[..s]);
             new_text.push_str(&text[e..]);
-            // DEAD BRANCH: `new_text.is_empty()` cannot be true here.
-            // For new_text to be empty, both text[..s] and text[e..] must be
-            // empty, i.e. s == 0 AND e >= text.len(). But that exact condition
-            // is caught by the guard at L850 (`if s == 0 && e >= text.len()`)
-            // which returns early. By this point, s > 0 OR e < text.len(),
-            // so at least one slice is non-empty.
-            if new_text.is_empty() {
-                vec![]
-            } else {
-                chunk_text_to_leaves(&new_text)
-            }
+            // new_text is non-empty: s > 0 OR e < text.len() (guard above
+            // catches s == 0 && e >= text.len()).
+            chunk_text_to_leaves(&new_text)
         }
         NodeKind::Internal { children } => {
             let mut new_children: Vec<Arc<RopeNode>> = Vec::new();
