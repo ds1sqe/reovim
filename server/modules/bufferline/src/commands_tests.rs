@@ -33,8 +33,28 @@ fn close_buffer_description() {
 }
 
 #[test]
+fn next_buffer_id() {
+    assert_eq!(NextBuffer.id(), ids::NEXT_BUFFER);
+}
+
+#[test]
+fn next_buffer_description() {
+    assert!(!NextBuffer.description().is_empty());
+}
+
+#[test]
+fn prev_buffer_id() {
+    assert_eq!(PrevBuffer.id(), ids::PREV_BUFFER);
+}
+
+#[test]
+fn prev_buffer_description() {
+    assert!(!PrevBuffer.description().is_empty());
+}
+
+#[test]
 fn command_handlers_count() {
-    assert_eq!(command_handlers().len(), 3);
+    assert_eq!(command_handlers().len(), 5);
 }
 
 #[test]
@@ -44,4 +64,6 @@ fn command_ids_match() {
     assert!(ids.contains(&ids::PIN_BUFFER));
     assert!(ids.contains(&ids::UNPIN_BUFFER));
     assert!(ids.contains(&ids::CLOSE_BUFFER));
+    assert!(ids.contains(&ids::NEXT_BUFFER));
+    assert!(ids.contains(&ids::PREV_BUFFER));
 }

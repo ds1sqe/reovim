@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn binding_count() {
-    assert_eq!(keybindings().len(), 4);
+    assert_eq!(keybindings().len(), 10);
 }
 
 #[test]
@@ -11,7 +11,7 @@ fn normal_mode_bindings() {
         .into_iter()
         .filter(|b| b.modes == ["vim:normal"])
         .count();
-    assert_eq!(count, 3);
+    assert_eq!(count, 9);
 }
 
 #[test]

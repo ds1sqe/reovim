@@ -17,6 +17,24 @@ pub const HOVER: CommandId = CommandId::new(MODULE, "hover");
 /// Show signature help.
 pub const SIGNATURE_HELP: CommandId = CommandId::new(MODULE, "signature-help");
 
+/// Navigate to next diagnostic.
+pub const NEXT_DIAGNOSTIC: CommandId = CommandId::new(MODULE, "next-diagnostic");
+
+/// Navigate to previous diagnostic.
+pub const PREV_DIAGNOSTIC: CommandId = CommandId::new(MODULE, "prev-diagnostic");
+
+/// Navigate to next error diagnostic.
+pub const NEXT_ERROR: CommandId = CommandId::new(MODULE, "next-error");
+
+/// Navigate to previous error diagnostic.
+pub const PREV_ERROR: CommandId = CommandId::new(MODULE, "prev-error");
+
+/// Navigate to next warning diagnostic.
+pub const NEXT_WARNING: CommandId = CommandId::new(MODULE, "next-warning");
+
+/// Navigate to previous warning diagnostic.
+pub const PREV_WARNING: CommandId = CommandId::new(MODULE, "prev-warning");
+
 #[cfg(test)]
 #[path = "ids_tests.rs"]
 mod tests;

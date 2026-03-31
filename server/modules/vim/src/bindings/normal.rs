@@ -108,8 +108,8 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("motion")
             .with_description("Go to end of document"),
-        // Screen position motions (#669)
-        KeybindingRegistration::new("H", motions::SCREEN_HIGH)
+        // Screen position motions — relocated to gH/gM/gL (#699)
+        KeybindingRegistration::new("gH", motions::SCREEN_HIGH)
             .with_modes(&["vim:normal"])
             .with_category("motion")
             .with_description("Move to top of screen"),
@@ -117,7 +117,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("motion")
             .with_description("Move to middle of screen"),
-        KeybindingRegistration::new("L", motions::SCREEN_LOW)
+        KeybindingRegistration::new("gL", motions::SCREEN_LOW)
             .with_modes(&["vim:normal"])
             .with_category("motion")
             .with_description("Move to bottom of screen"),
@@ -367,6 +367,22 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("window")
             .with_description("Enter window mode"),
+        KeybindingRegistration::new("<C-h>", window_ops::FOCUS_LEFT)
+            .with_modes(&["vim:normal"])
+            .with_category("window")
+            .with_description("Focus window left"),
+        KeybindingRegistration::new("<C-j>", window_ops::FOCUS_DOWN)
+            .with_modes(&["vim:normal"])
+            .with_category("window")
+            .with_description("Focus window below"),
+        KeybindingRegistration::new("<C-k>", window_ops::FOCUS_UP)
+            .with_modes(&["vim:normal"])
+            .with_category("window")
+            .with_description("Focus window above"),
+        KeybindingRegistration::new("<C-l>", window_ops::FOCUS_RIGHT)
+            .with_modes(&["vim:normal"])
+            .with_category("window")
+            .with_description("Focus window right"),
         // ====================================================================
         // Tabs (#401)
         // ====================================================================

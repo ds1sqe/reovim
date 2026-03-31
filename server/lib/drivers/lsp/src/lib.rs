@@ -39,7 +39,7 @@ mod cache;
 mod capability_store;
 pub mod client;
 mod config;
-mod diagnostic_snapshot;
+pub mod diagnostic_snapshot;
 mod error;
 pub mod jsonrpc;
 mod key;

@@ -13,6 +13,7 @@
 //! - `:servers` - List server instances
 //! - `:kill-server` - Kill the server
 
+mod buffer;
 mod colorscheme;
 mod edit;
 mod quit;
@@ -27,6 +28,7 @@ use {
 };
 
 pub use {
+    buffer::{BdeleteCommand, BnextCommand, BpreviousCommand, QuitAllCommand},
     colorscheme::ColorschemeCommand,
     edit::EditCommand,
     quit::QuitCommand,
@@ -49,6 +51,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(SubstituteCommand),
     ];
     cmds.extend(session::command_handlers());
+    cmds.extend(buffer::command_handlers());
     cmds
 }
 

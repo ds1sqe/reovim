@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn binding_count() {
-    assert_eq!(keybindings().len(), 3);
+    assert_eq!(keybindings().len(), 6);
 }
 
 #[test]
