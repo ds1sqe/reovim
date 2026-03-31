@@ -232,6 +232,123 @@ fn bench_vec_char_alloc(c: &mut Criterion) {
     group.finish();
 }
 
+/// Simulate a word_forward-like motion: alloc Vec<char>, then scan forward
+/// with 5-10 indexed lookups (the typical motion pattern).
+fn bench_vec_char_motion_sim(c: &mut Criterion) {
+    let mut group = c.benchmark_group("motion/vec_char_scan");
+    let line_80 = "fn hello_world(foo: &str, bar: usize) -> Result<String, Error> { let x = 42; }";
+    let line_450: String = (0..10)
+        .map(|i| format!("let var_{i} = some_function(arg_{i}, other_{i});"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // 2500 chars — long minified/generated line
+    let line_2500: String = (0..55)
+        .map(|i| format!("pub fn method_{i}(a: u32, b: &str) -> Option<Vec<u8>> {{ todo!() }}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // 10K chars — very long line (minified JS, log output)
+    let line_10k: String = (0..220)
+        .map(|i| format!("const field_{i} = getValue(config.section_{i}, default_{i});"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // 50K chars — extreme case (binary-ish, data URIs, huge JSON)
+    let line_50k: String = (0..1100)
+        .map(|i| format!("data[{i}] = transform(input[{i}], matrix[{i}], offset);"))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let cases: Vec<(&str, &str)> = vec![
+        ("80_chars", line_80),
+        ("450_chars", &line_450),
+        ("2500_chars", &line_2500),
+        ("10k_chars", &line_10k),
+        ("50k_chars", &line_50k),
+    ];
+
+    for (name, line) in &cases {
+        // Approach 1: Vec<char> alloc + indexed scan (current)
+        group.bench_function(format!("{name}/vec_char"), |b| {
+            b.iter(|| {
+                let chars: Vec<char> = std::hint::black_box(line).chars().collect();
+                let len = chars.len();
+                let mut col = len / 4;
+                // Simulate word_forward: scan past word chars, then whitespace
+                while col < len && chars[col].is_alphanumeric() {
+                    col += 1;
+                }
+                while col < len && chars[col].is_whitespace() {
+                    col += 1;
+                }
+                std::hint::black_box(col);
+            });
+        });
+
+        // Approach 2: chars().nth() repeated (no alloc, O(n) per access)
+        group.bench_function(format!("{name}/chars_nth"), |b| {
+            b.iter(|| {
+                let s = std::hint::black_box(line);
+                let len = s.chars().count();
+                let mut col = len / 4;
+                while col < len && s.chars().nth(col).is_some_and(|c| c.is_alphanumeric()) {
+                    col += 1;
+                }
+                while col < len && s.chars().nth(col).is_some_and(|c| c.is_whitespace()) {
+                    col += 1;
+                }
+                std::hint::black_box(col);
+            });
+        });
+
+        // Approach 3: byte offset table (Vec<u32>) + char lookup
+        group.bench_function(format!("{name}/byte_offsets"), |b| {
+            b.iter(|| {
+                let s = std::hint::black_box(line);
+                let offsets: Vec<u32> = s.char_indices().map(|(b, _)| b as u32).collect();
+                let len = offsets.len();
+                let mut col = len / 4;
+                let char_at =
+                    |idx: usize| -> char { s[offsets[idx] as usize..].chars().next().unwrap() };
+                while col < len && char_at(col).is_alphanumeric() {
+                    col += 1;
+                }
+                while col < len && char_at(col).is_whitespace() {
+                    col += 1;
+                }
+                std::hint::black_box(col);
+            });
+        });
+
+        // Approach 4: skip-to-offset + sequential scan (hybrid)
+        group.bench_function(format!("{name}/skip_then_scan"), |b| {
+            b.iter(|| {
+                let s = std::hint::black_box(line);
+                let len = s.chars().count();
+                let start = len / 4;
+                let mut col = start;
+                // Skip to start position, then scan sequentially
+                let byte_start = s.char_indices().nth(start).map_or(s.len(), |(b, _)| b);
+                let mut iter = s[byte_start..].chars();
+                while col < len {
+                    match iter.next() {
+                        Some(c) if c.is_alphanumeric() => col += 1,
+                        _ => break,
+                    }
+                }
+                let byte_ws = s.char_indices().nth(col).map_or(s.len(), |(b, _)| b);
+                let mut iter = s[byte_ws..].chars();
+                while col < len {
+                    match iter.next() {
+                        Some(c) if c.is_whitespace() => col += 1,
+                        _ => break,
+                    }
+                }
+                std::hint::black_box(col);
+            });
+        });
+    }
+    group.finish();
+}
+
 // =========================================================================
 // Line hash — used for diff detection
 // =========================================================================
@@ -263,6 +380,7 @@ criterion_group!(
     bench_position_to_byte,
     bench_byte_to_position,
     bench_vec_char_alloc,
+    bench_vec_char_motion_sim,
     bench_line_hashes,
 );
 criterion_main!(benches);

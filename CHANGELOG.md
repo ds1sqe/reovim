@@ -4,6 +4,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.14.4-dev
 
+### Added
+
+- **kernel**: rope data structure (`mm/rope.rs`) — custom B-tree with O(log n) insert/delete, O(1) clone via `Arc` structural sharing, and O(log n) position conversion. Zero external dependencies. (#711)
+
+### Changed
+
+- **kernel**: `Buffer` internal storage replaced from `Vec<String>` to `Rope` — all public API signatures unchanged, `Buffer::clone()` is now O(1) (~16ns vs ~8ms for 100K-line buffer) (#711)
+- **kernel**: `BufferSnapshot` and `block::Snapshot` now use `Rope` clone instead of `Vec<String>` deep copy — snapshot creation is O(1) (#711)
+- **kernel**: rope uses line-separator semantics — trailing `\n` produces an empty line in `line_count()` and `line()`, matching editor expectations for delete+insert patterns (#732)
+- **search**: `position_to_byte`/`byte_to_position` now use Buffer's O(log n) rope methods instead of local O(n) helpers — eliminates 2-4 content() materializations per search (#711)
+- **session**: `buffer_text_range()` uses byte-indexed `&str` slicing instead of `Vec<char>` per-line allocation (#711)
+
 ### Fixed
 
 - **input**: remove gratuitous `Box::leak` in `handle_pop_result` — `CommandContext::set()` accepts `&str`, no static lifetime needed (#714)
