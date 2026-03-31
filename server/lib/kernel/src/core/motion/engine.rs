@@ -424,12 +424,9 @@ impl MotionEngine {
     fn word_end_backward(
         buffer: &Buffer,
         mut pos: Position,
-        _boundary: WordBoundary,
+        boundary: WordBoundary,
     ) -> Option<Position> {
-        // ge/gE: Move backward to end of previous word
-        // Note: For ge/gE, the boundary distinction mainly affects where we stop,
-        // but the basic algorithm of finding end of previous word is similar.
-        // TODO: Implement full word/BigWord distinction if needed.
+        // ge/gE: Move backward to end of previous word/WORD.
         if buffer.is_empty() {
             return Some(pos);
         }
@@ -457,13 +454,12 @@ impl MotionEngine {
 
             let mut x = pos.column.min(chars.len().saturating_sub(1));
 
-            // Skip whitespace backward
+            // Phase 1: Skip whitespace backward
             while x > 0 && chars.get(x).is_some_and(|c| c.is_whitespace()) {
                 x -= 1;
             }
 
             if chars.get(x).is_some_and(|c| c.is_whitespace()) {
-                // Still on whitespace, go to previous line
                 if pos.line > 0 {
                     pos.line -= 1;
                     pos.column = buffer.line_len(pos.line).unwrap_or(0).saturating_sub(1);
@@ -473,7 +469,79 @@ impl MotionEngine {
                 break;
             }
 
-            // Now at end of a word
+            // Phase 2: Check if x is at a word boundary (end of a word/WORD).
+            // If the next char is whitespace, different word class, or EOL, we're
+            // already at a word end — return immediately.
+            let at_word_end = if x + 1 >= chars.len() {
+                true
+            } else {
+                let next = chars[x + 1];
+                if next.is_whitespace() {
+                    true
+                } else if boundary == WordBoundary::Word {
+                    let x_is_word = chars[x].is_alphanumeric() || chars[x] == '_';
+                    let next_is_word = next.is_alphanumeric() || next == '_';
+                    x_is_word != next_is_word
+                } else {
+                    false // BigWord: only whitespace ends a WORD
+                }
+            };
+
+            if at_word_end {
+                pos.column = x;
+                break;
+            }
+
+            // Phase 3: Inside a word/WORD — skip backward through current word class
+            // to find the start, then find end of previous word.
+            if boundary == WordBoundary::Word {
+                let is_word = chars[x].is_alphanumeric() || chars[x] == '_';
+                if is_word {
+                    while x > 0 && (chars[x - 1].is_alphanumeric() || chars[x - 1] == '_') {
+                        x -= 1;
+                    }
+                } else {
+                    while x > 0
+                        && !chars[x - 1].is_whitespace()
+                        && !(chars[x - 1].is_alphanumeric() || chars[x - 1] == '_')
+                    {
+                        x -= 1;
+                    }
+                }
+            } else {
+                while x > 0 && !chars[x - 1].is_whitespace() {
+                    x -= 1;
+                }
+            }
+
+            // x is at start of current word — go one back to find previous word end
+            if x == 0 {
+                if pos.line > 0 {
+                    pos.line -= 1;
+                    pos.column = buffer.line_len(pos.line).unwrap_or(0).saturating_sub(1);
+                    continue;
+                }
+                pos.column = 0;
+                break;
+            }
+
+            x -= 1;
+
+            // Skip whitespace backward to find end of previous word
+            while x > 0 && chars[x].is_whitespace() {
+                x -= 1;
+            }
+
+            if chars[x].is_whitespace() {
+                if pos.line > 0 {
+                    pos.line -= 1;
+                    pos.column = buffer.line_len(pos.line).unwrap_or(0).saturating_sub(1);
+                    continue;
+                }
+                pos.column = 0;
+                break;
+            }
+
             pos.column = x;
             break;
         }
@@ -863,8 +931,10 @@ mod b9_repro {
             1,
         );
 
-        // BUG: both return the same position because _boundary is ignored
-        assert_eq!(ge, g_big_e, "#720: ge and gE return identical result — WordBoundary ignored");
+        // ge lands on '.' (col 5), gE skips entire WORD to col 0
+        assert_ne!(ge, g_big_e, "ge and gE should return different positions");
+        assert_eq!(ge.unwrap().column, 5, "ge: end of punctuation '.'");
+        assert_eq!(g_big_e.unwrap().column, 0, "gE: no previous WORD, lands at start");
     }
 
     #[test]
@@ -901,5 +971,85 @@ mod b9_repro {
             e_word, e_big_word,
             "Forward e vs E: Word stops at 'o' (col 2), BigWord at 'r' (col 6)"
         );
+    }
+
+    fn ge(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
+        MotionEngine::calculate(
+            buf,
+            &Cursor::new(Position::new(line, col)),
+            Motion::Word {
+                direction: Direction::Backward,
+                boundary: WordBoundary::Word,
+                end: true,
+            },
+            1,
+        )
+    }
+
+    fn g_big_e(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
+        MotionEngine::calculate(
+            buf,
+            &Cursor::new(Position::new(line, col)),
+            Motion::Word {
+                direction: Direction::Backward,
+                boundary: WordBoundary::BigWord,
+                end: true,
+            },
+            1,
+        )
+    }
+
+    #[test]
+    fn b9_ge_from_whitespace() {
+        // "hello world" col 5 (space) → ge lands on 'o' (col 4)
+        let buf = Buffer::from_string("hello world");
+        assert_eq!(ge(&buf, 0, 5).unwrap().column, 4);
+    }
+
+    #[test]
+    fn b9_ge_from_word_boundary() {
+        // "hello.world" col 6 ('w') → ge lands on '.' (col 5)
+        let buf = Buffer::from_string("hello.world");
+        assert_eq!(ge(&buf, 0, 6).unwrap().column, 5);
+    }
+
+    #[test]
+    fn b9_ge_across_line() {
+        // "foo\nbar" line 1 col 0 ('b') → ge lands on line 0 col 2 ('o')
+        let buf = Buffer::from_string("foo\nbar");
+        let pos = ge(&buf, 1, 0).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 2);
+    }
+
+    #[test]
+    fn b9_ge_underscore_is_word_char() {
+        // "foo_bar.baz" col 8 ('a' in baz) → ge lands on '.' (col 7)
+        let buf = Buffer::from_string("foo_bar.baz");
+        assert_eq!(ge(&buf, 0, 8).unwrap().column, 7);
+    }
+
+    #[test]
+    fn b9_ge_big_word_skips_entire_word() {
+        // "foo.bar baz" col 10 ('z') → gE lands on 'r' (col 6, end of WORD "foo.bar")
+        let buf = Buffer::from_string("foo.bar baz");
+        assert_eq!(g_big_e(&buf, 0, 10).unwrap().column, 6);
+    }
+
+    #[test]
+    fn b9_ge_at_buffer_start() {
+        // col 0 → stays at col 0
+        let buf = Buffer::from_string("hello");
+        assert_eq!(ge(&buf, 0, 0).unwrap().column, 0);
+    }
+
+    #[test]
+    fn b9_ge_from_whitespace_after_line_break() {
+        // "first line\n  second" from line 1 col 2 ('s')
+        // ge → line 0 col 9 ('e' in "line")
+        let buf = Buffer::from_string("first line\n  second");
+        let pos = ge(&buf, 1, 2).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 9);
     }
 }

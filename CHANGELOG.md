@@ -7,6 +7,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Fixed
 
 - **input**: remove gratuitous `Box::leak` in `handle_pop_result` — `CommandContext::set()` accepts `&str`, no static lifetime needed (#714)
+- **motions**: `ge` and `gE` now correctly distinguish Word vs BigWord boundaries — `word_end_backward` was ignoring the `WordBoundary` parameter (#720)
 
 ## [0.14.3] - 2026-03-30
 
