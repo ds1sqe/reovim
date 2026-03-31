@@ -256,14 +256,30 @@ impl StepTest {
             .expect("Failed to get buffer content");
         let cursor_response = client.get_cursor().await.expect("Failed to get cursor");
         let mode_response = client.get_mode().await.expect("Failed to get mode");
+        let register_response = client
+            .get_registers(vec![])
+            .await
+            .expect("Failed to get registers");
 
         // Extract cursor position from nested Position message
         let (cursor_line, cursor_column) = cursor_response
             .position
             .map_or((0, 0), |pos| (pos.line, pos.column));
 
-        // TODO: Implement register query via gRPC (Phase 9+)
-        let registers = HashMap::new();
+        // Populate registers from gRPC response
+        let registers = register_response
+            .registers
+            .into_iter()
+            .map(|entry| {
+                (
+                    entry.name,
+                    RegisterInfo {
+                        content: entry.content,
+                        yank_type: entry.yank_type,
+                    },
+                )
+            })
+            .collect();
 
         #[allow(clippy::cast_possible_truncation)]
         StateSnapshot {

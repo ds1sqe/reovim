@@ -224,7 +224,7 @@ unsafe extern "C" fn add_callback(
 fn test_ffi_command_handler_execute_callback() {
     let mut data: i32 = 10;
     let handler = FfiCommandHandler {
-        id: CommandId::from_qualified_leaked("test:add".to_string()),
+        id: CommandId::from_qualified("test:add".to_string()),
         description: "adds",
         callback: add_callback,
         user_data: (&raw mut data).cast(),
@@ -256,13 +256,13 @@ unsafe extern "C" fn noop_cb(_: *mut libc::c_void, _: *const ReovimCommandArgs) 
 fn test_handler_store_add_and_take() {
     let store = FfiCommandHandlerStore::default();
     store.add(FfiCommandHandler {
-        id: CommandId::from_qualified_leaked("test:a".to_string()),
+        id: CommandId::from_qualified("test:a".to_string()),
         description: "a",
         callback: noop_cb,
         user_data: std::ptr::null_mut(),
     });
     store.add(FfiCommandHandler {
-        id: CommandId::from_qualified_leaked("test:b".to_string()),
+        id: CommandId::from_qualified("test:b".to_string()),
         description: "b",
         callback: noop_cb,
         user_data: std::ptr::null_mut(),

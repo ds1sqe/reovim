@@ -62,12 +62,12 @@ pub fn display_line_count(line: &str, terminal_width: usize) -> usize {
         return 1;
     }
 
-    let char_count = line.chars().count();
-    if char_count == 0 {
+    let display_width: usize = line.chars().map(char_display_width).sum();
+    if display_width == 0 {
         return 1;
     }
 
-    char_count.div_ceil(terminal_width)
+    display_width.div_ceil(terminal_width)
 }
 
 /// Get display line position within a wrapped line.

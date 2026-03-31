@@ -32,30 +32,30 @@ fn test_vfs_error_display() {
 }
 
 #[test]
-fn test_from_io_error_not_found() {
+fn test_from_io_not_found() {
     let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test/path");
     assert!(matches!(vfs_err, VfsError::NotFound(_)));
 }
 
 #[test]
-fn test_from_io_error_permission_denied() {
+fn test_from_io_permission_denied() {
     let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "test");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test/path");
     assert!(matches!(vfs_err, VfsError::PermissionDenied(_)));
 }
 
 #[test]
-fn test_from_io_error_already_exists() {
+fn test_from_io_already_exists() {
     let io_err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "test");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test/path");
     assert!(matches!(vfs_err, VfsError::AlreadyExists(_)));
 }
 
 #[test]
-fn test_from_io_error_other() {
+fn test_from_io_other() {
     let io_err = std::io::Error::other("test");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test/path");
     assert!(matches!(vfs_err, VfsError::Io(_)));
 }
 
@@ -107,15 +107,60 @@ fn test_error_source_all_variants() {
 }
 
 #[test]
-fn test_from_io_error_interrupted() {
+fn test_from_io_interrupted() {
     let io_err = std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test");
     assert!(matches!(vfs_err, VfsError::Io(_)));
 }
 
 #[test]
-fn test_from_io_error_would_block() {
+fn test_from_io_would_block() {
     let io_err = std::io::Error::new(std::io::ErrorKind::WouldBlock, "would block");
-    let vfs_err: VfsError = io_err.into();
+    let vfs_err = VfsError::from_io(io_err, "/test");
+    assert!(matches!(vfs_err, VfsError::Io(_)));
+}
+
+// =========================================================================
+// #715 repro: From<io::Error> creates variants with empty PathBuf
+// error.rs: lossy From<io::Error> replaced with from_io(err, path).
+// =========================================================================
+
+#[test]
+fn b4_from_io_preserves_path() {
+    let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "entity not found");
+    let vfs_err = VfsError::from_io(io_err, "/some/file.txt");
+
+    match &vfs_err {
+        VfsError::NotFound(path) => {
+            assert_eq!(path.to_str().unwrap(), "/some/file.txt");
+            let msg = format!("{vfs_err}");
+            assert!(msg.contains("/some/file.txt"), "display includes path");
+        }
+        other => panic!("Expected NotFound, got: {other:?}"),
+    }
+
+    let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+    let vfs_err = VfsError::from_io(io_err, "/etc/shadow");
+    match &vfs_err {
+        VfsError::PermissionDenied(path) => {
+            assert_eq!(path.to_str().unwrap(), "/etc/shadow");
+        }
+        other => panic!("Expected PermissionDenied, got: {other:?}"),
+    }
+
+    let io_err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+    let vfs_err = VfsError::from_io(io_err, "/tmp/lockfile");
+    match &vfs_err {
+        VfsError::AlreadyExists(path) => {
+            assert_eq!(path.to_str().unwrap(), "/tmp/lockfile");
+        }
+        other => panic!("Expected AlreadyExists, got: {other:?}"),
+    }
+}
+
+#[test]
+fn b4_from_io_unknown_kind_falls_through() {
+    let io_err = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
+    let vfs_err = VfsError::from_io(io_err, "/irrelevant");
     assert!(matches!(vfs_err, VfsError::Io(_)));
 }

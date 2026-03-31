@@ -12,7 +12,7 @@ use {
     reovim_kernel::api::v1::{Edit, Position},
 };
 
-use super::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte};
 
 // =============================================================================
 // Case Transformation Helper
@@ -22,6 +22,7 @@ use super::{Operator, OperatorContext, OperatorError, Range};
 ///
 /// Reads text from the buffer, applies the transformation function,
 /// and replaces the original text if it changed.
+#[allow(clippy::too_many_lines)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn apply_case_transform(
     ctx: &mut OperatorContext<'_>,
@@ -35,7 +36,6 @@ fn apply_case_transform(
         .ok_or(OperatorError::BufferNotFound(ctx.buffer_id))?;
 
     let mut buffer = buffer_arc.write();
-    let lines = buffer.lines();
 
     let start = range.start;
     let end = range.end;
@@ -44,39 +44,48 @@ fn apply_case_transform(
     let mut original = String::new();
 
     if range.is_linewise {
-        let line_count = lines.len();
+        let line_count = buffer.line_count();
         let clamped_end = end.line.min(line_count.saturating_sub(1));
 
         for line_idx in start.line..=clamped_end {
             if line_idx > start.line {
                 original.push('\n');
             }
-            if let Some(line) = lines.get(line_idx) {
+            if let Some(line) = buffer.line(line_idx) {
                 original.push_str(line);
             }
         }
     } else if start.line == end.line {
         // Single line
-        if let Some(line) = lines.get(start.line) {
-            let start_col = start.column.min(line.len());
-            let end_col = end.column.min(line.len());
+        if let Some(line) = buffer.line(start.line) {
+            let char_len = line.chars().count();
+            let start_col = start.column.min(char_len);
+            let end_col = end.column.min(char_len);
             if start_col < end_col {
-                original.push_str(&line[start_col..end_col]);
+                let start_byte = char_col_to_byte(line, start_col);
+                let end_byte = char_col_to_byte(line, end_col);
+                original.push_str(&line[start_byte..end_byte]);
             }
         }
     } else {
         // Multi-line characterwise
-        for (line_idx, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
-            if line_idx == start.line {
-                let start_col = start.column.min(line.len());
-                original.push_str(&line[start_col..]);
-                original.push('\n');
-            } else if line_idx == end.line {
-                let end_col = end.column.min(line.len());
-                original.push_str(&line[..end_col]);
-            } else {
-                original.push_str(line);
-                original.push('\n');
+        for line_idx in start.line..=end.line {
+            if let Some(line) = buffer.line(line_idx) {
+                if line_idx == start.line {
+                    let char_len = line.chars().count();
+                    let start_col = start.column.min(char_len);
+                    let start_byte = char_col_to_byte(line, start_col);
+                    original.push_str(&line[start_byte..]);
+                    original.push('\n');
+                } else if line_idx == end.line {
+                    let char_len = line.chars().count();
+                    let end_col = end.column.min(char_len);
+                    let end_byte = char_col_to_byte(line, end_col);
+                    original.push_str(&line[..end_byte]);
+                } else {
+                    original.push_str(line);
+                    original.push('\n');
+                }
             }
         }
     }
@@ -93,13 +102,13 @@ fn apply_case_transform(
     let cursor_before = ctx.cursor_position;
 
     if range.is_linewise {
-        let line_count = lines.len();
+        let line_count = buffer.line_count();
         let clamped_end = end.line.min(line_count.saturating_sub(1));
 
         // Delete from start of first line to end of last line
         let delete_start = Position::new(start.line, 0);
-        let last_line_len = lines.get(clamped_end).map_or(0, String::len);
-        let delete_end = Position::new(clamped_end, last_line_len);
+        let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
+        let delete_end = Position::new(clamped_end, last_line_char_len);
 
         buffer.delete_range(delete_start, delete_end);
         buffer.insert_at(delete_start, &transformed);

@@ -102,15 +102,7 @@ fn line_len_unicode() {
     assert_eq!(buf.line_len(0), Some(5));
 }
 
-#[test]
-fn lines_accessor() {
-    let buf = Buffer::from_string("A\nB\nC");
-    let lines = buf.lines();
-    assert_eq!(lines.len(), 3);
-    assert_eq!(lines[0], "A");
-    assert_eq!(lines[1], "B");
-    assert_eq!(lines[2], "C");
-}
+// NOTE: lines_accessor test removed in #711 — Buffer::lines() removed.
 
 #[test]
 fn content_empty() {
@@ -423,52 +415,8 @@ fn byte_position_roundtrip_unicode() {
     }
 }
 
-// === Helper functions ===
-
-#[test]
-fn char_to_byte_offset_ascii() {
-    assert_eq!(char_to_byte_offset("hello", 0), 0);
-    assert_eq!(char_to_byte_offset("hello", 3), 3);
-    assert_eq!(char_to_byte_offset("hello", 5), 5); // past end
-}
-
-#[test]
-fn char_to_byte_offset_unicode() {
-    // "H\u{00e9}llo" -> H(1) + e-acute(2) + l(1) + l(1) + o(1)
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 0), 0);
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 1), 1);
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 2), 3); // skip 2-byte char
-}
-
-#[test]
-fn char_to_byte_offset_past_end() {
-    assert_eq!(char_to_byte_offset("hi", 10), 2); // returns line.len()
-}
-
-#[test]
-fn char_to_byte_offset_empty() {
-    assert_eq!(char_to_byte_offset("", 0), 0);
-}
-
-#[test]
-fn byte_to_char_offset_ascii() {
-    assert_eq!(byte_to_char_offset("hello", 0), 0);
-    assert_eq!(byte_to_char_offset("hello", 3), 3);
-    assert_eq!(byte_to_char_offset("hello", 5), 5);
-}
-
-#[test]
-fn byte_to_char_offset_unicode() {
-    // "H\u{00e9}llo" -> byte 3 is char index 2
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 0), 0);
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 1), 1);
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 3), 2); // past the 2-byte char
-}
-
-#[test]
-fn byte_to_char_offset_empty() {
-    assert_eq!(byte_to_char_offset("", 0), 0);
-}
+// NOTE: char_to_byte_offset / byte_to_char_offset tests removed in #711.
+// These helpers are no longer needed — the Rope handles all byte/char conversion.
 
 // === Clone ===
 
@@ -525,4 +473,161 @@ fn multiple_newline_inserts() {
     assert_eq!(buf.line(0), Some("Line1"));
     assert_eq!(buf.line(1), Some("Line2"));
     assert_eq!(buf.line(2), Some("Line3"));
+}
+
+/// Trace substitute-style delete+insert on multiline buffer.
+#[test]
+fn substitute_delete_insert_preserves_lines() {
+    let mut buf = Buffer::from_string("aaa\nbbb\naaa");
+    assert_eq!(buf.line_count(), 3);
+
+    // Substitute line 2: delete "aaa", insert "zzz"
+    let deleted = buf.delete_range(Position::new(2, 0), Position::new(2, 3));
+    eprintln!("After delete line 2: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(deleted, "aaa");
+
+    buf.insert_at(Position::new(2, 0), "zzz");
+    eprintln!("After insert line 2: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(buf.line(0), Some("aaa"), "line 0 after step 1");
+    assert_eq!(buf.line(1), Some("bbb"), "line 1 after step 1");
+    assert_eq!(buf.line(2), Some("zzz"), "line 2 after step 1");
+
+    // Substitute line 0: delete "aaa", insert "zzz"
+    let deleted = buf.delete_range(Position::new(0, 0), Position::new(0, 3));
+    eprintln!("After delete line 0: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(deleted, "aaa");
+
+    buf.insert_at(Position::new(0, 0), "zzz");
+    eprintln!("After insert line 0: content={:?} lines={}", buf.content(), buf.line_count());
+    for i in 0..buf.line_count() {
+        eprintln!("  line {}: {:?}", i, buf.line(i));
+    }
+    assert_eq!(buf.line(0), Some("zzz"), "line 0 final");
+    assert_eq!(buf.line(1), Some("bbb"), "line 1 final");
+    assert_eq!(buf.line(2), Some("zzz"), "line 2 final");
+    assert_eq!(buf.content(), "zzz\nbbb\nzzz");
+}
+
+// === Coverage: extract_byte_range skip/break on multi-chunk rope (lines 394-395, 398) ===
+
+#[test]
+fn delete_range_on_large_buffer_exercises_chunk_iteration() {
+    // Build a buffer larger than MAX_CHUNK_BYTES (1024) so the rope has multiple chunks.
+    // Then delete a range that starts partway through, forcing extract_byte_range to:
+    //   - skip early chunks (continue on line 394-395)
+    //   - break after the end range (line 398)
+    let line = "abcdefghijklmnopqrstuvwxyz"; // 26 chars
+    // 50 lines * 26 chars + 49 newlines = 1349 bytes → >1024, multiple chunks
+    let content: String = (0..50).map(|_| line).collect::<Vec<_>>().join("\n");
+    let mut buf = Buffer::from_string(&content);
+
+    // Delete a small range in the middle (line 25, cols 5..10)
+    let deleted = buf.delete_range(Position::new(25, 5), Position::new(25, 10));
+    assert_eq!(deleted, "fghij", "should extract the correct byte range across chunks");
+}
+
+// === Coverage: extract_byte_range chunk skip and break (lines 393-395, 397-398) ===
+
+#[test]
+fn extract_byte_range_skips_early_chunks_and_breaks_after() {
+    // Build a multi-chunk buffer and extract a range that starts AFTER the first chunk.
+    // This forces the `chunk_end <= start → continue` path (lines 393-395)
+    // and the `pos >= end → break` path (lines 397-398).
+    use std::fmt::Write;
+    let mut text = String::new();
+    // 200 lines of 30+ chars each → well over 1024 bytes → multiple chunks
+    for i in 0..200 {
+        writeln!(text, "line number {i:05} with padding").unwrap();
+    }
+    let mut buf = Buffer::from_string(&text);
+    assert!(buf.content().len() > 2048, "buffer should have multiple chunks");
+
+    // Delete from the last line — this forces extract_byte_range to skip
+    // all early chunks (continue on line 394) and break after finding the
+    // range (break on line 398).
+    let deleted = buf.delete_range(Position::new(199, 0), Position::new(199, 4));
+    assert_eq!(deleted, "line", "should extract text from the last chunk");
+}
+
+// === Coverage: delete_at resulting in empty deleted text (branch 284:1) ===
+
+#[test]
+fn delete_at_at_very_end_yields_empty_not_modified() {
+    // delete_at where byte_start >= byte_end after clamping.
+    // Position at end of buffer content → byte_start == byte_end.
+    let mut buf = Buffer::from_string("abc");
+    let deleted = buf.delete_at(Position::new(0, 3), 0);
+    assert_eq!(deleted, "");
+    assert!(!buf.is_modified(), "empty deletion should not set modified");
+}
+
+// === Coverage: delete_range resulting in empty deleted text (branch 314:1) ===
+
+#[test]
+fn delete_range_zero_width_not_modified() {
+    // delete_range with same start and end position → byte_start == byte_end → empty string.
+    let mut buf = Buffer::from_string("hello\nworld");
+    let deleted = buf.delete_range(Position::new(0, 3), Position::new(0, 3));
+    assert_eq!(deleted, "");
+    assert!(!buf.is_modified(), "zero-width delete_range should not set modified");
+}
+
+// === Coverage: delete_range with reversed positions (branch 284:1 indirectly) ===
+
+#[test]
+fn delete_range_reversed_positions() {
+    // When start > end, the function swaps them (line 297-298).
+    let mut buf = Buffer::from_string("hello\nworld");
+    let deleted = buf.delete_range(Position::new(0, 5), Position::new(0, 2));
+    assert_eq!(deleted, "llo", "reversed range should still delete correctly");
+    assert!(buf.is_modified());
+}
+
+// === Coverage: extract_byte_range on truly multi-chunk rope ===
+
+#[test]
+fn extract_byte_range_spanning_multiple_chunks() {
+    // Build a buffer large enough for 3+ chunks, then extract a range
+    // spanning from one chunk into another.
+    use std::fmt::Write;
+    let mut text = String::new();
+    for i in 0..300 {
+        writeln!(text, "data line {i:05} padding chars here").unwrap();
+    }
+    let mut buf = Buffer::from_string(&text);
+    // Delete a range that spans across chunk boundaries
+    // Lines 100-200 should be well past the first chunk
+    let deleted = buf.delete_range(Position::new(100, 0), Position::new(200, 0));
+    assert!(!deleted.is_empty(), "should extract cross-chunk content");
+    // The extracted text should start with line 100
+    assert!(deleted.starts_with("data line 00100"));
+}
+
+// === Coverage: clamp_position on empty buffer (L346:br0, L347) ===
+
+#[test]
+fn delete_range_on_empty_buffer() {
+    // delete_range calls clamp_position without an empty-buffer guard,
+    // so this hits the `self.text.is_empty()` true branch (L346:br0).
+    let mut buf = Buffer::new();
+    let deleted = buf.delete_range(Position::new(0, 0), Position::new(1, 5));
+    assert!(deleted.is_empty());
+}
+
+// === Coverage: normalize_to_rope joined empty (L376:br0, L377) ===
+
+#[test]
+fn from_string_single_newline() {
+    // "\n".lines() → [""], joined → "". joined.is_empty() → true (L376:br0).
+    let buf = Buffer::from_string("\n");
+    assert_eq!(buf.line_count(), 0, "single newline normalizes to empty");
 }

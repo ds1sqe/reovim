@@ -270,7 +270,8 @@ pub fn build_operator_execute(
     register: Option<char>,
 ) -> PopResult {
     let operator_id = operator.operator_id();
-    let command = CommandId::new(operator_id.module().clone(), operator_id.name());
+    let command =
+        CommandId::from_owned(operator_id.module().clone(), operator_id.name().to_owned());
 
     let mut args = HashMap::new();
 

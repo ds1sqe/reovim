@@ -7,7 +7,7 @@ use {
     reovim_kernel::api::v1::{Edit, RegisterContent},
 };
 
-use super::{Operator, OperatorContext, OperatorError, Range, registers};
+use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
 
 /// Change operator - cuts text and signals insert mode.
 ///
@@ -55,8 +55,7 @@ impl Operator for ChangeOperator {
 
         // Build deleted text from lines
         let mut deleted_text = String::new();
-        let lines = buffer.lines();
-        let line_count = lines.len();
+        let line_count = buffer.line_count();
 
         // Track what was actually deleted for undo
         let delete_pos;
@@ -68,7 +67,7 @@ impl Operator for ChangeOperator {
             let clamped_end = end.line.min(line_count.saturating_sub(1));
 
             for line_idx in start.line..=clamped_end {
-                if let Some(line) = lines.get(line_idx) {
+                if let Some(line) = buffer.line(line_idx) {
                     deleted_text.push_str(line);
                     deleted_text.push('\n');
                 }
@@ -82,55 +81,50 @@ impl Operator for ChangeOperator {
             let delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
             let delete_end = if clamped_end + 1 < line_count {
                 // Not the last line - delete content but preserve start.line's newline
-                // So delete from (start.line, 0) to (clamped_end + 1, 0), then we're on next line
-                // Actually for cc on middle line, we want to replace lines with one empty line
-                // Delete everything from start to clamped_end (including their newlines except last)
-                // Let's delete to end of clamped_end, then the newline stays
-                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
-                {
-                    let end_line_content = &lines[clamped_end];
-                    // Delete all lines but keep start.line as empty (with its newline)
-                    // Delete from start.line to end of clamped_end content, plus all intermediate newlines
-                    reovim_kernel::api::v1::Position::new(
-                        clamped_end,
-                        end_line_content.chars().count(),
-                    )
-                }
+                // Delete all lines but keep start.line as empty (with its newline)
+                let end_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
+                reovim_kernel::api::v1::Position::new(clamped_end, end_line_char_len)
             } else {
                 // End line is last line - delete to end of content (keep line structure)
-                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
-                let last_line = &lines[clamped_end];
-                reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count())
+                let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
+                reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len)
             };
 
             delete_pos = delete_start;
             buffer.delete_range(delete_start, delete_end);
         } else if start.line == end.line {
             // Single line characterwise change
-            // start.line is valid: buffer exists and lines were just obtained from it
-            let line = &lines[start.line];
-            let start_col = start.column.min(line.len());
-            let end_col = end.column.min(line.len());
-            if start_col < end_col {
-                deleted_text.push_str(&line[start_col..end_col]);
+            if let Some(line) = buffer.line(start.line) {
+                let char_len = line.chars().count();
+                let start_col = start.column.min(char_len);
+                let end_col = end.column.min(char_len);
+                if start_col < end_col {
+                    let start_byte = char_col_to_byte(line, start_col);
+                    let end_byte = char_col_to_byte(line, end_col);
+                    deleted_text.push_str(&line[start_byte..end_byte]);
+                }
             }
             delete_pos = start;
             buffer.delete_range(start, end);
         } else {
             // Multi-line characterwise change
-            // All indices in start.line..=end.line are valid: lines were obtained
-            // from the same buffer snapshot and end.line <= last valid line
-            for (line_idx, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
-                if line_idx == start.line {
-                    let start_col = start.column.min(line.len());
-                    deleted_text.push_str(&line[start_col..]);
-                    deleted_text.push('\n');
-                } else if line_idx == end.line {
-                    let end_col = end.column.min(line.len());
-                    deleted_text.push_str(&line[..end_col]);
-                } else {
-                    deleted_text.push_str(line);
-                    deleted_text.push('\n');
+            for line_idx in start.line..=end.line {
+                if let Some(line) = buffer.line(line_idx) {
+                    if line_idx == start.line {
+                        let char_len = line.chars().count();
+                        let start_col = start.column.min(char_len);
+                        let start_byte = char_col_to_byte(line, start_col);
+                        deleted_text.push_str(&line[start_byte..]);
+                        deleted_text.push('\n');
+                    } else if line_idx == end.line {
+                        let char_len = line.chars().count();
+                        let end_col = end.column.min(char_len);
+                        let end_byte = char_col_to_byte(line, end_col);
+                        deleted_text.push_str(&line[..end_byte]);
+                    } else {
+                        deleted_text.push_str(line);
+                        deleted_text.push('\n');
+                    }
                 }
             }
             delete_pos = start;

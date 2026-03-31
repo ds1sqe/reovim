@@ -369,3 +369,34 @@ fn test_enter_with_trace_subscriber_covers_span_fields() {
     assert_eq!(id, data.id);
     prof.exit(id, 42);
 }
+
+// =========================================================================
+// #716 repro: init_profiling_with_filter silently discards its argument.
+// lib.rs:281-287 — `let _ = filter.into()` throws away the filter.
+// =========================================================================
+
+#[test]
+fn b5_repro_filter_mechanism_exists_but_init_ignores_it() {
+    // The TracingProfiler::with_filter() correctly handles filter strings.
+    let filtered = TracingProfiler::with_filter("runner");
+    assert!(filtered.enabled("runner::input"), "with_filter correctly filters");
+    assert!(!filtered.enabled("mm::buffer"), "with_filter correctly excludes");
+
+    // But init_profiling_with_filter() at lib.rs:281-287 IGNORES the filter:
+    //   pub fn init_profiling_with_filter(filter: impl Into<String>) -> ... {
+    //       let _ = filter.into();   // <-- DISCARDS the filter
+    //       init_profiling()          // <-- calls env-based init instead
+    //   }
+    //
+    // It SHOULD create a TracingProfiler::with_filter(filter) and set it.
+    // Instead it throws away the filter and falls through to init_profiling().
+    //
+    // Proof: init_profiling_with_filter() delegates to init_profiling().
+    // Both are OnceLock-guarded, so calling either after the other is a no-op.
+    // The filter string "runner=trace,mm=debug" has zero effect on which
+    // profiler gets installed.
+    let _r = init_profiling_with_filter("runner=trace,mm=debug");
+    // We can't inspect the installed profiler to verify the filter was ignored,
+    // because it's behind a OnceLock. But the source code at lib.rs:285 proves it:
+    //   let _ = filter.into();  // value discarded, never used
+}

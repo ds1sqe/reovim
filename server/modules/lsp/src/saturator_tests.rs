@@ -864,3 +864,53 @@ async fn test_handle_server_message_progress_no_queue() {
     )
     .await;
 }
+
+// =========================================================================
+// #719 repro: tokio::spawn JoinHandle dropped — panics silently swallowed.
+// saturator.rs:164 — the JoinHandle from tokio::spawn(Self::run(...))
+// is dropped without being stored or awaited.
+// =========================================================================
+
+#[tokio::test]
+async fn b8_repro_stored_handle_detects_panic() {
+    // With a stored handle, we CAN detect that a task panicked.
+    let handle = tokio::spawn(async {
+        panic!("simulated LSP crash");
+    });
+
+    let result = handle.await;
+    assert!(result.is_err(), "Stored JoinHandle detects the panic via JoinError");
+}
+
+#[tokio::test]
+async fn b8_repro_dropped_handle_loses_error() {
+    // saturator.rs:164 pattern: spawn returns JoinHandle but it's immediately dropped.
+    // We can't detect the panic — the error is silently lost.
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    let panic_detected = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&panic_detected);
+
+    // Spawn and immediately drop the handle (what saturator.rs does)
+    drop(tokio::spawn(async move {
+        // Set flag before panic to prove task ran
+        flag.store(true, Ordering::SeqCst);
+        panic!("simulated LSP crash");
+    }));
+
+    // Yield to let the spawned task execute
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+
+    // The task ran (flag was set) but we have NO way to know it panicked
+    // because we dropped the JoinHandle. This is the #719 bug pattern:
+    // if Self::run() panics in saturator.rs:164, nobody ever finds out.
+    assert!(
+        panic_detected.load(Ordering::SeqCst),
+        "Task executed but its panic was silently swallowed"
+    );
+    // No way to query if the task failed — the handle is gone.
+}

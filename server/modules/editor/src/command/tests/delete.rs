@@ -242,9 +242,9 @@ fn test_delete_char_count_clamped_to_eol() {
     let result = DeleteChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
+    // Deleting all chars leaves an empty buffer (0 lines)
     let buf = kernel.buffers.get(buffer_id).unwrap();
-    let content = buf.read().line(0).map(str::to_owned);
-    assert_eq!(content.as_deref(), Some(""));
+    assert_eq!(buf.read().content(), "");
 }
 
 #[test]
@@ -850,9 +850,9 @@ fn test_delete_to_eol_from_start() {
     let result = DeleteToEndOfLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
+    // Deleting all chars leaves an empty buffer (0 lines)
     let buf = kernel.buffers.get(buffer_id).unwrap();
-    let content = buf.read().line(0).map(str::to_owned);
-    assert_eq!(content.as_deref(), Some(""));
+    assert_eq!(buf.read().content(), "");
 
     // Check register content (per-client registers, #515)
     drop(runtime);

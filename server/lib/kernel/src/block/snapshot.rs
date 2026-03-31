@@ -10,6 +10,11 @@
 //! not Buffer. The caller (session layer) is responsible for getting cursor
 //! from Window before capture and setting it back to Window after restore.
 //!
+//! # Structural Sharing (#711)
+//!
+//! Snapshots store a rope clone, which is O(1) via `Arc` sharing.
+//! The snapshot shares unchanged text nodes with the original buffer.
+//!
 //! # Design Principle
 //!
 //! Following the kernel purity principle, this module provides pure Rust
@@ -17,7 +22,7 @@
 //! handled by the driver layer (`server/lib/drivers/vfs/`).
 
 use {
-    crate::mm::{Buffer, BufferId, Position},
+    crate::mm::{Buffer, BufferId, Position, Rope},
     std::time::SystemTime,
 };
 
@@ -57,8 +62,8 @@ use {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Snapshot {
-    /// Lines at time of capture.
-    lines: Vec<String>,
+    /// Text content at time of capture (rope clone, O(1)).
+    text: Rope,
     /// Cursor position at time of capture.
     cursor: Position,
     /// Buffer ID (for validation on restore).
@@ -71,10 +76,11 @@ impl Snapshot {
     /// Capture the current state of a buffer.
     ///
     /// Cursor position must be passed explicitly - get it from Window.
+    /// This is O(1) — the rope is cloned via `Arc` sharing.
     #[must_use]
     pub fn capture(buffer: &Buffer, cursor: Position) -> Self {
         Self {
-            lines: buffer.lines().to_vec(),
+            text: buffer.clone_rope(),
             cursor,
             buffer_id: buffer.id(),
             timestamp: SystemTime::now(),
@@ -85,14 +91,20 @@ impl Snapshot {
     ///
     /// This is useful for restoring from serialized data.
     #[must_use]
-    pub const fn from_parts(
-        lines: Vec<String>,
+    pub fn from_parts(
+        lines: &[String],
         cursor: Position,
         buffer_id: BufferId,
         timestamp: SystemTime,
     ) -> Self {
+        let content = lines.join("\n");
+        let text = if content.is_empty() {
+            Rope::new()
+        } else {
+            Rope::from_str(&content)
+        };
         Self {
-            lines,
+            text,
             cursor,
             buffer_id,
             timestamp,
@@ -104,9 +116,8 @@ impl Snapshot {
     /// Returns the cursor position that should be set on Window.
     /// The buffer ID is not changed.
     pub fn restore(&self, buffer: &mut Buffer) -> Position {
-        // Set content from snapshot lines
-        let content = self.lines.join("\n");
-        buffer.set_content(&content);
+        // O(1) restore via rope clone (Arc sharing)
+        buffer.set_rope(self.text.clone());
 
         // Return cursor position for caller to set on Window
         self.cursor
@@ -123,10 +134,14 @@ impl Snapshot {
 
     // === Accessors for driver-layer serialization ===
 
-    /// Get the captured lines.
+    /// Collect the captured lines as a `Vec<String>`.
+    ///
+    /// This allocates — prefer `line(idx)` for individual access.
     #[must_use]
-    pub fn lines(&self) -> &[String] {
-        &self.lines
+    pub fn lines(&self) -> Vec<String> {
+        (0..self.text.line_count())
+            .filter_map(|i| self.text.line(i).map(String::from))
+            .collect()
     }
 
     // NOTE: cursor() method defined above (single accessor, no duplicate)
@@ -154,19 +169,18 @@ impl Snapshot {
     /// Get the total number of characters in the snapshot.
     #[must_use]
     pub fn char_count(&self) -> usize {
-        self.lines.iter().map(|l| l.chars().count()).sum::<usize>()
-            + self.lines.len().saturating_sub(1) // newlines
+        self.text.char_len()
     }
 
     /// Get the number of lines in the snapshot.
     #[must_use]
-    pub const fn line_count(&self) -> usize {
-        self.lines.len()
+    pub fn line_count(&self) -> usize {
+        self.text.line_count()
     }
 
     /// Check if the snapshot is empty.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.lines.is_empty()
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
     }
 }

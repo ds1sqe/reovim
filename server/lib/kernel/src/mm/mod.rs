@@ -51,6 +51,11 @@ mod cache;
 mod delimiter;
 mod edit;
 mod position;
+mod rope;
+
+// Re-export Rope for snapshot types in block/. Not exposed via api::v1
+// because the mm module itself is private.
+pub use rope::Rope;
 mod saturator;
 mod selection;
 mod snapshot;

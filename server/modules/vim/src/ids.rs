@@ -17,7 +17,7 @@
 //! assert_eq!(CHANGE.name(), "change");
 //! ```
 
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 use reovim_kernel::api::v1::{CommandId, ModuleId};
 
@@ -56,38 +56,37 @@ pub struct OperatorId {
     /// The module that owns this operator.
     module: ModuleId,
     /// The local name within the module.
-    name: &'static str,
+    name: Cow<'static, str>,
 }
 
 impl OperatorId {
-    /// Create a new operator identifier.
+    /// Create a new operator identifier from static strings.
     #[must_use]
     pub const fn new(module: ModuleId, name: &'static str) -> Self {
-        Self { module, name }
+        Self {
+            module,
+            name: Cow::Borrowed(name),
+        }
     }
 
     /// Create an operator identifier from a qualified string like "module:operator".
     ///
     /// This method is intended for dynamic use cases like FFI where operator IDs
-    /// are specified as strings at runtime. The strings are leaked to get
-    /// `'static` lifetime, so this should only be used for long-lived operators.
+    /// are specified as strings at runtime.
     ///
     /// If the string doesn't contain ':', the entire string is treated as the
     /// operator name with "unknown" as the module.
     #[must_use]
-    pub fn from_qualified_leaked(qualified: String) -> Self {
+    pub fn from_qualified(qualified: String) -> Self {
         let (module_str, name_str) = if let Some(idx) = qualified.find(':') {
             (qualified[..idx].to_string(), qualified[idx + 1..].to_string())
         } else {
             ("unknown".to_string(), qualified)
         };
 
-        let module_static: &'static str = Box::leak(module_str.into_boxed_str());
-        let name_static: &'static str = Box::leak(name_str.into_boxed_str());
-
         Self {
-            module: ModuleId::new(module_static),
-            name: name_static,
+            module: ModuleId::from_string(module_str),
+            name: Cow::Owned(name_str),
         }
     }
 
@@ -99,8 +98,14 @@ impl OperatorId {
 
     /// Get the local name.
     #[must_use]
-    pub const fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the local name as an owned `Cow`.
+    #[must_use]
+    pub fn name_owned(&self) -> Cow<'static, str> {
+        self.name.clone()
     }
 }
 
@@ -450,3 +455,25 @@ pub const AROUND_TAG: CommandId = CommandId::new(MODULE, "around-tag");
 pub const AROUND_SENTENCE: CommandId = CommandId::new(MODULE, "around-sentence");
 /// Around paragraph text object.
 pub const AROUND_PARAGRAPH: CommandId = CommandId::new(MODULE, "around-paragraph");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === Coverage: lines 107-109 — OperatorId::name_owned() ===
+
+    #[test]
+    fn operator_id_name_owned_static() {
+        // Constant uses Cow::Borrowed — name_owned() clones the Cow.
+        let owned = DELETE.name_owned();
+        assert_eq!(owned, "delete");
+    }
+
+    #[test]
+    fn operator_id_name_owned_dynamic() {
+        // from_qualified uses Cow::Owned — name_owned() clones the Cow.
+        let op = OperatorId::from_qualified("mymod:custom-op".to_string());
+        let owned = op.name_owned();
+        assert_eq!(owned, "custom-op");
+    }
+}

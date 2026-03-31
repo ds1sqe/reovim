@@ -1200,9 +1200,9 @@ mod snapshot_tests {
         let buffer_id = BufferId::new();
         let timestamp = std::time::SystemTime::now();
 
-        let snapshot = Snapshot::from_parts(lines.clone(), cursor, buffer_id, timestamp);
+        let snapshot = Snapshot::from_parts(&lines, cursor, buffer_id, timestamp);
 
-        assert_eq!(snapshot.lines(), &lines[..]);
+        assert_eq!(snapshot.lines(), lines);
         assert_eq!(snapshot.cursor(), cursor);
         assert_eq!(snapshot.buffer_id(), buffer_id);
     }
@@ -1305,14 +1305,32 @@ mod snapshot_tests {
         let buffer_id = BufferId::new();
         let timestamp = std::time::SystemTime::now();
 
-        let snapshot = Snapshot::from_parts(lines, cursor, buffer_id, timestamp);
+        let snapshot = Snapshot::from_parts(&lines, cursor, buffer_id, timestamp);
 
-        assert_eq!(snapshot.lines(), &["A", "B", "C"]);
+        assert_eq!(snapshot.lines(), vec!["A", "B", "C"]);
         assert_eq!(snapshot.cursor(), Position::new(2, 1));
         assert_eq!(snapshot.buffer_id(), buffer_id);
         assert_eq!(snapshot.timestamp(), timestamp);
         assert_eq!(snapshot.line_count(), 3);
         assert!(!snapshot.is_empty());
+    }
+
+    // === Coverage: line 102 — Rope::new() branch when lines is empty ===
+
+    #[test]
+    fn test_from_parts_empty_lines() {
+        let lines: Vec<String> = vec![];
+        let cursor = Position::origin();
+        let buffer_id = BufferId::new();
+        let timestamp = std::time::SystemTime::now();
+
+        let snapshot = Snapshot::from_parts(&lines, cursor, buffer_id, timestamp);
+
+        assert!(snapshot.is_empty());
+        assert_eq!(snapshot.line_count(), 0);
+        assert_eq!(snapshot.char_count(), 0);
+        assert_eq!(snapshot.cursor(), Position::origin());
+        assert_eq!(snapshot.buffer_id(), buffer_id);
     }
 }
 

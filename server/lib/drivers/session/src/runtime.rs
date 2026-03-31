@@ -669,18 +669,23 @@ impl BufferApi for SessionRuntime<'_> {
         if start.line == end.line {
             // Single line case
             if let Some(line) = buf.line(start.line) {
-                let line_chars: Vec<char> = line.chars().collect();
-                let start_col = start.column.min(line_chars.len());
-                let end_col = end.column.min(line_chars.len());
-                result.extend(&line_chars[start_col..end_col]);
+                let char_len = line.chars().count();
+                let start_col = start.column.min(char_len);
+                let end_col = end.column.min(char_len);
+                if start_col < end_col {
+                    let sb = char_col_to_byte(line, start_col);
+                    let eb = char_col_to_byte(line, end_col);
+                    result.push_str(&line[sb..eb]);
+                }
             }
         } else {
             // Multi-line case
             // First line: from start column to end of line
             if let Some(line) = buf.line(start.line) {
-                let line_chars: Vec<char> = line.chars().collect();
-                let start_col = start.column.min(line_chars.len());
-                result.extend(&line_chars[start_col..]);
+                let char_len = line.chars().count();
+                let start_col = start.column.min(char_len);
+                let sb = char_col_to_byte(line, start_col);
+                result.push_str(&line[sb..]);
                 result.push('\n');
             }
 
@@ -694,9 +699,10 @@ impl BufferApi for SessionRuntime<'_> {
 
             // Last line: from start to end column
             if let Some(line) = buf.line(end.line) {
-                let line_chars: Vec<char> = line.chars().collect();
-                let end_col = end.column.min(line_chars.len());
-                result.extend(&line_chars[..end_col]);
+                let char_len = line.chars().count();
+                let end_col = end.column.min(char_len);
+                let eb = char_col_to_byte(line, end_col);
+                result.push_str(&line[..eb]);
             }
         }
 
@@ -929,10 +935,7 @@ impl WindowApi for SessionRuntime<'_> {
             // #491: use per-client windows
             return Err(WindowError::CannotCloseLastWindow);
         }
-        // Find and remove the window
-        let idx = self.windows.windows.iter().position(|w| w.id == window); // #491: use per-client windows
-        if let Some(idx) = idx {
-            self.windows.windows.remove(idx); // #491: use per-client windows
+        if self.windows.remove(window) {
             self.changes.record_window_closed(window);
             Ok(())
         } else {
@@ -1520,9 +1523,7 @@ impl CompositorApi for SessionRuntime<'_> {
             .ok_or(CompositorError::CannotCloseLastWindow)?;
 
         // Remove closed window from per-client WindowLayout
-        if let Some(idx) = self.windows.windows.iter().position(|w| w.id == current) {
-            self.windows.windows.remove(idx);
-        }
+        self.windows.remove(current);
         self.windows.set_active(neighbor);
 
         self.changes.record_window_closed(current);
@@ -1565,6 +1566,7 @@ impl CompositorApi for SessionRuntime<'_> {
         // Close all other windows and emit events
         for window in &windows {
             layer.close_tiled(*window);
+            self.windows.remove(*window);
             self.changes.record_window_closed(*window);
         }
 
@@ -1957,6 +1959,12 @@ impl CompositorApi for SessionRuntime<'_> {
         Some(self.tabs.active_tab_id())
     }
 }
+
+/// Convert a char-column index to a byte offset within a `&str`.
+fn char_col_to_byte(line: &str, col: usize) -> usize {
+    line.char_indices().nth(col).map_or(line.len(), |(b, _)| b)
+}
+
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;

@@ -132,7 +132,7 @@ fn test_change_characterwise_single_line() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[" world"]);
+    assert_eq!(buf.content(), " world");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "hello");
@@ -276,7 +276,7 @@ fn test_change_characterwise_empty_range() {
     // Buffer should be unchanged for empty range
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello"]);
+    assert_eq!(buf.content(), "hello");
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn test_change_characterwise_single_char() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["ello"]);
+    assert_eq!(buf.content(), "ello");
 
     drop(op_ctx);
     assert_eq!(registers.get().text, "h");

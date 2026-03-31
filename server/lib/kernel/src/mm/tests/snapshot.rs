@@ -117,7 +117,7 @@ fn test_snapshot_immutability() {
 fn test_snapshot_new() {
     let snapshot = BufferSnapshot::new(
         BufferId::new(),
-        vec!["Line 1".to_string(), "Line 2".to_string()],
+        &["Line 1".to_string(), "Line 2".to_string()],
         Cursor::origin(),
         Some("/path/to/file".to_string()),
         true,
@@ -205,4 +205,17 @@ fn test_snapshot_text_in_range_same_pos() {
 
     let text = snapshot.text_in_range(Position::new(0, 2), Position::new(0, 2));
     assert_eq!(text, "");
+}
+
+// === Coverage: line 117 — Rope::new() branch when lines is empty ===
+
+#[test]
+fn test_snapshot_new_empty_lines() {
+    let snapshot = BufferSnapshot::new(BufferId::new(), &[], Cursor::origin(), None, false);
+
+    assert!(snapshot.is_empty());
+    assert_eq!(snapshot.line_count(), 0);
+    assert_eq!(snapshot.content(), "");
+    assert!(!snapshot.modified);
+    assert!(snapshot.file_path.is_none());
 }

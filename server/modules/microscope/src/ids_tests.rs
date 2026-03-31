@@ -25,16 +25,16 @@ fn command_ids_have_correct_module() {
 
 #[test]
 fn command_ids_are_unique() {
-    let names: Vec<&str> = vec![
-        OPEN_FILES.name(),
-        OPEN_BUFFERS.name(),
-        OPEN_GREP.name(),
-        OPEN_COMMANDS.name(),
-        SELECT_ITEM.name(),
-        CLOSE.name(),
-        NEXT_ITEM.name(),
-        PREV_ITEM.name(),
-        BACKSPACE.name(),
+    let names: Vec<std::borrow::Cow<'static, str>> = vec![
+        OPEN_FILES.name_owned(),
+        OPEN_BUFFERS.name_owned(),
+        OPEN_GREP.name_owned(),
+        OPEN_COMMANDS.name_owned(),
+        SELECT_ITEM.name_owned(),
+        CLOSE.name_owned(),
+        NEXT_ITEM.name_owned(),
+        PREV_ITEM.name_owned(),
+        BACKSPACE.name_owned(),
     ];
     let mut deduped = names.clone();
     deduped.sort_unstable();

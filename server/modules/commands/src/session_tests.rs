@@ -114,10 +114,10 @@ fn test_command_handlers_collection_count() {
 #[test]
 fn test_command_handlers_collection_ids() {
     let cmds = command_handlers();
-    let ids: Vec<_> = cmds.iter().map(|c| c.id().name()).collect();
-    assert!(ids.contains(&"detach"));
-    assert!(ids.contains(&"servers"));
-    assert!(ids.contains(&"kill-server"));
+    let ids: Vec<_> = cmds.iter().map(|c| c.id().name_owned()).collect();
+    assert!(ids.iter().any(|n| n == "detach"));
+    assert!(ids.iter().any(|n| n == "servers"));
+    assert!(ids.iter().any(|n| n == "kill-server"));
 }
 
 #[test]
