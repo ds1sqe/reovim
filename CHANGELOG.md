@@ -14,6 +14,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **vfs**: replace lossy `From<io::Error>` with `VfsError::from_io(err, path)` — error messages now include the file path instead of showing empty string (#715)
 - **vim**: `load_personality_manifest` now propagates parse errors instead of swallowing them — module correctly fails to init if vim.toml is corrupted (#718)
 - **lsp**: monitor LSP saturator task with watcher — if the task panics, `active` flag is cleared and user is notified instead of silently losing all LSP features (#719)
+- **trace**: `init_profiling_with_filter` now uses the filter argument via `TracingProfiler::with_filter` instead of discarding it (#716)
 
 ## [0.14.3] - 2026-03-30
 
