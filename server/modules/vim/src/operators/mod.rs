@@ -49,9 +49,7 @@ pub use commands::{
 /// Used by operators to safely slice `&str` at character boundaries,
 /// fixing the pre-existing char/byte conflation bug (#711 Phase 4).
 fn char_col_to_byte(line: &str, col: usize) -> usize {
-    line.char_indices()
-        .nth(col)
-        .map_or(line.len(), |(b, _)| b)
+    line.char_indices().nth(col).map_or(line.len(), |(b, _)| b)
 }
 
 /// Returns all operators provided by this module.

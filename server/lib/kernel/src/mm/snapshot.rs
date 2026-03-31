@@ -44,8 +44,7 @@
 //! assert_eq!(snapshot.content(), "Hello\nWorld"); // Original content
 //! ```
 
-use super::rope::Rope;
-use super::{BufferId, Cursor, Position};
+use super::{BufferId, Cursor, Position, rope::Rope};
 
 /// Read-only snapshot of buffer state.
 ///

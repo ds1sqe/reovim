@@ -34,9 +34,7 @@
 //! - A single line longer than `MAX_CHUNK_BYTES` gets its own
 //!   oversized leaf (the only exception to the size limit).
 
-use std::fmt;
-use std::ops::Range;
-use std::sync::Arc;
+use std::{fmt, ops::Range, sync::Arc};
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -357,10 +355,7 @@ impl Rope {
     // Used in tests and Phase 3+ snapshot migration.
     #[allow(dead_code)]
     pub const fn lines(&self) -> RopeLines<'_> {
-        RopeLines {
-            rope: self,
-            idx: 0,
-        }
+        RopeLines { rope: self, idx: 0 }
     }
 
     /// Iterate over raw leaf chunks (yields `&str` per chunk).
@@ -738,11 +733,10 @@ fn byte_to_pos(node: &RopeNode, byte_offset: usize) -> (usize, usize) {
 /// Convert char offset to byte offset within a node.
 fn char_to_byte_offset(node: &RopeNode, char_offset: usize) -> usize {
     match &node.kind {
-        NodeKind::Leaf { text } => {
-            text.char_indices()
-                .nth(char_offset)
-                .map_or(text.len(), |(b, _)| b)
-        }
+        NodeKind::Leaf { text } => text
+            .char_indices()
+            .nth(char_offset)
+            .map_or(text.len(), |(b, _)| b),
         NodeKind::Internal { children } => {
             let mut remaining = char_offset;
             let mut offset = 0usize;
@@ -782,9 +776,7 @@ fn byte_to_char_offset(node: &RopeNode, byte_offset: usize) -> usize {
 
 /// Convert a char index to a byte offset within a `&str`.
 fn char_to_byte_in(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map_or(s.len(), |(b, _)| b)
+    s.char_indices().nth(char_idx).map_or(s.len(), |(b, _)| b)
 }
 
 // ─── Mutation Helpers ───────────────────────────────────────────────────────
@@ -816,8 +808,7 @@ fn insert_at(node: &RopeNode, byte_offset: usize, text: &str) -> Vec<Arc<RopeNod
             let replacement = insert_at(&children[child_idx], local_offset, text);
 
             // Build new children list with replacement
-            let mut new_children =
-                Vec::with_capacity(children.len() + replacement.len());
+            let mut new_children = Vec::with_capacity(children.len() + replacement.len());
             new_children.extend(children[..child_idx].iter().cloned());
             new_children.extend(replacement);
             new_children.extend(children[child_idx + 1..].iter().cloned());
@@ -840,9 +831,7 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
         return vec![Arc::new(RopeNode {
             metrics: node.metrics,
             kind: match &node.kind {
-                NodeKind::Leaf { text } => NodeKind::Leaf {
-                    text: text.clone(),
-                },
+                NodeKind::Leaf { text } => NodeKind::Leaf { text: text.clone() },
                 NodeKind::Internal { children } => NodeKind::Internal {
                     children: children.clone(),
                 },
@@ -915,10 +904,7 @@ fn remove_range(node: &RopeNode, range: Range<usize>) -> Vec<Arc<RopeNode>> {
 }
 
 /// Find which child contains `byte_offset`, returning `(child_index, local_offset)`.
-fn find_child_for_byte(
-    children: &[Arc<RopeNode>],
-    byte_offset: usize,
-) -> (usize, usize) {
+fn find_child_for_byte(children: &[Arc<RopeNode>], byte_offset: usize) -> (usize, usize) {
     let mut offset = 0usize;
     for (i, child) in children.iter().enumerate() {
         let cb = child.metrics.byte_len;
@@ -959,9 +945,7 @@ fn split_children(children: &[Arc<RopeNode>]) -> Vec<Arc<RopeNode>> {
 fn last_byte_of(node: &RopeNode) -> Option<u8> {
     match &node.kind {
         NodeKind::Leaf { text } => text.as_bytes().last().copied(),
-        NodeKind::Internal { children } => {
-            children.last().and_then(|c| last_byte_of(c))
-        }
+        NodeKind::Internal { children } => children.last().and_then(|c| last_byte_of(c)),
     }
 }
 

@@ -546,11 +546,7 @@ fn chunk_text_newline_aligned() {
         }
         // Every chunk should be <= MAX_CHUNK_BYTES (unless it's a single long line)
         // Since our test lines are short, all should fit
-        assert!(
-            chunk.len() <= MAX_CHUNK_BYTES,
-            "chunk {i} too large: {} bytes",
-            chunk.len()
-        );
+        assert!(chunk.len() <= MAX_CHUNK_BYTES, "chunk {i} too large: {} bytes", chunk.len());
     }
 
     // Concatenation equals original
@@ -764,17 +760,9 @@ fn lines_match_split_newline() {
         let r = Rope::from_str(text);
         let expected: Vec<&str> = text.split('\n').collect();
         for (i, &exp) in expected.iter().enumerate() {
-            assert_eq!(
-                r.line(i),
-                Some(exp),
-                "line {i} mismatch for text {text:?}"
-            );
+            assert_eq!(r.line(i), Some(exp), "line {i} mismatch for text {text:?}");
         }
-        assert_eq!(
-            r.line_count(),
-            expected.len(),
-            "line_count mismatch for text {text:?}"
-        );
+        assert_eq!(r.line_count(), expected.len(), "line_count mismatch for text {text:?}");
     }
     // Empty rope: 0 lines (special case — split('\n') on "" gives [""])
     let r = Rope::from_str("");

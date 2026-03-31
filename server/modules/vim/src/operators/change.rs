@@ -82,13 +82,11 @@ impl Operator for ChangeOperator {
             let delete_end = if clamped_end + 1 < line_count {
                 // Not the last line - delete content but preserve start.line's newline
                 // Delete all lines but keep start.line as empty (with its newline)
-                let end_line_char_len =
-                    buffer.line(clamped_end).map_or(0, |l| l.chars().count());
+                let end_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
                 reovim_kernel::api::v1::Position::new(clamped_end, end_line_char_len)
             } else {
                 // End line is last line - delete to end of content (keep line structure)
-                let last_line_char_len =
-                    buffer.line(clamped_end).map_or(0, |l| l.chars().count());
+                let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
                 reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len)
             };
 

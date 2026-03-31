@@ -16,8 +16,7 @@
 
 use std::hash::{Hash, Hasher};
 
-use super::rope::Rope;
-use super::{BufferId, Position};
+use super::{BufferId, Position, rope::Rope};
 
 /// A text buffer with rope-based storage.
 ///

@@ -1962,9 +1962,7 @@ impl CompositorApi for SessionRuntime<'_> {
 
 /// Convert a char-column index to a byte offset within a `&str`.
 fn char_col_to_byte(line: &str, col: usize) -> usize {
-    line.char_indices()
-        .nth(col)
-        .map_or(line.len(), |(b, _)| b)
+    line.char_indices().nth(col).map_or(line.len(), |(b, _)| b)
 }
 
 #[cfg(test)]
