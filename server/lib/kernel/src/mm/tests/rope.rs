@@ -1367,3 +1367,542 @@ fn remove_spanning_internal_boundaries() {
         "alignment broken after removing across internal boundaries"
     );
 }
+
+// ─── Coverage: ChunksIter::next() empty-leaf continue (line 408) ─────────────
+
+#[test]
+fn chunks_iter_skips_empty_leaf_node() {
+    // Construct a rope with an empty leaf directly using internal APIs.
+    // An internal node holding [empty_leaf, real_leaf] should yield
+    // only the real leaf's text from the chunks iterator.
+    let empty_leaf = RopeNode::new_leaf(String::new());
+    let real_leaf = RopeNode::new_leaf("hello".to_string());
+    let root = RopeNode::new_internal(vec![empty_leaf, real_leaf]);
+    let rope = Rope { root };
+
+    let chunks: Vec<&str> = rope.chunks().collect();
+    assert_eq!(chunks, vec!["hello"], "empty leaf should be skipped");
+}
+
+#[test]
+fn chunks_iter_multiple_empty_leaves() {
+    // Multiple empty leaves interspersed with real content
+    let leaves = vec![
+        RopeNode::new_leaf(String::new()),
+        RopeNode::new_leaf("aaa\n".to_string()),
+        RopeNode::new_leaf(String::new()),
+        RopeNode::new_leaf("bbb".to_string()),
+        RopeNode::new_leaf(String::new()),
+    ];
+    let root = RopeNode::new_internal(leaves);
+    let rope = Rope { root };
+
+    let chunks: Vec<&str> = rope.chunks().collect();
+    assert_eq!(chunks, vec!["aaa\n", "bbb"]);
+}
+
+// ─── Coverage: PartialEq chunk-by-chunk comparison (lines 457, 461, 463) ─────
+
+#[test]
+fn eq_multi_chunk_different_boundaries_same_content() {
+    // Build two ropes with identical content but different internal structure.
+    // Rope 1: from_str (balanced tree).
+    // Rope 2: built by repeated inserts (different chunk boundaries).
+    use std::fmt::Write;
+    let mut text = String::new();
+    for i in 0..200 {
+        writeln!(text, "line {i:04}").unwrap();
+    }
+    let r1 = Rope::from_str(&text);
+    // Build r2 by inserting line by line
+    let mut r2 = Rope::new();
+    for i in 0..200 {
+        let line = format!("line {i:04}\n");
+        r2 = r2.insert(r2.byte_len(), &line);
+    }
+    assert_eq!(r1.content(), r2.content(), "content should match");
+    assert_eq!(r1, r2, "PartialEq should succeed despite different tree structure");
+}
+
+#[test]
+fn eq_left_exhausted_right_has_more() {
+    // Exercise the `None => return r_remaining.is_empty() && right.next().is_none()`
+    // branch (line 455): left chunks exhausted but right still has data.
+    // Same byte_len check will short-circuit for different lengths,
+    // so we need same byte_len but left exhausts first.
+    // We can't easily do that with from_str (same content = same chunks).
+    // Instead, construct manually:
+    let left = Rope {
+        root: RopeNode::new_internal(vec![RopeNode::new_leaf("abc".to_string())]),
+    };
+    let right = Rope {
+        root: RopeNode::new_internal(vec![
+            RopeNode::new_leaf("ab".to_string()),
+            RopeNode::new_leaf("c".to_string()),
+        ]),
+    };
+    // Same byte_len (3), same content — should be equal
+    assert_eq!(left, right);
+}
+
+#[test]
+fn eq_right_exhausted_left_has_remaining() {
+    // Exercise the `None => return l_remaining.is_empty()` branch (line 461):
+    // right chunks exhausted while left still has remaining bytes.
+    // Two ropes with same byte_len=3 but right has fewer chunks.
+    let left = Rope {
+        root: RopeNode::new_internal(vec![
+            RopeNode::new_leaf("ab".to_string()),
+            RopeNode::new_leaf("c".to_string()),
+        ]),
+    };
+    let right = Rope {
+        root: RopeNode::new_internal(vec![RopeNode::new_leaf("abc".to_string())]),
+    };
+    assert_eq!(left, right);
+}
+
+#[test]
+fn eq_left_exhausted_right_not_empty() {
+    // left exhausted, r_remaining not empty → should return false
+    // Need same byte_len but different content. Both 3 bytes.
+    let left = Rope {
+        root: RopeNode::new_leaf("abc".to_string()),
+    };
+    // Right: "ab" + "d" = 3 bytes but "abd" != "abc"
+    let right = Rope {
+        root: RopeNode::new_internal(vec![
+            RopeNode::new_leaf("ab".to_string()),
+            RopeNode::new_leaf("d".to_string()),
+        ]),
+    };
+    // byte_len is same (3), but content differs
+    assert_ne!(left, right);
+}
+
+// ─── Coverage: floor_char_boundary backtrack (lines 540, 546, 547) ────────────
+
+#[test]
+fn floor_char_boundary_at_multibyte_boundary() {
+    // 4-byte char (emoji) placed so MAX_CHUNK_BYTES falls in the middle of it.
+    // floor_char_boundary must backtrack past continuation bytes.
+    let emoji = "\u{1F600}"; // 4 bytes
+    assert_eq!(emoji.len(), 4);
+
+    // Create a string where a multi-byte char straddles a position.
+    // "a".repeat(1021) + emoji (4 bytes) = 1025 bytes.
+    // floor_char_boundary(s, 1024) should land at 1021 (start of emoji).
+    let s = format!("{}{emoji}rest", "a".repeat(1021));
+    let result = floor_char_boundary(&s, 1024);
+    assert_eq!(result, 1021, "should backtrack to start of 4-byte char");
+
+    // Also test 2-byte char at boundary
+    let s2 = format!("{}{}tail", "b".repeat(1023), "\u{00E9}"); // 1023 + 2 = 1025
+    let result2 = floor_char_boundary(&s2, 1024);
+    assert_eq!(result2, 1023, "should backtrack to start of 2-byte char");
+}
+
+#[test]
+fn floor_char_boundary_past_end() {
+    // Exercise the `byte_idx >= s.len()` early return (line 540)
+    let s = "hello";
+    let result = floor_char_boundary(s, 100);
+    assert_eq!(result, 5, "should return s.len() when byte_idx >= len");
+}
+
+#[test]
+fn floor_char_boundary_at_ascii() {
+    // When byte_idx lands on an ASCII char, no backtracking needed
+    let s = "hello\u{00E9}world";
+    let result = floor_char_boundary(s, 3);
+    assert_eq!(result, 3, "ASCII boundary needs no backtracking");
+}
+
+// ─── Coverage: build_tree single-node exit (line 586) ─────────────────────────
+
+#[test]
+fn build_tree_exactly_bmax_leaves() {
+    // B_MAX = 8 leaves → build_tree should create one internal node,
+    // then on the next loop iteration nodes.len() == 1 → line 585-586
+    let leaves: Vec<Arc<RopeNode>> = (0..B_MAX)
+        .map(|i| RopeNode::new_leaf(format!("leaf{i}\n")))
+        .collect();
+    let root = build_tree(leaves);
+    assert!(!root.is_leaf(), "B_MAX leaves should produce internal node");
+    if let NodeKind::Internal { children } = &root.kind {
+        assert_eq!(children.len(), B_MAX);
+    }
+}
+
+#[test]
+fn build_tree_bmax_plus_one_leaves() {
+    // B_MAX + 1 = 9 leaves → must split into two groups.
+    // After grouping: 2 internal nodes → loop again → nodes.len() == 2 <= B_MAX
+    // → wraps in final internal node (line 588).
+    let leaves: Vec<Arc<RopeNode>> = (0..=B_MAX)
+        .map(|i| RopeNode::new_leaf(format!("leaf{i}\n")))
+        .collect();
+    let root = build_tree(leaves);
+    assert!(!root.is_leaf());
+    // Total line count should be B_MAX + 1
+    assert_eq!(root.metrics.line_count, B_MAX + 1);
+}
+
+// ─── Coverage: nodes_to_root 0-node branch (line 595) ─────────────────────────
+
+#[test]
+fn nodes_to_root_empty_vec() {
+    // Directly test nodes_to_root with empty vec
+    let root = nodes_to_root(vec![]);
+    assert!(root.is_leaf());
+    assert_eq!(root.metrics.byte_len, 0);
+}
+
+// ─── Coverage: line_at Internal node (lines 630-631, 642) ─────────────────────
+
+#[test]
+fn line_at_past_last_line_in_internal_node() {
+    // Create a rope with internal nodes and query a line past the last child.
+    // This exercises the `None` return (line 642) in the Internal branch.
+    let (r, _) = make_big_rope();
+    // line_count is 2001 (2000 lines + trailing empty). line(2001) is past end.
+    assert_eq!(r.line(2001), None);
+}
+
+#[test]
+fn line_at_leaf_past_lines_returns_none() {
+    // Exercise the `None` return (line 631) in the Leaf branch of line_at.
+    // A leaf with "hello" has line_count=1, so requesting line 1 should return None.
+    let node = RopeNode::new_leaf("hello".to_string());
+    assert_eq!(line_at(&node, 1), None);
+}
+
+#[test]
+fn line_at_leaf_no_trailing_newline_last_segment() {
+    // Exercise lines 628-630: the last segment (no trailing newline) path.
+    // A leaf "abc\ndef" has 2 lines. Requesting line 1 should return "def".
+    let node = RopeNode::new_leaf("abc\ndef".to_string());
+    assert_eq!(line_at(&node, 0), Some("abc"));
+    assert_eq!(line_at(&node, 1), Some("def")); // lines 628-630
+    assert_eq!(line_at(&node, 2), None); // line 631
+}
+
+// ─── Coverage: pos_to_byte Internal node (lines 679-680, 692) ─────────────────
+
+#[test]
+fn pos_to_byte_past_last_line_in_internal() {
+    // Exercise the fallthrough `offset` return (line 692) in Internal branch.
+    // Query a line past all children → falls through and returns total byte_len.
+    let (r, text) = make_big_rope();
+    // Line 99999 doesn't exist, so pos_to_byte should clamp/fall through.
+    let result = r.position_to_byte(99999, 0);
+    assert_eq!(result, text.len(), "past-end line should return total byte_len");
+}
+
+#[test]
+fn pos_to_byte_leaf_past_lines_returns_text_len() {
+    // Exercise line 680: leaf case where current_line never matches target_line.
+    let node = RopeNode::new_leaf("hello".to_string());
+    // target_line=5, but leaf only has line 0 → falls through to text.len()
+    let result = pos_to_byte(&node, 5, 0);
+    assert_eq!(result, 5);
+}
+
+// ─── Coverage: remove_range empty range on internal (lines 831-837) ───────────
+
+#[test]
+fn remove_range_empty_on_internal_node() {
+    // Calling remove_range with an empty range on an internal node should
+    // clone the node (lines 831-837).
+    let (r, _text) = make_big_rope();
+    // Rope::remove short-circuits empty ranges before calling remove_range,
+    // so we need to call remove_range directly on an internal node.
+    let cloned = remove_range(&r.root, 100..100);
+    assert_eq!(cloned.len(), 1);
+    // Verify the cloned node has the same metrics
+    assert_eq!(cloned[0].metrics.byte_len, r.byte_len());
+    // Verify it's an internal node (line 835-836)
+    assert!(!cloned[0].is_leaf());
+    // Also test on a leaf
+    let leaf_node = RopeNode::new_leaf("hello".to_string());
+    let cloned_leaf = remove_range(&leaf_node, 2..2);
+    assert_eq!(cloned_leaf.len(), 1);
+    assert!(cloned_leaf[0].is_leaf());
+    if let NodeKind::Leaf { text } = &cloned_leaf[0].kind {
+        assert_eq!(text, "hello");
+    }
+}
+
+// ─── Coverage: remove_range leaf partial → empty (line 857) ───────────────────
+
+#[test]
+fn remove_range_leaf_partial_resulting_in_empty() {
+    // Remove all content from a leaf via partial range logic.
+    // When s=0 and e=text.len(), the early return on line 850 fires.
+    // For line 857, we need s > 0 or e < text.len() initially,
+    // but the resulting new_text is empty.
+    // Actually, line 856-857: `if new_text.is_empty() { vec![] }`
+    // This happens when text[..s] and text[e..] are both empty.
+    // That means s=0 and e=text.len(), which is caught by line 850.
+    // Wait — re-read: line 850 checks `if s == 0 && e >= text.len()`.
+    // So for line 857, we need a case where after clamping:
+    // - NOT (s == 0 && e >= text.len()), i.e., s > 0 or e < text.len()
+    // - BUT text[..s] + text[e..] is empty
+    // That's impossible unless s > 0 and text[..s] is empty, which can't happen.
+    //
+    // Actually, looking more carefully: the leaf text could be something like
+    // where s > 0, e < text.len(), but both slices are empty — that can't happen
+    // with s > 0.
+    //
+    // Let me re-examine: remove_range is called from the internal node path too.
+    // The internal node calculates ls and le which could result in removing
+    // everything from a leaf. For example, range covers entirely:
+    // `range.start <= cs && range.end >= ce` → that's the "entirely within range" check.
+    // But if partially overlapping from both sides?
+    //
+    // Actually, the path to line 857 is: leaf partial remove where text[..s]
+    // is empty AND text[e..] is empty. That requires s=0 and e=text.len(),
+    // which IS caught by line 850. So line 857 may be dead code or only
+    // reachable through a very specific internal recursion path.
+    //
+    // Let me test it by directly calling remove_range on a leaf with
+    // a range that removes all characters but where s != 0.
+    // E.g., leaf "ab", remove range 0..2 → line 850 catches it.
+    // leaf "ab", remove range 0..3 → e clamped to 2, s=0, e=2=len → line 850.
+    //
+    // The only way: leaf has text "a", range 1..1 → empty range (line 830).
+    // Actually wait, text could have length 0 after construction somehow.
+    // Or: in the internal node recursion, a child leaf gets ls=0, le=cb,
+    // which means s=0, e=text.len() → line 850.
+    //
+    // I think line 857 is only reachable when remove produces empty text
+    // from partial slicing. That can happen if the rope node was an
+    // "unclean" leaf with empty text — but Rope::from_str never creates those.
+    // Let me just call remove_range directly on a crafted node.
+    let leaf = RopeNode::new_leaf("x".to_string());
+    // remove_range with range that leaves empty text via partial paths.
+    // With text="x", s=0, e=1: line 850 catches (s==0 && e>=1).
+    // Hmm, it does. Let's verify we at least have the code compile.
+    // The real path: internal node calls remove_range(child, 0..cb).
+    // That hits line 850 → returns vec![]. Fine, line 857 is defensive.
+    //
+    // Let's just verify the defensive empty-check works by constructing
+    // a scenario where a leaf's content is reduced to empty through the
+    // non-early-return path. This isn't possible in normal execution,
+    // but we can test the branch exists and the logic is correct.
+    // At minimum, exercise the surrounding code.
+    let result = remove_range(&leaf, 0..1);
+    assert!(result.is_empty(), "removing all content from leaf should return empty vec");
+}
+
+// ─── Coverage: find_child_for_byte past-end branch (lines 918-919) ────────────
+
+#[test]
+fn find_child_for_byte_past_end() {
+    // Create children and query with byte offset past the total size.
+    let children = vec![
+        RopeNode::new_leaf("aaa\n".to_string()),
+        RopeNode::new_leaf("bbb\n".to_string()),
+    ];
+    // Total bytes = 8. Query at byte 100 (past end).
+    let (idx, local) = find_child_for_byte(&children, 100);
+    assert_eq!(idx, 1, "should return last child index");
+    assert_eq!(local, 4, "should return last child's byte_len");
+}
+
+#[test]
+fn find_child_for_byte_exact_boundary() {
+    // Query at exact boundary between children.
+    let children = vec![
+        RopeNode::new_leaf("aaa\n".to_string()), // 4 bytes
+        RopeNode::new_leaf("bbb\n".to_string()), // 4 bytes
+    ];
+    // Byte 4 is the start of child 1, but find_child_for_byte uses <=,
+    // so byte 4 should be in child 0 (offset 4 <= 0 + 4).
+    let (idx, local) = find_child_for_byte(&children, 4);
+    assert_eq!(idx, 0, "exact end of child 0 should stay in child 0");
+    assert_eq!(local, 4);
+}
+
+// ─── Coverage: split_children B_MAX group branch (line 935) ───────────────────
+
+#[test]
+fn split_children_many_children() {
+    // Create > 2*B_MAX children to trigger the B_MAX group branch (line 935).
+    let children: Vec<Arc<RopeNode>> = (0..B_MAX * 3)
+        .map(|i| RopeNode::new_leaf(format!("c{i}\n")))
+        .collect();
+    let result = split_children(&children);
+    // Should produce multiple internal nodes
+    assert!(result.len() > 1);
+    // Total metrics should be preserved
+    let total_bytes: usize = result.iter().map(|n| n.metrics.byte_len).sum();
+    let expected_bytes: usize = children.iter().map(|n| n.metrics.byte_len).sum();
+    assert_eq!(total_bytes, expected_bytes);
+}
+
+#[test]
+fn split_children_just_over_bmax() {
+    // B_MAX + 1 children to trigger the `remaining <= 2 * B_MAX` split (line 932-933).
+    let children: Vec<Arc<RopeNode>> = (0..=B_MAX)
+        .map(|i| RopeNode::new_leaf(format!("c{i}\n")))
+        .collect();
+    let result = split_children(&children);
+    assert_eq!(result.len(), 2, "should split into 2 groups");
+}
+
+// ─── Coverage: fixup_alignment branches (lines 972-975) ──────────────────────
+
+#[test]
+fn fixup_alignment_both_leaves() {
+    // Test fixup_alignment where both children are leaves and the left
+    // doesn't end with newline. This exercises lines 972-973.
+    let left = RopeNode::new_leaf("hello".to_string()); // no trailing \n
+    let right = RopeNode::new_leaf(" world\n".to_string());
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    // After fixup, the merged text "hello world\n" should be re-chunked.
+    // Since it's small, it stays as one or more leaves.
+    let total: String = children
+        .iter()
+        .map(|n| {
+            let mut s = String::new();
+            collect_text(n, &mut s);
+            s
+        })
+        .collect();
+    assert_eq!(total, "hello world\n");
+}
+
+#[test]
+fn fixup_alignment_with_internal_child() {
+    // Test fixup_alignment where one child is internal. This exercises
+    // the `else` branch at line 974-975: wraps in new_internal.
+    // Left: internal node (doesn't end with \n).
+    let left = RopeNode::new_internal(vec![
+        RopeNode::new_leaf("part1\n".to_string()),
+        RopeNode::new_leaf("part2".to_string()), // no trailing \n
+    ]);
+    let right = RopeNode::new_leaf(" more\n".to_string());
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    let total: String = children
+        .iter()
+        .map(|n| {
+            let mut s = String::new();
+            collect_text(n, &mut s);
+            s
+        })
+        .collect();
+    assert_eq!(total, "part1\npart2 more\n");
+}
+
+#[test]
+fn fixup_alignment_many_leaves_from_merge() {
+    // Test fixup_alignment where merging two children produces > B_MAX leaves,
+    // exercising line 968: `new_leaves.len() > B_MAX → build_tree`.
+    // Create two children whose merged text produces many chunks.
+    use std::fmt::Write;
+    let mut left_text = String::new();
+    for i in 0..100 {
+        writeln!(left_text, "left line {i:04}").unwrap();
+    }
+    // Remove trailing newline so left doesn't end with \n
+    left_text.pop();
+    let mut right_text = String::new();
+    for i in 0..100 {
+        writeln!(right_text, "right line {i:04}").unwrap();
+    }
+    let left = RopeNode::new_leaf(left_text.clone());
+    let right = RopeNode::new_leaf(right_text.clone());
+    let mut children = vec![left, right];
+    fixup_alignment(&mut children);
+    let total: String = children
+        .iter()
+        .map(|n| {
+            let mut s = String::new();
+            collect_text(n, &mut s);
+            s
+        })
+        .collect();
+    assert_eq!(total, format!("{left_text}{right_text}"));
+}
+
+// ─── Coverage: deep mutation then query ──────────────────────────────────────
+
+#[test]
+fn mutated_rope_line_at_deep_child() {
+    // Create a big rope, mutate it, then query lines.
+    // The mutation forces re-balancing so queries go through internal nodes.
+    let (mut r, _) = make_huge_rope();
+    // Insert at various positions to restructure the tree
+    for i in 0..20 {
+        let pos = i * 1000;
+        r = r.insert(pos.min(r.byte_len()), &format!("INSERT{i}\n"));
+    }
+    // Now query lines throughout — exercises internal node line_at
+    for i in (0..r.line_count()).step_by(500) {
+        assert!(r.line(i).is_some(), "line {i} should exist after mutations");
+    }
+}
+
+#[test]
+fn mutated_rope_pos_to_byte_deep_child() {
+    // After mutations, query pos_to_byte through internal nodes.
+    let (mut r, _) = make_huge_rope();
+    for i in 0..10 {
+        r = r.insert(i * 500, "X\n");
+    }
+    // Roundtrip several positions
+    for line_idx in (0..r.line_count()).step_by(1000) {
+        let byte = r.position_to_byte(line_idx, 0);
+        let (l, c) = r.byte_to_position(byte);
+        assert_eq!((l, c), (line_idx, 0), "roundtrip failed for line {line_idx}");
+    }
+}
+
+// ─── Coverage: remove_range on internal node → empty range (line 830) ─────────
+
+#[test]
+fn remove_range_empty_on_leaf() {
+    // Exercise line 830-839 clone path on a leaf node
+    let leaf = RopeNode::new_leaf("abc\ndef\n".to_string());
+    let result = remove_range(&leaf, 3..3);
+    assert_eq!(result.len(), 1);
+    if let NodeKind::Leaf { text } = &result[0].kind {
+        assert_eq!(text, "abc\ndef\n");
+    }
+}
+
+// ─── Coverage: insert forcing find_child_for_byte past-end (lines 918-919) ────
+
+#[test]
+fn insert_past_end_of_big_rope() {
+    // Insert at a byte offset way past the rope's byte_len.
+    // Rope::insert clamps to byte_len, but this tests the path.
+    let (r, text) = make_big_rope();
+    let r2 = r.insert(text.len() + 10000, "PAST_END");
+    // Should be clamped to insert at the end
+    assert!(r2.content().ends_with("PAST_END"));
+    assert_eq!(r2.byte_len(), text.len() + 8);
+}
+
+// ─── Coverage: build_tree with > B_MAX leaves after inner loop (line 585) ─────
+
+#[test]
+fn build_tree_large_leaf_count() {
+    // Create enough leaves to require multiple rounds of grouping.
+    // With B_MAX=8, 100 leaves → first pass: ~13 internal nodes → second pass: 2 → root.
+    let leaves: Vec<Arc<RopeNode>> = (0..100)
+        .map(|i| RopeNode::new_leaf(format!("L{i:03}\n")))
+        .collect();
+    let root = build_tree(leaves);
+    assert!(!root.is_leaf());
+    assert_eq!(root.metrics.line_count, 100);
+    // Verify content roundtrip
+    let mut content = String::new();
+    collect_text(&root, &mut content);
+    for i in 0..100 {
+        assert!(content.contains(&format!("L{i:03}\n")));
+    }
+}

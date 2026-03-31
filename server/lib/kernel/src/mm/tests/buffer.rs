@@ -534,3 +534,80 @@ fn delete_range_on_large_buffer_exercises_chunk_iteration() {
     let deleted = buf.delete_range(Position::new(25, 5), Position::new(25, 10));
     assert_eq!(deleted, "fghij", "should extract the correct byte range across chunks");
 }
+
+// === Coverage: extract_byte_range chunk skip and break (lines 393-395, 397-398) ===
+
+#[test]
+fn extract_byte_range_skips_early_chunks_and_breaks_after() {
+    // Build a multi-chunk buffer and extract a range that starts AFTER the first chunk.
+    // This forces the `chunk_end <= start → continue` path (lines 393-395)
+    // and the `pos >= end → break` path (lines 397-398).
+    use std::fmt::Write;
+    let mut text = String::new();
+    // 200 lines of 30+ chars each → well over 1024 bytes → multiple chunks
+    for i in 0..200 {
+        writeln!(text, "line number {i:05} with padding").unwrap();
+    }
+    let mut buf = Buffer::from_string(&text);
+    assert!(buf.content().len() > 2048, "buffer should have multiple chunks");
+
+    // Delete from the last line — this forces extract_byte_range to skip
+    // all early chunks (continue on line 394) and break after finding the
+    // range (break on line 398).
+    let deleted = buf.delete_range(Position::new(199, 0), Position::new(199, 4));
+    assert_eq!(deleted, "line", "should extract text from the last chunk");
+}
+
+// === Coverage: delete_at resulting in empty deleted text (branch 284:1) ===
+
+#[test]
+fn delete_at_at_very_end_yields_empty_not_modified() {
+    // delete_at where byte_start >= byte_end after clamping.
+    // Position at end of buffer content → byte_start == byte_end.
+    let mut buf = Buffer::from_string("abc");
+    let deleted = buf.delete_at(Position::new(0, 3), 0);
+    assert_eq!(deleted, "");
+    assert!(!buf.is_modified(), "empty deletion should not set modified");
+}
+
+// === Coverage: delete_range resulting in empty deleted text (branch 314:1) ===
+
+#[test]
+fn delete_range_zero_width_not_modified() {
+    // delete_range with same start and end position → byte_start == byte_end → empty string.
+    let mut buf = Buffer::from_string("hello\nworld");
+    let deleted = buf.delete_range(Position::new(0, 3), Position::new(0, 3));
+    assert_eq!(deleted, "");
+    assert!(!buf.is_modified(), "zero-width delete_range should not set modified");
+}
+
+// === Coverage: delete_range with reversed positions (branch 284:1 indirectly) ===
+
+#[test]
+fn delete_range_reversed_positions() {
+    // When start > end, the function swaps them (line 297-298).
+    let mut buf = Buffer::from_string("hello\nworld");
+    let deleted = buf.delete_range(Position::new(0, 5), Position::new(0, 2));
+    assert_eq!(deleted, "llo", "reversed range should still delete correctly");
+    assert!(buf.is_modified());
+}
+
+// === Coverage: extract_byte_range on truly multi-chunk rope ===
+
+#[test]
+fn extract_byte_range_spanning_multiple_chunks() {
+    // Build a buffer large enough for 3+ chunks, then extract a range
+    // spanning from one chunk into another.
+    use std::fmt::Write;
+    let mut text = String::new();
+    for i in 0..300 {
+        writeln!(text, "data line {i:05} padding chars here").unwrap();
+    }
+    let mut buf = Buffer::from_string(&text);
+    // Delete a range that spans across chunk boundaries
+    // Lines 100-200 should be well past the first chunk
+    let deleted = buf.delete_range(Position::new(100, 0), Position::new(200, 0));
+    assert!(!deleted.is_empty(), "should extract cross-chunk content");
+    // The extracted text should start with line 100
+    assert!(deleted.starts_with("data line 00100"));
+}

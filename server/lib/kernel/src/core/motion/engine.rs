@@ -1149,4 +1149,175 @@ mod b9_repro {
         assert_eq!(pos.line, 0, "should wrap to previous line through whitespace");
         assert_eq!(pos.column, 2, "should land on 'c' in 'abc'");
     }
+
+    // === Coverage: lines 540-542 — all whitespace left on line 0 ===
+
+    #[test]
+    fn ge_all_whitespace_left_on_line_zero() {
+        // Need: after phase 3, x > 0, x -= 1, skip whitespace, land on whitespace,
+        // but pos.line == 0 → lines 540-542: pos.column = 0; break.
+        //
+        // " def" from 'e' (col 2).
+        // Move back: col 2 > 0 → col 1. chars = [' ','d','e','f']. x = 1.
+        // Phase 1: chars[1]='d' not ws → skip.
+        // Phase 2: chars[1]='d', chars[2]='e' same class → not at word end.
+        // Phase 3: 'd' is word, skip backward: x=1, chars[0]=' ' not word → stop. x=1.
+        // x == 1 > 0, x -= 1 → x=0. chars[0]=' ' is ws.
+        // Skip ws backward: x > 0? No (x=0). Loop skipped.
+        // chars[x].is_whitespace() → true, pos.line==0 → lines 540-542.
+        let buf = Buffer::from_string(" def");
+        let pos = ge(&buf, 0, 2).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0, "should land at col 0 when all whitespace left on line 0");
+    }
+
+    // === Coverage: branch 482:2 — BigWord path in phase 2 ===
+
+    #[test]
+    fn ge_big_word_not_at_word_end_adjacent_non_ws() {
+        // BigWord phase 2: next char is not whitespace → returns false (line 486).
+        // "abc.def" from 'e' (col 5). After backing to col 4.
+        // Phase 2: chars[4]='d', chars[5]='e' — both non-ws.
+        // BigWord: only whitespace ends a WORD → false → phase 3.
+        let buf = Buffer::from_string("abc.def");
+        let pos = g_big_e(&buf, 0, 5).unwrap();
+        // Phase 3 (BigWord): skip back while non-ws: x=4,3,2,1,0. x==0.
+        // x==0, pos.line==0 → pos.column=0; break.
+        assert_eq!(pos.column, 0, "gE should skip entire WORD to start");
+    }
+
+    // === Coverage: branch 483:2 — Word same class (not at word end) ===
+
+    #[test]
+    fn ge_word_same_class_not_at_word_end() {
+        // Word boundary, phase 2: chars[x] and chars[x+1] are same word class → not at end.
+        // "abcdef" from 'e' (col 4). After backing to col 3.
+        // Phase 2: chars[3]='d', chars[4]='e' — both word chars, same class → not word end.
+        // Phase 3: skip backward through word chars: x=3,2,1,0. x==0.
+        // pos.line==0 → pos.column=0; break.
+        let buf = Buffer::from_string("abcdef");
+        let pos = ge(&buf, 0, 4).unwrap();
+        assert_eq!(pos.column, 0, "ge in middle of word with no previous word → col 0");
+    }
+
+    // === Coverage: branch 498:2 — BigWord in phase 3 ===
+
+    #[test]
+    fn ge_big_word_phase3_skip_to_start() {
+        // BigWord phase 3: skip backward through all non-whitespace.
+        // "   abc.def" from '.' (col 6). After backing to col 5.
+        // Phase 1: chars[5]='c' not ws → skip.
+        // Phase 2: chars[5]='c', chars[6]='.' — BigWord: not ws → false → phase 3.
+        // Phase 3 BigWord: skip back while non-ws: x=5,4,3. chars[2]=' ' → stop. x=3.
+        // x==3 > 0, x -= 1 → x=2. chars[2]=' ' is ws.
+        // Skip ws: x=2>0, chars[2]=' '→x=1, chars[1]=' '→x=0, chars[0]=' '.
+        // chars[x].is_whitespace() → true, line 0 → pos.column=0; break.
+        let buf = Buffer::from_string("   abc.def");
+        let pos = g_big_e(&buf, 0, 6).unwrap();
+        assert_eq!(pos.column, 0);
+    }
+
+    // === Coverage: branch 500:4 — word skip loop exits immediately ===
+
+    #[test]
+    fn ge_word_char_at_x_but_prev_is_punct() {
+        // Phase 3, Word boundary: chars[x] is word char but chars[x-1] is not word.
+        // Loop exits immediately (branch 500:4 = false on first check).
+        // "!a.bc" from 'b' (col 3). After backing to col 2.
+        // Phase 1: chars[2]='.' not ws → skip.
+        // Phase 2: chars[2]='.', chars[3]='b' → different class → at_word_end → returns col 2.
+        // That hits the at_word_end path, not phase 3.
+        //
+        // Try: ".ab" from 'b' (col 2). After backing to col 1.
+        // Phase 1: chars[1]='a' not ws. Phase 2: chars[1]='a', chars[2]='b' → same → not end.
+        // Phase 3: 'a' is word. while x>0 && chars[x-1] is word: chars[0]='.' → false. x stays 1.
+        // x==1>0, x-=1→x=0. chars[0]='.' not ws. pos.column=0. break.
+        let buf = Buffer::from_string(".ab");
+        let pos = ge(&buf, 0, 2).unwrap();
+        assert_eq!(pos.column, 0, "ge should land on '.' (end of punct run at col 0)");
+    }
+
+    // === Coverage: branch 504:1, 505:1, 506:2 — punctuation skip in phase 3 ===
+
+    #[test]
+    fn ge_punct_skip_single_char() {
+        // Phase 3 with punctuation char where skip only moves one position.
+        // "a.!b" from '!' (col 2). After backing to col 1.
+        // Phase 1: chars[1]='.' not ws → skip.
+        // Phase 2: chars[1]='.', chars[2]='!' — both punct → same class → not word end.
+        // Phase 3: '.' is not word char → punct skip:
+        //   x=1, chars[0]='a' → is word → stop. x stays 1.
+        // x==1>0, x-=1→0. chars[0]='a' not ws → pos.column=0. break.
+        let buf = Buffer::from_string("a.!b");
+        let pos = ge(&buf, 0, 2).unwrap();
+        assert_eq!(pos.column, 0, "ge from inside punct run with word char to left");
+    }
+
+    #[test]
+    fn ge_punct_skip_multiple_chars() {
+        // Ensure the punctuation skip loop iterates more than once.
+        // "a...b" from last '.' (col 3). After backing to col 2.
+        // Phase 1: chars[2]='.' not ws. Phase 2: '.', '.' same → not word end.
+        // Phase 3 punct skip: x=2, chars[1]='.' not ws, not word → x=1.
+        //   chars[0]='a' is word → stop. x=1.
+        // x==1>0, x-=1→0. chars[0]='a' not ws → pos.column=0.
+        let buf = Buffer::from_string("a...b");
+        let pos = ge(&buf, 0, 3).unwrap();
+        assert_eq!(pos.column, 0);
+    }
+
+    // === Coverage: branch 536:1 — whitespace at x, line > 0, wraps ===
+    // Already covered by ge_all_whitespace_left_wraps_to_previous_line above.
+    // Adding a BigWord variant for branch coverage of the BigWord path in phase 3.
+
+    #[test]
+    fn ge_big_word_whitespace_left_wraps() {
+        // BigWord variant: after phase 3, all whitespace left, wraps to prev line.
+        // "abc\n  def" from 'e' (line 1, col 3). After backing to col 2.
+        // chars = [' ',' ','d','e','f']. x=2.
+        // Phase 1: chars[2]='d' not ws. Phase 2: BigWord, chars[3]='e' not ws → false.
+        // Phase 3 BigWord: skip back: x=2, chars[1]=' ' ws → stop. x=2.
+        // x==2>0, x-=1→1. chars[1]=' ' ws. Skip ws: x=1>0, chars[1]=' '→x=0.
+        // chars[0]=' ' ws. pos.line==1>0 → wrap to line 0.
+        let buf = Buffer::from_string("abc\n  def");
+        let pos = g_big_e(&buf, 1, 3).unwrap();
+        assert_eq!(pos.line, 0, "gE should wrap to previous line");
+        assert_eq!(pos.column, 2, "gE should land on 'c'");
+    }
+
+    // === Coverage: empty buffer ===
+
+    #[test]
+    fn ge_empty_buffer() {
+        let buf = Buffer::from_string("");
+        let pos = ge(&buf, 0, 0).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
+
+    // === Coverage: empty line wraps backward ===
+
+    #[test]
+    fn ge_empty_line_wraps() {
+        // "hello\n\nworld" from empty line 1 col 0.
+        // Move back: col 0, line 1 > 0 → line 0, col 4.
+        // Phase 2: chars[4]='o', x+1>=5=len → at_word_end → return (0,4).
+        let buf = Buffer::from_string("hello\n\nworld");
+        let pos = ge(&buf, 1, 0).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 4, "ge from empty line should land on 'o' in 'hello'");
+    }
+
+    // === Coverage: empty line at line 0 (break from empty line check) ===
+
+    #[test]
+    fn ge_empty_line_at_start() {
+        // "\nhello" from line 0 col 0. Line 0 is empty.
+        // Move back: col 0, line 0 → can't move back further.
+        // Loop: line 0 = "", chars empty. pos.line == 0 → break. Returns (0,0).
+        let buf = Buffer::from_string("\nhello");
+        let pos = ge(&buf, 0, 0).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
 }
