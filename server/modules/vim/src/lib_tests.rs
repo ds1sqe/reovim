@@ -646,11 +646,7 @@ fn b7_repro_parse_failure_now_propagates() {
     }
 
     // PersonalityManifest::parse correctly returns Err on bad input
-    let bad_inputs = [
-        "not valid toml [[[",
-        "",
-        "[[keybinding]]\nkey = \"a\"\n",
-    ];
+    let bad_inputs = ["not valid toml [[[", "", "[[keybinding]]\nkey = \"a\"\n"];
 
     for input in &bad_inputs {
         let result = reovim_driver_manifest::PersonalityManifest::parse(input);
