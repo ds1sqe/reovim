@@ -51,6 +51,9 @@ mod cache;
 mod delimiter;
 mod edit;
 mod position;
+// Phase 1: Rope not yet wired into Buffer (Phase 2). Remove when integrated.
+#[allow(dead_code)]
+mod rope;
 mod saturator;
 mod selection;
 mod snapshot;
