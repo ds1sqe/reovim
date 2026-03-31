@@ -210,6 +210,41 @@ PUBLISHED=0
 SKIPPED=0
 FAILED=0
 
+# crates.io rate limit: ~1 publish/minute for new crates.
+# publish_crate retries up to MAX_RETRIES with exponential backoff on 429s.
+MAX_RETRIES=5
+INDEX_WAIT=30  # seconds to wait for crates.io indexing between publishes
+
+publish_crate() {
+    local attempt=1
+    local wait=30
+
+    while [ $attempt -le $MAX_RETRIES ]; do
+        local output
+        output=$(cargo publish 2>&1)
+        local rc=$?
+
+        if [ $rc -eq 0 ]; then
+            return 0
+        fi
+
+        # Check for rate limit (429) or "try again" messages
+        if echo "$output" | grep -qiE '429|rate limit|try again|too many requests'; then
+            echo "  Rate limited (attempt $attempt/$MAX_RETRIES), waiting ${wait}s..."
+            sleep $wait
+            wait=$((wait * 2))  # exponential backoff: 30, 60, 120, 240, 480
+            attempt=$((attempt + 1))
+        else
+            # Non-rate-limit error — print and fail
+            echo "$output" | tail -5
+            return 1
+        fi
+    done
+
+    echo "  Exhausted retries after $MAX_RETRIES attempts"
+    return 1
+}
+
 for i in "${!CRATES[@]}"; do
     CRATE_PATH="${CRATES[$i]}"
     # Extract crate name from the comment
@@ -231,7 +266,7 @@ for i in "${!CRATES[@]}"; do
         if [ -n "$DRY_RUN" ]; then
             cargo publish --dry-run --allow-dirty 2>&1 | tail -3
         else
-            if cargo publish 2>&1; then
+            if publish_crate; then
                 PUBLISHED=$((PUBLISHED + 1))
             else
                 echo "  FAILED to publish $CRATE_NAME"
@@ -241,8 +276,8 @@ for i in "${!CRATES[@]}"; do
 
             # Wait for crates.io to index (except for last crate)
             if [ $i -lt $((TOTAL - 1)) ]; then
-                echo "  Waiting for crates.io to index..."
-                sleep 15
+                echo "  Waiting ${INDEX_WAIT}s for crates.io to index..."
+                sleep $INDEX_WAIT
             fi
         fi
     fi
