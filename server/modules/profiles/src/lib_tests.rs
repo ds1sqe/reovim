@@ -22,10 +22,10 @@ fn test_command_handlers_unique_ids() {
 #[test]
 fn test_command_handlers_contains_all_ids() {
     let cmds = command_handlers(PathBuf::from("/test"));
-    let ids: Vec<_> = cmds.iter().map(|c| c.id().name()).collect();
-    assert!(ids.contains(&"profile-save"));
-    assert!(ids.contains(&"profile-load"));
-    assert!(ids.contains(&"profile-list"));
+    let ids: Vec<_> = cmds.iter().map(|c| c.id().name_owned()).collect();
+    assert!(ids.iter().any(|n| n == "profile-save"));
+    assert!(ids.iter().any(|n| n == "profile-load"));
+    assert!(ids.iter().any(|n| n == "profile-list"));
 }
 
 #[test]

@@ -21,12 +21,12 @@ fn completion_command_ids() {
 
 #[test]
 fn command_ids_are_unique() {
-    let names: Vec<&str> = vec![
-        TRIGGER.name(),
-        NEXT.name(),
-        PREV.name(),
-        CONFIRM.name(),
-        DISMISS.name(),
+    let names: Vec<std::borrow::Cow<'static, str>> = vec![
+        TRIGGER.name_owned(),
+        NEXT.name_owned(),
+        PREV.name_owned(),
+        CONFIRM.name_owned(),
+        DISMISS.name_owned(),
     ];
     let mut deduped = names.clone();
     deduped.sort_unstable();

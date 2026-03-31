@@ -21,12 +21,12 @@ fn command_ids_belong_to_module() {
 
 #[test]
 fn command_ids_unique() {
-    let ids: Vec<&str> = vec![
-        PIN_BUFFER.name(),
-        UNPIN_BUFFER.name(),
-        CLOSE_BUFFER.name(),
-        NEXT_BUFFER.name(),
-        PREV_BUFFER.name(),
+    let ids: Vec<std::borrow::Cow<'static, str>> = vec![
+        PIN_BUFFER.name_owned(),
+        UNPIN_BUFFER.name_owned(),
+        CLOSE_BUFFER.name_owned(),
+        NEXT_BUFFER.name_owned(),
+        PREV_BUFFER.name_owned(),
     ];
     let count = ids.len();
     let mut unique = ids.clone();

@@ -41,7 +41,7 @@
 //! assert_eq!(insert_mode.discriminant(), 1);
 //! ```
 
-use std::{fmt, hash::Hash};
+use std::{borrow::Cow, fmt, hash::Hash};
 
 use crate::api::module::ModuleId;
 
@@ -231,21 +231,39 @@ pub struct CommandId {
     /// The module that owns this command.
     module: ModuleId,
     /// The local name within the module.
-    name: &'static str,
+    name: Cow<'static, str>,
 }
 
 impl CommandId {
-    /// Create a new command identifier.
+    /// Create a new command identifier from static strings.
+    ///
+    /// This is the preferred way to create command IDs for statically-known commands.
+    /// It's a const fn and involves no allocation.
     #[must_use]
     pub const fn new(module: ModuleId, name: &'static str) -> Self {
-        Self { module, name }
+        Self {
+            module,
+            name: Cow::Borrowed(name),
+        }
+    }
+
+    /// Create a command identifier from owned strings.
+    ///
+    /// Use this for dynamically-generated command IDs (e.g., picker selections,
+    /// FFI calls, manifest parsing).
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // String operations aren't const-stable
+    pub fn from_owned(module: ModuleId, name: String) -> Self {
+        Self {
+            module,
+            name: Cow::Owned(name),
+        }
     }
 
     /// Create a command identifier from a qualified string like "module:command".
     ///
     /// This method is intended for dynamic use cases like FFI where command IDs
-    /// are specified as strings at runtime. The strings are leaked to get
-    /// `'static` lifetime, so this should only be used for long-lived commands.
+    /// are specified as strings at runtime.
     ///
     /// If the string doesn't contain ':', the entire string is treated as the
     /// command name with "unknown" as the module.
@@ -255,24 +273,21 @@ impl CommandId {
     /// ```
     /// use reovim_kernel::api::v1::CommandId;
     ///
-    /// let cmd = CommandId::from_qualified_leaked("editor:cursor-down".to_string());
+    /// let cmd = CommandId::from_qualified("editor:cursor-down".to_string());
     /// assert_eq!(cmd.module().as_str(), "editor");
     /// assert_eq!(cmd.name(), "cursor-down");
     /// ```
     #[must_use]
-    pub fn from_qualified_leaked(qualified: String) -> Self {
+    pub fn from_qualified(qualified: String) -> Self {
         let (module_str, name_str) = if let Some(idx) = qualified.find(':') {
             (qualified[..idx].to_string(), qualified[idx + 1..].to_string())
         } else {
             ("unknown".to_string(), qualified)
         };
 
-        let module_static: &'static str = Box::leak(module_str.into_boxed_str());
-        let name_static: &'static str = Box::leak(name_str.into_boxed_str());
-
         Self {
-            module: ModuleId::new(module_static),
-            name: name_static,
+            module: ModuleId::from_string(module_str),
+            name: Cow::Owned(name_str),
         }
     }
 
@@ -284,8 +299,20 @@ impl CommandId {
 
     /// Get the local name.
     #[must_use]
-    pub const fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        // SAFETY NOTE: This returns &str borrowing from &self.
+        // If you need a value that outlives the CommandId (e.g. calling
+        // .name() on a temporary), use .name_owned() instead.
+        &self.name
+    }
+
+    /// Get the local name as an owned `Cow`.
+    ///
+    /// Use this when you need a value that isn't tied to the `CommandId`'s
+    /// lifetime (e.g., when calling `.id().name_owned()` on a temporary).
+    #[must_use]
+    pub fn name_owned(&self) -> Cow<'static, str> {
+        self.name.clone()
     }
 }
 
@@ -594,5 +621,35 @@ impl ModeStack {
     #[must_use]
     pub fn contains(&self, mode_id: &ModeId) -> bool {
         self.stack.contains(mode_id)
+    }
+}
+
+// =========================================================================
+// #713 repro: CommandId::from_qualified now uses Cow<'static, str>.
+// No more Box::leak — memory is freed when CommandId is dropped.
+// =========================================================================
+
+#[cfg(test)]
+mod b2_repro {
+    use super::CommandId;
+
+    #[test]
+    fn b2_from_qualified_no_longer_leaks() {
+        // from_qualified uses Cow::Owned — memory freed on drop.
+        for i in 0..1000 {
+            let cmd = CommandId::from_qualified(format!("module{i}:command{i}"));
+            assert_eq!(cmd.module().as_str(), format!("module{i}"));
+            assert_eq!(cmd.name(), format!("command{i}").as_str());
+        }
+        // All 1000 CommandIds have been dropped — no leaked memory.
+    }
+
+    #[test]
+    fn b2_static_new_still_const() {
+        use crate::api::module::ModuleId;
+        // const fn new() still works with static strings
+        const CMD: CommandId = CommandId::new(ModuleId::new("editor"), "cursor-down");
+        assert_eq!(CMD.name(), "cursor-down");
+        assert_eq!(CMD.module().as_str(), "editor");
     }
 }

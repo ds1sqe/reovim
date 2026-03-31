@@ -36,7 +36,7 @@ macro_rules! assert_cursor {
 /// # Example
 ///
 /// ```ignore
-/// assert_register!(result, "\"", "yanked text", "linewise");
+/// assert_register!(result, "\"", "yanked text", "line");
 /// ```
 #[macro_export]
 macro_rules! assert_register {

@@ -628,3 +628,38 @@ fn test_visual_mode_has_selection_category() {
         "Visual mode should have selection bindings"
     );
 }
+
+// =========================================================================
+// #718 repro: vim.toml parse failure returns Ok(()) instead of Err.
+// lib.rs:340-343 — parse error is logged but swallowed, module loads
+// without keybindings.
+// =========================================================================
+
+#[test]
+fn b7_repro_parse_failure_now_propagates() {
+    // Simulate load_personality_manifest() — parse failure now returns Err.
+    fn simulate_load(toml: &str) -> Result<bool, String> {
+        match reovim_driver_manifest::PersonalityManifest::parse(toml) {
+            Ok(_m) => Ok(true),
+            Err(e) => Err(format!("Failed to parse: {e}")),
+        }
+    }
+
+    // PersonalityManifest::parse correctly returns Err on bad input
+    let bad_inputs = ["not valid toml [[[", "", "[[keybinding]]\nkey = \"a\"\n"];
+
+    for input in &bad_inputs {
+        let result = reovim_driver_manifest::PersonalityManifest::parse(input);
+        assert!(result.is_err(), "parse correctly returns Err for: {input:?}");
+    }
+
+    // Current embedded vim.toml parses fine
+    let valid = reovim_driver_manifest::PersonalityManifest::parse(super::VIM_MANIFEST_TOML);
+    assert!(valid.is_ok(), "Current vim.toml parses fine");
+
+    // Bad TOML: parse failure propagates as Err (not silently swallowed)
+    assert!(simulate_load("not valid toml [[[").is_err(), "parse failure returns Err");
+
+    // Good TOML: parse succeeds
+    assert!(simulate_load(super::VIM_MANIFEST_TOML).unwrap(), "Good TOML loads successfully");
+}

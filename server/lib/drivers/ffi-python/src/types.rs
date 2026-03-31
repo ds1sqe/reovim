@@ -633,7 +633,7 @@ impl PyKeybindingRegistration {
 
         v1::KeybindingRegistration {
             keys: Box::leak(self.keys.clone().into_boxed_str()),
-            command_id: v1::CommandId::from_qualified_leaked(self.command_id.clone()),
+            command_id: v1::CommandId::from_qualified(self.command_id.clone()),
             modes,
             description: Box::leak(self.description.clone().into_boxed_str()),
             category: self

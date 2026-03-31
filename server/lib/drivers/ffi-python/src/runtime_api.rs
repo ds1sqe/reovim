@@ -416,8 +416,7 @@ impl PyRuntimeApi {
         count: Option<usize>,
         register: Option<char>,
     ) -> PyResult<String> {
-        let command_id =
-            reovim_kernel::api::v1::CommandId::from_qualified_leaked(cmd_id.to_string());
+        let command_id = reovim_kernel::api::v1::CommandId::from_qualified(cmd_id.to_string());
 
         let mut ctx = reovim_driver_command_types::CommandContext::new();
         if let Some(n) = count {

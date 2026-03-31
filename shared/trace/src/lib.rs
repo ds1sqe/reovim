@@ -279,11 +279,9 @@ pub fn init_profiling() -> Result<(), SetProfilerError> {
 ///
 /// Returns `Err` if a profiler has already been set.
 pub fn init_profiling_with_filter(filter: impl Into<String>) -> Result<(), SetProfilerError> {
-    // Can't use the static with a custom filter, so we need a different approach
-    // For now, just use the environment-based one
-    // Future: support Box<dyn Profiler> in kernel
-    let _ = filter.into();
-    init_profiling()
+    let filter = filter.into();
+    let profiler = TRACING_PROFILER.get_or_init(|| TracingProfiler::with_filter(filter));
+    set_profiler(profiler)
 }
 
 // =============================================================================

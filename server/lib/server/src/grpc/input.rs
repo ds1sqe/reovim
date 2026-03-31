@@ -943,7 +943,7 @@ impl InputServiceImpl {
 
                 // Transfer all arguments directly (same ArgValue type on both sides)
                 for (key, value) in args {
-                    cmd_ctx.set(Box::leak(key.into_boxed_str()), value);
+                    cmd_ctx.set(&key, value);
                 }
 
                 // Set active buffer ID (required for operators like delete/yank)

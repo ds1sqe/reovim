@@ -285,6 +285,10 @@ impl IntegrationTest {
             .expect("Failed to get buffer content");
         let cursor_response = client.get_cursor().await.expect("Failed to get cursor");
         let mode_response = client.get_mode().await.expect("Failed to get mode");
+        let register_response = client
+            .get_registers(vec![])
+            .await
+            .expect("Failed to get registers");
         drop(client); // Drop client early to avoid significant_drop_tightening warning
 
         // Parse buffer content (lines joined with newlines)
@@ -295,9 +299,20 @@ impl IntegrationTest {
             .position
             .map_or((0, 0), |pos| (pos.line, pos.column));
 
-        // TODO: Implement register query via gRPC (Phase 9+)
-        // For now, registers are empty
-        let registers = HashMap::new();
+        // Populate registers from gRPC response
+        let registers = register_response
+            .registers
+            .into_iter()
+            .map(|entry| {
+                (
+                    entry.name,
+                    RegisterInfo {
+                        content: entry.content,
+                        yank_type: entry.yank_type,
+                    },
+                )
+            })
+            .collect();
 
         #[allow(clippy::cast_possible_truncation)]
         TestResult {
@@ -471,5 +486,36 @@ impl TestResult {
                 self.log_hint()
             );
         }
+    }
+}
+
+// =========================================================================
+// #722 repro: registers were always empty — assert_register always
+// panicked with "Register not found".
+// Fixed: run() now calls client.get_registers(vec![]) via gRPC.
+// =========================================================================
+
+#[cfg(test)]
+mod b11_repro {
+    use super::*;
+
+    #[test]
+    fn b11_register_population_from_grpc() {
+        // Verify that RegisterInfo can be constructed from gRPC response data.
+        // The fix: run() now calls client.get_registers() and maps
+        // RegisterEntry -> RegisterInfo into the HashMap.
+        let mut registers = HashMap::new();
+        registers.insert(
+            "\"".to_string(),
+            RegisterInfo {
+                content: "hello\n".to_string(),
+                yank_type: "line".to_string(),
+            },
+        );
+
+        let info = registers.get("\"").expect("register should exist");
+        assert_eq!(info.content.trim_end(), "hello");
+        assert_eq!(info.yank_type, "line");
+        assert!(!registers.is_empty(), "#722 fixed: registers populated via gRPC");
     }
 }

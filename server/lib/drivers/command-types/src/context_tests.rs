@@ -522,3 +522,28 @@ fn test_command_context_clone() {
     assert_eq!(cloned.count(), Some(5));
     assert_eq!(cloned.mode_name(), Some("normal"));
 }
+
+// =========================================================================
+// #714 repro: Box::leak at input.rs:946 is unnecessary.
+// CommandContext::set() takes &str, not &'static str.
+// The Box::leak exists because the caller does Box::leak(key.into_boxed_str())
+// when it could just pass &key.
+// =========================================================================
+
+#[test]
+fn b3_repro_set_accepts_borrowed_str() {
+    let mut ctx = CommandContext::new();
+
+    // set() takes &str — no need for &'static str or Box::leak
+    let key = String::from("count");
+    ctx.set(&key, ArgValue::Count(42));
+    assert_eq!(ctx.count(), Some(42));
+
+    // This proves input.rs:946 could just do:
+    //   cmd_ctx.set(&key, value);
+    // Instead of:
+    //   cmd_ctx.set(Box::leak(key.into_boxed_str()), value);
+    //
+    // The Box::leak is gratuitous — set() calls name.to_owned() internally,
+    // so it makes its own copy regardless. The leak wastes memory.
+}
