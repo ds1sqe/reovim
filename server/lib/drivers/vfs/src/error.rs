@@ -61,13 +61,18 @@ impl std::error::Error for VfsError {
     }
 }
 
-impl From<std::io::Error> for VfsError {
-    fn from(err: std::io::Error) -> Self {
+impl VfsError {
+    /// Create a `VfsError` from an `io::Error` with the associated file path.
+    ///
+    /// Maps well-known error kinds to path-carrying variants; falls back to
+    /// `VfsError::Io` for everything else.
+    pub fn from_io(err: std::io::Error, path: impl Into<PathBuf>) -> Self {
         use std::io::ErrorKind;
+        let path = path.into();
         match err.kind() {
-            ErrorKind::NotFound => Self::NotFound(PathBuf::new()),
-            ErrorKind::PermissionDenied => Self::PermissionDenied(PathBuf::new()),
-            ErrorKind::AlreadyExists => Self::AlreadyExists(PathBuf::new()),
+            ErrorKind::NotFound => Self::NotFound(path),
+            ErrorKind::PermissionDenied => Self::PermissionDenied(path),
+            ErrorKind::AlreadyExists => Self::AlreadyExists(path),
             _ => Self::Io(err),
         }
     }
