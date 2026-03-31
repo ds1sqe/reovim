@@ -200,3 +200,53 @@ fn annotations_namespace_is_content() {
         assert_eq!(annotation.kind.namespace(), Some("content"));
     }
 }
+
+#[test]
+fn small_input_not_truncated() {
+    let codec = HexCodec::new();
+    let result = codec.decode(b"hello").unwrap();
+    assert!(!result.truncated);
+    assert!(!result.content.contains("Truncated"));
+}
+
+#[test]
+fn exactly_max_bytes_not_truncated() {
+    let codec = HexCodec::new();
+    let data = vec![0xAB; MAX_HEX_INPUT_BYTES];
+    let result = codec.decode(&data).unwrap();
+    assert!(!result.truncated);
+    assert!(!result.content.contains("Truncated"));
+    assert!(result.metadata.get("truncated_at").is_none());
+}
+
+#[test]
+fn one_over_max_truncated() {
+    let codec = HexCodec::new();
+    let data = vec![0xCD; MAX_HEX_INPUT_BYTES + 1];
+    let result = codec.decode(&data).unwrap();
+    assert!(result.truncated);
+    assert!(result.content.contains("Truncated"));
+    assert!(result.content.contains("1 bytes omitted"));
+    assert_eq!(
+        result.metadata.get("truncated_at"),
+        Some(MAX_HEX_INPUT_BYTES.to_string()).as_deref()
+    );
+    assert_eq!(
+        result.metadata.get("total_size"),
+        Some((MAX_HEX_INPUT_BYTES + 1).to_string()).as_deref()
+    );
+}
+
+#[test]
+fn truncated_footer_format() {
+    let codec = HexCodec::new();
+    let total = MAX_HEX_INPUT_BYTES + 500_000;
+    let data = vec![0xFF; total];
+    let result = codec.decode(&data).unwrap();
+    assert!(result.truncated);
+    let expected_footer = format!(
+        "--- Truncated: showing {} of {} bytes ({} bytes omitted) ---",
+        MAX_HEX_INPUT_BYTES, total, 500_000,
+    );
+    assert!(result.content.contains(&expected_footer));
+}

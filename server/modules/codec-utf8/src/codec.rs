@@ -83,6 +83,7 @@ impl ContentCodec for Utf8Codec {
             metadata,
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

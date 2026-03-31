@@ -37,6 +37,12 @@ use {
     tonic::{Code, Request, Streaming, transport::Channel},
 };
 
+/// Maximum gRPC message size (encoding and decoding) in bytes.
+///
+/// Matches the server-side limit. Required for large buffer content
+/// such as hex dumps of binary files.
+const GRPC_MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Error Handling (#479: Fail Loud with Client Panic)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,19 +175,34 @@ impl TuiGrpcClient {
             .connect()
             .await?;
 
-        // 64 MB message limit (matches server) for large buffer content
-        const MAX: usize = 64 * 1024 * 1024;
-
         Ok(Self {
-            input: InputServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            state: StateServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            buffer: BufferServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            notification: NotificationServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            server: ServerServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            editor: EditorServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            module: ModuleServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            syntax: SyntaxServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
-            presence: PresenceServiceClient::new(channel).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            input: InputServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            state: StateServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            buffer: BufferServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            notification: NotificationServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            server: ServerServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            editor: EditorServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            module: ModuleServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            syntax: SyntaxServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            presence: PresenceServiceClient::new(channel)
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             session_token: None,
         })
     }

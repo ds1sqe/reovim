@@ -12,6 +12,7 @@ fn decode_result_valid_when_not_lossy() {
         metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
         lossy: false,
         readonly: false,
+        truncated: false,
     };
     assert!(result.is_valid());
 }
@@ -24,6 +25,7 @@ fn decode_result_valid_when_lossy_and_readonly() {
         metadata: CodecMetadata::new(ContentType::new("binary/raw")),
         lossy: true,
         readonly: true,
+        truncated: false,
     };
     assert!(result.is_valid());
 }
@@ -36,6 +38,7 @@ fn decode_result_invalid_when_lossy_but_not_readonly() {
         metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
         lossy: true,
         readonly: false,
+        truncated: false,
     };
     assert!(!result.is_valid());
 }
@@ -48,6 +51,7 @@ fn decode_result_valid_when_readonly_but_not_lossy() {
         metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
         lossy: false,
         readonly: true,
+        truncated: false,
     };
     assert!(result.is_valid());
 }
@@ -66,6 +70,7 @@ fn decode_result_with_annotations() {
         metadata: CodecMetadata::new(ContentType::new("binary/raw")),
         lossy: true,
         readonly: true,
+        truncated: false,
     };
     assert_eq!(result.annotations.len(), 1);
     assert!(result.is_valid());
@@ -79,11 +84,36 @@ fn decode_result_clone() {
         metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
         lossy: false,
         readonly: false,
+        truncated: false,
     };
     #[allow(clippy::redundant_clone)]
     let cloned = result.clone();
     assert_eq!(cloned.content, "hello");
     assert!(!cloned.lossy);
+}
+
+#[test]
+fn decode_result_truncated_field() {
+    let result = DecodeResult {
+        content: "truncated content".to_string(),
+        annotations: vec![],
+        metadata: CodecMetadata::new(ContentType::new("binary/raw")),
+        lossy: true,
+        readonly: true,
+        truncated: true,
+    };
+    assert!(result.truncated);
+    assert!(result.is_valid());
+
+    let not_truncated = DecodeResult {
+        content: "full content".to_string(),
+        annotations: vec![],
+        metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
+        lossy: false,
+        readonly: false,
+        truncated: false,
+    };
+    assert!(!not_truncated.truncated);
 }
 
 /// Mock codec for testing the trait.
@@ -101,6 +131,7 @@ impl ContentCodec for MockCodec {
             metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

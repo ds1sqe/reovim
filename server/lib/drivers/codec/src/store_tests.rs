@@ -19,6 +19,7 @@ impl ContentCodec for MockCodec {
             metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

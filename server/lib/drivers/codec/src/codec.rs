@@ -45,6 +45,14 @@ pub struct DecodeResult {
     ///
     /// Set to `true` for lossy decodes or one-way codecs (like hex dump).
     pub readonly: bool,
+
+    /// Whether the output was truncated due to input size limits.
+    ///
+    /// When `true`, the codec processed only a prefix of the input bytes.
+    /// The `metadata` field contains `"truncated_at"` with the byte offset
+    /// where truncation occurred, and `"total_size"` with the original
+    /// input size.
+    pub truncated: bool,
 }
 
 impl DecodeResult {

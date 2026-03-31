@@ -149,6 +149,13 @@ fn decode_file_content(
         if let Some(codec) = factories.find(&content_type) {
             match codec.decode(bytes) {
                 Ok(result) => {
+                    if result.truncated {
+                        tracing::warn!(
+                            filename,
+                            "File content was truncated by codec (see buffer for details)"
+                        );
+                    }
+
                     let content = result.content;
 
                     // Store metadata in shared extensions (per-buffer, not per-client)

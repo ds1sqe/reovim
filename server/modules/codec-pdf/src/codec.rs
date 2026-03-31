@@ -11,6 +11,13 @@ use {
 
 use crate::classifier::PDF;
 
+/// Maximum PDF input size (100 MB).
+///
+/// PDFs are compressed, so in-memory expansion is bounded. However,
+/// extremely large PDFs can still be slow to parse. This hard limit
+/// prevents excessive memory use during extraction.
+const MAX_PDF_INPUT_BYTES: usize = 100 * 1024 * 1024;
+
 /// Annotation kind for page separator lines.
 pub const PDF_PAGE_KIND: &str = "content.pdf.page";
 
@@ -43,6 +50,26 @@ impl Default for PdfCodec {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl reovim_driver_codec::ContentCodec for PdfCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        if raw.len() > MAX_PDF_INPUT_BYTES {
+            let size_mb = raw.len() / (1024 * 1024);
+            let limit_mb = MAX_PDF_INPUT_BYTES / (1024 * 1024);
+            let content = format!(
+                "PDF file too large ({size_mb} MB). Maximum supported size is {limit_mb} MB."
+            );
+            let mut metadata = CodecMetadata::new(ContentType::new(PDF));
+            metadata.set("readonly", "true");
+            metadata.set("truncated_at", "0");
+            metadata.set("total_size", raw.len().to_string());
+            return Ok(DecodeResult {
+                content,
+                annotations: Vec::new(),
+                metadata,
+                lossy: true,
+                readonly: true,
+                truncated: true,
+            });
+        }
+
         let pages = pdf_extract::extract_text_from_mem_by_pages(raw)
             .map_err(|e| CodecError::Other(format!("PDF extraction failed: {e}")))?;
 
@@ -58,6 +85,7 @@ impl reovim_driver_codec::ContentCodec for PdfCodec {
             metadata,
             lossy: true,
             readonly: true,
+            truncated: false,
         })
     }
 

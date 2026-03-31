@@ -197,6 +197,19 @@ fn elf_decode_real_binary() {
     }
 }
 
+#[test]
+fn elf_metadata_has_file_size() {
+    let path = if std::path::Path::new("/bin/ls").exists() {
+        "/bin/ls"
+    } else {
+        return;
+    };
+    let data = std::fs::read(path).unwrap();
+    let codec = ElfCodec::new();
+    let result = codec.decode(&data).unwrap();
+    assert_eq!(result.metadata.get("file_size"), Some(data.len().to_string()).as_deref());
+}
+
 // === ZIP Codec Tests ===
 
 #[test]
@@ -286,4 +299,17 @@ fn zip_decode_empty_archive() {
     assert!(result.content.contains("Entries: 0"));
     assert!(result.lossy);
     assert!(result.readonly);
+}
+
+#[test]
+fn zip_metadata_has_file_size() {
+    let buf = Vec::new();
+    let cursor = std::io::Cursor::new(buf);
+    let writer = zip::ZipWriter::new(cursor);
+    let result_cursor = writer.finish().unwrap();
+    let zip_bytes = result_cursor.into_inner();
+
+    let codec = ZipCodec::new();
+    let result = codec.decode(&zip_bytes).unwrap();
+    assert_eq!(result.metadata.get("file_size"), Some(zip_bytes.len().to_string()).as_deref());
 }

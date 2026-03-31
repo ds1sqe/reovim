@@ -62,6 +62,7 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
             metadata,
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

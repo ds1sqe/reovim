@@ -122,3 +122,20 @@ fn format_blank_line_between_pages_not_after_last() {
     // Should NOT end with double newline
     assert!(content.ends_with("B\n"));
 }
+
+#[test]
+fn oversized_pdf_returns_truncated() {
+    let codec = PdfCodec::new();
+    // Create a byte slice just over the limit (we don't need real PDF data
+    // because the size check happens before parsing)
+    let data = vec![0u8; MAX_PDF_INPUT_BYTES + 1];
+    let result = codec.decode(&data).unwrap();
+    assert!(result.truncated);
+    assert!(result.content.contains("too large"));
+    assert!(result.content.contains("100 MB"));
+    assert_eq!(result.metadata.get("truncated_at"), Some("0"));
+    assert_eq!(
+        result.metadata.get("total_size"),
+        Some((MAX_PDF_INPUT_BYTES + 1).to_string()).as_deref()
+    );
+}

@@ -68,6 +68,7 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
             metadata,
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

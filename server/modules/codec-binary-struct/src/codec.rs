@@ -55,6 +55,7 @@ impl reovim_driver_codec::ContentCodec for ElfCodec {
 
         let mut metadata = CodecMetadata::new(ContentType::new(ELF));
         metadata.set("readonly", "true");
+        metadata.set("file_size", raw.len().to_string());
 
         Ok(DecodeResult {
             content,
@@ -62,6 +63,7 @@ impl reovim_driver_codec::ContentCodec for ElfCodec {
             metadata,
             lossy: true,
             readonly: true,
+            truncated: false,
         })
     }
 
@@ -106,6 +108,7 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
 
         let mut metadata = CodecMetadata::new(ContentType::new(ZIP));
         metadata.set("readonly", "true");
+        metadata.set("file_size", raw.len().to_string());
         metadata.set("entry_count", entry_count.to_string());
 
         Ok(DecodeResult {
@@ -114,6 +117,7 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
             metadata,
             lossy: true,
             readonly: true,
+            truncated: false,
         })
     }
 

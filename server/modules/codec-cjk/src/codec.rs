@@ -52,6 +52,7 @@ impl reovim_driver_codec::ContentCodec for CjkCodec {
             metadata,
             lossy: false,
             readonly: false,
+            truncated: false,
         })
     }
 

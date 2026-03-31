@@ -266,6 +266,7 @@ impl Server {
     /// with room for normal large text files.
     const GRPC_MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 
+    #[allow(clippy::too_many_lines)]
     async fn run_grpc(
         &self,
         port: u16,

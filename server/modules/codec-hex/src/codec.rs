@@ -13,6 +13,12 @@ use {
 /// Bytes per line in the hex dump output.
 const BYTES_PER_LINE: usize = 16;
 
+/// Maximum input bytes before truncation (1 MB).
+///
+/// At 5x expansion (hex dump format), 1 MB input produces ~5 MB output,
+/// well under the 64 MB gRPC message limit.
+const MAX_HEX_INPUT_BYTES: usize = 1_048_576;
+
 /// Annotation kind for the hex offset/address column.
 pub const HEX_ADDRESS_KIND: &str = "content.hex.address";
 
@@ -50,10 +56,28 @@ impl Default for HexCodec {
 
 impl reovim_driver_codec::ContentCodec for HexCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
-        let (content, annotations) = format_hex_dump(raw);
+        let truncated = raw.len() > MAX_HEX_INPUT_BYTES;
+        let effective = if truncated {
+            &raw[..MAX_HEX_INPUT_BYTES]
+        } else {
+            raw
+        };
+        let (mut content, annotations) = format_hex_dump(effective);
 
         let mut metadata = CodecMetadata::new(ContentType::new(ContentType::BINARY_RAW));
         metadata.set("readonly", "true");
+
+        if truncated {
+            let _ = write!(
+                content,
+                "\n--- Truncated: showing {} of {} bytes ({} bytes omitted) ---\n",
+                MAX_HEX_INPUT_BYTES,
+                raw.len(),
+                raw.len() - MAX_HEX_INPUT_BYTES,
+            );
+            metadata.set("truncated_at", MAX_HEX_INPUT_BYTES.to_string());
+            metadata.set("total_size", raw.len().to_string());
+        }
 
         Ok(DecodeResult {
             content,
@@ -61,6 +85,7 @@ impl reovim_driver_codec::ContentCodec for HexCodec {
             metadata,
             lossy: true,
             readonly: true,
+            truncated,
         })
     }
 

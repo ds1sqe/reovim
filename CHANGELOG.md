@@ -20,6 +20,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **codec**: large binary files no longer cause OOM or gRPC transport failures — gRPC message size raised to 64 MB on server and all clients, hex codec truncates at 1 MB with footer, PDF codec rejects files over 100 MB, ELF/ZIP codecs include file size metadata (#735)
 - **input**: remove gratuitous `Box::leak` in `handle_pop_result` — `CommandContext::set()` accepts `&str`, no static lifetime needed (#714)
 - **motions**: `ge` and `gE` now correctly distinguish Word vs BigWord boundaries — `word_end_backward` was ignoring the `WordBoundary` parameter (#720)
 - **session**: `close_window` and compositor close now use `WindowLayout::remove()` instead of bypassing it — fixes stale `active_index` returning wrong window after close (#712)
