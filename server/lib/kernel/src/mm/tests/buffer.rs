@@ -516,3 +516,21 @@ fn substitute_delete_insert_preserves_lines() {
     assert_eq!(buf.line(2), Some("zzz"), "line 2 final");
     assert_eq!(buf.content(), "zzz\nbbb\nzzz");
 }
+
+// === Coverage: extract_byte_range skip/break on multi-chunk rope (lines 394-395, 398) ===
+
+#[test]
+fn delete_range_on_large_buffer_exercises_chunk_iteration() {
+    // Build a buffer larger than MAX_CHUNK_BYTES (1024) so the rope has multiple chunks.
+    // Then delete a range that starts partway through, forcing extract_byte_range to:
+    //   - skip early chunks (continue on line 394-395)
+    //   - break after the end range (line 398)
+    let line = "abcdefghijklmnopqrstuvwxyz"; // 26 chars
+    // 50 lines * 26 chars + 49 newlines = 1349 bytes → >1024, multiple chunks
+    let content: String = (0..50).map(|_| line).collect::<Vec<_>>().join("\n");
+    let mut buf = Buffer::from_string(&content);
+
+    // Delete a small range in the middle (line 25, cols 5..10)
+    let deleted = buf.delete_range(Position::new(25, 5), Position::new(25, 10));
+    assert_eq!(deleted, "fghij", "should extract the correct byte range across chunks");
+}

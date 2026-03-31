@@ -1314,6 +1314,24 @@ mod snapshot_tests {
         assert_eq!(snapshot.line_count(), 3);
         assert!(!snapshot.is_empty());
     }
+
+    // === Coverage: line 102 — Rope::new() branch when lines is empty ===
+
+    #[test]
+    fn test_from_parts_empty_lines() {
+        let lines: Vec<String> = vec![];
+        let cursor = Position::origin();
+        let buffer_id = BufferId::new();
+        let timestamp = std::time::SystemTime::now();
+
+        let snapshot = Snapshot::from_parts(&lines, cursor, buffer_id, timestamp);
+
+        assert!(snapshot.is_empty());
+        assert_eq!(snapshot.line_count(), 0);
+        assert_eq!(snapshot.char_count(), 0);
+        assert_eq!(snapshot.cursor(), Position::origin());
+        assert_eq!(snapshot.buffer_id(), buffer_id);
+    }
 }
 
 // === Additional Transaction Tests ===

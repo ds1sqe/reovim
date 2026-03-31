@@ -1052,4 +1052,101 @@ mod b9_repro {
         assert_eq!(pos.line, 0);
         assert_eq!(pos.column, 9);
     }
+
+    // === Coverage: lines 504-509 — backward scan over punctuation chars ===
+
+    #[test]
+    fn ge_backward_through_punctuation_run() {
+        // "abc::def" — cursor on 'd' (col 5), which is a word char.
+        // Phase 2 check: chars[5]='d' is word, chars[6]='e' is word, same class → not word end.
+        // Phase 3: x is word char, skip backward through word chars: d → stop at x=5
+        //   (chars[4]=':' is not word). x=5 is start of "def" word.
+        // x==5 > 0, so x -= 1 → x=4. Skip whitespace? ':' is not ws. chars[4]=':'
+        // pos.column = 4 → that's the ':' punctuation.
+        //
+        // Now call ge again from col 4 (':'):
+        // After initial move back: x=3, chars[3]=':' — punctuation.
+        // Phase 2: chars[3]=':', chars[4]='d' word → different class → at word end.
+        // So it returns col 3. But we want to test the *punctuation skip loop*.
+        //
+        // Use "abc:::def" cursor on 'd' (col 6).
+        // Phase 2: chars[6]='d', chars[7]='e' same → not word end.
+        // Phase 3: word char, skip back to x=6 (start of "def"), x -= 1 → x=5 (':').
+        // chars[5]=':' not ws → pos.column = 5.
+        //
+        // Now ge from col 5 (':'):
+        // Move back → x=4. chars[4]=':'.
+        // Phase 1: not ws, skip.
+        // Phase 2: chars[4]=':', chars[5]=':' — same class (both punct) → not word end.
+        // Phase 3 (lines 504-509): not word char → skip backward through punctuation:
+        //   x=4, chars[3]=':' punct → x=3; chars[2]='c' is word → stop. x=3.
+        // x==3 > 0, x -= 1 → x=2. chars[2]='c' not ws. pos.column = 2.
+        let buf = Buffer::from_string("abc:::def");
+        // ge from ':' at col 5 (after backing to col 4)
+        let pos = ge(&buf, 0, 5).unwrap();
+        assert_eq!(pos.column, 2, "ge from middle of punctuation run should land on end of 'abc'");
+    }
+
+    // === Coverage: lines 520-522 — cursor at word start, wraps to previous line ===
+
+    #[test]
+    fn ge_word_start_wraps_to_previous_line() {
+        // "hello\nworld" — ge from 'w' (line 1, col 0).
+        // Move back → line 0, col 4 ('o').
+        // That is at_word_end (x+1 >= chars.len() since col 4 is last of "hello").
+        // Returns (0, 4). But that doesn't reach lines 520-522.
+        //
+        // We need: cursor lands inside a word at col 0 after phase 3 skip.
+        // "abc\ndef" from 'd' (line 1, col 0).
+        // Move back → line 0, col 2 ('c').
+        // Phase 2: x=2, x+1=3 >= len(3) → at_word_end → returns col 2.
+        //
+        // To reach 520-522 we need x==0 after phase 3, with pos.line > 0.
+        // "a\ndef" from 'e' (line 1, col 1).
+        // Move back: col 1 > 0 → col 0. x = 0, chars = ['d','e','f'].
+        // Phase 1: chars[0]='d' not ws → skip.
+        // Phase 2: chars[0]='d', chars[1]='e' → same class → not word end.
+        // Phase 3: word char, skip back: x=0, loop (x>0?) no.
+        // x == 0, pos.line == 1 > 0 → lines 520-522: wrap to line 0.
+        // Line 0 = "a", pos.column = 0. Next iteration: chars=['a'], x=0.
+        // Phase 1: 'a' not ws. Phase 2: x+1 >= len → at_word_end → returns (0,0).
+        let buf = Buffer::from_string("a\ndef");
+        let pos = ge(&buf, 1, 1).unwrap();
+        assert_eq!(pos.line, 0, "should wrap to previous line");
+        assert_eq!(pos.column, 0, "should land on 'a'");
+    }
+
+    // === Coverage: lines 536-542 — all whitespace on left, wraps to previous line ===
+
+    #[test]
+    fn ge_all_whitespace_left_wraps_to_previous_line() {
+        // Need: after phase 3 skip, x > 0, x -= 1, then skip whitespace backward
+        // until chars[x].is_whitespace() is true (all whitespace on left).
+        // Then lines 536-542 fire.
+        //
+        // "hello\n  a" from 'a' (line 1, col 2).
+        // Move back: col 2 > 0 → col 1. chars = [' ',' ','a'].
+        // Phase 1: chars[1]=' ' ws, skip → x=0. chars[0]=' ' ws.
+        // chars[x].is_whitespace() → true, pos.line==1>0 → wrap to line 0.
+        //
+        // But that's lines 462-466, not 536-542. Lines 536-542 are *after* phase 3.
+        // We need to reach phase 3 (not at word end), skip back to start, x>0,
+        // x-=1, then skip whitespace, but land on whitespace.
+        //
+        // "abc  \n  def" from 'e' (line 1, col 3).
+        // Move back: col 3>0 → col 2. chars = [' ',' ','d','e','f']. x=2.
+        // Phase 1: chars[2]='d' not ws → skip.
+        // Phase 2: chars[2]='d', chars[3]='e' → same class → not word end.
+        // Phase 3: 'd' is word, skip back: x=2, chars[1]=' ' not word → stop. x=2.
+        // x==2 > 0, x -= 1 → x=1. chars[1]=' ' is ws.
+        // Skip ws backward: x=1>0, chars[1]=' ' ws → x=0. chars[0]=' ' ws.
+        // chars[x].is_whitespace() → true! pos.line==1>0 → lines 536-542: wrap.
+        // Line 0 = "abc  ", col = 4. Next iter: chars = ['a','b','c',' ',' '], x=4.
+        // Phase 1: chars[4]=' ' ws → x=3, chars[3]=' ' ws → x=2, chars[2]='c' not ws.
+        // Phase 2: chars[2]='c', chars[3]=' ' → different → at_word_end → returns (0,2).
+        let buf = Buffer::from_string("abc  \n  def");
+        let pos = ge(&buf, 1, 3).unwrap();
+        assert_eq!(pos.line, 0, "should wrap to previous line through whitespace");
+        assert_eq!(pos.column, 2, "should land on 'c' in 'abc'");
+    }
 }

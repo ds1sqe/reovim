@@ -768,3 +768,602 @@ fn lines_match_split_newline() {
     let r = Rope::from_str("");
     assert_eq!(r.line_count(), 0);
 }
+
+// ─── Big Rope Helpers ────────────────────────────────────────────────────────
+
+/// Create a rope large enough to have internal nodes (3+ levels).
+/// With `B_MAX`=8 and `MAX_CHUNK_BYTES`=1024, we need >8 chunks.
+/// 2000 short lines (~14KB) produces ~14 chunks → forces 2 levels of
+/// internal nodes. For deeper trees, use `make_huge_rope`.
+fn make_big_rope() -> (Rope, String) {
+    use std::fmt::Write;
+    let mut text = String::new();
+    for i in 0..2000 {
+        writeln!(text, "line {i:04}").unwrap();
+    }
+    let r = Rope::from_str(&text);
+    (r, text)
+}
+
+/// Create an even larger rope to force 3-4 levels of internal nodes.
+/// With `B_MAX`=8, need >64 leaves for 3 levels and >512 for 4 levels.
+/// Each chunk is ~1024 bytes, so ~600KB of text forces ~600 chunks → 4 levels.
+fn make_huge_rope() -> (Rope, String) {
+    use std::fmt::Write;
+    let mut text = String::new();
+    // 20_000 lines of ~30 bytes each → ~600KB → ~600 leaves → 4 levels
+    for i in 0..20_000 {
+        writeln!(text, "line number {i:05} data here").unwrap();
+    }
+    let r = Rope::from_str(&text);
+    (r, text)
+}
+
+// ─── Debug impl ──────────────────────────────────────────────────────────────
+
+#[test]
+fn debug_short_content() {
+    let r = Rope::from_str("hello\nworld");
+    let dbg = format!("{r:?}");
+    assert!(dbg.contains("Rope"), "should contain struct name");
+    assert!(dbg.contains("byte_len"), "should contain byte_len field");
+    assert!(dbg.contains("line_count"), "should contain line_count field");
+    assert!(dbg.contains("hello\\nworld"), "should contain content preview");
+}
+
+#[test]
+fn debug_long_content_truncated() {
+    // Create content >80 bytes to trigger the truncation path
+    let long_line = "a".repeat(120);
+    let r = Rope::from_str(&long_line);
+    let dbg = format!("{r:?}");
+    assert!(dbg.contains("..."), "long content should be truncated with ...");
+    assert!(dbg.contains("byte_len"), "should contain byte_len field");
+}
+
+// ─── PartialEq ───────────────────────────────────────────────────────────────
+
+#[test]
+fn eq_different_byte_len_returns_false() {
+    let r1 = Rope::from_str("a");
+    let r2 = Rope::from_str("ab");
+    assert_ne!(r1, r2);
+}
+
+#[test]
+fn eq_same_byte_len_different_content() {
+    let r1 = Rope::from_str("abc");
+    let r2 = Rope::from_str("xyz");
+    assert_ne!(r1, r2);
+}
+
+#[test]
+fn eq_identical_multi_chunk_ropes() {
+    let (r1, text) = make_big_rope();
+    let r2 = Rope::from_str(&text);
+    assert_eq!(r1, r2);
+}
+
+#[test]
+fn eq_multi_chunk_different_content() {
+    use std::fmt::Write;
+    let mut text1 = String::new();
+    let mut text2 = String::new();
+    for i in 0..2000 {
+        writeln!(text1, "line {i:04}").unwrap();
+        writeln!(text2, "LINE {i:04}").unwrap();
+    }
+    let r1 = Rope::from_str(&text1);
+    let r2 = Rope::from_str(&text2);
+    assert_ne!(r1, r2);
+}
+
+// ─── Remove edge case: range past content end ────────────────────────────────
+
+#[test]
+fn remove_range_fully_past_end() {
+    let r = Rope::from_str("hello");
+    // After clamping, s=5, e=5, so s >= e → returns clone
+    let r2 = r.remove(5..100);
+    assert_eq!(r2.content(), "hello");
+    assert!(Arc::ptr_eq(&r.root, &r2.root));
+}
+
+#[test]
+fn remove_range_start_past_end() {
+    let r = Rope::from_str("hello");
+    // range.start > byte_len, both clamp to 5, s >= e → clone
+    let r2 = r.remove(50..100);
+    assert_eq!(r2.content(), "hello");
+    assert!(Arc::ptr_eq(&r.root, &r2.root));
+}
+
+// ─── chunk_text_aligned: oversized chunk + floor_char_boundary ───────────────
+
+#[test]
+fn chunk_text_oversized_line_with_newline_after() {
+    // A line longer than MAX_CHUNK_BYTES followed by a short line.
+    // This forces the "no newline within limit — find the next newline" branch.
+    let long_line = "x".repeat(MAX_CHUNK_BYTES + 500);
+    let text = format!("{long_line}\nshort\n");
+    let chunks = chunk_text(&text);
+    // First chunk should be the long line + \n, second "short\n"
+    let reconstructed: String = chunks.iter().map(String::as_str).collect();
+    assert_eq!(reconstructed, text);
+    assert!(chunks.len() >= 2, "should have at least 2 chunks");
+    assert!(chunks[0].ends_with('\n'), "first chunk should end with newline");
+}
+
+#[test]
+fn chunk_text_multibyte_at_boundary() {
+    // Create text where multi-byte chars fall near MAX_CHUNK_BYTES boundary.
+    // floor_char_boundary must back up past continuation bytes.
+    // Each "é" is 2 bytes. Fill close to MAX_CHUNK_BYTES with 2-byte chars,
+    // then add a newline, then more content.
+    let two_byte_char = "é";
+    // Fill ~MAX_CHUNK_BYTES with 2-byte chars (no newlines) → forces oversized chunk
+    let count = MAX_CHUNK_BYTES / 2 + 10; // slightly over
+    let long_segment: String = two_byte_char.repeat(count);
+    let text = format!("{long_segment}\nshort\n");
+    let chunks = chunk_text(&text);
+    let reconstructed: String = chunks.iter().map(String::as_str).collect();
+    assert_eq!(reconstructed, text, "multibyte roundtrip must preserve text");
+    // Ensure all chunk boundaries are valid UTF-8 (the fact that we get here proves it)
+    for (i, chunk) in chunks.iter().enumerate() {
+        // std::str is always valid UTF-8
+        assert!(!chunk.is_empty(), "chunk {i} should not be empty");
+    }
+}
+
+#[test]
+fn chunk_text_no_newline_oversized() {
+    // No newlines at all, exceeds MAX_CHUNK_BYTES → single oversized chunk
+    let text = "a".repeat(MAX_CHUNK_BYTES * 3);
+    let chunks = chunk_text(&text);
+    assert_eq!(chunks.len(), 1, "no-newline text should be one chunk");
+    assert_eq!(chunks[0], text);
+}
+
+// ─── nodes_to_root branches ──────────────────────────────────────────────────
+
+#[test]
+fn nodes_to_root_zero_nodes() {
+    // Removing everything from a rope exercises the `nodes.is_empty()` path
+    // in `Rope::remove`, which calls `Rope::new()` (not nodes_to_root).
+    // But `nodes_to_root` with 0 nodes returns an empty leaf.
+    let r = Rope::from_str("hello");
+    let r2 = r.remove(0..5);
+    assert!(r2.is_empty());
+    assert_eq!(r2.content(), "");
+}
+
+#[test]
+fn nodes_to_root_single_node() {
+    // A small insert that produces a single leaf replacement
+    let r = Rope::from_str("ab");
+    let r2 = r.insert(1, "X");
+    assert_eq!(r2.content(), "aXb");
+}
+
+#[test]
+fn nodes_to_root_few_nodes() {
+    // Insert enough text to produce 2-B_MAX replacement nodes
+    let r = Rope::from_str("hello");
+    let insert_text = "x\n".repeat(500); // several chunks
+    let r2 = r.insert(3, &insert_text);
+    let expected = format!("hel{insert_text}lo");
+    assert_eq!(r2.content(), expected);
+}
+
+#[test]
+fn nodes_to_root_many_nodes() {
+    // Insert a huge amount of text to exceed B_MAX replacement nodes
+    let r = Rope::from_str("hello");
+    let insert_text = "line\n".repeat(5000); // many chunks > B_MAX
+    let r2 = r.insert(3, &insert_text);
+    let expected = format!("hel{insert_text}lo");
+    assert_eq!(r2.content(), expected);
+}
+
+// ─── Internal node navigation: line_at ───────────────────────────────────────
+
+#[test]
+fn line_at_internal_nodes() {
+    let (r, text) = make_big_rope();
+    let expected: Vec<&str> = text.split('\n').collect();
+    // Check lines throughout the rope (beginning, middle, end)
+    for &idx in &[0, 1, 100, 500, 999, 1500, 1999] {
+        assert_eq!(r.line(idx), Some(expected[idx]), "line {idx} mismatch on big rope");
+    }
+    // Last line is empty (trailing \n)
+    assert_eq!(r.line(2000), Some(""));
+    // Past end
+    assert_eq!(r.line(2001), None);
+}
+
+// ─── Internal node navigation: pos_to_byte ───────────────────────────────────
+
+#[test]
+fn pos_to_byte_internal_nodes() {
+    let (r, text) = make_big_rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    // Verify several lines
+    for &line_idx in &[0, 50, 500, 1000, 1999] {
+        let byte_offset = r.position_to_byte(line_idx, 0);
+        // Compute expected offset manually
+        let expected: usize = lines[..line_idx].iter().map(|l| l.len() + 1).sum();
+        assert_eq!(byte_offset, expected, "pos_to_byte start of line {line_idx}");
+    }
+    // Also check a non-zero column
+    let byte_at_col3 = r.position_to_byte(100, 3);
+    let line_start: usize = lines[..100].iter().map(|l| l.len() + 1).sum();
+    assert_eq!(byte_at_col3, line_start + 3, "pos_to_byte line 100 col 3");
+}
+
+// ─── Internal node navigation: byte_to_pos ───────────────────────────────────
+
+#[test]
+fn byte_to_pos_internal_nodes() {
+    let (r, text) = make_big_rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    // Test several byte offsets
+    let mut byte_offset = 0usize;
+    for (line_idx, line) in lines.iter().enumerate() {
+        if line_idx > 1999 {
+            break;
+        }
+        if line_idx % 200 == 0 {
+            let (l, c) = r.byte_to_position(byte_offset);
+            assert_eq!((l, c), (line_idx, 0), "byte_to_pos at start of line {line_idx}");
+            // Also test middle of line
+            if !line.is_empty() {
+                let mid = byte_offset + line.len() / 2;
+                let (ml, mc) = r.byte_to_position(mid);
+                assert_eq!(ml, line_idx, "byte_to_pos mid line {line_idx} wrong line");
+                assert_eq!(mc, line.len() / 2, "byte_to_pos mid line {line_idx} wrong col");
+            }
+        }
+        byte_offset += line.len() + 1; // +1 for \n
+    }
+    // Test byte offset at end of text
+    let (l, c) = r.byte_to_position(text.len());
+    assert_eq!((l, c), (2000, 0), "byte_to_pos at end of text");
+}
+
+// ─── Internal node navigation: char_to_byte ──────────────────────────────────
+
+#[test]
+fn char_to_byte_internal_nodes() {
+    let (r, text) = make_big_rope();
+    // For ASCII-only content, char offset == byte offset
+    for &offset in &[0, 100, 500, 5000, 10000] {
+        assert_eq!(r.char_to_byte(offset), offset, "char_to_byte({offset}) on ASCII big rope");
+    }
+    // Also test at the end
+    assert_eq!(r.char_to_byte(text.len()), text.len());
+}
+
+#[test]
+fn char_to_byte_internal_nodes_unicode() {
+    use std::fmt::Write;
+    // Build a big rope with multi-byte chars to test non-trivial conversion
+    let mut text = String::new();
+    for i in 0..2000 {
+        writeln!(text, "línea {i:04}").unwrap(); // "í" is 2 bytes
+    }
+    let r = Rope::from_str(&text);
+    // Verify roundtrip for several char offsets
+    for &ci in &[0, 10, 100, 1000, 5000] {
+        let byte = r.char_to_byte(ci);
+        let back = r.byte_to_char(byte);
+        assert_eq!(back, ci, "char/byte roundtrip failed for char {ci} on big unicode rope");
+    }
+}
+
+// ─── Internal node navigation: byte_to_char ──────────────────────────────────
+
+#[test]
+fn byte_to_char_internal_nodes() {
+    let (r, text) = make_big_rope();
+    // ASCII: byte offset == char offset
+    for &offset in &[0, 100, 500, 5000, 10000] {
+        assert_eq!(r.byte_to_char(offset), offset, "byte_to_char({offset}) on ASCII big rope");
+    }
+    assert_eq!(r.byte_to_char(text.len()), text.len());
+}
+
+// ─── Insert on big rope (internal node splitting) ────────────────────────────
+
+#[test]
+fn insert_into_big_rope_beginning() {
+    let (r, text) = make_big_rope();
+    let r2 = r.insert(0, "PREFIX\n");
+    assert_eq!(r2.content(), format!("PREFIX\n{text}"));
+    assert!(check_alignment(&r2.root, true), "alignment broken after insert at beginning");
+}
+
+#[test]
+fn insert_into_big_rope_middle() {
+    let (r, text) = make_big_rope();
+    let mid = text.len() / 2;
+    // Find nearest newline to avoid splitting mid-line
+    let insert_pos = text[..mid].rfind('\n').unwrap() + 1;
+    let inserted = "INSERTED LINE\n";
+    let r2 = r.insert(insert_pos, inserted);
+    let expected = format!("{}{inserted}{}", &text[..insert_pos], &text[insert_pos..]);
+    assert_eq!(r2.content(), expected);
+    assert!(check_alignment(&r2.root, true), "alignment broken after insert in middle");
+}
+
+#[test]
+fn insert_into_big_rope_end() {
+    let (r, text) = make_big_rope();
+    let r2 = r.insert(text.len(), "SUFFIX");
+    assert_eq!(r2.content(), format!("{text}SUFFIX"));
+}
+
+#[test]
+fn insert_large_text_into_big_rope() {
+    use std::fmt::Write;
+    // Insert enough text to cause internal node splitting (> B_MAX children)
+    let (r, text) = make_big_rope();
+    let mut large_insert = String::new();
+    for i in 0..500 {
+        writeln!(large_insert, "inserted {i:04}").unwrap();
+    }
+    let insert_pos = 100;
+    let r2 = r.insert(insert_pos, &large_insert);
+    let expected = format!("{}{large_insert}{}", &text[..insert_pos], &text[insert_pos..]);
+    assert_eq!(r2.content(), expected);
+    assert!(check_alignment(&r2.root, true), "alignment broken after large insert");
+}
+
+// ─── Remove on big rope (internal node mutation) ─────────────────────────────
+
+#[test]
+fn remove_from_big_rope_beginning() {
+    let (r, text) = make_big_rope();
+    // Remove first 500 bytes
+    let r2 = r.remove(0..500);
+    assert_eq!(r2.content(), &text[500..]);
+    assert!(check_alignment(&r2.root, true), "alignment broken after remove from beginning");
+}
+
+#[test]
+fn remove_from_big_rope_middle() {
+    let (r, text) = make_big_rope();
+    let start = 3000;
+    let end = 6000;
+    let r2 = r.remove(start..end);
+    let expected = format!("{}{}", &text[..start], &text[end..]);
+    assert_eq!(r2.content(), expected);
+    assert!(check_alignment(&r2.root, true), "alignment broken after remove from middle");
+}
+
+#[test]
+fn remove_from_big_rope_end() {
+    let (r, text) = make_big_rope();
+    let start = text.len() - 500;
+    let r2 = r.remove(start..text.len());
+    assert_eq!(r2.content(), &text[..start]);
+    assert!(check_alignment(&r2.root, true), "alignment broken after remove from end");
+}
+
+#[test]
+fn remove_entire_big_rope() {
+    let (r, text) = make_big_rope();
+    let r2 = r.remove(0..text.len());
+    assert!(r2.is_empty());
+    assert_eq!(r2.content(), "");
+}
+
+#[test]
+fn remove_across_many_children() {
+    // Remove a large range that spans multiple internal node children
+    let (r, text) = make_big_rope();
+    let start = 1000;
+    let end = text.len() - 1000;
+    let r2 = r.remove(start..end);
+    let expected = format!("{}{}", &text[..start], &text[end..]);
+    assert_eq!(r2.content(), expected);
+    assert!(
+        check_alignment(&r2.root, true),
+        "alignment broken after removing across many children"
+    );
+}
+
+#[test]
+fn remove_single_child_entirely() {
+    // Remove a range that exactly covers one internal child's range.
+    // This exercises the "entirely within range — remove" branch.
+    let (r, _text) = make_big_rope();
+    // Remove a chunk-sized range from the middle
+    let r2 = r.remove(1024..2048);
+    assert!(check_alignment(&r2.root, true));
+    assert_eq!(r2.byte_len(), r.byte_len() - 1024);
+}
+
+// ─── fixup_alignment ─────────────────────────────────────────────────────────
+
+#[test]
+fn fixup_alignment_after_newline_removal() {
+    // Removing a newline from the middle of a big rope breaks the
+    // newline-alignment invariant, which fixup_alignment must repair.
+    let (r, text) = make_big_rope();
+    // Find a newline somewhere in the middle
+    let mid = text.len() / 2;
+    let nl_pos = text[..mid].rfind('\n').unwrap();
+    let r2 = r.remove(nl_pos..nl_pos + 1);
+    // The content should have that newline removed
+    let expected = format!("{}{}", &text[..nl_pos], &text[nl_pos + 1..]);
+    assert_eq!(r2.content(), expected);
+    // Alignment invariant must hold
+    assert!(
+        check_alignment(&r2.root, true),
+        "alignment broken after removing newline in big rope"
+    );
+}
+
+#[test]
+fn fixup_alignment_multiple_newline_removals() {
+    // Remove multiple newlines to stress fixup_alignment
+    let (mut r, text) = make_big_rope();
+    let mut expected = text;
+    // Remove 10 newlines from various positions
+    for _ in 0..10 {
+        if let Some(nl_pos) = expected[..expected.len() / 2].rfind('\n') {
+            r = r.remove(nl_pos..nl_pos + 1);
+            expected = format!("{}{}", &expected[..nl_pos], &expected[nl_pos + 1..]);
+            assert_eq!(r.content(), expected, "content mismatch after newline removal");
+            assert!(
+                check_alignment(&r.root, true),
+                "alignment broken during serial newline removals"
+            );
+        }
+    }
+}
+
+// ─── Huge rope: deep internal nodes ──────────────────────────────────────────
+
+#[test]
+fn huge_rope_line_access() {
+    let (r, text) = make_huge_rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    // Spot-check lines at various positions
+    for &idx in &[0, 1, 1000, 5000, 10000, 15000, 19999] {
+        assert_eq!(r.line(idx), Some(lines[idx]), "line {idx} mismatch on huge rope");
+    }
+}
+
+#[test]
+fn huge_rope_position_roundtrip() {
+    let (r, text) = make_huge_rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    // Roundtrip several positions
+    let mut byte_offset = 0usize;
+    for (line_idx, line) in lines.iter().enumerate() {
+        if line_idx >= 20000 {
+            break;
+        }
+        if line_idx % 2000 == 0 {
+            let byte = r.position_to_byte(line_idx, 0);
+            assert_eq!(byte, byte_offset, "pos_to_byte line {line_idx} on huge rope");
+            let (l, c) = r.byte_to_position(byte);
+            assert_eq!((l, c), (line_idx, 0), "byte_to_pos line {line_idx} on huge rope");
+        }
+        byte_offset += line.len() + 1;
+    }
+}
+
+#[test]
+fn huge_rope_char_byte_roundtrip() {
+    let (r, text) = make_huge_rope();
+    // Test at several char offsets (ASCII so char==byte)
+    for &ci in &[0, 1000, 50_000, 200_000, text.len()] {
+        let byte = r.char_to_byte(ci);
+        let back = r.byte_to_char(byte);
+        assert_eq!(back, ci, "char/byte roundtrip failed at {ci} on huge rope");
+    }
+}
+
+#[test]
+fn huge_rope_insert_and_remove() {
+    let (r, text) = make_huge_rope();
+    // Insert in the middle
+    let mid = text.len() / 2;
+    let insert_pos = text[..mid].rfind('\n').unwrap() + 1;
+    let r2 = r.insert(insert_pos, "HUGE INSERT\n");
+    let expected = format!("{}{}{}", &text[..insert_pos], "HUGE INSERT\n", &text[insert_pos..]);
+    assert_eq!(r2.content(), expected);
+
+    // Remove the inserted text from the result
+    let inserted_len = "HUGE INSERT\n".len();
+    let r3 = r2.remove(insert_pos..insert_pos + inserted_len);
+    assert_eq!(r3.content(), text, "insert/remove roundtrip on huge rope");
+}
+
+// ─── ChunksIter: empty chunk skip ────────────────────────────────────────────
+
+#[test]
+fn chunks_skip_empty_leaves() {
+    // After removing all content from a leaf, the resulting empty leaf
+    // should be skipped by chunks iterator. We can verify this indirectly:
+    // build a rope, remove some content, and verify chunks concatenation.
+    let (r, text) = make_big_rope();
+    let r2 = r.remove(0..500);
+    let from_chunks: String = r2.chunks().collect();
+    assert_eq!(from_chunks, &text[500..]);
+    // Verify no empty chunks in the iteration
+    for (i, chunk) in r2.chunks().enumerate() {
+        assert!(!chunk.is_empty(), "chunk {i} should not be empty");
+    }
+}
+
+// ─── find_child_for_byte edge cases ──────────────────────────────────────────
+
+#[test]
+fn insert_at_every_line_boundary_of_big_rope() {
+    // This exercises find_child_for_byte at various offsets including
+    // exact child boundaries
+    let (r, text) = make_big_rope();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut offset = 0usize;
+    for (i, line) in lines.iter().enumerate().take(100) {
+        let r2 = r.insert(offset, "X");
+        let expected_start = &text[..offset];
+        let expected_end = &text[offset..];
+        assert_eq!(
+            r2.content(),
+            format!("{expected_start}X{expected_end}"),
+            "insert at line {i} boundary failed"
+        );
+        offset += line.len() + 1;
+    }
+}
+
+// ─── split_children ──────────────────────────────────────────────────────────
+
+#[test]
+fn repeated_inserts_force_splits() {
+    // Start with a big rope and keep inserting to force repeated splits
+    let (mut r, _) = make_big_rope();
+    for i in 0..200 {
+        let text = format!("ins{i:04}\n");
+        r = r.insert(0, &text);
+    }
+    // Verify content integrity
+    let content = r.content();
+    assert!(content.starts_with("ins0199\n"));
+    assert!(check_alignment(&r.root, true));
+}
+
+// ─── Interaction: insert + remove on internal nodes ──────────────────────────
+
+#[test]
+fn insert_remove_roundtrip_big_rope() {
+    let (r, text) = make_big_rope();
+    let insert_text = "INSERTED CONTENT\n";
+    let pos = 5000;
+    let r2 = r.insert(pos, insert_text);
+    let r3 = r2.remove(pos..pos + insert_text.len());
+    assert_eq!(r3.content(), text, "insert/remove roundtrip on big rope");
+}
+
+// ─── last_byte_of and fixup_alignment with internal children ─────────────────
+
+#[test]
+fn remove_spanning_internal_boundaries() {
+    // Remove a range that spans from the middle of one internal child
+    // to the middle of another, forcing fixup_alignment on internal nodes
+    let (r, text) = make_huge_rope();
+    // Remove a large range spanning multiple internal children
+    let start = 10_000;
+    let end = 100_000;
+    let r2 = r.remove(start..end);
+    let expected = format!("{}{}", &text[..start], &text[end..]);
+    assert_eq!(r2.content(), expected);
+    assert!(
+        check_alignment(&r2.root, true),
+        "alignment broken after removing across internal boundaries"
+    );
+}
