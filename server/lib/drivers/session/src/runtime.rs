@@ -929,10 +929,7 @@ impl WindowApi for SessionRuntime<'_> {
             // #491: use per-client windows
             return Err(WindowError::CannotCloseLastWindow);
         }
-        // Find and remove the window
-        let idx = self.windows.windows.iter().position(|w| w.id == window); // #491: use per-client windows
-        if let Some(idx) = idx {
-            self.windows.windows.remove(idx); // #491: use per-client windows
+        if self.windows.remove(window) {
             self.changes.record_window_closed(window);
             Ok(())
         } else {
@@ -1520,9 +1517,7 @@ impl CompositorApi for SessionRuntime<'_> {
             .ok_or(CompositorError::CannotCloseLastWindow)?;
 
         // Remove closed window from per-client WindowLayout
-        if let Some(idx) = self.windows.windows.iter().position(|w| w.id == current) {
-            self.windows.windows.remove(idx);
-        }
+        self.windows.remove(current);
         self.windows.set_active(neighbor);
 
         self.changes.record_window_closed(current);
@@ -1565,6 +1560,7 @@ impl CompositorApi for SessionRuntime<'_> {
         // Close all other windows and emit events
         for window in &windows {
             layer.close_tiled(*window);
+            self.windows.remove(*window);
             self.changes.record_window_closed(*window);
         }
 
