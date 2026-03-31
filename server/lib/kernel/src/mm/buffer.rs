@@ -1,8 +1,8 @@
 //! Buffer data structure for text storage.
 //!
 //! The buffer is the core abstraction for text editing. It stores
-//! text as lines and provides efficient operations for insertion,
-//! deletion, and navigation.
+//! text as a rope data structure providing O(log n) insert/delete,
+//! O(1) clone via structural sharing, and O(log n) position conversion.
 //!
 //! # Cursor Isolation (#471)
 //!
@@ -16,18 +16,18 @@
 
 use std::hash::{Hash, Hasher};
 
+use super::rope::Rope;
 use super::{BufferId, Position};
 
-/// A text buffer with line-based storage.
+/// A text buffer with rope-based storage.
 ///
-/// The buffer stores text as a vector of lines, where each line is a String
-/// without the trailing newline character. This provides efficient line-based
-/// access while maintaining a simple implementation.
+/// The buffer stores text as a rope — a balanced B-tree of text chunks.
+/// This provides O(log n) insert/delete, O(1) clone via structural sharing
+/// (`Arc<Node>`), and O(log n) position conversion.
 ///
 /// # Invariants
 ///
 /// - An empty buffer has zero lines (not one empty line)
-/// - Lines do not contain newline characters
 /// - Positions are clamped to valid ranges on access
 ///
 /// # Cursor Isolation (#471)
@@ -51,8 +51,8 @@ use super::{BufferId, Position};
 pub struct Buffer {
     /// Unique identifier for this buffer.
     id: BufferId,
-    /// Text content stored as lines.
-    lines: Vec<String>,
+    /// Text content stored as a rope.
+    text: Rope,
     /// Whether the buffer has unsaved modifications.
     modified: bool,
     /// File path associated with this buffer.
@@ -72,7 +72,7 @@ impl Buffer {
     pub fn new() -> Self {
         Self {
             id: BufferId::new(),
-            lines: Vec::new(),
+            text: Rope::new(),
             modified: false,
             file_path: None,
         }
@@ -82,10 +82,10 @@ impl Buffer {
     ///
     /// This is primarily useful for testing.
     #[must_use]
-    pub const fn with_id(id: BufferId) -> Self {
+    pub fn with_id(id: BufferId) -> Self {
         Self {
             id,
-            lines: Vec::new(),
+            text: Rope::new(),
             modified: false,
             file_path: None,
         }
@@ -97,14 +97,9 @@ impl Buffer {
     /// An empty string results in a buffer with zero lines.
     #[must_use]
     pub fn from_string(content: &str) -> Self {
-        let lines = if content.is_empty() {
-            Vec::new()
-        } else {
-            content.lines().map(String::from).collect()
-        };
         Self {
             id: BufferId::new(),
-            lines,
+            text: normalize_to_rope(content),
             modified: false,
             file_path: None,
         }
@@ -179,14 +174,14 @@ impl Buffer {
 
     /// Get the number of lines in the buffer.
     #[must_use]
-    pub const fn line_count(&self) -> usize {
-        self.lines.len()
+    pub fn line_count(&self) -> usize {
+        self.text.line_count()
     }
 
     /// Check if the buffer is empty (has no lines).
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.lines.is_empty()
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
     }
 
     /// Get a specific line by index.
@@ -194,7 +189,7 @@ impl Buffer {
     /// Returns `None` if the index is out of bounds.
     #[must_use]
     pub fn line(&self, index: usize) -> Option<&str> {
-        self.lines.get(index).map(String::as_str)
+        self.text.line(index)
     }
 
     /// Get the length of a specific line in characters.
@@ -202,30 +197,40 @@ impl Buffer {
     /// Returns `None` if the index is out of bounds.
     #[must_use]
     pub fn line_len(&self, index: usize) -> Option<usize> {
-        self.lines.get(index).map(|l| l.chars().count())
+        self.text.line_len(index)
     }
 
-    /// Get all lines as a slice.
+    // NOTE: lines() -> &[String] removed in #711.
+    // With rope storage, there is no contiguous &[String] to return.
+    // Use line(idx) for individual access or content() for full text.
+
+    /// Clone the internal rope (O(1) via `Arc` sharing).
+    ///
+    /// Used by snapshot types for efficient state capture.
     #[must_use]
-    pub fn lines(&self) -> &[String] {
-        &self.lines
+    pub(crate) fn clone_rope(&self) -> Rope {
+        self.text.clone()
+    }
+
+    /// Replace the internal rope directly (O(1) via `Arc` sharing).
+    ///
+    /// Used by snapshot restore for efficient state restoration.
+    pub(crate) fn set_rope(&mut self, rope: Rope) {
+        self.text = rope;
+        self.modified = true;
     }
 
     /// Get the full content as a string (lines joined with newlines).
     #[must_use]
     pub fn content(&self) -> String {
-        self.lines.join("\n")
+        self.text.content()
     }
 
     /// Set the full content from a string.
     ///
-    /// This replaces all existing content and resets the cursor.
+    /// This replaces all existing content.
     pub fn set_content(&mut self, content: &str) {
-        self.lines = if content.is_empty() {
-            Vec::new()
-        } else {
-            content.lines().map(String::from).collect()
-        };
+        self.text = normalize_to_rope(content);
         self.modified = true;
     }
 
@@ -243,49 +248,15 @@ impl Buffer {
             return;
         }
 
-        // Ensure we have at least one line
-        if self.lines.is_empty() {
-            self.lines.push(String::new());
+        if self.text.is_empty() {
+            self.text = Rope::from_str(text);
+            self.modified = true;
+            return;
         }
 
         let pos = self.clamp_position(pos);
-        let line_idx = pos.line;
-        let col = pos.column;
-
-        // Get the current line and split at insertion point
-        let current_line = &self.lines[line_idx];
-        let byte_offset = char_to_byte_offset(current_line, col);
-        let (before, after) = current_line.split_at(byte_offset);
-        let before = before.to_string();
-        let after = after.to_string();
-
-        // Handle single-line vs multi-line insertion
-        let insert_lines: Vec<&str> = text.split('\n').collect();
-
-        if insert_lines.len() == 1 {
-            // Single line: just insert in place
-            self.lines[line_idx] = format!("{before}{text}{after}");
-        } else {
-            // Multi-line: split and insert
-            // First line gets before + first insert part
-            let first_insert = insert_lines[0];
-            self.lines[line_idx] = format!("{before}{first_insert}");
-
-            // Last line gets last insert part + after
-            let last_insert = insert_lines[insert_lines.len() - 1];
-            let last_line = format!("{last_insert}{after}");
-
-            // Insert middle lines and last line
-            let insert_pos = line_idx + 1;
-            self.lines.splice(
-                insert_pos..insert_pos,
-                insert_lines[1..insert_lines.len() - 1]
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .chain(std::iter::once(last_line)),
-            );
-        }
-
+        let byte_offset = self.text.position_to_byte(pos.line, pos.column);
+        self.text = self.text.insert(byte_offset, text);
         self.modified = true;
     }
 
@@ -293,52 +264,23 @@ impl Buffer {
     ///
     /// Returns the deleted text.
     /// This is a pure text operation - cursor management is the caller's responsibility.
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn delete_at(&mut self, pos: Position, count: usize) -> String {
-        if count == 0 || self.lines.is_empty() {
+        if count == 0 || self.text.is_empty() {
             return String::new();
         }
 
         let pos = self.clamp_position(pos);
-        let mut deleted = String::new();
-        let mut remaining = count;
-        let current_line = pos.line;
-        let current_col = pos.column;
+        let byte_start = self.text.position_to_byte(pos.line, pos.column);
+        let char_start = self.text.byte_to_char(byte_start);
+        let char_end = (char_start + count).min(self.text.char_len());
+        let byte_end = self.text.char_to_byte(char_end);
 
-        while remaining > 0 && current_line < self.lines.len() {
-            let line = &self.lines[current_line];
-            let chars: Vec<char> = line.chars().collect();
-            let chars_in_line = chars.len();
-
-            if current_col >= chars_in_line {
-                // At end of line, delete the newline (merge with next line)
-                if current_line + 1 < self.lines.len() {
-                    deleted.push('\n');
-                    let next_line = self.lines.remove(current_line + 1);
-                    self.lines[current_line].push_str(&next_line);
-                    remaining -= 1;
-                } else {
-                    // Nothing more to delete
-                    break;
-                }
-            } else {
-                // Delete characters in current line
-                let chars_to_delete = remaining.min(chars_in_line - current_col);
-                let delete_chars: String = chars[current_col..current_col + chars_to_delete]
-                    .iter()
-                    .collect();
-                deleted.push_str(&delete_chars);
-
-                // Rebuild the line without deleted chars
-                let new_line: String = chars[..current_col]
-                    .iter()
-                    .chain(chars[current_col + chars_to_delete..].iter())
-                    .collect();
-                self.lines[current_line] = new_line;
-
-                remaining -= chars_to_delete;
-            }
+        if byte_start >= byte_end {
+            return String::new();
         }
+
+        let deleted = extract_byte_range(&self.text, byte_start, byte_end);
+        self.text = self.text.remove(byte_start..byte_end);
 
         if !deleted.is_empty() {
             self.modified = true;
@@ -360,9 +302,21 @@ impl Buffer {
         let start = self.clamp_position(start);
         let end = self.clamp_position(end);
 
-        // Calculate character count between positions
-        let count = self.char_count_between(start, end);
-        self.delete_at(start, count)
+        let byte_start = self.text.position_to_byte(start.line, start.column);
+        let byte_end = self.text.position_to_byte(end.line, end.column);
+
+        if byte_start >= byte_end {
+            return String::new();
+        }
+
+        let deleted = extract_byte_range(&self.text, byte_start, byte_end);
+        self.text = self.text.remove(byte_start..byte_end);
+
+        if !deleted.is_empty() {
+            self.modified = true;
+        }
+
+        deleted
     }
 
     // === Position Conversion ===
@@ -371,48 +325,22 @@ impl Buffer {
     ///
     /// This is useful for tree-sitter and other byte-based APIs.
     #[must_use]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn position_to_byte(&self, pos: Position) -> usize {
-        let pos = self.clamp_position(pos);
-        let mut offset = 0;
-
-        for (i, line) in self.lines.iter().enumerate() {
-            if i < pos.line {
-                offset += line.len() + 1; // +1 for newline
-            } else if i == pos.line {
-                // Add bytes up to column
-                offset += char_to_byte_offset(line, pos.column);
-                break;
-            }
+        if self.text.is_empty() {
+            return 0;
         }
-
-        offset
+        let pos = self.clamp_position(pos);
+        self.text.position_to_byte(pos.line, pos.column)
     }
 
     /// Convert a byte offset to a position.
     #[must_use]
     pub fn byte_to_position(&self, byte_offset: usize) -> Position {
-        let mut remaining = byte_offset;
-
-        for (line_idx, line) in self.lines.iter().enumerate() {
-            let line_bytes = line.len();
-            let line_total = line_bytes + 1; // +1 for newline
-
-            if remaining <= line_bytes {
-                // Position is within this line (includes newline boundary: since
-                // line_total = line_bytes + 1, there's no integer between line_bytes
-                // and line_total, so <= catches both content and newline positions)
-                let col = byte_to_char_offset(line, remaining);
-                return Position::new(line_idx, col);
-            }
-
-            remaining -= line_total;
+        if self.text.is_empty() {
+            return Position::new(0, 0);
         }
-
-        // Past end of buffer
-        let last_line = self.lines.len().saturating_sub(1);
-        let last_col = self.lines.last().map_or(0, |l| l.chars().count());
-        Position::new(last_line, last_col)
+        let (line, col) = self.text.byte_to_position(byte_offset);
+        Position::new(line, col)
     }
 
     // === Helper Methods ===
@@ -420,46 +348,15 @@ impl Buffer {
     /// Clamp a position to valid buffer coordinates.
     #[must_use]
     fn clamp_position(&self, pos: Position) -> Position {
-        if self.lines.is_empty() {
+        if self.text.is_empty() {
             return Position::origin();
         }
 
-        let line = pos.line.min(self.lines.len() - 1);
-        let max_col = self.lines[line].chars().count();
+        let line = pos.line.min(self.text.line_count() - 1);
+        let max_col = self.text.line_len(line).unwrap_or(0);
         let column = pos.column.min(max_col);
 
         Position::new(line, column)
-    }
-
-    /// Count characters between two positions.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn char_count_between(&self, start: Position, end: Position) -> usize {
-        if start >= end {
-            return 0;
-        }
-
-        if start.line == end.line {
-            return end.column.saturating_sub(start.column);
-        }
-
-        let mut count = 0;
-
-        // Characters from start to end of first line + newline
-        if let Some(first_line) = self.lines.get(start.line) {
-            count += first_line.chars().count() - start.column + 1; // +1 for newline
-        }
-
-        // Full lines in between
-        for line_idx in start.line + 1..end.line {
-            if let Some(line) = self.lines.get(line_idx) {
-                count += line.chars().count() + 1; // +1 for newline
-            }
-        }
-
-        // Characters in last line
-        count += end.column;
-
-        count
     }
 }
 
@@ -471,18 +368,42 @@ impl Default for Buffer {
 
 // === Helper Functions ===
 
-/// Convert a character offset to a byte offset within a line.
-fn char_to_byte_offset(line: &str, char_offset: usize) -> usize {
-    line.char_indices()
-        .nth(char_offset)
-        .map_or(line.len(), |(byte_idx, _)| byte_idx)
+/// Normalize content string into a rope.
+///
+/// Uses `str::lines()` to split and rejoin, which strips the optional
+/// final newline — matching the old `Vec<String>` buffer behavior where
+/// `content()` was `lines.join("\n")`.
+fn normalize_to_rope(content: &str) -> Rope {
+    if content.is_empty() {
+        return Rope::new();
+    }
+    let joined: String = content.lines().collect::<Vec<_>>().join("\n");
+    if joined.is_empty() {
+        Rope::new()
+    } else {
+        Rope::from_str(&joined)
+    }
 }
 
-/// Convert a byte offset to a character offset within a line.
-fn byte_to_char_offset(line: &str, byte_offset: usize) -> usize {
-    line.char_indices()
-        .take_while(|(byte_idx, _)| *byte_idx < byte_offset)
-        .count()
+/// Extract text in a byte range from a rope by iterating over chunks.
+fn extract_byte_range(text: &Rope, start: usize, end: usize) -> String {
+    let mut result = String::with_capacity(end - start);
+    let mut pos = 0;
+    for chunk in text.chunks() {
+        let chunk_end = pos + chunk.len();
+        if chunk_end <= start {
+            pos = chunk_end;
+            continue;
+        }
+        if pos >= end {
+            break;
+        }
+        let s = start.saturating_sub(pos);
+        let e = (end - pos).min(chunk.len());
+        result.push_str(&chunk[s..e]);
+        pos = chunk_end;
+    }
+    result
 }
 
 #[cfg(test)]

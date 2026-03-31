@@ -102,15 +102,7 @@ fn line_len_unicode() {
     assert_eq!(buf.line_len(0), Some(5));
 }
 
-#[test]
-fn lines_accessor() {
-    let buf = Buffer::from_string("A\nB\nC");
-    let lines = buf.lines();
-    assert_eq!(lines.len(), 3);
-    assert_eq!(lines[0], "A");
-    assert_eq!(lines[1], "B");
-    assert_eq!(lines[2], "C");
-}
+// NOTE: lines_accessor test removed in #711 — Buffer::lines() removed.
 
 #[test]
 fn content_empty() {
@@ -423,52 +415,8 @@ fn byte_position_roundtrip_unicode() {
     }
 }
 
-// === Helper functions ===
-
-#[test]
-fn char_to_byte_offset_ascii() {
-    assert_eq!(char_to_byte_offset("hello", 0), 0);
-    assert_eq!(char_to_byte_offset("hello", 3), 3);
-    assert_eq!(char_to_byte_offset("hello", 5), 5); // past end
-}
-
-#[test]
-fn char_to_byte_offset_unicode() {
-    // "H\u{00e9}llo" -> H(1) + e-acute(2) + l(1) + l(1) + o(1)
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 0), 0);
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 1), 1);
-    assert_eq!(char_to_byte_offset("H\u{00e9}llo", 2), 3); // skip 2-byte char
-}
-
-#[test]
-fn char_to_byte_offset_past_end() {
-    assert_eq!(char_to_byte_offset("hi", 10), 2); // returns line.len()
-}
-
-#[test]
-fn char_to_byte_offset_empty() {
-    assert_eq!(char_to_byte_offset("", 0), 0);
-}
-
-#[test]
-fn byte_to_char_offset_ascii() {
-    assert_eq!(byte_to_char_offset("hello", 0), 0);
-    assert_eq!(byte_to_char_offset("hello", 3), 3);
-    assert_eq!(byte_to_char_offset("hello", 5), 5);
-}
-
-#[test]
-fn byte_to_char_offset_unicode() {
-    // "H\u{00e9}llo" -> byte 3 is char index 2
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 0), 0);
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 1), 1);
-    assert_eq!(byte_to_char_offset("H\u{00e9}llo", 3), 2); // past the 2-byte char
-}
-
-#[test]
-fn byte_to_char_offset_empty() {
-    assert_eq!(byte_to_char_offset("", 0), 0);
-}
+// NOTE: char_to_byte_offset / byte_to_char_offset tests removed in #711.
+// These helpers are no longer needed — the Rope handles all byte/char conversion.
 
 // === Clone ===
 

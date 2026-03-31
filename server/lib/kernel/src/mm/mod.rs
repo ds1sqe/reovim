@@ -51,9 +51,11 @@ mod cache;
 mod delimiter;
 mod edit;
 mod position;
-// Phase 1: Rope not yet wired into Buffer (Phase 2). Remove when integrated.
-#[allow(dead_code)]
 mod rope;
+
+// Re-export Rope for snapshot types in block/. Not exposed via api::v1
+// because the mm module itself is private.
+pub use rope::Rope;
 mod saturator;
 mod selection;
 mod snapshot;

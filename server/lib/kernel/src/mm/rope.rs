@@ -20,7 +20,7 @@
 //!
 //! - Every non-last leaf ends with `'\n'` (newline-aligned chunks).
 //!   This guarantees no line spans multiple leaves.
-//! - Internal nodes have `B_MIN..=B_MAX` children (except the root,
+//! - Internal nodes have 4..=[`B_MAX`] children (except the root,
 //!   which may have fewer).
 //! - All leaves are at the same depth (balanced B-tree).
 //! - A single line longer than `MAX_CHUNK_BYTES` gets its own
@@ -31,9 +31,6 @@ use std::ops::Range;
 use std::sync::Arc;
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-/// Minimum children per internal node (except root).
-const B_MIN: usize = 4;
 
 /// Maximum children per internal node.
 const B_MAX: usize = 8;
@@ -334,6 +331,8 @@ impl Rope {
 
 impl Rope {
     /// Iterate over lines (yields `&str` per line).
+    // Used in tests and Phase 3+ snapshot migration.
+    #[allow(dead_code)]
     pub const fn lines(&self) -> RopeLines<'_> {
         RopeLines {
             rope: self,
@@ -350,6 +349,7 @@ impl Rope {
 }
 
 /// Iterator over lines of a rope.
+#[allow(dead_code)]
 pub struct RopeLines<'a> {
     rope: &'a Rope,
     idx: usize,
@@ -545,12 +545,12 @@ fn build_tree(mut nodes: Vec<Arc<RopeNode>>) -> Arc<RopeNode> {
 
         while i < total {
             let remaining = total - i;
-            // Ensure every group has at least B_MIN children.
+            // Ensure every group has at least 4 children.
             // When remaining <= 2 * B_MAX, split evenly.
             let group_size = if remaining <= B_MAX {
                 remaining
             } else if remaining <= 2 * B_MAX {
-                // Split so both halves >= B_MIN
+                // Split so both halves >= 4
                 remaining.div_ceil(2)
             } else {
                 B_MAX

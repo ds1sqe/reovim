@@ -44,6 +44,16 @@ pub use commands::{
     YankCommand, operator_commands,
 };
 
+/// Convert a char-column index to a byte offset within a line.
+///
+/// Used by operators to safely slice `&str` at character boundaries,
+/// fixing the pre-existing char/byte conflation bug (#711 Phase 4).
+fn char_col_to_byte(line: &str, col: usize) -> usize {
+    line.char_indices()
+        .nth(col)
+        .map_or(line.len(), |(b, _)| b)
+}
+
 /// Returns all operators provided by this module.
 #[must_use]
 pub fn operators() -> Vec<Box<dyn Operator>> {
