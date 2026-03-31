@@ -636,24 +636,20 @@ fn test_visual_mode_has_selection_category() {
 // =========================================================================
 
 #[test]
-fn b7_repro_parse_returns_err_but_module_swallows_it() {
-    // Simulate what load_personality_manifest() does on parse failure.
-    // lib.rs:338-343: parse error is logged but swallowed via `return Ok(())`.
-    fn simulate_load(toml: &str) -> bool {
+fn b7_repro_parse_failure_now_propagates() {
+    // Simulate load_personality_manifest() — parse failure now returns Err.
+    fn simulate_load(toml: &str) -> Result<bool, String> {
         match reovim_driver_manifest::PersonalityManifest::parse(toml) {
-            Ok(_m) => true, // module loaded with keybindings
-            Err(_e) => {
-                // BUG PATTERN: swallow error, return success
-                false // module loads with ZERO keybindings
-            }
+            Ok(_m) => Ok(true),
+            Err(e) => Err(format!("Failed to parse: {e}")),
         }
     }
 
-    // Step 1: PersonalityManifest::parse correctly returns Err on bad input.
+    // PersonalityManifest::parse correctly returns Err on bad input
     let bad_inputs = [
         "not valid toml [[[",
         "",
-        "[[keybinding]]\nkey = \"a\"\n", // missing required fields
+        "[[keybinding]]\nkey = \"a\"\n",
     ];
 
     for input in &bad_inputs {
@@ -661,13 +657,13 @@ fn b7_repro_parse_returns_err_but_module_swallows_it() {
         assert!(result.is_err(), "parse correctly returns Err for: {input:?}");
     }
 
-    // Step 2: The current embedded vim.toml parses fine — bug is latent.
+    // Current embedded vim.toml parses fine
     let valid = reovim_driver_manifest::PersonalityManifest::parse(super::VIM_MANIFEST_TOML);
     assert!(valid.is_ok(), "Current vim.toml parses fine");
 
-    // Step 3: Bad TOML — parse fails, but load returns false instead of propagating error
-    assert!(!simulate_load("not valid toml [[["), "#718: module loads without keybindings");
+    // Bad TOML: parse failure propagates as Err (not silently swallowed)
+    assert!(simulate_load("not valid toml [[[").is_err(), "parse failure returns Err");
 
-    // Good TOML: parse succeeds, load returns true
-    assert!(simulate_load(super::VIM_MANIFEST_TOML), "Good TOML produces a valid manifest");
+    // Good TOML: parse succeeds
+    assert!(simulate_load(super::VIM_MANIFEST_TOML).unwrap(), "Good TOML loads successfully");
 }

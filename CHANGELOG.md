@@ -12,6 +12,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **editor**: `display_line_count` now uses Unicode display width instead of char count — CJK characters correctly occupy 2 terminal columns (#717)
 - **kernel**: `CommandId.name` and `OperatorId.name` changed from `&'static str` to `Cow<'static, str>` — `from_qualified()` no longer leaks memory via `Box::leak` on every call (#713)
 - **vfs**: replace lossy `From<io::Error>` with `VfsError::from_io(err, path)` — error messages now include the file path instead of showing empty string (#715)
+- **vim**: `load_personality_manifest` now propagates parse errors instead of swallowing them — module correctly fails to init if vim.toml is corrupted (#718)
 
 ## [0.14.3] - 2026-03-30
 

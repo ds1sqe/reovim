@@ -338,8 +338,9 @@ fn load_personality_manifest(
     let manifest = match reovim_driver_manifest::PersonalityManifest::parse(VIM_MANIFEST_TOML) {
         Ok(m) => m,
         Err(e) => {
-            tracing::error!("Failed to parse vim.toml personality manifest: {e}");
-            return Ok(()); // Non-fatal parse failure
+            return Err(ModuleError::InitFailed(format!(
+                "Failed to parse vim.toml personality manifest: {e}"
+            )));
         }
     };
 
