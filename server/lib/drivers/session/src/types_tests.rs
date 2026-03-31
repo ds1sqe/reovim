@@ -978,3 +978,154 @@ fn cursor_snapshot_debug() {
     let debug = format!("{snap:?}");
     assert!(debug.contains("CursorSnapshot"));
 }
+
+// =========================================================================
+// #712 repro: close_window bypasses WindowLayout::remove()
+// runtime.rs:927-941 calls self.windows.windows.remove(idx) directly,
+// bypassing active_index adjustment in WindowLayout::remove().
+//
+// active() at types.rs:630 falls back to first() when active_index is
+// out of bounds, silently returning the wrong window instead of crashing.
+// =========================================================================
+
+#[test]
+fn b1_repro_remove_middle_stales_active_index() {
+    // Scenario: 3 windows [W0, W1, W2], active=W2 (index 2).
+    // Close W1 via direct Vec::remove → layout becomes [W0, W2].
+    // active_index=2 is now out of bounds → active() falls back to W0.
+    let mut layout = WindowLayout::empty();
+    let w0 = Window::new();
+    let w1 = Window::new();
+    let w2 = Window::new();
+    let id0 = w0.id;
+    let id1 = w1.id;
+    let id2 = w2.id;
+    layout.add(w0);
+    layout.add(w1);
+    layout.add(w2);
+
+    layout.set_active(id2);
+    assert_eq!(layout.active_id(), Some(id2));
+
+    // Simulate close_window()'s direct Vec::remove (the bug)
+    let idx = layout.windows.iter().position(|w| w.id == id1).unwrap();
+    layout.windows.remove(idx);
+
+    // BUG: active_index=2 out of bounds, falls back to first()
+    let active = layout.active().unwrap();
+    assert_eq!(active.id, id0, "#712: stale index returns W0 instead of W2");
+}
+
+#[test]
+fn b1_repro_close_active_window_directly() {
+    // Scenario: 2 windows [W0, W1], active=W0 (index 0).
+    // Close W0 via direct Vec::remove → layout becomes [W1].
+    // active_index=0 still valid by luck (W1 now at index 0).
+    // This case is masked by the fallback — active() returns W1
+    // but active_index was never properly reset.
+    let mut layout = WindowLayout::empty();
+    let w0 = Window::new();
+    let w1 = Window::new();
+    let id0 = w0.id;
+    let id1 = w1.id;
+    layout.add(w0);
+    layout.add(w1);
+
+    layout.set_active(id0); // active at index 0
+
+    let idx = layout.windows.iter().position(|w| w.id == id0).unwrap();
+    layout.windows.remove(idx);
+
+    // Masked by luck: active_index=0 happens to be valid for the remaining window.
+    // active() returns W1 which is correct only by coincidence.
+    let active = layout.active().unwrap();
+    assert_eq!(active.id, id1, "#712: correct by coincidence — active_index 0 hits W1");
+}
+
+#[test]
+fn b1_repro_close_first_while_last_active() {
+    // Scenario: 3 windows [W0, W1, W2], active=W2 (index 2).
+    // Close W0 via direct Vec::remove → layout becomes [W1, W2].
+    // active_index=2 is now out of bounds (only 2 elements) → falls back to W1.
+    let mut layout = WindowLayout::empty();
+    let w0 = Window::new();
+    let w1 = Window::new();
+    let w2 = Window::new();
+    let id0 = w0.id;
+    let id2 = w2.id;
+    layout.add(w0);
+    layout.add(w1);
+    layout.add(w2);
+
+    layout.set_active(id2); // index 2
+
+    let idx = layout.windows.iter().position(|w| w.id == id0).unwrap();
+    layout.windows.remove(idx);
+
+    // BUG: active_index=2, but layout is [W1, W2] (len=2), index 2 OOB
+    let active = layout.active().unwrap();
+    assert_ne!(active.id, id2, "#712: W2 is still in layout but active() can't find it");
+}
+
+#[test]
+fn b1_repro_sequential_closes_compound() {
+    // Scenario: 4 windows [W0, W1, W2, W3], active=W3 (index 3).
+    // Close W1, then W2 via direct Vec::remove.
+    // After first close: active_index=3 but len=3 → OOB, falls back to W0.
+    // After second close: active_index=3 but len=2 → still OOB.
+    let mut layout = WindowLayout::empty();
+    let w0 = Window::new();
+    let w1 = Window::new();
+    let w2 = Window::new();
+    let w3 = Window::new();
+    let id0 = w0.id;
+    let id1 = w1.id;
+    let id2 = w2.id;
+    let id3 = w3.id;
+    layout.add(w0);
+    layout.add(w1);
+    layout.add(w2);
+    layout.add(w3);
+
+    layout.set_active(id3); // index 3
+
+    // First close: remove W1 (index 1)
+    let idx = layout.windows.iter().position(|w| w.id == id1).unwrap();
+    layout.windows.remove(idx);
+    // Layout: [W0, W2, W3], active_index=3, len=3 → OOB
+
+    let active = layout.active().unwrap();
+    assert_eq!(active.id, id0, "#712: after first close, falls back to W0");
+
+    // Second close: remove W2 (now at index 1)
+    let idx = layout.windows.iter().position(|w| w.id == id2).unwrap();
+    layout.windows.remove(idx);
+    // Layout: [W0, W3], active_index=3, len=2 → still OOB
+
+    let active = layout.active().unwrap();
+    assert_eq!(active.id, id0, "#712: after second close, still falls back to W0");
+    // W3 is in the layout but unreachable via active()
+    assert!(layout.windows.iter().any(|w| w.id == id3), "W3 exists but is invisible");
+}
+
+#[test]
+fn b1_repro_proper_remove_keeps_correct_active() {
+    // Contrast: WindowLayout::remove() correctly adjusts active_index.
+    let mut layout = WindowLayout::empty();
+    let w0 = Window::new();
+    let w1 = Window::new();
+    let w2 = Window::new();
+    let id1 = w1.id;
+    let id2 = w2.id;
+    layout.add(w0);
+    layout.add(w1);
+    layout.add(w2);
+
+    layout.set_active(id2);
+
+    // Proper remove() shifts active_index from 2 to 1
+    layout.remove(id1);
+
+    let active = layout.active().unwrap();
+    assert_eq!(active.id, id2, "proper remove() keeps W2 active");
+}

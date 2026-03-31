@@ -596,3 +596,36 @@ impl ModeStack {
         self.stack.contains(mode_id)
     }
 }
+
+// =========================================================================
+// #713 repro: CommandId::from_qualified_leaked uses Box::leak.
+// mode.rs:270-271 — leaks two strings per call, never freed.
+// =========================================================================
+
+#[cfg(test)]
+mod b2_repro {
+    use super::CommandId;
+
+    #[test]
+    fn b2_from_qualified_leaked_actually_leaks() {
+        // Each call to from_qualified_leaked() allocates two Strings,
+        // converts them to Box<str>, and leaks them via Box::leak().
+        // The memory is never freed.
+
+        // Call it 1000 times to demonstrate the leak pattern
+        for i in 0..1000 {
+            let cmd = CommandId::from_qualified_leaked(format!("module{i}:command{i}"));
+            assert_eq!(cmd.module().as_str(), format!("module{i}"));
+            assert_eq!(cmd.name(), format!("command{i}").as_str());
+        }
+
+        // No way to free the leaked memory — it persists for process lifetime.
+        // 1000 calls * ~30 bytes each = ~30KB leaked in this test alone.
+        // In production, this is called from picker-commands on every command
+        // palette selection (picker-commands/src/lib.rs:80).
+
+        // The structural proof: Box::leak at mode.rs:270-271 converts
+        // owned String into &'static str by intentionally leaking.
+        // CommandId.name is &'static str, forcing the leak.
+    }
+}

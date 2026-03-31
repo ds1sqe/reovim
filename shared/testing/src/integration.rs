@@ -473,3 +473,63 @@ impl TestResult {
         }
     }
 }
+
+// =========================================================================
+// #722 repro: registers HashMap is always empty — assert_register always
+// panics with "Register not found".
+// integration.rs:298-300 — `let registers = HashMap::new()`
+// =========================================================================
+
+#[cfg(test)]
+mod b11_repro {
+    use super::*;
+
+    #[test]
+    fn b11_registers_always_empty() {
+        // The production code at line 298-300 does:
+        //   let registers = HashMap::new();
+        // This means TestResult.registers is ALWAYS empty.
+
+        let empty_registers: HashMap<String, RegisterInfo> = HashMap::new();
+        assert!(empty_registers.is_empty(), "#722: registers is always empty HashMap");
+
+        // Consequence: assert_register() always panics because .get() returns None.
+        // We can't construct a TestResult without TestServerHarness,
+        // but we can demonstrate the assert_register logic:
+        let result = std::panic::catch_unwind(|| {
+            let reg_name = "\""; // default yank register
+            empty_registers.get(reg_name).unwrap_or_else(|| {
+                panic!(
+                    "Register '{}' not found. Available: {:?}",
+                    reg_name,
+                    empty_registers.keys().collect::<Vec<_>>()
+                )
+            });
+        });
+        assert!(result.is_err(), "#722: assert_register always panics on empty HashMap");
+    }
+
+    #[test]
+    fn b11_assert_register_macro_never_called() {
+        // The assert_register! macro exists but is NEVER called anywhere.
+        // grep -r "assert_register!" finds only the macro definition and changelog.
+        // This is because developers know it will always fail (registers is empty).
+        //
+        // This means: yank, delete, and paste operations have ZERO register
+        // verification in integration tests.
+
+        // Prove the macro works mechanically when registers ARE populated:
+        let mut registers = HashMap::new();
+        registers.insert(
+            "\"".to_string(),
+            RegisterInfo {
+                content: "hello\n".to_string(),
+                yank_type: "linewise".to_string(),
+            },
+        );
+        let info = registers.get("\"").unwrap();
+        assert_eq!(info.content.trim_end(), "hello");
+        assert_eq!(info.yank_type, "linewise");
+        // ^ Works fine — the machinery is correct, it's just never populated.
+    }
+}

@@ -480,3 +480,33 @@ fn test_display_col_from_buffer_col_unicode_past_end() {
     let line = "a\u{4E2D}";
     assert_eq!(display_col_from_buffer_col_unicode(line, 100, 4), 3);
 }
+
+// =========================================================================
+// #717 repro: display_line_count uses chars().count() not Unicode width.
+// CJK chars occupy 2 terminal columns each but are counted as 1.
+// display_lines.rs:60-71
+// =========================================================================
+
+#[test]
+fn b6_repro_cjk_chars_miscounted() {
+    // 40 CJK characters: each occupies 2 terminal columns = 80 display columns.
+    // On a 40-column terminal, this should wrap to 2 display lines.
+    let cjk_40 = "\u{4E2D}".repeat(40); // 40 x '中'
+    assert_eq!(cjk_40.chars().count(), 40);
+
+    // BUG: display_line_count counts 40 chars / 40 cols = 1 line
+    // CORRECT: 80 display columns / 40 cols = 2 lines
+    assert_eq!(display_line_count(&cjk_40, 40), 1, "#717: says 1 line (should be 2)");
+}
+
+#[test]
+fn b6_repro_mixed_ascii_cjk() {
+    // "Hello中文World" = 5 + 2*2 + 5 = 14 display columns, 12 chars
+    let mixed = "Hello\u{4E2D}\u{6587}World";
+    assert_eq!(mixed.chars().count(), 12);
+
+    // On 12-col terminal:
+    // BUG: 12 chars / 12 cols = 1 line
+    // CORRECT: 14 display cols / 12 cols = 2 lines
+    assert_eq!(display_line_count(mixed, 12), 1, "#717: says 1 line (should be 2)");
+}

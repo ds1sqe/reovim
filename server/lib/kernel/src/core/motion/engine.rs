@@ -804,3 +804,106 @@ impl MotionEngine {
         None
     }
 }
+
+// =========================================================================
+// #720 repro: word_end_backward ignores WordBoundary parameter.
+// ge and gE behave identically because _boundary is unused.
+// =========================================================================
+
+#[cfg(test)]
+mod b9_repro {
+    use super::*;
+    use crate::mm::Cursor;
+
+    // "foo::bar baz" — '::' is punctuation, separating two words but one WORD.
+    // ge from 'b' in "baz" (col 9): should stop at 'r' in "bar" (col 7)
+    // gE from 'b' in "baz" (col 9): should also stop at 'r' (col 7) — end of WORD "foo::bar"
+    //
+    // Second ge from col 7: should stop at ':' (col 4) — end of punctuation word "::"
+    // Second gE from col 7: should stop at 'o' (col 2) — end of WORD "foo" is col 2?
+    // Actually gE skips the entire "foo::bar" as one WORD, so from inside it goes
+    // to previous WORD boundary. Let's use a clearer example.
+
+    #[test]
+    fn b9_ge_and_ge_identical_on_punctuation() {
+        // "hello.world test"
+        //  0123456789...
+        // ge from 't' in "test" (col 12): backward word-end lands on 'd' in "world" (col 10)
+        // gE from 't' in "test" (col 12): backward WORD-end should also land on 'd' (col 10)
+        //   because "hello.world" is one WORD, its end is 'd' at col 10.
+        //
+        // Now from col 10:
+        // ge: backward word-end should land on '.' (col 5) — end of punctuation "."
+        // gE: backward WORD-end should land at... no previous WORD, so col 0 or stays.
+        //   Actually gE treats "hello.world" as one WORD, so going backward from col 10
+        //   (which is inside that WORD) would go to before this WORD to the previous one.
+        //   There's no previous WORD, so it stays or goes to col 0.
+
+        let buf = Buffer::from_string("hello.world test");
+        let cursor = Cursor::new(Position::new(0, 10)); // 'd' in "world"
+
+        let ge = MotionEngine::calculate(
+            &buf,
+            &cursor,
+            Motion::Word {
+                direction: Direction::Backward,
+                boundary: WordBoundary::Word,
+                end: true,
+            },
+            1,
+        );
+
+        let g_big_e = MotionEngine::calculate(
+            &buf,
+            &cursor,
+            Motion::Word {
+                direction: Direction::Backward,
+                boundary: WordBoundary::BigWord,
+                end: true,
+            },
+            1,
+        );
+
+        // BUG: both return the same position because _boundary is ignored
+        assert_eq!(
+            ge, g_big_e,
+            "#720: ge and gE return identical result — WordBoundary ignored"
+        );
+    }
+
+    #[test]
+    fn b9_word_end_forward_does_use_boundary() {
+        // Contrast: word_end (forward) correctly uses boundary.
+        // "foo.bar" — e lands on 'o' (col 2), E lands on 'r' (col 6)
+        let buf = Buffer::from_string("foo.bar");
+        let cursor = Cursor::new(Position::new(0, 0));
+
+        let e_word = MotionEngine::calculate(
+            &buf,
+            &cursor,
+            Motion::Word {
+                direction: Direction::Forward,
+                boundary: WordBoundary::Word,
+                end: true,
+            },
+            1,
+        );
+
+        let e_big_word = MotionEngine::calculate(
+            &buf,
+            &cursor,
+            Motion::Word {
+                direction: Direction::Forward,
+                boundary: WordBoundary::BigWord,
+                end: true,
+            },
+            1,
+        );
+
+        // Forward word_end correctly distinguishes Word vs BigWord
+        assert_ne!(
+            e_word, e_big_word,
+            "Forward e vs E: Word stops at 'o' (col 2), BigWord at 'r' (col 6)"
+        );
+    }
+}

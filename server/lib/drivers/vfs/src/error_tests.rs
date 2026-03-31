@@ -119,3 +119,46 @@ fn test_from_io_error_would_block() {
     let vfs_err: VfsError = io_err.into();
     assert!(matches!(vfs_err, VfsError::Io(_)));
 }
+
+// =========================================================================
+// #715 repro: From<io::Error> creates variants with empty PathBuf
+// error.rs:64-73 uses PathBuf::new() — file path is completely lost.
+// =========================================================================
+
+#[test]
+fn b4_repro_from_io_error_loses_path() {
+    // Simulate: std::fs::read("/some/file.txt") returning NotFound
+    let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "entity not found");
+    let vfs_err: VfsError = io_err.into();
+
+    match &vfs_err {
+        VfsError::NotFound(path) => {
+            // BUG: path is empty — the original file path is lost
+            assert!(path.as_os_str().is_empty(), "#715: path is empty PathBuf");
+            let msg = format!("{vfs_err}");
+            // Display shows "not found: " with nothing after the colon
+            assert!(msg.ends_with(": "), "#715: error message has no file path");
+        }
+        other => panic!("Expected NotFound, got: {other:?}"),
+    }
+
+    // Same for PermissionDenied
+    let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+    let vfs_err: VfsError = io_err.into();
+    match &vfs_err {
+        VfsError::PermissionDenied(path) => {
+            assert!(path.as_os_str().is_empty(), "#715: PermissionDenied also loses path");
+        }
+        other => panic!("Expected PermissionDenied, got: {other:?}"),
+    }
+
+    // Same for AlreadyExists
+    let io_err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+    let vfs_err: VfsError = io_err.into();
+    match &vfs_err {
+        VfsError::AlreadyExists(path) => {
+            assert!(path.as_os_str().is_empty(), "#715: AlreadyExists also loses path");
+        }
+        other => panic!("Expected AlreadyExists, got: {other:?}"),
+    }
+}
