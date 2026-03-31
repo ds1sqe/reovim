@@ -14,7 +14,15 @@
 //! for O(log n) navigation by any dimension.
 //!
 //! Structural sharing via `Arc<RopeNode>` makes clone O(1). Mutations
-//! return a new [`Rope`] sharing unchanged subtrees with the original.
+//! return a new [`Rope`] sharing unchanged subtrees with the original —
+//! only the path from root to the modified leaf is copied (O(log n)).
+//! This enables:
+//! - **Undo snapshots**: `block::Snapshot::capture()` clones the buffer's
+//!   rope in O(1) instead of deep-copying every line.
+//! - **Buffer clone**: `Buffer::clone()` is O(1) for any buffer size.
+//! - **Crash recovery**: Snapshots share structure with the live buffer,
+//!   so memory overhead is proportional to the number of edits, not
+//!   the number of snapshots.
 //!
 //! # Invariants
 //!

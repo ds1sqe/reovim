@@ -269,19 +269,19 @@ fn test_position_to_byte_and_back() {
     let buffer = create_test_buffer("hello\nworld");
 
     // Position (0, 0) -> byte 0
-    let byte = position_to_byte(&buffer, Position::new(0, 0));
+    let byte = buffer.position_to_byte(Position::new(0, 0));
     assert_eq!(byte, 0);
 
     // Position (1, 0) -> byte 6 (after "hello\n")
-    let byte = position_to_byte(&buffer, Position::new(1, 0));
+    let byte = buffer.position_to_byte(Position::new(1, 0));
     assert_eq!(byte, 6);
 
     // byte 0 -> Position (0, 0)
-    let pos = byte_to_position(&buffer, 0);
+    let pos = buffer.byte_to_position(0);
     assert_eq!(pos, Position::new(0, 0));
 
     // byte 6 -> Position (1, 0)
-    let pos = byte_to_position(&buffer, 6);
+    let pos = buffer.byte_to_position(6);
     assert_eq!(pos, Position::new(1, 0));
 }
 
@@ -289,7 +289,7 @@ fn test_position_to_byte_and_back() {
 #[test]
 fn test_byte_to_position_past_end() {
     let buffer = create_test_buffer("hi");
-    let pos = byte_to_position(&buffer, 100);
+    let pos = buffer.byte_to_position(100);
     // Should return past-end position
     assert!(pos.line >= 1 || pos.column >= 2);
 }
@@ -297,7 +297,7 @@ fn test_byte_to_position_past_end() {
 #[test]
 fn test_position_to_byte_clamps() {
     let buffer = create_test_buffer("hi");
-    let byte = position_to_byte(&buffer, Position::new(100, 100));
+    let byte = buffer.position_to_byte(Position::new(100, 100));
     // Should be clamped to content length
     assert!(byte <= 2);
 }
@@ -419,6 +419,6 @@ fn test_find_backward_wrap_no_matches_anywhere() {
 fn test_byte_to_position_at_exact_line_boundary() {
     let buffer = create_test_buffer("ab\ncd");
     // byte 2 is the newline, byte 3 is 'c' on line 1
-    let pos = byte_to_position(&buffer, 3);
+    let pos = buffer.byte_to_position(3);
     assert_eq!(pos, Position::new(1, 0));
 }
