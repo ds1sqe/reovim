@@ -419,7 +419,8 @@ mod buffer_tests {
         let mut buf = Buffer::from_string("Hi");
         let deleted = buf.delete_at(Position::new(0, 0), 100);
         assert_eq!(deleted, "Hi");
-        assert_eq!(buf.line(0), Some(""));
+        // With rope storage, deleting all content leaves 0 lines (not 1 empty line).
+        assert!(buf.is_empty());
     }
 
     #[test]
@@ -536,15 +537,7 @@ mod buffer_tests {
         assert_eq!(buf.id(), id);
     }
 
-    #[test]
-    fn test_lines_accessor() {
-        let buf = Buffer::from_string("Line1\nLine2\nLine3");
-        let lines = buf.lines();
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0], "Line1");
-        assert_eq!(lines[1], "Line2");
-        assert_eq!(lines[2], "Line3");
-    }
+    // NOTE: test_lines_accessor removed in #711 — Buffer::lines() removed.
 
     // Note: test_cursor_accessors removed.
     // Buffer no longer has cursor/selection state - these are per-window (#471).

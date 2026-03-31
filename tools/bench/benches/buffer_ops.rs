@@ -1,7 +1,8 @@
-//! Buffer operation benchmarks — v0.14.3 baseline.
+//! Buffer operation benchmarks — rope-backed (post #711 migration).
 //!
-//! Measures core buffer operations at 100-100K lines to establish
-//! performance baselines before the rope migration.
+//! Measures core buffer operations at 100-100K lines.
+//! Key post-rope wins: clone is O(1) via Arc sharing, position conversion
+//! is O(log n), insert/delete is O(log n).
 //!
 //! Run: `cargo bench -p reovim-bench --bench buffer_ops`
 

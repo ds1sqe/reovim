@@ -117,7 +117,7 @@ fn test_snapshot_immutability() {
 fn test_snapshot_new() {
     let snapshot = BufferSnapshot::new(
         BufferId::new(),
-        vec!["Line 1".to_string(), "Line 2".to_string()],
+        &["Line 1".to_string(), "Line 2".to_string()],
         Cursor::origin(),
         Some("/path/to/file".to_string()),
         true,

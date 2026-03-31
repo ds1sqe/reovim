@@ -79,8 +79,7 @@ fn toggle_case_function_via_operator() {
     assert!(result.is_ok());
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    let lines = buf.read().lines().to_vec();
-    assert_eq!(lines[0], "hELLO World");
+    assert_eq!(buf.read().line(0).unwrap(), "hELLO World");
 }
 
 #[test]
@@ -106,7 +105,7 @@ fn toggle_case_all_uppercase() {
     op.execute(&mut op_ctx, range).unwrap();
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    assert_eq!(buf.read().lines()[0], "abc");
+    assert_eq!(buf.read().line(0).unwrap(), "abc");
 }
 
 #[test]
@@ -133,7 +132,7 @@ fn toggle_case_non_alphabetic() {
 
     // Non-alphabetic chars remain unchanged; cursor_after set to start
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    assert_eq!(buf.read().lines()[0], "123!@#");
+    assert_eq!(buf.read().line(0).unwrap(), "123!@#");
 }
 
 // ============================================================================
@@ -163,7 +162,7 @@ fn lowercase_single_line() {
     op.execute(&mut op_ctx, range).unwrap();
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    assert_eq!(buf.read().lines()[0], "hello WORLD");
+    assert_eq!(buf.read().line(0).unwrap(), "hello WORLD");
 }
 
 #[test]
@@ -191,7 +190,7 @@ fn lowercase_already_lowercase() {
     // No change; cursor_after should be set
     assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    assert_eq!(buf.read().lines()[0], "hello");
+    assert_eq!(buf.read().line(0).unwrap(), "hello");
 }
 
 // ============================================================================
@@ -221,7 +220,7 @@ fn uppercase_single_line() {
     op.execute(&mut op_ctx, range).unwrap();
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    assert_eq!(buf.read().lines()[0], "HELLO world");
+    assert_eq!(buf.read().line(0).unwrap(), "HELLO world");
 }
 
 // ============================================================================
@@ -276,11 +275,11 @@ fn lowercase_linewise() {
     op.execute(&mut op_ctx, range).unwrap();
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    let lines = buf.read().lines().to_vec();
-    assert_eq!(lines[0], "hello");
-    assert_eq!(lines[1], "world");
+    let buf_ref = buf.read();
+    assert_eq!(buf_ref.line(0).unwrap(), "hello");
+    assert_eq!(buf_ref.line(1).unwrap(), "world");
     // Third line should be unchanged
-    assert_eq!(lines[2], "FOO");
+    assert_eq!(buf_ref.line(2).unwrap(), "FOO");
 }
 
 // ============================================================================
@@ -311,7 +310,7 @@ fn uppercase_multiline_characterwise() {
     op.execute(&mut op_ctx, range).unwrap();
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
-    let text = buf.read().lines().join("\n");
+    let text = buf.read().content();
     // Chars from col 2 on line 0 to col 2 on line 2 should be uppercased
     assert!(text.starts_with("he"));
     assert!(text.contains("LLO"));

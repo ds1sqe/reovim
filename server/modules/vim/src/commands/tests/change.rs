@@ -202,7 +202,7 @@ fn test_change_line_single_line() {
     // Line content should be cleared
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -279,7 +279,7 @@ fn test_change_to_eol_from_middle() {
     // Buffer should have "hello" (everything from col 5 deleted)
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello"]);
+    assert_eq!(buf.content(), "hello");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -305,7 +305,7 @@ fn test_change_to_eol_at_end_of_line() {
     // Buffer should be unchanged (already at end of line)
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &["hello"]);
+    assert_eq!(buf.content(), "hello");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -326,7 +326,7 @@ fn test_change_to_eol_from_start() {
     // Entire line content should be deleted
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -392,7 +392,7 @@ fn test_change_line_with_count_one_explicit() {
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
     // First line should be cleared, second line should remain
-    assert_eq!(buf.lines()[0], "");
+    assert_eq!(buf.line(0).unwrap(), "");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -533,7 +533,7 @@ fn test_change_to_eol_single_char_line() {
 
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
-    assert_eq!(buf.lines(), &[""]);
+    assert_eq!(buf.content(), "");
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -557,8 +557,8 @@ fn test_change_to_eol_multiline_only_affects_current() {
     let buf = ctx.buffers.get(buffer_id).unwrap();
     let buf = buf.read();
     // First line should be truncated, second line untouched
-    assert_eq!(buf.lines()[0], "hel");
-    assert_eq!(buf.lines()[1], "world");
+    assert_eq!(buf.line(0).unwrap(), "hel");
+    assert_eq!(buf.line(1).unwrap(), "world");
 }
 
 // ========================================================================

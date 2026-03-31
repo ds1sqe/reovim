@@ -226,7 +226,7 @@ fn test_insert_mode_with_buffer_inserts_char() {
 
     // Check the buffer was modified
     let buf = ctx.buffers.get(&buffer_id).unwrap();
-    let content = buf.read().lines()[0].clone();
+    let content = buf.read().line(0).unwrap().to_owned();
     assert_eq!(content, "xhello");
 }
 
@@ -525,10 +525,9 @@ fn test_insert_mode_newline_with_buffer() {
 
     // Buffer should have newline inserted
     let buf = ctx.buffers.get(&buffer_id).unwrap();
-    let lines = buf.read().lines().to_vec();
-    assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0], "");
-    assert_eq!(lines[1], "hello");
+    assert_eq!(buf.read().line_count(), 2);
+    assert_eq!(buf.read().line(0).unwrap(), "");
+    assert_eq!(buf.read().line(1).unwrap(), "hello");
 }
 
 #[test]
@@ -547,7 +546,7 @@ fn test_insert_mode_tab_with_buffer() {
     assert_eq!(result, FallbackResult::Handled);
 
     let buf = ctx.buffers.get(&buffer_id).unwrap();
-    let content = buf.read().lines()[0].clone();
+    let content = buf.read().line(0).unwrap().to_owned();
     assert_eq!(content, "\thello");
 }
 

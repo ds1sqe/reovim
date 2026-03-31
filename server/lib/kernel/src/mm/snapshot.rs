@@ -15,6 +15,11 @@
 //! - No modification methods - purely read-only
 //! - Thread-safe by construction (Clone, Send, Sync)
 //!
+//! # Structural Sharing (#711)
+//!
+//! Snapshots store a rope clone, which is O(1) via `Arc` sharing.
+//! The snapshot shares unchanged text nodes with the original buffer.
+//!
 //! # Use Cases
 //!
 //! - RPC handlers need buffer content without blocking edits
@@ -39,12 +44,13 @@
 //! assert_eq!(snapshot.content(), "Hello\nWorld"); // Original content
 //! ```
 
+use super::rope::Rope;
 use super::{BufferId, Cursor, Position};
 
 /// Read-only snapshot of buffer state.
 ///
 /// A `BufferSnapshot` captures the complete state of a buffer at a point
-/// in time. It's cheap to clone and safe to share across threads.
+/// in time. Clone is O(1) via `Arc` structural sharing.
 ///
 /// # Cursor Isolation (#471)
 ///
@@ -58,7 +64,7 @@ use super::{BufferId, Cursor, Position};
 /// # Fields Captured
 ///
 /// - `id`: Buffer identifier
-/// - `lines`: All text lines
+/// - `text`: Text content (rope clone, O(1))
 /// - `cursor`: Cursor state (passed from Window)
 /// - `file_path`: Associated file path (if any)
 /// - `modified`: Whether buffer had unsaved changes
@@ -69,8 +75,8 @@ use super::{BufferId, Cursor, Position};
 pub struct BufferSnapshot {
     /// Buffer identifier.
     pub id: BufferId,
-    /// Text content as lines.
-    pub lines: Vec<String>,
+    /// Text content as a rope (O(1) clone via Arc sharing).
+    text: Rope,
     /// Cursor state (from Window, not Buffer).
     pub cursor: Cursor,
     /// File path (if buffer is associated with a file).
@@ -83,13 +89,12 @@ impl BufferSnapshot {
     /// Create a snapshot from a buffer.
     ///
     /// Cursor must be passed explicitly - get it from Window.
-    /// This clones all buffer state, so the snapshot is independent
-    /// of subsequent buffer modifications.
+    /// This is O(1) — the rope is cloned via `Arc` sharing.
     #[must_use]
     pub fn from_buffer(buffer: &super::Buffer, cursor: Cursor) -> Self {
         Self {
             id: buffer.id(),
-            lines: buffer.lines().to_vec(),
+            text: buffer.clone_rope(),
             cursor,
             file_path: buffer.file_path().map(String::from),
             modified: buffer.is_modified(),
@@ -101,16 +106,22 @@ impl BufferSnapshot {
     /// This is useful for testing or when constructing a snapshot
     /// without a buffer.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: BufferId,
-        lines: Vec<String>,
+        lines: &[String],
         cursor: Cursor,
         file_path: Option<String>,
         modified: bool,
     ) -> Self {
+        let content = lines.join("\n");
+        let text = if content.is_empty() {
+            Rope::new()
+        } else {
+            Rope::from_str(&content)
+        };
         Self {
             id,
-            lines,
+            text,
             cursor,
             file_path,
             modified,
@@ -121,14 +132,14 @@ impl BufferSnapshot {
 
     /// Get the number of lines.
     #[must_use]
-    pub const fn line_count(&self) -> usize {
-        self.lines.len()
+    pub fn line_count(&self) -> usize {
+        self.text.line_count()
     }
 
     /// Check if the snapshot is empty.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.lines.is_empty()
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
     }
 
     /// Get a specific line by index.
@@ -136,25 +147,29 @@ impl BufferSnapshot {
     /// Returns `None` if index is out of bounds.
     #[must_use]
     pub fn line(&self, idx: usize) -> Option<&str> {
-        self.lines.get(idx).map(String::as_str)
+        self.text.line(idx)
     }
 
     /// Get the length of a line in characters.
     #[must_use]
     pub fn line_len(&self, idx: usize) -> Option<usize> {
-        self.lines.get(idx).map(|l| l.chars().count())
+        self.text.line_len(idx)
     }
 
-    /// Get all lines as a slice.
+    /// Collect all lines as a `Vec<String>`.
+    ///
+    /// This allocates — prefer `line(idx)` for individual access.
     #[must_use]
-    pub fn lines(&self) -> &[String] {
-        &self.lines
+    pub fn lines(&self) -> Vec<String> {
+        (0..self.text.line_count())
+            .filter_map(|i| self.text.line(i).map(String::from))
+            .collect()
     }
 
     /// Get the full content as a string (lines joined with newlines).
     #[must_use]
     pub fn content(&self) -> String {
-        self.lines.join("\n")
+        self.text.content()
     }
 
     // === Text Extraction ===
@@ -165,7 +180,7 @@ impl BufferSnapshot {
     /// Positions are clamped to valid bounds.
     #[must_use]
     pub fn text_in_range(&self, start: Position, end: Position) -> String {
-        if self.lines.is_empty() {
+        if self.text.is_empty() {
             return String::new();
         }
 
@@ -175,14 +190,15 @@ impl BufferSnapshot {
             (end, start)
         };
 
+        let line_count = self.text.line_count();
+
         // Clamp positions
-        let start_line = start.line.min(self.lines.len() - 1);
-        let end_line = end.line.min(self.lines.len() - 1);
+        let start_line = start.line.min(line_count - 1);
+        let end_line = end.line.min(line_count - 1);
 
         if start_line == end_line {
             // Single line extraction
-            // start_line is always valid: clamped to self.lines.len() - 1
-            let line = &self.lines[start_line];
+            let line = self.text.line(start_line).unwrap_or("");
             let chars: Vec<char> = line.chars().collect();
             let start_col = start.column.min(chars.len());
             let end_col = end.column.min(chars.len());
@@ -193,8 +209,7 @@ impl BufferSnapshot {
         let mut result = String::new();
 
         for line_idx in start_line..=end_line {
-            // line_idx is always valid: iterates within clamped [start_line, end_line]
-            let line = &self.lines[line_idx];
+            let line = self.text.line(line_idx).unwrap_or("");
             let chars: Vec<char> = line.chars().collect();
 
             if line_idx == start_line {
@@ -227,7 +242,7 @@ impl BufferSnapshot {
     /// Check if a position is valid within this snapshot.
     #[must_use]
     pub fn is_valid_position(&self, pos: Position) -> bool {
-        if pos.line >= self.lines.len() {
+        if pos.line >= self.text.line_count() {
             return false;
         }
         self.line(pos.line)
