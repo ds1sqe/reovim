@@ -169,16 +169,19 @@ impl TuiGrpcClient {
             .connect()
             .await?;
 
+        // 64 MB message limit (matches server) for large buffer content
+        const MAX: usize = 64 * 1024 * 1024;
+
         Ok(Self {
-            input: InputServiceClient::new(channel.clone()),
-            state: StateServiceClient::new(channel.clone()),
-            buffer: BufferServiceClient::new(channel.clone()),
-            notification: NotificationServiceClient::new(channel.clone()),
-            server: ServerServiceClient::new(channel.clone()),
-            editor: EditorServiceClient::new(channel.clone()),
-            module: ModuleServiceClient::new(channel.clone()),
-            syntax: SyntaxServiceClient::new(channel.clone()),
-            presence: PresenceServiceClient::new(channel),
+            input: InputServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            state: StateServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            buffer: BufferServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            notification: NotificationServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            server: ServerServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            editor: EditorServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            module: ModuleServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            syntax: SyntaxServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            presence: PresenceServiceClient::new(channel).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
             session_token: None,
         })
     }

@@ -259,6 +259,13 @@ impl Server {
     /// When `port_tx` is `Some`, the bound port is sent before serving starts.
     #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
     #[cfg_attr(coverage_nightly, coverage(off))]
+    /// Maximum gRPC message size (encoding and decoding) in bytes.
+    ///
+    /// Tonic defaults to 4 MB, which is too small for large buffer content
+    /// (e.g., hex-encoded binary files). 64 MB accommodates codec output
+    /// with room for normal large text files.
+    const GRPC_MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
     async fn run_grpc(
         &self,
         port: u16,
@@ -379,27 +386,36 @@ impl Server {
                 .allow_methods(Any)
                 .expose_headers(Any);
 
+            // Helper: configure message size limits on a service server, then wrap with interceptor.
+            macro_rules! svc {
+                ($server:ident, $impl:expr, $i:expr) => {
+                    tonic::service::interceptor::InterceptedService::new(
+                        $server::new($impl)
+                            .max_decoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE)
+                            .max_encoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE),
+                        $i,
+                    )
+                };
+            }
+
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             let i = &interceptor;
             let router = tonic::transport::Server::builder()
                 .accept_http1(true) // Required for gRPC-Web
                 .layer(cors)
                 .layer(tonic_web::GrpcWebLayer::new())
-                .add_service(BufferServiceServer::with_interceptor(buffer_service, i.clone()))
-                .add_service(EditorServiceServer::with_interceptor(editor_service, i.clone()))
-                .add_service(InputServiceServer::with_interceptor(input_service, i.clone()))
-                .add_service(ModuleServiceServer::with_interceptor(module_service, i.clone()))
-                .add_service(StateServiceServer::with_interceptor(state_service, i.clone()))
-                .add_service(ServerServiceServer::with_interceptor(server_service, i.clone()))
-                .add_service(NotificationServiceServer::with_interceptor(
-                    notification_service,
-                    i.clone(),
-                ))
-                .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
-                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
-                .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
-                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()))
-                .add_service(DebugServiceServer::with_interceptor(debug_service, i.clone()));
+                .add_service(svc!(BufferServiceServer, buffer_service, i.clone()))
+                .add_service(svc!(EditorServiceServer, editor_service, i.clone()))
+                .add_service(svc!(InputServiceServer, input_service, i.clone()))
+                .add_service(svc!(ModuleServiceServer, module_service, i.clone()))
+                .add_service(svc!(StateServiceServer, state_service, i.clone()))
+                .add_service(svc!(ServerServiceServer, server_service, i.clone()))
+                .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
+                .add_service(svc!(SyntaxServiceServer, syntax_service, i.clone()))
+                .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
+                .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
+                .add_service(svc!(CommandServiceServer, command_service, i.clone()))
+                .add_service(svc!(DebugServiceServer, debug_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -419,21 +435,19 @@ impl Server {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             let i = &interceptor;
             let router = tonic::transport::Server::builder()
-                .add_service(BufferServiceServer::with_interceptor(buffer_service, i.clone()))
-                .add_service(EditorServiceServer::with_interceptor(editor_service, i.clone()))
-                .add_service(InputServiceServer::with_interceptor(input_service, i.clone()))
-                .add_service(ModuleServiceServer::with_interceptor(module_service, i.clone()))
-                .add_service(StateServiceServer::with_interceptor(state_service, i.clone()))
-                .add_service(ServerServiceServer::with_interceptor(server_service, i.clone()))
-                .add_service(NotificationServiceServer::with_interceptor(
-                    notification_service,
-                    i.clone(),
-                ))
-                .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
-                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
-                .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
-                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()))
-                .add_service(DebugServiceServer::with_interceptor(debug_service, i.clone()));
+                .add_service(svc!(BufferServiceServer, buffer_service, i.clone()))
+                .add_service(svc!(EditorServiceServer, editor_service, i.clone()))
+                .add_service(svc!(InputServiceServer, input_service, i.clone()))
+                .add_service(svc!(ModuleServiceServer, module_service, i.clone()))
+                .add_service(svc!(StateServiceServer, state_service, i.clone()))
+                .add_service(svc!(ServerServiceServer, server_service, i.clone()))
+                .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
+                .add_service(svc!(SyntaxServiceServer, syntax_service, i.clone()))
+                .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
+                .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
+                .add_service(svc!(CommandServiceServer, command_service, i.clone()))
+                .add_service(svc!(DebugServiceServer, debug_service, i.clone()));
+            // svc! macro defined in grpc-web block above
 
             if let Some(signal) = shutdown {
                 router

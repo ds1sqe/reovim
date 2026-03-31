@@ -147,13 +147,16 @@ impl GrpcClient {
             .connect()
             .await?;
 
+        // 64 MB message limit (matches server) for large buffer content
+        const MAX: usize = 64 * 1024 * 1024;
+
         Ok(Self {
-            input: InputServiceClient::new(channel.clone()),
-            state: StateServiceClient::new(channel.clone()),
-            buffer: BufferServiceClient::new(channel.clone()),
-            server: ServerServiceClient::new(channel.clone()),
-            presence: PresenceServiceClient::new(channel.clone()),
-            debug: DebugServiceClient::new(channel),
+            input: InputServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            state: StateServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            buffer: BufferServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            server: ServerServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            presence: PresenceServiceClient::new(channel.clone()).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
+            debug: DebugServiceClient::new(channel).max_decoding_message_size(MAX).max_encoding_message_size(MAX),
             address: addr.to_string(),
             client_id: None,
             session_token: None,
