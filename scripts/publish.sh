@@ -3,7 +3,7 @@
 # Usage: ./scripts/publish.sh [--dry-run]
 #
 # Crate order is a topological sort of internal workspace dependencies
-# (11 tiers, 134 publishable crates). Regenerate with:
+# (11 tiers, 135 publishable crates). Regenerate with:
 #   cargo metadata --no-deps | python3 scripts/publish-order.py
 
 set -e
@@ -53,7 +53,7 @@ else
 fi
 
 # Publish order: topological sort of workspace dependencies (tiers 0-10).
-# Skips: perf-report, reovim-bench, reovim-bench-utils,
+# Skips: perf-report, reovim-bench,
 #         reovim-test-dynamic-module (not publishable).
 CRATES=(
     # Tier 0 — no internal deps
@@ -61,7 +61,6 @@ CRATES=(
     "shared/capabilities"                          # reovim-capabilities
     "shared/clients/model"                         # reovim-client-model
     "shared/depgraph"                              # reovim-depgraph
-    "shared/testing"                               # reovim-testing
 
     # Tier 1 — kernel, protocol, base drivers
     "shared/clients/driver"                        # reovim-client-driver
@@ -110,7 +109,9 @@ CRATES=(
     "clients/tui/modules/which-key"                # reovim-tui-mod-whichkey
     "clients/tui/modules/yank-flash"               # reovim-tui-mod-yank-flash
 
-    # Tier 3 — command types, display, base server modules
+    # Tier 3 — testing, bench, command types, display, base server modules
+    "shared/testing"                               # reovim-testing
+    "shared/bench"                                 # reovim-bench-utils
     "server/lib/drivers/command-types"             # reovim-driver-command-types
     "clients/tui/lib/drivers/display"              # reovim-driver-display
     "server/lib/drivers/undo"                      # reovim-driver-undo
