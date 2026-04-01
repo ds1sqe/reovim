@@ -273,8 +273,8 @@ for i in "${!CRATES[@]}"; do
     if [ -n "$DRY_RUN" ]; then
         cargo publish --dry-run --allow-dirty 2>&1 | tail -3
     else
-        publish_crate
-        rc=$?
+        rc=0
+        publish_crate || rc=$?
         if [ $rc -eq 0 ]; then
             PUBLISHED=$((PUBLISHED + 1))
             # Wait for crates.io to index only after a real publish
