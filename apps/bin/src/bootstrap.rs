@@ -57,7 +57,7 @@ use {
 mod static_modules;
 
 /// Embedded builtin module manifest (canonical module list and ordering).
-const BUILTINS_TOML: &str = include_str!("../../../server/data/builtins.toml");
+const BUILTINS_TOML: &str = include_str!("../builtins.toml");
 
 /// Parse the embedded builtin module manifest.
 ///
