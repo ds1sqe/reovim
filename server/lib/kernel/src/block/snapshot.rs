@@ -23,8 +23,29 @@
 
 use {
     crate::mm::{Buffer, BufferId, Position, Rope, VirtualBuffer, VirtualSnapshot},
-    std::time::SystemTime,
+    std::{fmt, time::SystemTime},
 };
+
+/// Error returned when restoring a snapshot to a mismatched buffer type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotMismatch {
+    /// What the snapshot was captured from (e.g., "Rope" or "Virtual").
+    pub snapshot_type: &'static str,
+    /// What it's being restored to (e.g., "Buffer" or "`VirtualBuffer`").
+    pub target_type: &'static str,
+}
+
+impl fmt::Display for SnapshotMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "cannot restore {} snapshot to {}",
+            self.snapshot_type, self.target_type
+        )
+    }
+}
+
+impl std::error::Error for SnapshotMismatch {}
 
 /// Internal discriminant for snapshot content.
 ///
@@ -70,7 +91,7 @@ enum SnapshotContent {
 /// let snapshot = Snapshot::capture(&buffer, cursor);
 ///
 /// // Later, restore the state
-/// let restored_cursor = snapshot.restore(&mut buffer);
+/// let restored_cursor = snapshot.restore(&mut buffer).unwrap();
 /// // Caller sets restored_cursor to Window
 /// ```
 #[derive(Clone)]
@@ -157,38 +178,45 @@ impl Snapshot {
     /// Returns the cursor position that should be set on Window.
     /// The buffer ID is not changed.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if this snapshot was captured from a `VirtualBuffer`.
-    pub fn restore(&self, buffer: &mut Buffer) -> Position {
+    /// Returns `Err(SnapshotMismatch)` if this snapshot was captured from
+    /// a `VirtualBuffer`.
+    pub fn restore(&self, buffer: &mut Buffer) -> Result<Position, SnapshotMismatch> {
         match &self.content {
             SnapshotContent::Rope(rope) => {
                 buffer.set_rope(rope.clone());
+                Ok(self.cursor)
             }
-            SnapshotContent::Virtual(_) => {
-                panic!("cannot restore VirtualSnapshot to Rope buffer");
-            }
+            SnapshotContent::Virtual(_) => Err(SnapshotMismatch {
+                snapshot_type: "Virtual",
+                target_type: "Buffer",
+            }),
         }
-        self.cursor
     }
 
     /// Restore a `VirtualBuffer` to this snapshot's state.
     ///
     /// Returns the cursor position that should be set on Window.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if this snapshot was captured from a Rope buffer.
-    pub fn restore_virtual(&self, vbuf: &mut VirtualBuffer) -> Position {
+    /// Returns `Err(SnapshotMismatch)` if this snapshot was captured from
+    /// a Rope buffer.
+    pub fn restore_virtual(
+        &self,
+        vbuf: &mut VirtualBuffer,
+    ) -> Result<Position, SnapshotMismatch> {
         match &self.content {
             SnapshotContent::Virtual(snap) => {
                 vbuf.restore_snapshot(snap.clone());
+                Ok(self.cursor)
             }
-            SnapshotContent::Rope(_) => {
-                panic!("cannot restore Rope snapshot to VirtualBuffer");
-            }
+            SnapshotContent::Rope(_) => Err(SnapshotMismatch {
+                snapshot_type: "Rope",
+                target_type: "VirtualBuffer",
+            }),
         }
-        self.cursor
     }
 
     /// Whether this snapshot was captured from a `VirtualBuffer`.

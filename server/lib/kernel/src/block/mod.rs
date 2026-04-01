@@ -48,7 +48,7 @@ mod tests;
 
 pub use {
     history::{History, HistoryEntry},
-    snapshot::Snapshot,
+    snapshot::{Snapshot, SnapshotMismatch},
     transaction::Transaction,
     undo::{EditOrigin, UndoNode, UndoResult, UndoTree},
 };

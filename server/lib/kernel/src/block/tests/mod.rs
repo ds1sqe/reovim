@@ -1165,7 +1165,7 @@ mod snapshot_tests {
         buffer.set_content("Something else");
 
         // Restore returns cursor position
-        let restored_cursor = snapshot.restore(&mut buffer);
+        let restored_cursor = snapshot.restore(&mut buffer).unwrap();
 
         assert_eq!(buffer.content(), "Hello\nWorld");
         assert_eq!(restored_cursor, Position::new(1, 3));
@@ -1293,7 +1293,7 @@ mod snapshot_tests {
 
         buffer.set_content("Modified completely");
 
-        let restored_cursor = snapshot.restore(&mut buffer);
+        let restored_cursor = snapshot.restore(&mut buffer).unwrap();
         assert_eq!(buffer.content(), "Original\nContent");
         assert_eq!(restored_cursor, Position::new(0, 3));
     }
@@ -1356,7 +1356,7 @@ mod snapshot_tests {
         vbuf.set_content("Something else");
 
         // Restore
-        let restored_cursor = snapshot.restore_virtual(&mut vbuf);
+        let restored_cursor = snapshot.restore_virtual(&mut vbuf).unwrap();
         assert_eq!(vbuf.content(), "Hello\nWorld");
         assert_eq!(restored_cursor, Position::new(1, 3));
     }
@@ -1395,7 +1395,7 @@ mod snapshot_tests {
         assert!(vbuf.content().contains("XYZ"));
 
         // Restore removes edits
-        snap.restore_virtual(&mut vbuf);
+        snap.restore_virtual(&mut vbuf).unwrap();
         assert_eq!(vbuf.content(), "abc\ndef");
     }
 
