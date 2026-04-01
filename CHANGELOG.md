@@ -2,7 +2,7 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [0.14.4] - 2026-03-31
+## [0.14.4] - 2026-04-01
 
 ### Added
 
