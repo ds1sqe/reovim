@@ -344,23 +344,19 @@ impl BufferManager for StubBufferManager {
     fn get(
         &self,
         _id: crate::mm::BufferId,
-    ) -> Option<Arc<reovim_arch::sync::RwLock<crate::mm::Buffer>>> {
+    ) -> Option<Arc<RwLock<dyn crate::api::BufferOps>>> {
         None
     }
 
-    fn create(&self) -> crate::mm::BufferId {
-        crate::mm::BufferId::new()
-    }
-
-    fn register(&self, _buffer: crate::mm::Buffer) -> crate::mm::BufferId {
-        crate::mm::BufferId::new()
+    fn register(&self, buffer: Arc<RwLock<dyn crate::api::BufferOps>>) -> crate::mm::BufferId {
+        buffer.read().id()
     }
 
     fn unregister(
         &self,
-        id: crate::mm::BufferId,
-    ) -> Result<crate::mm::Buffer, super::buffer_manager::BufferError> {
-        Err(super::buffer_manager::BufferError::NotFound(id))
+        _id: crate::mm::BufferId,
+    ) -> Option<Arc<RwLock<dyn crate::api::BufferOps>>> {
+        None
     }
 
     fn list(&self) -> Vec<crate::mm::BufferId> {

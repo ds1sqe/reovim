@@ -2380,7 +2380,6 @@ dependencies = [
 name = "reovim-driver-buffer"
 version = "0.14.5-dev"
 dependencies = [
- "bitflags 2.11.0",
  "reovim-arch",
  "reovim-kernel",
 ]
@@ -2700,6 +2699,7 @@ dependencies = [
 name = "reovim-kernel"
 version = "0.14.5-dev"
 dependencies = [
+ "bitflags 2.11.0",
  "reovim-arch",
 ]
 

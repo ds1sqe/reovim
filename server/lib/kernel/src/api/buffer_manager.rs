@@ -2,12 +2,15 @@
 //!
 //! Defines the interface for buffer storage and retrieval. The kernel provides
 //! pure storage mechanisms; drivers handle I/O operations (loading, saving).
+//!
+//! The manager stores `Arc<RwLock<dyn BufferOps>>` — both Rope-backed `Buffer`
+//! and mmap-backed `VirtualBuffer` coexist in a single registry.
 
 use std::{fmt, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
-use crate::mm::{Buffer, BufferId};
+use crate::{api::BufferOps, mm::BufferId};
 
 // ============================================================================
 // Error Types
@@ -40,54 +43,41 @@ impl std::error::Error for BufferError {}
 // BufferManager Trait
 // ============================================================================
 
-/// Buffer manager interface for kernel-driver communication.
+/// Unified buffer manager interface.
 ///
-/// This trait defines how buffers are stored and retrieved. The kernel provides
-/// pure storage mechanisms, while drivers implement I/O operations.
+/// Stores all buffer types as `Arc<RwLock<dyn BufferOps>>`. Both Rope-backed
+/// `Buffer` and mmap-backed `VirtualBuffer` live in the same registry.
 ///
 /// # Design Philosophy
 ///
-/// - **No I/O operations**: No `open()/save()` methods - VFS driver handles these
+/// - **No I/O operations**: No `open()/save()` methods — VFS driver handles these
 /// - **No focus tracking**: Active buffer tracking is a runtime/window concern
-/// - **Thread-safe**: Uses `Arc<RwLock<Buffer>>` for concurrent access
+/// - **Thread-safe**: Uses `Arc<RwLock<dyn BufferOps>>` for concurrent access
 /// - **Kernel purity**: Pure mechanisms only, no external dependencies
+/// - **Type-agnostic**: Callers use `BufferOps` trait, not concrete types
 ///
-/// # Example
+/// # Register Pattern
 ///
+/// Callers construct the buffer and wrap it before registering:
 /// ```ignore
-/// use reovim_kernel::api::v1::{BufferManager, Buffer, BufferId};
-///
-/// struct SimpleBufferManager { /* ... */ }
-///
-/// impl BufferManager for SimpleBufferManager {
-///     fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-///         // Implementation
-///     }
-///     // ... other methods
-/// }
+/// let buf = Buffer::from_string("hello");
+/// let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
+/// let id = manager.register(arc);
 /// ```
 pub trait BufferManager: Send + Sync {
     /// Get buffer by ID.
     ///
     /// Returns `None` if the buffer does not exist.
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>>;
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>>;
 
-    /// Create a new empty buffer.
+    /// Register a buffer.
     ///
-    /// Returns the ID of the newly created buffer.
-    fn create(&self) -> BufferId;
+    /// The buffer's own ID (from `BufferOps::id()`) is used as the key.
+    /// Returns the buffer's ID for convenience.
+    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId;
 
-    /// Register an existing buffer (used by drivers after loading).
-    ///
-    /// Returns the ID assigned to the registered buffer.
-    fn register(&self, buffer: Buffer) -> BufferId;
-
-    /// Unregister buffer, returning ownership.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(BufferError::NotFound)` if the buffer does not exist.
-    fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError>;
+    /// Unregister buffer, returning the arc if it existed.
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>>;
 
     /// List all buffer IDs. Order is not guaranteed; callers that need
     /// deterministic ordering must sort the result.

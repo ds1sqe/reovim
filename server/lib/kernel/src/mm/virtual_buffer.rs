@@ -701,7 +701,10 @@ impl FileMapping for HeapMapping {
 
 // ── TextGeometry ────────────────────────────────────────────────────────────
 
-use crate::core::TextGeometry;
+use crate::{
+    api::{BufferCapabilities, BufferOps, BufferOpsError},
+    core::TextGeometry,
+};
 
 impl TextGeometry for VirtualBuffer {
     fn line_count(&self) -> usize {
@@ -709,8 +712,6 @@ impl TextGeometry for VirtualBuffer {
     }
 
     fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
-        // Delegates to VirtualBuffer::line() which materializes from pieces.
-        // Rust resolves to the inherent method, not the trait method.
         Self::line(self, idx).map(Cow::Owned)
     }
 
@@ -720,5 +721,111 @@ impl TextGeometry for VirtualBuffer {
 
     fn is_empty(&self) -> bool {
         self.pieces.is_empty()
+    }
+}
+
+// ── BufferOps ──────────────────────────────────────────────────────────────
+
+impl BufferOps for VirtualBuffer {
+    fn id(&self) -> BufferId {
+        self.id
+    }
+
+    fn byte_len(&self) -> usize {
+        self.pieces.byte_len() as usize
+    }
+
+    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let content = self.content_bytes();
+        if offset >= content.len() {
+            return 0;
+        }
+        let available = &content[offset..];
+        let count = buf.len().min(available.len());
+        buf[..count].copy_from_slice(&available[..count]);
+        count
+    }
+
+    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), BufferOpsError> {
+        let text = std::str::from_utf8(data).map_err(|_| BufferOpsError::InvalidUtf8)?;
+        if text.is_empty() {
+            return Ok(());
+        }
+        let pos = BufferOps::byte_to_position(self, offset);
+        Self::insert_at(self, pos, text);
+        Ok(())
+    }
+
+    fn delete_bytes(&mut self, offset: usize, len: usize) -> Vec<u8> {
+        if len == 0 {
+            return Vec::new();
+        }
+        let start = BufferOps::byte_to_position(self, offset);
+        let end = BufferOps::byte_to_position(self, offset + len);
+        Self::delete_range(self, start, end).into_bytes()
+    }
+
+    fn content_bytes(&self) -> Vec<u8> {
+        Self::content_bytes(self)
+    }
+
+    fn is_modified(&self) -> bool {
+        self.modified
+    }
+
+    fn set_modified(&mut self, modified: bool) {
+        Self::set_modified(self, modified);
+    }
+
+    fn file_path(&self) -> Option<&str> {
+        Self::file_path(self)
+    }
+
+    fn set_file_path(&mut self, path: Option<String>) {
+        Self::set_file_path(self, path);
+    }
+
+    fn capabilities(&self) -> BufferCapabilities {
+        BufferCapabilities::VIRTUAL
+    }
+
+    fn line_count(&self) -> usize {
+        Self::line_count(self)
+    }
+
+    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
+        Self::line(self, idx).map(Cow::Owned)
+    }
+
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        Self::line(self, idx).map(|l| l.chars().count())
+    }
+
+    fn position_to_byte(&self, pos: Position) -> usize {
+        Self::position_to_byte(self, pos)
+    }
+
+    fn byte_to_position(&self, byte_offset: usize) -> Position {
+        Self::byte_to_position(self, byte_offset)
+    }
+
+    fn insert_at(&mut self, pos: Position, text: &str) {
+        Self::insert_at(self, pos, text);
+    }
+
+    fn delete_range(&mut self, start: Position, end: Position) -> String {
+        Self::delete_range(self, start, end)
+    }
+
+    fn set_content(&mut self, content: &str) {
+        Self::set_content(self, content);
+    }
+
+    fn content(&self) -> String {
+        Self::content(self)
+    }
+
+    fn as_text_geometry(&self) -> &dyn TextGeometry {
+        self
     }
 }

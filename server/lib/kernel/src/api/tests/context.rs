@@ -99,20 +99,26 @@ fn test_stub_buffer_manager_get() {
 }
 
 #[test]
-fn test_stub_buffer_manager_create() {
+fn test_stub_buffer_manager_register_returns_buffer_id() {
+    use std::sync::Arc;
+
     let manager = StubBufferManager;
-    let id1 = manager.create();
-    let id2 = manager.create();
-    // Each call creates a new unique BufferId
+    let buf1 = crate::mm::Buffer::new();
+    let buf2 = crate::mm::Buffer::new();
+    let id1 = manager.register(Arc::new(RwLock::new(buf1)));
+    let id2 = manager.register(Arc::new(RwLock::new(buf2)));
+    // Each call returns the buffer's own ID
     assert_ne!(id1, id2);
 }
 
 #[test]
 fn test_stub_buffer_manager_register() {
+    use std::sync::Arc;
+
     let manager = StubBufferManager;
     let buffer = crate::mm::Buffer::new();
-    let _id = manager.register(buffer);
-    // register returns a new BufferId but doesn't store anything
+    let _id = manager.register(Arc::new(RwLock::new(buffer)));
+    // register returns the buffer's ID but doesn't store anything
     assert_eq!(manager.count(), 0);
 }
 
@@ -121,8 +127,8 @@ fn test_stub_buffer_manager_unregister() {
     let manager = StubBufferManager;
     let id = crate::mm::BufferId::from_raw(42);
     let result = manager.unregister(id);
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), BufferError::NotFound(id));
+    // Stub always returns None (nothing stored)
+    assert!(result.is_none());
 }
 
 #[test]

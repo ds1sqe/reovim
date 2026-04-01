@@ -23,8 +23,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::api::v1::{
-    Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank, ModeId,
-    ModuleId, MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
+    Buffer, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank, ModeId, ModuleId,
+    MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
 };
 
 /// In-memory buffer manager for testing.
@@ -33,7 +33,7 @@ use crate::api::v1::{
 /// (returns `None` for all lookups), this implementation actually stores
 /// and retrieves buffers. Use this when tests need real buffer operations.
 pub struct TestBufferManager {
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>>,
 }
 
 impl TestBufferManager {
@@ -54,32 +54,18 @@ impl Default for TestBufferManager {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl BufferManager for TestBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.buffers.read().get(&id).cloned()
     }
 
-    fn create(&self) -> BufferId {
-        let id = BufferId::new();
-        let buffer = Arc::new(RwLock::new(Buffer::new()));
+    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+        let id = buffer.read().id();
         self.buffers.write().insert(id, buffer);
         id
     }
 
-    fn register(&self, buffer: Buffer) -> BufferId {
-        let id = BufferId::new();
-        let buffer = Arc::new(RwLock::new(buffer));
-        self.buffers.write().insert(id, buffer);
-        id
-    }
-
-    fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-        self.buffers
-            .write()
-            .remove(&id)
-            .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                Arc::try_unwrap(arc_buffer)
-                    .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-            })
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+        self.buffers.write().remove(&id)
     }
 
     fn list(&self) -> Vec<BufferId> {
@@ -126,9 +112,10 @@ pub const fn test_mode() -> ModeId {
 /// Create a buffer with content and register it in the context.
 ///
 /// Convenience helper that combines `Buffer::from_string()` and
-/// `ctx.buffers.register()`.
+/// `ctx.buffers.register()`. Returns the buffer's ID.
 #[must_use]
 pub fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
     let buffer = Buffer::from_string(content);
-    ctx.buffers.register(buffer)
+    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buffer));
+    ctx.buffers.register(arc)
 }

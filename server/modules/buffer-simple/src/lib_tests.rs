@@ -1,27 +1,43 @@
+use std::sync::Arc;
+
+use reovim_arch::sync::RwLock;
+use reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, BufferOps};
+
 use super::*;
 
+fn register_buffer(mgr: &SimpleBufferManager, content: &str) -> BufferId {
+    let buf = Buffer::from_string(content);
+    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
+    mgr.register(arc)
+}
+
+fn register_empty(mgr: &SimpleBufferManager) -> BufferId {
+    let buf = Buffer::new();
+    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
+    mgr.register(arc)
+}
+
 #[test]
-fn test_create_buffer() {
+fn test_register_and_get() {
     let mgr = SimpleBufferManager::new();
-    let id = mgr.create();
+    let id = register_empty(&mgr);
     assert!(mgr.get(id).is_some());
     assert_eq!(mgr.count(), 1);
 }
 
 #[test]
-fn test_register_buffer() {
+fn test_register_with_content() {
     let mgr = SimpleBufferManager::new();
-    let buffer = Buffer::from_string("hello");
-    let id = mgr.register(buffer);
+    let id = register_buffer(&mgr, "hello");
     assert!(mgr.get(id).is_some());
 }
 
 #[test]
 fn test_unregister_buffer() {
     let mgr = SimpleBufferManager::new();
-    let id = mgr.create();
+    let id = register_empty(&mgr);
     let result = mgr.unregister(id);
-    assert!(result.is_ok());
+    assert!(result.is_some());
     assert!(mgr.get(id).is_none());
     assert_eq!(mgr.count(), 0);
 }
@@ -31,14 +47,14 @@ fn test_unregister_not_found() {
     let mgr = SimpleBufferManager::new();
     let fake_id = BufferId::new();
     let result = mgr.unregister(fake_id);
-    assert!(matches!(result, Err(BufferError::NotFound(_))));
+    assert!(result.is_none());
 }
 
 #[test]
 fn test_list_buffers() {
     let mgr = SimpleBufferManager::new();
-    let id1 = mgr.create();
-    let id2 = mgr.create();
+    let id1 = register_empty(&mgr);
+    let id2 = register_empty(&mgr);
     let list = mgr.list();
     assert_eq!(list.len(), 2);
     assert!(list.contains(&id1));
@@ -92,20 +108,18 @@ fn test_exit_succeeds() {
 #[test]
 fn test_register_buffer_preserves_content() {
     let mgr = SimpleBufferManager::new();
-    let buffer = Buffer::from_string("hello world");
-    let id = mgr.register(buffer);
+    let id = register_buffer(&mgr, "hello world");
     let retrieved = mgr.get(id).unwrap();
     let content = retrieved.read().content();
     assert_eq!(content, "hello world");
 }
 
 #[test]
-fn test_unregister_returns_buffer_content() {
+fn test_unregister_returns_buffer_arc() {
     let mgr = SimpleBufferManager::new();
-    let buffer = Buffer::from_string("test content");
-    let id = mgr.register(buffer);
+    let id = register_buffer(&mgr, "test content");
     let result = mgr.unregister(id).unwrap();
-    assert_eq!(result.content(), "test content");
+    assert_eq!(result.read().content(), "test content");
 }
 
 #[test]
@@ -128,11 +142,11 @@ fn test_count_starts_at_zero() {
 }
 
 #[test]
-fn test_create_multiple_buffers() {
+fn test_register_multiple_buffers() {
     let mgr = SimpleBufferManager::new();
-    let id1 = mgr.create();
-    let id2 = mgr.create();
-    let id3 = mgr.create();
+    let id1 = register_empty(&mgr);
+    let id2 = register_empty(&mgr);
+    let id3 = register_empty(&mgr);
     assert_ne!(id1, id2);
     assert_ne!(id2, id3);
     assert_ne!(id1, id3);
@@ -142,16 +156,15 @@ fn test_create_multiple_buffers() {
 #[test]
 fn test_unregister_with_shared_reference() {
     let mgr = SimpleBufferManager::new();
-    let buffer = Buffer::from_string("shared");
-    let id = mgr.register(buffer);
+    let id = register_buffer(&mgr, "shared");
 
     // Hold a clone of the Arc to simulate shared reference
     let _extra_ref = mgr.get(id).unwrap();
 
-    // Unregister should still work by cloning the buffer
+    // Unregister still works — returns the Arc
     let result = mgr.unregister(id);
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap().content(), "shared");
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().read().content(), "shared");
 }
 
 #[test]
@@ -164,7 +177,7 @@ fn test_dependencies_default_empty() {
 fn test_init_registers_buffer_manager() {
     use {
         reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
-        std::{path::PathBuf, sync::Arc},
+        std::path::PathBuf,
     };
 
     let kernel = KernelContext::default();

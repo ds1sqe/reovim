@@ -144,6 +144,12 @@ pub use crate::block::{
 // It stays in kernel - no I/O policy, just storage lifecycle
 pub use super::buffer_manager::{BufferError, BufferManager};
 
+// BufferOps - unified buffer storage trait (byte + line level)
+pub use super::buffer_ops::{BufferOps, BufferOpsError};
+
+// BufferCapabilities - capability flags for buffer type queries
+pub use super::buffer_caps::BufferCapabilities;
+
 // Note: UndoManager, WindowManager, and policy traits (Operator,
 // KeymapProvider, CommandHandler) have been moved out of the kernel to follow
 // the "mechanism vs policy" principle. See lib/drivers/ for driver-level traits.

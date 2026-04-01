@@ -21,7 +21,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_buffer::{BufferManagerKey, BufferManagerRegistry},
     reovim_kernel::api::v1::{
-        Buffer, BufferError, BufferId, BufferManager, Module, ModuleContext, ModuleError, ModuleId,
+        BufferId, BufferManager, BufferOps, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,
     },
     std::collections::HashMap,
@@ -30,7 +30,7 @@ use {
 /// Simple buffer manager implementation.
 ///
 /// Uses a `HashMap` with outer `RwLock` for concurrent access.
-/// Each buffer is wrapped in `Arc<RwLock<Buffer>>` for shared ownership.
+/// Each buffer is wrapped in `Arc<RwLock<dyn BufferOps>>` for shared ownership.
 ///
 /// # Design Philosophy
 ///
@@ -40,8 +40,7 @@ use {
 /// - **Simple**: Just manages buffer storage, nothing more
 pub struct SimpleBufferManager {
     /// Buffer storage with outer `RwLock` protecting the `HashMap`.
-    /// Inner `Arc<RwLock<Buffer>>` allows multiple references to the same buffer.
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>>,
 }
 
 impl SimpleBufferManager {
@@ -61,34 +60,18 @@ impl Default for SimpleBufferManager {
 }
 
 impl BufferManager for SimpleBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.buffers.read().get(&id).cloned()
     }
 
-    fn create(&self) -> BufferId {
-        let id = BufferId::new(); // Uses atomic counter internally
-        let buffer = Arc::new(RwLock::new(Buffer::new()));
+    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+        let id = buffer.read().id();
         self.buffers.write().insert(id, buffer);
         id
     }
 
-    fn register(&self, buffer: Buffer) -> BufferId {
-        let id = BufferId::new();
-        let buffer = Arc::new(RwLock::new(buffer));
-        self.buffers.write().insert(id, buffer);
-        id
-    }
-
-    fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-        self.buffers
-            .write()
-            .remove(&id)
-            .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                // Try to unwrap the Arc. If there are other references,
-                // clone the buffer (safe but creates a copy).
-                Arc::try_unwrap(arc_buffer)
-                    .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-            })
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+        self.buffers.write().remove(&id)
     }
 
     fn list(&self) -> Vec<BufferId> {

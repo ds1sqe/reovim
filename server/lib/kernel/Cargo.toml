@@ -19,3 +19,6 @@ unstable-api = []
 [dependencies]
 # Only depends on arch layer (Rule 2: kernel/ depends only on arch/)
 reovim-arch = { workspace = true }
+
+# Capability bitflags for BufferOps trait
+bitflags = { workspace = true }

@@ -19,5 +19,4 @@ reovim-kernel = { workspace = true }
 # Arch for RwLock (used by TestBufferManager)
 reovim-arch = { workspace = true }
 
-# Capability bitflags
-bitflags = { workspace = true }
+# Note: bitflags no longer needed here — BufferCapabilities moved to kernel

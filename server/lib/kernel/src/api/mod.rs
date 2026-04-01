@@ -28,8 +28,12 @@
 // Internal modules (not directly exposed)
 // ============================================================================
 
+// Buffer capability flags (used by BufferOps trait)
+mod buffer_caps;
 // Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
+// Unified buffer operations trait
+mod buffer_ops;
 mod context;
 mod debug;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId
