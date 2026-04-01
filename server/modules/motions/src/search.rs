@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
+    reovim_driver_search::{BufferOpsLineSource, Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::{Position, v1::CommandId},
 };
@@ -279,7 +279,8 @@ fn search_word(
     let (word_pattern, search_cursor) = {
         let Some(Some((pattern, word_start))) = runtime.with_buffer_read(buffer_id, |buffer| {
             // Get word pattern
-            let pattern = search_provider.word_at_cursor(buffer, cursor)?;
+            let source = BufferOpsLineSource(buffer);
+            let pattern = search_provider.word_at_cursor_source(&source, cursor)?;
 
             // Find word start position for backward search
             let line = buffer.line(cursor.line)?;
@@ -360,7 +361,8 @@ fn search_and_move(
 
     // Search for pattern
     let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        search_provider.find_next(buffer, cursor, pattern, direction, true)
+        let source = BufferOpsLineSource(buffer);
+        search_provider.find_next_source(&source, cursor, pattern, direction, true)
     });
 
     match search_result {
@@ -415,7 +417,8 @@ fn search_and_move_from(
     };
 
     let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        search_provider.find_next(buffer, search_from, pattern, direction, true)
+        let source = BufferOpsLineSource(buffer);
+        search_provider.find_next_source(&source, search_from, pattern, direction, true)
     });
 
     match search_result {

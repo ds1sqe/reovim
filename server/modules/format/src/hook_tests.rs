@@ -5,7 +5,7 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, BufferManager, OptionRegistry, OptionScopeId, OptionSpec,
-            OptionValue, ServiceRegistry, events::kernel::BufferWillSave,
+            OptionValue, RwLock, ServiceRegistry, events::kernel::BufferWillSave,
         },
         testing::TestBufferManager,
     },
@@ -33,7 +33,7 @@ fn setup_buffer(content: &str) -> (Arc<dyn BufferManager>, BufferId, u64) {
     let mut buf = Buffer::new();
     buf.set_content(content);
     buf.set_file_path(Some("test.rs".to_string()));
-    let id = mgr.register(buf);
+    let id = mgr.register(Arc::new(RwLock::new(buf)));
     // Buffer IDs in tests are small, safe to cast.
     #[allow(clippy::cast_possible_truncation)]
     let event_id = id.as_usize() as u64;

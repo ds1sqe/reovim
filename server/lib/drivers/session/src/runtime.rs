@@ -433,11 +433,11 @@ impl<'a> SessionRuntime<'a> {
     /// ```
     pub fn with_buffer_read<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
     where
-        F: FnOnce(&reovim_kernel::api::v1::Buffer) -> R,
+        F: FnOnce(&dyn reovim_kernel::api::v1::BufferOps) -> R,
     {
         let buf_arc = self.kernel.buffers.get(buffer)?;
         let buf = buf_arc.read();
-        Some(f(&buf))
+        Some(f(&*buf))
     }
 
     /// Read from either buffer type as `&dyn TextGeometry`.
@@ -451,7 +451,7 @@ impl<'a> SessionRuntime<'a> {
     {
         if let Some(buf_arc) = self.kernel.buffers.get(buffer) {
             let buf = buf_arc.read();
-            return Some(f(&*buf));
+            return Some(f(buf.as_text_geometry()));
         }
         let vbr = self.virtual_registry()?;
         let vbuf_arc = vbr.get(buffer)?;
@@ -726,8 +726,8 @@ impl BufferApi for SessionRuntime<'_> {
                 let start_col = start.column.min(char_len);
                 let end_col = end.column.min(char_len);
                 if start_col < end_col {
-                    let sb = char_col_to_byte(line, start_col);
-                    let eb = char_col_to_byte(line, end_col);
+                    let sb = char_col_to_byte(&line, start_col);
+                    let eb = char_col_to_byte(&line, end_col);
                     result.push_str(&line[sb..eb]);
                 }
             }
@@ -737,7 +737,7 @@ impl BufferApi for SessionRuntime<'_> {
             if let Some(line) = buf.line(start.line) {
                 let char_len = line.chars().count();
                 let start_col = start.column.min(char_len);
-                let sb = char_col_to_byte(line, start_col);
+                let sb = char_col_to_byte(&line, start_col);
                 result.push_str(&line[sb..]);
                 result.push('\n');
             }
@@ -745,7 +745,7 @@ impl BufferApi for SessionRuntime<'_> {
             // Middle lines: full lines
             for line_idx in (start.line + 1)..end.line {
                 if let Some(line) = buf.line(line_idx) {
-                    result.push_str(line);
+                    result.push_str(&line);
                     result.push('\n');
                 }
             }
@@ -754,7 +754,7 @@ impl BufferApi for SessionRuntime<'_> {
             if let Some(line) = buf.line(end.line) {
                 let char_len = line.chars().count();
                 let end_col = end.column.min(char_len);
-                let eb = char_col_to_byte(line, end_col);
+                let eb = char_col_to_byte(&line, end_col);
                 result.push_str(&line[..eb]);
             }
         }
@@ -1053,7 +1053,10 @@ impl BufferApi for SessionRuntime<'_> {
         if let Some(name) = name {
             buffer.set_file_path(Some(name.to_string()));
         }
-        let id = self.kernel.buffers.register(buffer);
+        let id = self
+            .kernel
+            .buffers
+            .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buffer)));
         self.changes.record_buffer_created(id);
         id
     }
@@ -1074,7 +1077,7 @@ impl BufferApi for SessionRuntime<'_> {
         if self.kernel.buffers.count() <= 1 {
             return Err(BufferError::CannotDeleteLastBuffer);
         }
-        if self.kernel.buffers.unregister(buffer).is_err() {
+        if self.kernel.buffers.unregister(buffer).is_none() {
             return Err(BufferError::NotFound(buffer));
         }
         self.changes.record_buffer_deleted(buffer);
@@ -1351,7 +1354,9 @@ impl SessionRuntime<'_> {
                     buf.insert_at(*position, text);
                 }
                 Edit::Delete { position, text } => {
-                    buf.delete_at(*position, text.chars().count());
+                    let byte_start = buf.position_to_byte(*position);
+                    let end = buf.byte_to_position(byte_start + text.len());
+                    buf.delete_range(*position, end);
                 }
             }
         }

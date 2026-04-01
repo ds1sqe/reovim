@@ -8,7 +8,7 @@ use {
         NoOpFallback,
     },
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{Buffer, BufferId, Edit, ModeId, Position},
+    reovim_kernel::api::v1::{BufferId, BufferOps, Edit, ModeId, Position},
 };
 
 /// Mock context for testing.
@@ -45,7 +45,7 @@ impl FallbackContext for MockContext {
         // No-op in mock
     }
 
-    fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         None
     }
 
@@ -135,7 +135,7 @@ fn test_handler_works_with_different_contexts() {
             None
         }
         fn set_cursor_position(&mut self, _pos: Position) {}
-        fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+        fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
             None
         }
         fn record_edit(&mut self, _: BufferId, _: Vec<Edit>, _: Position, _: Position) {}

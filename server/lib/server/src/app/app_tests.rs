@@ -157,7 +157,8 @@ fn test_fallback_get_buffer_with_real_buffer() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
+            Buffer, EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+            TextObjectEngine,
         },
     };
 
@@ -174,7 +175,10 @@ fn test_fallback_get_buffer_with_real_buffer() {
     // Create and register a buffer
     let mut buffer = Buffer::new();
     buffer.set_content("test content");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id =
+        kernel
+            .buffers
+            .register(Arc::new(parking_lot::RwLock::new(buffer)));
 
     let app = AppState::new(kernel);
 

@@ -52,7 +52,7 @@ impl Operator for YankOperator {
 
             for line_idx in start.line..=clamped_end {
                 if let Some(line) = buffer.line(line_idx) {
-                    yanked_text.push_str(line);
+                    yanked_text.push_str(&line);
                     yanked_text.push('\n');
                 }
             }
@@ -63,8 +63,8 @@ impl Operator for YankOperator {
                 let start_col = start.column.min(char_len);
                 let end_col = end.column.min(char_len);
                 if start_col < end_col {
-                    let start_byte = char_col_to_byte(line, start_col);
-                    let end_byte = char_col_to_byte(line, end_col);
+                    let start_byte = char_col_to_byte(&line, start_col);
+                    let end_byte = char_col_to_byte(&line, end_col);
                     yanked_text.push_str(&line[start_byte..end_byte]);
                 }
             }
@@ -75,16 +75,16 @@ impl Operator for YankOperator {
                     if line_idx == start.line {
                         let char_len = line.chars().count();
                         let start_col = start.column.min(char_len);
-                        let start_byte = char_col_to_byte(line, start_col);
+                        let start_byte = char_col_to_byte(&line, start_col);
                         yanked_text.push_str(&line[start_byte..]);
                         yanked_text.push('\n');
                     } else if line_idx == end.line {
                         let char_len = line.chars().count();
                         let end_col = end.column.min(char_len);
-                        let end_byte = char_col_to_byte(line, end_col);
+                        let end_byte = char_col_to_byte(&line, end_col);
                         yanked_text.push_str(&line[..end_byte]);
                     } else {
-                        yanked_text.push_str(line);
+                        yanked_text.push_str(&line);
                         yanked_text.push('\n');
                     }
                 }

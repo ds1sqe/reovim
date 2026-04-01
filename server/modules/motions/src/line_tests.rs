@@ -745,7 +745,7 @@ fn test_buffer_manager_list_and_count() {
 fn test_buffer_manager_unregister() {
     let setup = TestSetup::new("hello");
     let result = setup.ctx.buffers.unregister(setup.buffer_id);
-    assert!(result.is_ok());
+    assert!(result.is_some());
     assert_eq!(setup.ctx.buffers.count(), 0);
 }
 
@@ -754,13 +754,14 @@ fn test_buffer_manager_unregister_nonexistent() {
     let setup = TestSetup::new("hello");
     let bid = BufferId::from_raw(999);
     let result = setup.ctx.buffers.unregister(bid);
-    assert!(result.is_err());
+    assert!(result.is_none());
 }
 
 #[test]
 fn test_buffer_manager_create() {
+    use reovim_kernel::testing::setup_buffer;
     let setup = TestSetup::new("hello");
-    let bid = setup.ctx.buffers.create();
+    let bid = setup_buffer(&setup.ctx, "");
     assert!(setup.ctx.buffers.get(bid).is_some());
 }
 

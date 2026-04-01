@@ -77,9 +77,10 @@ use {
         ModeStack,
         v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -157,7 +158,7 @@ impl TestState {
 fn test_enter_visual_mode_execute_sets_character_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -179,7 +180,7 @@ fn test_enter_visual_mode_execute_sets_character_selection() {
 fn test_enter_visual_mode_execute_at_nonzero_cursor() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -248,7 +249,7 @@ fn test_enter_visual_mode_execute_no_active_window() {
 fn test_enter_visual_line_mode_execute_sets_line_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -269,7 +270,7 @@ fn test_enter_visual_line_mode_execute_sets_line_selection() {
 fn test_enter_visual_line_mode_execute_at_line_2() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -338,7 +339,7 @@ fn test_enter_visual_line_mode_execute_no_active_window() {
 fn test_enter_visual_block_mode_execute_sets_block_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -359,7 +360,7 @@ fn test_enter_visual_block_mode_execute_sets_block_selection() {
 fn test_enter_visual_block_mode_execute_at_nonzero_cursor() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -426,7 +427,7 @@ fn test_enter_visual_block_mode_execute_no_active_window() {
 fn test_enter_visual_mode_sets_mode_to_visual() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -442,7 +443,7 @@ fn test_enter_visual_mode_sets_mode_to_visual() {
 fn test_enter_visual_line_mode_sets_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -458,7 +459,7 @@ fn test_enter_visual_line_mode_sets_mode() {
 fn test_enter_visual_block_mode_sets_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -474,7 +475,7 @@ fn test_enter_visual_block_mode_sets_mode() {
 fn test_enter_visual_mode_at_line_2_col_3() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -497,7 +498,7 @@ fn test_enter_visual_mode_at_line_2_col_3() {
 fn test_enter_visual_block_mode_at_line_1() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -521,7 +522,7 @@ fn test_enter_visual_block_mode_at_line_1() {
 fn test_enter_visual_line_mode_selection_starts_at_col_0() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("  hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));

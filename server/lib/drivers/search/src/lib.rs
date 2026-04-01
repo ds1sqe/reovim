@@ -21,7 +21,7 @@ mod types;
 
 pub use {
     key::SearchKey,
-    line_source::{BufferLineSource, LineSource, VirtualBufferLineSource},
+    line_source::{BufferLineSource, BufferOpsLineSource, LineSource, VirtualBufferLineSource},
     provider::SearchProvider,
     registry::SearchProviderRegistry,
     types::{Direction, SearchError, SearchMatch},

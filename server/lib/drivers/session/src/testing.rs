@@ -33,6 +33,7 @@ use {
         extension::ExtensionMap,
         runtime::SessionRuntime,
     },
+    reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{
         Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId,
         ModeStack, ModuleId, Position, RegisterBank,
@@ -172,7 +173,7 @@ impl TestSessionRuntime {
 
         // Create buffer with content
         let buffer = Buffer::from_string(content);
-        let buffer_id = test.kernel.buffers.register(buffer);
+        let buffer_id = test.kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
         // Create a window displaying this buffer
         let mut window = crate::Window::new();
@@ -193,7 +194,7 @@ impl TestSessionRuntime {
     pub fn with_buffer_and_mode(content: &str, mode: ModeId) -> Self {
         let mut test = Self::with_home_mode(mode);
         let buffer = Buffer::from_string(content);
-        let buffer_id = test.kernel.buffers.register(buffer);
+        let buffer_id = test.kernel.buffers.register(Arc::new(RwLock::new(buffer)));
         let mut window = crate::Window::new();
         window.buffer_id = Some(buffer_id);
         test.windows.add(window);

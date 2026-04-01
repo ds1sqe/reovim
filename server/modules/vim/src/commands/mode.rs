@@ -579,7 +579,7 @@ fn execute_search(
     pattern: &str,
     direction: Direction,
 ) {
-    use reovim_driver_search::{SearchKey, SearchProviderRegistry};
+    use reovim_driver_search::{BufferOpsLineSource, SearchKey, SearchProviderRegistry};
 
     let Some(buffer_id) = args.buffer_id() else {
         return;
@@ -601,7 +601,8 @@ fn execute_search(
 
     // Search for pattern
     let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        search_provider.find_next(buffer, cursor, pattern, direction, true)
+        let source = BufferOpsLineSource(buffer);
+        search_provider.find_next_source(&source, cursor, pattern, direction, true)
     });
 
     match search_result {

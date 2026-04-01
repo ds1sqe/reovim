@@ -508,14 +508,18 @@ fn test_goto_special_mark_not_set() {
 
 #[test]
 fn test_goto_global_mark_cross_buffer() {
-    use reovim_kernel::api::v1::{Buffer, Mark};
+    use reovim_kernel::api::v1::{Buffer, Mark, RwLock};
+    use std::sync::Arc;
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
     let buf1 = test.active_buffer().unwrap();
 
     // Create a second buffer
     let buffer2 = Buffer::from_string("buffer 2\n");
-    let buf2 = test.kernel().buffers.register(buffer2);
+    let buf2 = test
+        .kernel()
+        .buffers
+        .register(Arc::new(RwLock::new(buffer2)));
 
     // Set global mark 'C' pointing to buffer 2 at (0, 5)
     test.with_runtime(|runtime| {
@@ -547,14 +551,18 @@ fn test_goto_global_mark_cross_buffer() {
 
 #[test]
 fn test_goto_global_mark_cross_buffer_line_mode() {
-    use reovim_kernel::api::v1::{Buffer, Mark};
+    use reovim_kernel::api::v1::{Buffer, Mark, RwLock};
+    use std::sync::Arc;
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
     let buf1 = test.active_buffer().unwrap();
 
     // Create a second buffer
     let buffer2 = Buffer::from_string("buffer 2\nline 2\n");
-    let buf2 = test.kernel().buffers.register(buffer2);
+    let buf2 = test
+        .kernel()
+        .buffers
+        .register(Arc::new(RwLock::new(buffer2)));
 
     // Set global mark 'D' pointing to buffer 2 at (1, 3)
     test.with_runtime(|runtime| {

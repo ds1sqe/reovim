@@ -188,9 +188,10 @@ use {
         ModeStack,
         v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -279,7 +280,7 @@ fn test_delete_selection_execute_no_buffer() {
 fn test_delete_selection_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -296,7 +297,7 @@ fn test_delete_selection_execute_no_selection() {
 fn test_delete_selection_execute_character_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -331,7 +332,7 @@ fn test_delete_selection_execute_character_mode() {
 fn test_delete_selection_execute_clears_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -368,7 +369,7 @@ fn test_yank_selection_execute_no_buffer() {
 fn test_yank_selection_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -384,7 +385,7 @@ fn test_yank_selection_execute_no_selection() {
 fn test_yank_selection_execute_character_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -414,7 +415,7 @@ fn test_yank_selection_execute_character_mode() {
 fn test_yank_selection_execute_does_not_delete_text() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -450,7 +451,7 @@ fn test_change_selection_execute_no_buffer() {
 fn test_change_selection_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -466,7 +467,7 @@ fn test_change_selection_execute_no_selection() {
 fn test_change_selection_execute_character_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -514,7 +515,7 @@ fn test_indent_selection_execute_no_buffer() {
 fn test_indent_selection_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -530,7 +531,7 @@ fn test_indent_selection_execute_no_selection() {
 fn test_indent_selection_execute_indents_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -563,7 +564,7 @@ fn test_indent_selection_execute_indents_lines() {
 fn test_indent_selection_execute_single_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -602,7 +603,7 @@ fn test_dedent_selection_execute_no_buffer() {
 fn test_dedent_selection_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello\n    world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -618,7 +619,7 @@ fn test_dedent_selection_execute_no_selection() {
 fn test_dedent_selection_execute_removes_spaces() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello\n    world\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -650,7 +651,7 @@ fn test_dedent_selection_execute_removes_spaces() {
 fn test_dedent_selection_execute_removes_tab() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("\thello\n\tworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -675,7 +676,7 @@ fn test_dedent_selection_execute_removes_tab() {
 fn test_dedent_selection_execute_no_leading_whitespace() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -700,7 +701,7 @@ fn test_dedent_selection_execute_no_leading_whitespace() {
 fn test_dedent_selection_execute_partial_spaces() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("  hello\n      world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -773,7 +774,7 @@ fn test_expand_character_mode_multiline() {
 fn test_delete_selection_middle_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -798,7 +799,7 @@ fn test_delete_selection_middle_of_line() {
 fn test_yank_selection_line_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -827,7 +828,7 @@ fn test_yank_selection_line_mode() {
 fn test_change_selection_enters_insert_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -848,7 +849,7 @@ fn test_change_selection_enters_insert_mode() {
 fn test_indent_selection_already_indented() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello\n    world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -873,7 +874,7 @@ fn test_indent_selection_already_indented() {
 fn test_dedent_selection_single_space() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string(" hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -967,7 +968,7 @@ fn test_change_selection_linewise() {
     // Exercise the is_linewise branch in ChangeSelection (line 222)
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

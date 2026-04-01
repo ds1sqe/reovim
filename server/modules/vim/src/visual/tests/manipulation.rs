@@ -113,9 +113,10 @@ use {
         ModeStack,
         v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -193,7 +194,7 @@ impl TestState {
 fn test_swap_anchor_execute_swaps_start_and_end() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -217,7 +218,7 @@ fn test_swap_anchor_execute_swaps_start_and_end() {
 fn test_swap_anchor_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -236,7 +237,7 @@ fn test_swap_anchor_execute_no_selection() {
 fn test_swap_anchor_execute_preserves_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -260,7 +261,7 @@ fn test_swap_anchor_execute_preserves_mode() {
 fn test_swap_anchor_execute_block_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -286,7 +287,7 @@ fn test_swap_anchor_execute_block_mode() {
 fn test_toggle_visual_char_execute_exit_when_already_char() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -308,7 +309,7 @@ fn test_toggle_visual_char_execute_exit_when_already_char() {
 fn test_toggle_visual_char_execute_switch_from_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -334,7 +335,7 @@ fn test_toggle_visual_char_execute_switch_from_line() {
 fn test_toggle_visual_char_execute_switch_from_block() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -356,7 +357,7 @@ fn test_toggle_visual_char_execute_switch_from_block() {
 fn test_toggle_visual_char_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -376,7 +377,7 @@ fn test_toggle_visual_char_execute_no_selection() {
 fn test_toggle_visual_line_execute_exit_when_already_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -397,7 +398,7 @@ fn test_toggle_visual_line_execute_exit_when_already_line() {
 fn test_toggle_visual_line_execute_switch_from_char() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -421,7 +422,7 @@ fn test_toggle_visual_line_execute_switch_from_char() {
 fn test_toggle_visual_line_execute_switch_from_block() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -443,7 +444,7 @@ fn test_toggle_visual_line_execute_switch_from_block() {
 fn test_toggle_visual_line_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -463,7 +464,7 @@ fn test_toggle_visual_line_execute_no_selection() {
 fn test_toggle_visual_block_execute_exit_when_already_block() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -484,7 +485,7 @@ fn test_toggle_visual_block_execute_exit_when_already_block() {
 fn test_toggle_visual_block_execute_switch_from_char() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -508,7 +509,7 @@ fn test_toggle_visual_block_execute_switch_from_char() {
 fn test_toggle_visual_block_execute_switch_from_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -530,7 +531,7 @@ fn test_toggle_visual_block_execute_switch_from_line() {
 fn test_toggle_visual_block_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -550,7 +551,7 @@ fn test_toggle_visual_block_execute_no_selection() {
 fn test_reselect_last_execute_returns_success() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -567,7 +568,7 @@ fn test_reselect_last_execute_returns_success() {
 fn test_swap_anchor_double_swap_restores() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -593,7 +594,7 @@ fn test_swap_anchor_double_swap_restores() {
 fn test_toggle_visual_char_from_block_preserves_positions() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -616,7 +617,7 @@ fn test_toggle_visual_char_from_block_preserves_positions() {
 fn test_toggle_visual_line_from_char_preserves_positions() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -639,7 +640,7 @@ fn test_toggle_visual_line_from_char_preserves_positions() {
 fn test_toggle_visual_block_from_line_preserves_positions() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));

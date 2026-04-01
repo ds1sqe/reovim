@@ -333,7 +333,7 @@ fn test_buffer_manager_unregister() {
     let ctx = create_test_context();
     let bid = setup_buffer(&ctx, "hello");
     let result = ctx.buffers.unregister(bid);
-    assert!(result.is_ok());
+    assert!(result.is_some());
     assert_eq!(ctx.buffers.count(), 0);
 }
 
@@ -342,13 +342,13 @@ fn test_buffer_manager_unregister_nonexistent() {
     let ctx = create_test_context();
     let bid = BufferId::from_raw(999);
     let result = ctx.buffers.unregister(bid);
-    assert!(result.is_err());
+    assert!(result.is_none());
 }
 
 #[test]
 fn test_buffer_manager_create() {
     let ctx = create_test_context();
-    let bid = ctx.buffers.create();
+    let bid = setup_buffer(&ctx, "");
     assert!(ctx.buffers.get(bid).is_some());
 }
 

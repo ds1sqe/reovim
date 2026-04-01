@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{Buffer, BufferId, Edit, ModeId, Position},
+    reovim_kernel::api::v1::{BufferId, BufferOps, Edit, ModeId, Position},
 };
 
 use crate::KeyEvent;
@@ -100,7 +100,7 @@ pub trait FallbackContext: Send {
     /// Get a buffer by ID for reading/writing.
     ///
     /// Returns `None` if the buffer doesn't exist.
-    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>>;
+    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>>;
 
     /// Record an edit for undo tracking.
     ///

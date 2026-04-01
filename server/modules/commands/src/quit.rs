@@ -5,7 +5,7 @@ use {
         Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
     reovim_driver_session::{BufferApi, SessionRuntime},
-    reovim_kernel::api::v1::{Buffer, CommandId, ModuleId},
+    reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -38,7 +38,7 @@ impl CommandHandler for QuitCommand {
         if !ctx.has_bang()
             && let Some(buffer_id) = runtime.active_buffer()
             && runtime
-                .with_buffer_read(buffer_id, Buffer::is_modified)
+                .with_buffer_read(buffer_id, reovim_kernel::api::BufferOps::is_modified)
                 .unwrap_or(false)
         {
             return CommandResult::Error(

@@ -52,7 +52,7 @@ fn apply_case_transform(
                 original.push('\n');
             }
             if let Some(line) = buffer.line(line_idx) {
-                original.push_str(line);
+                original.push_str(&line);
             }
         }
     } else if start.line == end.line {
@@ -62,8 +62,8 @@ fn apply_case_transform(
             let start_col = start.column.min(char_len);
             let end_col = end.column.min(char_len);
             if start_col < end_col {
-                let start_byte = char_col_to_byte(line, start_col);
-                let end_byte = char_col_to_byte(line, end_col);
+                let start_byte = char_col_to_byte(&line, start_col);
+                let end_byte = char_col_to_byte(&line, end_col);
                 original.push_str(&line[start_byte..end_byte]);
             }
         }
@@ -74,16 +74,16 @@ fn apply_case_transform(
                 if line_idx == start.line {
                     let char_len = line.chars().count();
                     let start_col = start.column.min(char_len);
-                    let start_byte = char_col_to_byte(line, start_col);
+                    let start_byte = char_col_to_byte(&line, start_col);
                     original.push_str(&line[start_byte..]);
                     original.push('\n');
                 } else if line_idx == end.line {
                     let char_len = line.chars().count();
                     let end_col = end.column.min(char_len);
-                    let end_byte = char_col_to_byte(line, end_col);
+                    let end_byte = char_col_to_byte(&line, end_col);
                     original.push_str(&line[..end_byte]);
                 } else {
-                    original.push_str(line);
+                    original.push_str(&line);
                     original.push('\n');
                 }
             }

@@ -25,8 +25,8 @@ use {
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CommandId, Jumplist, KernelContext, ModeId, ModeStack, RegisterContent,
-        SimpleVirtualBufferRegistry, VirtualBufferRegistry,
+        Buffer, BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
+        RegisterContent, SimpleVirtualBufferRegistry, VirtualBufferRegistry,
     },
 };
 
@@ -337,23 +337,23 @@ impl SessionState {
     // Buffer Methods (delegated to kernel)
     // ========================================================================
 
-    /// Get a buffer by ID (checks both Rope and Virtual registries).
+    /// Get a buffer by ID (checks unified manager, then virtual registry).
     #[must_use]
     pub fn buffer(&self, id: BufferId) -> Option<BufferHandle> {
         if let Some(arc) = self.app.kernel.buffers.get(id) {
-            return Some(BufferHandle::Rope(arc));
+            return Some(BufferHandle::new(arc));
         }
         let vbr = self.app.services.get::<SimpleVirtualBufferRegistry>()?;
         let arc = vbr.get(id)?;
-        Some(BufferHandle::Virtual(arc))
+        Some(BufferHandle::new(arc as Arc<RwLock<dyn BufferOps>>))
     }
 
-    /// Get a Rope buffer by ID (kernel buffers only).
+    /// Get a buffer arc by ID (kernel buffers only).
     ///
-    /// Use this for callers that need direct `&Buffer` access (mutations,
-    /// Rope-specific operations). For read-only access, prefer `buffer()`.
+    /// Returns `Arc<RwLock<dyn BufferOps>>` from the unified buffer manager.
+    /// For read-only access via `BufferHandle`, prefer `buffer()`.
     #[must_use]
-    pub fn rope_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    pub fn rope_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.app.kernel.buffers.get(id)
     }
 
@@ -365,7 +365,10 @@ impl SessionState {
     /// Uses `Buffer::from_string` so buffers start with `modified = false`.
     pub fn create_buffer(&mut self, content: &str) -> BufferId {
         let buffer = Buffer::from_string(content);
-        self.app.kernel.buffers.register(buffer)
+        self.app
+            .kernel
+            .buffers
+            .register(Arc::new(RwLock::new(buffer)))
     }
 
     /// Resolve a key event using the resolver registry.

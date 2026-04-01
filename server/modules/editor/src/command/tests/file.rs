@@ -9,7 +9,7 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
@@ -114,7 +114,7 @@ fn test_write_command_names_empty() {
 fn test_write_no_vfs_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -170,7 +170,7 @@ fn test_write_no_buffer_returns_error() {
 fn test_write_no_file_path_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -186,7 +186,7 @@ fn test_write_no_file_path_returns_error() {
 fn test_write_buffer_not_found_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -202,7 +202,7 @@ fn test_write_buffer_not_found_returns_error() {
 fn test_write_success_with_file_path_in_args() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -230,7 +230,7 @@ fn test_write_success_with_file_path_from_buffer() {
     let kernel = create_test_context();
     let mut buffer = Buffer::from_string("buffer content");
     buffer.set_file_path(Some("/tmp/buffer_file.txt".to_string()));
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -252,7 +252,7 @@ fn test_write_success_with_file_path_from_buffer() {
 fn test_write_vfs_error_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -286,7 +286,7 @@ fn test_write_command_debug() {
 fn test_write_no_vfs_error_message() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -341,7 +341,7 @@ fn test_write_no_buffer_error_message() {
 fn test_write_no_file_path_error_message() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -361,7 +361,7 @@ fn test_write_success_clears_modified_flag() {
     let kernel = create_test_context();
     let mut buffer = Buffer::from_string("content");
     buffer.set_modified(true);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -390,7 +390,7 @@ fn test_write_args_file_path_overrides_buffer_path() {
     let kernel = create_test_context();
     let mut buffer = Buffer::from_string("content");
     buffer.set_file_path(Some("/tmp/original.txt".to_string()));
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -418,7 +418,7 @@ fn test_write_args_file_path_overrides_buffer_path() {
 fn test_write_vfs_error_message_propagated() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -444,7 +444,7 @@ fn test_write_vfs_error_message_propagated() {
 fn test_write_buffer_not_found_with_vfs_and_path() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -465,7 +465,7 @@ fn test_write_buffer_not_found_with_vfs_and_path() {
 fn test_write_multiline_content() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

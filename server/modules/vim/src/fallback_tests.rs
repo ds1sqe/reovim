@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use reovim_kernel::api::v1::{Buffer, BufferId, Edit, ModeId, Position, RwLock};
+use reovim_kernel::api::v1::{Buffer, BufferId, BufferOps, Edit, ModeId, Position, RwLock};
 
 use super::*;
 
@@ -8,7 +8,7 @@ use super::*;
 struct TestContext {
     mode: ModeId,
     active_buffer: Option<BufferId>,
-    buffers: HashMap<BufferId, Arc<RwLock<Buffer>>>,
+    buffers: HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>,
     recorded_edits: Vec<(BufferId, Vec<Edit>, Position, Position)>,
 }
 
@@ -49,7 +49,7 @@ impl FallbackContext for TestContext {
         // No-op in mock
     }
 
-    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.buffers.get(&id).cloned()
     }
 
@@ -226,7 +226,7 @@ fn test_insert_mode_with_buffer_inserts_char() {
 
     // Check the buffer was modified
     let buf = ctx.buffers.get(&buffer_id).unwrap();
-    let content = buf.read().line(0).unwrap().to_owned();
+    let content = buf.read().line(0).unwrap().into_owned();
     assert_eq!(content, "xhello");
 }
 
@@ -546,7 +546,7 @@ fn test_insert_mode_tab_with_buffer() {
     assert_eq!(result, FallbackResult::Handled);
 
     let buf = ctx.buffers.get(&buffer_id).unwrap();
-    let content = buf.read().line(0).unwrap().to_owned();
+    let content = buf.read().line(0).unwrap().into_owned();
     assert_eq!(content, "\thello");
 }
 

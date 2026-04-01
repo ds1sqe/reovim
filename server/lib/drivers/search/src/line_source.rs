@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 
-use reovim_kernel::api::v1::{Buffer, Position, VirtualBuffer};
+use reovim_kernel::api::v1::{Buffer, BufferOps, Position, VirtualBuffer};
 
 /// Line-oriented read access to buffer content.
 ///
@@ -92,6 +92,38 @@ impl LineSource for VirtualBufferLineSource<'_> {
 
     fn line_len(&self, idx: usize) -> Option<usize> {
         self.0.line(idx).map(|s| s.chars().count())
+    }
+
+    fn position_to_byte(&self, pos: Position) -> usize {
+        self.0.position_to_byte(pos)
+    }
+
+    fn byte_to_position(&self, byte_offset: usize) -> Position {
+        self.0.byte_to_position(byte_offset)
+    }
+
+    fn content(&self) -> String {
+        self.0.content()
+    }
+}
+
+/// Adapter wrapping a `&dyn BufferOps` as a [`LineSource`].
+///
+/// This allows search operations to work with the unified `dyn BufferOps`
+/// from the buffer manager without knowing the concrete buffer type.
+pub struct BufferOpsLineSource<'a>(pub &'a dyn BufferOps);
+
+impl LineSource for BufferOpsLineSource<'_> {
+    fn line_count(&self) -> usize {
+        self.0.line_count()
+    }
+
+    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
+        self.0.line(idx)
+    }
+
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        self.0.line_len(idx)
     }
 
     fn position_to_byte(&self, pos: Position) -> usize {

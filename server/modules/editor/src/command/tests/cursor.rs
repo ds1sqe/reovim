@@ -9,10 +9,11 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -89,7 +90,7 @@ impl TestState {
 fn test_cursor_up_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -131,7 +132,7 @@ fn test_cursor_up_no_window_returns_error() {
 fn test_cursor_down_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -173,7 +174,7 @@ fn test_cursor_down_no_window_returns_error() {
 fn test_cursor_left_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -215,7 +216,7 @@ fn test_cursor_left_no_window_returns_error() {
 fn test_cursor_right_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -261,7 +262,7 @@ fn test_cursor_right_no_window_returns_error() {
 fn test_cursor_down_buffer_not_found() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -279,7 +280,7 @@ fn test_cursor_down_buffer_not_found() {
 fn test_cursor_up_operator_pending() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(2, 0).into();
@@ -296,7 +297,7 @@ fn test_cursor_up_operator_pending() {
 fn test_cursor_down_operator_pending() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -311,7 +312,7 @@ fn test_cursor_down_operator_pending() {
 fn test_cursor_left_operator_pending() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -328,7 +329,7 @@ fn test_cursor_left_operator_pending() {
 fn test_cursor_right_operator_pending() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -347,7 +348,7 @@ fn test_cursor_right_operator_pending() {
 fn test_cursor_up_visual_mode_extends_selection() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -376,7 +377,7 @@ fn test_cursor_up_visual_mode_extends_selection() {
 fn test_cursor_down_visual_mode_extends_selection() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.selection = Some(Selection::new(
@@ -404,7 +405,7 @@ fn test_cursor_down_visual_mode_extends_selection() {
 fn test_cursor_left_visual_mode_extends_selection() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -433,7 +434,7 @@ fn test_cursor_left_visual_mode_extends_selection() {
 fn test_cursor_right_visual_mode_extends_selection() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.selection = Some(Selection::new(
@@ -493,7 +494,7 @@ fn test_cursor_args_all_have_count() {
 fn test_cursor_up_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(3, 0).into();
@@ -517,7 +518,7 @@ fn test_cursor_up_with_count() {
 fn test_cursor_up_count_exceeds_lines_clamps_to_zero() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -541,7 +542,7 @@ fn test_cursor_up_count_exceeds_lines_clamps_to_zero() {
 fn test_cursor_left_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 8).into();
@@ -565,7 +566,7 @@ fn test_cursor_left_with_count() {
 fn test_cursor_left_count_exceeds_column_clamps_to_zero() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -593,7 +594,7 @@ fn test_cursor_left_count_exceeds_column_clamps_to_zero() {
 fn test_cursor_down_clamps_column_to_shorter_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("long line here\nhi");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 10).into();
@@ -618,7 +619,7 @@ fn test_cursor_down_clamps_column_to_shorter_line() {
 fn test_cursor_up_clamps_column_to_shorter_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hi\nlong line here");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 10).into();
@@ -646,7 +647,7 @@ fn test_cursor_up_clamps_column_to_shorter_line() {
 fn test_cursor_down_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -666,7 +667,7 @@ fn test_cursor_down_with_count() {
 fn test_cursor_down_count_exceeds_lines_clamps_to_last() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -690,7 +691,7 @@ fn test_cursor_down_count_exceeds_lines_clamps_to_last() {
 fn test_cursor_right_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -710,7 +711,7 @@ fn test_cursor_right_with_count() {
 fn test_cursor_right_count_exceeds_line_clamps_to_last_char() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -735,7 +736,7 @@ fn test_cursor_right_count_exceeds_line_clamps_to_last_char() {
 fn test_cursor_up_no_buffer_id_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -747,7 +748,7 @@ fn test_cursor_up_no_buffer_id_returns_error() {
 fn test_cursor_down_no_buffer_id_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -759,7 +760,7 @@ fn test_cursor_down_no_buffer_id_returns_error() {
 fn test_cursor_left_no_buffer_id_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -771,7 +772,7 @@ fn test_cursor_left_no_buffer_id_returns_error() {
 fn test_cursor_right_no_buffer_id_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -799,7 +800,7 @@ fn test_cursor_ids() {
 fn test_cursor_right_on_empty_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -822,7 +823,7 @@ fn test_cursor_right_on_empty_line() {
 fn test_cursor_down_empty_buffer() {
     let kernel = create_test_context();
     let buffer = Buffer::new();
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

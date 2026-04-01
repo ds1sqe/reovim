@@ -110,7 +110,7 @@ fn test_change_buffer_not_found() {
 fn test_change_characterwise_single_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -142,7 +142,7 @@ fn test_change_characterwise_single_line() {
 fn test_change_characterwise_multi_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -170,7 +170,7 @@ fn test_change_characterwise_multi_line() {
 fn test_change_linewise_single_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -198,7 +198,7 @@ fn test_change_linewise_single_line() {
 fn test_change_linewise_last_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -226,7 +226,7 @@ fn test_change_linewise_last_line() {
 fn test_change_to_named_register() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -253,7 +253,7 @@ fn test_change_to_named_register() {
 fn test_change_characterwise_empty_range() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -283,7 +283,7 @@ fn test_change_characterwise_empty_range() {
 fn test_change_linewise_clamped_end() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -311,7 +311,7 @@ fn test_change_linewise_clamped_end() {
 fn test_change_characterwise_three_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\nbbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -339,7 +339,7 @@ fn test_change_characterwise_three_lines() {
 fn test_change_characterwise_single_char() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -371,7 +371,7 @@ fn test_change_characterwise_single_char() {
 fn test_change_linewise_multiple_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc\nd");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -419,7 +419,7 @@ fn test_change_operator_debug() {
 fn test_change_characterwise_column_beyond_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -447,7 +447,7 @@ fn test_change_characterwise_column_beyond_line() {
 fn test_change_linewise_only_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("only");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -474,7 +474,7 @@ fn test_change_linewise_only_line() {
 fn test_change_multiline_characterwise_two_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -502,7 +502,7 @@ fn test_change_multiline_characterwise_two_lines() {
 fn test_change_to_register_z() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -611,7 +611,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_change_characterwise_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -645,7 +645,7 @@ fn test_change_characterwise_records_undo() {
 fn test_change_linewise_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -672,7 +672,7 @@ fn test_change_linewise_records_undo() {
 fn test_change_empty_range_no_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -703,7 +703,7 @@ fn test_change_linewise_fallback_branch() {
     // by using a buffer with empty content at the end line
     let (ctx, _mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -732,7 +732,7 @@ fn test_change_linewise_fallback_branch() {
 fn test_change_multiline_characterwise_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("aaa\nbbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -797,7 +797,7 @@ fn test_run_command_helper_with_noop() {
 fn test_change_linewise_all_lines_in_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -827,7 +827,7 @@ fn test_change_linewise_all_lines_in_buffer() {
 fn test_change_characterwise_register_is_characterwise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -853,7 +853,7 @@ fn test_change_characterwise_register_is_characterwise() {
 fn test_change_linewise_register_is_linewise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();
@@ -879,7 +879,7 @@ fn test_change_linewise_register_is_linewise() {
 fn test_change_undo_records_cursor_positions() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let cursor_before = Position::new(0, 3);
@@ -914,7 +914,7 @@ fn test_change_undo_records_cursor_positions() {
 fn test_change_sets_cursor_after() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let change = ChangeOperator;
     let mut registers = RegisterBank::new();

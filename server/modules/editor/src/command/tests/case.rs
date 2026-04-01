@@ -10,10 +10,11 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -158,7 +159,7 @@ fn test_toggle_case_no_buffer_returns_error() {
 fn test_toggle_case_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -205,7 +206,7 @@ fn test_toggle_case_no_window_returns_error() {
 fn test_toggle_case_lowercase_to_uppercase() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -217,7 +218,7 @@ fn test_toggle_case_lowercase_to_uppercase() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("Hello"));
+    assert_eq!(read.line(0).as_deref(), Some("Hello"));
     drop(read);
 
     drop(runtime);
@@ -229,7 +230,7 @@ fn test_toggle_case_lowercase_to_uppercase() {
 fn test_toggle_case_uppercase_to_lowercase() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("HELLO");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -241,14 +242,14 @@ fn test_toggle_case_uppercase_to_lowercase() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("hELLO"));
+    assert_eq!(read.line(0).as_deref(), Some("hELLO"));
 }
 
 #[test]
 fn test_toggle_case_mixed() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("HeLLo");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 0).into();
@@ -264,7 +265,7 @@ fn test_toggle_case_mixed() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("hEllO"));
+    assert_eq!(read.line(0).as_deref(), Some("hEllO"));
 }
 
 // =========================================================================
@@ -275,7 +276,7 @@ fn test_toggle_case_mixed() {
 fn test_toggle_case_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -288,7 +289,7 @@ fn test_toggle_case_with_count() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("HELlo"));
+    assert_eq!(read.line(0).as_deref(), Some("HELlo"));
     drop(read);
 
     drop(runtime);
@@ -300,7 +301,7 @@ fn test_toggle_case_with_count() {
 fn test_toggle_case_count_exceeds_line_length() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -313,7 +314,7 @@ fn test_toggle_case_count_exceeds_line_length() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("HI"));
+    assert_eq!(read.line(0).as_deref(), Some("HI"));
     drop(read);
 
     // Cursor clamped to last char
@@ -330,7 +331,7 @@ fn test_toggle_case_count_exceeds_line_length() {
 fn test_toggle_case_empty_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -345,7 +346,7 @@ fn test_toggle_case_empty_line() {
 fn test_toggle_case_at_end_of_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("ab");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -361,14 +362,14 @@ fn test_toggle_case_at_end_of_line() {
     // Buffer unchanged
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("ab"));
+    assert_eq!(read.line(0).as_deref(), Some("ab"));
 }
 
 #[test]
 fn test_toggle_case_non_alpha_characters() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("1!@#");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -382,7 +383,7 @@ fn test_toggle_case_non_alpha_characters() {
     // Non-alpha chars unchanged
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("1!@#"));
+    assert_eq!(read.line(0).as_deref(), Some("1!@#"));
     drop(read);
 
     // Cursor still advances
@@ -395,7 +396,7 @@ fn test_toggle_case_non_alpha_characters() {
 fn test_toggle_case_middle_of_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("abcDE");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -411,7 +412,7 @@ fn test_toggle_case_middle_of_line() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("abCdE"));
+    assert_eq!(read.line(0).as_deref(), Some("abCdE"));
     drop(read);
 
     drop(runtime);
@@ -423,7 +424,7 @@ fn test_toggle_case_middle_of_line() {
 fn test_toggle_case_multiline_only_affects_current_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("abc\nDEF");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -436,15 +437,15 @@ fn test_toggle_case_multiline_only_affects_current_line() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("ABC"));
-    assert_eq!(read.line(1), Some("DEF")); // Second line unchanged
+    assert_eq!(read.line(0).as_deref(), Some("ABC"));
+    assert_eq!(read.line(1).as_deref(), Some("DEF")); // Second line unchanged
 }
 
 #[test]
 fn test_toggle_case_single_char_at_last_position() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("abC");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -459,7 +460,7 @@ fn test_toggle_case_single_char_at_last_position() {
 
     let buf = kernel.buffers.get(buffer_id).unwrap();
     let read = buf.read();
-    assert_eq!(read.line(0), Some("abc"));
+    assert_eq!(read.line(0).as_deref(), Some("abc"));
     drop(read);
 
     // Cursor stays at last char (can't advance past end)

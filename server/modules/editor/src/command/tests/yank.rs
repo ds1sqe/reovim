@@ -8,10 +8,11 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -159,7 +160,7 @@ fn test_yank_no_buffer_returns_error() {
 fn test_yank_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -202,7 +203,7 @@ fn test_yank_no_window_returns_error() {
 fn test_yank_buffer_not_found_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -216,7 +217,7 @@ fn test_yank_buffer_not_found_returns_error() {
 fn test_yank_empty_buffer_returns_success() {
     let kernel = create_test_context();
     let buffer = Buffer::new();
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -231,7 +232,7 @@ fn test_yank_empty_buffer_returns_success() {
 fn test_yank_single_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -252,7 +253,7 @@ fn test_yank_single_line() {
 fn test_yank_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -273,7 +274,7 @@ fn test_yank_with_count() {
 fn test_yank_count_clamped_to_eof() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -295,7 +296,7 @@ fn test_yank_count_clamped_to_eof() {
 fn test_yank_from_cursor_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -333,7 +334,7 @@ fn test_yank_line_debug() {
 fn test_yank_to_named_register() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -361,7 +362,7 @@ fn test_yank_to_named_register() {
 fn test_yank_multiple_lines_from_middle() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4\nline 5");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 3).into();
@@ -390,7 +391,7 @@ fn test_yank_multiple_lines_from_middle() {
 fn test_yank_last_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(2, 0).into();
@@ -418,7 +419,7 @@ fn test_yank_last_line() {
 fn test_yank_line_with_cursor_at_column() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();

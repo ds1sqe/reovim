@@ -48,9 +48,10 @@ use {
         ModeStack,
         v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -126,7 +127,7 @@ impl TestState {
 fn test_exit_visual_mode_execute_clears_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -150,7 +151,7 @@ fn test_exit_visual_mode_execute_clears_selection() {
 fn test_exit_visual_mode_execute_no_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -169,7 +170,7 @@ fn test_exit_visual_mode_execute_no_selection() {
 fn test_exit_visual_mode_execute_clears_line_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -190,7 +191,7 @@ fn test_exit_visual_mode_execute_clears_line_selection() {
 fn test_exit_visual_mode_execute_clears_block_selection() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -211,7 +212,7 @@ fn test_exit_visual_mode_execute_clears_block_selection() {
 fn test_exit_visual_mode_sets_normal_mode() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -244,7 +245,7 @@ fn test_exit_visual_mode_description_contains_normal() {
 fn test_exit_visual_mode_preserves_cursor() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));

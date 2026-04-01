@@ -681,8 +681,9 @@ fn test_word_end_big_id() {
 
 #[test]
 fn test_buffer_manager_create() {
+    use reovim_kernel::testing::setup_buffer;
     let setup = TestSetup::new("hello");
-    let bid = setup.ctx.buffers.create();
+    let bid = setup_buffer(&setup.ctx, "");
     assert!(setup.ctx.buffers.get(bid).is_some());
     assert_eq!(setup.ctx.buffers.count(), 2); // original + new
 }

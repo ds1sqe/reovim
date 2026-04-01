@@ -251,7 +251,7 @@ impl TestState {
 fn test_enter_insert_first_non_blank_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -272,7 +272,7 @@ fn test_enter_insert_first_non_blank_execute() {
 fn test_enter_insert_first_non_blank_no_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -305,7 +305,7 @@ fn test_enter_insert_first_non_blank_without_buffer() {
 fn test_enter_insert_end_of_line_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -326,7 +326,7 @@ fn test_enter_insert_end_of_line_execute() {
 fn test_enter_insert_end_of_line_empty_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -345,7 +345,7 @@ fn test_enter_insert_end_of_line_empty_line() {
 fn test_open_line_below_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -378,7 +378,7 @@ fn test_open_line_below_without_buffer() {
 fn test_open_line_below_with_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -399,7 +399,7 @@ fn test_open_line_below_with_indent() {
 fn test_open_line_above_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -432,7 +432,7 @@ fn test_open_line_above_without_buffer() {
 fn test_open_line_above_with_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -482,7 +482,7 @@ fn test_get_line_indent_form_feed() {
 fn test_enter_insert_first_non_blank_all_whitespace() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("    ");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -502,7 +502,7 @@ fn test_enter_insert_first_non_blank_all_whitespace() {
 fn test_enter_insert_first_non_blank_tab_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("\t\thello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -521,7 +521,7 @@ fn test_enter_insert_first_non_blank_tab_indent() {
 fn test_enter_insert_end_of_line_multiline() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -558,7 +558,7 @@ fn test_enter_insert_end_of_line_without_buffer() {
 fn test_open_line_below_empty_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -578,7 +578,7 @@ fn test_open_line_below_empty_buffer() {
 fn test_open_line_below_tab_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("\thello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -598,7 +598,7 @@ fn test_open_line_below_tab_indent() {
 fn test_open_line_above_empty_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -618,7 +618,7 @@ fn test_open_line_above_empty_buffer() {
 fn test_open_line_above_tab_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("\thello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -638,7 +638,7 @@ fn test_open_line_above_tab_indent() {
 fn test_open_line_below_multiline_at_middle() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\n  bbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -662,7 +662,7 @@ fn test_open_line_below_multiline_at_middle() {
 fn test_open_line_above_multiline_at_middle() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\n  bbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -686,7 +686,7 @@ fn test_open_line_above_multiline_at_middle() {
 fn test_enter_insert_first_non_blank_on_second_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\n    world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -778,7 +778,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_enter_insert_first_non_blank_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("  hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -798,7 +798,7 @@ fn test_enter_insert_first_non_blank_calls_begin_batch() {
 fn test_enter_insert_end_of_line_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -817,7 +817,7 @@ fn test_enter_insert_end_of_line_calls_begin_batch() {
 fn test_open_line_below_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -836,7 +836,7 @@ fn test_open_line_below_calls_begin_batch() {
 fn test_open_line_above_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -870,7 +870,7 @@ fn create_test_context_autoindent_disabled() -> KernelContext {
 fn test_open_line_below_autoindent_disabled() {
     let ctx = create_test_context_autoindent_disabled();
     let buffer = Buffer::from_string("    hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -891,7 +891,7 @@ fn test_open_line_below_autoindent_disabled() {
 fn test_open_line_above_autoindent_disabled() {
     let ctx = create_test_context_autoindent_disabled();
     let buffer = Buffer::from_string("    hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -916,7 +916,7 @@ fn test_open_line_above_autoindent_disabled() {
 fn test_open_line_below_no_active_window() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -965,7 +965,7 @@ fn test_open_line_below_no_active_window() {
 fn test_open_line_above_no_active_window() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1014,7 +1014,7 @@ fn test_open_line_above_no_active_window() {
 fn test_enter_insert_first_non_blank_no_active_window() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("  hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1064,7 +1064,7 @@ fn test_enter_insert_first_non_blank_no_active_window() {
 fn test_enter_insert_end_of_line_no_active_window() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1114,7 +1114,7 @@ fn test_enter_insert_end_of_line_no_active_window() {
 fn test_open_line_below_multiline_last_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\n  world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1137,7 +1137,7 @@ fn test_open_line_below_multiline_last_line() {
 fn test_open_line_above_multiline_first_line_with_indent() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("  hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

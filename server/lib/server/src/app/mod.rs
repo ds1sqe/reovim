@@ -9,7 +9,7 @@ use {
     reovim_driver_input::{ExtensionMap, FallbackContext},
     reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        Buffer, BufferId, Edit, KernelContext, ModeId, Position, ServiceRegistry,
+        BufferId, BufferOps, Edit, KernelContext, ModeId, Position, ServiceRegistry,
     },
     std::sync::Arc,
 };
@@ -106,7 +106,7 @@ impl FallbackContext for AppState {
         );
     }
 
-    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.kernel.buffers.get(id)
     }
 

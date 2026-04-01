@@ -63,7 +63,7 @@ impl Operator for DeleteOperator {
             // Build register_text as "line\n" for each line (for paste to work correctly)
             for line_idx in start.line..=clamped_end {
                 if let Some(line) = buffer.line(line_idx) {
-                    register_text.push_str(line);
+                    register_text.push_str(&line);
                     register_text.push('\n');
                 }
             }
@@ -109,7 +109,7 @@ impl Operator for DeleteOperator {
                 for line_idx in start.line..=clamped_end {
                     deleted_text.push('\n');
                     if let Some(line) = buffer.line(line_idx) {
-                        deleted_text.push_str(line);
+                        deleted_text.push_str(&line);
                     }
                 }
             } else {
@@ -119,7 +119,7 @@ impl Operator for DeleteOperator {
                 delete_end = reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len);
                 // deleted_text is just the content (no newlines - single line)
                 if let Some(line) = buffer.line(clamped_end) {
-                    deleted_text.push_str(line);
+                    deleted_text.push_str(&line);
                 }
             }
 
@@ -184,8 +184,8 @@ impl Operator for DeleteOperator {
                     let start_col = start.column.min(char_len);
                     let end_col = end.column.min(char_len);
                     if start_col < end_col {
-                        let start_byte = char_col_to_byte(line, start_col);
-                        let end_byte = char_col_to_byte(line, end_col);
+                        let start_byte = char_col_to_byte(&line, start_col);
+                        let end_byte = char_col_to_byte(&line, end_col);
                         deleted_text.push_str(&line[start_byte..end_byte]);
                     }
                 }
@@ -196,16 +196,16 @@ impl Operator for DeleteOperator {
                         if line_idx == start.line {
                             let char_len = line.chars().count();
                             let start_col = start.column.min(char_len);
-                            let start_byte = char_col_to_byte(line, start_col);
+                            let start_byte = char_col_to_byte(&line, start_col);
                             deleted_text.push_str(&line[start_byte..]);
                             deleted_text.push('\n');
                         } else if line_idx == end.line {
                             let char_len = line.chars().count();
                             let end_col = end.column.min(char_len);
-                            let end_byte = char_col_to_byte(line, end_col);
+                            let end_byte = char_col_to_byte(&line, end_col);
                             deleted_text.push_str(&line[..end_byte]);
                         } else {
-                            deleted_text.push_str(line);
+                            deleted_text.push_str(&line);
                             deleted_text.push('\n');
                         }
                     }

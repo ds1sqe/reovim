@@ -4,7 +4,7 @@ use {
     reovim_driver_buffer::TestBufferManager,
     reovim_kernel::api::v1::{
         EventBus, HistoryRing, Jumplist, MarkBank, ModuleId, MotionEngine, OptionRegistry,
-        RegisterBank, ServiceRegistry, TextObjectEngine,
+        RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
     },
 };
 
@@ -450,7 +450,9 @@ fn test_with_registries_with_initial_buffer() {
         use reovim_kernel::api::v1::Buffer;
         let mut buffer = Buffer::new();
         buffer.set_content("initial");
-        kernel.buffers.register(buffer)
+        kernel
+            .buffers
+            .register(Arc::new(RwLock::new(buffer)))
     };
 
     let state = SessionState::with_registries(
@@ -778,7 +780,7 @@ fn test_with_registries_with_buffer_and_no_compositor() {
     // Create a buffer first
     let mut buffer = reovim_kernel::api::v1::Buffer::new();
     buffer.set_content("hello world");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let state = SessionState::with_registries(
         kernel,
@@ -802,11 +804,11 @@ fn test_with_registries_multiple_buffers() {
     // Create multiple buffers
     let mut buf1 = reovim_kernel::api::v1::Buffer::new();
     buf1.set_content("first");
-    let id1 = kernel.buffers.register(buf1);
+    let id1 = kernel.buffers.register(Arc::new(RwLock::new(buf1)));
 
     let mut buf2 = reovim_kernel::api::v1::Buffer::new();
     buf2.set_content("second");
-    let id2 = kernel.buffers.register(buf2);
+    let id2 = kernel.buffers.register(Arc::new(RwLock::new(buf2)));
 
     let state = SessionState::with_registries(
         kernel,
@@ -1276,7 +1278,7 @@ fn test_with_registries_with_buffer_and_compositor_creates_window() {
     // Create a buffer first so buffer_ids is non-empty
     let mut buffer = reovim_kernel::api::v1::Buffer::new();
     buffer.set_content("test content");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let compositor: Box<dyn reovim_driver_layout::RootCompositor> = Box::new(MockCompositor::new());
 

@@ -9,7 +9,7 @@ use {
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CharKind, ServiceRegistry, WordType, char_kind, word_bounds,
+        BufferId, BufferOps, CharKind, ServiceRegistry, WordType, char_kind, word_bounds,
     },
     serde_json::json,
 };
@@ -128,7 +128,7 @@ impl ExtensionStateBridge for IlluminateBridge {
         // Scope the buffer read lock so it's dropped before mutating state.
         let result = {
             let buffer = buffer_lock.read();
-            extract_word_and_occurrences(&buffer, cursor_line, cursor_col)
+            extract_word_and_occurrences(&*buffer, cursor_line, cursor_col)
         };
 
         match result {
@@ -157,7 +157,7 @@ impl ExtensionStateBridge for IlluminateBridge {
 /// Returns `None` if the cursor is not on a word character.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_word_and_occurrences(
-    buffer: &Buffer,
+    buffer: &dyn BufferOps,
     cursor_line: u32,
     cursor_col: u32,
 ) -> Option<(String, Vec<HighlightRange>)> {
@@ -182,7 +182,7 @@ fn extract_word_and_occurrences(
 /// A match is "whole word" if the characters immediately before and after
 /// are not word characters (alphanumeric or underscore).
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn find_word_occurrences(buffer: &Buffer, word: &str) -> Vec<HighlightRange> {
+fn find_word_occurrences(buffer: &dyn BufferOps, word: &str) -> Vec<HighlightRange> {
     let word_chars: Vec<char> = word.chars().collect();
     let word_len = word_chars.len();
     let mut ranges = Vec::new();

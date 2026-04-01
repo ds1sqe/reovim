@@ -189,7 +189,7 @@ fn test_delete_command_no_buffer() {
 fn test_delete_command_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -222,7 +222,7 @@ fn test_yank_command_no_buffer() {
 fn test_yank_command_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -249,7 +249,7 @@ fn test_yank_command_execute() {
 fn test_yank_command_restores_cursor() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -286,7 +286,7 @@ fn test_change_command_no_buffer() {
 fn test_change_command_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -311,7 +311,7 @@ fn test_change_command_execute() {
 fn test_delete_command_linewise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -333,7 +333,7 @@ fn test_delete_command_linewise() {
 fn test_yank_command_linewise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -360,7 +360,7 @@ fn test_yank_command_linewise() {
 fn test_change_command_linewise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -381,7 +381,7 @@ fn test_change_command_linewise() {
 fn test_delete_command_with_register() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -402,7 +402,7 @@ fn test_delete_command_with_register() {
 fn test_delete_command_cursor_after_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -424,7 +424,7 @@ fn test_delete_command_cursor_after_execute() {
 fn test_change_command_cursor_at_start() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -457,7 +457,7 @@ fn test_operator_commands_clone() {
 fn test_yank_command_no_range_defaults() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -545,7 +545,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_change_command_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -567,7 +567,7 @@ fn test_change_command_calls_begin_batch() {
 fn test_change_command_enters_insert_mode_with_undo() {
     let (ctx, _mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -586,7 +586,7 @@ fn test_change_command_enters_insert_mode_with_undo() {
 fn test_change_command_records_undo_for_delete() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -611,7 +611,7 @@ fn test_change_command_records_undo_for_delete() {
 fn test_delete_command_with_count() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -629,7 +629,7 @@ fn test_delete_command_with_count() {
 fn test_yank_command_with_register_and_count() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -651,7 +651,7 @@ fn test_yank_command_with_register_and_count() {
 fn test_execute_operator_no_active_window_uses_origin() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -724,7 +724,7 @@ fn test_change_command_no_buffer_skips_undo_batching() {
 fn test_yank_command_no_window_cursor_defaults() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -746,7 +746,7 @@ fn test_yank_command_no_window_cursor_defaults() {
 fn test_change_command_linewise_enters_insert_mode() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

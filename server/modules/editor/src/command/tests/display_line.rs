@@ -8,10 +8,11 @@ use {
     reovim_kernel::{
         api::v1::{
             Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, Position,
-            RegisterBank,
+            RegisterBank, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
+    std::sync::Arc,
 };
 
 struct TestState {
@@ -149,7 +150,7 @@ fn test_cursor_display_down_no_buffer_returns_error() {
 fn test_cursor_display_down_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -192,7 +193,7 @@ fn test_cursor_display_down_no_window_returns_error() {
 fn test_cursor_display_down_moves_to_next_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -212,7 +213,7 @@ fn test_cursor_display_down_moves_to_next_line() {
 fn test_cursor_display_down_at_eof() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -234,7 +235,7 @@ fn test_cursor_display_down_at_eof() {
 fn test_cursor_display_down_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -254,7 +255,7 @@ fn test_cursor_display_down_with_count() {
 fn test_cursor_display_down_buffer_not_found() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -334,7 +335,7 @@ fn test_cursor_display_up_no_buffer_returns_error() {
 fn test_cursor_display_up_no_window_returns_error() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -378,7 +379,7 @@ fn test_cursor_display_up_no_window_returns_error() {
 fn test_cursor_display_up_moves_to_prev_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(2, 0).into();
@@ -400,7 +401,7 @@ fn test_cursor_display_up_moves_to_prev_line() {
 fn test_cursor_display_up_at_top() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -420,7 +421,7 @@ fn test_cursor_display_up_at_top() {
 fn test_cursor_display_up_with_count() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(3, 0).into();
@@ -444,7 +445,7 @@ fn test_cursor_display_up_with_count() {
 fn test_cursor_display_up_count_exceeds_remaining() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -473,7 +474,7 @@ fn test_cursor_display_down_within_wrapped_line() {
     let long_line: String = "a".repeat(200);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -498,7 +499,7 @@ fn test_cursor_display_up_within_wrapped_line() {
     let long_line: String = "a".repeat(200);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     // Set cursor to column 90 (display line 1, column 10)
     if let Some(window) = state.windows.active_mut() {
@@ -524,7 +525,7 @@ fn test_cursor_display_up_within_wrapped_line() {
 fn test_cursor_display_down_count_exceeds_remaining() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -548,7 +549,7 @@ fn test_cursor_display_down_through_wrapped_to_next_line() {
     let content = format!("{long_line}\nshort");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -573,7 +574,7 @@ fn test_cursor_display_up_through_wrapped_to_prev_line() {
     let content = format!("{long_line}\nshort");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     // Set cursor to start of line 1
     if let Some(window) = state.windows.active_mut() {
@@ -611,7 +612,7 @@ fn test_cursor_display_down_across_multiple_wrapped_lines() {
     let content = format!("{long_line1}\n{long_line2}");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -638,7 +639,7 @@ fn test_cursor_display_up_across_multiple_wrapped_lines() {
     let content = format!("{long_line1}\n{long_line2}");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 90).into(); // display line 1 of second buffer line
@@ -667,7 +668,7 @@ fn test_cursor_display_up_across_multiple_wrapped_lines() {
 fn test_cursor_display_down_single_short_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("short");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -687,7 +688,7 @@ fn test_cursor_display_down_single_short_line() {
 fn test_cursor_display_up_single_short_line() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("short");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -715,7 +716,7 @@ fn test_cursor_display_down_preserves_display_column() {
     let long_line = "a".repeat(200);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 10).into();
@@ -742,7 +743,7 @@ fn test_cursor_display_up_preserves_display_column() {
     let long_line = "a".repeat(200);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 170).into();
@@ -769,7 +770,7 @@ fn test_cursor_display_up_preserves_display_column() {
 fn test_cursor_display_down_no_buffer_id() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -784,7 +785,7 @@ fn test_cursor_display_down_within_wrapped_line_with_count() {
     let long_line: String = "a".repeat(250);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -809,7 +810,7 @@ fn test_cursor_display_up_within_wrapped_line_with_count() {
     let long_line: String = "a".repeat(250);
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&long_line);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 200).into();
@@ -837,7 +838,7 @@ fn test_cursor_display_down_crosses_multiple_buffer_lines() {
     let content = "short1\nshort2\nshort3\nshort4";
     let kernel = create_test_context();
     let buffer = Buffer::from_string(content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -861,7 +862,7 @@ fn test_cursor_display_up_crosses_multiple_buffer_lines() {
     let content = "short1\nshort2\nshort3\nshort4";
     let kernel = create_test_context();
     let buffer = Buffer::from_string(content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(3, 0).into();
@@ -890,7 +891,7 @@ fn test_cursor_display_down_wraps_into_next_buffer_line() {
     let content = format!("{long_line}\nshort");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 165).into();
@@ -918,7 +919,7 @@ fn test_cursor_display_up_wraps_into_prev_buffer_line() {
     let content = format!("short\n{long_line}");
     let kernel = create_test_context();
     let buffer = Buffer::from_string(&content);
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 5).into();
@@ -941,7 +942,7 @@ fn test_cursor_display_up_wraps_into_prev_buffer_line() {
 fn test_cursor_display_up_no_buffer_id() {
     let kernel = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(buffer);
+    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

@@ -15,11 +15,12 @@ use {
             ModeStack,
             v1::{
                 Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                RegisterBank,
+                RegisterBank, RwLock,
             },
         },
         testing::create_test_context,
     },
+    std::sync::Arc,
 };
 
 use reovim_driver_session::{api::ModeApi, testing::StubExecutor};
@@ -188,7 +189,7 @@ fn test_change_line_no_buffer() {
 fn test_change_line_single_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -210,7 +211,7 @@ fn test_change_line_single_line() {
 fn test_change_line_multi_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -228,7 +229,7 @@ fn test_change_line_multi_line() {
 fn test_change_line_empty_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -261,7 +262,7 @@ fn test_change_to_eol_no_buffer() {
 fn test_change_to_eol_from_middle() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -287,7 +288,7 @@ fn test_change_to_eol_from_middle() {
 fn test_change_to_eol_at_end_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -313,7 +314,7 @@ fn test_change_to_eol_at_end_of_line() {
 fn test_change_to_eol_from_start() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -334,7 +335,7 @@ fn test_change_to_eol_from_start() {
 fn test_change_line_count_exceeds_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -352,7 +353,7 @@ fn test_change_line_count_exceeds_buffer() {
 fn test_change_line_last_two_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -377,7 +378,7 @@ fn test_change_line_last_two_lines() {
 fn test_change_line_with_count_one_explicit() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -400,7 +401,7 @@ fn test_change_line_with_count_one_explicit() {
 fn test_change_line_multi_line_three_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\nbbb\nccc\nddd");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -418,7 +419,7 @@ fn test_change_line_multi_line_three_lines() {
 fn test_change_line_with_register() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("test line");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -435,7 +436,7 @@ fn test_change_line_with_register() {
 fn test_change_line_cursor_at_middle_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -462,7 +463,7 @@ fn test_change_line_cursor_at_middle_of_line() {
 fn test_change_to_eol_empty_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -479,7 +480,7 @@ fn test_change_to_eol_empty_line() {
 fn test_change_to_eol_with_register() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -499,7 +500,7 @@ fn test_change_to_eol_with_register() {
 fn test_change_to_eol_past_end_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -521,7 +522,7 @@ fn test_change_to_eol_past_end_of_line() {
 fn test_change_to_eol_single_char_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("x");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -541,7 +542,7 @@ fn test_change_to_eol_single_char_line() {
 fn test_change_to_eol_multiline_only_affects_current() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -591,7 +592,7 @@ fn test_change_line_last_lines_of_buffer() {
     // Tests the branch: end_line >= line_count (changing to end of buffer)
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -611,7 +612,7 @@ fn test_change_line_two_of_two_from_start() {
     // This triggers: end_line (0+2=2) >= line_count (2)
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -634,7 +635,7 @@ fn test_change_line_multi_from_middle_to_end() {
     // This triggers: end_line >= line_count
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc\nd");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -655,7 +656,7 @@ fn test_change_line_multi_not_at_end() {
     // Change 2 lines from middle (NOT at end of buffer) - the normal case branch
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc\nd\ne");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -679,7 +680,7 @@ fn test_change_line_multi_not_at_end() {
 fn test_change_line_registers_deleted_text() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

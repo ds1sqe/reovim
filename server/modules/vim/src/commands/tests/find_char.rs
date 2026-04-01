@@ -14,11 +14,12 @@ use {
             ModeStack,
             v1::{
                 Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                RegisterBank,
+                RegisterBank, RwLock,
             },
         },
         testing::create_test_context,
     },
+    std::sync::Arc,
 };
 
 // ========================================================================
@@ -159,7 +160,7 @@ fn test_execute_no_buffer() {
 fn test_execute_find_char_forward() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -180,7 +181,7 @@ fn test_execute_find_char_forward() {
 fn test_execute_find_char_not_found() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -201,7 +202,7 @@ fn test_execute_find_char_not_found() {
 fn test_execute_find_char_backward() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -226,7 +227,7 @@ fn test_execute_find_char_backward() {
 fn test_execute_find_char_till() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -248,7 +249,7 @@ fn test_execute_find_char_till() {
 fn test_execute_find_char_default_direction_is_forward() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -273,7 +274,7 @@ fn test_execute_find_char_default_direction_is_forward() {
 fn test_execute_find_char_last_char_on_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcde");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -293,7 +294,7 @@ fn test_execute_find_char_last_char_on_line() {
 fn test_execute_find_char_first_char_on_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcde");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -317,7 +318,7 @@ fn test_execute_find_char_first_char_on_line() {
 fn test_execute_find_char_with_count() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcabc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -340,7 +341,7 @@ fn test_execute_find_char_with_count() {
 fn test_execute_find_char_till_backward() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -366,7 +367,7 @@ fn test_execute_find_char_till_backward() {
 fn test_execute_find_char_forward_direction_string() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -387,7 +388,7 @@ fn test_execute_find_char_forward_direction_string() {
 fn test_execute_find_char_space_character() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -407,7 +408,7 @@ fn test_execute_find_char_space_character() {
 fn test_execute_find_char_inclusive_default() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -428,7 +429,7 @@ fn test_execute_find_char_inclusive_default() {
 fn test_execute_find_char_on_empty_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -449,7 +450,7 @@ fn test_execute_find_char_on_empty_line() {
 fn test_execute_find_char_no_active_window() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

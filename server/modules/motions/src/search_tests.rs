@@ -1698,7 +1698,7 @@ fn test_buffer_manager_unregister() {
     assert_eq!(ctx.buffers.count(), 1);
 
     let buffer = ctx.buffers.unregister(bid);
-    assert!(buffer.is_ok());
+    assert!(buffer.is_some());
     assert_eq!(ctx.buffers.count(), 0);
 }
 

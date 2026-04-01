@@ -4,7 +4,7 @@ use {
     reovim_driver_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
     },
-    reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, ServiceRegistry},
+    reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, RwLock, ServiceRegistry},
     std::sync::Arc,
 };
 
@@ -400,7 +400,7 @@ fn services_with_buffer(content: &str) -> (ServiceRegistry, BufferId) {
 
     let manager = Arc::new(TestBufferManager::new());
     let buf = Buffer::from_string(content);
-    let bid = manager.register(buf);
+    let bid = manager.register(Arc::new(RwLock::new(buf)));
 
     let services = ServiceRegistry::new();
     services

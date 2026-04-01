@@ -110,7 +110,7 @@ fn test_delete_buffer_not_found() {
 fn test_delete_characterwise_single_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -144,7 +144,7 @@ fn test_delete_characterwise_single_line() {
 fn test_delete_characterwise_partial() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -176,7 +176,7 @@ fn test_delete_characterwise_partial() {
 fn test_delete_characterwise_multi_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -204,7 +204,7 @@ fn test_delete_characterwise_multi_line() {
 fn test_delete_linewise_first_line_of_multiple() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -236,7 +236,7 @@ fn test_delete_linewise_first_line_of_multiple() {
 fn test_delete_linewise_last_line_not_only() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("line1\nline2");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -268,7 +268,7 @@ fn test_delete_linewise_last_line_not_only() {
 fn test_delete_linewise_only_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("only line");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -301,7 +301,7 @@ fn test_delete_linewise_only_line() {
 fn test_delete_linewise_multiple_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc\nd");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -333,7 +333,7 @@ fn test_delete_linewise_multiple_lines() {
 fn test_delete_to_named_register() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -360,7 +360,7 @@ fn test_delete_to_named_register() {
 fn test_delete_linewise_clamped_end() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -391,7 +391,7 @@ fn test_delete_linewise_clamped_end() {
 fn test_delete_characterwise_empty_range() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -421,7 +421,7 @@ fn test_delete_characterwise_empty_range() {
 fn test_delete_linewise_last_two_of_three() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -450,7 +450,7 @@ fn test_delete_linewise_last_two_of_three() {
 fn test_delete_characterwise_three_lines() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\nbbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -478,7 +478,7 @@ fn test_delete_characterwise_three_lines() {
 fn test_delete_linewise_middle_line_of_three() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("first\nsecond\nthird");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -510,7 +510,7 @@ fn test_delete_linewise_middle_line_of_three() {
 fn test_delete_characterwise_single_char() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -542,7 +542,7 @@ fn test_delete_characterwise_single_char() {
 fn test_delete_to_register_b() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -569,7 +569,7 @@ fn test_delete_to_register_b() {
 fn test_delete_linewise_all_lines_three() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -621,7 +621,7 @@ fn test_delete_operator_debug() {
 fn test_delete_characterwise_entire_line_content() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -653,7 +653,7 @@ fn test_delete_characterwise_entire_line_content() {
 fn test_delete_characterwise_column_beyond_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -766,7 +766,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_delete_linewise_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -797,7 +797,7 @@ fn test_delete_linewise_records_undo() {
 fn test_delete_characterwise_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -832,7 +832,7 @@ fn test_delete_linewise_last_line_empty_after_delete() {
     // Tests Case 2 cursor positioning when line_len == 0
     let (ctx, _mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("\n");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -858,7 +858,7 @@ fn test_delete_linewise_last_line_empty_after_delete() {
 fn test_delete_linewise_case2_records_undo_with_newline_prefix() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("first\nsecond");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -917,7 +917,7 @@ fn test_delete_run_command_helper_with_noop() {
 fn test_delete_characterwise_register_is_characterwise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -943,7 +943,7 @@ fn test_delete_characterwise_register_is_characterwise() {
 fn test_delete_linewise_register_is_linewise() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -969,7 +969,7 @@ fn test_delete_linewise_register_is_linewise() {
 fn test_delete_undo_records_cursor_positions() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let cursor_before = Position::new(0, 3);
@@ -1000,7 +1000,7 @@ fn test_delete_undo_records_cursor_positions() {
 fn test_delete_linewise_undo_records_cursor_positions() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let cursor_before = Position::new(1, 2);
@@ -1032,7 +1032,7 @@ fn test_delete_linewise_undo_records_cursor_positions() {
 fn test_delete_characterwise_multiline_records_undo() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -1069,7 +1069,7 @@ fn test_delete_linewise_sets_cursor_after_case1() {
     // Case 1: delete non-last line → cursor at (start.line, 0)
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\nbbb\nccc");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -1095,7 +1095,7 @@ fn test_delete_linewise_sets_cursor_after_case2() {
     // Case 2: delete last line(s) but not all → cursor at last valid line
     let ctx = create_test_context();
     let buffer = Buffer::from_string("aaa\nbbb");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -1123,7 +1123,7 @@ fn test_delete_linewise_sets_cursor_after_case3() {
     // Case 3: delete all lines → cursor at (0, 0)
     let ctx = create_test_context();
     let buffer = Buffer::from_string("only");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();
@@ -1148,7 +1148,7 @@ fn test_delete_linewise_sets_cursor_after_case3() {
 fn test_delete_characterwise_sets_cursor_after() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let delete = DeleteOperator;
     let mut registers = RegisterBank::new();

@@ -349,7 +349,7 @@ fn test_all_mode_commands_default() {
 fn test_enter_insert_mode_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -379,7 +379,7 @@ fn test_enter_insert_mode_without_buffer() {
 fn test_enter_insert_mode_append_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -396,7 +396,7 @@ fn test_enter_insert_mode_append_execute() {
 fn test_enter_insert_mode_append_moves_cursor() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -420,7 +420,7 @@ fn test_enter_insert_mode_append_moves_cursor() {
 fn test_exit_to_normal_execute() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -445,7 +445,7 @@ fn test_exit_to_normal_execute() {
 fn test_exit_to_normal_cursor_at_col_zero() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -569,7 +569,7 @@ fn test_exit_to_normal_without_buffer() {
 fn test_enter_insert_append_at_end_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -610,7 +610,7 @@ fn test_enter_insert_append_without_buffer() {
 fn test_enter_insert_mode_append_at_start_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -630,7 +630,7 @@ fn test_enter_insert_mode_append_at_start_of_line() {
 fn test_enter_insert_mode_append_empty_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -650,7 +650,7 @@ fn test_enter_insert_mode_append_empty_line() {
 fn test_exit_to_normal_from_middle_of_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -673,7 +673,7 @@ fn test_exit_to_normal_from_middle_of_line() {
 fn test_exit_to_normal_from_column_one() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("ab");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -730,7 +730,7 @@ fn test_cancel_commandline_mode_returns_to_normal() {
 fn test_enter_insert_mode_on_second_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -750,7 +750,7 @@ fn test_enter_insert_mode_on_second_line() {
 fn test_enter_insert_mode_append_on_second_line() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -850,7 +850,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_enter_insert_mode_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -871,7 +871,7 @@ fn test_enter_insert_mode_calls_begin_batch() {
 fn test_enter_insert_append_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -890,7 +890,7 @@ fn test_enter_insert_append_calls_begin_batch() {
 fn test_exit_to_normal_calls_end_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -920,7 +920,7 @@ use reovim_driver_session::api::ExtensionApi;
 fn test_enter_insert_mode_clears_insert_buffer() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -946,7 +946,7 @@ fn test_enter_insert_mode_clears_insert_buffer() {
 fn test_exit_to_normal_records_dot_repeat_for_insert() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -979,7 +979,7 @@ fn test_exit_to_normal_records_dot_repeat_for_insert() {
 fn test_exit_to_normal_does_not_record_empty_insert() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1004,7 +1004,7 @@ fn test_exit_to_normal_does_not_record_empty_insert() {
 fn test_exit_commandline_mode_search_forward_with_pending() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1040,7 +1040,7 @@ fn test_exit_commandline_mode_search_forward_with_pending() {
 fn test_exit_commandline_mode_search_backward_with_pending() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1071,7 +1071,7 @@ fn test_exit_commandline_mode_search_backward_with_pending() {
 fn test_exit_commandline_mode_search_empty_cmdline() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1170,7 +1170,7 @@ fn test_exit_commandline_search_no_buffer_id() {
 fn test_exit_commandline_search_no_pending() {
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1289,7 +1289,7 @@ fn test_exit_commandline_search_with_match_found() {
     }));
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1325,7 +1325,7 @@ fn test_exit_commandline_search_no_match() {
     let mock = Arc::new(MockSearchProvider::with_no_match());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1360,7 +1360,7 @@ fn test_exit_commandline_search_invalid_pattern() {
     let mock = Arc::new(MockSearchProvider::with_error());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1398,7 +1398,7 @@ fn test_exit_commandline_search_backward_with_match() {
     }));
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1437,7 +1437,7 @@ fn test_exit_commandline_search_no_cursor_position() {
     let mock = Arc::new(MockSearchProvider::with_no_match());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1731,7 +1731,7 @@ fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
 
     let ctx = create_test_context_with_name_index(name_index);
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mock_vfs = Arc::new(reovim_driver_vfs::MockVfs::new());
     let mut args = CommandContext::new();
@@ -1758,7 +1758,7 @@ fn test_exit_commandline_search_no_search_registry() {
     // No SearchProviderRegistry registered in services
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1797,7 +1797,7 @@ fn test_exit_commandline_search_no_search_provider_for_key() {
     ctx.services.register(search_registry);
 
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(buffer);
+    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
