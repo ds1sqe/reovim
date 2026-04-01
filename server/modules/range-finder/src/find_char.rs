@@ -130,9 +130,9 @@ impl CommandHandler for EnhancedFindCharCommand {
         let cursor_col = window.cursor.column;
 
         // Scan all matches to detect multi-match case
-        let matches = runtime.with_buffer_read(buffer_id, |buffer| {
+        let matches = runtime.with_text_geometry(buffer_id, |buffer| {
             buffer.line(cursor_line).map_or_else(Vec::new, |line_text| {
-                find_all_char_matches(line_text, cursor_col, cursor_line, target_char, forward)
+                find_all_char_matches(&line_text, cursor_col, cursor_line, target_char, forward)
             })
         });
 
@@ -169,7 +169,7 @@ impl CommandHandler for EnhancedFindCharCommand {
             till: !inclusive,
         };
 
-        let target = runtime.with_buffer_read(buffer_id, |buffer| {
+        let target = runtime.with_text_geometry(buffer_id, |buffer| {
             MotionEngine::calculate(buffer, &cursor, motion, count)
         });
 

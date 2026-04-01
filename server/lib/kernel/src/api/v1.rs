@@ -107,6 +107,9 @@ pub use crate::core::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 // Motion
 pub use crate::core::{Direction, LinePosition, Motion, MotionEngine, WordBoundary};
 
+// Text Geometry
+pub use crate::core::TextGeometry;
+
 // Text Objects
 pub use crate::core::{TextObject, TextObjectEngine};
 

@@ -5,7 +5,7 @@
 //! - **Inner**: The content without delimiters/whitespace (e.g., `iw`, `i(`)
 //! - **Around**: The content including delimiters/whitespace (e.g., `aw`, `a(`)
 
-use crate::mm::{Buffer, Position};
+use crate::{core::TextGeometry, mm::Position};
 
 use super::direction::WordBoundary;
 
@@ -176,7 +176,7 @@ impl TextObjectEngine {
     /// `Some((start, end))` if a valid range was found, `None` otherwise.
     #[must_use]
     pub fn range(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         position: Position,
         text_object: TextObject,
         count: usize,
@@ -201,7 +201,7 @@ impl TextObjectEngine {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn inner_word(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         boundary: WordBoundary,
     ) -> Option<(Position, Position)> {
@@ -280,7 +280,7 @@ impl TextObjectEngine {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn a_word(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         boundary: WordBoundary,
     ) -> Option<(Position, Position)> {
@@ -310,7 +310,7 @@ impl TextObjectEngine {
 
     // === Paragraph Text Objects ===
 
-    fn inner_paragraph(buffer: &Buffer, pos: Position) -> Option<(Position, Position)> {
+    fn inner_paragraph(buffer: &dyn TextGeometry, pos: Position) -> Option<(Position, Position)> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -331,10 +331,10 @@ impl TextObjectEngine {
             }
         };
 
-        while start > 0 && buffer.line(start - 1).is_some_and(&predicate) {
+        while start > 0 && buffer.line(start - 1).is_some_and(|l| predicate(&l)) {
             start -= 1;
         }
-        while end + 1 < line_count && buffer.line(end + 1).is_some_and(&predicate) {
+        while end + 1 < line_count && buffer.line(end + 1).is_some_and(|l| predicate(&l)) {
             end += 1;
         }
 
@@ -342,7 +342,7 @@ impl TextObjectEngine {
         Some((Position::new(start, 0), Position::new(end, end_col)))
     }
 
-    fn a_paragraph(buffer: &Buffer, pos: Position) -> Option<(Position, Position)> {
+    fn a_paragraph(buffer: &dyn TextGeometry, pos: Position) -> Option<(Position, Position)> {
         let (inner_start, inner_end) = Self::inner_paragraph(buffer, pos)?;
         let line_count = buffer.line_count();
 
@@ -367,7 +367,11 @@ impl TextObjectEngine {
 
     // === Quote Text Objects ===
 
-    fn inner_quote(buffer: &Buffer, pos: Position, quote: char) -> Option<(Position, Position)> {
+    fn inner_quote(
+        buffer: &dyn TextGeometry,
+        pos: Position,
+        quote: char,
+    ) -> Option<(Position, Position)> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
@@ -386,7 +390,11 @@ impl TextObjectEngine {
         }
     }
 
-    fn a_quote(buffer: &Buffer, pos: Position, quote: char) -> Option<(Position, Position)> {
+    fn a_quote(
+        buffer: &dyn TextGeometry,
+        pos: Position,
+        quote: char,
+    ) -> Option<(Position, Position)> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
@@ -436,7 +444,7 @@ impl TextObjectEngine {
     // === Bracket Text Objects ===
 
     fn inner_bracket(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         bracket: char,
         count: usize,
@@ -459,7 +467,7 @@ impl TextObjectEngine {
     }
 
     fn a_bracket(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         bracket: char,
         count: usize,
@@ -479,7 +487,7 @@ impl TextObjectEngine {
     }
 
     fn find_bracket_pair(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         open: char,
         close: char,
@@ -496,7 +504,7 @@ impl TextObjectEngine {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn find_opening_bracket(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         pos: Position,
         open: char,
         close: char,
@@ -561,7 +569,7 @@ impl TextObjectEngine {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn find_closing_bracket(
-        buffer: &Buffer,
+        buffer: &dyn TextGeometry,
         open_pos: Position,
         open: char,
         close: char,
@@ -596,7 +604,7 @@ impl TextObjectEngine {
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn next_position(buffer: &Buffer, pos: Position) -> Option<Position> {
+    fn next_position(buffer: &dyn TextGeometry, pos: Position) -> Option<Position> {
         let line_len = buffer.line_len(pos.line)?;
         if pos.column + 1 < line_len {
             Some(Position::new(pos.line, pos.column + 1))
@@ -608,7 +616,7 @@ impl TextObjectEngine {
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn prev_position(buffer: &Buffer, pos: Position) -> Option<Position> {
+    fn prev_position(buffer: &dyn TextGeometry, pos: Position) -> Option<Position> {
         if pos.column > 0 {
             Some(Position::new(pos.line, pos.column - 1))
         } else if pos.line > 0 {

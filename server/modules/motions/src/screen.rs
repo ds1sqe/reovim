@@ -37,7 +37,7 @@ fn execute_screen_jump(
 
     // Clamp target to buffer bounds
     let line_count = runtime
-        .with_buffer_read(buffer_id, reovim_kernel::api::Buffer::line_count)
+        .with_text_geometry(buffer_id, |buf| buf.line_count())
         .unwrap_or(1);
     let clamped = target_line.min(line_count.saturating_sub(1));
 

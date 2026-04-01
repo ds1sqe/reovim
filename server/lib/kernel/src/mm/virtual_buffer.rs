@@ -12,6 +12,7 @@
 //! both implement this trait.
 
 use std::{
+    borrow::Cow,
     fmt,
     hash::{Hash, Hasher},
     ops::Range,
@@ -695,5 +696,29 @@ impl FileMapping for HeapMapping {
 
     fn len(&self) -> u64 {
         self.0.len() as u64
+    }
+}
+
+// ── TextGeometry ────────────────────────────────────────────────────────────
+
+use crate::core::TextGeometry;
+
+impl TextGeometry for VirtualBuffer {
+    fn line_count(&self) -> usize {
+        self.line_index.line_count()
+    }
+
+    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
+        // Delegates to VirtualBuffer::line() which materializes from pieces.
+        // Rust resolves to the inherent method, not the trait method.
+        Self::line(self, idx).map(Cow::Owned)
+    }
+
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        Self::line(self, idx).map(|l| l.chars().count())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pieces.is_empty()
     }
 }

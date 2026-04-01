@@ -94,7 +94,7 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
-        let target = runtime.with_buffer_read(buffer_id, |buffer| {
+        let target = runtime.with_text_geometry(buffer_id, |buffer| {
             MotionEngine::calculate(buffer, &cursor, motion, count)
         });
 

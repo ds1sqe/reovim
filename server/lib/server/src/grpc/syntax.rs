@@ -247,16 +247,13 @@ impl SyntaxService for SyntaxServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
+                let handle = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
 
-                let buffer = buffer_arc.read();
-                let total_lines = buffer.line_count();
-
-                // Get buffer content for byte range calculation
-                let content = buffer.content();
-                let file_path = buffer.file_path().map(String::from);
+                let total_lines = handle.line_count();
+                let content = handle.content();
+                let file_path = handle.file_path();
 
                 // Detect language from file path (hardcoded fallback for response)
                 let (language_id, _language_name) = detect_language_from_path(file_path.as_deref());
@@ -270,17 +267,13 @@ impl SyntaxService for SyntaxServiceImpl {
 
                 // Convert line range to byte range
                 let start_byte =
-                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(start_line, 0));
+                    handle.position_to_byte(reovim_kernel::api::v1::Position::new(start_line, 0));
                 let end_byte = if end_line < total_lines {
-                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(end_line + 1, 0))
+                    handle.position_to_byte(reovim_kernel::api::v1::Position::new(end_line + 1, 0))
                 } else {
                     content.len()
                 };
                 let byte_range = start_byte..end_byte;
-
-                // Drop buffer read lock before accessing extensions
-                drop(buffer);
-                drop(buffer_arc);
 
                 // Get syntax session state from session-wide extensions (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
@@ -344,19 +337,14 @@ impl SyntaxService for SyntaxServiceImpl {
         let (initial_update, syntax_rx) = session
             .with_state_mut(|state| {
                 // Verify buffer exists
-                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
+                let handle = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
 
-                let buffer = buffer_arc.read();
-                let total_lines = buffer.line_count() as u64;
-                let content = buffer.content();
-                let file_path = buffer.file_path().map(String::from);
+                let total_lines = handle.line_count() as u64;
+                let content = handle.content();
+                let file_path = handle.file_path();
                 let (language_id, _) = detect_language_from_path(file_path.as_deref());
-
-                // Drop buffer lock before accessing extensions
-                drop(buffer);
-                drop(buffer_arc);
 
                 // Get syntax state and ensure driver exists (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
@@ -434,16 +422,11 @@ impl SyntaxService for SyntaxServiceImpl {
             .with_state_mut(|state| {
                 let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
-                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
+                let handle = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
 
-                let buffer = buffer_arc.read();
-                let file_path = buffer.file_path().map(String::from);
-
-                // Drop buffer lock before accessing extensions
-                drop(buffer);
-                drop(buffer_arc);
+                let file_path = handle.file_path();
 
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 

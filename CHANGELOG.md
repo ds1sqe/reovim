@@ -17,8 +17,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **session**: `buffer_write_to()` and `is_virtual_buffer()` methods on `BufferApi` for streaming write and buffer type detection (#739)
 - **codec**: `decode_streaming()` method on `ContentCodec` for header-only parsing of large binary files (#739)
 
+- **driver**: `BufferCapabilities` bitflags in `reovim-driver-buffer` — `CONTENT_MATERIALIZABLE`, `SNAPSHOTTABLE`, `STREAMABLE`, `FILE_BACKED`, `LINE_READABLE`, `EDITABLE` with `ROPE` and `VIRTUAL` presets (#739)
+- **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
+- **protocol**: `capabilities` field (u32 bitflags) on `BufferInfo` proto message (#739)
+- **kernel**: `TextGeometry` trait — polymorphic line-based read access for both `Buffer` (zero-copy `Cow::Borrowed`) and `VirtualBuffer` (`Cow::Owned`) (#739)
+
 ### Changed
 
+- **kernel**: `MotionEngine::calculate` and `TextObjectEngine::range` accept `&dyn TextGeometry` instead of `&Buffer` — motions and text objects now work on virtual buffers (#739)
+- **session**: `with_text_geometry()` on `SessionRuntime` dispatches to either buffer type — 11 motion/textobject modules migrated (#739)
+
+- **server**: `SessionState::buffer()` returns `BufferHandle` instead of `Arc<RwLock<Buffer>>` — virtual buffers are now visible to all 9 gRPC call sites (#739)
+- **server**: `ListBuffers` includes both Rope and virtual buffers with capability flags (#739)
 - **snapshot**: `Snapshot` now supports both Rope and `VirtualBuffer` via internal `SnapshotContent` enum — `capture_virtual()` and `restore_virtual()` methods added (#739)
 - **commands**: `:e` command detects file size before loading — large UTF-8 files use mmap path, large binaries try streaming codec, small files use existing Rope path (#739)
 - **completion**: virtual buffer completion uses line-based access instead of full content materialization (#739)

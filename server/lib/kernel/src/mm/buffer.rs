@@ -14,9 +14,15 @@
 //!
 //! Use `SessionRuntime::cursor_position(buffer_id)` to get cursor from Window.
 
-use std::hash::{Hash, Hasher};
+use std::{
+    borrow::Cow,
+    hash::{Hash, Hasher},
+};
 
-use super::{BufferId, Position, rope::Rope};
+use {
+    super::{BufferId, Position, rope::Rope},
+    crate::core::TextGeometry,
+};
 
 /// A text buffer with rope-based storage.
 ///
@@ -399,6 +405,26 @@ fn extract_byte_range(text: &Rope, start: usize, end: usize) -> String {
         pos = chunk_end;
     }
     result
+}
+
+// ── TextGeometry ────────────────────────────────────────────────────────────
+
+impl TextGeometry for Buffer {
+    fn line_count(&self) -> usize {
+        self.text.line_count()
+    }
+
+    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
+        self.text.line(idx).map(Cow::Borrowed)
+    }
+
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        self.text.line_len(idx)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
 }
 
 #[cfg(test)]

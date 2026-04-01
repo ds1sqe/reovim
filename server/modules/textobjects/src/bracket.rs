@@ -64,8 +64,8 @@ fn execute_bracket_textobj(
     };
     let pos = Position::new(window.cursor.line, window.cursor.column);
 
-    // Calculate text object range using with_buffer_read callback
-    let range_result = runtime.with_buffer_read(buffer_id, |buffer| {
+    // Calculate text object range using with_text_geometry callback
+    let range_result = runtime.with_text_geometry(buffer_id, |buffer| {
         TextObjectEngine::range(buffer, pos, text_object, count)
     });
 

@@ -17,8 +17,12 @@
 //! server/modules/buffer-simple/→ SimpleBufferManager implementation (POLICY)
 //! ```
 
+mod capabilities;
 mod key;
 mod mock;
 mod registry;
 
-pub use {key::BufferManagerKey, mock::TestBufferManager, registry::BufferManagerRegistry};
+pub use {
+    capabilities::BufferCapabilities, key::BufferManagerKey, mock::TestBufferManager,
+    registry::BufferManagerRegistry,
+};

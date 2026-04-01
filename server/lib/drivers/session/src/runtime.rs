@@ -440,6 +440,25 @@ impl<'a> SessionRuntime<'a> {
         Some(f(&buf))
     }
 
+    /// Read from either buffer type as `&dyn TextGeometry`.
+    ///
+    /// Checks kernel buffers first, then virtual buffer registry.
+    /// Use this for motions, text objects, and any read-only text access
+    /// that works on both buffer types.
+    pub fn with_text_geometry<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
+    where
+        F: FnOnce(&dyn reovim_kernel::api::v1::TextGeometry) -> R,
+    {
+        if let Some(buf_arc) = self.kernel.buffers.get(buffer) {
+            let buf = buf_arc.read();
+            return Some(f(&*buf));
+        }
+        let vbr = self.virtual_registry()?;
+        let vbuf_arc = vbr.get(buffer)?;
+        let vbuf = vbuf_arc.read();
+        Some(f(&*vbuf))
+    }
+
     // === Virtual Buffer Dispatch (#739) ===
 
     /// Get the virtual buffer registry from the service registry.

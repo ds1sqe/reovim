@@ -51,8 +51,8 @@ fn execute_word_motion(
         end,
     };
 
-    // Calculate motion using with_buffer_read callback
-    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+    // Calculate motion using with_text_geometry callback
+    let motion_result = runtime.with_text_geometry(buffer_id, |buffer| {
         let cursor = Cursor::new(old_pos);
         MotionEngine::calculate(buffer, &cursor, motion, count)
     });

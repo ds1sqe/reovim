@@ -960,8 +960,8 @@ fn test_insert_char_for_client_buffer_path() {
     // Verify the character was inserted
     session.with_state_sync(|state| {
         let buffer_id = *state.app.kernel.buffers.list().first().unwrap();
-        let buffer = state.buffer(buffer_id).unwrap();
-        let content = buffer.read().content();
+        let handle = state.buffer(buffer_id).unwrap();
+        let content = handle.content();
         assert!(content.contains('X'));
     });
 }

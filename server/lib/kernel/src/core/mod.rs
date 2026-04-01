@@ -50,6 +50,7 @@ mod mode;
 mod motion;
 mod option;
 mod register;
+mod text_geometry;
 mod textobj;
 
 // Re-export direction types
@@ -69,6 +70,9 @@ pub use motion::{Motion, MotionEngine};
 
 // Re-export register types
 pub use register::{Register, RegisterBank, RegisterContent, YankType};
+
+// Re-export text geometry trait
+pub use text_geometry::TextGeometry;
 
 // Re-export text object types
 pub use textobj::{TextObject, TextObjectEngine};

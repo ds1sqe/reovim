@@ -100,6 +100,7 @@ message BufferInfo {
   optional string content_type = 6;  // Codec content type (e.g., "text/utf-8")
   optional bool readonly = 7;       // Read-only (lossy codec decode)
   optional CodecMetadata codec_metadata = 8;
+  uint32 capabilities = 9;       // BufferCapabilities bitflags (0 = legacy/unknown)
 }
 
 message CodecMetadata {

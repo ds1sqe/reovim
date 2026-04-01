@@ -42,9 +42,9 @@ fn execute_line_position(
     };
     let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
-    // Calculate motion using with_buffer_read callback
+    // Calculate motion using with_text_geometry callback
     let motion = Motion::LinePosition(position);
-    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+    let motion_result = runtime.with_text_geometry(buffer_id, |buffer| {
         let cursor = Cursor::new(old_pos);
         MotionEngine::calculate(buffer, &cursor, motion, 1)
     });
@@ -97,9 +97,9 @@ fn execute_jump_line(
     };
     let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
-    // Calculate motion using with_buffer_read callback
+    // Calculate motion using with_text_geometry callback
     let motion = Motion::JumpLine(target_line);
-    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+    let motion_result = runtime.with_text_geometry(buffer_id, |buffer| {
         let cursor = Cursor::new(old_pos);
         MotionEngine::calculate(buffer, &cursor, motion, 1)
     });

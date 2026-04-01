@@ -92,7 +92,7 @@ fn test_session_state_create_buffer() {
     assert!(state.app.kernel.buffers.list().contains(&id));
 
     // Freshly created buffer must NOT be modified (fixes :q on scratch buffer)
-    let not_modified = state.buffer(id).unwrap().read().is_modified();
+    let not_modified = state.buffer(id).unwrap().is_modified();
     assert!(!not_modified, "create_buffer must produce unmodified buffer");
 }
 
@@ -102,7 +102,7 @@ fn test_create_buffer_empty_not_modified() {
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
     let id = state.create_buffer("");
-    let not_modified = state.buffer(id).unwrap().read().is_modified();
+    let not_modified = state.buffer(id).unwrap().is_modified();
     assert!(!not_modified, "empty scratch buffer must not be modified");
 }
 
@@ -262,7 +262,7 @@ fn test_buffer_operations() {
     let buffer = state.buffer(id);
     assert!(buffer.is_some());
 
-    let content = buffer.unwrap().read().content();
+    let content = buffer.unwrap().content();
     assert_eq!(content, "hello");
 }
 
@@ -490,9 +490,9 @@ fn test_session_state_multiple_buffers() {
     assert!(state.buffer(id3).is_some());
 
     // Verify contents
-    assert_eq!(state.buffer(id1).unwrap().read().content(), "first");
-    assert_eq!(state.buffer(id2).unwrap().read().content(), "second");
-    assert_eq!(state.buffer(id3).unwrap().read().content(), "third");
+    assert_eq!(state.buffer(id1).unwrap().content(), "first");
+    assert_eq!(state.buffer(id2).unwrap().content(), "second");
+    assert_eq!(state.buffer(id3).unwrap().content(), "third");
 }
 
 #[test]
@@ -975,9 +975,9 @@ fn test_session_state_create_multiple_buffers_verify_contents() {
     let id2 = state.create_buffer("beta");
     let id3 = state.create_buffer("gamma");
 
-    assert_eq!(state.buffer(id1).unwrap().read().content(), "alpha");
-    assert_eq!(state.buffer(id2).unwrap().read().content(), "beta");
-    assert_eq!(state.buffer(id3).unwrap().read().content(), "gamma");
+    assert_eq!(state.buffer(id1).unwrap().content(), "alpha");
+    assert_eq!(state.buffer(id2).unwrap().content(), "beta");
+    assert_eq!(state.buffer(id3).unwrap().content(), "gamma");
 
     // All buffers should be registered
     let buffers = state.app.kernel.buffers.list();

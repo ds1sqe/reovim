@@ -26,8 +26,11 @@ use {
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
         Buffer, BufferId, CommandId, Jumplist, KernelContext, ModeId, ModeStack, RegisterContent,
+        SimpleVirtualBufferRegistry, VirtualBufferRegistry,
     },
 };
+
+use super::BufferHandle;
 
 use crate::{
     app::AppState,
@@ -334,9 +337,23 @@ impl SessionState {
     // Buffer Methods (delegated to kernel)
     // ========================================================================
 
-    /// Get a buffer by ID.
+    /// Get a buffer by ID (checks both Rope and Virtual registries).
     #[must_use]
-    pub fn buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+    pub fn buffer(&self, id: BufferId) -> Option<BufferHandle> {
+        if let Some(arc) = self.app.kernel.buffers.get(id) {
+            return Some(BufferHandle::Rope(arc));
+        }
+        let vbr = self.app.services.get::<SimpleVirtualBufferRegistry>()?;
+        let arc = vbr.get(id)?;
+        Some(BufferHandle::Virtual(arc))
+    }
+
+    /// Get a Rope buffer by ID (kernel buffers only).
+    ///
+    /// Use this for callers that need direct `&Buffer` access (mutations,
+    /// Rope-specific operations). For read-only access, prefer `buffer()`.
+    #[must_use]
+    pub fn rope_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
         self.app.kernel.buffers.get(id)
     }
 

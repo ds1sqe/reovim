@@ -862,7 +862,7 @@ impl Session {
                 drop(clients);
 
                 let state = self.state.read();
-                let buffer_arc = state.buffer(buffer_id)?;
+                let buffer_arc = state.rope_buffer(buffer_id)?;
 
                 // Get undo registry for recording edit (#471)
                 let undo_registry = state.app.kernel.services.get::<UndoProviderRegistry>();
