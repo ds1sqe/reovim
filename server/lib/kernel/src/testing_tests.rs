@@ -85,10 +85,7 @@ fn test_create_test_context() {
     let id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
     let retrieved = ctx.buffers.get(id);
     assert!(retrieved.is_some());
-    assert_eq!(
-        retrieved.unwrap().read().line(0).as_deref(),
-        Some("test content")
-    );
+    assert_eq!(retrieved.unwrap().read().line(0).as_deref(), Some("test content"));
 }
 
 #[test]

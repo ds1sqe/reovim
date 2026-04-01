@@ -14,8 +14,7 @@ use {
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
-        CommandId, FileMapping, LineIndex, ModuleId, VirtualBuffer,
-        events::kernel::FileOpened,
+        CommandId, FileMapping, LineIndex, ModuleId, VirtualBuffer, events::kernel::FileOpened,
     },
 };
 
@@ -171,9 +170,10 @@ fn open_large_file(
     vbuf.set_file_path(Some(canonical_path.clone()));
 
     // Register in unified buffer manager (stores as dyn BufferOps)
-    let vbuf_id = runtime.kernel().buffers.register(
-        Arc::new(reovim_arch::sync::RwLock::new(vbuf)),
-    );
+    let vbuf_id = runtime
+        .kernel()
+        .buffers
+        .register(Arc::new(reovim_arch::sync::RwLock::new(vbuf)));
 
     // Emit FileOpened event for subscribers (LSP, syntax, etc.)
     #[allow(clippy::cast_possible_truncation)]

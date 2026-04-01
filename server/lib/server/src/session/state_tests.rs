@@ -450,9 +450,7 @@ fn test_with_registries_with_initial_buffer() {
         use reovim_kernel::api::v1::Buffer;
         let mut buffer = Buffer::new();
         buffer.set_content("initial");
-        kernel
-            .buffers
-            .register(Arc::new(RwLock::new(buffer)))
+        kernel.buffers.register(Arc::new(RwLock::new(buffer)))
     };
 
     let state = SessionState::with_registries(

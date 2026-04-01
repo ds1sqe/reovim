@@ -508,8 +508,10 @@ fn test_goto_special_mark_not_set() {
 
 #[test]
 fn test_goto_global_mark_cross_buffer() {
-    use reovim_kernel::api::v1::{Buffer, Mark, RwLock};
-    use std::sync::Arc;
+    use {
+        reovim_kernel::api::v1::{Buffer, Mark, RwLock},
+        std::sync::Arc,
+    };
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
     let buf1 = test.active_buffer().unwrap();
@@ -551,8 +553,10 @@ fn test_goto_global_mark_cross_buffer() {
 
 #[test]
 fn test_goto_global_mark_cross_buffer_line_mode() {
-    use reovim_kernel::api::v1::{Buffer, Mark, RwLock};
-    use std::sync::Arc;
+    use {
+        reovim_kernel::api::v1::{Buffer, Mark, RwLock},
+        std::sync::Arc,
+    };
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
     let buf1 = test.active_buffer().unwrap();

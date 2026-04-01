@@ -37,11 +37,7 @@ pub struct SnapshotMismatch {
 
 impl fmt::Display for SnapshotMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "cannot restore {} snapshot to {}",
-            self.snapshot_type, self.target_type
-        )
+        write!(f, "cannot restore {} snapshot to {}", self.snapshot_type, self.target_type)
     }
 }
 
@@ -203,10 +199,7 @@ impl Snapshot {
     ///
     /// Returns `Err(SnapshotMismatch)` if this snapshot was captured from
     /// a Rope buffer.
-    pub fn restore_virtual(
-        &self,
-        vbuf: &mut VirtualBuffer,
-    ) -> Result<Position, SnapshotMismatch> {
+    pub fn restore_virtual(&self, vbuf: &mut VirtualBuffer) -> Result<Position, SnapshotMismatch> {
         match &self.content {
             SnapshotContent::Virtual(snap) => {
                 vbuf.restore_snapshot(snap.clone());

@@ -256,9 +256,7 @@ fn test_cursor_up_invalid_buffer_gracefully_handles() {
     // Create a valid buffer to set up TestState, but pass an invalid buffer_id
     let kernel = create_test_context();
     let valid_buffer = Buffer::new();
-    let valid_buffer_id = kernel
-        .buffers
-        .register(Arc::new(RwLock::new(valid_buffer)));
+    let valid_buffer_id = kernel.buffers.register(Arc::new(RwLock::new(valid_buffer)));
 
     let mut state = TestState::with_window(valid_buffer_id);
     let executor = StubExecutor;

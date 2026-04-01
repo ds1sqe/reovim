@@ -23,8 +23,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::api::v1::{
-    Buffer, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank, ModeId, ModuleId,
-    MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
+    Buffer, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank, ModeId,
+    ModuleId, MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
 };
 
 /// In-memory buffer manager for testing.

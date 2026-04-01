@@ -37,12 +37,9 @@ impl CommandHandler for FormatDocument {
             debug!("format: no active buffer");
             return CommandResult::Success;
         };
-        if runtime
-            .buffer_capabilities(buf_id)
-            .is_some_and(|caps| {
-                !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
-            })
-        {
+        if runtime.buffer_capabilities(buf_id).is_some_and(|caps| {
+            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+        }) {
             debug!("format: skipping non-materializable buffer (file too large)");
             return CommandResult::Success;
         }
@@ -98,12 +95,9 @@ impl CommandHandler for FormatSelection {
         let Some(buf_id) = runtime.active_buffer() else {
             return CommandResult::Success;
         };
-        if runtime
-            .buffer_capabilities(buf_id)
-            .is_some_and(|caps| {
-                !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
-            })
-        {
+        if runtime.buffer_capabilities(buf_id).is_some_and(|caps| {
+            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+        }) {
             return CommandResult::Success;
         }
         let Some(file_path) = runtime.buffer_file_path(buf_id) else {

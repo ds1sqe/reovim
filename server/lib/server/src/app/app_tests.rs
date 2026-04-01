@@ -175,10 +175,9 @@ fn test_fallback_get_buffer_with_real_buffer() {
     // Create and register a buffer
     let mut buffer = Buffer::new();
     buffer.set_content("test content");
-    let buffer_id =
-        kernel
-            .buffers
-            .register(Arc::new(parking_lot::RwLock::new(buffer)));
+    let buffer_id = kernel
+        .buffers
+        .register(Arc::new(parking_lot::RwLock::new(buffer)));
 
     let app = AppState::new(kernel);
 

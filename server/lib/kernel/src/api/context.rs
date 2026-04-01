@@ -341,10 +341,7 @@ impl Default for KernelContext {
 pub struct StubBufferManager;
 
 impl BufferManager for StubBufferManager {
-    fn get(
-        &self,
-        _id: crate::mm::BufferId,
-    ) -> Option<Arc<RwLock<dyn crate::api::BufferOps>>> {
+    fn get(&self, _id: crate::mm::BufferId) -> Option<Arc<RwLock<dyn crate::api::BufferOps>>> {
         None
     }
 

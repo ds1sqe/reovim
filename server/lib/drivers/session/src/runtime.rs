@@ -890,13 +890,10 @@ impl BufferApi for SessionRuntime<'_> {
         buffer: BufferId,
         writer: &mut dyn std::io::Write,
     ) -> Result<(), std::io::Error> {
-        self.kernel
-            .buffers
-            .get(buffer)
-            .map_or_else(
-                || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
-                |buf| writer.write_all(buf.read().content().as_bytes()),
-            )
+        self.kernel.buffers.get(buffer).map_or_else(
+            || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
+            |buf| writer.write_all(buf.read().content().as_bytes()),
+        )
     }
 }
 
