@@ -9,13 +9,16 @@
 set -e
 
 DRY_RUN=""
-if [ "$1" = "--dry-run" ]; then
-    DRY_RUN="--dry-run"
-    echo "=== DRY RUN MODE ==="
-fi
+SKIP_TESTS=""
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN="--dry-run"; echo "=== DRY RUN MODE ===" ;;
+        --skip-tests) SKIP_TESTS=1 ;;
+    esac
+done
 
 # Get current version from workspace
-VERSION=$(grep -A2 '^\[workspace\.package\]' Cargo.toml | grep 'version' | sed 's/.*"\(.*\)"/\1/')
+VERSION=$(grep -A2 '^\[workspace\.package\]' Cargo.toml | grep '^version' | sed 's/.*"\(.*\)"/\1/')
 echo "Publishing version: $VERSION"
 
 if [ -z "$VERSION" ]; then
@@ -35,15 +38,19 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
-# Run tests first
-echo ""
-echo "=== Running tests ==="
-cargo test --quiet
+if [ -z "$SKIP_TESTS" ]; then
+    # Run tests first
+    echo ""
+    echo "=== Running tests ==="
+    cargo test --quiet
 
-# Run clippy
-echo ""
-echo "=== Running clippy ==="
-cargo clippy --quiet
+    # Run clippy
+    echo ""
+    echo "=== Running clippy ==="
+    cargo clippy --quiet
+else
+    echo "=== Skipping tests and clippy ==="
+fi
 
 # Publish order: topological sort of workspace dependencies (tiers 0-10).
 # Skips: perf-report, reovim-bench, reovim-bench-utils,
