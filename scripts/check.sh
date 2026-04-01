@@ -270,7 +270,7 @@ if [ "$MODE" = "sequential" ]; then
     run_step clippy cargo $TOOLCHAIN clippy \
         --all-targets --all-features --workspace $EXCLUDE -- -D warnings
     # shellcheck disable=SC2086
-    run_step build-grpc cargo $TOOLCHAIN build -p reovim-app --features grpc
+    run_step build-grpc cargo $TOOLCHAIN build -p reovim --features grpc
     # shellcheck disable=SC2086
     run_step test cargo $TOOLCHAIN test --workspace $EXCLUDE
     generate_report
@@ -300,7 +300,7 @@ run_bg clippy env CARGO_TARGET_DIR="$CLIPPY_TARGET_DIR" \
 
 # Job B: Build gRPC binary + run tests (chained because tests need the binary)
 # shellcheck disable=SC2086
-run_bg test bash -c "cargo $TOOLCHAIN build -p reovim-app --features grpc && \
+run_bg test bash -c "cargo $TOOLCHAIN build -p reovim --features grpc && \
     cargo $TOOLCHAIN test --workspace $EXCLUDE"
 
 # Wait for all parallel jobs

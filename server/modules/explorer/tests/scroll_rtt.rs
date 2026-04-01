@@ -12,7 +12,7 @@
 //!
 //! The `reovim` binary must be built before running:
 //! ```bash
-//! cargo build -p reovim-app
+//! cargo build -p reovim
 //! cargo test -p reovim-module-explorer --test scroll_rtt -- --nocapture
 //! ```
 //!

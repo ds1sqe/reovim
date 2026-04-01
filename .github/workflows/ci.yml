@@ -51,7 +51,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: MSRV check (key crates)
-        run: cargo +1.92 check -p reovim-app -p reovim-kernel -p reovim-server
+        run: cargo +1.92 check -p reovim -p reovim-kernel -p reovim-server
       - name: Doc tests
         run: cargo +1.92 test --doc --workspace
 
@@ -104,7 +104,7 @@ jobs:
         run: |
           export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
           eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
-          cargo +${{ env.NIGHTLY }} build -p reovim-server -p reovim-app --tests --bins
+          cargo +${{ env.NIGHTLY }} build -p reovim-server -p reovim --tests --bins
       - name: Save build cache
         uses: actions/cache/save@v4
         with:
@@ -194,7 +194,7 @@ jobs:
         run: |
           export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
           eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
-          cargo +${{ env.NIGHTLY }} build -p reovim-app --bins
+          cargo +${{ env.NIGHTLY }} build -p reovim --bins
           cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-rust --features dynamic
           cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-markdown --features dynamic
           ls -la target/debug/reovim
@@ -243,7 +243,7 @@ jobs:
         run: |
           export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
           eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
-          cargo +${{ env.NIGHTLY }} build -p reovim-app --bins
+          cargo +${{ env.NIGHTLY }} build -p reovim --bins
           ls -la target/debug/reovim
       - name: Run server tests with coverage
         run: |

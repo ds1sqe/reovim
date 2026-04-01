@@ -210,7 +210,7 @@ CRATES=(
     "server/modules/lsp-navigation"                # reovim-module-lsp-navigation
 
     # Tier 10 — main binary (last)
-    "apps/bin"                                     # reovim-app
+    "apps/bin"                                     # reovim
 )
 
 TOTAL=${#CRATES[@]}

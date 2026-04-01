@@ -276,7 +276,7 @@ reovim-client-model = { path = "./shared/clients/model", version = "0.14.5-dev" 
 reovim-client-driver = { path = "./shared/clients/driver", version = "0.14.5-dev" }
 
 # Application binary
-reovim-app = { path = "./apps/bin", version = "0.14.5-dev" }
+reovim = { path = "./apps/bin", version = "0.14.5-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
