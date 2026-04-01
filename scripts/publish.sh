@@ -9,13 +9,16 @@
 set -e
 
 DRY_RUN=""
-if [ "$1" = "--dry-run" ]; then
-    DRY_RUN="--dry-run"
-    echo "=== DRY RUN MODE ==="
-fi
+SKIP_TESTS=""
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN="--dry-run"; echo "=== DRY RUN MODE ===" ;;
+        --skip-tests) SKIP_TESTS=1 ;;
+    esac
+done
 
 # Get current version from workspace
-VERSION=$(grep -A2 '^\[workspace\.package\]' Cargo.toml | grep 'version' | sed 's/.*"\(.*\)"/\1/')
+VERSION=$(grep -A2 '^\[workspace\.package\]' Cargo.toml | grep '^version' | sed 's/.*"\(.*\)"/\1/')
 echo "Publishing version: $VERSION"
 
 if [ -z "$VERSION" ]; then
@@ -35,18 +38,22 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
-# Run tests first
-echo ""
-echo "=== Running tests ==="
-cargo test --quiet
+if [ -z "$SKIP_TESTS" ]; then
+    # Run tests first
+    echo ""
+    echo "=== Running tests ==="
+    cargo test --quiet
 
-# Run clippy
-echo ""
-echo "=== Running clippy ==="
-cargo clippy --quiet
+    # Run clippy
+    echo ""
+    echo "=== Running clippy ==="
+    cargo clippy --quiet
+else
+    echo "=== Skipping tests and clippy ==="
+fi
 
 # Publish order: topological sort of workspace dependencies (tiers 0-10).
-# Skips: perf-report, reovim-bench, reovim-bench-utils, reovim-testing,
+# Skips: perf-report, reovim-bench, reovim-bench-utils,
 #         reovim-test-dynamic-module (not publishable).
 CRATES=(
     # Tier 0 — no internal deps
@@ -54,6 +61,7 @@ CRATES=(
     "shared/capabilities"                          # reovim-capabilities
     "shared/clients/model"                         # reovim-client-model
     "shared/depgraph"                              # reovim-depgraph
+    "shared/testing"                               # reovim-testing
 
     # Tier 1 — kernel, protocol, base drivers
     "shared/clients/driver"                        # reovim-client-driver
@@ -210,12 +218,12 @@ PUBLISHED=0
 SKIPPED=0
 FAILED=0
 
-# crates.io rate limit: ~1 publish/minute for new crates, stricter for bulk.
-# publish_crate retries up to MAX_RETRIES with 2x exponential backoff on 429s.
-# Rerunning the script is safe — already-published versions are skipped via cargo search.
+# crates.io rate limit: ~1 publish/minute for new crates.
+# publish_crate retries up to MAX_RETRIES with exponential backoff on 429s.
 MAX_RETRIES=10
-INDEX_WAIT=10  # seconds to wait for crates.io indexing between publishes
+INDEX_WAIT=3  # seconds to wait for crates.io indexing between publishes
 
+# Return codes: 0 = published, 2 = already exists (skip), 1 = error
 publish_crate() {
     local attempt=1
     local wait=35
@@ -227,6 +235,12 @@ publish_crate() {
 
         if [ $rc -eq 0 ]; then
             return 0
+        fi
+
+        # Already published — not an error, just skip
+        if echo "$output" | grep -qiE 'already exists|already uploaded'; then
+            echo "  Already published — skipping"
+            return 2
         fi
 
         # Check for rate limit (429) or "try again" messages
@@ -256,30 +270,27 @@ for i in "${!CRATES[@]}"; do
 
     cd "$CRATE_PATH"
 
-    # Check if this version already exists on crates.io
-    PUBLISHED_VERSION=$(cargo search "$CRATE_NAME" --limit 1 2>/dev/null \
-        | grep -E "^$CRATE_NAME = " | sed 's/.*"\(.*\)".*/\1/' || echo "")
-
-    if [ "$PUBLISHED_VERSION" = "$VERSION" ]; then
-        echo "  Skipping $CRATE_NAME@$VERSION (already published)"
-        SKIPPED=$((SKIPPED + 1))
+    if [ -n "$DRY_RUN" ]; then
+        cargo publish --dry-run --allow-dirty 2>&1 | tail -3
     else
-        if [ -n "$DRY_RUN" ]; then
-            cargo publish --dry-run --allow-dirty 2>&1 | tail -3
-        else
-            if publish_crate; then
-                PUBLISHED=$((PUBLISHED + 1))
-            else
-                echo "  FAILED to publish $CRATE_NAME"
-                FAILED=$((FAILED + 1))
-                # Don't abort — continue with remaining crates
-            fi
-
-            # Wait for crates.io to index (except for last crate)
+        rc=0
+        publish_crate || rc=$?
+        if [ $rc -eq 0 ]; then
+            PUBLISHED=$((PUBLISHED + 1))
+            # Wait for crates.io to index only after a real publish
             if [ $i -lt $((TOTAL - 1)) ]; then
-                echo "  Waiting ${INDEX_WAIT}s for crates.io to index..."
-                sleep $INDEX_WAIT
+                printf "  Indexing "
+                for t in $(seq $INDEX_WAIT -1 1); do
+                    printf "%d..." "$t"
+                    sleep 0.25; printf "."; sleep 0.25; printf "."; sleep 0.25; printf ". "; sleep 0.25
+                done
+                echo "go"
             fi
+        elif [ $rc -eq 2 ]; then
+            SKIPPED=$((SKIPPED + 1))
+        else
+            echo "  FAILED to publish $CRATE_NAME"
+            FAILED=$((FAILED + 1))
         fi
     fi
 
