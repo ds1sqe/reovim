@@ -305,9 +305,14 @@ fn drain_pending_notifications(runtime: &mut SessionRuntime<'_>) {
 fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
     let buffer_id = runtime.active_buffer()?;
 
-    // Virtual buffers may be multi-GB — skip full content materialization.
+    // Non-materializable buffers may be multi-GB — skip full content materialization.
     // Use only the cursor line for prefix extraction.
-    if runtime.is_virtual_buffer(buffer_id) {
+    if runtime
+        .buffer_capabilities(buffer_id)
+        .is_some_and(|caps| {
+            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+        })
+    {
         return build_virtual_context(runtime, buffer_id);
     }
 

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use {
     reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore},
-    reovim_kernel::api::v1::{BufferId, SimpleVirtualBufferRegistry, VirtualBufferRegistry},
+    reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest, GetAnnotationsResponse,
         GetCodecViewsRequest, GetCodecViewsResponse, GetLineCountRequest, GetLineCountResponse,
@@ -179,11 +179,8 @@ impl BufferService for BufferServiceImpl {
 
         session
             .with_state(|state| {
-                // Collect buffer IDs from both registries
-                let mut all_ids: Vec<BufferId> = state.app.kernel.buffers.list();
-                if let Some(vbr) = state.app.services.get::<SimpleVirtualBufferRegistry>() {
-                    all_ids.extend(vbr.list());
-                }
+                // Collect buffer IDs from unified manager
+                let all_ids: Vec<BufferId> = state.app.kernel.buffers.list();
 
                 let buffers: Vec<BufferInfo> = all_ids
                     .iter()

@@ -41,8 +41,6 @@ pub(crate) mod module;
 // Service registry for cross-module service discovery
 mod service;
 mod version;
-// Virtual buffer registry for large file management
-mod virtual_buffer_registry;
 
 // Note: The following modules have been removed as part of the kernel-driver
 // architecture cleanup (Issue #213):

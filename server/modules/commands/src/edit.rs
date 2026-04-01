@@ -14,8 +14,8 @@ use {
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
-        CommandId, FileMapping, LineIndex, ModuleId, SimpleVirtualBufferRegistry, VirtualBuffer,
-        VirtualBufferRegistry, events::kernel::FileOpened,
+        CommandId, FileMapping, LineIndex, ModuleId, VirtualBuffer,
+        events::kernel::FileOpened,
     },
 };
 
@@ -142,7 +142,7 @@ impl CommandHandler for EditCommand {
 ///
 /// Called when file size exceeds the large file threshold.
 /// Memory-maps the file, validates UTF-8, builds a `LineIndex`, creates
-/// a `VirtualBuffer`, and registers it in the `VirtualBufferRegistry`.
+/// a `VirtualBuffer`, and registers it in the unified buffer manager.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn open_large_file(
     runtime: &mut SessionRuntime<'_>,
@@ -170,18 +170,10 @@ fn open_large_file(
         .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
     vbuf.set_file_path(Some(canonical_path.clone()));
 
-    let vbuf_id = vbuf.id();
-
-    // Register in VirtualBufferRegistry (create if not yet registered)
-    let services = &runtime.kernel().services;
-    let registry = services
-        .get::<SimpleVirtualBufferRegistry>()
-        .unwrap_or_else(|| {
-            let reg = Arc::new(SimpleVirtualBufferRegistry::new());
-            services.register(Arc::clone(&reg));
-            reg
-        });
-    registry.register(vbuf);
+    // Register in unified buffer manager (stores as dyn BufferOps)
+    let vbuf_id = runtime.kernel().buffers.register(
+        Arc::new(reovim_arch::sync::RwLock::new(vbuf)),
+    );
 
     // Emit FileOpened event for subscribers (LSP, syntax, etc.)
     #[allow(clippy::cast_possible_truncation)]

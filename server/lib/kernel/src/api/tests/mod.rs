@@ -13,4 +13,3 @@ mod module_state;
 mod service;
 mod v1;
 mod version;
-mod virtual_buffer_registry;

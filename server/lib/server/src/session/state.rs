@@ -26,7 +26,7 @@ use {
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
         Buffer, BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
-        RegisterContent, SimpleVirtualBufferRegistry, VirtualBufferRegistry,
+        RegisterContent,
     },
 };
 
@@ -337,15 +337,11 @@ impl SessionState {
     // Buffer Methods (delegated to kernel)
     // ========================================================================
 
-    /// Get a buffer by ID (checks unified manager, then virtual registry).
+    /// Get a buffer by ID from the unified buffer manager.
     #[must_use]
     pub fn buffer(&self, id: BufferId) -> Option<BufferHandle> {
-        if let Some(arc) = self.app.kernel.buffers.get(id) {
-            return Some(BufferHandle::new(arc));
-        }
-        let vbr = self.app.services.get::<SimpleVirtualBufferRegistry>()?;
-        let arc = vbr.get(id)?;
-        Some(BufferHandle::new(arc as Arc<RwLock<dyn BufferOps>>))
+        let arc = self.app.kernel.buffers.get(id)?;
+        Some(BufferHandle::new(arc))
     }
 
     /// Get a buffer arc by ID (kernel buffers only).

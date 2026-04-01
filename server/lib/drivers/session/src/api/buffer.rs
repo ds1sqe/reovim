@@ -127,15 +127,20 @@ pub trait BufferApi: Send {
     /// Rename a buffer.
     fn rename_buffer(&mut self, buffer: BufferId, new_name: &str);
 
-    /// Check if a buffer is a virtual buffer (large file backed by mmap).
+    /// Query the capabilities of a buffer.
     ///
-    /// Virtual buffers should not be fully materialized via `buffer_content()`
-    /// as they may be multi-gigabyte.  Callers should use line-based access
-    /// or `buffer_write_to()` instead.
+    /// Returns the `BufferCapabilities` bitflags for the given buffer,
+    /// or `None` if the buffer doesn't exist.  Callers use this to decide
+    /// whether full-content materialization is safe (check
+    /// `CONTENT_MATERIALIZABLE`) or whether to prefer line-based /
+    /// streaming access.
     ///
-    /// Returns `false` by default (no virtual buffer support).
-    fn is_virtual_buffer(&self, _buffer: BufferId) -> bool {
-        false
+    /// Replaces the former `is_virtual_buffer()` boolean check.
+    fn buffer_capabilities(
+        &self,
+        _buffer: BufferId,
+    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+        None
     }
 
     /// Write buffer content to a writer without full materialization.

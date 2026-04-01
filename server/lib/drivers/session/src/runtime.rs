@@ -46,7 +46,7 @@ use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, TabId, UndoResult,
-        VirtualBufferRegistry, WindowId,
+        WindowId,
         events::kernel::{
             CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
         },
@@ -440,40 +440,16 @@ impl<'a> SessionRuntime<'a> {
         Some(f(&*buf))
     }
 
-    /// Read from either buffer type as `&dyn TextGeometry`.
+    /// Read from a buffer as `&dyn TextGeometry`.
     ///
-    /// Checks kernel buffers first, then virtual buffer registry.
-    /// Use this for motions, text objects, and any read-only text access
-    /// that works on both buffer types.
+    /// Use this for motions, text objects, and any read-only text access.
     pub fn with_text_geometry<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
     where
         F: FnOnce(&dyn reovim_kernel::api::v1::TextGeometry) -> R,
     {
-        if let Some(buf_arc) = self.kernel.buffers.get(buffer) {
-            let buf = buf_arc.read();
-            return Some(f(buf.as_text_geometry()));
-        }
-        let vbr = self.virtual_registry()?;
-        let vbuf_arc = vbr.get(buffer)?;
-        let vbuf = vbuf_arc.read();
-        Some(f(&*vbuf))
-    }
-
-    // === Virtual Buffer Dispatch (#739) ===
-
-    /// Get the virtual buffer registry from the service registry.
-    fn virtual_registry(
-        &self,
-    ) -> Option<std::sync::Arc<reovim_kernel::api::v1::SimpleVirtualBufferRegistry>> {
-        self.kernel
-            .services
-            .get::<reovim_kernel::api::v1::SimpleVirtualBufferRegistry>()
-    }
-
-    /// Check if a buffer ID belongs to a virtual buffer.
-    fn is_virtual_buffer(&self, id: BufferId) -> bool {
-        self.virtual_registry()
-            .is_some_and(|reg| reg.is_virtual(id))
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+        Some(f(buf.as_text_geometry()))
     }
 
     // === Option Change Tracking (#445) ===
@@ -668,10 +644,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_line(&self, buffer: BufferId, line: usize) -> Option<String> {
-        // Virtual buffer dispatch (#739)
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return vbuf.read().line(line);
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -679,9 +651,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_line_count(&self, buffer: BufferId) -> Option<usize> {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return Some(vbuf.read().line_count());
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -689,9 +658,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return vbuf.read().line_len(line);
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -706,66 +672,17 @@ impl BufferApi for SessionRuntime<'_> {
         start: Position,
         end: Position,
     ) -> Option<String> {
-        // Virtual buffer dispatch (#739)
-        // For virtual buffers, delegate to the same line-based extraction
-        // using VirtualBuffer::line() which returns owned Strings.
-        if let Some(vbuf_arc) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            let vbuf = vbuf_arc.read();
-            return Some(extract_text_range(start, end, vbuf.line_count(), |idx| vbuf.line(idx)));
-        }
         let buf_arc = self.kernel.buffers.get(buffer)?;
         let buf = buf_arc.read();
 
-        // Build the text from the range
-        let mut result = String::new();
-
-        if start.line == end.line {
-            // Single line case
-            if let Some(line) = buf.line(start.line) {
-                let char_len = line.chars().count();
-                let start_col = start.column.min(char_len);
-                let end_col = end.column.min(char_len);
-                if start_col < end_col {
-                    let sb = char_col_to_byte(&line, start_col);
-                    let eb = char_col_to_byte(&line, end_col);
-                    result.push_str(&line[sb..eb]);
-                }
-            }
-        } else {
-            // Multi-line case
-            // First line: from start column to end of line
-            if let Some(line) = buf.line(start.line) {
-                let char_len = line.chars().count();
-                let start_col = start.column.min(char_len);
-                let sb = char_col_to_byte(&line, start_col);
-                result.push_str(&line[sb..]);
-                result.push('\n');
-            }
-
-            // Middle lines: full lines
-            for line_idx in (start.line + 1)..end.line {
-                if let Some(line) = buf.line(line_idx) {
-                    result.push_str(&line);
-                    result.push('\n');
-                }
-            }
-
-            // Last line: from start to end column
-            if let Some(line) = buf.line(end.line) {
-                let char_len = line.chars().count();
-                let end_col = end.column.min(char_len);
-                let eb = char_col_to_byte(&line, end_col);
-                result.push_str(&line[..eb]);
-            }
-        }
-
-        Some(result)
+        // Use line-based extraction via BufferOps trait (works for both
+        // Rope and VirtualBuffer through dyn dispatch).
+        Some(extract_text_range(start, end, buf.line_count(), |idx| {
+            buf.line(idx).map(std::borrow::Cow::into_owned)
+        }))
     }
 
     fn buffer_content(&self, buffer: BufferId) -> Option<String> {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return Some(vbuf.read().content());
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -773,9 +690,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_file_path(&self, buffer: BufferId) -> Option<String> {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return vbuf.read().file_path().map(String::from);
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -783,9 +697,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool> {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return Some(vbuf.read().is_modified());
-        }
         self.kernel
             .buffers
             .get(buffer)
@@ -793,51 +704,12 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool) {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            vbuf.write().set_modified(modified);
-            return;
-        }
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             buf.write().set_modified(modified);
         }
     }
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
-        // Virtual buffer dispatch (#739)
-        if let Some(vbuf) = self
-            .is_virtual_buffer(buffer)
-            .then(|| self.virtual_registry().and_then(|r| r.get(buffer)))
-            .flatten()
-        {
-            let cursor_before = self.windows().active().map_or_else(
-                || Position::new(0, 0),
-                |w| Position::new(w.cursor.line, w.cursor.column),
-            );
-            let byte_offset = vbuf.read().position_to_byte(pos);
-            vbuf.write().insert_at(pos, text);
-            let cursor_after = cursor_before;
-            let edit = Edit::Insert {
-                position: pos,
-                text: text.to_string(),
-            };
-            self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
-            #[allow(clippy::cast_possible_truncation)]
-            {
-                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                let modification = Modification::Insert {
-                    start: (pos.line as u32, pos.column as u32),
-                    text: text.to_string(),
-                    start_byte: byte_offset,
-                };
-                self.kernel.event_bus.emit(BufferModified {
-                    buffer_id: buffer.as_usize() as u64,
-                    modification: modification.clone(),
-                });
-                self.changes
-                    .record_buffer_modified_with_edit(buffer, modification);
-            }
-            return;
-        }
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             // Get cursor from per-client active window (#471)
             // Note: cursor_after will be set by runner from CommandResult
@@ -861,7 +733,7 @@ impl BufferApi for SessionRuntime<'_> {
             };
             self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
-            // Emit BufferModified event for subscribers (#655, matches delete_range pattern)
+            // Emit BufferModified event for subscribers (#655)
             #[allow(clippy::cast_possible_truncation)]
             {
                 use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
@@ -881,49 +753,8 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position) {
-        // Virtual buffer dispatch (#739)
-        if let Some(vbuf) = self
-            .is_virtual_buffer(buffer)
-            .then(|| self.virtual_registry().and_then(|r| r.get(buffer)))
-            .flatten()
-        {
-            let cursor_before = self.windows().active().map_or_else(
-                || Position::new(0, 0),
-                |w| Position::new(w.cursor.line, w.cursor.column),
-            );
-            let byte_offset = vbuf.read().position_to_byte(start);
-            let deleted_text = vbuf.write().delete_range(start, end);
-            let cursor_after = cursor_before;
-            if deleted_text.is_empty() {
-                self.changes.record_buffer_modified(buffer);
-            } else {
-                let edit = Edit::Delete {
-                    position: start,
-                    text: deleted_text.clone(),
-                };
-                self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
-                #[allow(clippy::cast_possible_truncation)]
-                {
-                    use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                    let modification = Modification::Delete {
-                        start: (start.line as u32, start.column as u32),
-                        end: (end.line as u32, end.column as u32),
-                        text: deleted_text,
-                        start_byte: byte_offset,
-                    };
-                    self.kernel.event_bus.emit(BufferModified {
-                        buffer_id: buffer.as_usize() as u64,
-                        modification: modification.clone(),
-                    });
-                    self.changes
-                        .record_buffer_modified_with_edit(buffer, modification);
-                }
-            }
-            return;
-        }
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             // Get cursor from per-client active window (#471)
-            // TODO(#471 Phase 6): cursor_after should come from CommandResult
             let cursor_before = self.windows().active().map_or_else(
                 || Position::new(0, 0),
                 |w| Position::new(w.cursor.line, w.cursor.column),
@@ -950,7 +781,7 @@ impl BufferApi for SessionRuntime<'_> {
                 };
                 self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
-                // Emit BufferModified event for pair module and other subscribers (#440)
+                // Emit BufferModified event for subscribers (#440)
                 #[allow(clippy::cast_possible_truncation)]
                 {
                     use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
@@ -973,42 +804,6 @@ impl BufferApi for SessionRuntime<'_> {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn replace_content(&mut self, buffer: BufferId, content: &str) {
-        // Virtual buffer dispatch (#739)
-        if let Some(vbuf) = self
-            .is_virtual_buffer(buffer)
-            .then(|| self.virtual_registry().and_then(|r| r.get(buffer)))
-            .flatten()
-        {
-            let cursor_before = self.windows().active().map_or_else(
-                || Position::new(0, 0),
-                |w| Position::new(w.cursor.line, w.cursor.column),
-            );
-            let old_content = vbuf.read().content();
-            vbuf.write().set_content(content);
-            let edits = vec![
-                Edit::Delete {
-                    position: Position::new(0, 0),
-                    text: old_content,
-                },
-                Edit::Insert {
-                    position: Position::new(0, 0),
-                    text: content.to_string(),
-                },
-            ];
-            self.record_edit_mine(buffer, edits, cursor_before, cursor_before);
-            #[allow(clippy::cast_possible_truncation)]
-            {
-                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                let modification = Modification::FullReplace;
-                self.kernel.event_bus.emit(BufferModified {
-                    buffer_id: buffer.as_usize() as u64,
-                    modification: modification.clone(),
-                });
-                self.changes
-                    .record_buffer_modified_with_edit(buffer, modification);
-            }
-            return;
-        }
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             let cursor_before = self.windows().active().map_or_else(
                 || Position::new(0, 0),
@@ -1062,18 +857,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn delete_buffer(&mut self, buffer: BufferId) -> Result<(), BufferError> {
-        // Check virtual buffer registry (#739)
-        if let Some(reg) = self
-            .is_virtual_buffer(buffer)
-            .then(|| self.virtual_registry())
-            .flatten()
-        {
-            if reg.unregister(buffer).is_some() {
-                self.changes.record_buffer_deleted(buffer);
-                return Ok(());
-            }
-            return Err(BufferError::NotFound(buffer));
-        }
         if self.kernel.buffers.count() <= 1 {
             return Err(BufferError::CannotDeleteLastBuffer);
         }
@@ -1085,12 +868,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn rename_buffer(&mut self, buffer: BufferId, new_name: &str) {
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            vbuf.write().set_file_path(Some(new_name.to_string()));
-            self.changes
-                .record_buffer_renamed(buffer, new_name.to_string());
-            return;
-        }
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             buf.write().set_file_path(Some(new_name.to_string()));
             self.changes
@@ -1098,9 +875,14 @@ impl BufferApi for SessionRuntime<'_> {
         }
     }
 
-    fn is_virtual_buffer(&self, buffer: BufferId) -> bool {
-        self.virtual_registry()
-            .is_some_and(|reg| reg.is_virtual(buffer))
+    fn buffer_capabilities(
+        &self,
+        buffer: BufferId,
+    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().capabilities())
     }
 
     fn buffer_write_to(
@@ -1108,18 +890,12 @@ impl BufferApi for SessionRuntime<'_> {
         buffer: BufferId,
         writer: &mut dyn std::io::Write,
     ) -> Result<(), std::io::Error> {
-        // Virtual buffer: stream pieces directly (no full materialization)
-        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
-            return vbuf.read().write_to(writer);
-        }
-        // Rope buffer: materialize and write
         self.kernel
             .buffers
             .get(buffer)
-            .map(|buf| buf.read().content())
             .map_or_else(
                 || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
-                |content| writer.write_all(content.as_bytes()),
+                |buf| writer.write_all(buf.read().content().as_bytes()),
             )
     }
 }
