@@ -22,5 +22,8 @@ reovim-driver-session = { workspace = true }
 # Annotation types (for DecodeResult annotations)
 reovim-driver-annotation = { workspace = true }
 
+# VFS types (for FileHandle in streaming decode)
+reovim-driver-vfs = { workspace = true }
+
 # Sync primitives for stores
 parking_lot = { workspace = true }

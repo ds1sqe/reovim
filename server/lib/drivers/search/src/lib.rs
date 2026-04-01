@@ -14,12 +14,14 @@
 //! ```
 
 mod key;
+mod line_source;
 mod provider;
 mod registry;
 mod types;
 
 pub use {
     key::SearchKey,
+    line_source::{BufferLineSource, LineSource, VirtualBufferLineSource},
     provider::SearchProvider,
     registry::SearchProviderRegistry,
     types::{Direction, SearchError, SearchMatch},

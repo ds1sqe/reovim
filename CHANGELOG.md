@@ -4,6 +4,26 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.14.5-dev] - Unreleased
 
+### Added
+
+- **kernel**: virtual buffer architecture — mmap + piece table for multi-GB file editing with constant memory overhead. Files > 64 MB use `VirtualBuffer` backed by zero-copy mmap instead of Rope (#739)
+- **kernel**: `PieceTree` B-tree with `Arc` structural sharing for O(1) clone, matching the existing Rope pattern (#739)
+- **kernel**: `LineIndex` for O(log n) line lookup via binary search over newline byte offsets, with full UTF-8 validation (#739)
+- **kernel**: `FileMapping` trait for zero-copy access to original file bytes — implemented by `MappedFile` (VFS driver) and `HeapMapping` (tests) (#739)
+- **kernel**: `VirtualBufferRegistry` service for parallel buffer management alongside existing `BufferManager` (#739)
+- **vfs**: `mmap_read()` method on `VfsDriver` trait with `memmap2` implementation and heap-copy fallback (#739)
+- **session**: transparent `BufferApi` dispatch — all buffer operations check `VirtualBufferRegistry` first, falling back to Rope `BufferManager`. Modules work with large files without changes (#739)
+- **search**: `LineSource` trait with `BufferLineSource` and `VirtualBufferLineSource` adapters for buffer-type-agnostic search (#739)
+- **session**: `buffer_write_to()` and `is_virtual_buffer()` methods on `BufferApi` for streaming write and buffer type detection (#739)
+- **codec**: `decode_streaming()` method on `ContentCodec` for header-only parsing of large binary files (#739)
+
+### Changed
+
+- **snapshot**: `Snapshot` now supports both Rope and `VirtualBuffer` via internal `SnapshotContent` enum — `capture_virtual()` and `restore_virtual()` methods added (#739)
+- **commands**: `:e` command detects file size before loading — large UTF-8 files use mmap path, large binaries try streaming codec, small files use existing Rope path (#739)
+- **completion**: virtual buffer completion uses line-based access instead of full content materialization (#739)
+- **format**: format commands skip virtual buffers gracefully (#739)
+
 ## [0.14.4] - 2026-04-01
 
 ### Added

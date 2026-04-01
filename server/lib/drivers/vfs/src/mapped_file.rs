@@ -69,11 +69,9 @@ impl MappedFile {
         // Create an anonymous mmap-like mapping from bytes.
         // We use memmap2::MmapMut to create a writable mapping, copy bytes
         // into it, then freeze it to get a read-only Mmap.
-        let mut mmap_mut = memmap2::MmapMut::map_anon(bytes.len())
-            .expect("anonymous mmap failed");
+        let mut mmap_mut = memmap2::MmapMut::map_anon(bytes.len()).expect("anonymous mmap failed");
         mmap_mut.copy_from_slice(bytes);
-        let mmap = mmap_mut.make_read_only()
-            .expect("mmap freeze failed");
+        let mmap = mmap_mut.make_read_only().expect("mmap freeze failed");
 
         Self {
             inner: Arc::new(MappedFileInner {

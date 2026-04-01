@@ -196,8 +196,7 @@ impl crate::VfsDriver for StandardVfs {
         // truncated externally while mapped. Callers must check is_stale()
         // before accessing bytes on any write path.
         #[allow(unsafe_code)]
-        let mmap = unsafe { memmap2::Mmap::map(&file) }
-            .map_err(VfsError::Io)?;
+        let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(VfsError::Io)?;
 
         Ok(crate::MappedFile::new(mmap, path, mtime, size))
     }

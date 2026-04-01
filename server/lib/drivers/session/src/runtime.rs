@@ -692,12 +692,7 @@ impl BufferApi for SessionRuntime<'_> {
         // using VirtualBuffer::line() which returns owned Strings.
         if let Some(vbuf_arc) = self.virtual_registry().and_then(|r| r.get(buffer)) {
             let vbuf = vbuf_arc.read();
-            return Some(extract_text_range(
-                start,
-                end,
-                vbuf.line_count(),
-                |idx| vbuf.line(idx),
-            ));
+            return Some(extract_text_range(start, end, vbuf.line_count(), |idx| vbuf.line(idx)));
         }
         let buf_arc = self.kernel.buffers.get(buffer)?;
         let buf = buf_arc.read();
@@ -1079,6 +1074,31 @@ impl BufferApi for SessionRuntime<'_> {
             self.changes
                 .record_buffer_renamed(buffer, new_name.to_string());
         }
+    }
+
+    fn is_virtual_buffer(&self, buffer: BufferId) -> bool {
+        self.virtual_registry()
+            .is_some_and(|reg| reg.is_virtual(buffer))
+    }
+
+    fn buffer_write_to(
+        &self,
+        buffer: BufferId,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        // Virtual buffer: stream pieces directly (no full materialization)
+        if let Some(vbuf) = self.virtual_registry().and_then(|r| r.get(buffer)) {
+            return vbuf.read().write_to(writer);
+        }
+        // Rope buffer: materialize and write
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().content())
+            .map_or_else(
+                || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
+                |content| writer.write_all(content.as_bytes()),
+            )
     }
 }
 

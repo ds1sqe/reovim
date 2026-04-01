@@ -150,6 +150,26 @@ pub trait ContentCodec: Send + Sync {
     fn decode_view(&self, raw: &[u8], _view: &str) -> Result<DecodeResult, CodecError> {
         self.decode(raw)
     }
+
+    /// Decode a large file via streaming (reading only what's needed).
+    ///
+    /// For large binary files, this avoids loading the entire file into memory.
+    /// Instead, the codec reads headers and metadata from the file handle.
+    ///
+    /// Returns `None` if this codec does not support streaming decode
+    /// (the default). Callers fall back to full `decode()` in that case.
+    ///
+    /// # Arguments
+    ///
+    /// * `handle` - An open file handle for streaming reads
+    /// * `file_size` - Total file size in bytes
+    fn decode_streaming(
+        &self,
+        _handle: &mut dyn reovim_driver_vfs::FileHandle,
+        _file_size: u64,
+    ) -> Option<Result<DecodeResult, CodecError>> {
+        None
+    }
 }
 
 #[cfg(test)]

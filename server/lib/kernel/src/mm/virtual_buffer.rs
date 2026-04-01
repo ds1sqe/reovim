@@ -11,7 +11,12 @@
 //! `MappedFile` (VFS driver, real mmap) and [`HeapMapping`] (test helper)
 //! both implement this trait.
 
-use std::{fmt, hash::{Hash, Hasher}, ops::Range, sync::Arc};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Range,
+    sync::Arc,
+};
 
 use super::{
     BufferId, Position,
@@ -156,8 +161,7 @@ impl VirtualBuffer {
         let piece = if file_size > 0 {
             let metrics = PieceMetrics::compute(
                 // SAFETY: LineIndex::from_bytes already validated UTF-8
-                std::str::from_utf8(original.as_bytes())
-                    .expect("LineIndex validated UTF-8"),
+                std::str::from_utf8(original.as_bytes()).expect("LineIndex validated UTF-8"),
             );
             Piece {
                 source: PieceSource::Original {
@@ -381,16 +385,17 @@ impl VirtualBuffer {
     /// Get the text for a piece.
     fn piece_text(&self, piece: &Piece) -> String {
         match piece.source {
-            PieceSource::Original { byte_start, byte_len } => {
+            PieceSource::Original {
+                byte_start,
+                byte_len,
+            } => {
                 let bytes = self.original.as_bytes();
                 let start = byte_start as usize;
                 let end = start + byte_len as usize;
                 // SAFETY: LineIndex validated UTF-8 at construction
                 String::from_utf8_lossy(&bytes[start..end]).into_owned()
             }
-            PieceSource::Add { offset, len } => {
-                self.add_buffer[offset..offset + len].to_string()
-            }
+            PieceSource::Add { offset, len } => self.add_buffer[offset..offset + len].to_string(),
         }
     }
 }
@@ -588,19 +593,60 @@ impl VirtualBuffer {
         self.line_index.rebuild(&content);
     }
 
+    /// Write buffer content to a writer without full materialization.
+    ///
+    /// Iterates pieces in order, writing each directly from the mmap
+    /// or add buffer.  This avoids allocating a full copy in memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` if writing fails.
+    pub fn write_to(&self, writer: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+        for piece in self.pieces.iter_pieces() {
+            match piece.source {
+                PieceSource::Original {
+                    byte_start,
+                    byte_len,
+                } => {
+                    let bytes = self.original.as_bytes();
+                    let start = byte_start as usize;
+                    let end = start + byte_len as usize;
+                    writer.write_all(&bytes[start..end])?;
+                }
+                PieceSource::Add { offset, len } => {
+                    writer.write_all(
+                        self.add_buffer
+                            .as_bytes()
+                            .get(offset..offset + len)
+                            .unwrap_or_default(),
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Materialize content as bytes (for line index rebuild).
     fn content_bytes(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(self.pieces.byte_len() as usize);
         for piece in self.pieces.iter_pieces() {
             match piece.source {
-                PieceSource::Original { byte_start, byte_len } => {
+                PieceSource::Original {
+                    byte_start,
+                    byte_len,
+                } => {
                     let bytes = self.original.as_bytes();
                     let start = byte_start as usize;
                     let end = start + byte_len as usize;
                     result.extend_from_slice(&bytes[start..end]);
                 }
                 PieceSource::Add { offset, len } => {
-                    result.extend_from_slice(self.add_buffer.as_bytes().get(offset..offset + len).unwrap_or_default());
+                    result.extend_from_slice(
+                        self.add_buffer
+                            .as_bytes()
+                            .get(offset..offset + len)
+                            .unwrap_or_default(),
+                    );
                 }
             }
         }

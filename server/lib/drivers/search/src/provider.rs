@@ -1,7 +1,10 @@
 //! Search provider trait.
 
 use {
-    super::types::{Direction, SearchError, SearchMatch},
+    super::{
+        LineSource,
+        types::{Direction, SearchError, SearchMatch},
+    },
     reovim_kernel::api::v1::{Buffer, Position},
 };
 
@@ -64,6 +67,39 @@ pub trait SearchProvider: Send + Sync {
     ///
     /// Returns the word as a search pattern (implementation may add word boundaries).
     fn word_at_cursor(&self, buffer: &Buffer, cursor: Position) -> Option<String>;
+
+    // === LineSource-based methods (buffer-type-agnostic) ===
+
+    /// Find next match using a generic `LineSource`.
+    ///
+    /// This generalizes `find_next` to work with both `Buffer` and
+    /// `VirtualBuffer` via the [`LineSource`] trait.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SearchError::InvalidPattern` if the pattern is invalid.
+    fn find_next_source(
+        &self,
+        source: &dyn LineSource,
+        cursor: Position,
+        pattern: &str,
+        direction: Direction,
+        wrap: bool,
+    ) -> Result<Option<SearchMatch>, SearchError>;
+
+    /// Find all matches using a generic `LineSource`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SearchError::InvalidPattern` if the pattern is invalid.
+    fn find_all_source(
+        &self,
+        source: &dyn LineSource,
+        pattern: &str,
+    ) -> Result<Vec<SearchMatch>, SearchError>;
+
+    /// Get word under cursor using a generic `LineSource`.
+    fn word_at_cursor_source(&self, source: &dyn LineSource, cursor: Position) -> Option<String>;
 }
 
 #[cfg(test)]

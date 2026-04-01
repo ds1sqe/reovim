@@ -62,6 +62,72 @@ impl SearchProvider for MockSearch {
             .map_or(col, |i| i + 1);
         Some(content[start..end].to_string())
     }
+
+    fn find_next_source(
+        &self,
+        source: &dyn super::LineSource,
+        _cursor: Position,
+        pattern: &str,
+        _direction: Direction,
+        _wrap: bool,
+    ) -> Result<Option<SearchMatch>, SearchError> {
+        if pattern == "[invalid" {
+            return Err(SearchError::InvalidPattern("unclosed bracket".into()));
+        }
+        let content = source.content();
+        Ok(content.find(pattern).map(|pos| SearchMatch {
+            start: Position::new(0, pos),
+            end: Position::new(0, pos + pattern.len()),
+        }))
+    }
+
+    fn find_all_source(
+        &self,
+        source: &dyn super::LineSource,
+        pattern: &str,
+    ) -> Result<Vec<SearchMatch>, SearchError> {
+        if pattern == "[invalid" {
+            return Err(SearchError::InvalidPattern("unclosed bracket".into()));
+        }
+        let content = source.content();
+        let mut matches = Vec::new();
+        let mut start = 0;
+        while let Some(pos) = content[start..].find(pattern) {
+            let abs_pos = start + pos;
+            matches.push(SearchMatch {
+                start: Position::new(0, abs_pos),
+                end: Position::new(0, abs_pos + pattern.len()),
+            });
+            start = abs_pos + pattern.len();
+        }
+        Ok(matches)
+    }
+
+    fn word_at_cursor_source(
+        &self,
+        source: &dyn super::LineSource,
+        cursor: Position,
+    ) -> Option<String> {
+        let content = source.content();
+        let col = cursor.column;
+        if col >= content.len() {
+            return None;
+        }
+        let bytes = content.as_bytes();
+        if !bytes[col].is_ascii_alphanumeric() {
+            return None;
+        }
+        let start = (0..=col)
+            .rev()
+            .take_while(|&i| bytes[i].is_ascii_alphanumeric())
+            .last()
+            .unwrap_or(col);
+        let end = (col..content.len())
+            .take_while(|&i| bytes[i].is_ascii_alphanumeric())
+            .last()
+            .map_or(col, |i| i + 1);
+        Some(content[start..end].to_string())
+    }
 }
 
 #[test]

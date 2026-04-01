@@ -37,6 +37,10 @@ impl CommandHandler for FormatDocument {
             debug!("format: no active buffer");
             return CommandResult::Success;
         };
+        if runtime.is_virtual_buffer(buf_id) {
+            debug!("format: skipping virtual buffer (file too large)");
+            return CommandResult::Success;
+        }
         let Some(file_path) = runtime.buffer_file_path(buf_id) else {
             debug!("format: no file path for buffer");
             return CommandResult::Success;
@@ -89,6 +93,9 @@ impl CommandHandler for FormatSelection {
         let Some(buf_id) = runtime.active_buffer() else {
             return CommandResult::Success;
         };
+        if runtime.is_virtual_buffer(buf_id) {
+            return CommandResult::Success;
+        }
         let Some(file_path) = runtime.buffer_file_path(buf_id) else {
             return CommandResult::Success;
         };

@@ -2,7 +2,7 @@
 //!
 //! Implements the `:e` (edit) command for opening files in buffers.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use {
     reovim_driver_codec::{
@@ -12,10 +12,18 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
+    reovim_driver_vfs::VfsDriver,
+    reovim_kernel::api::v1::{
+        CommandId, FileMapping, LineIndex, ModuleId, SimpleVirtualBufferRegistry, VirtualBuffer,
+        VirtualBufferRegistry, events::kernel::FileOpened,
+    },
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
+
+/// File size threshold for large file detection (64 MB).
+/// Files larger than this are opened via mmap + `VirtualBuffer` instead of Rope.
+const LARGE_FILE_THRESHOLD: u64 = 64 * 1024 * 1024;
 
 /// Edit command - open a file in the current buffer.
 #[derive(Debug, Clone, Copy)]
@@ -60,8 +68,17 @@ impl CommandHandler for EditCommand {
             return CommandResult::Error("execution failed: VFS not available".to_string());
         };
 
-        // Read raw bytes from file
-        let bytes = match vfs.read(Path::new(filename)) {
+        let path = Path::new(filename);
+
+        // Check file size to decide between VirtualBuffer (large) and Rope (small).
+        let file_size = vfs.metadata(path).map_or(0, |m| m.size);
+
+        if file_size > LARGE_FILE_THRESHOLD {
+            return open_large_file(runtime, vfs.as_ref(), path, filename);
+        }
+
+        // Small file path — existing Rope-based loading
+        let bytes = match vfs.read(path) {
             Ok(b) => b,
             Err(e) => {
                 return CommandResult::Error(format!(
@@ -119,6 +136,179 @@ impl CommandHandler for EditCommand {
 
         CommandResult::Success
     }
+}
+
+/// Open a large file via mmap + `VirtualBuffer` (zero-copy path).
+///
+/// Called when file size exceeds the large file threshold.
+/// Memory-maps the file, validates UTF-8, builds a `LineIndex`, creates
+/// a `VirtualBuffer`, and registers it in the `VirtualBufferRegistry`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn open_large_file(
+    runtime: &mut SessionRuntime<'_>,
+    vfs: &dyn VfsDriver,
+    path: &Path,
+    filename: &str,
+) -> CommandResult {
+    // Memory-map the file for zero-copy access
+    let Ok(mapped_file) = vfs.mmap_read(path) else {
+        return CommandResult::Error(format!("execution failed: Cannot mmap file '{filename}'"));
+    };
+
+    // Build line index — validates UTF-8 during scan
+    let Ok(line_index) = LineIndex::from_bytes(mapped_file.as_bytes()) else {
+        // Non-UTF-8 large file — try streaming codec decode
+        return open_large_binary(runtime, vfs, path, filename);
+    };
+
+    // Create VirtualBuffer backed by the mmap
+    let original: Arc<dyn FileMapping> = Arc::new(mapped_file);
+    let mut vbuf = VirtualBuffer::new(original, line_index);
+
+    // Canonicalize the path
+    let canonical_path = std::fs::canonicalize(filename)
+        .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
+    vbuf.set_file_path(Some(canonical_path.clone()));
+
+    let vbuf_id = vbuf.id();
+
+    // Register in VirtualBufferRegistry (create if not yet registered)
+    let services = &runtime.kernel().services;
+    let registry = services
+        .get::<SimpleVirtualBufferRegistry>()
+        .unwrap_or_else(|| {
+            let reg = Arc::new(SimpleVirtualBufferRegistry::new());
+            services.register(Arc::clone(&reg));
+            reg
+        });
+    registry.register(vbuf);
+
+    // Emit FileOpened event for subscribers (LSP, syntax, etc.)
+    #[allow(clippy::cast_possible_truncation)]
+    let buffer_id_raw = vbuf_id.as_usize() as u64;
+    runtime.kernel().event_bus.emit(FileOpened {
+        buffer_id: buffer_id_raw,
+        path: canonical_path,
+    });
+
+    // Switch active buffer to the new virtual buffer
+    runtime.set_active_buffer(Some(vbuf_id));
+    runtime.record_buffer_modified(vbuf_id);
+
+    CommandResult::Success
+}
+
+/// Open a large binary file via streaming codec decode.
+///
+/// Called when a large file fails UTF-8 validation.  Tries the codec
+/// pipeline's `decode_streaming()` method which reads only headers.
+/// Falls back to full decode if streaming is not supported and the
+/// file is below 256 MB; returns an error for larger files.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn open_large_binary(
+    runtime: &mut SessionRuntime<'_>,
+    vfs: &dyn VfsDriver,
+    path: &Path,
+    filename: &str,
+) -> CommandResult {
+    // 256 MB hard limit for non-streaming binary decode
+    const BINARY_SIZE_LIMIT: u64 = 256 * 1024 * 1024;
+
+    let file_size = vfs.metadata(path).map_or(0, |m| m.size);
+
+    // Try streaming decode via codec pipeline
+    let services = &runtime.kernel().services;
+    let classifier_store = services.get::<ContentClassifierStore>();
+    let factory_store = services.get::<ContentCodecFactoryStore>();
+
+    if let (Some(classifiers), Some(factories)) = (&classifier_store, &factory_store)
+        && let Ok(mut handle) = vfs.open(path, reovim_driver_vfs::OpenOptions::read())
+    {
+        let mut header = [0u8; 64];
+        let _ = handle.read(&mut header);
+        let _ = handle.seek(reovim_driver_vfs::SeekFrom::Start(0));
+
+        if let Some(content_type) = classifiers.classify(&header, filename)
+            && let Some(codec) = factories.find(&content_type)
+            && let Some(result) = codec.decode_streaming(handle.as_mut(), file_size)
+        {
+            match result {
+                Ok(decode_result) => {
+                    return finish_decoded_open(runtime, filename, &decode_result.content);
+                }
+                Err(e) => {
+                    tracing::warn!("Streaming decode failed for {filename}: {e}");
+                }
+            }
+        }
+    }
+
+    // Fallback: full read if under size limit
+    if file_size > BINARY_SIZE_LIMIT {
+        return CommandResult::Error(format!(
+            "execution failed: File '{filename}' is too large ({} MB) \
+             and no streaming codec is available",
+            file_size / (1024 * 1024)
+        ));
+    }
+
+    // Under limit — fall back to normal read + codec pipeline
+    let bytes = match vfs.read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            return CommandResult::Error(format!(
+                "execution failed: Cannot read file '{filename}': {e}"
+            ));
+        }
+    };
+
+    match decode_file_content(&bytes, filename, runtime) {
+        Ok(content) => finish_decoded_open(runtime, filename, &content),
+        Err(e) => CommandResult::Error(format!("execution failed: {e}")),
+    }
+}
+
+/// Finish opening a decoded file by loading content into the active buffer.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn finish_decoded_open(
+    runtime: &mut SessionRuntime<'_>,
+    filename: &str,
+    content: &str,
+) -> CommandResult {
+    let Some(buffer_id) = runtime.active_buffer() else {
+        return CommandResult::Error("no buffer".to_string());
+    };
+
+    let canonical_path = std::fs::canonicalize(filename)
+        .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
+
+    {
+        let kernel = runtime.kernel();
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+            return CommandResult::Error(format!(
+                "execution failed: Buffer {} not found",
+                buffer_id.as_usize()
+            ));
+        };
+
+        {
+            let mut buffer = buffer_arc.write();
+            buffer.set_content(content);
+            buffer.set_file_path(Some(canonical_path.clone()));
+            buffer.set_modified(false);
+        }
+
+        #[allow(clippy::cast_possible_truncation)]
+        let buffer_id_raw = buffer_id.as_usize() as u64;
+        kernel.event_bus.emit(FileOpened {
+            buffer_id: buffer_id_raw,
+            path: canonical_path,
+        });
+    }
+
+    runtime.record_buffer_modified(buffer_id);
+
+    CommandResult::Success
 }
 
 /// Decode file content through the codec pipeline.

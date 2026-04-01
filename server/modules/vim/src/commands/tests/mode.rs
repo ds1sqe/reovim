@@ -1243,6 +1243,33 @@ impl SearchProvider for MockSearchProvider {
     fn word_at_cursor(&self, _buffer: &Buffer, _cursor: Position) -> Option<String> {
         None
     }
+
+    fn find_next_source(
+        &self,
+        _source: &dyn reovim_driver_search::LineSource,
+        _cursor: Position,
+        _pattern: &str,
+        _direction: reovim_driver_search::Direction,
+        _wrap: bool,
+    ) -> Result<Option<SearchMatch>, SearchError> {
+        self.result.read().clone().unwrap_or(Ok(None))
+    }
+
+    fn find_all_source(
+        &self,
+        _source: &dyn reovim_driver_search::LineSource,
+        _pattern: &str,
+    ) -> Result<Vec<SearchMatch>, SearchError> {
+        Ok(vec![])
+    }
+
+    fn word_at_cursor_source(
+        &self,
+        _source: &dyn reovim_driver_search::LineSource,
+        _cursor: Position,
+    ) -> Option<String> {
+        None
+    }
 }
 
 fn create_test_context_with_search(provider: Arc<dyn SearchProvider>) -> KernelContext {

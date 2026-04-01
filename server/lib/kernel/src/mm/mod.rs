@@ -50,9 +50,9 @@ mod buffer_id;
 mod cache;
 mod delimiter;
 mod edit;
-mod position;
 mod line_index;
 mod piece_table;
+mod position;
 mod rope;
 // Large file offsets are u64 but Rust indexing uses usize.
 // Truncation is lossless on our 64-bit-only target.
@@ -72,10 +72,12 @@ mod word;
 #[cfg(test)]
 mod tests;
 
-pub use line_index::{InvalidUtf8, LineIndex};
 #[allow(unused_imports)]
 pub use piece_table::{Piece, PieceMetrics, PieceSource, PieceTree};
-pub use virtual_buffer::{FileMapping, HeapMapping, VirtualBuffer, VirtualSnapshot};
+pub use {
+    line_index::{InvalidUtf8, LineIndex},
+    virtual_buffer::{FileMapping, HeapMapping, VirtualBuffer, VirtualSnapshot},
+};
 
 pub use {
     buffer::Buffer,

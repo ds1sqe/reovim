@@ -2398,6 +2398,7 @@ dependencies = [
  "parking_lot",
  "reovim-driver-annotation",
  "reovim-driver-session",
+ "reovim-driver-vfs",
  "reovim-kernel",
 ]
 

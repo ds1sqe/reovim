@@ -343,8 +343,7 @@ impl PieceTree {
             return Self::new();
         }
         let count = pieces.len();
-        let leaf_nodes: Vec<Arc<PieceNode>> =
-            pieces.into_iter().map(PieceNode::new_leaf).collect();
+        let leaf_nodes: Vec<Arc<PieceNode>> = pieces.into_iter().map(PieceNode::new_leaf).collect();
         Self {
             root: Some(build_tree(leaf_nodes)),
             piece_count: count,
@@ -372,7 +371,10 @@ fn split_piece(piece: &Piece, byte_offset: u64) -> (Piece, Piece) {
     let right_bytes = total_bytes - byte_offset;
 
     let (left_source, right_source) = match piece.source {
-        PieceSource::Original { byte_start, byte_len } => {
+        PieceSource::Original {
+            byte_start,
+            byte_len,
+        } => {
             debug_assert!(byte_offset <= byte_len);
             (
                 PieceSource::Original {
@@ -597,9 +599,7 @@ impl PieceTree {
 fn tree_depth(node: &PieceNode) -> usize {
     match &node.kind {
         PieceNodeKind::Leaf(_) => 0,
-        PieceNodeKind::Internal(children) => {
-            1 + tree_depth(children.first().expect("non-empty"))
-        }
+        PieceNodeKind::Internal(children) => 1 + tree_depth(children.first().expect("non-empty")),
     }
 }
 
@@ -608,9 +608,7 @@ fn validate_node(node: &PieceNode, expected_depth: usize, is_root: bool) -> Resu
     match &node.kind {
         PieceNodeKind::Leaf(_) => {
             if expected_depth != 0 {
-                return Err(format!(
-                    "leaf at wrong depth: expected {expected_depth}, got 0"
-                ));
+                return Err(format!("leaf at wrong depth: expected {expected_depth}, got 0"));
             }
             Ok(())
         }

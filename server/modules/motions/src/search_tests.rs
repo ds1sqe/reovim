@@ -852,6 +852,89 @@ impl SearchProvider for MockSearchProvider {
         let word: String = chars[start..=end].iter().collect();
         Some(format!(r"\b{word}\b"))
     }
+
+    fn find_next_source(
+        &self,
+        source: &dyn reovim_driver_search::LineSource,
+        cursor: Position,
+        pattern: &str,
+        direction: Direction,
+        _wrap: bool,
+    ) -> Result<Option<SearchMatch>, SearchError> {
+        let content = source.content();
+        match direction {
+            Direction::Forward => {
+                let start_offset = cursor.column.saturating_add(1);
+                let search_area = if start_offset < content.len() {
+                    &content[start_offset..]
+                } else {
+                    ""
+                };
+                Ok(search_area.find(pattern).map(|pos| {
+                    let abs = start_offset + pos;
+                    SearchMatch {
+                        start: Position::new(cursor.line, abs),
+                        end: Position::new(cursor.line, abs + pattern.len()),
+                    }
+                }))
+            }
+            Direction::Backward => {
+                let search_area = if cursor.column > 0 {
+                    &content[..cursor.column]
+                } else {
+                    ""
+                };
+                Ok(search_area.rfind(pattern).map(|pos| SearchMatch {
+                    start: Position::new(cursor.line, pos),
+                    end: Position::new(cursor.line, pos + pattern.len()),
+                }))
+            }
+        }
+    }
+
+    fn find_all_source(
+        &self,
+        source: &dyn reovim_driver_search::LineSource,
+        pattern: &str,
+    ) -> Result<Vec<SearchMatch>, SearchError> {
+        let content = source.content();
+        let mut matches = Vec::new();
+        let mut start = 0;
+        while let Some(pos) = content[start..].find(pattern) {
+            let abs = start + pos;
+            matches.push(SearchMatch {
+                start: Position::new(0, abs),
+                end: Position::new(0, abs + pattern.len()),
+            });
+            start = abs + pattern.len();
+        }
+        Ok(matches)
+    }
+
+    fn word_at_cursor_source(
+        &self,
+        source: &dyn reovim_driver_search::LineSource,
+        cursor: Position,
+    ) -> Option<String> {
+        let line = source.line(cursor.line)?;
+        let chars: Vec<char> = line.chars().collect();
+        if cursor.column >= chars.len() {
+            return None;
+        }
+        if !chars[cursor.column].is_alphanumeric() && chars[cursor.column] != '_' {
+            return None;
+        }
+        let mut start = cursor.column;
+        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+            start -= 1;
+        }
+        let mut end = cursor.column;
+        while end + 1 < chars.len() && (chars[end + 1].is_alphanumeric() || chars[end + 1] == '_') {
+            end += 1;
+        }
+        let word: String = chars[start..=end].iter().collect();
+        Some(format!(r"\b{word}\b"))
+    }
 }
 
 /// Create a test context with a mock search provider registered.

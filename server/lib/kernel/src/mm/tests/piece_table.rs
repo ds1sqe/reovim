@@ -4,7 +4,10 @@ use super::*;
 
 fn orig_piece(byte_start: u64, byte_len: u64, chars: u64, lines: u64) -> Piece {
     Piece {
-        source: PieceSource::Original { byte_start, byte_len },
+        source: PieceSource::Original {
+            byte_start,
+            byte_len,
+        },
         metrics: PieceMetrics {
             byte_len,
             char_count: chars,
@@ -74,7 +77,13 @@ fn insert_at_start() {
     let pieces: Vec<_> = tree.iter_pieces().collect();
     assert_eq!(pieces.len(), 2);
     assert!(matches!(pieces[0].source, PieceSource::Add { offset: 0, len: 5 }));
-    assert!(matches!(pieces[1].source, PieceSource::Original { byte_start: 0, byte_len: 10 }));
+    assert!(matches!(
+        pieces[1].source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 10
+        }
+    ));
     tree.validate().unwrap();
 }
 
@@ -86,7 +95,13 @@ fn insert_at_end() {
     assert_eq!(tree.piece_count(), 2);
 
     let pieces: Vec<_> = tree.iter_pieces().collect();
-    assert!(matches!(pieces[0].source, PieceSource::Original { byte_start: 0, byte_len: 10 }));
+    assert!(matches!(
+        pieces[0].source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 10
+        }
+    ));
     assert!(matches!(pieces[1].source, PieceSource::Add { offset: 0, len: 5 }));
     tree.validate().unwrap();
 }
@@ -101,11 +116,23 @@ fn insert_in_middle_splits_piece() {
     let pieces: Vec<_> = tree.iter_pieces().collect();
     assert_eq!(pieces.len(), 3);
     // Left half of original
-    assert!(matches!(pieces[0].source, PieceSource::Original { byte_start: 0, byte_len: 5 }));
+    assert!(matches!(
+        pieces[0].source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 5
+        }
+    ));
     // Inserted piece
     assert!(matches!(pieces[1].source, PieceSource::Add { offset: 0, len: 3 }));
     // Right half of original
-    assert!(matches!(pieces[2].source, PieceSource::Original { byte_start: 5, byte_len: 5 }));
+    assert!(matches!(
+        pieces[2].source,
+        PieceSource::Original {
+            byte_start: 5,
+            byte_len: 5
+        }
+    ));
     tree.validate().unwrap();
 }
 
@@ -136,7 +163,13 @@ fn delete_from_start() {
     assert_eq!(tree.piece_count(), 1);
 
     let pieces: Vec<_> = tree.iter_pieces().collect();
-    assert!(matches!(pieces[0].source, PieceSource::Original { byte_start: 5, byte_len: 5 }));
+    assert!(matches!(
+        pieces[0].source,
+        PieceSource::Original {
+            byte_start: 5,
+            byte_len: 5
+        }
+    ));
     tree.validate().unwrap();
 }
 
@@ -148,7 +181,13 @@ fn delete_from_end() {
     assert_eq!(tree.piece_count(), 1);
 
     let pieces: Vec<_> = tree.iter_pieces().collect();
-    assert!(matches!(pieces[0].source, PieceSource::Original { byte_start: 0, byte_len: 5 }));
+    assert!(matches!(
+        pieces[0].source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 5
+        }
+    ));
     tree.validate().unwrap();
 }
 
@@ -160,8 +199,20 @@ fn delete_middle_creates_two_pieces() {
     assert_eq!(tree.piece_count(), 2);
 
     let pieces: Vec<_> = tree.iter_pieces().collect();
-    assert!(matches!(pieces[0].source, PieceSource::Original { byte_start: 0, byte_len: 3 }));
-    assert!(matches!(pieces[1].source, PieceSource::Original { byte_start: 7, byte_len: 3 }));
+    assert!(matches!(
+        pieces[0].source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 3
+        }
+    ));
+    assert!(matches!(
+        pieces[1].source,
+        PieceSource::Original {
+            byte_start: 7,
+            byte_len: 3
+        }
+    ));
     tree.validate().unwrap();
 }
 
@@ -206,7 +257,13 @@ fn piece_at_single() {
     let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
     let (piece, offset) = tree.piece_at(5).unwrap();
     assert_eq!(offset, 5);
-    assert!(matches!(piece.source, PieceSource::Original { byte_start: 0, byte_len: 10 }));
+    assert!(matches!(
+        piece.source,
+        PieceSource::Original {
+            byte_start: 0,
+            byte_len: 10
+        }
+    ));
 }
 
 #[test]
@@ -297,8 +354,16 @@ fn piece_metrics_from_str_empty() {
 
 #[test]
 fn piece_metrics_add() {
-    let a = PieceMetrics { byte_len: 5, char_count: 5, line_count: 1 };
-    let b = PieceMetrics { byte_len: 3, char_count: 3, line_count: 0 };
+    let a = PieceMetrics {
+        byte_len: 5,
+        char_count: 5,
+        line_count: 1,
+    };
+    let b = PieceMetrics {
+        byte_len: 3,
+        char_count: 3,
+        line_count: 0,
+    };
     let sum = a.add(b);
     assert_eq!(sum.byte_len, 8);
     assert_eq!(sum.char_count, 8);
@@ -350,8 +415,14 @@ fn default_is_empty() {
 
 #[test]
 fn piece_source_equality() {
-    let a = PieceSource::Original { byte_start: 0, byte_len: 10 };
-    let b = PieceSource::Original { byte_start: 0, byte_len: 10 };
+    let a = PieceSource::Original {
+        byte_start: 0,
+        byte_len: 10,
+    };
+    let b = PieceSource::Original {
+        byte_start: 0,
+        byte_len: 10,
+    };
     assert_eq!(a, b);
 
     let c = PieceSource::Add { offset: 0, len: 5 };

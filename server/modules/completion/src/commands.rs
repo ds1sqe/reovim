@@ -24,7 +24,7 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, NotificationDrainRegistry, SessionRuntime,
         SnippetExpanderRegistry,
     },
-    reovim_kernel::api::v1::{CommandId, Position, ServiceRegistry, oneshot},
+    reovim_kernel::api::v1::{BufferId, CommandId, Position, ServiceRegistry, oneshot},
     tracing::{debug, info, warn},
 };
 
@@ -304,6 +304,13 @@ fn drain_pending_notifications(runtime: &mut SessionRuntime<'_>) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
     let buffer_id = runtime.active_buffer()?;
+
+    // Virtual buffers may be multi-GB — skip full content materialization.
+    // Use only the cursor line for prefix extraction.
+    if runtime.is_virtual_buffer(buffer_id) {
+        return build_virtual_context(runtime, buffer_id);
+    }
+
     let content = runtime.buffer_content(buffer_id)?;
 
     // Get cursor from per-client window (#471).
@@ -340,6 +347,44 @@ fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
     Some(CompletionContext {
         content,
         cursor_offset,
+        line: cursor_line,
+        col: cursor_col,
+        prefix,
+        buffer_id: buffer_id.as_usize(),
+        file_path,
+        language_id,
+    })
+}
+
+/// Build a `CompletionContext` for a virtual buffer (large file).
+///
+/// Only provides the cursor line as content, avoiding multi-GB materialization.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn build_virtual_context(
+    runtime: &SessionRuntime<'_>,
+    buffer_id: BufferId,
+) -> Option<CompletionContext> {
+    let window = runtime.windows().active()?;
+    let cursor_line = window.cursor.line;
+    let cursor_col = window.cursor.column;
+
+    let line_text = runtime.buffer_line(buffer_id, cursor_line)?;
+    let before_cursor = if cursor_col <= line_text.len() {
+        &line_text[..cursor_col]
+    } else {
+        &line_text
+    };
+    let prefix = before_cursor
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+        .map_or(before_cursor, |pos| &before_cursor[pos + 1..])
+        .to_owned();
+
+    let file_path = runtime.buffer_file_path(buffer_id);
+    let language_id = file_path.as_deref().and_then(language_id_from_path);
+
+    Some(CompletionContext {
+        content: line_text,
+        cursor_offset: cursor_col,
         line: cursor_line,
         col: cursor_col,
         prefix,

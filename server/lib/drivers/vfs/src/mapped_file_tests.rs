@@ -68,8 +68,10 @@ fn debug_formatting() {
 
 #[test]
 fn real_mmap_read() {
-    use crate::{StandardVfs, VfsDriver};
-    use std::env;
+    use {
+        crate::{StandardVfs, VfsDriver},
+        std::env,
+    };
 
     let vfs = StandardVfs::new();
     let path = env::temp_dir().join("reovim_mmap_test.txt");

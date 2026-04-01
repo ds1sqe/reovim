@@ -414,11 +414,7 @@ fn equivalence_line_count() {
     for content in &["", "hello", "hello\nworld", "a\nb\nc"] {
         let buf = Buffer::from_string(content);
         let vbuf = vbuf_from_str(content);
-        assert_eq!(
-            buf.line_count(),
-            vbuf.line_count(),
-            "line_count mismatch for {content:?}"
-        );
+        assert_eq!(buf.line_count(), vbuf.line_count(), "line_count mismatch for {content:?}");
     }
 }
 
@@ -429,11 +425,7 @@ fn equivalence_line_access() {
     let vbuf = vbuf_from_str(content);
 
     for i in 0..buf.line_count() {
-        assert_eq!(
-            buf.line(i).map(String::from),
-            vbuf.line(i),
-            "line({i}) mismatch"
-        );
+        assert_eq!(buf.line(i).map(String::from), vbuf.line(i), "line({i}) mismatch");
     }
 }
 

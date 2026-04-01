@@ -84,9 +84,7 @@ impl VirtualBufferRegistry for SimpleVirtualBufferRegistry {
 
     fn register(&self, vbuf: VirtualBuffer) -> BufferId {
         let id = vbuf.id();
-        self.buffers
-            .write()
-            .insert(id, Arc::new(RwLock::new(vbuf)));
+        self.buffers.write().insert(id, Arc::new(RwLock::new(vbuf)));
         id
     }
 

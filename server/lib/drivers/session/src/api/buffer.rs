@@ -126,6 +126,39 @@ pub trait BufferApi: Send {
 
     /// Rename a buffer.
     fn rename_buffer(&mut self, buffer: BufferId, new_name: &str);
+
+    /// Check if a buffer is a virtual buffer (large file backed by mmap).
+    ///
+    /// Virtual buffers should not be fully materialized via `buffer_content()`
+    /// as they may be multi-gigabyte.  Callers should use line-based access
+    /// or `buffer_write_to()` instead.
+    ///
+    /// Returns `false` by default (no virtual buffer support).
+    fn is_virtual_buffer(&self, _buffer: BufferId) -> bool {
+        false
+    }
+
+    /// Write buffer content to a writer without full materialization.
+    ///
+    /// For Rope-based buffers, this materializes and writes the content.
+    /// For `VirtualBuffer`, this iterates pieces and writes each directly
+    /// from the mmap or add buffer, avoiding a full copy in memory.
+    ///
+    /// Default implementation calls `buffer_content()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` if the buffer doesn't exist or writing fails.
+    fn buffer_write_to(
+        &self,
+        buffer: BufferId,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        self.buffer_content(buffer).map_or_else(
+            || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
+            |content| writer.write_all(content.as_bytes()),
+        )
+    }
 }
 
 /// Selection in a buffer.
