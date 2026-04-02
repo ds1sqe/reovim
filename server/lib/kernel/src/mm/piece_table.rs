@@ -1,8 +1,12 @@
 //! Piece table B-tree for large file editing.
 //!
-//! A balanced B-tree of [`Piece`] entries, indexed by cumulative byte metrics.
+//! A balanced B-tree of [`Piece`] entries, indexed by cumulative byte length.
 //! Each piece references either the original file (mmap'd, read-only) or the
 //! append-only add buffer.
+//!
+//! This is a **pure byte-level** data structure — it tracks only byte lengths,
+//! not characters or lines. Domain-specific indexing (line boundaries, char
+//! counts) is handled by higher layers (codec indexes, providers).
 //!
 //! # Structural Sharing
 //!
@@ -14,8 +18,8 @@
 //!
 //! - Internal nodes have 2..=[`B_MAX`] children (root may have fewer).
 //! - All leaves are at the same depth.
-//! - Cumulative metrics (`byte_len`, `char_count`, `line_count`) in each
-//!   internal node equal the sum of its children's metrics.
+//! - Cumulative `byte_len` in each internal node equals the sum of its
+//!   children's byte lengths.
 
 use std::sync::Arc;
 
@@ -49,26 +53,21 @@ pub enum PieceSource {
     },
 }
 
-/// Cached metrics for a piece.
+/// Cached byte-level metrics for a piece or subtree.
+///
+/// Tracks only byte length — domain-specific metrics (char count, line count)
+/// are managed by higher layers (codec indexes, providers).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PieceMetrics {
     /// Total bytes in this piece/subtree.
     pub byte_len: u64,
-    /// Total Unicode scalar values.
-    pub char_count: u64,
-    /// Number of newline characters (`\n`).
-    pub line_count: u64,
 }
 
 impl PieceMetrics {
-    /// Compute metrics from a UTF-8 string.
+    /// Create metrics from a byte length.
     #[must_use]
-    pub fn compute(s: &str) -> Self {
-        Self {
-            byte_len: s.len() as u64,
-            char_count: s.chars().count() as u64,
-            line_count: s.bytes().filter(|&b| b == b'\n').count() as u64,
-        }
+    pub const fn from_byte_len(byte_len: u64) -> Self {
+        Self { byte_len }
     }
 
     /// Sum two metrics.
@@ -76,8 +75,6 @@ impl PieceMetrics {
     pub const fn add(self, other: Self) -> Self {
         Self {
             byte_len: self.byte_len + other.byte_len,
-            char_count: self.char_count + other.char_count,
-            line_count: self.line_count + other.line_count,
         }
     }
 
@@ -194,20 +191,6 @@ impl PieceTree {
         self.root.as_ref().map_or(0, |r| r.metrics.byte_len)
     }
 
-    /// Total character count.
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn char_count(&self) -> u64 {
-        self.root.as_ref().map_or(0, |r| r.metrics.char_count)
-    }
-
-    /// Total newline count.
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn line_count(&self) -> u64 {
-        self.root.as_ref().map_or(0, |r| r.metrics.line_count)
-    }
-
     /// Number of pieces (leaves) in the tree.
     #[must_use]
     pub const fn piece_count(&self) -> usize {
@@ -224,6 +207,10 @@ impl PieceTree {
     ///
     /// If `byte_offset` falls in the middle of an existing piece, that piece
     /// is split and the new piece is inserted between the two halves.
+    ///
+    /// # Panics
+    ///
+    /// Cannot panic — early-returns for empty trees.
     #[must_use]
     pub fn insert(&self, byte_offset: u64, piece: Piece) -> Self {
         if self.is_empty() {
@@ -269,6 +256,10 @@ impl PieceTree {
     /// Delete a byte range from the tree.
     ///
     /// Returns a new tree with the range removed.
+    ///
+    /// # Panics
+    ///
+    /// Cannot panic — early-returns for empty trees and zero-length deletes.
     #[must_use]
     pub fn delete(&self, byte_start: u64, byte_len: u64) -> Self {
         if byte_len == 0 || self.is_empty() {
@@ -329,6 +320,7 @@ impl PieceTree {
     }
 
     /// Iterate over all pieces in order.
+    #[must_use]
     pub fn iter_pieces(&self) -> PieceIter<'_> {
         let mut stack = Vec::new();
         if let Some(root) = &self.root {
@@ -361,8 +353,7 @@ impl Default for PieceTree {
 
 /// Split a piece at a byte offset within it.
 ///
-/// Splits the source range and proportionally distributes metrics.
-/// The `VirtualBuffer` rebuilds exact metrics after mutation.
+/// Splits the source range and distributes byte lengths exactly.
 fn split_piece(piece: &Piece, byte_offset: u64) -> (Piece, Piece) {
     let total_bytes = piece.metrics.byte_len;
     debug_assert!(byte_offset <= total_bytes);
@@ -404,43 +395,14 @@ fn split_piece(piece: &Piece, byte_offset: u64) -> (Piece, Piece) {
         }
     };
 
-    // Proportional metric split (approximate for char/line counts).
-    #[allow(clippy::cast_precision_loss)]
-    let ratio = if total_bytes > 0 {
-        left_bytes as f64 / total_bytes as f64
-    } else {
-        0.0
-    };
-
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let left_chars = (piece.metrics.char_count as f64 * ratio).round() as u64;
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let left_lines = (piece.metrics.line_count as f64 * ratio).round() as u64;
-
     let left = Piece {
         source: left_source,
-        metrics: PieceMetrics {
-            byte_len: left_bytes,
-            char_count: left_chars,
-            line_count: left_lines,
-        },
+        metrics: PieceMetrics::from_byte_len(left_bytes),
     };
 
     let right = Piece {
         source: right_source,
-        metrics: PieceMetrics {
-            byte_len: right_bytes,
-            char_count: piece.metrics.char_count - left_chars,
-            line_count: piece.metrics.line_count - left_lines,
-        },
+        metrics: PieceMetrics::from_byte_len(right_bytes),
     };
 
     (left, right)

@@ -2,28 +2,20 @@
 
 use super::*;
 
-fn orig_piece(byte_start: u64, byte_len: u64, chars: u64, lines: u64) -> Piece {
+fn orig_piece(byte_start: u64, byte_len: u64) -> Piece {
     Piece {
         source: PieceSource::Original {
             byte_start,
             byte_len,
         },
-        metrics: PieceMetrics {
-            byte_len,
-            char_count: chars,
-            line_count: lines,
-        },
+        metrics: PieceMetrics::from_byte_len(byte_len),
     }
 }
 
-fn add_piece(offset: usize, len: usize, chars: u64, lines: u64) -> Piece {
+fn add_piece(offset: usize, len: usize) -> Piece {
     Piece {
         source: PieceSource::Add { offset, len },
-        metrics: PieceMetrics {
-            byte_len: len as u64,
-            char_count: chars,
-            line_count: lines,
-        },
+        metrics: PieceMetrics::from_byte_len(len as u64),
     }
 }
 
@@ -34,8 +26,6 @@ fn empty_tree() {
     let tree = PieceTree::new();
     assert!(tree.is_empty());
     assert_eq!(tree.byte_len(), 0);
-    assert_eq!(tree.char_count(), 0);
-    assert_eq!(tree.line_count(), 0);
     assert_eq!(tree.piece_count(), 0);
     assert!(tree.piece_at(0).is_none());
     assert_eq!(tree.iter_pieces().count(), 0);
@@ -44,11 +34,9 @@ fn empty_tree() {
 
 #[test]
 fn single_piece() {
-    let piece = orig_piece(0, 100, 100, 5);
+    let piece = orig_piece(0, 100);
     let tree = PieceTree::from_piece(piece);
     assert_eq!(tree.byte_len(), 100);
-    assert_eq!(tree.char_count(), 100);
-    assert_eq!(tree.line_count(), 5);
     assert_eq!(tree.piece_count(), 1);
     assert!(!tree.is_empty());
     tree.validate().unwrap();
@@ -59,7 +47,7 @@ fn single_piece() {
 #[test]
 fn insert_into_empty() {
     let tree = PieceTree::new();
-    let piece = add_piece(0, 5, 5, 0);
+    let piece = add_piece(0, 5);
     let tree = tree.insert(0, piece);
     assert_eq!(tree.byte_len(), 5);
     assert_eq!(tree.piece_count(), 1);
@@ -68,8 +56,8 @@ fn insert_into_empty() {
 
 #[test]
 fn insert_at_start() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
-    let tree = tree.insert(0, add_piece(0, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
+    let tree = tree.insert(0, add_piece(0, 5));
     assert_eq!(tree.byte_len(), 15);
     assert_eq!(tree.piece_count(), 2);
 
@@ -89,8 +77,8 @@ fn insert_at_start() {
 
 #[test]
 fn insert_at_end() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
-    let tree = tree.insert(10, add_piece(0, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
+    let tree = tree.insert(10, add_piece(0, 5));
     assert_eq!(tree.byte_len(), 15);
     assert_eq!(tree.piece_count(), 2);
 
@@ -108,8 +96,8 @@ fn insert_at_end() {
 
 #[test]
 fn insert_in_middle_splits_piece() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
-    let tree = tree.insert(5, add_piece(0, 3, 3, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
+    let tree = tree.insert(5, add_piece(0, 3));
     assert_eq!(tree.byte_len(), 13);
     assert_eq!(tree.piece_count(), 3);
 
@@ -140,7 +128,7 @@ fn insert_in_middle_splits_piece() {
 
 #[test]
 fn delete_zero_length() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(5, 0);
     assert_eq!(tree.byte_len(), 10);
     assert_eq!(tree.piece_count(), 1);
@@ -148,7 +136,7 @@ fn delete_zero_length() {
 
 #[test]
 fn delete_entire_piece() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(0, 10);
     assert!(tree.is_empty());
     assert_eq!(tree.byte_len(), 0);
@@ -157,7 +145,7 @@ fn delete_entire_piece() {
 
 #[test]
 fn delete_from_start() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(0, 5);
     assert_eq!(tree.byte_len(), 5);
     assert_eq!(tree.piece_count(), 1);
@@ -175,7 +163,7 @@ fn delete_from_start() {
 
 #[test]
 fn delete_from_end() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(5, 5);
     assert_eq!(tree.byte_len(), 5);
     assert_eq!(tree.piece_count(), 1);
@@ -193,7 +181,7 @@ fn delete_from_end() {
 
 #[test]
 fn delete_middle_creates_two_pieces() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(3, 4);
     assert_eq!(tree.byte_len(), 6);
     assert_eq!(tree.piece_count(), 2);
@@ -219,8 +207,8 @@ fn delete_middle_creates_two_pieces() {
 #[test]
 fn delete_across_pieces() {
     // Two pieces: [0..5] [5..10]
-    let tree = PieceTree::from_piece(orig_piece(0, 5, 5, 0));
-    let tree = tree.insert(5, orig_piece(5, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 5));
+    let tree = tree.insert(5, orig_piece(5, 5));
     assert_eq!(tree.byte_len(), 10);
 
     // Delete bytes 3..7 (crosses piece boundary)
@@ -240,7 +228,7 @@ fn delete_from_empty() {
 
 #[test]
 fn clone_is_cheap() {
-    let tree = PieceTree::from_piece(orig_piece(0, 100, 100, 5));
+    let tree = PieceTree::from_piece(orig_piece(0, 100));
     let strong_before = tree.root_strong_count();
 
     let cloned = tree.clone();
@@ -254,7 +242,7 @@ fn clone_is_cheap() {
 
 #[test]
 fn piece_at_single() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let (piece, offset) = tree.piece_at(5).unwrap();
     assert_eq!(offset, 5);
     assert!(matches!(
@@ -268,8 +256,8 @@ fn piece_at_single() {
 
 #[test]
 fn piece_at_boundary() {
-    let tree = PieceTree::from_piece(orig_piece(0, 5, 5, 0));
-    let tree = tree.insert(5, add_piece(0, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 5));
+    let tree = tree.insert(5, add_piece(0, 5));
 
     // Offset 4 is in first piece
     let (p, off) = tree.piece_at(4).unwrap();
@@ -292,9 +280,9 @@ fn piece_at_empty() {
 
 #[test]
 fn iter_pieces_order() {
-    let tree = PieceTree::from_piece(orig_piece(0, 5, 5, 0));
-    let tree = tree.insert(5, add_piece(0, 3, 3, 0));
-    let tree = tree.insert(8, orig_piece(5, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 5));
+    let tree = tree.insert(5, add_piece(0, 3));
+    let tree = tree.insert(8, orig_piece(5, 5));
 
     let pieces: Vec<_> = tree.iter_pieces().collect();
     assert_eq!(pieces.len(), 3);
@@ -310,17 +298,15 @@ fn iter_pieces_order() {
 
 #[test]
 fn metrics_after_insert() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 2));
-    let tree = tree.insert(5, add_piece(0, 5, 5, 1));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
+    let tree = tree.insert(5, add_piece(0, 5));
     assert_eq!(tree.byte_len(), 15);
-    assert_eq!(tree.char_count(), 15);
-    assert_eq!(tree.line_count(), 3);
     tree.validate().unwrap();
 }
 
 #[test]
 fn metrics_after_delete() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 2));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let tree = tree.delete(0, 5);
     assert_eq!(tree.byte_len(), 5);
     tree.validate().unwrap();
@@ -329,45 +315,23 @@ fn metrics_after_delete() {
 // ── PieceMetrics ────────────────────────────────────────────────────
 
 #[test]
-fn piece_metrics_from_str() {
-    let m = PieceMetrics::compute("hello\nworld");
-    assert_eq!(m.byte_len, 11);
-    assert_eq!(m.char_count, 11);
-    assert_eq!(m.line_count, 1);
+fn piece_metrics_from_byte_len() {
+    let m = PieceMetrics::from_byte_len(42);
+    assert_eq!(m.byte_len, 42);
 }
 
 #[test]
-fn piece_metrics_from_str_unicode() {
-    let m = PieceMetrics::compute("héllo");
-    assert_eq!(m.byte_len, 6); // é is 2 bytes
-    assert_eq!(m.char_count, 5);
-    assert_eq!(m.line_count, 0);
-}
-
-#[test]
-fn piece_metrics_from_str_empty() {
-    let m = PieceMetrics::compute("");
+fn piece_metrics_default_is_zero() {
+    let m = PieceMetrics::default();
     assert_eq!(m.byte_len, 0);
-    assert_eq!(m.char_count, 0);
-    assert_eq!(m.line_count, 0);
 }
 
 #[test]
 fn piece_metrics_add() {
-    let a = PieceMetrics {
-        byte_len: 5,
-        char_count: 5,
-        line_count: 1,
-    };
-    let b = PieceMetrics {
-        byte_len: 3,
-        char_count: 3,
-        line_count: 0,
-    };
+    let a = PieceMetrics::from_byte_len(5);
+    let b = PieceMetrics::from_byte_len(3);
     let sum = a.add(b);
     assert_eq!(sum.byte_len, 8);
-    assert_eq!(sum.char_count, 8);
-    assert_eq!(sum.line_count, 1);
 }
 
 // ── Edge cases ──────────────────────────────────────────────────────
@@ -376,7 +340,7 @@ fn piece_metrics_add() {
 fn single_byte_pieces() {
     let mut tree = PieceTree::new();
     for i in 0..10u8 {
-        tree = tree.insert(u64::from(i), add_piece(usize::from(i), 1, 1, 0));
+        tree = tree.insert(u64::from(i), add_piece(usize::from(i), 1));
     }
     assert_eq!(tree.byte_len(), 10);
     assert_eq!(tree.piece_count(), 10);
@@ -388,7 +352,7 @@ fn many_pieces_triggers_tree_building() {
     // Insert enough pieces to trigger multi-level tree
     let mut tree = PieceTree::new();
     for i in 0..50u64 {
-        tree = tree.insert(i * 10, orig_piece(i * 10, 10, 10, 0));
+        tree = tree.insert(i * 10, orig_piece(i * 10, 10));
     }
     assert_eq!(tree.byte_len(), 500);
     assert_eq!(tree.piece_count(), 50);
@@ -397,8 +361,8 @@ fn many_pieces_triggers_tree_building() {
 
 #[test]
 fn insert_then_delete_all() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
-    let tree = tree.insert(5, add_piece(0, 5, 5, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
+    let tree = tree.insert(5, add_piece(0, 5));
     assert_eq!(tree.byte_len(), 15);
     let tree = tree.delete(0, 15);
     assert!(tree.is_empty());
@@ -437,7 +401,7 @@ fn piece_source_equality() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn debug_formatting() {
-    let tree = PieceTree::from_piece(orig_piece(0, 10, 10, 0));
+    let tree = PieceTree::from_piece(orig_piece(0, 10));
     let debug = format!("{tree:?}");
     assert!(debug.contains("PieceTree"));
 }

@@ -4,12 +4,6 @@
 //! [`FileMapping`].  Edits create new pieces referencing an append-only
 //! add buffer.  The [`PieceTree`] is a B-tree with `Arc` structural sharing
 //! (O(1) clone) for efficient snapshots.
-//!
-//! # `FileMapping` Trait
-//!
-//! Defined here in the kernel to keep it free of driver types.
-//! `MappedFile` (VFS driver, real mmap) and [`HeapMapping`] (test helper)
-//! both implement this trait.
 
 use std::{
     borrow::Cow,
@@ -21,33 +15,14 @@ use std::{
 
 use super::{
     BufferId, Position,
+    file_mapping::FileMapping,
     line_index::LineIndex,
     piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
 };
 
-// ─── FileMapping Trait ──────────────────────────────────────────────────────
-
-/// Trait for zero-copy access to original file bytes.
-///
-/// Implemented by `MappedFile` (VFS driver, real mmap) and by
-/// `HeapMapping` (test helper, `Vec<u8>` wrapper).
-pub trait FileMapping: Send + Sync + 'static {
-    /// Raw bytes of the original file.
-    fn as_bytes(&self) -> &[u8];
-
-    /// File size in bytes.
-    fn len(&self) -> u64;
-
-    /// Whether the file is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Check if the underlying file has been modified since mapping.
-    /// Returns `false` for heap-backed mappings (tests).
-    fn is_stale(&self) -> bool {
-        false
-    }
+/// Create byte-only metrics from a string's byte length.
+const fn byte_metrics(s: &str) -> PieceMetrics {
+    PieceMetrics::from_byte_len(s.len() as u64)
 }
 
 // ─── VirtualSnapshot ────────────────────────────────────────────────────────
@@ -159,26 +134,12 @@ impl VirtualBuffer {
         let crlf = line_index.has_crlf();
 
         // Single piece covering the entire original file
-        let piece = if file_size > 0 {
-            let metrics = PieceMetrics::compute(
-                // SAFETY: LineIndex::from_bytes already validated UTF-8
-                std::str::from_utf8(original.as_bytes()).expect("LineIndex validated UTF-8"),
-            );
-            Piece {
-                source: PieceSource::Original {
-                    byte_start: 0,
-                    byte_len: file_size,
-                },
-                metrics,
-            }
-        } else {
-            Piece {
-                source: PieceSource::Original {
-                    byte_start: 0,
-                    byte_len: 0,
-                },
-                metrics: PieceMetrics::default(),
-            }
+        let piece = Piece {
+            source: PieceSource::Original {
+                byte_start: 0,
+                byte_len: file_size,
+            },
+            metrics: PieceMetrics::from_byte_len(file_size),
         };
 
         let pieces = if file_size > 0 {
@@ -482,13 +443,12 @@ impl VirtualBuffer {
         self.add_buffer.push_str(text);
         let add_len = text.len();
 
-        let metrics = PieceMetrics::compute(text);
         let piece = Piece {
             source: PieceSource::Add {
                 offset: add_offset,
                 len: add_len,
             },
-            metrics,
+            metrics: byte_metrics(text),
         };
 
         self.pieces = self.pieces.insert(byte_offset, piece);
@@ -569,13 +529,12 @@ impl VirtualBuffer {
         self.add_buffer.clear();
         self.add_buffer.push_str(content);
 
-        let metrics = PieceMetrics::compute(content);
         let piece = Piece {
             source: PieceSource::Add {
                 offset: 0,
                 len: content.len(),
             },
-            metrics,
+            metrics: byte_metrics(content),
         };
 
         self.pieces = if content.is_empty() {

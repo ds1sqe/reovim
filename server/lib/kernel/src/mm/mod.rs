@@ -34,6 +34,7 @@ mod buffer;
 mod buffer_id;
 mod cache;
 mod delimiter;
+mod file_mapping;
 mod line_index;
 mod piece_table;
 mod rope;
@@ -53,11 +54,11 @@ mod window_id;
 #[cfg(test)]
 mod tests;
 
-#[allow(unused_imports)]
 pub use piece_table::{Piece, PieceMetrics, PieceSource, PieceTree};
+pub use file_mapping::FileMapping;
 pub use {
     line_index::{InvalidUtf8, LineIndex},
-    virtual_buffer::{FileMapping, HeapMapping, VirtualBuffer, VirtualSnapshot},
+    virtual_buffer::{HeapMapping, VirtualBuffer, VirtualSnapshot},
 };
 
 pub use {

@@ -43,13 +43,16 @@ pub use super::context::{KernelContext, ModuleContext};
 // Memory Management (mm/)
 // ============================================================================
 
-// Buffer types (kernel-owned, will move to provider in Phase 2)
+// Buffer types (kernel-owned)
 pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
 
 // Virtual buffer (large file support)
 pub use crate::mm::{
     FileMapping, HeapMapping, InvalidUtf8, LineIndex, VirtualBuffer, VirtualSnapshot,
 };
+
+// Piece table (byte-only B-tree for large file editing)
+pub use crate::mm::{Piece, PieceMetrics, PieceSource, PieceTree};
 
 // Snapshot for lock-free buffer access
 pub use crate::mm::BufferSnapshot;
