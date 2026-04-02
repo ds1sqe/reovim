@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     api::module::ModuleId,
-    mm::{Buffer, BufferId, Cursor, Position, WindowId},
+    mm::{BufferId, Cursor, Position, WindowId},
 };
 
 // Text types extracted to reovim-types-text (#740)

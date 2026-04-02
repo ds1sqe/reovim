@@ -368,7 +368,7 @@ fn test_word_end_backward_at_start() {
 
 #[test]
 fn test_word_end_backward_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(
@@ -424,7 +424,7 @@ fn test_paragraph_forward_multiple_count() {
 
 #[test]
 fn test_paragraph_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
@@ -644,7 +644,7 @@ fn test_line_motion_backward() {
 
 #[test]
 fn test_line_motion_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Line(Direction::Forward), 1);
@@ -682,7 +682,7 @@ fn test_jump_line_beyond_end() {
 
 #[test]
 fn test_jump_line_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(&buffer, &cursor, Motion::JumpLine(None), 1);
@@ -888,7 +888,7 @@ fn test_word_end_cross_line() {
 
 #[test]
 fn test_word_end_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(
@@ -946,7 +946,7 @@ fn test_word_end_on_punctuation() {
 
 #[test]
 fn test_word_backward_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(
@@ -1251,7 +1251,7 @@ fn test_calculate_with_desired_col_char_motion() {
 
 #[test]
 fn test_word_forward_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let cursor = make_cursor(0, 0);
 
     let pos = MotionEngine::calculate(

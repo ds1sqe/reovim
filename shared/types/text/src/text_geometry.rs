@@ -61,8 +61,13 @@ pub struct SimpleText {
 
 impl SimpleText {
     /// Create a `SimpleText` by splitting on newlines.
+    ///
+    /// Empty string produces 0 lines, matching `Buffer::new()` semantics.
     #[must_use]
     pub fn new(text: &str) -> Self {
+        if text.is_empty() {
+            return Self { lines: vec![] };
+        }
         Self {
             lines: text.split('\n').map(String::from).collect(),
         }

@@ -350,7 +350,7 @@ fn test_inner_word_empty_line() {
 
 #[test]
 fn test_inner_paragraph_empty_buffer() {
-    let buffer = Buffer::new();
+    let buffer = SimpleText::new("");
     let range =
         TextObjectEngine::range(&buffer, Position::new(0, 0), TextObject::InnerParagraph, 1);
     assert!(range.is_none());
