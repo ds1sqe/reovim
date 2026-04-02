@@ -28,11 +28,11 @@
 // Internal modules (not directly exposed)
 // ============================================================================
 
-// Buffer capability flags (used by BufferOps trait)
+// Buffer capability flags (text-level capability flags)
 mod buffer_caps;
 // Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
-// Unified buffer operations trait
+// Text buffer operations trait (extends StorageOps + BufferMeta)
 mod buffer_ops;
 // Byte-level storage traits (StorageOps, BufferMeta, StorageCapabilities)
 pub(crate) mod storage_ops;

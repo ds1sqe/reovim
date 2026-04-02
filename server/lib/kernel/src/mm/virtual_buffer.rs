@@ -702,7 +702,7 @@ impl FileMapping for HeapMapping {
 // ── TextGeometry ────────────────────────────────────────────────────────────
 
 use crate::api::{
-    BufferCapabilities, BufferOps, BufferOpsError,
+    BufferCapabilities, BufferOps,
     storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
 };
 use reovim_types_text::TextGeometry;
@@ -733,7 +733,14 @@ impl StorageOps for VirtualBuffer {
     }
 
     fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        BufferOps::read_bytes(self, offset, buf)
+        let content = Self::content_bytes(self);
+        if offset >= content.len() {
+            return 0;
+        }
+        let available = &content[offset..];
+        let count = buf.len().min(available.len());
+        buf[..count].copy_from_slice(&available[..count]);
+        count
     }
 
     fn capabilities(&self) -> StorageCapabilities {
@@ -809,66 +816,12 @@ impl BufferMeta for VirtualBuffer {
 // ── BufferOps ──────────────────────────────────────────────────────────────
 
 impl BufferOps for VirtualBuffer {
-    fn id(&self) -> BufferId {
-        self.id
-    }
-
-    fn byte_len(&self) -> usize {
-        self.pieces.byte_len() as usize
-    }
-
-    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let content = self.content_bytes();
-        if offset >= content.len() {
-            return 0;
-        }
-        let available = &content[offset..];
-        let count = buf.len().min(available.len());
-        buf[..count].copy_from_slice(&available[..count]);
-        count
-    }
-
-    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), BufferOpsError> {
-        let text = std::str::from_utf8(data).map_err(|_| BufferOpsError::InvalidUtf8)?;
-        if text.is_empty() {
-            return Ok(());
-        }
-        let pos = BufferOps::byte_to_position(self, offset);
-        Self::insert_at(self, pos, text);
-        Ok(())
-    }
-
-    fn delete_bytes(&mut self, offset: usize, len: usize) -> Vec<u8> {
-        if len == 0 {
-            return Vec::new();
-        }
-        let start = BufferOps::byte_to_position(self, offset);
-        let end = BufferOps::byte_to_position(self, offset + len);
-        Self::delete_range(self, start, end).into_bytes()
+    fn buffer_capabilities(&self) -> BufferCapabilities {
+        BufferCapabilities::VIRTUAL
     }
 
     fn content_bytes(&self) -> Vec<u8> {
         Self::content_bytes(self)
-    }
-
-    fn is_modified(&self) -> bool {
-        self.modified
-    }
-
-    fn set_modified(&mut self, modified: bool) {
-        Self::set_modified(self, modified);
-    }
-
-    fn file_path(&self) -> Option<&str> {
-        Self::file_path(self)
-    }
-
-    fn set_file_path(&mut self, path: Option<String>) {
-        Self::set_file_path(self, path);
-    }
-
-    fn capabilities(&self) -> BufferCapabilities {
-        BufferCapabilities::VIRTUAL
     }
 
     fn line_count(&self) -> usize {

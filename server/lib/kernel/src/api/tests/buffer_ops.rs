@@ -1,12 +1,15 @@
 use std::borrow::Cow;
 
 use crate::{
-    api::{BufferCapabilities, BufferOps, BufferOpsError},
+    api::{
+        BufferCapabilities, BufferOps,
+        storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
+    },
     mm::{BufferId, Position},
 };
 use reovim_types_text::TextGeometry;
 
-/// Minimal mock implementing `BufferOps` for trait verification.
+/// Minimal mock implementing `StorageOps + BufferMeta + BufferOps`.
 struct MockBuffer {
     id: BufferId,
     content: String,
@@ -24,6 +27,89 @@ impl MockBuffer {
         }
     }
 }
+
+// === StorageOps (byte-level I/O) ===
+
+impl StorageOps for MockBuffer {
+    fn byte_len(&self) -> usize {
+        self.content.len()
+    }
+
+    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let bytes = self.content.as_bytes();
+        if offset >= bytes.len() {
+            return 0;
+        }
+        let available = &bytes[offset..];
+        let count = buf.len().min(available.len());
+        buf[..count].copy_from_slice(&available[..count]);
+        count
+    }
+
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities::HEAP
+    }
+
+    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), StorageError> {
+        let text = std::str::from_utf8(data)
+            .map_err(|_| StorageError::NotSupported("non-UTF-8 insert into text buffer"))?;
+        self.content.insert_str(offset, text);
+        self.modified = true;
+        Ok(())
+    }
+
+    fn delete_bytes(&mut self, offset: usize, len: usize) -> Result<Vec<u8>, StorageError> {
+        let total = self.content.len();
+        if offset + len > total {
+            return Err(StorageError::OffsetOutOfRange { offset, len: total });
+        }
+        let end = offset + len;
+        let deleted = self.content.as_bytes()[offset..end].to_vec();
+        self.content.replace_range(offset..end, "");
+        self.modified = true;
+        Ok(deleted)
+    }
+
+    fn append_bytes(&mut self, data: &[u8]) -> Result<(), StorageError> {
+        let offset = self.content.len();
+        StorageOps::insert_bytes(self, offset, data)
+    }
+
+    fn read_chunk(&self, offset: usize, max_len: usize) -> Vec<u8> {
+        let bytes = self.content.as_bytes();
+        if offset >= bytes.len() {
+            return Vec::new();
+        }
+        let end = (offset + max_len).min(bytes.len());
+        bytes[offset..end].to_vec()
+    }
+}
+
+// === BufferMeta (identity + state) ===
+
+impl BufferMeta for MockBuffer {
+    fn id(&self) -> BufferId {
+        self.id
+    }
+
+    fn file_path(&self) -> Option<&str> {
+        self.file_path.as_deref()
+    }
+
+    fn set_file_path(&mut self, path: Option<String>) {
+        self.file_path = path;
+    }
+
+    fn is_modified(&self) -> bool {
+        self.modified
+    }
+
+    fn set_modified(&mut self, modified: bool) {
+        self.modified = modified;
+    }
+}
+
+// === TextGeometry (read-only text access) ===
 
 impl TextGeometry for MockBuffer {
     fn line_count(&self) -> usize {
@@ -46,62 +132,10 @@ impl TextGeometry for MockBuffer {
     }
 }
 
+// === BufferOps (text-specific extension) ===
+
 impl BufferOps for MockBuffer {
-    fn id(&self) -> BufferId {
-        self.id
-    }
-
-    fn byte_len(&self) -> usize {
-        self.content.len()
-    }
-
-    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let bytes = self.content.as_bytes();
-        if offset >= bytes.len() {
-            return 0;
-        }
-        let available = &bytes[offset..];
-        let count = buf.len().min(available.len());
-        buf[..count].copy_from_slice(&available[..count]);
-        count
-    }
-
-    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), BufferOpsError> {
-        let text = std::str::from_utf8(data).map_err(|_| BufferOpsError::InvalidUtf8)?;
-        self.content.insert_str(offset, text);
-        self.modified = true;
-        Ok(())
-    }
-
-    fn delete_bytes(&mut self, offset: usize, len: usize) -> Vec<u8> {
-        let end = (offset + len).min(self.content.len());
-        let deleted = self.content.as_bytes()[offset..end].to_vec();
-        self.content.replace_range(offset..end, "");
-        self.modified = true;
-        deleted
-    }
-
-    fn content_bytes(&self) -> Vec<u8> {
-        self.content.as_bytes().to_vec()
-    }
-
-    fn is_modified(&self) -> bool {
-        self.modified
-    }
-
-    fn set_modified(&mut self, modified: bool) {
-        self.modified = modified;
-    }
-
-    fn file_path(&self) -> Option<&str> {
-        self.file_path.as_deref()
-    }
-
-    fn set_file_path(&mut self, path: Option<String>) {
-        self.file_path = path;
-    }
-
-    fn capabilities(&self) -> BufferCapabilities {
+    fn buffer_capabilities(&self) -> BufferCapabilities {
         BufferCapabilities::ROPE
     }
 
@@ -115,6 +149,10 @@ impl BufferOps for MockBuffer {
 
     fn line_len(&self, idx: usize) -> Option<usize> {
         TextGeometry::line_len(self, idx)
+    }
+
+    fn content_bytes(&self) -> Vec<u8> {
+        self.content.as_bytes().to_vec()
     }
 
     fn position_to_byte(&self, pos: Position) -> usize {
@@ -183,7 +221,36 @@ fn dyn_buffer_ops_works() {
     let dyn_buf: &dyn BufferOps = &buf;
     assert_eq!(dyn_buf.line_count(), 2);
     assert_eq!(dyn_buf.line(0).as_deref(), Some("hello"));
+    // byte_len comes from StorageOps supertrait
     assert_eq!(dyn_buf.byte_len(), 11);
+}
+
+// === Supertrait access through dyn BufferOps ===
+
+#[test]
+fn supertrait_storage_ops_via_dyn_buffer_ops() {
+    let buf = MockBuffer::new("hello");
+    let dyn_buf: &dyn BufferOps = &buf;
+
+    // StorageOps methods accessible through dyn BufferOps
+    assert_eq!(dyn_buf.byte_len(), 5);
+    assert!(!dyn_buf.is_empty());
+
+    let mut read_buf = [0u8; 3];
+    let n = dyn_buf.read_bytes(0, &mut read_buf);
+    assert_eq!(n, 3);
+    assert_eq!(&read_buf, b"hel");
+}
+
+#[test]
+fn supertrait_buffer_meta_via_dyn_buffer_ops() {
+    let buf = MockBuffer::new("hello");
+    let dyn_buf: &dyn BufferOps = &buf;
+
+    // BufferMeta methods accessible through dyn BufferOps
+    let _ = dyn_buf.id();
+    assert!(!dyn_buf.is_modified());
+    assert!(dyn_buf.file_path().is_none());
 }
 
 // === as_text_geometry bridge ===
@@ -217,23 +284,36 @@ fn as_text_geometry_is_empty() {
     assert!(!dyn_ne.as_text_geometry().is_empty());
 }
 
-// === Error Type ===
+// === StorageOps error types (replace BufferOpsError) ===
 
 #[test]
 fn insert_bytes_rejects_invalid_utf8() {
     let mut buf = MockBuffer::new("hello");
-    let result = buf.insert_bytes(0, &[0xFF, 0xFE]);
-    assert_eq!(result, Err(BufferOpsError::InvalidUtf8));
+    let result = StorageOps::insert_bytes(&mut buf, 0, &[0xFF, 0xFE]);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("not supported"));
 }
 
 #[test]
-fn error_display() {
-    let err = BufferOpsError::InvalidUtf8;
-    assert_eq!(err.to_string(), "invalid UTF-8 data");
+fn storage_error_display() {
+    let err = StorageError::NotSupported("test op");
+    assert_eq!(err.to_string(), "operation not supported: test op");
 
-    let err2 = BufferOpsError::OffsetOutOfRange {
+    let err2 = StorageError::OffsetOutOfRange {
         offset: 100,
         len: 50,
     };
     assert_eq!(err2.to_string(), "offset 100 out of range (len 50)");
+}
+
+// === buffer_capabilities ===
+
+#[test]
+fn buffer_capabilities_returns_text_flags() {
+    let buf = MockBuffer::new("hello");
+    let dyn_buf: &dyn BufferOps = &buf;
+    assert_eq!(dyn_buf.buffer_capabilities(), BufferCapabilities::ROPE);
 }

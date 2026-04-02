@@ -135,8 +135,8 @@ pub use crate::block::{
 // It stays in kernel - no I/O policy, just storage lifecycle
 pub use super::buffer_manager::{BufferError, BufferManager};
 
-// BufferOps - unified buffer storage trait (byte + line level)
-pub use super::buffer_ops::{BufferOps, BufferOpsError};
+// BufferOps - text buffer operations (extends StorageOps + BufferMeta)
+pub use super::buffer_ops::BufferOps;
 
 // BufferCapabilities - capability flags for buffer type queries
 pub use super::buffer_caps::BufferCapabilities;

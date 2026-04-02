@@ -1,112 +1,53 @@
-//! Unified buffer operations trait.
+//! Text buffer operations trait.
 //!
-//! `BufferOps` is the kernel-level contract for all buffer types. Both Rope-backed
-//! `Buffer` and mmap-backed `VirtualBuffer` implement this trait. The unified
-//! `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`.
+//! `BufferOps` extends `StorageOps + BufferMeta` with text-specific methods.
+//! Both Rope-backed `Buffer` and mmap-backed `VirtualBuffer` implement this
+//! trait. The `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`.
 //!
-//! # Design
+//! # Architecture
 //!
-//! The trait includes both byte-level I/O and line-level convenience methods.
-//! Line-level methods are included because all buffer types already implement them,
-//! avoiding a separate `TextDriver` crate. A blanket `TextGeometry` impl covers
-//! the read-only subset automatically.
-//!
-//! # Layer Model
+//! Byte-level I/O and identity come from supertraits (`StorageOps`, `BufferMeta`).
+//! `BufferOps` adds only text-specific operations (line access, position
+//! conversion, text mutations). During #740, these text methods will move to
+//! `reovim-provider-text` and `BufferManager` will store `dyn StorageOps + BufferMeta`.
 //!
 //! ```text
-//! Kernel:  BufferOps (byte + line storage)
-//! Driver:  SearchProvider, BufferApi (consume dyn BufferOps)
-//! Module:  Operators, commands (use BufferApi or dyn BufferOps)
+//! StorageOps (byte I/O)  ─┐
+//!                          ├─ BufferOps (text-specific extension)
+//! BufferMeta (identity)  ─┘
 //! ```
 
-use std::{borrow::Cow, fmt};
+use std::borrow::Cow;
 
-use crate::{api::BufferCapabilities, mm::{BufferId, Position}};
+use crate::{
+    api::{
+        BufferCapabilities,
+        storage_ops::{BufferMeta, StorageOps},
+    },
+    mm::Position,
+};
 use reovim_types_text::TextGeometry;
 
-/// Error type for `BufferOps` operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BufferOpsError {
-    /// Attempted to insert non-UTF-8 bytes into a UTF-8 buffer.
-    InvalidUtf8,
-    /// Byte offset out of range.
-    OffsetOutOfRange { offset: usize, len: usize },
-}
-
-impl fmt::Display for BufferOpsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidUtf8 => write!(f, "invalid UTF-8 data"),
-            Self::OffsetOutOfRange { offset, len } => {
-                write!(f, "offset {offset} out of range (len {len})")
-            }
-        }
-    }
-}
-
-impl std::error::Error for BufferOpsError {}
-
-/// Unified buffer storage interface.
+/// Text buffer operations extending byte storage with text-specific methods.
 ///
-/// All buffer types (Rope, mmap-backed, future types) implement this trait.
-/// The kernel `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`, enabling
-/// polymorphic buffer access without type-specific dispatch.
+/// All text buffer types (Rope, mmap-backed) implement this trait. The kernel
+/// `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`, enabling polymorphic
+/// text buffer access.
+///
+/// Byte-level I/O and metadata methods are inherited from `StorageOps` and
+/// `BufferMeta` supertraits. This trait adds only text-specific operations.
 ///
 /// # Object Safety
 ///
 /// This trait is object-safe: all methods use `&self`/`&mut self`, return
 /// owned types, and have no generic parameters.
-pub trait BufferOps: Send + Sync + 'static {
-    // === Identity ===
+pub trait BufferOps: StorageOps + BufferMeta {
+    // === Text-Specific Capabilities ===
 
-    /// Unique buffer identifier.
-    fn id(&self) -> BufferId;
-
-    // === Byte-Level I/O ===
-
-    /// Total byte length of buffer content.
-    fn byte_len(&self) -> usize;
-
-    /// Whether the buffer has zero bytes.
-    fn is_byte_empty(&self) -> bool {
-        self.byte_len() == 0
-    }
-
-    /// Read bytes starting at `offset` into `buf`.
+    /// Text-level capability flags for this buffer type.
     ///
-    /// Returns the number of bytes actually read (may be less than `buf.len()`
-    /// if offset + `buf.len()` exceeds buffer length).
-    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize;
-
-    /// Insert raw bytes at `offset`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `InvalidUtf8` if data is not valid UTF-8 (for text buffers).
-    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), BufferOpsError>;
-
-    /// Delete `len` bytes starting at `offset`, returning deleted bytes.
-    fn delete_bytes(&mut self, offset: usize, len: usize) -> Vec<u8>;
-
-    /// Full content as bytes.
-    fn content_bytes(&self) -> Vec<u8>;
-
-    // === Metadata ===
-
-    /// Whether the buffer has unsaved modifications.
-    fn is_modified(&self) -> bool;
-
-    /// Mark the buffer as modified or unmodified.
-    fn set_modified(&mut self, modified: bool);
-
-    /// File path associated with this buffer.
-    fn file_path(&self) -> Option<&str>;
-
-    /// Set the file path for this buffer.
-    fn set_file_path(&mut self, path: Option<String>);
-
-    /// Capability flags for this buffer type.
-    fn capabilities(&self) -> BufferCapabilities;
+    /// For byte-level capabilities, use `StorageOps::capabilities()`.
+    fn buffer_capabilities(&self) -> BufferCapabilities;
 
     // === Line-Level Access ===
 
@@ -118,6 +59,9 @@ pub trait BufferOps: Send + Sync + 'static {
 
     /// Length of a line in characters.
     fn line_len(&self, idx: usize) -> Option<usize>;
+
+    /// Full content as bytes.
+    fn content_bytes(&self) -> Vec<u8>;
 
     // === Position Conversion ===
 

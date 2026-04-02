@@ -7,7 +7,7 @@
 //! # Architecture
 //!
 //! ```text
-//! Kernel (here):  BufferCapabilities definition (part of BufferOps contract)
+//! Kernel (here):  BufferCapabilities definition (text-level capability flags)
 //! Driver:         reovim-driver-buffer re-exports for backward compat
 //! Server:         gRPC sends capabilities as u32 in BufferInfo proto
 //! ```

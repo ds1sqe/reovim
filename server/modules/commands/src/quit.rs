@@ -38,7 +38,7 @@ impl CommandHandler for QuitCommand {
         if !ctx.has_bang()
             && let Some(buffer_id) = runtime.active_buffer()
             && runtime
-                .with_buffer_read(buffer_id, reovim_kernel::api::BufferOps::is_modified)
+                .with_buffer_read(buffer_id, reovim_kernel::api::BufferMeta::is_modified)
                 .unwrap_or(false)
         {
             return CommandResult::Error(

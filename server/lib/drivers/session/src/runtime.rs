@@ -882,7 +882,7 @@ impl BufferApi for SessionRuntime<'_> {
         self.kernel
             .buffers
             .get(buffer)
-            .map(|buf| buf.read().capabilities())
+            .map(|buf| buf.read().buffer_capabilities())
     }
 
     fn buffer_write_to(

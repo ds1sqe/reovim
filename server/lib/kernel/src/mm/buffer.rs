@@ -428,7 +428,7 @@ impl TextGeometry for Buffer {
 // ── BufferOps ──────────────────────────────────────────────────────────────
 
 use crate::api::{
-    BufferCapabilities, BufferOps, BufferOpsError,
+    BufferCapabilities, BufferOps,
     storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
 };
 
@@ -440,7 +440,30 @@ impl StorageOps for Buffer {
     }
 
     fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        BufferOps::read_bytes(self, offset, buf)
+        let total = self.text.byte_len();
+        if offset >= total {
+            return 0;
+        }
+        let available = total - offset;
+        let count = buf.len().min(available);
+        let mut written = 0;
+        let mut pos = 0;
+        for chunk in self.text.chunks() {
+            let chunk_end = pos + chunk.len();
+            if chunk_end <= offset {
+                pos = chunk_end;
+                continue;
+            }
+            if written >= count {
+                break;
+            }
+            let start = offset.saturating_sub(pos);
+            let end = (count - written).min(chunk.len() - start);
+            buf[written..written + end].copy_from_slice(&chunk.as_bytes()[start..start + end]);
+            written += end;
+            pos = chunk_end;
+        }
+        written
     }
 
     fn capabilities(&self) -> StorageCapabilities {
@@ -519,89 +542,12 @@ impl BufferMeta for Buffer {
 }
 
 impl BufferOps for Buffer {
-    fn id(&self) -> BufferId {
-        self.id
-    }
-
-    fn byte_len(&self) -> usize {
-        self.text.byte_len()
-    }
-
-    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let total = self.text.byte_len();
-        if offset >= total {
-            return 0;
-        }
-        let available = total - offset;
-        let count = buf.len().min(available);
-        let mut written = 0;
-        let mut pos = 0;
-        for chunk in self.text.chunks() {
-            let chunk_end = pos + chunk.len();
-            if chunk_end <= offset {
-                pos = chunk_end;
-                continue;
-            }
-            if written >= count {
-                break;
-            }
-            let start = offset.saturating_sub(pos);
-            let end = (count - written).min(chunk.len() - start);
-            buf[written..written + end].copy_from_slice(&chunk.as_bytes()[start..start + end]);
-            written += end;
-            pos = chunk_end;
-        }
-        written
-    }
-
-    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), BufferOpsError> {
-        let text = std::str::from_utf8(data).map_err(|_| BufferOpsError::InvalidUtf8)?;
-        if text.is_empty() {
-            return Ok(());
-        }
-        if self.text.is_empty() {
-            self.text = Rope::from_str(text);
-        } else {
-            self.text = self.text.insert(offset.min(self.text.byte_len()), text);
-        }
-        self.modified = true;
-        Ok(())
-    }
-
-    fn delete_bytes(&mut self, offset: usize, len: usize) -> Vec<u8> {
-        let total = self.text.byte_len();
-        if offset >= total || len == 0 {
-            return Vec::new();
-        }
-        let end = (offset + len).min(total);
-        let deleted = extract_byte_range(&self.text, offset, end).into_bytes();
-        self.text = self.text.remove(offset..end);
-        self.modified = true;
-        deleted
+    fn buffer_capabilities(&self) -> BufferCapabilities {
+        BufferCapabilities::ROPE
     }
 
     fn content_bytes(&self) -> Vec<u8> {
         self.text.content().into_bytes()
-    }
-
-    fn is_modified(&self) -> bool {
-        self.modified
-    }
-
-    fn set_modified(&mut self, modified: bool) {
-        self.modified = modified;
-    }
-
-    fn file_path(&self) -> Option<&str> {
-        self.file_path.as_deref()
-    }
-
-    fn set_file_path(&mut self, path: Option<String>) {
-        self.file_path = path;
-    }
-
-    fn capabilities(&self) -> BufferCapabilities {
-        BufferCapabilities::ROPE
     }
 
     fn line_count(&self) -> usize {

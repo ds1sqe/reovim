@@ -3,8 +3,9 @@
 //! Defines the interface for buffer storage and retrieval. The kernel provides
 //! pure storage mechanisms; drivers handle I/O operations (loading, saving).
 //!
-//! The manager stores `Arc<RwLock<dyn BufferOps>>` — both Rope-backed `Buffer`
-//! and mmap-backed `VirtualBuffer` coexist in a single registry.
+//! The manager stores `Arc<RwLock<dyn BufferOps>>`. `BufferOps` extends
+//! `StorageOps + BufferMeta`, so byte-level I/O, identity, and text operations
+//! are all accessible through the same trait object.
 
 use std::{fmt, sync::Arc};
 
@@ -45,8 +46,9 @@ impl std::error::Error for BufferError {}
 
 /// Unified buffer manager interface.
 ///
-/// Stores all buffer types as `Arc<RwLock<dyn BufferOps>>`. Both Rope-backed
-/// `Buffer` and mmap-backed `VirtualBuffer` live in the same registry.
+/// Stores all buffer types as `Arc<RwLock<dyn BufferOps>>`. `BufferOps`
+/// extends `StorageOps + BufferMeta`, providing byte I/O, identity, and
+/// text operations through a single trait object.
 ///
 /// # Design Philosophy
 ///
@@ -72,7 +74,7 @@ pub trait BufferManager: Send + Sync {
 
     /// Register a buffer.
     ///
-    /// The buffer's own ID (from `BufferOps::id()`) is used as the key.
+    /// The buffer's own ID (from `BufferMeta::id()`) is used as the key.
     /// Returns the buffer's ID for convenience.
     fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId;
 

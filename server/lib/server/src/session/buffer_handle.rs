@@ -38,7 +38,7 @@ impl BufferHandle {
     /// Returns the capability flags for this buffer type.
     #[must_use]
     pub fn capabilities(&self) -> BufferCapabilities {
-        self.0.read().capabilities()
+        self.0.read().buffer_capabilities()
     }
 
     /// Returns the number of lines in the buffer.
