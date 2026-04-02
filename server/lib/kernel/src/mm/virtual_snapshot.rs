@@ -119,28 +119,3 @@ pub trait SnapshotCapture: Send + Sync {
     /// Get the buffer ID for snapshot matching.
     fn snapshot_buffer_id(&self) -> BufferId;
 }
-
-// ─── RopeCapture ────────────────────────────────────────────────────────────
-
-use super::rope::Rope;
-
-/// Trait for Rope-based buffer types that support snapshot capture/restore.
-///
-/// This abstracts `Buffer` (which lives in the kernel during the transition
-/// and will move to `reovim-provider-text`) so that `block/snapshot.rs`
-/// can capture and restore rope-based snapshots without a concrete dependency
-/// on the `Buffer` type.
-///
-/// # Implementors
-///
-/// - `Buffer` (currently in `reovim-kernel`, migrating to `reovim-provider-text`)
-pub trait RopeCapture: Send + Sync {
-    /// Capture the current rope (O(1) clone via Arc sharing).
-    fn capture_rope(&self) -> Rope;
-
-    /// Restore state from a rope snapshot.
-    fn restore_rope(&mut self, rope: Rope);
-
-    /// Get the buffer ID for snapshot matching.
-    fn rope_buffer_id(&self) -> BufferId;
-}

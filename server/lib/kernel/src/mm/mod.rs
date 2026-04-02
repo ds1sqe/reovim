@@ -58,7 +58,7 @@ pub use {
     file_mapping::FileMapping,
     line_index::{InvalidUtf8, LineIndex},
     piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
-    virtual_snapshot::{RopeCapture, SnapshotCapture, VirtualSnapshot},
+    virtual_snapshot::{SnapshotCapture, VirtualSnapshot},
 };
 
 pub use {

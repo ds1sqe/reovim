@@ -50,8 +50,8 @@ pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
 // Note: VirtualBuffer and HeapMapping moved to reovim-provider-text (#740)
 pub use crate::mm::{FileMapping, InvalidUtf8, LineIndex};
 
-// Virtual snapshot and traits (for abstract snapshot capture/restore)
-pub use crate::mm::{RopeCapture, SnapshotCapture, VirtualSnapshot};
+// Virtual snapshot and trait (for abstract snapshot capture/restore)
+pub use crate::mm::{SnapshotCapture, VirtualSnapshot};
 
 // Piece table (byte-only B-tree for large file editing)
 pub use crate::mm::{Piece, PieceMetrics, PieceSource, PieceTree};

@@ -22,7 +22,7 @@
 //! handled by the driver layer (`server/lib/drivers/vfs/`).
 
 use {
-    crate::mm::{BufferId, Position, Rope, RopeCapture, SnapshotCapture, VirtualSnapshot},
+    crate::mm::{Buffer, BufferId, Position, Rope, SnapshotCapture, VirtualSnapshot},
     std::{fmt, time::SystemTime},
 };
 
@@ -84,7 +84,7 @@ enum SnapshotContent {
 /// let mut buffer = Buffer::from_string("Hello, World!");
 /// let cursor = Position::new(0, 0); // Get from Window in real usage
 ///
-/// // Capture state with explicit cursor (Buffer implements RopeCapture)
+/// // Capture state with explicit cursor
 /// let snapshot = Snapshot::capture(&buffer, cursor);
 ///
 /// // Later, restore the state
@@ -121,16 +121,14 @@ impl std::fmt::Debug for Snapshot {
 impl Snapshot {
     /// Capture the current state of a Rope-based buffer.
     ///
-    /// Accepts any type implementing [`RopeCapture`], which abstracts
-    /// over `Buffer` without requiring a concrete dependency.
     /// Cursor position must be passed explicitly - get it from Window.
     /// This is O(1) — the rope is cloned via `Arc` sharing.
     #[must_use]
-    pub fn capture(buffer: &dyn RopeCapture, cursor: Position) -> Self {
+    pub fn capture(buffer: &Buffer, cursor: Position) -> Self {
         Self {
-            content: SnapshotContent::Rope(buffer.capture_rope()),
+            content: SnapshotContent::Rope(buffer.clone_rope()),
             cursor,
-            buffer_id: buffer.rope_buffer_id(),
+            buffer_id: buffer.id(),
             timestamp: SystemTime::now(),
         }
     }
@@ -177,8 +175,6 @@ impl Snapshot {
 
     /// Restore a Rope-based buffer to this snapshot's state.
     ///
-    /// Accepts any type implementing [`RopeCapture`], which abstracts
-    /// over `Buffer` without requiring a concrete dependency.
     /// Returns the cursor position that should be set on Window.
     /// The buffer ID is not changed.
     ///
@@ -186,10 +182,10 @@ impl Snapshot {
     ///
     /// Returns `Err(SnapshotMismatch)` if this snapshot was captured from
     /// a `VirtualBuffer`.
-    pub fn restore(&self, buffer: &mut dyn RopeCapture) -> Result<Position, SnapshotMismatch> {
+    pub fn restore(&self, buffer: &mut Buffer) -> Result<Position, SnapshotMismatch> {
         match &self.content {
             SnapshotContent::Rope(rope) => {
-                buffer.restore_rope(rope.clone());
+                buffer.set_rope(rope.clone());
                 Ok(self.cursor)
             }
             SnapshotContent::Virtual(_) => Err(SnapshotMismatch {
@@ -276,8 +272,8 @@ impl Snapshot {
 
     /// Check if this snapshot matches a buffer's ID.
     #[must_use]
-    pub fn matches_buffer(&self, buffer: &dyn RopeCapture) -> bool {
-        self.buffer_id == buffer.rope_buffer_id()
+    pub fn matches_buffer(&self, buffer: &Buffer) -> bool {
+        self.buffer_id == buffer.id()
     }
 
     /// Check if this snapshot matches a virtual buffer's ID.
