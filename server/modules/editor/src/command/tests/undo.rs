@@ -7,12 +7,10 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::{
-        api::v1::{
-            Buffer, BufferId, Edit, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack,
-            Position, RegisterBank, RwLock, UndoResult,
-        },
+        api::v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
+    reovim_types_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     std::sync::Arc,
 };
 
@@ -502,7 +500,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
         None
     }
 

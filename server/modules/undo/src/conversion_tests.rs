@@ -1,6 +1,5 @@
 use {
-    reovim_kernel::api::v1::{EditOrigin, UndoTree},
-    reovim_types_text::{Edit, Position},
+    reovim_types_text::{Edit, EditOrigin, Position, UndoTree},
     reovim_protocol::v1::undo::{
         SerializableEdit, SerializableEditOrigin, SerializablePosition, SerializableUndoNode,
         SerializableUndoTree, UndoFileFormat,

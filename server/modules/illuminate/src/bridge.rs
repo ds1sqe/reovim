@@ -8,9 +8,8 @@ use {
         BufferReadAccess, CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_kernel::api::v1::{
-        BufferId, BufferOps, CharKind, ServiceRegistry, WordType, char_kind, word_bounds,
-    },
+    reovim_kernel::api::v1::{BufferId, BufferOps, ServiceRegistry},
+    reovim_types_text::{CharKind, WordType, char_kind, word_bounds},
     serde_json::json,
 };
 

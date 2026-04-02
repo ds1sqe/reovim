@@ -24,7 +24,8 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::{BufferOpsLineSource, Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{SessionRuntime, api::ExtensionApi},
-    reovim_kernel::api::{Position, v1::CommandId},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::{ids, search_state::SearchState};

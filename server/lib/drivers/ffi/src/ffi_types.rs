@@ -133,16 +133,16 @@ pub enum ReovimYankType {
     Linewise = 1,
 }
 
-impl From<reovim_kernel::api::v1::YankType> for ReovimYankType {
-    fn from(yt: reovim_kernel::api::v1::YankType) -> Self {
+impl From<reovim_types_text::YankType> for ReovimYankType {
+    fn from(yt: reovim_types_text::YankType) -> Self {
         match yt {
-            reovim_kernel::api::v1::YankType::Characterwise => Self::Characterwise,
-            reovim_kernel::api::v1::YankType::Linewise => Self::Linewise,
+            reovim_types_text::YankType::Characterwise => Self::Characterwise,
+            reovim_types_text::YankType::Linewise => Self::Linewise,
         }
     }
 }
 
-impl From<ReovimYankType> for reovim_kernel::api::v1::YankType {
+impl From<ReovimYankType> for reovim_types_text::YankType {
     fn from(yt: ReovimYankType) -> Self {
         match yt {
             ReovimYankType::Characterwise => Self::Characterwise,

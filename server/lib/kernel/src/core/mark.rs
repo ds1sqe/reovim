@@ -23,6 +23,7 @@ use crate::mm::{BufferId, Position};
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
+/// # use reovim_types_text::Position;
 ///
 /// let mark = Mark {
 ///     position: Position::new(10, 5),
@@ -93,6 +94,7 @@ pub enum SpecialMark {
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
+/// # use reovim_types_text::Position;
 ///
 /// let mut marks = MarkBank::new();
 ///

@@ -22,6 +22,7 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::*;
+//! use reovim_types_text::{Edit, Position, UndoTree};
 //!
 //! // Create an undo tree
 //! let mut tree = UndoTree::new();

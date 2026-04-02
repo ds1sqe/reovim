@@ -2241,6 +2241,7 @@ dependencies = [
  "reovim-picker-grep",
  "reovim-picker-options",
  "reovim-server",
+ "reovim-types-text",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2775,6 +2776,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-types-text",
  "serde_json",
 ]
 
@@ -3104,6 +3106,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
+ "reovim-types-text",
  "serde_json",
  "tracing",
 ]

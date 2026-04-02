@@ -5,9 +5,10 @@ use {
         ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack, RegisterBank},
+        api::v1::{Jumplist, KernelContext, MarkBank, ModeStack},
         testing::test_mode,
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 #[test]

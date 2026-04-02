@@ -170,10 +170,9 @@ use {
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, RegisterBank, RwLock,
-        },
+        v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, RwLock},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 
@@ -712,8 +711,8 @@ fn test_enter_insert_first_non_blank_on_second_line() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{OptionSpec, OptionValue, UndoResult, UndoTree},
-    reovim_types_text::Edit,
+    reovim_kernel::api::v1::{OptionSpec, OptionValue},
+    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

@@ -30,6 +30,8 @@
 
 // This SHOULD compile - accessing the public API
 use reovim_kernel::api::v1::*;
+// Text types are in reovim_types_text, not kernel API (Phase 5.5 cleanup)
+use reovim_types_text::{MotionEngine, Position, RegisterBank, TextObjectEngine, UndoTree};
 
 // These should NOT compile (uncomment to verify):
 // use reovim_kernel::mm::*;       // ERROR: module `mm` is private

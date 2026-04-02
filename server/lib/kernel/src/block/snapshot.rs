@@ -78,6 +78,7 @@ enum SnapshotContent {
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
+/// # use reovim_types_text::Position;
 ///
 /// // Create a buffer with some content
 /// let mut buffer = Buffer::from_string("Hello, World!");

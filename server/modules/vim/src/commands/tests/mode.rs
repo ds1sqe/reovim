@@ -16,13 +16,11 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{
-                Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank,
-                Position, RegisterBank, RwLock,
-            },
+            v1::{Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::{collections::HashMap, sync::Arc},
 };
 
@@ -775,8 +773,7 @@ fn test_enter_insert_mode_append_on_second_line() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{UndoResult, UndoTree},
-    reovim_types_text::Edit,
+    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 /// Minimal mock undo provider that tracks `begin_batch`/`end_batch` calls.

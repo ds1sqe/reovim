@@ -4,7 +4,7 @@ use {
     crate::ids,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{SessionRuntime, api::ModeApi},
-    reovim_kernel::api::v1::Position,
+    reovim_types_text::Position,
 };
 
 use {reovim_driver_command::Command, reovim_kernel::testing::create_test_context};
@@ -46,11 +46,9 @@ use {
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank, RwLock,
-        },
+        v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

@@ -21,10 +21,8 @@
 
 use {
     reovim_driver_layout::RootCompositor,
-    reovim_kernel::api::v1::{
-        BufferId, HistoryRing, Jumplist, MarkBank, ModeId, ModeStack, Position, RegisterBank,
-        WindowId,
-    },
+    reovim_kernel::api::v1::{BufferId, Jumplist, MarkBank, ModeId, ModeStack, WindowId},
+    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 use crate::{api::Selection as ApiSelection, extension::ExtensionMap};

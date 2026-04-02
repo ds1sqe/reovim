@@ -323,8 +323,8 @@ impl PyRuntimeApi {
     #[pyo3(signature = (text, name=None, yank_type="characterwise"))]
     fn set_register(&self, text: &str, name: Option<char>, yank_type: &str) -> PyResult<()> {
         let yt = match yank_type {
-            "characterwise" => reovim_kernel::api::v1::YankType::Characterwise,
-            "linewise" => reovim_kernel::api::v1::YankType::Linewise,
+            "characterwise" => reovim_types_text::YankType::Characterwise,
+            "linewise" => reovim_types_text::YankType::Linewise,
             _ => {
                 return Err(pyo3::exceptions::PyValueError::new_err(
                     "yank_type must be 'characterwise' or 'linewise'",

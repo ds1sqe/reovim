@@ -24,7 +24,7 @@ use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{SessionRuntime, api::ChangeTracker},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::{Cursor, Motion, MotionEngine, Position},
+    reovim_types_text::{Cursor, Direction, Motion, MotionEngine, Position},
 };
 
 use crate::ids::EXECUTE_FIND_CHAR;
@@ -88,9 +88,9 @@ impl CommandHandler for ExecuteFindChar {
         let motion = Motion::FindChar {
             char: target_char,
             direction: if forward {
-                reovim_kernel::api::v1::Direction::Forward
+                Direction::Forward
             } else {
-                reovim_kernel::api::v1::Direction::Backward
+                Direction::Backward
             },
             till: !inclusive,
         };

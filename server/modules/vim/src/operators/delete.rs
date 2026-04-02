@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_types_text::{Edit, RegisterContent},
+    reovim_types_text::{Edit, Position, RegisterContent},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
@@ -93,17 +93,17 @@ impl Operator for DeleteOperator {
 
             if clamped_end + 1 < line_count {
                 // Case 1: Deleting non-last lines - delete through newline to next line
-                delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
-                delete_end = reovim_kernel::api::v1::Position::new(clamped_end + 1, 0);
+                delete_start = Position::new(start.line, 0);
+                delete_end = Position::new(clamped_end + 1, 0);
                 // deleted_text matches what we're deleting: "line\n"
                 deleted_text.clone_from(&register_text);
             } else if start.line > 0 {
                 // Case 2: Deleting last line(s) but not all
                 // Include the preceding newline (from end of previous line)
                 let prev_line_len = buffer.line(start.line - 1).map_or(0, |l| l.chars().count());
-                delete_start = reovim_kernel::api::v1::Position::new(start.line - 1, prev_line_len);
+                delete_start = Position::new(start.line - 1, prev_line_len);
                 let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
-                delete_end = reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len);
+                delete_end = Position::new(clamped_end, last_line_char_len);
                 // Build deleted_text as "\nline" (preceding newline + content, no trailing newline)
                 // This matches what we're actually deleting for correct undo
                 for line_idx in start.line..=clamped_end {
@@ -114,9 +114,9 @@ impl Operator for DeleteOperator {
                 }
             } else {
                 // Case 3: Deleting all lines (start.line == 0 and clamped_end is last line)
-                delete_start = reovim_kernel::api::v1::Position::new(0, 0);
+                delete_start = Position::new(0, 0);
                 let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
-                delete_end = reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len);
+                delete_end = Position::new(clamped_end, last_line_char_len);
                 // deleted_text is just the content (no newlines - single line)
                 if let Some(line) = buffer.line(clamped_end) {
                     deleted_text.push_str(&line);
@@ -162,7 +162,7 @@ impl Operator for DeleteOperator {
             };
             // Cursor position after delete — used for both undo tracking and
             // communicating desired cursor back to execute_operator (#552)
-            let cursor_after = reovim_kernel::api::v1::Position::new(final_line, final_col);
+            let cursor_after = Position::new(final_line, final_col);
             ctx.cursor_after = Some(cursor_after);
 
             // Record edit for undo

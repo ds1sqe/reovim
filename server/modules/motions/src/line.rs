@@ -10,9 +10,8 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{
-        CommandId, Cursor, JumpEntry, LinePosition, Motion, MotionEngine, Position,
-    },
+    reovim_kernel::api::v1::{CommandId, JumpEntry},
+    reovim_types_text::{Cursor, LinePosition, Motion, MotionEngine, Position},
 };
 
 use crate::ids;

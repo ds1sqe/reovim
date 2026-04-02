@@ -35,9 +35,10 @@ use {
     },
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId,
-        ModeStack, ModuleId, Position, RegisterBank,
+        Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, ModeId,
+        ModeStack, ModuleId,
     },
+    reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
 

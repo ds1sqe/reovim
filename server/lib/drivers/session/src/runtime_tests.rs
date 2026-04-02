@@ -2,9 +2,10 @@ use {
     super::*,
     crate::{testing::StubExecutor, types::ClientId},
     reovim_kernel::{
-        api::v1::{HistoryRing, Jumplist, MarkBank, ModuleId, RegisterBank},
+        api::v1::{Jumplist, MarkBank, ModuleId},
         testing::test_mode,
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_mode_2() -> ModeId {
@@ -3051,8 +3052,8 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
-        let mut tree = reovim_kernel::api::v1::UndoTree::new();
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
+        let mut tree = reovim_types_text::UndoTree::new();
         tree.push(
             vec![Edit::Insert {
                 position: Position::new(0, 0),
@@ -3499,7 +3500,7 @@ impl reovim_driver_undo::UndoProvider for AlternateUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
         None
     }
 

@@ -45,7 +45,7 @@
 
 use {
     reovim_driver_input::KeyEvent, reovim_driver_session::SessionExtension,
-    reovim_kernel::api::v1::Position,
+    reovim_types_text::Position,
 };
 
 // Re-export TextObjRange from session driver for convenience

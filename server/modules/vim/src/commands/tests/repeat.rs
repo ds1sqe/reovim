@@ -16,13 +16,11 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{
-                BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                RegisterBank,
-            },
+            v1::{BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId},
         },
         testing::{create_test_context, setup_buffer},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_mode() -> ModeId {

@@ -22,6 +22,7 @@
 use reovim_driver_input::{
     FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
 };
+use reovim_types_text::{Edit, Position};
 
 use crate::modes::VimMode;
 
@@ -70,9 +71,9 @@ impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
 
                     // Calculate cursor after insert (advance by text length)
                     let cursor_after = if ch == '\n' {
-                        reovim_kernel::api::v1::Position::new(cursor_before.line + 1, 0)
+                        Position::new(cursor_before.line + 1, 0)
                     } else {
-                        reovim_kernel::api::v1::Position::new(
+                        Position::new(
                             cursor_before.line,
                             cursor_before.column + 1,
                         )
@@ -83,7 +84,7 @@ impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
 
                     // Accumulate edit for batched undo tracking
                     // (consecutive inserts become single undo node)
-                    let edit = reovim_kernel::api::v1::Edit::insert(cursor_before, &text);
+                    let edit = Edit::insert(cursor_before, &text);
                     ctx.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
 
                     return FallbackResult::Handled;

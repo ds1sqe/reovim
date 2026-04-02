@@ -186,11 +186,9 @@ use {
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-            RegisterBank, RwLock,
-        },
+        v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

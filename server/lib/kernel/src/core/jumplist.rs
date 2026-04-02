@@ -15,6 +15,7 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::*;
+//! # use reovim_types_text::Position;
 //!
 //! let buffer_id = BufferId::new();
 //! let mut jumplist = Jumplist::new();
@@ -121,6 +122,7 @@ impl Jumplist {
     ///
     /// ```
     /// use reovim_kernel::api::v1::*;
+    /// # use reovim_types_text::Position;
     ///
     /// let buf = BufferId::new();
     /// let mut list = Jumplist::new();
@@ -192,6 +194,7 @@ impl Jumplist {
     ///
     /// ```
     /// use reovim_kernel::api::v1::*;
+    /// # use reovim_types_text::Position;
     ///
     /// let buf = BufferId::new();
     /// let mut list = Jumplist::new();

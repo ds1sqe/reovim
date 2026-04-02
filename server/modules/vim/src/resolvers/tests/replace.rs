@@ -71,8 +71,7 @@ use {
             WindowApi,
         },
     },
-    reovim_kernel::api::v1::UndoResult,
-    reovim_types_text::Edit,
+    reovim_types_text::{Edit, UndoResult},
 };
 
 /// Mock session with configurable buffer content.

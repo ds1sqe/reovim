@@ -3,7 +3,7 @@ use {
     super::super::*,
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::Position,
+    reovim_types_text::Position,
 };
 
 use {
@@ -11,13 +11,11 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{
-                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                RegisterBank, RwLock,
-            },
+            v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 
@@ -476,8 +474,7 @@ fn test_yank_command_no_range_defaults() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{UndoResult, UndoTree},
-    reovim_types_text::Edit,
+    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

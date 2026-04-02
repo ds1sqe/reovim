@@ -114,21 +114,6 @@ pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 
 // ============================================================================
-// Text types (re-exported for backward compat during #740 transition)
-// ============================================================================
-// These will be removed when all consumers are migrated to reovim-types-text.
-// Import from reovim_types_text for new code.
-
-pub use reovim_types_text::{
-    CharKind, Cursor, Direction, Edit, EditOrigin, History, HistoryEntry, HistoryRing, LinePosition,
-    Motion, MotionEngine, Position, Register, RegisterBank, RegisterContent, Selection,
-    SelectionMode, TextDimensions, TextGeometry, TextObject, TextObjectEngine, Transaction,
-    UndoNode, UndoResult, UndoTree, WordBoundary, WordType, YankType, char_kind, delete_end,
-    next_word_end, next_word_start, text_dimensions, transform_position, word_bounds, word_end,
-    word_start,
-};
-
-// ============================================================================
 // Block Operations (block/) — Snapshot stays in kernel
 // ============================================================================
 

@@ -14,12 +14,13 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank,
-                ModeId, ModuleId, Position, Register, RegisterBank, RwLock,
+                Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+                RwLock,
             },
         },
         testing::create_test_context,
     },
+    reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
     std::sync::Arc,
 };
 
@@ -690,8 +691,7 @@ use {
         UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
     },
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{UndoResult, UndoTree},
-    reovim_types_text::Edit,
+    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

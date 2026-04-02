@@ -8,9 +8,8 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_input::{ExtensionMap, FallbackContext},
     reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
-    reovim_kernel::api::v1::{
-        BufferId, BufferOps, Edit, KernelContext, ModeId, Position, ServiceRegistry,
-    },
+    reovim_kernel::api::v1::{BufferId, BufferOps, KernelContext, ModeId, ServiceRegistry},
+    reovim_types_text::{Edit, Position},
     std::sync::Arc,
 };
 

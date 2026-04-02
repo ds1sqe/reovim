@@ -42,6 +42,7 @@ use reovim_types_text::TextGeometry;
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
+/// # use reovim_types_text::Position;
 ///
 /// let mut buf = Buffer::from_string("Hello\nWorld");
 /// assert_eq!(buf.line_count(), 2);

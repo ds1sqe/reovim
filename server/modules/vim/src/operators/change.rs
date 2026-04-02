@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_types_text::{Edit, RegisterContent},
+    reovim_types_text::{Edit, Position, RegisterContent},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
@@ -78,16 +78,16 @@ impl Operator for ChangeOperator {
             // - Keep ONE empty line at start.line for insertion
             // This means: delete from (start.line, 0) to (clamped_end, end_of_content),
             // then if multiple lines, delete the extra newlines to leave just one line
-            let delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
+            let delete_start = Position::new(start.line, 0);
             let delete_end = if clamped_end + 1 < line_count {
                 // Not the last line - delete content but preserve start.line's newline
                 // Delete all lines but keep start.line as empty (with its newline)
                 let end_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
-                reovim_kernel::api::v1::Position::new(clamped_end, end_line_char_len)
+                Position::new(clamped_end, end_line_char_len)
             } else {
                 // End line is last line - delete to end of content (keep line structure)
                 let last_line_char_len = buffer.line(clamped_end).map_or(0, |l| l.chars().count());
-                reovim_kernel::api::v1::Position::new(clamped_end, last_line_char_len)
+                Position::new(clamped_end, last_line_char_len)
             };
 
             delete_pos = delete_start;

@@ -26,8 +26,8 @@ use {
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
         Buffer, BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
-        RegisterContent,
     },
+    reovim_types_text::RegisterContent,
 };
 
 use super::BufferHandle;
@@ -415,8 +415,8 @@ impl SessionState {
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
         let mut temp_tabs = reovim_driver_session::TabPageSet::new();
-        let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
-        let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
+        let mut temp_registers = reovim_types_text::RegisterBank::new();
+        let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
         let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;
@@ -675,8 +675,8 @@ impl SessionState {
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
         let mut temp_tabs = reovim_driver_session::TabPageSet::new();
-        let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
-        let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
+        let mut temp_registers = reovim_types_text::RegisterBank::new();
+        let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
         let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;

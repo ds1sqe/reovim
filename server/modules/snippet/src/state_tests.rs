@@ -16,7 +16,7 @@ fn test_create_returns_default() {
 fn test_set_active_snippet() {
     use {
         crate::{parser, variables::VariableContext},
-        reovim_kernel::api::v1::Position,
+        reovim_types_text::Position,
     };
 
     let mut state = SnippetSessionState::default();
@@ -30,7 +30,7 @@ fn test_set_active_snippet() {
 fn test_clear_active_snippet() {
     use {
         crate::{parser, variables::VariableContext},
-        reovim_kernel::api::v1::Position,
+        reovim_types_text::Position,
     };
 
     let mut state = SnippetSessionState::default();

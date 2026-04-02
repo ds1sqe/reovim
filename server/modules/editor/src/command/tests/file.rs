@@ -7,12 +7,10 @@ use {
     },
     reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::{
-        api::v1::{
-            Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeStack,
-            RegisterBank, RwLock,
-        },
+        api::v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

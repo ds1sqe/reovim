@@ -9,8 +9,7 @@
 //! neither type is local to this crate (orphan rule).
 
 use {
-    reovim_kernel::api::v1::{EditOrigin, UndoTree},
-    reovim_types_text::{Edit, Position},
+    reovim_types_text::{Edit, EditOrigin, Position, UndoTree},
     reovim_protocol::v1::undo::{
         SerializableEdit, SerializableEditOrigin, SerializablePosition, SerializableUndoNode,
         SerializableUndoTree,
@@ -91,7 +90,7 @@ pub fn from_undo_tree(tree: &UndoTree) -> SerializableUndoTree {
     // Get reference timestamp from root node
     let root_timestamp = tree
         .node(0)
-        .map_or_else(std::time::Instant::now, reovim_kernel::api::UndoNode::timestamp);
+        .map_or_else(std::time::Instant::now, reovim_types_text::UndoNode::timestamp);
 
     let nodes: Vec<SerializableUndoNode> = tree
         .node_indices()

@@ -3,7 +3,7 @@
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{api::BufferApi, testing::TestSessionRuntime},
-    reovim_kernel::api::v1::Position,
+    reovim_types_text::Position,
 };
 
 use crate::command::{GotoMarkExact, GotoMarkLine, SetMark};

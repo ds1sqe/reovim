@@ -14,12 +14,13 @@ use {
         api::{
             ModeStack,
             v1::{
-                Buffer, BufferId, CommandId, HistoryRing, Jumplist, KernelContext, MarkBank,
-                ModeId, ModuleId, Position, Register, RegisterBank, RwLock,
+                Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
+                RwLock,
             },
         },
         testing::create_test_context,
     },
+    reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
     std::sync::Arc,
 };
 

@@ -20,6 +20,7 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::*;
+//! # use reovim_types_text::Position;
 //!
 //! let mut buffer = Buffer::from_string("fn foo(bar, baz) {}");
 //!
@@ -55,6 +56,7 @@ use super::{Buffer, Position};
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
+/// # use reovim_types_text::Position;
 ///
 /// let buffer = Buffer::from_string("(hello)");
 /// let result = find_delimiter_pair(&buffer, Position::new(0, 3), '(', ')');

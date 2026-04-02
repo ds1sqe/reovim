@@ -9,13 +9,11 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{
-                Buffer, BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                Position, RegisterBank, RwLock,
-            },
+            v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
 

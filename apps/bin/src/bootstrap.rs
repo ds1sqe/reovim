@@ -42,8 +42,9 @@ use {
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         ConfigPaths, EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId,
-        ModuleState, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
+        ModuleState, OptionRegistry, ServiceRegistry,
     },
+    reovim_types_text::{MotionEngine, TextObjectEngine},
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,

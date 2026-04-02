@@ -8,9 +8,10 @@ use super::super::*;
 use std::sync::Arc;
 
 use reovim_kernel::{
-    api::v1::{Buffer, BufferId, HistoryRing, Position, Register, RegisterBank, RwLock},
+    api::v1::{Buffer, BufferId, RwLock},
     testing::create_test_context,
 };
+use reovim_types_text::{HistoryRing, Position, Register, RegisterBank};
 
 // ============================================================================
 // Operator trait: id, is_text_modifying

@@ -4,7 +4,7 @@ use {
         api::module::ModuleId,
         core::{Mark, ModeId},
     },
-    reovim_types_text::RegisterContent,
+    reovim_types_text::{Position, RegisterBank, RegisterContent, YankType},
 };
 
 #[test]

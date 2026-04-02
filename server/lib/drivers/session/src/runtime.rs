@@ -45,12 +45,12 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, TabId, UndoResult,
-        WindowId,
+        BufferId, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
         events::kernel::{
             CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
         },
     },
+    reovim_types_text::{Edit, Position, UndoResult},
 };
 
 use crate::{

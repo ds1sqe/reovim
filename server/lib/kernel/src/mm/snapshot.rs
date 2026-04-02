@@ -30,6 +30,7 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::*;
+//! # use reovim_types_text::{Cursor, Position};
 //!
 //! let mut buffer = Buffer::from_string("Hello\nWorld");
 //! let cursor = Cursor::new(Position::new(0, 5)); // Get from Window

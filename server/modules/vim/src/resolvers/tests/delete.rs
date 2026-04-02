@@ -334,8 +334,8 @@ use {
             WindowApi,
         },
     },
-    reovim_kernel::api::v1::{BufferId, UndoResult, WindowId},
-    reovim_types_text::Edit,
+    reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_types_text::{Edit, UndoResult},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.
