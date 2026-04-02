@@ -1,10 +1,8 @@
 use std::borrow::Cow;
-
 use std::sync::Arc;
 
+use reovim_types_text::TextGeometry;
 use crate::mm::{Buffer, HeapMapping, LineIndex, VirtualBuffer};
-
-use super::TextGeometry;
 
 // ── Buffer (Rope) ──────────────────────────────────────────────────────────
 

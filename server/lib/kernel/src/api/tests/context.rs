@@ -41,7 +41,8 @@ fn test_kernel_context_debug() {
 #[test]
 fn test_kernel_context_new() {
     use {
-        crate::core::{MarkBank, MotionEngine, TextObjectEngine},
+        crate::core::MarkBank,
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 

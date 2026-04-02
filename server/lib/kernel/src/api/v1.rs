@@ -43,29 +43,18 @@ pub use super::context::{KernelContext, ModuleContext};
 // Memory Management (mm/)
 // ============================================================================
 
-pub use crate::mm::{
-    Buffer, BufferId, Cursor, Edit, Position, TabId, TextDimensions, WindowId, delete_end,
-    text_dimensions, transform_position,
-};
+// Buffer types (kernel-owned, will move to provider in Phase 2)
+pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
 
 // Virtual buffer (large file support)
 pub use crate::mm::{
     FileMapping, HeapMapping, InvalidUtf8, LineIndex, VirtualBuffer, VirtualSnapshot,
 };
 
-// Selection types
-pub use crate::mm::{Selection, SelectionMode};
-
 // Snapshot for lock-free buffer access
 pub use crate::mm::BufferSnapshot;
 
-// Word boundary detection
-pub use crate::mm::{
-    CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,
-    word_start,
-};
-
-// Delimiter matching
+// Delimiter matching (kernel-owned, will move to provider in Phase 2)
 pub use crate::mm::{find_delimiter_pair, find_matching_delimiter};
 
 // Line caching
@@ -100,22 +89,10 @@ pub use crate::ipc::{
 // Core Primitives (core/)
 // ============================================================================
 
-// Jumplist
+// Jumplist (kernel-owned, will move to provider in Phase 2)
 pub use crate::core::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
-// Motion
-pub use crate::core::{Direction, LinePosition, Motion, MotionEngine, WordBoundary};
-
-// Text Geometry
-pub use crate::core::TextGeometry;
-
-// Text Objects
-pub use crate::core::{TextObject, TextObjectEngine};
-
-// Registers
-pub use crate::core::{HistoryRing, Register, RegisterBank, RegisterContent, YankType};
-
-// Marks
+// Marks (kernel-owned, will move to provider in Phase 2)
 pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};
 
 // Options
@@ -130,6 +107,20 @@ pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 // Mode and Command identity types
 // Note: OperatorId moved to modules/vim (Epic #385 - operators are vim-specific policy)
 pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
+
+// ============================================================================
+// Text types (re-exported for backward compat during #740 transition)
+// ============================================================================
+// These will be removed when all consumers are migrated to reovim-types-text.
+// Import from reovim_types_text for new code.
+
+pub use reovim_types_text::{
+    CharKind, Cursor, Direction, Edit, HistoryRing, LinePosition, Motion, MotionEngine, Position,
+    Register, RegisterBank, RegisterContent, Selection, SelectionMode, TextDimensions, TextGeometry,
+    TextObject, TextObjectEngine, WordBoundary, WordType, YankType, char_kind, delete_end,
+    next_word_end, next_word_start, text_dimensions, transform_position, word_bounds, word_end,
+    word_start,
+};
 
 // ============================================================================
 // Block Operations (block/)

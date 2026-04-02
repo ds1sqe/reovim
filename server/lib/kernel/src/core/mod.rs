@@ -2,31 +2,26 @@
 //!
 //! Linux equivalent: Core kernel functionality
 //!
-//! This module provides the foundational abstractions for editor operations:
+//! This module provides kernel-owned abstractions:
 //!
-//! - **Motion**: Pure cursor movement calculations
-//! - **`TextObject`**: Text object range calculations for operators
-//! - **Register**: Yank/paste storage (without clipboard integration)
+//! - **Jumplist**: Navigation history per client
 //! - **Mark**: Bookmark operations
+//! - **Mode**: Mode identity and mode stack
+//! - **Option**: Editor option registry
+//! - **Config**: Configuration system
 //!
-//! # Design Philosophy
-//!
-//! Following Linux kernel "mechanism, not policy":
-//! - Kernel provides *how* to calculate motions (mechanisms)
-//! - Modules decide *what* keys trigger which motions (policies)
-//!
-//! All calculations are pure functions with no side effects.
-//! The buffer is never modified by these operations.
+//! Text-specific algorithms (`Motion`, `TextObject`, `Register`) have been
+//! extracted to `reovim-types-text` as part of #740.
 //!
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::api::v1::*;
+//! use reovim_kernel::api::v1::Buffer;
+//! use reovim_types_text::{Cursor, Position, Direction, Motion, MotionEngine, WordBoundary};
 //!
 //! let buffer = Buffer::from_string("hello world");
 //! let cursor = Cursor::new(Position::new(0, 0));
 //!
-//! // Calculate where 'w' motion would land
 //! let new_pos = MotionEngine::calculate(
 //!     &buffer,
 //!     &cursor,
@@ -42,40 +37,16 @@
 //! ```
 
 mod config;
-mod direction;
-mod history;
 mod jumplist;
 mod mark;
 mod mode;
-mod motion;
 mod option;
-mod register;
-mod text_geometry;
-mod textobj;
-
-// Re-export direction types
-pub use direction::{Direction, LinePosition, WordBoundary};
-
-// Re-export history types
-pub use history::HistoryRing;
 
 // Re-export jumplist types
 pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
 // Re-export mark types
 pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
-
-// Re-export motion types
-pub use motion::{Motion, MotionEngine};
-
-// Re-export register types
-pub use register::{Register, RegisterBank, RegisterContent, YankType};
-
-// Re-export text geometry trait
-pub use text_geometry::TextGeometry;
-
-// Re-export text object types
-pub use textobj::{TextObject, TextObjectEngine};
 
 // Re-export option types
 pub use option::{

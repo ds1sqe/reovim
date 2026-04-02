@@ -701,13 +701,11 @@ impl FileMapping for HeapMapping {
 
 // ── TextGeometry ────────────────────────────────────────────────────────────
 
-use crate::{
-    api::{
-        BufferCapabilities, BufferOps, BufferOpsError,
-        storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
-    },
-    core::TextGeometry,
+use crate::api::{
+    BufferCapabilities, BufferOps, BufferOpsError,
+    storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
 };
+use reovim_types_text::TextGeometry;
 
 impl TextGeometry for VirtualBuffer {
     fn line_count(&self) -> usize {

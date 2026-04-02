@@ -267,9 +267,9 @@ impl SyntaxService for SyntaxServiceImpl {
 
                 // Convert line range to byte range
                 let start_byte =
-                    handle.position_to_byte(reovim_kernel::api::v1::Position::new(start_line, 0));
+                    handle.position_to_byte(reovim_types_text::Position::new(start_line, 0));
                 let end_byte = if end_line < total_lines {
-                    handle.position_to_byte(reovim_kernel::api::v1::Position::new(end_line + 1, 0))
+                    handle.position_to_byte(reovim_types_text::Position::new(end_line + 1, 0))
                 } else {
                     content.len()
                 };

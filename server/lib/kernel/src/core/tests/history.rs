@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::RegisterContent;
+use reovim_types_text::RegisterContent;
 
 fn content(text: &str) -> RegisterContent {
     RegisterContent::characterwise(text.to_string())

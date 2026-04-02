@@ -2481,6 +2481,7 @@ dependencies = [
  "reovim-driver-ffi",
  "reovim-driver-session",
  "reovim-kernel",
+ "reovim-types-text",
  "tracing",
 ]
 

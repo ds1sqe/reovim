@@ -19,10 +19,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use {
-    super::{BufferId, Position, rope::Rope},
-    crate::core::TextGeometry,
-};
+use super::{BufferId, Position, rope::Rope};
+use reovim_types_text::TextGeometry;
 
 /// A text buffer with rope-based storage.
 ///

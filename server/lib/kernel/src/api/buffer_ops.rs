@@ -21,11 +21,8 @@
 
 use std::{borrow::Cow, fmt};
 
-use crate::{
-    api::BufferCapabilities,
-    core::TextGeometry,
-    mm::{BufferId, Position},
-};
+use crate::{api::BufferCapabilities, mm::{BufferId, Position}};
+use reovim_types_text::TextGeometry;
 
 /// Error type for `BufferOps` operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

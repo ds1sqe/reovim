@@ -1,4 +1,4 @@
-use {super::*, reovim_kernel::api::v1::Position};
+use {super::*, reovim_types_text::Position};
 
 // ========================================================================
 // ReovimPosition tests

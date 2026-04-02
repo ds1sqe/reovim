@@ -2,9 +2,9 @@ use std::borrow::Cow;
 
 use crate::{
     api::{BufferCapabilities, BufferOps, BufferOpsError},
-    core::TextGeometry,
     mm::{BufferId, Position},
 };
+use reovim_types_text::TextGeometry;
 
 /// Minimal mock implementing `BufferOps` for trait verification.
 struct MockBuffer {

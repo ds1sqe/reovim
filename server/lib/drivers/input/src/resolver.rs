@@ -208,7 +208,7 @@ pub struct ResolveInput<'a> {
     /// Provides read/write access to registers for macro recording/playback.
     /// This is optional because not all resolve contexts need register access.
     pub registers: Option<
-        &'a std::sync::Arc<reovim_kernel::api::v1::RwLock<reovim_kernel::api::v1::RegisterBank>>,
+        &'a std::sync::Arc<reovim_kernel::api::v1::RwLock<reovim_types_text::RegisterBank>>,
     >,
 }
 
@@ -231,7 +231,7 @@ impl<'a> ResolveInput<'a> {
         mode: &'a ModeId,
         keymap: &'a dyn KeymapQuery,
         registers: &'a std::sync::Arc<
-            reovim_kernel::api::v1::RwLock<reovim_kernel::api::v1::RegisterBank>,
+            reovim_kernel::api::v1::RwLock<reovim_types_text::RegisterBank>,
         >,
     ) -> Self {
         Self {

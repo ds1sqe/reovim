@@ -709,7 +709,7 @@ fn test_resolve_input_with_registers() {
     let mode = test_mode();
     let keymap = NoOpKeymap;
     let registers = std::sync::Arc::new(reovim_kernel::api::v1::RwLock::new(
-        reovim_kernel::api::v1::RegisterBank::new(),
+        reovim_types_text::RegisterBank::new(),
     ));
 
     let input = ResolveInput::with_registers(&keys, &mode, &keymap, &registers);

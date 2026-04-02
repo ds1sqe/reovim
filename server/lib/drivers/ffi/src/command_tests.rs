@@ -78,7 +78,7 @@ fn test_context_to_ffi_args_with_register() {
 #[test]
 fn test_context_to_ffi_args_with_cursor() {
     let mut ctx = CommandContext::new();
-    ctx.set_cursor_position(reovim_kernel::api::v1::Position::new(10, 5));
+    ctx.set_cursor_position(reovim_types_text::Position::new(10, 5));
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_cursor, 1);
     assert_eq!(args.cursor.line, 10);
@@ -90,7 +90,7 @@ fn test_context_to_ffi_args_fully_populated() {
     let mut ctx = CommandContext::new();
     ctx.set("count", reovim_driver_command_types::ArgValue::Count(3));
     ctx.set("register", reovim_driver_command_types::ArgValue::Register('"'));
-    ctx.set_cursor_position(reovim_kernel::api::v1::Position::new(42, 7));
+    ctx.set_cursor_position(reovim_types_text::Position::new(42, 7));
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_count, 1);
     assert_eq!(args.count, 3);

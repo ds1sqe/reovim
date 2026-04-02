@@ -7,8 +7,15 @@ use crate::{
     mm::{Buffer, BufferId, Cursor, Position, WindowId},
 };
 
+// Text types extracted to reovim-types-text (#740)
+use reovim_types_text::{
+    Direction, HistoryRing, LinePosition, Motion, MotionEngine, Register, RegisterBank,
+    RegisterContent, TextObject, TextObjectEngine, WordBoundary, YankType,
+};
+
 mod config;
 mod direction;
+mod history;
 mod jumplist;
 mod mark;
 mod mode;
@@ -22,3 +29,8 @@ mod option_spec;
 mod option_value;
 mod register;
 mod textobj;
+
+#[path = "../text_geometry_tests.rs"]
+mod text_geometry;
+
+mod b9_repro;

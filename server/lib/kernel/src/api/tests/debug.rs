@@ -2,8 +2,9 @@ use {
     super::*,
     crate::{
         api::module::ModuleId,
-        core::{Mark, ModeId, RegisterContent},
+        core::{Mark, ModeId},
     },
+    reovim_types_text::RegisterContent,
 };
 
 #[test]

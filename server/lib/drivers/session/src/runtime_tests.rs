@@ -2025,7 +2025,7 @@ fn test_record_edit_without_provider() {
     harness.with_runtime(|runtime| {
         runtime.record_edit(
             buffer_id,
-            vec![reovim_kernel::api::v1::Edit::Insert {
+            vec![reovim_types_text::Edit::Insert {
                 position: Position::new(0, 0),
                 text: "x".to_string(),
             }],
@@ -2047,7 +2047,7 @@ fn test_record_edit_mine_without_owner() {
     harness.with_runtime(|runtime| {
         runtime.record_edit_mine(
             buffer_id,
-            vec![reovim_kernel::api::v1::Edit::Insert {
+            vec![reovim_types_text::Edit::Insert {
                 position: Position::new(0, 0),
                 text: "x".to_string(),
             }],
@@ -5704,7 +5704,7 @@ fn test_local_marks_mut_accessor() {
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {
         let marks = runtime.local_marks_mut();
-        marks.set_local('a', reovim_kernel::api::v1::Position::new(0, 5));
+        marks.set_local('a', reovim_types_text::Position::new(0, 5));
         assert!(marks.get_local('a').is_some());
     });
 }

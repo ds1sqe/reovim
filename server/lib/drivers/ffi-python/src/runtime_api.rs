@@ -94,7 +94,7 @@ impl PyRuntimeApi {
     #[allow(clippy::cast_possible_truncation)]
     fn insert_text(&self, buffer_id: u64, line: u32, column: u32, text: &str) -> PyResult<()> {
         let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
-        let pos = reovim_kernel::api::v1::Position::new(line as usize, column as usize);
+        let pos = reovim_types_text::Position::new(line as usize, column as usize);
 
         with_runtime(|rt| rt.insert_text(bid, pos, text))
             .map_err(|_| PyRuntimeError::new_err("no active runtime"))
@@ -114,8 +114,8 @@ impl PyRuntimeApi {
         end_col: u32,
     ) -> PyResult<()> {
         let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
-        let start = reovim_kernel::api::v1::Position::new(start_line as usize, start_col as usize);
-        let end = reovim_kernel::api::v1::Position::new(end_line as usize, end_col as usize);
+        let start = reovim_types_text::Position::new(start_line as usize, start_col as usize);
+        let end = reovim_types_text::Position::new(end_line as usize, end_col as usize);
 
         with_runtime(|rt| rt.delete_range(bid, start, end))
             .map_err(|_| PyRuntimeError::new_err("no active runtime"))
@@ -331,7 +331,7 @@ impl PyRuntimeApi {
                 ));
             }
         };
-        let content = reovim_kernel::api::v1::RegisterContent::new(text, yt);
+        let content = reovim_types_text::RegisterContent::new(text, yt);
 
         with_runtime(|rt| rt.set_register(name, content))
             .map_err(|_| PyRuntimeError::new_err("no active runtime"))

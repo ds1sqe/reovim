@@ -13,9 +13,10 @@
 //!   details like `HashMap` structures.
 
 use crate::{
-    core::{MarkBank, ModeStack, RegisterBank, SpecialMark, YankType},
+    core::{MarkBank, ModeStack, SpecialMark},
     mm::{BufferId, Position},
 };
+use reovim_types_text::{RegisterBank, YankType};
 
 use super::context::KernelContext;
 

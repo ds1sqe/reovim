@@ -7,9 +7,10 @@ use std::{fmt, path::PathBuf, sync::Arc};
 use reovim_arch::sync::RwLock;
 
 use crate::{
-    core::{MarkBank, MotionEngine, OptionRegistry, TextObjectEngine},
+    core::{MarkBank, OptionRegistry},
     ipc::EventBus,
 };
+use reovim_types_text::{MotionEngine, TextObjectEngine};
 
 use super::{buffer_manager::BufferManager, module::ModuleId, service::ServiceRegistry};
 
@@ -301,7 +302,8 @@ impl KernelContext {
         services: Arc<ServiceRegistry>,
         options: Arc<OptionRegistry>,
     ) -> Self {
-        use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
+        use crate::core::MarkBank;
+        use reovim_types_text::{MotionEngine, TextObjectEngine};
 
         Self {
             event_bus,
@@ -320,7 +322,8 @@ impl Default for KernelContext {
     ///
     /// Uses stub implementations. Should only be used in tests.
     fn default() -> Self {
-        use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
+        use crate::core::MarkBank;
+        use reovim_types_text::{MotionEngine, TextObjectEngine};
 
         Self {
             event_bus: Arc::new(crate::ipc::EventBus::new()),

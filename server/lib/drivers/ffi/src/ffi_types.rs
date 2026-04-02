@@ -32,9 +32,9 @@ impl ReovimPosition {
     }
 }
 
-impl From<reovim_kernel::api::v1::Position> for ReovimPosition {
+impl From<reovim_types_text::Position> for ReovimPosition {
     #[allow(clippy::cast_possible_truncation)]
-    fn from(pos: reovim_kernel::api::v1::Position) -> Self {
+    fn from(pos: reovim_types_text::Position) -> Self {
         Self {
             line: pos.line as u32,
             column: pos.column as u32,
@@ -42,7 +42,7 @@ impl From<reovim_kernel::api::v1::Position> for ReovimPosition {
     }
 }
 
-impl From<ReovimPosition> for reovim_kernel::api::v1::Position {
+impl From<ReovimPosition> for reovim_types_text::Position {
     fn from(pos: ReovimPosition) -> Self {
         Self::new(pos.line as usize, pos.column as usize)
     }
