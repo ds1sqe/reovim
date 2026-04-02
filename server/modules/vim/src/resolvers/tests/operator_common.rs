@@ -5,7 +5,8 @@ use {
     reovim_driver_input::{
         KeyCode, KeyEvent, KeyLookupState, ModeTransition, Modifiers, PopResult,
     },
-    reovim_kernel::api::v1::{CommandId, ModuleId, Position},
+    reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_types_text::Position,
 };
 
 use {super::super::operator_common::*, crate::modes::VimMode};

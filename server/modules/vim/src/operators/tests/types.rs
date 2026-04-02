@@ -1,6 +1,7 @@
 use {
     super::super::*,
-    reovim_kernel::api::v1::{BufferId, HistoryRing, Position, RegisterBank},
+    reovim_kernel::api::v1::BufferId,
+    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 #[test]

@@ -6,7 +6,8 @@ use {
         ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
     reovim_driver_session::OperatorPendingState,
-    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
+    reovim_types_text::Position,
 };
 
 use {
@@ -313,7 +314,8 @@ use {
             WindowApi,
         },
     },
-    reovim_kernel::api::v1::{BufferId, Edit, UndoResult, WindowId},
+    reovim_kernel::api::v1::{BufferId, UndoResult, WindowId},
+    reovim_types_text::Edit,
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.

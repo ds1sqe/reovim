@@ -5,7 +5,8 @@ use {
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
         ModeState, Modifiers, ResolveInput, ResolveResult,
     },
-    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModuleId, Position, WindowId},
+    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModuleId, WindowId},
+    reovim_types_text::Position,
 };
 
 use {
@@ -70,7 +71,8 @@ use {
             WindowApi,
         },
     },
-    reovim_kernel::api::v1::{Edit, UndoResult},
+    reovim_kernel::api::v1::UndoResult,
+    reovim_types_text::Edit,
 };
 
 /// Mock session with configurable buffer content.

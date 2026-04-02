@@ -775,7 +775,8 @@ fn test_enter_insert_mode_append_on_second_line() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{UndoResult, UndoTree},
+    reovim_types_text::Edit,
 };
 
 /// Minimal mock undo provider that tracks `begin_batch`/`end_batch` calls.

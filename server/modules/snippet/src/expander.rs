@@ -14,7 +14,8 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         SnippetExpander, TransitionContext,
     },
-    reovim_kernel::api::v1::{BufferId, Position},
+    reovim_kernel::api::v1::BufferId,
+    reovim_types_text::Position,
 };
 
 use crate::{

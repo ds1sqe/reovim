@@ -14,10 +14,11 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, HistoryRing, Jumplist, KernelContext, MarkBank, ModeId, RegisterBank},
+            v1::{BufferId, Jumplist, KernelContext, MarkBank, ModeId},
         },
         testing::{create_test_context, setup_buffer, test_mode},
     },
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 // =========================================================================
@@ -494,8 +495,8 @@ fn test_visual_mode_sets_selection() {
     assert!(window.selection.is_some());
 
     let sel = window.selection.as_ref().unwrap();
-    assert_eq!(sel.start, reovim_kernel::api::v1::Position::new(0, 3));
-    assert_eq!(sel.end, reovim_kernel::api::v1::Position::new(2, 7));
+    assert_eq!(sel.start, reovim_types_text::Position::new(0, 3));
+    assert_eq!(sel.end, reovim_types_text::Position::new(2, 7));
 
     // Cursor should be at end_col.saturating_sub(1) = 6
     assert_eq!(window.cursor.line, 2);

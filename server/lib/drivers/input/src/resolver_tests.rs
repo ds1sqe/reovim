@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use {
     reovim_driver_command_types::ArgValue as CmdArgValue,
-    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
+    reovim_types_text::Position,
 };
 
 use crate::{

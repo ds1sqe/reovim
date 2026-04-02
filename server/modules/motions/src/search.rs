@@ -336,7 +336,8 @@ fn search_and_move(
 ) -> CommandResult {
     use {
         reovim_driver_session::ChangeTracker,
-        reovim_kernel::api::v1::{JumpEntry, Position},
+        reovim_kernel::api::v1::JumpEntry,
+        reovim_types_text::Position,
     };
 
     // Get active buffer and cursor position

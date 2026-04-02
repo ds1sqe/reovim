@@ -5,7 +5,8 @@
 use {
     regex::Regex,
     reovim_driver_search::{Direction, LineSource, SearchError, SearchMatch, SearchProvider},
-    reovim_kernel::api::v1::{Buffer, Position},
+    reovim_kernel::api::v1::Buffer,
+    reovim_types_text::Position,
 };
 
 /// Regex-based search engine implementing `SearchProvider`.

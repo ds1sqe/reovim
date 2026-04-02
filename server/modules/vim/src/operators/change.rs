@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_kernel::api::v1::{Edit, RegisterContent},
+    reovim_types_text::{Edit, RegisterContent},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};

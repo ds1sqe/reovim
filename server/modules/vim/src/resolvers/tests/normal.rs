@@ -1342,7 +1342,8 @@ fn test_ext_replace_char_dispatches() {
 #[test]
 fn test_ext_macro_record_start_and_stop() {
     use {
-        reovim_kernel::api::v1::{RegisterBank, RwLock},
+        reovim_kernel::api::v1::RwLock,
+        reovim_types_text::RegisterBank,
         std::sync::Arc,
     };
     static EMPTY_KEYS: KeySequence = KeySequence::new();
@@ -1414,7 +1415,8 @@ fn test_ext_macro_record_invalid_register() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_ext_macro_play_basic() {
     use {
-        reovim_kernel::api::v1::{RegisterBank, RegisterContent, RwLock},
+        reovim_kernel::api::v1::RwLock,
+        reovim_types_text::{RegisterBank, RegisterContent},
         std::sync::Arc,
     };
     static EMPTY_KEYS: KeySequence = KeySequence::new();
@@ -1500,7 +1502,8 @@ fn test_ext_macro_play_invalid_register() {
 #[test]
 fn test_ext_macro_play_empty_register() {
     use {
-        reovim_kernel::api::v1::{RegisterBank, RwLock},
+        reovim_kernel::api::v1::RwLock,
+        reovim_types_text::RegisterBank,
         std::sync::Arc,
     };
     static EMPTY_KEYS: KeySequence = KeySequence::new();
@@ -1547,7 +1550,8 @@ fn test_ext_macro_play_no_registers() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_ext_macro_play_at_at_repeat() {
     use {
-        reovim_kernel::api::v1::{RegisterBank, RegisterContent, RwLock},
+        reovim_kernel::api::v1::RwLock,
+        reovim_types_text::{RegisterBank, RegisterContent},
         std::sync::Arc,
     };
     static EMPTY_KEYS: KeySequence = KeySequence::new();

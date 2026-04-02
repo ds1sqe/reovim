@@ -47,7 +47,8 @@ use {
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
         Window, WindowLayout,
     },
-    reovim_kernel::api::v1::{BufferId, HistoryRing, Jumplist, MarkBank, ModeStack, RegisterBank},
+    reovim_kernel::api::v1::{BufferId, Jumplist, MarkBank, ModeStack},
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};

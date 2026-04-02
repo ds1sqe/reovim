@@ -24,7 +24,8 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, NotificationDrainRegistry, SessionRuntime,
         SnippetExpanderRegistry,
     },
-    reovim_kernel::api::v1::{BufferId, CommandId, Position, ServiceRegistry, oneshot},
+    reovim_kernel::api::v1::{BufferId, CommandId, ServiceRegistry, oneshot},
+    reovim_types_text::Position,
     tracing::{debug, info, warn},
 };
 

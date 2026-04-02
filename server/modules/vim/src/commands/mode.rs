@@ -25,7 +25,8 @@ use {
         api::{ChangeTracker, ExtensionApi, ModeApi, SearchState},
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
     reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
     std::sync::Arc,
 };

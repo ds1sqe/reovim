@@ -24,6 +24,7 @@ reovim-driver-display = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-kernel = { workspace = true }
+reovim-types-text = { workspace = true }
 regex = { workspace = true }
 reovim-module-macros = { workspace = true }
 tracing = { workspace = true }

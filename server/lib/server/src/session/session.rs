@@ -22,7 +22,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceMap;
-use {reovim_driver_session::ExtensionMap, reovim_kernel::api::v1::RegisterContent};
+use {reovim_driver_session::ExtensionMap, reovim_types_text::RegisterContent};
 
 use super::{Client, ClientId, SessionId, SessionState};
 
@@ -850,7 +850,8 @@ impl Session {
         use {
             reovim_driver_input::InputTarget,
             reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-            reovim_kernel::api::v1::{Edit, Position, events::kernel::Modification},
+            reovim_kernel::api::v1::events::kernel::Modification,
+            reovim_types_text::{Edit, Position},
         };
 
         match target {

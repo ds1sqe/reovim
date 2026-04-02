@@ -36,7 +36,8 @@ use {
     reovim_driver_session::{
         ExtensionApi, ModeApi, SessionRuntime, TransitionContext, api::ChangeTracker,
     },
-    reovim_kernel::api::v1::{CommandId, Cursor, ModuleId, Motion, MotionEngine, Position},
+    reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_types_text::{Cursor, Direction, Motion, MotionEngine, Position},
 };
 
 /// Vim module's command ID for find-char execution.
@@ -162,9 +163,9 @@ impl CommandHandler for EnhancedFindCharCommand {
         let motion = Motion::FindChar {
             char: target_char,
             direction: if forward {
-                reovim_kernel::api::v1::Direction::Forward
+                Direction::Forward
             } else {
-                reovim_kernel::api::v1::Direction::Backward
+                Direction::Backward
             },
             till: !inclusive,
         };

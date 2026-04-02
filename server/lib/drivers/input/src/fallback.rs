@@ -33,7 +33,8 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{BufferId, BufferOps, Edit, ModeId, Position},
+    reovim_kernel::api::v1::{BufferId, BufferOps, ModeId},
+    reovim_types_text::{Edit, Position},
 };
 
 use crate::KeyEvent;

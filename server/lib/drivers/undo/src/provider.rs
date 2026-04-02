@@ -3,7 +3,8 @@
 use {
     crate::UndoPersistError,
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, Edit, EditOrigin, Position, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{BufferId, EditOrigin, UndoResult, UndoTree},
+    reovim_types_text::{Edit, Position},
 };
 
 /// Undo provider interface for per-buffer undo/redo operations.

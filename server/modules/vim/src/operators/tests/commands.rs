@@ -476,7 +476,8 @@ fn test_yank_command_no_range_defaults() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{UndoResult, UndoTree},
+    reovim_types_text::Edit,
 };
 
 struct MockUndoProvider {

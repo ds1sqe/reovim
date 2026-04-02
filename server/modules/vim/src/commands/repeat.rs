@@ -16,7 +16,8 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, api::ExtensionApi},
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::{

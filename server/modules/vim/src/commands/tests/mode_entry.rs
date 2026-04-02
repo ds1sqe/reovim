@@ -712,7 +712,8 @@ fn test_enter_insert_first_non_blank_on_second_line() {
 use {
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{Edit, OptionSpec, OptionValue, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{OptionSpec, OptionValue, UndoResult, UndoTree},
+    reovim_types_text::Edit,
 };
 
 struct MockUndoProvider {

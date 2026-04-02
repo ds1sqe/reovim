@@ -18,6 +18,7 @@ workspace = true
 [dependencies]
 # Kernel types
 reovim-kernel = { workspace = true }
+reovim-types-text = { workspace = true }
 reovim-capabilities = { workspace = true }
 
 # Driver for SearchProvider trait

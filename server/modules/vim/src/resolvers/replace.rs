@@ -12,7 +12,8 @@ use {
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
         Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
-    reovim_kernel::api::v1::{ModeId, Position},
+    reovim_kernel::api::v1::ModeId,
+    reovim_types_text::Position,
 };
 
 use crate::{VimSessionState, ids, modes::VimMode, session_state::ReplaceRestoreEntry};

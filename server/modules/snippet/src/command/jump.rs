@@ -8,7 +8,8 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },
-    reovim_kernel::api::v1::{CommandId, Edit, ModeId, Position},
+    reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_types_text::{Edit, Position},
 };
 
 use crate::{ids, state::SnippetSessionState};
@@ -227,8 +228,8 @@ fn apply_single_mirror(
         let edit = Edit::delete(mirror.old_start, &mirror.old_placeholder);
         runtime.delete_range(buffer_id, mirror.old_start, mirror.old_end);
         active.update_positions(&edit);
-        *dest_start = reovim_kernel::api::v1::transform_position(*dest_start, &edit);
-        *dest_end = reovim_kernel::api::v1::transform_position(*dest_end, &edit);
+        *dest_start = reovim_types_text::transform_position(*dest_start, &edit);
+        *dest_end = reovim_types_text::transform_position(*dest_end, &edit);
     }
 
     // Insert the new text at the mirror position.
@@ -237,8 +238,8 @@ fn apply_single_mirror(
         let edit = Edit::insert(insert_pos, new_text);
         runtime.insert_text(buffer_id, insert_pos, new_text);
         active.update_positions(&edit);
-        *dest_start = reovim_kernel::api::v1::transform_position(*dest_start, &edit);
-        *dest_end = reovim_kernel::api::v1::transform_position(*dest_end, &edit);
+        *dest_start = reovim_types_text::transform_position(*dest_start, &edit);
+        *dest_end = reovim_types_text::transform_position(*dest_end, &edit);
     }
 
     // Compute the end position of the newly-inserted text.

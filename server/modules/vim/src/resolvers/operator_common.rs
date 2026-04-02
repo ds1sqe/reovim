@@ -17,7 +17,8 @@ use {
     reovim_driver_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeTransition, Modifiers, PopResult,
     },
-    reovim_kernel::api::v1::{CommandId, ModeId, Position},
+    reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_types_text::Position,
 };
 
 use crate::{ids::OperatorId, modes::VimMode};

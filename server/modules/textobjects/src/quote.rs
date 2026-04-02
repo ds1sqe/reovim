@@ -18,7 +18,8 @@ use {
         OperatorPendingState, SessionRuntime, TextObjRange,
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
-    reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::{Position, TextObject, TextObjectEngine},
 };
 
 use crate::ids;

@@ -13,7 +13,8 @@ use {
         BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ModeApi, RegisterContent, Selection, SelectionMode},
     },
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::{ids, modes::VimMode};

@@ -7,7 +7,8 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
+    reovim_kernel::api::v1::{CommandId, OptionScopeId},
+    reovim_types_text::Position,
 };
 
 use crate::ids;

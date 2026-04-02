@@ -20,7 +20,8 @@ use {
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_driver_syntax::{SyntaxSessionState, TextObjectKind, TextObjectScope},
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::ids;

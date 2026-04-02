@@ -497,7 +497,8 @@ use {
             WindowApi,
         },
     },
-    reovim_kernel::api::v1::{BufferId, Edit, Position, UndoResult, WindowId},
+    reovim_kernel::api::v1::{BufferId, UndoResult, WindowId},
+    reovim_types_text::{Edit, Position},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.

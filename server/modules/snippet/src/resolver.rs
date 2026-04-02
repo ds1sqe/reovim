@@ -14,7 +14,8 @@ use {
         ResolveContext, ResolveInput, ResolveResult,
     },
     reovim_driver_session::{ExtensionMap, SessionApiDyn},
-    reovim_kernel::api::v1::{Edit, ModeId},
+    reovim_kernel::api::v1::ModeId,
+    reovim_types_text::Edit,
 };
 
 use crate::{ids, state::SnippetSessionState};

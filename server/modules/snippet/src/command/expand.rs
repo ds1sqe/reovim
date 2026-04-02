@@ -10,7 +10,8 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::{

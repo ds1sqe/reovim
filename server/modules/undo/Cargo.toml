@@ -20,6 +20,9 @@ workspace = true
 reovim-kernel = { workspace = true }
 reovim-capabilities = { workspace = true }
 
+# Text types (Position, Edit)
+reovim-types-text = { workspace = true }
+
 # Driver for UndoProvider trait
 reovim-driver-undo = { workspace = true }
 

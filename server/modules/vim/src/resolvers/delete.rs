@@ -30,7 +30,8 @@ use {
         ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_driver_session::OperatorPendingState,
-    reovim_kernel::api::v1::{ModeId, Position},
+    reovim_kernel::api::v1::ModeId,
+    reovim_types_text::Position,
 };
 
 use {

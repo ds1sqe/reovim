@@ -8,7 +8,8 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::CommandId,
+    reovim_types_text::Position,
 };
 
 use crate::ids;

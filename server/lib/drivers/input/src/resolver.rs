@@ -47,7 +47,8 @@ use std::{any::TypeId, collections::HashMap};
 
 use {
     reovim_driver_session::{ExtensionMap, SessionExtension, TextInputSink},
-    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack, Position},
+    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack},
+    reovim_types_text::Position,
 };
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};

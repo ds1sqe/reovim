@@ -9,7 +9,8 @@
 //! neither type is local to this crate (orphan rule).
 
 use {
-    reovim_kernel::api::v1::{Edit, EditOrigin, Position, UndoTree},
+    reovim_kernel::api::v1::{EditOrigin, UndoTree},
+    reovim_types_text::{Edit, Position},
     reovim_protocol::v1::undo::{
         SerializableEdit, SerializableEditOrigin, SerializablePosition, SerializableUndoNode,
         SerializableUndoTree,
