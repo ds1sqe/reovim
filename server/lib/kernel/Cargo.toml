@@ -20,5 +20,8 @@ unstable-api = []
 # Only depends on arch layer (Rule 2: kernel/ depends only on arch/)
 reovim-arch = { workspace = true }
 
+# Pure text data types (Position, Edit, Selection) — leaf crate, zero deps
+reovim-types-text = { workspace = true }
+
 # Capability bitflags for BufferOps trait
 bitflags = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "reovim-types-text"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pure text data types (Position, Edit, Selection) — zero-dependency leaf crate"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# None — pure data types, zero dependencies.

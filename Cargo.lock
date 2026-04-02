@@ -2701,6 +2701,7 @@ version = "0.14.5-dev"
 dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
+ "reovim-types-text",
 ]
 
 [[package]]
@@ -3692,6 +3693,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-provider-text"
+version = "0.14.5-dev"
+dependencies = [
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-types-text",
+]
+
+[[package]]
 name = "reovim-server"
 version = "0.14.5-dev"
 dependencies = [
@@ -3920,6 +3930,10 @@ dependencies = [
  "reovim-client-driver",
  "serde_json",
 ]
+
+[[package]]
+name = "reovim-types-text"
+version = "0.14.5-dev"
 
 [[package]]
 name = "rmp"

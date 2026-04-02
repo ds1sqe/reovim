@@ -429,7 +429,96 @@ impl TextGeometry for Buffer {
 
 // ── BufferOps ──────────────────────────────────────────────────────────────
 
-use crate::api::{BufferCapabilities, BufferOps, BufferOpsError};
+use crate::api::{
+    BufferCapabilities, BufferOps, BufferOpsError,
+    storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
+};
+
+// ── StorageOps + BufferMeta (#740) ────────────────────────────────────────
+
+impl StorageOps for Buffer {
+    fn byte_len(&self) -> usize {
+        self.text.byte_len()
+    }
+
+    fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
+        BufferOps::read_bytes(self, offset, buf)
+    }
+
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities::HEAP
+    }
+
+    fn insert_bytes(&mut self, offset: usize, data: &[u8]) -> Result<(), StorageError> {
+        let text = std::str::from_utf8(data)
+            .map_err(|_| StorageError::NotSupported("non-UTF-8 insert into text buffer"))?;
+        if text.is_empty() {
+            return Ok(());
+        }
+        let total = self.text.byte_len();
+        if offset > total {
+            return Err(StorageError::OffsetOutOfRange { offset, len: total });
+        }
+        if self.text.is_empty() {
+            self.text = Rope::from_str(text);
+        } else {
+            self.text = self.text.insert(offset, text);
+        }
+        self.modified = true;
+        Ok(())
+    }
+
+    fn delete_bytes(&mut self, offset: usize, len: usize) -> Result<Vec<u8>, StorageError> {
+        let total = self.text.byte_len();
+        if offset + len > total {
+            return Err(StorageError::OffsetOutOfRange { offset, len: total });
+        }
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let end = offset + len;
+        let deleted = extract_byte_range(&self.text, offset, end).into_bytes();
+        self.text = self.text.remove(offset..end);
+        self.modified = true;
+        Ok(deleted)
+    }
+
+    fn append_bytes(&mut self, data: &[u8]) -> Result<(), StorageError> {
+        let offset = self.text.byte_len();
+        StorageOps::insert_bytes(self, offset, data)
+    }
+
+    fn read_chunk(&self, offset: usize, max_len: usize) -> Vec<u8> {
+        let total = self.text.byte_len();
+        if offset >= total {
+            return Vec::new();
+        }
+        let end = (offset + max_len).min(total);
+        extract_byte_range(&self.text, offset, end).into_bytes()
+    }
+}
+
+impl BufferMeta for Buffer {
+    fn id(&self) -> BufferId {
+        self.id
+    }
+
+    fn file_path(&self) -> Option<&str> {
+        self.file_path.as_deref()
+    }
+
+    fn set_file_path(&mut self, path: Option<String>) {
+        self.file_path = path;
+    }
+
+    fn is_modified(&self) -> bool {
+        self.modified
+    }
+
+    fn set_modified(&mut self, modified: bool) {
+        self.modified = modified;
+    }
+}
 
 impl BufferOps for Buffer {
     fn id(&self) -> BufferId {

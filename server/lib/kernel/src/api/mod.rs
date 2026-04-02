@@ -34,6 +34,8 @@ mod buffer_caps;
 mod buffer_manager;
 // Unified buffer operations trait
 mod buffer_ops;
+// Byte-level storage traits (StorageOps, BufferMeta, StorageCapabilities)
+pub(crate) mod storage_ops;
 mod context;
 mod debug;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId

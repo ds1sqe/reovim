@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::RegisterContent;
 
 fn content(text: &str) -> RegisterContent {
     RegisterContent::characterwise(text.to_string())
@@ -15,7 +16,7 @@ fn test_new_empty() {
     let ring = HistoryRing::new();
     assert!(ring.is_empty());
     assert_eq!(ring.len(), 0);
-    assert_eq!(ring.capacity(), DEFAULT_HISTORY_CAPACITY);
+    assert_eq!(ring.capacity(), 256);
 }
 
 #[test]
@@ -29,7 +30,7 @@ fn test_with_capacity() {
 fn test_default() {
     let ring = HistoryRing::default();
     assert!(ring.is_empty());
-    assert_eq!(ring.capacity(), DEFAULT_HISTORY_CAPACITY);
+    assert_eq!(ring.capacity(), 256);
 }
 
 // ========== Push and get tests ==========

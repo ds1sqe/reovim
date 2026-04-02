@@ -1,0 +1,18 @@
+[package]
+name = "reovim-provider-text"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Text content provider — Rope, VirtualBuffer, motions, text objects"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-types-text = { workspace = true }
+reovim-kernel = { workspace = true }
+reovim-driver-vfs = { workspace = true }

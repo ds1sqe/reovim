@@ -38,6 +38,9 @@ members = [
     "server/lib/drivers/codec",
     "server/lib/drivers/codec-xxd",
 
+    # Providers (domain logic, above drivers)
+    "server/lib/providers/text",
+
     # Server modules
     "server/modules/vim",
     "server/modules/editor",
@@ -154,6 +157,9 @@ members = [
     "shared/clients/model",
     "shared/clients/driver",
 
+    # Shared types
+    "shared/types/text",
+
     # Shared benchmarking utilities
     "shared/bench",
 
@@ -226,6 +232,7 @@ reovim-module-macros = { path = "./shared/module-macros", version = "0.14.5-dev"
 reovim-capabilities = { path = "./shared/capabilities", version = "0.14.5-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.14.5-dev" }
 reovim-bench-utils = { path = "./shared/bench", version = "0.14.5-dev" }
+reovim-types-text = { path = "./shared/types/text", version = "0.14.5-dev" }
 reovim-net = { path = "./shared/net", version = "0.14.5-dev" }
 reovim-log = { path = "./shared/log", version = "0.14.5-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.14.5-dev" }
@@ -255,6 +262,7 @@ reovim-driver-completion = { path = "./server/lib/drivers/completion", version =
 reovim-depgraph = { path = "./shared/depgraph", version = "0.14.5-dev" }
 reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.14.5-dev" }
 reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.14.5-dev" }
+reovim-provider-text = { path = "./server/lib/providers/text", version = "0.14.5-dev" }
 reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.14.5-dev" }
 reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.14.5-dev" }
 reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry", version = "0.14.5-dev" }
