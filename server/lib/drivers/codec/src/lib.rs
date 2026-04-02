@@ -48,6 +48,7 @@
 mod classifier;
 mod codec;
 mod content_type;
+mod domain_codec;
 mod error;
 mod factory;
 mod metadata;
@@ -65,6 +66,9 @@ pub use {
     factory::ContentCodecFactory,
     store::{ContentClassifierStore, ContentCodecFactoryStore},
 };
+
+// Domain-generic codec traits
+pub use domain_codec::{Decode, DecodeOutput, Encode, Index};
 
 // Types
 pub use {

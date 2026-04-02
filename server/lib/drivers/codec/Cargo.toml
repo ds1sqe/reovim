@@ -16,6 +16,9 @@ workspace = true
 # Only depends on kernel layer (for Service trait, BufferId)
 reovim-kernel = { workspace = true }
 
+# Domain trait for generic codec traits (Decode<D>, Encode<D>, Index<D>)
+reovim-domain = { workspace = true }
+
 # Session extension trait (for CodecSessionState as SessionExtension)
 reovim-driver-session = { workspace = true }
 

@@ -148,7 +148,7 @@ fn unicode_emoji() {
     assert_eq!(r.line(1), Some("🥳"));
 }
 
-// ─── Position Conversion ────────────────────────────────────────────────────
+// ─── TextPosition Conversion ────────────────────────────────────────────────────
 
 #[test]
 fn position_to_byte_simple() {

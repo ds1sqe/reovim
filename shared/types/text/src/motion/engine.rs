@@ -3,7 +3,7 @@
 use crate::{
     TextGeometry,
     direction::{Direction, LinePosition, WordBoundary},
-    position::{Cursor, Position},
+    position::{Cursor, TextPosition},
 };
 
 use super::types::Motion;
@@ -22,7 +22,7 @@ const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 /// use reovim_types_text::*;
 ///
 /// let buffer = SimpleText::new("hello world");
-/// let cursor = Cursor::new(Position::new(0, 0));
+/// let cursor = Cursor::new(TextPosition::new(0, 0));
 ///
 /// let new_pos = MotionEngine::calculate(
 ///     &buffer,
@@ -31,7 +31,7 @@ const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 ///     1,
 /// );
 ///
-/// assert_eq!(new_pos, Some(Position::new(0, 1)));
+/// assert_eq!(new_pos, Some(TextPosition::new(0, 1)));
 /// ```
 pub struct MotionEngine;
 
@@ -52,7 +52,7 @@ impl MotionEngine {
         cursor: &Cursor,
         motion: Motion,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let count = count.max(1);
 
         match motion {
@@ -87,7 +87,7 @@ impl MotionEngine {
         cursor: &Cursor,
         motion: Motion,
         count: usize,
-    ) -> (Option<Position>, Option<usize>) {
+    ) -> (Option<TextPosition>, Option<usize>) {
         let count = count.max(1);
 
         if matches!(motion, Motion::Line(_)) {
@@ -106,10 +106,10 @@ impl MotionEngine {
 
     fn char_motion(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         direction: Direction,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_len = buffer.line_len(pos.line)?;
 
         match direction {
@@ -117,12 +117,12 @@ impl MotionEngine {
                 // Move right, clamped to line length minus 1 (stay on last char)
                 let max_col = line_len.saturating_sub(1);
                 let new_col = pos.column.saturating_add(count).min(max_col);
-                Some(Position::new(pos.line, new_col))
+                Some(TextPosition::new(pos.line, new_col))
             }
             Direction::Backward => {
                 // Move left, clamped to 0
                 let new_col = pos.column.saturating_sub(count);
-                Some(Position::new(pos.line, new_col))
+                Some(TextPosition::new(pos.line, new_col))
             }
         }
     }
@@ -132,7 +132,7 @@ impl MotionEngine {
         cursor: &Cursor,
         direction: Direction,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -160,17 +160,17 @@ impl MotionEngine {
         };
         let new_col = target_col.min(max_col);
 
-        Some(Position::new(new_line, new_col))
+        Some(TextPosition::new(new_line, new_col))
     }
 
     fn word_motion(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         direction: Direction,
         boundary: WordBoundary,
         end: bool,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let mut current = pos;
 
         for _ in 0..count {
@@ -190,9 +190,9 @@ impl MotionEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn word_forward(
         buffer: &dyn TextGeometry,
-        mut pos: Position,
+        mut pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return Some(pos);
@@ -275,9 +275,9 @@ impl MotionEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn word_end(
         buffer: &dyn TextGeometry,
-        mut pos: Position,
+        mut pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return Some(pos);
@@ -354,9 +354,9 @@ impl MotionEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn word_backward(
         buffer: &dyn TextGeometry,
-        mut pos: Position,
+        mut pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         if buffer.is_empty() {
             return Some(pos);
         }
@@ -430,9 +430,9 @@ impl MotionEngine {
 
     fn word_end_backward(
         buffer: &dyn TextGeometry,
-        mut pos: Position,
+        mut pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         // ge/gE: Move backward to end of previous word/WORD.
         if buffer.is_empty() {
             return Some(pos);
@@ -558,9 +558,9 @@ impl MotionEngine {
 
     fn line_position(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         line_pos: LinePosition,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
         let line_len = chars.len();
@@ -579,16 +579,16 @@ impl MotionEngine {
                 .map_or(0, |(i, _)| i),
         };
 
-        Some(Position::new(pos.line, new_col))
+        Some(TextPosition::new(pos.line, new_col))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn paragraph_motion(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         direction: Direction,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -691,17 +691,17 @@ impl MotionEngine {
             }
         }
 
-        Some(Position::new(current_line.min(line_count.saturating_sub(1)), 0))
+        Some(TextPosition::new(current_line.min(line_count.saturating_sub(1)), 0))
     }
 
     fn find_char(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         target: char,
         direction: Direction,
         till: bool,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
@@ -742,7 +742,7 @@ impl MotionEngine {
             } else {
                 col
             };
-            Position::new(pos.line, adjusted_col)
+            TextPosition::new(pos.line, adjusted_col)
         })
     }
 
@@ -750,7 +750,7 @@ impl MotionEngine {
         buffer: &dyn TextGeometry,
         _cursor: &Cursor,
         target: Option<usize>,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -767,11 +767,11 @@ impl MotionEngine {
             .position(|c| !c.is_whitespace())
             .unwrap_or(0);
 
-        Some(Position::new(new_line, first_non_blank))
+        Some(TextPosition::new(new_line, first_non_blank))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn match_bracket(buffer: &dyn TextGeometry, pos: Position) -> Option<Position> {
+    fn match_bracket(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<TextPosition> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
         let cursor_char = chars.get(pos.column).copied();
@@ -791,10 +791,10 @@ impl MotionEngine {
         for (offset, &ch) in chars.iter().enumerate().skip(pos.column + 1) {
             for (open, close) in BRACKET_PAIRS {
                 if ch == open {
-                    let search_pos = Position::new(pos.line, offset);
+                    let search_pos = TextPosition::new(pos.line, offset);
                     return Self::find_forward_bracket(buffer, search_pos, open, close);
                 } else if ch == close {
-                    let search_pos = Position::new(pos.line, offset);
+                    let search_pos = TextPosition::new(pos.line, offset);
                     return Self::find_backward_bracket(buffer, search_pos, open, close);
                 }
             }
@@ -805,10 +805,10 @@ impl MotionEngine {
 
     fn find_forward_bracket(
         buffer: &dyn TextGeometry,
-        start: Position,
+        start: TextPosition,
         open: char,
         close: char,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let mut depth = 1;
         let mut line_idx = start.line;
         let mut col = start.column + 1;
@@ -824,7 +824,7 @@ impl MotionEngine {
                 } else if ch == close {
                     depth -= 1;
                     if depth == 0 {
-                        return Some(Position::new(line_idx, col));
+                        return Some(TextPosition::new(line_idx, col));
                     }
                 }
                 col += 1;
@@ -840,10 +840,10 @@ impl MotionEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn find_backward_bracket(
         buffer: &dyn TextGeometry,
-        start: Position,
+        start: TextPosition,
         open: char,
         close: char,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let mut depth = 1;
         let mut line_idx = start.line;
 
@@ -858,7 +858,7 @@ impl MotionEngine {
                     } else if ch == open {
                         depth -= 1;
                         if depth == 0 {
-                            return Some(Position::new(line_idx, col));
+                            return Some(TextPosition::new(line_idx, col));
                         }
                     }
                 }
@@ -878,7 +878,7 @@ impl MotionEngine {
                 } else if ch == open {
                     depth -= 1;
                     if depth == 0 {
-                        return Some(Position::new(line_idx, col));
+                        return Some(TextPosition::new(line_idx, col));
                     }
                 }
             }

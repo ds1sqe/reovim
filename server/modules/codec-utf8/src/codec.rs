@@ -6,7 +6,7 @@
 use reovim_driver_codec::{CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult};
 
 /// UTF-8 BOM bytes.
-const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
+pub(crate) const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 
 /// Metadata key for BOM presence.
 pub const META_BOM: &str = "bom";

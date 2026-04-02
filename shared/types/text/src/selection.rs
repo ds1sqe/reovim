@@ -29,7 +29,7 @@
 //! assert_eq!(end, Position::new(5, 20));
 //! ```
 
-use super::Position;
+use super::TextPosition;
 
 /// Selection mode determining how text is selected.
 ///
@@ -99,7 +99,7 @@ impl SelectionMode {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Selection {
     /// The position where selection started.
-    pub anchor: Position,
+    pub anchor: TextPosition,
 
     /// Whether selection is currently active.
     pub active: bool,
@@ -113,7 +113,7 @@ impl Selection {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            anchor: Position::origin(),
+            anchor: TextPosition::origin(),
             active: false,
             mode: SelectionMode::Character,
         }
@@ -122,24 +122,24 @@ impl Selection {
     /// Start a selection at the given position with the specified mode.
     ///
     /// This sets the anchor and activates the selection.
-    pub const fn start(&mut self, pos: Position, mode: SelectionMode) {
+    pub const fn start(&mut self, pos: TextPosition, mode: SelectionMode) {
         self.anchor = pos;
         self.active = true;
         self.mode = mode;
     }
 
     /// Start a character-wise selection at the given position.
-    pub const fn start_char(&mut self, pos: Position) {
+    pub const fn start_char(&mut self, pos: TextPosition) {
         self.start(pos, SelectionMode::Character);
     }
 
     /// Start a line-wise selection at the given position.
-    pub const fn start_line(&mut self, pos: Position) {
+    pub const fn start_line(&mut self, pos: TextPosition) {
         self.start(pos, SelectionMode::Line);
     }
 
     /// Start a block selection at the given position.
-    pub const fn start_block(&mut self, pos: Position) {
+    pub const fn start_block(&mut self, pos: TextPosition) {
         self.start(pos, SelectionMode::Block);
     }
 
@@ -175,7 +175,7 @@ impl Selection {
     /// The returned positions are always ordered so that start comes
     /// before or equals end in document order.
     #[must_use]
-    pub fn bounds(&self, cursor_pos: Position) -> Option<(Position, Position)> {
+    pub fn bounds(&self, cursor_pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
         if !self.active {
             return None;
         }
@@ -196,7 +196,7 @@ impl Selection {
     /// Returns `None` if selection is not active or not in block mode.
     #[must_use]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn block_bounds(&self, cursor_pos: Position) -> Option<(Position, Position)> {
+    pub fn block_bounds(&self, cursor_pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
         if !self.active || self.mode != SelectionMode::Block {
             return None;
         }
@@ -206,7 +206,7 @@ impl Selection {
         let min_col = self.anchor.column.min(cursor_pos.column);
         let max_col = self.anchor.column.max(cursor_pos.column);
 
-        Some((Position::new(min_line, min_col), Position::new(max_line, max_col)))
+        Some((TextPosition::new(min_line, min_col), TextPosition::new(max_line, max_col)))
     }
 
     /// Get line-wise selection bounds (`start_line`, `end_line`).
@@ -214,7 +214,7 @@ impl Selection {
     /// For line selections, this returns the range of selected lines.
     /// Returns `None` if selection is not active.
     #[must_use]
-    pub fn line_bounds(&self, cursor_pos: Position) -> Option<(usize, usize)> {
+    pub fn line_bounds(&self, cursor_pos: TextPosition) -> Option<(usize, usize)> {
         if !self.active {
             return None;
         }
@@ -233,7 +233,7 @@ impl Selection {
     /// - Line: position's line is within the line range
     #[must_use]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn contains(&self, pos: Position, cursor_pos: Position) -> bool {
+    pub fn contains(&self, pos: TextPosition, cursor_pos: TextPosition) -> bool {
         if !self.active {
             return false;
         }
@@ -270,7 +270,7 @@ impl Selection {
     ///
     /// Returns 0 if selection is not active.
     #[must_use]
-    pub fn line_count(&self, cursor_pos: Position) -> usize {
+    pub fn line_count(&self, cursor_pos: TextPosition) -> usize {
         if !self.active {
             return 0;
         }

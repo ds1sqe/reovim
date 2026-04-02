@@ -1,10 +1,10 @@
 [package]
-name = "reovim-types-text"
+name = "reovim-domain"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Pure text data types (Position, Edit, Selection) — zero-dependency leaf crate"
+description = "Domain trait for content-type abstraction (text, audio, video)"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -13,5 +13,4 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Domain trait for content-type abstraction
-reovim-domain = { workspace = true }
+# None — pure trait definitions, zero dependencies.

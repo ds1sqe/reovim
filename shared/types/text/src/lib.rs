@@ -1,14 +1,24 @@
 //! Pure text types and algorithms for reovim.
 //!
-//! This is a zero-dependency leaf crate providing fundamental text types,
-//! traits, and algorithms. Everything here operates on abstract text
-//! geometry — no concrete buffer, rope, or storage dependency.
+//! This crate provides fundamental text types, traits, and algorithms.
+//! Everything here operates on abstract text geometry — no concrete
+//! buffer, rope, or storage dependency.
+//!
+//! # Domain
+//!
+//! - [`Text`] — text domain marker implementing [`Domain`](reovim_domain::Domain)
+//! - [`TextPosition`] — line/column location in a text buffer
+//! - [`TextEdit`] — atomic insert/delete operation for undo/redo
+//!
+//! # Backward Compatibility
+//!
+//! [`Position`] and [`Edit`] are type aliases for [`TextPosition`] and
+//! [`TextEdit`] respectively, providing backward compatibility during
+//! the kernel extraction migration.
 //!
 //! # Types
 //!
-//! - [`Position`] — line/column location in a text buffer
 //! - [`Cursor`] — cursor state (position + anchor + preferred column)
-//! - [`Edit`] — atomic insert/delete operation for undo/redo
 //! - [`TextDimensions`] — shape of a text string (line count, last line length)
 //! - [`Selection`] — selection state (anchor + mode)
 //! - [`SelectionMode`] — character/line/block selection
@@ -50,10 +60,20 @@ mod word;
 mod history;
 mod register;
 
-// Data types
-pub use edit::{Edit, TextDimensions, delete_end, text_dimensions, transform_position};
-pub use position::{Cursor, Position};
+// --- Domain ---
+mod domain;
+
+// Data types (canonical names)
+pub use edit::{TextDimensions, TextEdit, delete_end, text_dimensions, transform_position};
+pub use position::{Cursor, TextPosition};
 pub use selection::{Selection, SelectionMode};
+
+// Backward compatibility aliases (removed in Phase 5)
+pub type Position = TextPosition;
+pub type Edit = TextEdit;
+
+// Domain marker
+pub use domain::Text;
 
 // Traits and helpers
 pub use text_geometry::{SimpleText, TextGeometry};

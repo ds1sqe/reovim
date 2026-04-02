@@ -11,24 +11,24 @@
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::Position;
+/// use reovim_types_text::TextPosition;
 ///
-/// let pos = Position::new(5, 10);
+/// let pos = TextPosition::new(5, 10);
 /// assert_eq!(pos.line, 5);
 /// assert_eq!(pos.column, 10);
 ///
 /// // Positions are ordered by line first, then column
-/// assert!(Position::new(0, 5) < Position::new(1, 0));
+/// assert!(TextPosition::new(0, 5) < TextPosition::new(1, 0));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct Position {
+pub struct TextPosition {
     /// Line number (0-indexed).
     pub line: usize,
     /// Column number (0-indexed, counting chars).
     pub column: usize,
 }
 
-impl Position {
+impl TextPosition {
     /// Create a new position.
     #[must_use]
     pub const fn new(line: usize, column: usize) -> Self {
@@ -48,13 +48,13 @@ impl Position {
     }
 }
 
-impl PartialOrd for Position {
+impl PartialOrd for TextPosition {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Position {
+impl Ord for TextPosition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.line.cmp(&other.line) {
             std::cmp::Ordering::Equal => self.column.cmp(&other.column),
@@ -63,7 +63,7 @@ impl Ord for Position {
     }
 }
 
-impl std::fmt::Display for Position {
+impl std::fmt::Display for TextPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.line + 1, self.column + 1)
     }
@@ -88,27 +88,27 @@ impl std::fmt::Display for Position {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{Cursor, Position};
+/// use reovim_types_text::{Cursor, TextPosition};
 ///
-/// let mut cursor = Cursor::new(Position::new(0, 5));
+/// let mut cursor = Cursor::new(TextPosition::new(0, 5));
 ///
 /// // Start a selection
 /// cursor.start_selection();
-/// cursor.position = Position::new(0, 10);
+/// cursor.position = TextPosition::new(0, 10);
 ///
 /// // Get normalized bounds (start before end)
 /// let (start, end) = cursor.selection_bounds().unwrap();
-/// assert_eq!(start, Position::new(0, 5));
-/// assert_eq!(end, Position::new(0, 10));
+/// assert_eq!(start, TextPosition::new(0, 5));
+/// assert_eq!(end, TextPosition::new(0, 10));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cursor {
     /// Current cursor position.
-    pub position: Position,
+    pub position: TextPosition,
     /// Selection anchor (if selection is active).
     ///
     /// When `Some`, a selection extends from `anchor` to `position`.
-    pub anchor: Option<Position>,
+    pub anchor: Option<TextPosition>,
     /// Preferred column for vertical movement (j/k).
     ///
     /// This preserves horizontal position when navigating through lines
@@ -119,7 +119,7 @@ pub struct Cursor {
 impl Cursor {
     /// Create a new cursor at the given position.
     #[must_use]
-    pub const fn new(position: Position) -> Self {
+    pub const fn new(position: TextPosition) -> Self {
         Self {
             position,
             anchor: None,
@@ -130,7 +130,7 @@ impl Cursor {
     /// Create a cursor at the origin (0, 0).
     #[must_use]
     pub const fn origin() -> Self {
-        Self::new(Position::origin())
+        Self::new(TextPosition::origin())
     }
 
     /// Start a selection at the current position.
@@ -154,7 +154,7 @@ impl Cursor {
     /// Returns `None` if no selection is active.
     /// The returned positions are always ordered (start <= end).
     #[must_use]
-    pub fn selection_bounds(&self) -> Option<(Position, Position)> {
+    pub fn selection_bounds(&self) -> Option<(TextPosition, TextPosition)> {
         self.anchor.map(|anchor| {
             if anchor <= self.position {
                 (anchor, self.position)

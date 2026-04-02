@@ -2369,6 +2369,10 @@ name = "reovim-depgraph"
 version = "0.14.5-dev"
 
 [[package]]
+name = "reovim-domain"
+version = "0.14.5-dev"
+
+[[package]]
 name = "reovim-driver-annotation"
 version = "0.14.5-dev"
 dependencies = [
@@ -2396,6 +2400,7 @@ name = "reovim-driver-codec"
 version = "0.14.5-dev"
 dependencies = [
  "parking_lot",
+ "reovim-domain",
  "reovim-driver-annotation",
  "reovim-driver-session",
  "reovim-driver-vfs",
@@ -2871,10 +2876,13 @@ name = "reovim-module-codec-utf8"
 version = "0.14.5-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-domain",
  "reovim-driver-codec",
+ "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
+ "reovim-types-text",
  "tracing",
 ]
 
@@ -3943,6 +3951,9 @@ dependencies = [
 [[package]]
 name = "reovim-types-text"
 version = "0.14.5-dev"
+dependencies = [
+ "reovim-domain",
+]
 
 [[package]]
 name = "rmp"

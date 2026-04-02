@@ -5,7 +5,7 @@
 //! - **Inner**: The content without delimiters/whitespace (e.g., `iw`, `i(`)
 //! - **Around**: The content including delimiters/whitespace (e.g., `aw`, `a(`)
 
-use crate::{TextGeometry, Position, direction::WordBoundary};
+use crate::{TextGeometry, TextPosition, direction::WordBoundary};
 
 /// Text object types for operator-pending mode.
 ///
@@ -143,7 +143,7 @@ impl TextObject {
 /// use reovim_types_text::*;
 ///
 /// let buffer = SimpleText::new("hello world");
-/// let pos = Position::new(0, 0);
+/// let pos = TextPosition::new(0, 0);
 ///
 /// let range = TextObjectEngine::range(
 ///     &buffer,
@@ -152,7 +152,7 @@ impl TextObject {
 ///     1,
 /// );
 ///
-/// assert_eq!(range, Some((Position::new(0, 0), Position::new(0, 4))));
+/// assert_eq!(range, Some((TextPosition::new(0, 0), TextPosition::new(0, 4))));
 /// ```
 pub struct TextObjectEngine;
 
@@ -175,10 +175,10 @@ impl TextObjectEngine {
     #[must_use]
     pub fn range(
         buffer: &dyn TextGeometry,
-        position: Position,
+        position: TextPosition,
         text_object: TextObject,
         count: usize,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let count = count.max(1);
 
         match text_object {
@@ -200,9 +200,9 @@ impl TextObjectEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn inner_word(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
@@ -273,15 +273,15 @@ impl TextObjectEngine {
             }
         }
 
-        Some((Position::new(pos.line, start), Position::new(pos.line, end)))
+        Some((TextPosition::new(pos.line, start), TextPosition::new(pos.line, end)))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn a_word(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         boundary: WordBoundary,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let (inner_start, inner_end) = Self::inner_word(buffer, pos, boundary)?;
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
@@ -303,12 +303,12 @@ impl TextObjectEngine {
             }
         }
 
-        Some((Position::new(pos.line, start), Position::new(pos.line, end)))
+        Some((TextPosition::new(pos.line, start), TextPosition::new(pos.line, end)))
     }
 
     // === Paragraph Text Objects ===
 
-    fn inner_paragraph(buffer: &dyn TextGeometry, pos: Position) -> Option<(Position, Position)> {
+    fn inner_paragraph(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -337,10 +337,10 @@ impl TextObjectEngine {
         }
 
         let end_col = buffer.line_len(end).unwrap_or(0).saturating_sub(1);
-        Some((Position::new(start, 0), Position::new(end, end_col)))
+        Some((TextPosition::new(start, 0), TextPosition::new(end, end_col)))
     }
 
-    fn a_paragraph(buffer: &dyn TextGeometry, pos: Position) -> Option<(Position, Position)> {
+    fn a_paragraph(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
         let (inner_start, inner_end) = Self::inner_paragraph(buffer, pos)?;
         let line_count = buffer.line_count();
 
@@ -360,16 +360,16 @@ impl TextObjectEngine {
         }
 
         let end_col = buffer.line_len(end).unwrap_or(0).saturating_sub(1);
-        Some((Position::new(start, 0), Position::new(end, end_col)))
+        Some((TextPosition::new(start, 0), TextPosition::new(end, end_col)))
     }
 
     // === Quote Text Objects ===
 
     fn inner_quote(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         quote: char,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
@@ -382,23 +382,23 @@ impl TextObjectEngine {
 
         if start > end {
             // Empty quotes
-            Some((Position::new(pos.line, start), Position::new(pos.line, start)))
+            Some((TextPosition::new(pos.line, start), TextPosition::new(pos.line, start)))
         } else {
-            Some((Position::new(pos.line, start), Position::new(pos.line, end)))
+            Some((TextPosition::new(pos.line, start), TextPosition::new(pos.line, end)))
         }
     }
 
     fn a_quote(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         quote: char,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let line = buffer.line(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
 
         let (open, close) = Self::find_quote_pair(&chars, pos.column, quote)?;
 
-        Some((Position::new(pos.line, open), Position::new(pos.line, close)))
+        Some((TextPosition::new(pos.line, open), TextPosition::new(pos.line, close)))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -443,10 +443,10 @@ impl TextObjectEngine {
 
     fn inner_bracket(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         bracket: char,
         count: usize,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let (open, close) = Self::get_bracket_pair(bracket)?;
         let (open_pos, close_pos) = Self::find_bracket_pair(buffer, pos, open, close, count)?;
 
@@ -466,10 +466,10 @@ impl TextObjectEngine {
 
     fn a_bracket(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         bracket: char,
         count: usize,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         let (open, close) = Self::get_bracket_pair(bracket)?;
         Self::find_bracket_pair(buffer, pos, open, close, count)
     }
@@ -486,11 +486,11 @@ impl TextObjectEngine {
 
     fn find_bracket_pair(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         open: char,
         close: char,
         count: usize,
-    ) -> Option<(Position, Position)> {
+    ) -> Option<(TextPosition, TextPosition)> {
         // Find the opening bracket (searching backward and at cursor)
         let open_pos = Self::find_opening_bracket(buffer, pos, open, close, count)?;
 
@@ -503,11 +503,11 @@ impl TextObjectEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn find_opening_bracket(
         buffer: &dyn TextGeometry,
-        pos: Position,
+        pos: TextPosition,
         open: char,
         close: char,
         count: usize,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let mut depth: isize = 0;
         let mut found_count = 0;
         let mut line_idx = pos.line;
@@ -527,7 +527,7 @@ impl TextObjectEngine {
                             depth -= 1;
                         } else {
                             found_count += 1;
-                            last_open = Some(Position::new(line_idx, col));
+                            last_open = Some(TextPosition::new(line_idx, col));
                             if found_count >= count {
                                 return last_open;
                             }
@@ -551,7 +551,7 @@ impl TextObjectEngine {
                                 depth -= 1;
                             } else {
                                 found_count += 1;
-                                last_open = Some(Position::new(line_idx, col));
+                                last_open = Some(TextPosition::new(line_idx, col));
                                 if found_count >= count {
                                     return last_open;
                                 }
@@ -568,10 +568,10 @@ impl TextObjectEngine {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn find_closing_bracket(
         buffer: &dyn TextGeometry,
-        open_pos: Position,
+        open_pos: TextPosition,
         open: char,
         close: char,
-    ) -> Option<Position> {
+    ) -> Option<TextPosition> {
         let mut depth = 1;
         let mut line_idx = open_pos.line;
         let mut col = open_pos.column + 1;
@@ -587,7 +587,7 @@ impl TextObjectEngine {
                     } else if c == close {
                         depth -= 1;
                         if depth == 0 {
-                            return Some(Position::new(line_idx, col));
+                            return Some(TextPosition::new(line_idx, col));
                         }
                     }
                     col += 1;
@@ -602,26 +602,26 @@ impl TextObjectEngine {
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn next_position(buffer: &dyn TextGeometry, pos: Position) -> Option<Position> {
+    fn next_position(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<TextPosition> {
         let line_len = buffer.line_len(pos.line)?;
         if pos.column + 1 < line_len {
-            Some(Position::new(pos.line, pos.column + 1))
+            Some(TextPosition::new(pos.line, pos.column + 1))
         } else if pos.line + 1 < buffer.line_count() {
-            Some(Position::new(pos.line + 1, 0))
+            Some(TextPosition::new(pos.line + 1, 0))
         } else {
-            Some(Position::new(pos.line, pos.column))
+            Some(TextPosition::new(pos.line, pos.column))
         }
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn prev_position(buffer: &dyn TextGeometry, pos: Position) -> Option<Position> {
+    fn prev_position(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<TextPosition> {
         if pos.column > 0 {
-            Some(Position::new(pos.line, pos.column - 1))
+            Some(TextPosition::new(pos.line, pos.column - 1))
         } else if pos.line > 0 {
             let prev_len = buffer.line_len(pos.line - 1)?;
-            Some(Position::new(pos.line - 1, prev_len.saturating_sub(1)))
+            Some(TextPosition::new(pos.line - 1, prev_len.saturating_sub(1)))
         } else {
-            Some(Position::new(0, 0))
+            Some(TextPosition::new(0, 0))
         }
     }
 }

@@ -3,55 +3,55 @@
 //! This module defines atomic edit operations that can be recorded
 //! and inverted for undo/redo functionality.
 
-use super::Position;
+use super::TextPosition;
 
-/// A single atomic edit operation.
+/// A single atomic text edit operation.
 ///
 /// Edits are self-contained and can be inverted for undo/redo.
 /// Each edit records the position where it occurred and the text involved.
 ///
 /// # Undo/Redo
 ///
-/// Use [`Edit::inverse`] to get the operation that undoes this edit:
+/// Use [`TextEdit::inverse`] to get the operation that undoes this edit:
 /// - `Insert` becomes `Delete`
 /// - `Delete` becomes `Insert`
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{Edit, Position};
+/// use reovim_types_text::{TextEdit, TextPosition};
 ///
-/// let insert = Edit::insert(Position::new(0, 5), "Hello");
+/// let insert = TextEdit::insert(TextPosition::new(0, 5), "Hello");
 /// assert!(insert.is_insert());
 /// assert_eq!(insert.text(), "Hello");
 ///
 /// // Get the inverse for undo
 /// let undo = insert.inverse();
 /// assert!(undo.is_delete());
-/// assert_eq!(undo.position(), Position::new(0, 5));
+/// assert_eq!(undo.position(), TextPosition::new(0, 5));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Edit {
+pub enum TextEdit {
     /// Text was inserted at a position.
     Insert {
         /// Position where text was inserted.
-        position: Position,
+        position: TextPosition,
         /// The inserted text.
         text: String,
     },
     /// Text was deleted at a position.
     Delete {
         /// Position where deletion started.
-        position: Position,
+        position: TextPosition,
         /// The deleted text.
         text: String,
     },
 }
 
-impl Edit {
+impl TextEdit {
     /// Create an insert edit.
     #[must_use]
-    pub fn insert(position: Position, text: impl Into<String>) -> Self {
+    pub fn insert(position: TextPosition, text: impl Into<String>) -> Self {
         Self::Insert {
             position,
             text: text.into(),
@@ -60,7 +60,7 @@ impl Edit {
 
     /// Create a delete edit.
     #[must_use]
-    pub fn delete(position: Position, text: impl Into<String>) -> Self {
+    pub fn delete(position: TextPosition, text: impl Into<String>) -> Self {
         Self::Delete {
             position,
             text: text.into(),
@@ -87,7 +87,7 @@ impl Edit {
 
     /// Get the position where this edit occurred.
     #[must_use]
-    pub const fn position(&self) -> Position {
+    pub const fn position(&self) -> TextPosition {
         match self {
             Self::Insert { position, .. } | Self::Delete { position, .. } => *position,
         }
@@ -128,13 +128,13 @@ impl Edit {
     /// # Example
     ///
     /// ```
-    /// use reovim_types_text::{Edit, Position};
+    /// use reovim_types_text::{TextEdit, TextPosition};
     ///
     /// // An insert at (0,5) transformed through an earlier insert of "abc" at (0,2)
-    /// let edit = Edit::insert(Position::new(0, 5), "hello");
-    /// let against = Edit::insert(Position::new(0, 2), "abc");
+    /// let edit = TextEdit::insert(TextPosition::new(0, 5), "hello");
+    /// let against = TextEdit::insert(TextPosition::new(0, 2), "abc");
     /// let transformed = edit.transform(&against);
-    /// assert_eq!(transformed.position(), Position::new(0, 8)); // 5 + 3
+    /// assert_eq!(transformed.position(), TextPosition::new(0, 8)); // 5 + 3
     /// assert_eq!(transformed.text(), "hello"); // text unchanged
     /// ```
     #[must_use]
@@ -159,7 +159,7 @@ impl Edit {
 /// compute how an edit shifts positions in a 2D text buffer.
 ///
 /// All lengths are in Unicode scalar values (chars), consistent with
-/// [`Position::column`] semantics throughout reovim.
+/// [`TextPosition::column`] semantics throughout reovim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextDimensions {
     /// Number of newline characters in the text.
@@ -202,12 +202,12 @@ pub fn text_dimensions(text: &str) -> TextDimensions {
 /// Given a deletion starting at `pos` with the specified `text`, returns
 /// the position just past the end of the deleted region.
 #[must_use]
-pub fn delete_end(pos: Position, text: &str) -> Position {
+pub fn delete_end(pos: TextPosition, text: &str) -> TextPosition {
     let dims = text_dimensions(text);
     if dims.line_count == 0 {
-        Position::new(pos.line, pos.column + dims.last_line_len)
+        TextPosition::new(pos.line, pos.column + dims.last_line_len)
     } else {
-        Position::new(pos.line + dims.line_count, dims.last_line_len)
+        TextPosition::new(pos.line + dims.line_count, dims.last_line_len)
     }
 }
 
@@ -226,32 +226,32 @@ pub fn delete_end(pos: Position, text: &str) -> Position {
 /// # Character counting
 ///
 /// All column arithmetic uses Unicode scalar values (`.chars().count()`),
-/// consistent with [`Position::column`] semantics.
+/// consistent with [`TextPosition::column`] semantics.
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{Edit, Position, transform_position};
+/// use reovim_types_text::{TextEdit, TextPosition, transform_position};
 ///
 /// // Insert "abc" at (0,2) shifts position (0,5) to (0,8)
 /// let pos = transform_position(
-///     Position::new(0, 5),
-///     &Edit::insert(Position::new(0, 2), "abc"),
+///     TextPosition::new(0, 5),
+///     &TextEdit::insert(TextPosition::new(0, 2), "abc"),
 /// );
-/// assert_eq!(pos, Position::new(0, 8));
+/// assert_eq!(pos, TextPosition::new(0, 8));
 /// ```
 #[must_use]
-pub fn transform_position(pos: Position, against: &Edit) -> Position {
+pub fn transform_position(pos: TextPosition, against: &TextEdit) -> TextPosition {
     if against.is_empty() {
         return pos;
     }
 
     match against {
-        Edit::Insert {
+        TextEdit::Insert {
             position: ins_pos,
             text,
         } => transform_position_against_insert(pos, *ins_pos, text),
-        Edit::Delete {
+        TextEdit::Delete {
             position: del_pos,
             text,
         } => transform_position_against_delete(pos, *del_pos, text),
@@ -259,7 +259,11 @@ pub fn transform_position(pos: Position, against: &Edit) -> Position {
 }
 
 /// Transform a position through an insert edit.
-fn transform_position_against_insert(pos: Position, ins_pos: Position, text: &str) -> Position {
+fn transform_position_against_insert(
+    pos: TextPosition,
+    ins_pos: TextPosition,
+    text: &str,
+) -> TextPosition {
     // Position strictly before the insert is unaffected.
     if pos < ins_pos {
         return pos;
@@ -271,23 +275,27 @@ fn transform_position_against_insert(pos: Position, ins_pos: Position, text: &st
         // Same line as insert. Column >= ins_pos.column (due to pos >= ins_pos).
         if dims.line_count == 0 {
             // Single-line insert: shift column right.
-            Position::new(pos.line, pos.column + dims.last_line_len)
+            TextPosition::new(pos.line, pos.column + dims.last_line_len)
         } else {
             // Multi-line insert: position moves down and column resets
             // relative to the end of the inserted text.
-            Position::new(
+            TextPosition::new(
                 pos.line + dims.line_count,
                 pos.column - ins_pos.column + dims.last_line_len,
             )
         }
     } else {
         // Position is on a line after the insert line: shift line down.
-        Position::new(pos.line + dims.line_count, pos.column)
+        TextPosition::new(pos.line + dims.line_count, pos.column)
     }
 }
 
 /// Transform a position through a delete edit.
-fn transform_position_against_delete(pos: Position, del_pos: Position, text: &str) -> Position {
+fn transform_position_against_delete(
+    pos: TextPosition,
+    del_pos: TextPosition,
+    text: &str,
+) -> TextPosition {
     // Position at or before the delete start is unaffected.
     if pos <= del_pos {
         return pos;
@@ -305,13 +313,13 @@ fn transform_position_against_delete(pos: Position, del_pos: Position, text: &st
         // Position is on the last line of the deletion but after it.
         if dims.line_count == 0 {
             // Single-line delete: shift column left.
-            Position::new(pos.line, pos.column - dims.last_line_len)
+            TextPosition::new(pos.line, pos.column - dims.last_line_len)
         } else {
             // Multi-line delete: column merges onto the delete-start line.
-            Position::new(del_pos.line, del_pos.column + pos.column - del_end.column)
+            TextPosition::new(del_pos.line, del_pos.column + pos.column - del_end.column)
         }
     } else {
         // Position is on a line after the deletion: shift line up.
-        Position::new(pos.line - dims.line_count, pos.column)
+        TextPosition::new(pos.line - dims.line_count, pos.column)
     }
 }

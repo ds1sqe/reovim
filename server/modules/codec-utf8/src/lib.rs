@@ -31,9 +31,15 @@ use {
 
 pub mod classifier;
 pub mod codec;
+pub mod domain;
 pub mod factory;
 
-pub use {classifier::Utf8Classifier, codec::Utf8Codec, factory::Utf8CodecFactory};
+pub use {
+    classifier::Utf8Classifier,
+    codec::Utf8Codec,
+    domain::Utf8LineIndex,
+    factory::Utf8CodecFactory,
+};
 
 /// UTF-8 content codec module.
 ///
