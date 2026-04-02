@@ -594,6 +594,20 @@ impl BufferOps for Buffer {
     }
 }
 
+impl super::virtual_snapshot::RopeCapture for Buffer {
+    fn capture_rope(&self) -> Rope {
+        self.clone_rope()
+    }
+
+    fn restore_rope(&mut self, rope: Rope) {
+        self.set_rope(rope);
+    }
+
+    fn rope_buffer_id(&self) -> BufferId {
+        self.id()
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/buffer.rs"]
 mod tests;
