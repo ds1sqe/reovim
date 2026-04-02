@@ -15,5 +15,7 @@ workspace = true
 [dependencies]
 # Kernel types for Buffer, BufferOps
 reovim-kernel = { workspace = true }
+# Text provider for VirtualBuffer
+reovim-provider-text = { workspace = true }
 # Text types (Position)
 reovim-types-text = { workspace = true }

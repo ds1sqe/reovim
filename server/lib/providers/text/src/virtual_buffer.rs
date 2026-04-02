@@ -4,6 +4,12 @@
 //! [`FileMapping`].  Edits create new pieces referencing an append-only
 //! add buffer.  The [`PieceTree`] is a B-tree with `Arc` structural sharing
 //! (O(1) clone) for efficient snapshots.
+//!
+//! # Migration
+//!
+//! This type was moved from `reovim-kernel` as part of #740 (kernel buffer
+//! extraction).  It is text-specific (uses `LineIndex` for line-based access,
+//! `Position` for text coordinates) and belongs in the text provider layer.
 
 use std::{
     borrow::Cow,
@@ -13,52 +19,17 @@ use std::{
     sync::Arc,
 };
 
-use super::{
-    BufferId, Position,
-    file_mapping::FileMapping,
-    line_index::LineIndex,
-    piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
+use reovim_kernel::api::v1::{
+    BufferCapabilities, BufferOps, BufferId, FileMapping, LineIndex, Piece, PieceMetrics,
+    PieceSource, PieceTree, SnapshotCapture, StorageCapabilities, StorageError, StorageOps,
+    VirtualSnapshot,
 };
+use reovim_kernel::api::v1::BufferMeta;
+use reovim_types_text::{Position, TextGeometry};
 
 /// Create byte-only metrics from a string's byte length.
 const fn byte_metrics(s: &str) -> PieceMetrics {
     PieceMetrics::from_byte_len(s.len() as u64)
-}
-
-// ─── VirtualSnapshot ────────────────────────────────────────────────────────
-
-/// Opaque snapshot of `VirtualBuffer` state.
-///
-/// Produced by [`VirtualBuffer::capture_snapshot`], consumed by
-/// [`VirtualBuffer::restore_snapshot`].  The `block/snapshot.rs` module
-/// stores this type without knowing `VirtualBuffer` internals.
-#[derive(Clone)]
-pub struct VirtualSnapshot {
-    pieces: PieceTree,
-    add_buffer_len: usize,
-    original: Arc<dyn FileMapping>,
-    line_index: LineIndex,
-    crlf: bool,
-}
-
-impl VirtualSnapshot {
-    /// Length of the add buffer at snapshot time.
-    #[must_use]
-    pub const fn add_buffer_len(&self) -> usize {
-        self.add_buffer_len
-    }
-}
-
-impl fmt::Debug for VirtualSnapshot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("VirtualSnapshot")
-            .field("piece_count", &self.pieces.piece_count())
-            .field("add_buffer_len", &self.add_buffer_len)
-            .field("original_len", &self.original.len())
-            .field("line_count", &self.line_index.line_count())
-            .field("crlf", &self.crlf)
-            .finish()
-    }
 }
 
 // ─── VirtualBuffer ──────────────────────────────────────────────────────────
@@ -229,12 +200,6 @@ impl VirtualBuffer {
     #[must_use]
     pub const fn piece_count(&self) -> usize {
         self.pieces.piece_count()
-    }
-
-    /// Access to the underlying `PieceTree` (for snapshot).
-    #[allow(dead_code)]
-    pub(crate) const fn pieces(&self) -> &PieceTree {
-        &self.pieces
     }
 }
 
@@ -549,7 +514,7 @@ impl VirtualBuffer {
 
     /// Rebuild the line index from current content.
     fn rebuild_line_index(&mut self) {
-        let content = self.content_bytes();
+        let content = self.content_bytes_vec();
         self.line_index.rebuild(&content);
     }
 
@@ -586,8 +551,8 @@ impl VirtualBuffer {
         Ok(())
     }
 
-    /// Materialize content as bytes (for line index rebuild).
-    fn content_bytes(&self) -> Vec<u8> {
+    /// Materialize content as bytes (for line index rebuild and `StorageOps`).
+    fn content_bytes_vec(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(self.pieces.byte_len() as usize);
         for piece in self.pieces.iter_pieces() {
             match piece.source {
@@ -620,23 +585,40 @@ impl VirtualBuffer {
     /// Capture an opaque snapshot of this buffer's state.
     #[must_use]
     pub fn capture_snapshot(&self) -> VirtualSnapshot {
-        VirtualSnapshot {
-            pieces: self.pieces.clone(),
-            add_buffer_len: self.add_buffer.len(),
-            original: Arc::clone(&self.original),
-            line_index: self.line_index.clone(),
-            crlf: self.crlf,
-        }
+        VirtualSnapshot::new(
+            self.pieces.clone(),
+            self.add_buffer.len(),
+            Arc::clone(&self.original),
+            self.line_index.clone(),
+            self.crlf,
+        )
     }
 
     /// Restore state from a snapshot.
     pub fn restore_snapshot(&mut self, snap: VirtualSnapshot) {
-        self.pieces = snap.pieces;
-        self.add_buffer.truncate(snap.add_buffer_len);
-        self.original = snap.original;
-        self.line_index = snap.line_index;
-        self.crlf = snap.crlf;
+        let (pieces, add_buffer_len, original, line_index, crlf) = snap.into_parts();
+        self.pieces = pieces;
+        self.add_buffer.truncate(add_buffer_len);
+        self.original = original;
+        self.line_index = line_index;
+        self.crlf = crlf;
         self.modified = true;
+    }
+}
+
+// ── SnapshotCapture ──────────────────────────────────────────────────────────
+
+impl SnapshotCapture for VirtualBuffer {
+    fn capture_snapshot(&self) -> VirtualSnapshot {
+        Self::capture_snapshot(self)
+    }
+
+    fn restore_snapshot(&mut self, snap: VirtualSnapshot) {
+        Self::restore_snapshot(self, snap);
+    }
+
+    fn snapshot_buffer_id(&self) -> BufferId {
+        self.id
     }
 }
 
@@ -659,12 +641,6 @@ impl FileMapping for HeapMapping {
 }
 
 // ── TextGeometry ────────────────────────────────────────────────────────────
-
-use crate::api::{
-    BufferCapabilities, BufferOps,
-    storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
-};
-use reovim_types_text::TextGeometry;
 
 impl TextGeometry for VirtualBuffer {
     fn line_count(&self) -> usize {
@@ -692,7 +668,7 @@ impl StorageOps for VirtualBuffer {
     }
 
     fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let content = Self::content_bytes(self);
+        let content = self.content_bytes_vec();
         if offset >= content.len() {
             return 0;
         }
@@ -745,7 +721,7 @@ impl StorageOps for VirtualBuffer {
             return Vec::new();
         }
         let end = (offset + max_len).min(total);
-        let content = self.content_bytes();
+        let content = self.content_bytes_vec();
         content[offset..end].to_vec()
     }
 }
@@ -780,7 +756,7 @@ impl BufferOps for VirtualBuffer {
     }
 
     fn content_bytes(&self) -> Vec<u8> {
-        Self::content_bytes(self)
+        self.content_bytes_vec()
     }
 
     fn line_count(&self) -> usize {
@@ -823,3 +799,7 @@ impl BufferOps for VirtualBuffer {
         self
     }
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

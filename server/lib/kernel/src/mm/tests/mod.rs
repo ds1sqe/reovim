@@ -21,7 +21,7 @@ mod word;
 
 mod line_index;
 mod piece_table;
-mod virtual_buffer;
+// VirtualBuffer tests moved to reovim-provider-text (#740)
 
 // === BufferId Tests ===
 

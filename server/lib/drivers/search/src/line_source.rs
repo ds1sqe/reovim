@@ -9,7 +9,8 @@
 
 use std::borrow::Cow;
 
-use reovim_kernel::api::v1::{Buffer, BufferOps, VirtualBuffer};
+use reovim_kernel::api::v1::{Buffer, BufferOps};
+use reovim_provider_text::VirtualBuffer;
 use reovim_types_text::Position;
 
 /// Line-oriented read access to buffer content.

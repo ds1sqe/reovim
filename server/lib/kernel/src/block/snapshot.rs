@@ -22,7 +22,7 @@
 //! handled by the driver layer (`server/lib/drivers/vfs/`).
 
 use {
-    crate::mm::{Buffer, BufferId, Position, Rope, VirtualBuffer, VirtualSnapshot},
+    crate::mm::{Buffer, BufferId, Position, Rope, SnapshotCapture, VirtualSnapshot},
     std::{fmt, time::SystemTime},
 };
 
@@ -132,15 +132,18 @@ impl Snapshot {
         }
     }
 
-    /// Capture the current state of a `VirtualBuffer` (mmap + piece table).
+    /// Capture the current state of a virtual buffer (mmap + piece table).
+    ///
+    /// Accepts any type implementing [`SnapshotCapture`], which abstracts
+    /// over `VirtualBuffer` without requiring a concrete dependency.
     ///
     /// This is O(1) — the `PieceTree` is cloned via `Arc` structural sharing.
     #[must_use]
-    pub fn capture_virtual(vbuf: &VirtualBuffer, cursor: Position) -> Self {
+    pub fn capture_virtual(vbuf: &dyn SnapshotCapture, cursor: Position) -> Self {
         Self {
             content: SnapshotContent::Virtual(vbuf.capture_snapshot()),
             cursor,
-            buffer_id: vbuf.id(),
+            buffer_id: vbuf.snapshot_buffer_id(),
             timestamp: SystemTime::now(),
         }
     }
@@ -191,15 +194,19 @@ impl Snapshot {
         }
     }
 
-    /// Restore a `VirtualBuffer` to this snapshot's state.
+    /// Restore a virtual buffer to this snapshot's state.
     ///
+    /// Accepts any type implementing [`SnapshotCapture`].
     /// Returns the cursor position that should be set on Window.
     ///
     /// # Errors
     ///
     /// Returns `Err(SnapshotMismatch)` if this snapshot was captured from
     /// a Rope buffer.
-    pub fn restore_virtual(&self, vbuf: &mut VirtualBuffer) -> Result<Position, SnapshotMismatch> {
+    pub fn restore_virtual(
+        &self,
+        vbuf: &mut dyn SnapshotCapture,
+    ) -> Result<Position, SnapshotMismatch> {
         match &self.content {
             SnapshotContent::Virtual(snap) => {
                 vbuf.restore_snapshot(snap.clone());
@@ -270,8 +277,8 @@ impl Snapshot {
 
     /// Check if this snapshot matches a virtual buffer's ID.
     #[must_use]
-    pub fn matches_virtual_buffer(&self, vbuf: &VirtualBuffer) -> bool {
-        self.buffer_id == vbuf.id()
+    pub fn matches_virtual_buffer(&self, vbuf: &dyn SnapshotCapture) -> bool {
+        self.buffer_id == vbuf.snapshot_buffer_id()
     }
 
     /// Get the total number of characters in the snapshot.

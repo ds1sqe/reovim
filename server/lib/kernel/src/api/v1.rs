@@ -46,10 +46,12 @@ pub use super::context::{KernelContext, ModuleContext};
 // Buffer types (kernel-owned)
 pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
 
-// Virtual buffer (large file support)
-pub use crate::mm::{
-    FileMapping, HeapMapping, InvalidUtf8, LineIndex, VirtualBuffer, VirtualSnapshot,
-};
+// Virtual buffer support types (large file support)
+// Note: VirtualBuffer and HeapMapping moved to reovim-provider-text (#740)
+pub use crate::mm::{FileMapping, InvalidUtf8, LineIndex};
+
+// Virtual snapshot and trait (for abstract snapshot capture/restore)
+pub use crate::mm::{SnapshotCapture, VirtualSnapshot};
 
 // Piece table (byte-only B-tree for large file editing)
 pub use crate::mm::{Piece, PieceMetrics, PieceSource, PieceTree};

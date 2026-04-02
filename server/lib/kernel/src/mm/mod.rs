@@ -2,15 +2,18 @@
 //!
 //! Linux equivalent: `mm/`
 //!
-//! This module provides buffer storage, identifier types, and virtual buffer
-//! abstractions. Text-specific types (Position, Edit, Selection) have been
-//! extracted to `reovim-types-text` as part of #740.
+//! This module provides buffer storage, identifier types, and byte-level
+//! data structures. Text-specific types have been extracted:
+//! - Position, Edit, Selection → `reovim-types-text`
+//! - VirtualBuffer, HeapMapping → `reovim-provider-text`
 //!
 //! # Module Structure
 //!
 //! - [`buffer_id`]: Unique buffer identifiers with atomic generation
 //! - [`buffer`]: Core buffer data structure with line-based storage
-//! - [`virtual_buffer`]: Memory-mapped large file support
+//! - [`piece_table`]: Byte-only B-tree for large file editing
+//! - [`virtual_snapshot`]: Opaque snapshot type + `SnapshotCapture` trait
+//! - [`file_mapping`]: Generic byte-access abstraction for zero-copy access
 //! - [`delimiter`]: Bracket/delimiter matching
 //!
 //! # Example
@@ -38,10 +41,7 @@ mod file_mapping;
 mod line_index;
 mod piece_table;
 mod rope;
-// Large file offsets are u64 but Rust indexing uses usize.
-// Truncation is lossless on our 64-bit-only target.
-#[allow(clippy::cast_possible_truncation)]
-mod virtual_buffer;
+mod virtual_snapshot;
 
 // Re-export Rope for snapshot types in block/. Not exposed via api::v1
 // because the mm module itself is private.
@@ -56,10 +56,8 @@ mod tests;
 
 pub use piece_table::{Piece, PieceMetrics, PieceSource, PieceTree};
 pub use file_mapping::FileMapping;
-pub use {
-    line_index::{InvalidUtf8, LineIndex},
-    virtual_buffer::{HeapMapping, VirtualBuffer, VirtualSnapshot},
-};
+pub use virtual_snapshot::{SnapshotCapture, VirtualSnapshot};
+pub use line_index::{InvalidUtf8, LineIndex};
 
 pub use {
     buffer::Buffer,

@@ -2619,6 +2619,7 @@ name = "reovim-driver-search"
 version = "0.14.5-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-provider-text",
  "reovim-types-text",
 ]
 
@@ -2905,6 +2906,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "reovim-types-text",
  "tempfile",
  "tracing",

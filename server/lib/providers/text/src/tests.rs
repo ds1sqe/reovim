@@ -1,8 +1,17 @@
-//! Tests for `VirtualBuffer` and `FileMapping`.
+//! Tests for `VirtualBuffer`, `HeapMapping`, and trait integration.
+//!
+//! Moved from `reovim-kernel` as part of #740 (kernel buffer extraction).
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
-use super::*;
+use reovim_kernel::api::v1::{
+    Buffer, BufferId, BufferOps, FileMapping, LineIndex, Snapshot, SnapshotCapture,
+    StorageOps,
+};
+use reovim_types_text::{Position, TextGeometry};
+
+use super::{HeapMapping, VirtualBuffer};
 
 /// Helper: create a `VirtualBuffer` from a string.
 fn vbuf_from_str(s: &str) -> VirtualBuffer {
@@ -408,9 +417,6 @@ fn line_hashes() {
 
 #[test]
 fn equivalence_line_count() {
-    // Use content without trailing newlines — Buffer::from_string normalizes
-    // away trailing \n via .lines().join("\n"), while VirtualBuffer preserves
-    // raw bytes.  The equivalence holds for content that Buffer stores as-is.
     for content in &["", "hello", "hello\nworld", "a\nb\nc"] {
         let buf = Buffer::from_string(content);
         let vbuf = vbuf_from_str(content);
@@ -577,4 +583,213 @@ fn unicode_position_round_trip() {
             assert_eq!(pos, back, "Unicode round-trip failed for {pos:?}");
         }
     }
+}
+
+// ── SnapshotCapture trait ────────────────────────────────────────────
+
+#[test]
+fn snapshot_capture_trait() {
+    let mut vbuf = vbuf_from_str("hello\nworld");
+    let sc: &dyn SnapshotCapture = &vbuf;
+
+    let snap = sc.capture_snapshot();
+    assert_eq!(sc.snapshot_buffer_id(), vbuf.id());
+
+    // Use as &mut dyn SnapshotCapture
+    let sc_mut: &mut dyn SnapshotCapture = &mut vbuf;
+    sc_mut.restore_snapshot(snap);
+    assert_eq!(vbuf.content(), "hello\nworld");
+}
+
+// ── Snapshot integration (Snapshot::capture_virtual) ─────────────────
+
+#[test]
+fn virtual_capture_and_restore() {
+    let mut vbuf = vbuf_from_str("Hello\nWorld");
+    let cursor = Position::new(1, 3);
+
+    let snapshot = Snapshot::capture_virtual(&vbuf, cursor);
+    assert!(snapshot.is_virtual());
+    assert_eq!(snapshot.buffer_id(), vbuf.id());
+
+    // Modify buffer
+    vbuf.set_content("Something else");
+
+    // Restore
+    let restored_cursor = snapshot.restore_virtual(&mut vbuf).unwrap();
+    assert_eq!(vbuf.content(), "Hello\nWorld");
+    assert_eq!(restored_cursor, Position::new(1, 3));
+}
+
+#[test]
+fn virtual_snapshot_is_virtual_flag() {
+    let vbuf = vbuf_from_str("test");
+    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
+    assert!(snap.is_virtual());
+
+    let buffer = Buffer::from_string("test");
+    let rope_snap = Snapshot::capture(&buffer, Position::origin());
+    assert!(!rope_snap.is_virtual());
+}
+
+#[test]
+fn virtual_snapshot_matches_buffer() {
+    let vbuf = vbuf_from_str("content");
+    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
+    assert!(snap.matches_virtual_buffer(&vbuf));
+
+    let other = vbuf_from_str("other");
+    assert!(!snap.matches_virtual_buffer(&other));
+}
+
+#[test]
+fn virtual_snapshot_after_edits() {
+    let mut vbuf = vbuf_from_str("abc\ndef");
+    let cursor = Position::new(0, 0);
+
+    // Capture before edits
+    let snap = Snapshot::capture_virtual(&vbuf, cursor);
+
+    // Make edits
+    vbuf.insert_at(Position::new(0, 3), "XYZ");
+    assert!(vbuf.content().contains("XYZ"));
+
+    // Restore removes edits
+    snap.restore_virtual(&mut vbuf).unwrap();
+    assert_eq!(vbuf.content(), "abc\ndef");
+}
+
+#[test]
+fn virtual_snapshot_clone() {
+    let vbuf = vbuf_from_str("clone test");
+    let snap = Snapshot::capture_virtual(&vbuf, Position::new(0, 5));
+    let cloned = snap.clone();
+
+    assert_eq!(cloned.cursor(), snap.cursor());
+    assert_eq!(cloned.buffer_id(), snap.buffer_id());
+    assert!(cloned.is_virtual());
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn virtual_snapshot_debug() {
+    let vbuf = vbuf_from_str("debug");
+    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
+    let debug = format!("{snap:?}");
+    assert!(debug.contains("Snapshot"));
+    assert!(debug.contains("VirtualSnapshot"));
+}
+
+// ── TextGeometry trait ───────────────────────────────────────────────
+
+#[test]
+fn vbuf_text_geometry_line_count() {
+    let vbuf = vbuf_from_str("hello\nworld\nfoo");
+    let tg: &dyn TextGeometry = &vbuf;
+    assert_eq!(tg.line_count(), 3);
+}
+
+#[test]
+fn vbuf_text_geometry_line_owned() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    let tg: &dyn TextGeometry = &vbuf;
+    let line = tg.line(0).unwrap();
+    assert!(matches!(line, Cow::Owned(_)));
+    assert_eq!(&*line, "hello");
+}
+
+#[test]
+fn vbuf_text_geometry_line_out_of_bounds() {
+    let vbuf = vbuf_from_str("hello");
+    let tg: &dyn TextGeometry = &vbuf;
+    assert!(tg.line(1).is_none());
+}
+
+#[test]
+fn vbuf_text_geometry_line_len() {
+    let vbuf = vbuf_from_str("hello\nab");
+    let tg: &dyn TextGeometry = &vbuf;
+    assert_eq!(tg.line_len(0), Some(5));
+    assert_eq!(tg.line_len(1), Some(2));
+    assert_eq!(tg.line_len(2), None);
+}
+
+#[test]
+fn vbuf_text_geometry_is_empty() {
+    let empty = vbuf_from_str("");
+    let non_empty = vbuf_from_str("x");
+    let tg_empty: &dyn TextGeometry = &empty;
+    let tg_full: &dyn TextGeometry = &non_empty;
+    assert!(tg_empty.is_empty());
+    assert!(!tg_full.is_empty());
+}
+
+#[test]
+fn vbuf_text_geometry_auto_coercion() {
+    fn accepts_geometry(tg: &dyn TextGeometry) -> usize {
+        tg.line_count()
+    }
+    let vbuf = vbuf_from_str("a\nb\nc");
+    assert_eq!(accepts_geometry(&vbuf), 3);
+}
+
+#[test]
+fn polymorphic_dispatch() {
+    fn first_line(tg: &dyn TextGeometry) -> Option<String> {
+        tg.line(0).map(Cow::into_owned)
+    }
+
+    let buf = Buffer::from_string("rope line");
+    let vbuf = vbuf_from_str("virtual line");
+
+    assert_eq!(first_line(&buf), Some("rope line".to_string()));
+    assert_eq!(first_line(&vbuf), Some("virtual line".to_string()));
+}
+
+#[test]
+fn polymorphic_line_count_matches() {
+    let content = "line1\nline2\nline3";
+    let buf = Buffer::from_string(content);
+    let vbuf = vbuf_from_str(content);
+
+    let buf_tg: &dyn TextGeometry = &buf;
+    let vbuf_tg: &dyn TextGeometry = &vbuf;
+
+    assert_eq!(buf_tg.line_count(), vbuf_tg.line_count());
+    for i in 0..3 {
+        assert_eq!(
+            buf_tg.line(i).map(Cow::into_owned),
+            vbuf_tg.line(i).map(Cow::into_owned),
+        );
+    }
+}
+
+// ── StorageOps trait ─────────────────────────────────────────────────
+
+#[test]
+fn storage_ops_byte_len() {
+    let vbuf = vbuf_from_str("hello");
+    let so: &dyn StorageOps = &vbuf;
+    assert_eq!(so.byte_len(), 5);
+}
+
+#[test]
+fn storage_ops_read_bytes() {
+    let vbuf = vbuf_from_str("hello world");
+    let so: &dyn StorageOps = &vbuf;
+    let mut buf = [0u8; 5];
+    let n = so.read_bytes(0, &mut buf);
+    assert_eq!(n, 5);
+    assert_eq!(&buf, b"hello");
+}
+
+// ── BufferOps trait ──────────────────────────────────────────────────
+
+#[test]
+fn buffer_ops_content() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    let bo: &dyn BufferOps = &vbuf;
+    assert_eq!(bo.content(), "hello\nworld");
+    assert_eq!(bo.line_count(), 2);
+    assert_eq!(bo.line(0).unwrap(), "hello");
 }
