@@ -5,7 +5,7 @@
 //! This module provides buffer storage, identifier types, and byte-level
 //! data structures. Text-specific types have been extracted:
 //! - Position, Edit, Selection → `reovim-types-text`
-//! - VirtualBuffer, HeapMapping → `reovim-provider-text`
+//! - `VirtualBuffer`, `HeapMapping` → `reovim-provider-text`
 //!
 //! # Module Structure
 //!
@@ -73,6 +73,6 @@ pub use {
 };
 
 // Re-exports from reovim-types-text used by kernel internals.
-// Position: delimiter, jumplist, mark. Edit: block/history, block/transaction.
-// Cursor: kernel tests. Will be removed when these modules are extracted (Phases 2-3).
-pub use reovim_types_text::{Cursor, Edit, Position};
+// Position: delimiter, jumplist, mark, block/snapshot, api/debug.
+// Cursor: kernel tests only (re-exported via api/v1 for external use).
+pub use reovim_types_text::{Cursor, Position};

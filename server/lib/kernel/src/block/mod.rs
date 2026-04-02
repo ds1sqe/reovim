@@ -1,6 +1,6 @@
 //! Block operations subsystem.
 //!
-//! Provides undo tree, change history, and atomic transactions.
+//! Provides buffer state capture and restore.
 //! Linux equivalent: Block device operations, journaling.
 //!
 //! # Design Principle
@@ -11,10 +11,12 @@
 //!
 //! # Components
 //!
-//! - [`Transaction`]: Groups multiple edits for atomic undo/redo
-//! - [`UndoTree`]: Branching undo history with cursor position tracking
-//! - [`History`]: Change log with timestamps
 //! - [`Snapshot`]: Buffer state capture for restore
+//!
+//! Text-specific block operations have been extracted to `reovim-types-text`:
+//! - `Transaction`: Groups multiple edits for atomic undo/redo
+//! - `UndoTree`: Branching undo history with cursor position tracking
+//! - `History`: Change log with timestamps
 //!
 //! # Example
 //!
@@ -38,17 +40,16 @@
 //! }
 //! ```
 
-mod history;
 mod snapshot;
-mod transaction;
-mod undo;
 
 #[cfg(test)]
 mod tests;
 
-pub use {
-    history::{History, HistoryEntry},
-    snapshot::{Snapshot, SnapshotMismatch},
-    transaction::Transaction,
-    undo::{EditOrigin, UndoNode, UndoResult, UndoTree},
+pub use snapshot::{Snapshot, SnapshotMismatch};
+
+// Re-exports from reovim-types-text for backward compat within kernel.
+// Used by block/tests/ which imports via `super::*`.
+#[allow(unused_imports)]
+pub use reovim_types_text::{
+    EditOrigin, History, HistoryEntry, Transaction, UndoNode, UndoResult, UndoTree,
 };

@@ -4,7 +4,7 @@
 //! making new changes creates a new branch rather than losing history.
 
 use {
-    crate::mm::{Edit, Position},
+    crate::{Edit, Position},
     std::time::{Duration, Instant},
 };
 

@@ -3,7 +3,7 @@
 //! Provides a linear log of all changes with timestamps,
 //! useful for debugging and change tracking.
 
-use {crate::mm::Edit, std::time::Instant};
+use {crate::Edit, std::time::Instant};
 
 /// An entry in the change history.
 #[derive(Debug, Clone)]

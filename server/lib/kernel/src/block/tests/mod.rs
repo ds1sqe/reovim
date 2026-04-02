@@ -2,7 +2,8 @@
 
 use {
     super::*,
-    crate::mm::{Buffer, BufferId, Edit, Position},
+    crate::mm::{Buffer, BufferId, Position},
+    reovim_types_text::Edit,
 };
 
 mod undo;

@@ -60,6 +60,14 @@ mod word;
 mod history;
 mod register;
 
+// --- Line index ---
+mod line_index;
+
+// --- Block operations (undo, history, transaction) ---
+mod change_history;
+mod transaction;
+mod undo;
+
 // --- Domain ---
 mod domain;
 
@@ -95,3 +103,11 @@ pub use rope::{Rope, RopeChunks, RopeLines};
 // Register and history
 pub use history::HistoryRing;
 pub use register::{Register, RegisterBank, RegisterContent, YankType};
+
+// Line index
+pub use line_index::{InvalidUtf8, LineIndex};
+
+// Block operations (undo, history, transaction)
+pub use change_history::{History, HistoryEntry};
+pub use transaction::Transaction;
+pub use undo::{EditOrigin, UndoNode, UndoResult, UndoTree};

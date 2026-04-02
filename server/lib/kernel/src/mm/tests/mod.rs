@@ -4,7 +4,7 @@ use super::*;
 
 // Text types extracted to reovim-types-text (#740)
 use reovim_types_text::{
-    CharKind, Selection, SelectionMode, TextDimensions, WordType, char_kind, delete_end,
+    CharKind, Edit, Selection, SelectionMode, TextDimensions, WordType, char_kind, delete_end,
     next_word_end, next_word_start, text_dimensions, transform_position, word_bounds, word_end,
     word_start,
 };
@@ -19,7 +19,7 @@ mod selection;
 mod snapshot;
 mod word;
 
-mod line_index;
+// LineIndex tests moved to reovim-types-text (#740)
 mod piece_table;
 // VirtualBuffer tests moved to reovim-provider-text (#740)
 

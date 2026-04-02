@@ -3,7 +3,7 @@
 //! A transaction groups multiple edits together so they can be
 //! undone/redone as a single unit.
 
-use crate::mm::Edit;
+use crate::Edit;
 
 /// A transaction groups multiple edits for atomic undo/redo.
 ///
@@ -13,7 +13,7 @@ use crate::mm::Edit;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
+/// use reovim_types_text::*;
 ///
 /// let mut txn = Transaction::new();
 /// txn.push(Edit::insert(Position::new(0, 0), "Hello"));
