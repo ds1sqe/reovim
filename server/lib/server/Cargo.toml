@@ -17,6 +17,7 @@ grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
 [dependencies]
 # Core crates
 reovim-kernel = { workspace = true }
+reovim-types-text = { workspace = true }
 reovim-protocol = { workspace = true }
 reovim-arch = { workspace = true }
 

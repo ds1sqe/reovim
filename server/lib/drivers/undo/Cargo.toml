@@ -13,8 +13,10 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Kernel types for BufferId, Edit, Position, UndoResult, UndoTree
+# Kernel types for BufferId, UndoResult, UndoTree
 reovim-kernel = { workspace = true }
+# Text types (Edit, Position)
+reovim-types-text = { workspace = true }
 
 # VFS driver for persistence methods
 reovim-driver-vfs = { workspace = true }

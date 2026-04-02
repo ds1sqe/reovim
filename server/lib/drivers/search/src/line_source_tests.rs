@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{Buffer, HeapMapping, LineIndex, Position, VirtualBuffer};
+use reovim_kernel::api::v1::{Buffer, HeapMapping, LineIndex, VirtualBuffer};
+use reovim_types_text::Position;
 
 use super::{BufferLineSource, LineSource, VirtualBufferLineSource};
 

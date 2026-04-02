@@ -2462,6 +2462,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
+ "reovim-types-text",
  "tracing",
 ]
 
@@ -2610,6 +2611,7 @@ name = "reovim-driver-search"
 version = "0.14.5-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-types-text",
 ]
 
 [[package]]
@@ -2625,6 +2627,7 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-types-text",
  "serde_json",
 ]
 
@@ -2684,6 +2687,7 @@ version = "0.14.5-dev"
 dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-types-text",
  "tracing",
 ]
 
@@ -3152,6 +3156,7 @@ dependencies = [
  "reovim-module-microscope",
  "reovim-module-notification",
  "reovim-module-vim",
+ "reovim-types-text",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3218,6 +3223,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-types-text",
  "tracing",
 ]
 
@@ -3331,6 +3337,7 @@ dependencies = [
  "reovim-module-macros",
  "reovim-module-vim",
  "reovim-testing",
+ "reovim-types-text",
  "serde",
  "serde_json",
  "tempfile",
@@ -3554,6 +3561,7 @@ dependencies = [
  "reovim-module-textobjects",
  "reovim-module-window-ops",
  "reovim-testing",
+ "reovim-types-text",
  "serde_json",
  "tokio",
  "tracing",
@@ -3726,6 +3734,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-protocol",
  "reovim-testing",
+ "reovim-types-text",
  "serde",
  "serde_json",
  "tempfile",

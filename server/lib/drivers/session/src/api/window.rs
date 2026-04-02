@@ -19,7 +19,8 @@
 //! }
 //! ```
 
-use reovim_kernel::api::v1::{BufferId, Position, WindowId};
+use reovim_kernel::api::v1::{BufferId, WindowId};
+use reovim_types_text::Position;
 
 use super::Selection;
 

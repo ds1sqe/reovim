@@ -6,9 +6,8 @@
 //! - **Mechanism (Kernel)**: Buffer management, position types, register storage
 //! - **Policy (This Module)**: What operators exist, how they behave
 
-use reovim_kernel::api::v1::{
-    BufferId, HistoryRing, KernelContext, Position, Register, RegisterBank,
-};
+use reovim_kernel::api::v1::{BufferId, KernelContext};
+use reovim_types_text::{HistoryRing, Position, Register, RegisterBank};
 
 // ============================================================================
 // Range Type

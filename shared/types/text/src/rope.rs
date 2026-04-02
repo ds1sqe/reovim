@@ -177,6 +177,7 @@ pub struct Rope {
 
 impl Rope {
     /// Create an empty rope.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             root: RopeNode::new_leaf(String::new()),
@@ -184,6 +185,8 @@ impl Rope {
     }
 
     /// Create a rope from a string slice.
+    #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         if s.is_empty() {
             return Self::new();
@@ -199,16 +202,19 @@ impl Rope {
 
 impl Rope {
     /// Returns `true` if the rope contains no text.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.root.metrics.byte_len == 0
     }
 
     /// Total byte length of the text.
+    #[must_use]
     pub fn byte_len(&self) -> usize {
         self.root.metrics.byte_len
     }
 
     /// Total number of Unicode scalar values.
+    #[must_use]
     pub fn char_len(&self) -> usize {
         self.root.metrics.char_len
     }
@@ -218,6 +224,7 @@ impl Rope {
     /// Uses line-separator semantics: an empty rope has 0 lines,
     /// `"hello"` has 1 line, `"hello\n"` has 2 lines (trailing empty line),
     /// `"hello\nworld"` has 2 lines.
+    #[must_use]
     pub fn line_count(&self) -> usize {
         let count = self.root.metrics.line_count;
         // Trailing \n produces an empty line (line-separator semantics).
@@ -235,6 +242,7 @@ impl Rope {
     /// Returns `None` if `idx >= line_count()`.
     /// The returned `&str` borrows from a single leaf node — zero allocation.
     /// For the trailing empty line after a final `'\n'`, returns `Some("")`.
+    #[must_use]
     pub fn line(&self, idx: usize) -> Option<&str> {
         if idx >= self.line_count() {
             return None;
@@ -250,6 +258,7 @@ impl Rope {
     /// Get the length of a line in characters.
     ///
     /// Returns `None` if `idx >= line_count()`.
+    #[must_use]
     pub fn line_len(&self, idx: usize) -> Option<usize> {
         self.line(idx).map(|l| l.chars().count())
     }
@@ -257,6 +266,7 @@ impl Rope {
     /// Materialize the full content as a `String`.
     ///
     /// O(n) — allocates and copies all text.
+    #[must_use]
     pub fn content(&self) -> String {
         let mut buf = String::with_capacity(self.byte_len());
         collect_text(&self.root, &mut buf);
@@ -271,6 +281,7 @@ impl Rope {
     ///
     /// `col` is measured in Unicode scalar values (chars), not bytes.
     /// Clamps to valid ranges.
+    #[must_use]
     pub fn position_to_byte(&self, line: usize, col: usize) -> usize {
         if self.is_empty() {
             return 0;
@@ -281,6 +292,7 @@ impl Rope {
     /// Convert a byte offset to a (line, column) position.
     ///
     /// Column is measured in Unicode scalar values (chars).
+    #[must_use]
     pub fn byte_to_position(&self, byte_offset: usize) -> (usize, usize) {
         if self.is_empty() {
             return (0, 0);
@@ -289,6 +301,7 @@ impl Rope {
     }
 
     /// Convert a char offset (Unicode scalar index) to a byte offset.
+    #[must_use]
     pub fn char_to_byte(&self, char_offset: usize) -> usize {
         if self.is_empty() {
             return 0;
@@ -297,6 +310,7 @@ impl Rope {
     }
 
     /// Convert a byte offset to a char offset (Unicode scalar index).
+    #[must_use]
     pub fn byte_to_char(&self, byte_offset: usize) -> usize {
         if self.is_empty() {
             return 0;
@@ -312,6 +326,7 @@ impl Rope {
     ///
     /// The original rope is unchanged (structural sharing via Arc).
     /// Panics in debug mode if `byte_offset` is not on a char boundary.
+    #[must_use]
     pub fn insert(&self, byte_offset: usize, text: &str) -> Self {
         if text.is_empty() {
             return self.clone();
@@ -330,6 +345,7 @@ impl Rope {
     ///
     /// The original rope is unchanged (structural sharing via Arc).
     /// Panics in debug mode if range boundaries are not on char boundaries.
+    #[must_use]
     pub fn remove(&self, range: Range<usize>) -> Self {
         if range.is_empty() || self.is_empty() {
             return self.clone();
@@ -355,11 +371,13 @@ impl Rope {
 impl Rope {
     /// Iterate over lines (yields `&str` per line).
     #[allow(dead_code)]
+    #[must_use]
     pub const fn lines(&self) -> RopeLines<'_> {
         RopeLines { rope: self, idx: 0 }
     }
 
     /// Iterate over raw leaf chunks (yields `&str` per chunk).
+    #[must_use]
     pub fn chunks(&self) -> RopeChunks<'_> {
         RopeChunks {
             stack: vec![&*self.root],

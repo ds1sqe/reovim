@@ -24,7 +24,8 @@
 //! }
 //! ```
 
-use reovim_kernel::api::v1::{BufferId, Edit, Position, UndoResult};
+use reovim_kernel::api::v1::{BufferId, UndoResult};
+use reovim_types_text::{Edit, Position};
 
 /// Undo/redo operations API.
 ///

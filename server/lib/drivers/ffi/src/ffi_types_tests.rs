@@ -234,35 +234,35 @@ fn test_yank_type_discriminant_values() {
 
 #[test]
 fn test_yank_type_from_kernel_characterwise() {
-    use reovim_kernel::api::v1::YankType;
+    use reovim_types_text::YankType;
     let ffi = ReovimYankType::from(YankType::Characterwise);
     assert_eq!(ffi, ReovimYankType::Characterwise);
 }
 
 #[test]
 fn test_yank_type_from_kernel_linewise() {
-    use reovim_kernel::api::v1::YankType;
+    use reovim_types_text::YankType;
     let ffi = ReovimYankType::from(YankType::Linewise);
     assert_eq!(ffi, ReovimYankType::Linewise);
 }
 
 #[test]
 fn test_yank_type_to_kernel_characterwise() {
-    use reovim_kernel::api::v1::YankType;
+    use reovim_types_text::YankType;
     let kernel: YankType = ReovimYankType::Characterwise.into();
     assert_eq!(kernel, YankType::Characterwise);
 }
 
 #[test]
 fn test_yank_type_to_kernel_linewise() {
-    use reovim_kernel::api::v1::YankType;
+    use reovim_types_text::YankType;
     let kernel: YankType = ReovimYankType::Linewise.into();
     assert_eq!(kernel, YankType::Linewise);
 }
 
 #[test]
 fn test_yank_type_roundtrip() {
-    use reovim_kernel::api::v1::YankType;
+    use reovim_types_text::YankType;
     for yt in [YankType::Characterwise, YankType::Linewise] {
         let ffi = ReovimYankType::from(yt);
         let back: YankType = ffi.into();

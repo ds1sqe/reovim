@@ -17,7 +17,7 @@
 //!
 //! ```ignore
 //! use reovim_driver_session::{OperatorPendingState, TextObjRange};
-//! use reovim_kernel::api::v1::Position;
+//! use reovim_types_text::Position;
 //!
 //! // In a text object command:
 //! let state = runtime.ext_mut::<OperatorPendingState>();

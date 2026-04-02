@@ -1,6 +1,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
-use reovim_kernel::api::v1::Position;
+use reovim_types_text::Position;
 
 use crate::session_state::*;
 

@@ -1,6 +1,7 @@
 //! Undo record type for test mocks.
 
-use reovim_kernel::api::v1::{BufferId, Edit, Position};
+use reovim_kernel::api::v1::BufferId;
+use reovim_types_text::{Edit, Position};
 
 /// A recorded undo entry capturing the parameters of [`super::UndoProvider::record()`].
 ///

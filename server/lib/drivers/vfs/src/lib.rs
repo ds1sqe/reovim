@@ -67,6 +67,7 @@
 //! }
 //! ```
 
+mod byte_edit;
 mod error;
 mod filetype;
 mod instance;
@@ -81,6 +82,9 @@ mod scheme;
 mod standard;
 mod traits;
 mod watch;
+
+// Re-export byte-level edit type
+pub use byte_edit::ByteEdit;
 
 // Re-export error types
 pub use error::VfsError;

@@ -2,7 +2,7 @@
 //!
 //! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
 
-use reovim_kernel::api::v1::RegisterContent;
+use reovim_types_text::RegisterContent;
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};
 

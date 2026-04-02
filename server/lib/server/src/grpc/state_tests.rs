@@ -401,7 +401,7 @@ async fn test_get_registers_empty() {
 
 #[tokio::test]
 async fn test_get_registers_with_content() {
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -432,7 +432,7 @@ async fn test_get_registers_with_content() {
 
 #[tokio::test]
 async fn test_get_registers_specific_register() {
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1106,7 +1106,7 @@ async fn test_get_registers_specific_nonexistent_register() {
 
 #[tokio::test]
 async fn test_get_registers_linewise() {
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1396,7 +1396,7 @@ async fn test_get_screen_content_valid_formats() {
 async fn test_get_registers_specific_register_with_content() {
     // Test the specific register lookup path where
     // the register exists and has content.
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1431,7 +1431,7 @@ async fn test_get_registers_specific_register_with_content() {
 #[tokio::test]
 async fn test_get_registers_specific_linewise_register() {
     // Test the linewise yank_type path in specific register lookup.
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1462,7 +1462,7 @@ async fn test_get_registers_specific_linewise_register() {
 #[tokio::test]
 async fn test_get_registers_multiple_specific() {
     // Test querying multiple specific registers.
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1497,7 +1497,7 @@ async fn test_get_registers_multiple_specific() {
 #[tokio::test]
 async fn test_get_registers_specific_empty_register_filtered_out() {
     // Test that a register with empty content is filtered out.
-    use reovim_kernel::api::v1::RegisterContent;
+    use reovim_types_text::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));

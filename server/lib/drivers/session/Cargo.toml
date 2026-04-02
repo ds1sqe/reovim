@@ -15,6 +15,8 @@ workspace = true
 [dependencies]
 # Kernel types for ModeId, BufferId, etc.
 reovim-kernel = { workspace = true }
+# Text types (Position, Edit, RegisterContent, etc.)
+reovim-types-text = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
 reovim-driver-command-types = { workspace = true }
 # Layout driver for compositor traits (Rect, WindowPlacement, etc.)

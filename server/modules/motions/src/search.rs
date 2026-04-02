@@ -253,7 +253,7 @@ fn search_word(
     args: &CommandContext,
     direction: Direction,
 ) -> CommandResult {
-    use reovim_kernel::api::v1::Position;
+    use reovim_types_text::Position;
 
     // Get active buffer and cursor position
     let Some(buffer_id) = args.buffer_id() else {

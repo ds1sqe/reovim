@@ -19,8 +19,8 @@
 //! }
 //! ```
 
-// Re-export kernel types for ergonomics
-pub use reovim_kernel::api::v1::{RegisterContent, YankType};
+// Re-export text types for ergonomics
+pub use reovim_types_text::{RegisterContent, YankType};
 
 /// Register access for yank/paste operations.
 ///

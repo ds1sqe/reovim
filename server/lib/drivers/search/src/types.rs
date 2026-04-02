@@ -1,6 +1,6 @@
 //! Search types - common types for search operations.
 
-use reovim_kernel::api::v1::Position;
+use reovim_types_text::Position;
 
 /// Search result with match position.
 #[derive(Debug, Clone, PartialEq, Eq)]

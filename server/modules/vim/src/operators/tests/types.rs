@@ -213,7 +213,7 @@ fn test_operator_error_debug() {
 
 #[test]
 fn test_operator_context_fields() {
-    use reovim_kernel::api::v1::Register;
+    use reovim_types_text::Register;
     let kernel = reovim_kernel::api::v1::KernelContext::default();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -235,7 +235,7 @@ fn test_operator_context_fields() {
 
 #[test]
 fn test_operator_context_default_register() {
-    use reovim_kernel::api::v1::Register;
+    use reovim_types_text::Register;
     let kernel = reovim_kernel::api::v1::KernelContext::default();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
