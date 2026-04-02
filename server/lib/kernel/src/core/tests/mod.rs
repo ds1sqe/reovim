@@ -10,7 +10,7 @@ use crate::{
 // Text types extracted to reovim-types-text (#740)
 use reovim_types_text::{
     Direction, HistoryRing, LinePosition, Motion, MotionEngine, Register, RegisterBank,
-    RegisterContent, TextObject, TextObjectEngine, WordBoundary, YankType,
+    RegisterContent, SimpleText, TextObject, TextObjectEngine, WordBoundary, YankType,
 };
 
 mod config;

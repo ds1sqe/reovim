@@ -7,7 +7,7 @@
 //! # Design Philosophy
 //!
 //! Following the kernel "mechanism, not policy" principle:
-//! - Pure functions operating on Buffer data
+//! - Pure functions operating on any [`TextGeometry`] implementor
 //! - No text object semantics (that's policy in modules)
 //! - No escape sequence handling (that's syntax-aware policy)
 //!
@@ -20,9 +20,9 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::*;
-//! # use reovim_types_text::Position;
+//! # use reovim_types_text::{Position, SimpleText};
 //!
-//! let mut buffer = Buffer::from_string("fn foo(bar, baz) {}");
+//! let buffer = SimpleText::new("fn foo(bar, baz) {}");
 //!
 //! // Find matching parens around position (0, 10) - inside the parens
 //! let result = find_delimiter_pair(&buffer, Position::new(0, 10), '(', ')');
@@ -32,7 +32,7 @@
 //! assert_eq!(close, Position::new(0, 15));
 //! ```
 
-use super::{Buffer, Position};
+use reovim_types_text::{Position, TextGeometry};
 
 /// Find matching delimiter pair containing the given position.
 ///
@@ -42,7 +42,7 @@ use super::{Buffer, Position};
 ///
 /// # Arguments
 ///
-/// * `buffer` - The buffer to search
+/// * `text` - Any [`TextGeometry`] implementor to search
 /// * `pos` - The position to search around
 /// * `open` - The opening delimiter character
 /// * `close` - The closing delimiter character
@@ -56,28 +56,28 @@ use super::{Buffer, Position};
 ///
 /// ```
 /// use reovim_kernel::api::v1::*;
-/// # use reovim_types_text::Position;
+/// # use reovim_types_text::{Position, SimpleText};
 ///
-/// let buffer = Buffer::from_string("(hello)");
+/// let buffer = SimpleText::new("(hello)");
 /// let result = find_delimiter_pair(&buffer, Position::new(0, 3), '(', ')');
 /// assert!(result.is_some());
 /// ```
 #[must_use]
 pub fn find_delimiter_pair(
-    buffer: &Buffer,
+    text: &dyn TextGeometry,
     pos: Position,
     open: char,
     close: char,
 ) -> Option<(Position, Position)> {
-    if buffer.is_empty() {
+    if text.is_empty() {
         return None;
     }
 
     let is_symmetric = open == close;
     if is_symmetric {
-        find_symmetric_pair(buffer, pos, open)
+        find_symmetric_pair(text, pos, open)
     } else {
-        find_asymmetric_pair(buffer, pos, open, close)
+        find_asymmetric_pair(text, pos, open, close)
     }
 }
 
@@ -87,11 +87,11 @@ pub fn find_delimiter_pair(
 /// the 1st and 2nd occurrence form a pair, 3rd and 4th, etc.
 /// This only searches within the current line.
 fn find_symmetric_pair(
-    buffer: &Buffer,
+    text: &dyn TextGeometry,
     pos: Position,
     quote: char,
 ) -> Option<(Position, Position)> {
-    let line = buffer.line(pos.line)?;
+    let line = text.line(pos.line)?;
     let chars: Vec<char> = line.chars().collect();
 
     // Find all quote positions on current line
@@ -132,13 +132,13 @@ fn find_symmetric_pair(
 /// Handles the edge case when the cursor is positioned ON a delimiter
 /// character by adjusting the search start positions.
 fn find_asymmetric_pair(
-    buffer: &Buffer,
+    text: &dyn TextGeometry,
     pos: Position,
     open: char,
     close: char,
 ) -> Option<(Position, Position)> {
     // Check if we're at a delimiter character
-    let line = buffer.line(pos.line)?;
+    let line = text.line(pos.line)?;
     let chars: Vec<char> = line.chars().collect();
     let current_char = chars.get(pos.column).copied();
 
@@ -146,13 +146,13 @@ fn find_asymmetric_pair(
         Some(c) if c == open => {
             // At opening delimiter: this is the open, search forward for close
             let close_pos =
-                find_forward(buffer, Position::new(pos.line, pos.column + 1), open, close)?;
+                find_forward(text, Position::new(pos.line, pos.column + 1), open, close)?;
             Some((pos, close_pos))
         }
         Some(c) if c == close => {
             // At closing delimiter: search backward for open, this is the close
             let open_pos = find_backward(
-                buffer,
+                text,
                 Position::new(pos.line, pos.column.saturating_sub(1)),
                 open,
                 close,
@@ -161,8 +161,8 @@ fn find_asymmetric_pair(
         }
         _ => {
             // Inside delimiters: search both directions
-            let open_pos = find_backward(buffer, pos, open, close)?;
-            let close_pos = find_forward(buffer, pos, open, close)?;
+            let open_pos = find_backward(text, pos, open, close)?;
+            let close_pos = find_forward(text, pos, open, close)?;
             Some((open_pos, close_pos))
         }
     }
@@ -170,13 +170,18 @@ fn find_asymmetric_pair(
 
 /// Search backward for opening delimiter.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn find_backward(buffer: &Buffer, pos: Position, open: char, close: char) -> Option<Position> {
+fn find_backward(
+    text: &dyn TextGeometry,
+    pos: Position,
+    open: char,
+    close: char,
+) -> Option<Position> {
     let mut y = pos.line;
     let mut x = pos.column;
     let mut depth = 0i32;
 
     loop {
-        if let Some(line) = buffer.line(y) {
+        if let Some(line) = text.line(y) {
             let chars: Vec<char> = line.chars().collect();
             let start = x.min(chars.len().saturating_sub(1));
 
@@ -201,21 +206,26 @@ fn find_backward(buffer: &Buffer, pos: Position, open: char, close: char) -> Opt
             break;
         }
         y -= 1;
-        x = buffer.line_len(y).unwrap_or(0);
+        x = text.line_len(y).unwrap_or(0);
     }
     None
 }
 
 /// Search forward for closing delimiter.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn find_forward(buffer: &Buffer, pos: Position, open: char, close: char) -> Option<Position> {
+fn find_forward(
+    text: &dyn TextGeometry,
+    pos: Position,
+    open: char,
+    close: char,
+) -> Option<Position> {
     let mut y = pos.line;
     let mut x = pos.column;
     let mut depth = 0i32;
-    let line_count = buffer.line_count();
+    let line_count = text.line_count();
 
     loop {
-        if let Some(line) = buffer.line(y) {
+        if let Some(line) = text.line(y) {
             let chars: Vec<char> = line.chars().collect();
             let start = if y == pos.line { x } else { 0 };
 
@@ -248,37 +258,29 @@ fn find_forward(buffer: &Buffer, pos: Position, open: char, close: char) -> Opti
 ///
 /// # Arguments
 ///
-/// * `buffer` - The buffer to search
+/// * `text` - Any [`TextGeometry`] implementor to search
 /// * `pos` - The position of the delimiter
 ///
 /// # Returns
 ///
 /// The position of the matching delimiter, or `None`.
 #[must_use]
-pub fn find_matching_delimiter(buffer: &Buffer, pos: Position) -> Option<Position> {
-    let line = buffer.line(pos.line)?;
+pub fn find_matching_delimiter(text: &dyn TextGeometry, pos: Position) -> Option<Position> {
+    let line = text.line(pos.line)?;
     let chars: Vec<char> = line.chars().collect();
     let c = *chars.get(pos.column)?;
 
     // Start search from position+1 for opening delimiters (skip the delimiter itself)
     // For closing delimiters, search backward from position-1
     match c {
-        '(' => find_forward(buffer, Position::new(pos.line, pos.column + 1), '(', ')'),
-        ')' => {
-            find_backward(buffer, Position::new(pos.line, pos.column.saturating_sub(1)), '(', ')')
-        }
-        '[' => find_forward(buffer, Position::new(pos.line, pos.column + 1), '[', ']'),
-        ']' => {
-            find_backward(buffer, Position::new(pos.line, pos.column.saturating_sub(1)), '[', ']')
-        }
-        '{' => find_forward(buffer, Position::new(pos.line, pos.column + 1), '{', '}'),
-        '}' => {
-            find_backward(buffer, Position::new(pos.line, pos.column.saturating_sub(1)), '{', '}')
-        }
-        '<' => find_forward(buffer, Position::new(pos.line, pos.column + 1), '<', '>'),
-        '>' => {
-            find_backward(buffer, Position::new(pos.line, pos.column.saturating_sub(1)), '<', '>')
-        }
+        '(' => find_forward(text, Position::new(pos.line, pos.column + 1), '(', ')'),
+        ')' => find_backward(text, Position::new(pos.line, pos.column.saturating_sub(1)), '(', ')'),
+        '[' => find_forward(text, Position::new(pos.line, pos.column + 1), '[', ']'),
+        ']' => find_backward(text, Position::new(pos.line, pos.column.saturating_sub(1)), '[', ']'),
+        '{' => find_forward(text, Position::new(pos.line, pos.column + 1), '{', '}'),
+        '}' => find_backward(text, Position::new(pos.line, pos.column.saturating_sub(1)), '{', '}'),
+        '<' => find_forward(text, Position::new(pos.line, pos.column + 1), '<', '>'),
+        '>' => find_backward(text, Position::new(pos.line, pos.column.saturating_sub(1)), '<', '>'),
         _ => None,
     }
 }

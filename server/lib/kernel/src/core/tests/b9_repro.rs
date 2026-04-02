@@ -5,7 +5,7 @@
 
 use super::*;
 
-fn ge(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
+fn ge(buf: &SimpleText, line: usize, col: usize) -> Option<Position> {
     let cursor = Cursor::new(Position::new(line, col));
     MotionEngine::calculate(
         buf,
@@ -19,7 +19,7 @@ fn ge(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
     )
 }
 
-fn g_e(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
+fn g_e(buf: &SimpleText, line: usize, col: usize) -> Option<Position> {
     let cursor = Cursor::new(Position::new(line, col));
     MotionEngine::calculate(
         buf,
@@ -37,14 +37,14 @@ fn g_e(buf: &Buffer, line: usize, col: usize) -> Option<Position> {
 
 #[test]
 fn ge_from_baz_stops_at_bar_end() {
-    let buf = Buffer::from_string("foo::bar baz");
+    let buf = SimpleText::new("foo::bar baz");
     let pos = ge(&buf, 0, 9).unwrap();
     assert_eq!(pos.column, 7, "ge from baz should stop at 'r' in bar");
 }
 
 #[test]
 fn g_e_from_baz_stops_at_bar_end() {
-    let buf = Buffer::from_string("foo::bar baz");
+    let buf = SimpleText::new("foo::bar baz");
     let pos = g_e(&buf, 0, 9).unwrap();
     assert_eq!(pos.column, 7, "gE from baz should stop at 'r' in bar");
 }
@@ -53,14 +53,14 @@ fn g_e_from_baz_stops_at_bar_end() {
 
 #[test]
 fn ge_from_bar_end_stops_at_colon() {
-    let buf = Buffer::from_string("foo::bar");
+    let buf = SimpleText::new("foo::bar");
     let pos = ge(&buf, 0, 7).unwrap();
     assert_eq!(pos.column, 4, "ge from bar end should stop at ':' (punct end)");
 }
 
 #[test]
 fn g_e_from_bar_end_inside_word() {
-    let buf = Buffer::from_string("foo::bar");
+    let buf = SimpleText::new("foo::bar");
     let pos = g_e(&buf, 0, 7).unwrap();
     assert_eq!(
         pos.column, 0,
@@ -72,7 +72,7 @@ fn g_e_from_bar_end_inside_word() {
 
 #[test]
 fn ge_punct_skip_stops_at_underscore() {
-    let buf = Buffer::from_string("_..a");
+    let buf = SimpleText::new("_..a");
     let pos = ge(&buf, 0, 2).unwrap();
     assert_eq!(pos.column, 0, "ge punct skip should stop at underscore");
 }
@@ -81,7 +81,7 @@ fn ge_punct_skip_stops_at_underscore() {
 
 #[test]
 fn ge_punct_skip_at_col_zero() {
-    let buf = Buffer::from_string("..");
+    let buf = SimpleText::new("..");
     let pos = ge(&buf, 0, 1).unwrap();
     assert_eq!(pos.column, 0, "ge punct skip at col 0 should stay at 0");
 }

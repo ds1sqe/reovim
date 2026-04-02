@@ -1,7 +1,7 @@
 use super::*;
 
-fn make_buffer(content: &str) -> Buffer {
-    Buffer::from_string(content)
+fn make_buffer(content: &str) -> SimpleText {
+    SimpleText::new(content)
 }
 
 fn make_cursor(line: usize, column: usize) -> Cursor {
