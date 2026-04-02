@@ -3,9 +3,9 @@ use {
     parking_lot::RwLock as ParkingLotRwLock,
     reovim_driver_buffer::TestBufferManager,
     reovim_kernel::api::v1::{
-        EventBus, HistoryRing, Jumplist, MarkBank, ModuleId, MotionEngine, OptionRegistry,
-        RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
+        EventBus, Jumplist, MarkBank, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
     },
+    reovim_types_text::{HistoryRing, MotionEngine, RegisterBank, TextObjectEngine},
 };
 
 fn test_mode_id() -> ModeId {

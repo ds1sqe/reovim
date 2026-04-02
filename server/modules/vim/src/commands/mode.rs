@@ -26,8 +26,8 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
     reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
+    reovim_types_text::Position,
     std::sync::Arc,
 };
 

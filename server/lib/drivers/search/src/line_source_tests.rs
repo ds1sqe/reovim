@@ -2,15 +2,16 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{Buffer, FileMapping, LineIndex};
-use reovim_provider_text::{HeapMapping, VirtualBuffer};
-use reovim_types_text::Position;
+use {
+    reovim_kernel::api::v1::{Buffer, FileMapping, LineIndex},
+    reovim_provider_text::{HeapMapping, VirtualBuffer},
+    reovim_types_text::Position,
+};
 
 use super::{BufferLineSource, LineSource, VirtualBufferLineSource};
 
 fn make_vbuf(content: &str) -> VirtualBuffer {
-    let original: Arc<dyn FileMapping> =
-        Arc::new(HeapMapping(content.as_bytes().to_vec()));
+    let original: Arc<dyn FileMapping> = Arc::new(HeapMapping(content.as_bytes().to_vec()));
     let line_index = LineIndex::build_from_str(content);
     VirtualBuffer::new(original, line_index)
 }

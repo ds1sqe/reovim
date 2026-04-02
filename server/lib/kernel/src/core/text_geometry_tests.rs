@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
-use reovim_types_text::TextGeometry;
-use crate::mm::Buffer;
+use {crate::mm::Buffer, reovim_types_text::TextGeometry};
 
 // ── Buffer (Rope) ──────────────────────────────────────────────────────────
 

@@ -7,11 +7,13 @@ use super::super::*;
 
 use std::sync::Arc;
 
-use reovim_kernel::{
-    api::v1::{Buffer, BufferId, RwLock},
-    testing::create_test_context,
+use {
+    reovim_kernel::{
+        api::v1::{Buffer, BufferId, RwLock},
+        testing::create_test_context,
+    },
+    reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
 };
-use reovim_types_text::{HistoryRing, Position, Register, RegisterBank};
 
 // ============================================================================
 // Operator trait: id, is_text_modifying

@@ -308,7 +308,10 @@ impl TextObjectEngine {
 
     // === Paragraph Text Objects ===
 
-    fn inner_paragraph(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
+    fn inner_paragraph(
+        buffer: &dyn TextGeometry,
+        pos: TextPosition,
+    ) -> Option<(TextPosition, TextPosition)> {
         let line_count = buffer.line_count();
         if line_count == 0 {
             return None;
@@ -340,7 +343,10 @@ impl TextObjectEngine {
         Some((TextPosition::new(start, 0), TextPosition::new(end, end_col)))
     }
 
-    fn a_paragraph(buffer: &dyn TextGeometry, pos: TextPosition) -> Option<(TextPosition, TextPosition)> {
+    fn a_paragraph(
+        buffer: &dyn TextGeometry,
+        pos: TextPosition,
+    ) -> Option<(TextPosition, TextPosition)> {
         let (inner_start, inner_end) = Self::inner_paragraph(buffer, pos)?;
         let line_count = buffer.line_count();
 

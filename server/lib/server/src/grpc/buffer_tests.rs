@@ -13,9 +13,9 @@ fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     let kernel = KernelContext::new(

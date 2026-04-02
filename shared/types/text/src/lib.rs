@@ -72,9 +72,11 @@ mod undo;
 mod domain;
 
 // Data types (canonical names)
-pub use edit::{TextDimensions, TextEdit, delete_end, text_dimensions, transform_position};
-pub use position::{Cursor, TextPosition};
-pub use selection::{Selection, SelectionMode};
+pub use {
+    edit::{TextDimensions, TextEdit, delete_end, text_dimensions, transform_position},
+    position::{Cursor, TextPosition},
+    selection::{Selection, SelectionMode},
+};
 
 // Backward compatibility aliases (removed in Phase 5)
 pub type Position = TextPosition;
@@ -87,9 +89,11 @@ pub use domain::Text;
 pub use text_geometry::{SimpleText, TextGeometry};
 
 // Direction and motion
-pub use direction::{Direction, LinePosition, WordBoundary};
-pub use motion::{Motion, MotionEngine};
-pub use textobj::{TextObject, TextObjectEngine};
+pub use {
+    direction::{Direction, LinePosition, WordBoundary},
+    motion::{Motion, MotionEngine},
+    textobj::{TextObject, TextObjectEngine},
+};
 
 // Word boundary
 pub use word::{
@@ -101,13 +105,17 @@ pub use word::{
 pub use rope::{Rope, RopeChunks, RopeLines};
 
 // Register and history
-pub use history::HistoryRing;
-pub use register::{Register, RegisterBank, RegisterContent, YankType};
+pub use {
+    history::HistoryRing,
+    register::{Register, RegisterBank, RegisterContent, YankType},
+};
 
 // Line index
 pub use line_index::{InvalidUtf8, LineIndex};
 
 // Block operations (undo, history, transaction)
-pub use change_history::{History, HistoryEntry};
-pub use transaction::Transaction;
-pub use undo::{EditOrigin, UndoNode, UndoResult, UndoTree};
+pub use {
+    change_history::{History, HistoryEntry},
+    transaction::Transaction,
+    undo::{EditOrigin, UndoNode, UndoResult, UndoTree},
+};

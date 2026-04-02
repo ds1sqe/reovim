@@ -1054,9 +1054,9 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
             WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
         },
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 

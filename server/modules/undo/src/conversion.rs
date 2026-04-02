@@ -9,11 +9,11 @@
 //! neither type is local to this crate (orphan rule).
 
 use {
-    reovim_types_text::{Edit, EditOrigin, Position, UndoTree},
     reovim_protocol::v1::undo::{
         SerializableEdit, SerializableEditOrigin, SerializablePosition, SerializableUndoNode,
         SerializableUndoTree,
     },
+    reovim_types_text::{Edit, EditOrigin, Position, UndoTree},
     std::time::Duration,
 };
 

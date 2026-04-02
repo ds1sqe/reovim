@@ -12,12 +12,7 @@
 
 use std::{fmt, sync::Arc};
 
-use super::{
-    BufferId,
-    file_mapping::FileMapping,
-    line_index::LineIndex,
-    piece_table::PieceTree,
-};
+use super::{BufferId, file_mapping::FileMapping, line_index::LineIndex, piece_table::PieceTree};
 
 // ─── VirtualSnapshot ────────────────────────────────────────────────────────
 

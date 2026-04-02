@@ -24,8 +24,7 @@
 //! edit translation) that [`ContentCodec`](crate::ContentCodec) cannot express.
 //! Both trait systems coexist — existing codec modules are unaffected.
 
-use reovim_domain::Domain;
-use reovim_driver_vfs::ByteEdit;
+use {reovim_domain::Domain, reovim_driver_vfs::ByteEdit};
 
 use crate::{CodecError, CodecMetadata};
 
@@ -64,7 +63,7 @@ pub trait Encode<D: Domain>: Send + Sync {
     ///
     /// Returns [`CodecError`] if the content cannot be encoded.
     fn encode(&self, content: &D::Content, metadata: &CodecMetadata)
-        -> Result<Vec<u8>, CodecError>;
+    -> Result<Vec<u8>, CodecError>;
 }
 
 /// Stateful domain index for position mapping and edit translation.

@@ -68,6 +68,7 @@
 //! ```
 
 mod byte_edit;
+mod byte_undo_log;
 mod error;
 mod filetype;
 mod instance;
@@ -82,11 +83,12 @@ mod scheme;
 mod standard;
 mod traits;
 mod watch;
-mod byte_undo_log;
 
 // Re-export byte-level edit types
-pub use byte_edit::ByteEdit;
-pub use byte_undo_log::{ByteUndoEntry, ByteUndoLog};
+pub use {
+    byte_edit::ByteEdit,
+    byte_undo_log::{ByteUndoEntry, ByteUndoLog},
+};
 
 // Re-export error types
 pub use error::VfsError;

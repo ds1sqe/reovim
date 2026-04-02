@@ -19,10 +19,12 @@
 //! Tab, Enter, Backspace, and Delete are NOT handled here because they have
 //! explicit keybindings to commands in insert mode (see keymap/insert.rs).
 
-use reovim_driver_input::{
-    FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
+use {
+    reovim_driver_input::{
+        FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
+    },
+    reovim_types_text::{Edit, Position},
 };
-use reovim_types_text::{Edit, Position};
 
 use crate::modes::VimMode;
 
@@ -73,10 +75,7 @@ impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
                     let cursor_after = if ch == '\n' {
                         Position::new(cursor_before.line + 1, 0)
                     } else {
-                        Position::new(
-                            cursor_before.line,
-                            cursor_before.column + 1,
-                        )
+                        Position::new(cursor_before.line, cursor_before.column + 1)
                     };
 
                     // Update cursor position

@@ -7,8 +7,8 @@ use {
     },
     reovim_kernel::{
         api::v1::{
-            Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeStack, OptionScope, OptionSpec,
-            OptionValue, RwLock,
+            Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeStack, OptionScope,
+            OptionSpec, OptionValue, RwLock,
         },
         testing::{create_test_context, test_mode},
     },

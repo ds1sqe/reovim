@@ -156,10 +156,8 @@ fn test_fallback_get_buffer_with_real_buffer() {
     use {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            Buffer, EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
-        },
+        reovim_kernel::api::v1::{Buffer, EventBus, MarkBank, OptionRegistry, ServiceRegistry},
+        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     let kernel = KernelContext::new(
@@ -193,7 +191,7 @@ fn test_fallback_record_edit_with_undo_provider() {
     use {
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProviderRegistry},
         reovim_driver_vfs::VfsDriver,
-        reovim_kernel::api::v1::{UndoResult, UndoTree},
+        reovim_types_text::{UndoResult, UndoTree},
         std::sync::atomic::{AtomicBool, Ordering},
     };
 

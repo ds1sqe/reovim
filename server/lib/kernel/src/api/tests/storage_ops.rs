@@ -295,10 +295,7 @@ fn buffer_meta_modified() {
 
 #[test]
 fn storage_error_display() {
-    let err = StorageError::OffsetOutOfRange {
-        offset: 10,
-        len: 5,
-    };
+    let err = StorageError::OffsetOutOfRange { offset: 10, len: 5 };
     assert_eq!(err.to_string(), "offset 10 out of range (len 5)");
 
     let err = StorageError::NotSupported("insert");

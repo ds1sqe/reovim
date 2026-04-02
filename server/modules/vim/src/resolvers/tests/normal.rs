@@ -1341,11 +1341,7 @@ fn test_ext_replace_char_dispatches() {
 
 #[test]
 fn test_ext_macro_record_start_and_stop() {
-    use {
-        reovim_kernel::api::v1::RwLock,
-        reovim_types_text::RegisterBank,
-        std::sync::Arc,
-    };
+    use {reovim_kernel::api::v1::RwLock, reovim_types_text::RegisterBank, std::sync::Arc};
     static EMPTY_KEYS: KeySequence = KeySequence::new();
     static MODE: ModeId = VimMode::NORMAL_ID;
 
@@ -1501,11 +1497,7 @@ fn test_ext_macro_play_invalid_register() {
 
 #[test]
 fn test_ext_macro_play_empty_register() {
-    use {
-        reovim_kernel::api::v1::RwLock,
-        reovim_types_text::RegisterBank,
-        std::sync::Arc,
-    };
+    use {reovim_kernel::api::v1::RwLock, reovim_types_text::RegisterBank, std::sync::Arc};
     static EMPTY_KEYS: KeySequence = KeySequence::new();
     static MODE: ModeId = VimMode::NORMAL_ID;
 

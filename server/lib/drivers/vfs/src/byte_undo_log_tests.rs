@@ -180,14 +180,18 @@ fn clear_resets_everything() {
 #[test]
 fn entry_edits_accessor() {
     let edit = ByteEdit::insert(0, b"test");
-    let entry = ByteUndoEntry { edits: vec![edit.clone()] };
+    let entry = ByteUndoEntry {
+        edits: vec![edit.clone()],
+    };
     assert_eq!(entry.edits(), &[edit]);
 }
 
 #[test]
 fn entry_inverse_edits_single() {
     let edit = ByteEdit::insert(0, b"hello");
-    let entry = ByteUndoEntry { edits: vec![edit.clone()] };
+    let entry = ByteUndoEntry {
+        edits: vec![edit.clone()],
+    };
     let inv = entry.inverse_edits();
     assert_eq!(inv, vec![edit.inverse()]);
 }

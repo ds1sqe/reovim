@@ -149,9 +149,8 @@ fn test_module_context(
 ) -> ModuleContext {
     use {
         parking_lot::RwLock,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, TextObjectEngine,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, MarkBank, OptionRegistry},
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 

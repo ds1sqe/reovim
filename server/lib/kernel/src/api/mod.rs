@@ -35,9 +35,9 @@ mod buffer_manager;
 // Text buffer operations trait (extends StorageOps + BufferMeta)
 mod buffer_ops;
 // Byte-level storage traits (StorageOps, BufferMeta, StorageCapabilities)
-pub(crate) mod storage_ops;
 mod context;
 mod debug;
+pub(crate) mod storage_ops;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId
 pub(crate) mod module;
 // Service registry for cross-module service discovery

@@ -54,10 +54,12 @@ mod window_id;
 #[cfg(test)]
 mod tests;
 
-pub use piece_table::{Piece, PieceMetrics, PieceSource, PieceTree};
-pub use file_mapping::FileMapping;
-pub use virtual_snapshot::{SnapshotCapture, VirtualSnapshot};
-pub use line_index::{InvalidUtf8, LineIndex};
+pub use {
+    file_mapping::FileMapping,
+    line_index::{InvalidUtf8, LineIndex},
+    piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
+    virtual_snapshot::{SnapshotCapture, VirtualSnapshot},
+};
 
 pub use {
     buffer::Buffer,

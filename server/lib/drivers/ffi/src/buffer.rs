@@ -23,9 +23,7 @@
 use std::ffi::CStr;
 
 use {
-    libc::c_char,
-    reovim_driver_session::api::BufferApi,
-    reovim_kernel::api::v1::BufferId,
+    libc::c_char, reovim_driver_session::api::BufferApi, reovim_kernel::api::v1::BufferId,
     reovim_types_text::Position,
 };
 

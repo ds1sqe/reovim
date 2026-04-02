@@ -1,7 +1,6 @@
 //! Tests for domain-generic codec traits.
 
-use reovim_domain::Domain;
-use reovim_driver_vfs::ByteEdit;
+use {reovim_domain::Domain, reovim_driver_vfs::ByteEdit};
 
 use crate::{CodecError, CodecMetadata, ContentType};
 
@@ -45,11 +44,7 @@ impl Decode<TestDomain> for PassthroughCodec {
 }
 
 impl Encode<TestDomain> for PassthroughCodec {
-    fn encode(
-        &self,
-        content: &Vec<u8>,
-        _metadata: &CodecMetadata,
-    ) -> Result<Vec<u8>, CodecError> {
+    fn encode(&self, content: &Vec<u8>, _metadata: &CodecMetadata) -> Result<Vec<u8>, CodecError> {
         Ok(content.clone())
     }
 }
@@ -76,11 +71,7 @@ impl Index<TestDomain> for IdentityIndex {
     }
 
     fn to_bytes(&self, pos: &TestPos) -> Option<usize> {
-        if pos.0 <= self.len {
-            Some(pos.0)
-        } else {
-            None
-        }
+        if pos.0 <= self.len { Some(pos.0) } else { None }
     }
 
     fn offset_to_position(&self, offset: usize) -> Option<TestPos> {

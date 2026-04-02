@@ -12,8 +12,10 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{BufferId, Service};
-use reovim_types_text::Position;
+use {
+    reovim_kernel::api::v1::{BufferId, Service},
+    reovim_types_text::Position,
+};
 
 use crate::SessionRuntime;
 

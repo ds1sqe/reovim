@@ -19,14 +19,16 @@
 
 use std::borrow::Cow;
 
-use crate::{
-    api::{
-        BufferCapabilities,
-        storage_ops::{BufferMeta, StorageOps},
+use {
+    crate::{
+        api::{
+            BufferCapabilities,
+            storage_ops::{BufferMeta, StorageOps},
+        },
+        mm::Position,
     },
-    mm::Position,
+    reovim_types_text::TextGeometry,
 };
-use reovim_types_text::TextGeometry;
 
 /// Text buffer operations extending byte storage with text-specific methods.
 ///

@@ -178,9 +178,7 @@ impl MotionEngine {
                 (Direction::Forward, false) => Self::word_forward(buffer, current, boundary)?,
                 (Direction::Forward, true) => Self::word_end(buffer, current, boundary)?,
                 (Direction::Backward, false) => Self::word_backward(buffer, current, boundary)?,
-                (Direction::Backward, true) => {
-                    Self::word_end_backward(buffer, current, boundary)?
-                }
+                (Direction::Backward, true) => Self::word_end_backward(buffer, current, boundary)?,
             };
         }
 

@@ -19,13 +19,14 @@ use std::{
     sync::Arc,
 };
 
-use reovim_kernel::api::v1::{
-    BufferCapabilities, BufferOps, BufferId, FileMapping, LineIndex, Piece, PieceMetrics,
-    PieceSource, PieceTree, SnapshotCapture, StorageCapabilities, StorageError, StorageOps,
-    VirtualSnapshot,
+use {
+    reovim_kernel::api::v1::{
+        BufferCapabilities, BufferId, BufferMeta, BufferOps, FileMapping, LineIndex, Piece,
+        PieceMetrics, PieceSource, PieceTree, SnapshotCapture, StorageCapabilities, StorageError,
+        StorageOps, VirtualSnapshot,
+    },
+    reovim_types_text::{Position, TextGeometry},
 };
-use reovim_kernel::api::v1::BufferMeta;
-use reovim_types_text::{Position, TextGeometry};
 
 /// Create byte-only metrics from a string's byte length.
 const fn byte_metrics(s: &str) -> PieceMetrics {

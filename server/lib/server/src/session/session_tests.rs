@@ -122,9 +122,9 @@ async fn test_session_with_state() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     // Create a kernel context with a real buffer manager
@@ -408,9 +408,9 @@ async fn test_with_state_mut_sync() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -883,9 +883,9 @@ fn test_add_client_with_active_buffer() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -925,9 +925,9 @@ fn test_insert_char_for_client_buffer_path() {
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -973,9 +973,9 @@ fn test_insert_char_for_client_newline() {
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -1056,9 +1056,9 @@ fn test_sync_and_set_relation_with_cursor_sync() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -1200,9 +1200,9 @@ fn test_insert_char_for_client_with_undo_recording() {
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
         reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{
-            BufferId, Edit, EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry,
-            Position, ServiceRegistry, TextObjectEngine, UndoResult, UndoTree,
+            BufferId, EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{Edit, MotionEngine, Position, TextObjectEngine, UndoResult, UndoTree},
         std::sync::{Arc, Mutex},
     };
 
@@ -1463,9 +1463,9 @@ fn test_ensure_client_has_window_lazy_sync() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -1705,9 +1705,9 @@ fn test_add_client_with_compositor_creates_windows() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -1758,9 +1758,9 @@ fn test_ensure_client_has_window_with_compositor() {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 

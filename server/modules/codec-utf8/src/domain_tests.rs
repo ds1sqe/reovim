@@ -1,8 +1,10 @@
 //! Tests for UTF-8 domain codec implementations.
 
-use reovim_driver_codec::{CodecMetadata, ContentType, Decode, Encode, Index};
-use reovim_driver_vfs::ByteEdit;
-use reovim_types_text::{Text, TextEdit, TextPosition};
+use {
+    reovim_driver_codec::{CodecMetadata, ContentType, Decode, Encode, Index},
+    reovim_driver_vfs::ByteEdit,
+    reovim_types_text::{Text, TextEdit, TextPosition},
+};
 
 use super::{Utf8Codec, Utf8LineIndex};
 
@@ -48,8 +50,8 @@ fn decode_invalid_utf8() {
 fn encode_simple() {
     let codec = Utf8Codec::new();
     let metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
-    let result = <Utf8Codec as Encode<Text>>::encode(&codec, &String::from("hello"), &metadata)
-        .unwrap();
+    let result =
+        <Utf8Codec as Encode<Text>>::encode(&codec, &String::from("hello"), &metadata).unwrap();
     assert_eq!(result, b"hello");
 }
 

@@ -12,11 +12,13 @@
 //! - **Clean boundary**: Snapshot types don't expose internal implementation
 //!   details like `HashMap` structures.
 
-use crate::{
-    core::{MarkBank, ModeStack, SpecialMark},
-    mm::{BufferId, Position},
+use {
+    crate::{
+        core::{MarkBank, ModeStack, SpecialMark},
+        mm::{BufferId, Position},
+    },
+    reovim_types_text::{RegisterBank, YankType},
 };
-use reovim_types_text::{RegisterBank, YankType};
 
 use super::context::KernelContext;
 

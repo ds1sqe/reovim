@@ -9,6 +9,7 @@
 use {
     criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main},
     reovim_kernel::api::v1::*,
+    reovim_types_text::Position,
 };
 
 /// Standard sizes: 100, 1K, 10K, 100K lines.

@@ -2,14 +2,14 @@
 //!
 //! Moved from `reovim-kernel` as part of #740 (kernel buffer extraction).
 
-use std::borrow::Cow;
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
-use reovim_kernel::api::v1::{
-    Buffer, BufferId, BufferOps, FileMapping, LineIndex, Snapshot, SnapshotCapture,
-    StorageOps,
+use {
+    reovim_kernel::api::v1::{
+        Buffer, BufferId, BufferOps, FileMapping, LineIndex, Snapshot, SnapshotCapture, StorageOps,
+    },
+    reovim_types_text::{Position, TextGeometry},
 };
-use reovim_types_text::{Position, TextGeometry};
 
 use super::{HeapMapping, VirtualBuffer};
 
@@ -757,10 +757,7 @@ fn polymorphic_line_count_matches() {
 
     assert_eq!(buf_tg.line_count(), vbuf_tg.line_count());
     for i in 0..3 {
-        assert_eq!(
-            buf_tg.line(i).map(Cow::into_owned),
-            vbuf_tg.line(i).map(Cow::into_owned),
-        );
+        assert_eq!(buf_tg.line(i).map(Cow::into_owned), vbuf_tg.line(i).map(Cow::into_owned),);
     }
 }
 

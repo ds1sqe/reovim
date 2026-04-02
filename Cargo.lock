@@ -2268,6 +2268,7 @@ dependencies = [
  "reovim-driver-syntax-treesitter",
  "reovim-kernel",
  "reovim-module-treesitter-rust",
+ "reovim-types-text",
  "serde_json",
 ]
 

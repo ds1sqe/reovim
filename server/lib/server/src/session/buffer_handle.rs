@@ -16,10 +16,8 @@
 use std::{borrow::Cow, sync::Arc};
 
 use {
-    parking_lot::RwLock,
-    reovim_driver_buffer::BufferCapabilities,
-    reovim_kernel::api::v1::BufferOps,
-    reovim_types_text::Position,
+    parking_lot::RwLock, reovim_driver_buffer::BufferCapabilities,
+    reovim_kernel::api::v1::BufferOps, reovim_types_text::Position,
 };
 
 /// Unified handle for buffers at the server layer.

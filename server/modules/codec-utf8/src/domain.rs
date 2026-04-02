@@ -4,11 +4,13 @@
 //! for [`Utf8Codec`], bridging the existing content codec with the
 //! new domain-aware trait system.
 
-use reovim_driver_codec::{
-    CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
+use {
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
+    },
+    reovim_driver_vfs::ByteEdit,
+    reovim_types_text::{Text, TextEdit, TextPosition},
 };
-use reovim_driver_vfs::ByteEdit;
-use reovim_types_text::{Text, TextEdit, TextPosition};
 
 use crate::codec::{LINE_ENDING_CRLF, LINE_ENDING_LF, META_BOM, META_LINE_ENDING, UTF8_BOM};
 
@@ -46,7 +48,11 @@ impl Decode<Text> for Utf8Codec {
         }
         metadata.set(
             META_LINE_ENDING,
-            if has_crlf { LINE_ENDING_CRLF } else { LINE_ENDING_LF },
+            if has_crlf {
+                LINE_ENDING_CRLF
+            } else {
+                LINE_ENDING_LF
+            },
         );
 
         Ok(DecodeOutput {

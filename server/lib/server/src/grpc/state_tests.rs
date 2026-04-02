@@ -20,9 +20,9 @@ fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
+        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     // Create a KernelContext with a real buffer manager
@@ -546,7 +546,7 @@ async fn test_get_selection_no_active_window() {
 async fn test_get_selection_with_char_selection() {
     use {
         reovim_driver_session::{Viewport, api::Selection},
-        reovim_kernel::api::v1::Position as KernelPosition,
+        reovim_types_text::Position as KernelPosition,
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -600,7 +600,7 @@ async fn test_get_selection_with_char_selection() {
 async fn test_get_selection_line_mode() {
     use {
         reovim_driver_session::{Viewport, api::Selection},
-        reovim_kernel::api::v1::Position as KernelPosition,
+        reovim_types_text::Position as KernelPosition,
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -649,7 +649,7 @@ async fn test_get_selection_line_mode() {
 async fn test_get_selection_block_mode() {
     use {
         reovim_driver_session::{Viewport, api::Selection},
-        reovim_kernel::api::v1::Position as KernelPosition,
+        reovim_types_text::Position as KernelPosition,
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -698,7 +698,7 @@ async fn test_get_selection_block_mode() {
 async fn test_get_selection_reverse() {
     use {
         reovim_driver_session::{Viewport, api::Selection},
-        reovim_kernel::api::v1::Position as KernelPosition,
+        reovim_types_text::Position as KernelPosition,
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -1552,7 +1552,7 @@ async fn test_get_registers_client_not_found() {
 async fn test_selection_isolation_per_client() {
     use {
         reovim_driver_session::{Viewport, api::Selection},
-        reovim_kernel::api::v1::Position as KernelPosition,
+        reovim_types_text::Position as KernelPosition,
     };
 
     let (registry, session) = test_registry_with_buffer_manager();

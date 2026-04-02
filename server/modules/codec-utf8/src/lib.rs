@@ -35,10 +35,7 @@ pub mod domain;
 pub mod factory;
 
 pub use {
-    classifier::Utf8Classifier,
-    codec::Utf8Codec,
-    domain::Utf8LineIndex,
-    factory::Utf8CodecFactory,
+    classifier::Utf8Classifier, codec::Utf8Codec, domain::Utf8LineIndex, factory::Utf8CodecFactory,
 };
 
 /// UTF-8 content codec module.

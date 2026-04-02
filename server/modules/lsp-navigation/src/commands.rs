@@ -651,8 +651,10 @@ fn notify_info(runtime: &mut SessionRuntime<'_>, message: &str) {
 /// Jump to an LSP location (open file + set cursor).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Location) {
-    use reovim_kernel::api::v1::{JumpEntry, events::kernel::FileOpened};
-    use reovim_types_text::Position;
+    use {
+        reovim_kernel::api::v1::{JumpEntry, events::kernel::FileOpened},
+        reovim_types_text::Position,
+    };
 
     let path = path_from_uri(&location.uri);
     let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());

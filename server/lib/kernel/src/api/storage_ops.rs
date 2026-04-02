@@ -70,9 +70,7 @@ bitflags! {
 
 impl StorageCapabilities {
     /// Standard capabilities for a heap-backed buffer (small files).
-    pub const HEAP: Self = Self::SEEKABLE
-        .union(Self::EDITABLE)
-        .union(Self::FINITE);
+    pub const HEAP: Self = Self::SEEKABLE.union(Self::EDITABLE).union(Self::FINITE);
 
     /// Standard capabilities for a file-backed mmap buffer.
     pub const MMAP: Self = Self::SEEKABLE

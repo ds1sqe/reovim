@@ -1,13 +1,15 @@
 use std::borrow::Cow;
 
-use crate::{
-    api::{
-        BufferCapabilities, BufferOps,
-        storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
+use {
+    crate::{
+        api::{
+            BufferCapabilities, BufferOps,
+            storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
+        },
+        mm::{BufferId, Position},
     },
-    mm::{BufferId, Position},
+    reovim_types_text::TextGeometry,
 };
-use reovim_types_text::TextGeometry;
 
 /// Minimal mock implementing `StorageOps + BufferMeta + BufferOps`.
 struct MockBuffer {
@@ -291,10 +293,7 @@ fn insert_bytes_rejects_invalid_utf8() {
     let mut buf = MockBuffer::new("hello");
     let result = StorageOps::insert_bytes(&mut buf, 0, &[0xFF, 0xFE]);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("not supported"));
+    assert!(result.unwrap_err().to_string().contains("not supported"));
 }
 
 #[test]

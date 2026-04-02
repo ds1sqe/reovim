@@ -44,11 +44,11 @@ use {
         ConfigPaths, EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId,
         ModuleState, OptionRegistry, ServiceRegistry,
     },
-    reovim_types_text::{MotionEngine, TextObjectEngine},
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
+    reovim_types_text::{MotionEngine, TextObjectEngine},
 };
 
 // #620: Static module factories — only available when static-modules feature is on.

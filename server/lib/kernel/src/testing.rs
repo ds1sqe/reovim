@@ -22,11 +22,13 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::api::v1::{
-    Buffer, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank, ModeId,
-    ModuleId, OptionRegistry, RwLock, ServiceRegistry,
+use {
+    crate::api::v1::{
+        Buffer, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank, ModeId,
+        ModuleId, OptionRegistry, RwLock, ServiceRegistry,
+    },
+    reovim_types_text::{MotionEngine, TextObjectEngine},
 };
-use reovim_types_text::{MotionEngine, TextObjectEngine};
 
 /// In-memory buffer manager for testing.
 ///
