@@ -5,13 +5,11 @@
 use std::{borrow::Cow, sync::Arc};
 
 use {
-    reovim_kernel::api::v1::{
-        Buffer, BufferId, BufferOps, FileMapping, LineIndex, Snapshot, SnapshotCapture, StorageOps,
-    },
+    reovim_kernel::api::v1::{Buffer, BufferId, BufferOps, FileMapping, LineIndex, StorageOps},
     reovim_types_text::{Position, TextGeometry},
 };
 
-use super::{HeapMapping, VirtualBuffer};
+use super::{HeapMapping, VirtualBuffer, VirtualSnapshot};
 
 /// Helper: create a `VirtualBuffer` from a string.
 fn vbuf_from_str(s: &str) -> VirtualBuffer {
@@ -585,98 +583,54 @@ fn unicode_position_round_trip() {
     }
 }
 
-// ── SnapshotCapture trait ────────────────────────────────────────────
-
-#[test]
-fn snapshot_capture_trait() {
-    let mut vbuf = vbuf_from_str("hello\nworld");
-    let sc: &dyn SnapshotCapture = &vbuf;
-
-    let snap = sc.capture_snapshot();
-    assert_eq!(sc.snapshot_buffer_id(), vbuf.id());
-
-    // Use as &mut dyn SnapshotCapture
-    let sc_mut: &mut dyn SnapshotCapture = &mut vbuf;
-    sc_mut.restore_snapshot(snap);
-    assert_eq!(vbuf.content(), "hello\nworld");
-}
-
-// ── Snapshot integration (Snapshot::capture_virtual) ─────────────────
+// ── VirtualSnapshot inherent methods ─────────────────────────────────
 
 #[test]
 fn virtual_capture_and_restore() {
     let mut vbuf = vbuf_from_str("Hello\nWorld");
-    let cursor = Position::new(1, 3);
 
-    let snapshot = Snapshot::capture_virtual(&vbuf, cursor);
-    assert!(snapshot.is_virtual());
-    assert_eq!(snapshot.buffer_id(), vbuf.id());
+    let snap = vbuf.capture_snapshot();
 
     // Modify buffer
     vbuf.set_content("Something else");
+    assert_eq!(vbuf.content(), "Something else");
 
-    // Restore
-    let restored_cursor = snapshot.restore_virtual(&mut vbuf).unwrap();
+    // Restore via inherent method
+    vbuf.restore_snapshot(snap);
     assert_eq!(vbuf.content(), "Hello\nWorld");
-    assert_eq!(restored_cursor, Position::new(1, 3));
-}
-
-#[test]
-fn virtual_snapshot_is_virtual_flag() {
-    let vbuf = vbuf_from_str("test");
-    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
-    assert!(snap.is_virtual());
-
-    let buffer = Buffer::from_string("test");
-    let rope_snap = Snapshot::capture(&buffer, Position::origin());
-    assert!(!rope_snap.is_virtual());
-}
-
-#[test]
-fn virtual_snapshot_matches_buffer() {
-    let vbuf = vbuf_from_str("content");
-    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
-    assert!(snap.matches_virtual_buffer(&vbuf));
-
-    let other = vbuf_from_str("other");
-    assert!(!snap.matches_virtual_buffer(&other));
 }
 
 #[test]
 fn virtual_snapshot_after_edits() {
     let mut vbuf = vbuf_from_str("abc\ndef");
-    let cursor = Position::new(0, 0);
 
     // Capture before edits
-    let snap = Snapshot::capture_virtual(&vbuf, cursor);
+    let snap = vbuf.capture_snapshot();
 
     // Make edits
     vbuf.insert_at(Position::new(0, 3), "XYZ");
     assert!(vbuf.content().contains("XYZ"));
 
     // Restore removes edits
-    snap.restore_virtual(&mut vbuf).unwrap();
+    vbuf.restore_snapshot(snap);
     assert_eq!(vbuf.content(), "abc\ndef");
 }
 
 #[test]
 fn virtual_snapshot_clone() {
     let vbuf = vbuf_from_str("clone test");
-    let snap = Snapshot::capture_virtual(&vbuf, Position::new(0, 5));
+    let snap: VirtualSnapshot = vbuf.capture_snapshot();
     let cloned = snap.clone();
 
-    assert_eq!(cloned.cursor(), snap.cursor());
-    assert_eq!(cloned.buffer_id(), snap.buffer_id());
-    assert!(cloned.is_virtual());
+    assert_eq!(cloned.add_buffer_len(), snap.add_buffer_len());
 }
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn virtual_snapshot_debug() {
     let vbuf = vbuf_from_str("debug");
-    let snap = Snapshot::capture_virtual(&vbuf, Position::origin());
+    let snap = vbuf.capture_snapshot();
     let debug = format!("{snap:?}");
-    assert!(debug.contains("Snapshot"));
     assert!(debug.contains("VirtualSnapshot"));
 }
 

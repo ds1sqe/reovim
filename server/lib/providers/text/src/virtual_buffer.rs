@@ -19,11 +19,12 @@ use std::{
     sync::Arc,
 };
 
+use crate::virtual_snapshot::VirtualSnapshot;
+
 use {
     reovim_kernel::api::v1::{
         BufferCapabilities, BufferId, BufferMeta, BufferOps, FileMapping, LineIndex, Piece,
-        PieceMetrics, PieceSource, PieceTree, SnapshotCapture, StorageCapabilities, StorageError,
-        StorageOps, VirtualSnapshot,
+        PieceMetrics, PieceSource, PieceTree, StorageCapabilities, StorageError, StorageOps,
     },
     reovim_types_text::{Position, TextGeometry},
 };
@@ -604,22 +605,6 @@ impl VirtualBuffer {
         self.line_index = line_index;
         self.crlf = crlf;
         self.modified = true;
-    }
-}
-
-// ── SnapshotCapture ──────────────────────────────────────────────────────────
-
-impl SnapshotCapture for VirtualBuffer {
-    fn capture_snapshot(&self) -> VirtualSnapshot {
-        Self::capture_snapshot(self)
-    }
-
-    fn restore_snapshot(&mut self, snap: VirtualSnapshot) {
-        Self::restore_snapshot(self, snap);
-    }
-
-    fn snapshot_buffer_id(&self) -> BufferId {
-        self.id
     }
 }
 

@@ -218,14 +218,6 @@ impl Buffer {
         self.text.clone()
     }
 
-    /// Replace the internal rope directly (O(1) via `Arc` sharing).
-    ///
-    /// Used by snapshot restore for efficient state restoration.
-    pub(crate) fn set_rope(&mut self, rope: Rope) {
-        self.text = rope;
-        self.modified = true;
-    }
-
     /// Get the full content as a string (lines joined with newlines).
     #[must_use]
     pub fn content(&self) -> String {

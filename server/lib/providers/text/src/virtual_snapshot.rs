@@ -1,33 +1,24 @@
 //! Opaque snapshot of virtual buffer state.
 //!
-//! [`VirtualSnapshot`] captures the internal state of a `VirtualBuffer`
-//! (mmap + piece table) for snapshot/restore operations.  The type stays
-//! in the kernel because its fields are all kernel types (`PieceTree`,
-//! `FileMapping`, `LineIndex`).
-//!
-//! The [`SnapshotCapture`] trait abstracts concrete buffer types so that
-//! `block/snapshot.rs` can capture/restore virtual snapshots without
-//! depending on the concrete `VirtualBuffer` (which lives in
-//! `reovim-provider-text`).
+//! Moved from `reovim-kernel` to `reovim-provider-text` as part of #740
+//! (kernel buffer extraction). `VirtualSnapshot` is text-specific: its
+//! fields include `LineIndex` and `PieceTree` with text metrics.
 
 use std::{fmt, sync::Arc};
 
-use super::{BufferId, file_mapping::FileMapping, line_index::LineIndex, piece_table::PieceTree};
-
-// ─── VirtualSnapshot ────────────────────────────────────────────────────────
+use reovim_kernel::api::v1::{FileMapping, LineIndex, PieceTree};
 
 /// Opaque snapshot of virtual buffer state.
 ///
-/// Produced by [`SnapshotCapture::capture_snapshot`], consumed by
-/// [`SnapshotCapture::restore_snapshot`].  The `block/snapshot.rs` module
-/// stores this type without knowing concrete buffer internals.
+/// Produced by [`VirtualBuffer::capture_snapshot`], consumed by
+/// [`VirtualBuffer::restore_snapshot`].
 #[derive(Clone)]
 pub struct VirtualSnapshot {
-    pieces: PieceTree,
-    add_buffer_len: usize,
-    original: Arc<dyn FileMapping>,
-    line_index: LineIndex,
-    crlf: bool,
+    pub(crate) pieces: PieceTree,
+    pub(crate) add_buffer_len: usize,
+    pub(crate) original: Arc<dyn FileMapping>,
+    pub(crate) line_index: LineIndex,
+    pub(crate) crlf: bool,
 }
 
 impl VirtualSnapshot {
@@ -96,26 +87,4 @@ impl fmt::Debug for VirtualSnapshot {
             .field("crlf", &self.crlf)
             .finish()
     }
-}
-
-// ─── SnapshotCapture ────────────────────────────────────────────────────────
-
-/// Trait for buffer types that support snapshot capture/restore.
-///
-/// This abstracts `VirtualBuffer` so that `block/snapshot.rs` can capture
-/// and restore virtual snapshots without depending on the concrete type
-/// (which lives in `reovim-provider-text`).
-///
-/// # Implementors
-///
-/// - `VirtualBuffer` (in `reovim-provider-text`)
-pub trait SnapshotCapture: Send + Sync {
-    /// Capture an opaque snapshot of this buffer's state.
-    fn capture_snapshot(&self) -> VirtualSnapshot;
-
-    /// Restore state from a snapshot.
-    fn restore_snapshot(&mut self, snap: VirtualSnapshot);
-
-    /// Get the buffer ID for snapshot matching.
-    fn snapshot_buffer_id(&self) -> BufferId;
 }

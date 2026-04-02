@@ -1,19 +1,8 @@
 //! Block operations subsystem.
 //!
-//! Provides buffer state capture and restore.
 //! Linux equivalent: Block device operations, journaling.
 //!
-//! # Design Principle
-//!
-//! Kernel provides mechanisms (pure Rust), drivers provide policies
-//! (serialization). Snapshot provides accessors; file I/O is handled
-//! by the driver layer.
-//!
-//! # Components
-//!
-//! - [`Snapshot`]: Buffer state capture for restore
-//!
-//! Text-specific block operations have been extracted to `reovim-types-text`:
+//! Text-specific block operations live in `reovim-types-text`:
 //! - `Transaction`: Groups multiple edits for atomic undo/redo
 //! - `UndoTree`: Branching undo history with cursor position tracking
 //! - `History`: Change log with timestamps
@@ -41,12 +30,8 @@
 //! }
 //! ```
 
-mod snapshot;
-
 #[cfg(test)]
 mod tests;
-
-pub use snapshot::{Snapshot, SnapshotMismatch};
 
 // Re-exports from reovim-types-text for backward compat within kernel.
 // Used by block/tests/ which imports via `super::*`.

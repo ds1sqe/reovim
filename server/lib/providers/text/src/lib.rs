@@ -22,5 +22,9 @@
 // Truncation is lossless on our 64-bit-only target.
 #[allow(clippy::cast_possible_truncation)]
 mod virtual_buffer;
+mod virtual_snapshot;
 
-pub use virtual_buffer::{HeapMapping, VirtualBuffer};
+pub use {
+    virtual_buffer::{HeapMapping, VirtualBuffer},
+    virtual_snapshot::VirtualSnapshot,
+};

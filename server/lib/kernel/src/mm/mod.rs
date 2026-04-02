@@ -12,7 +12,6 @@
 //! - [`buffer_id`]: Unique buffer identifiers with atomic generation
 //! - [`buffer`]: Core buffer data structure with line-based storage
 //! - [`piece_table`]: Byte-only B-tree for large file editing
-//! - [`virtual_snapshot`]: Opaque snapshot type + `SnapshotCapture` trait
 //! - [`file_mapping`]: Generic byte-access abstraction for zero-copy access
 //! - [`delimiter`]: Bracket/delimiter matching
 //!
@@ -41,11 +40,7 @@ mod file_mapping;
 mod line_index;
 mod piece_table;
 mod rope;
-mod virtual_snapshot;
 
-// Re-export Rope for snapshot types in block/. Not exposed via api::v1
-// because the mm module itself is private.
-pub use rope::Rope;
 mod saturator;
 mod snapshot;
 mod tab_id;
@@ -58,7 +53,6 @@ pub use {
     file_mapping::FileMapping,
     line_index::{InvalidUtf8, LineIndex},
     piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
-    virtual_snapshot::{SnapshotCapture, VirtualSnapshot},
 };
 
 pub use {
@@ -75,6 +69,6 @@ pub use {
 };
 
 // Re-exports from reovim-types-text used by kernel internals.
-// Position: delimiter, jumplist, mark, block/snapshot, api/debug.
+// Position: delimiter, jumplist, mark, api/debug.
 // Cursor: kernel tests only (re-exported via api/v1 for external use).
 pub use reovim_types_text::{Cursor, Position};

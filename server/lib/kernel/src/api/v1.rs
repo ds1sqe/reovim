@@ -50,9 +50,6 @@ pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
 // Note: VirtualBuffer and HeapMapping moved to reovim-provider-text (#740)
 pub use crate::mm::{FileMapping, InvalidUtf8, LineIndex};
 
-// Virtual snapshot and trait (for abstract snapshot capture/restore)
-pub use crate::mm::{SnapshotCapture, VirtualSnapshot};
-
 // Piece table (byte-only B-tree for large file editing)
 pub use crate::mm::{Piece, PieceMetrics, PieceSource, PieceTree};
 
@@ -114,10 +111,8 @@ pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 
 // ============================================================================
-// Block Operations (block/) — Snapshot stays in kernel
+// Block Operations (block/)
 // ============================================================================
-
-pub use crate::block::{Snapshot, SnapshotMismatch};
 
 // BufferManager is MECHANISM (pure storage interface, like Linux page cache)
 // It stays in kernel - no I/O policy, just storage lifecycle
