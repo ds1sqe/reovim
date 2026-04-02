@@ -25,12 +25,14 @@
 //!
 //! # Data Structures
 //!
+//! - [`Rope`] — balanced B-tree text storage with O(1) clone
 //! - [`RegisterBank`] — yank/paste register storage
 //! - [`HistoryRing`] — clipboard history ring buffer
 
 // --- Data types ---
 mod edit;
 mod position;
+mod rope;
 mod selection;
 
 // --- Traits ---
@@ -66,6 +68,9 @@ pub use word::{
     CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,
     word_start,
 };
+
+// Rope
+pub use rope::{Rope, RopeChunks, RopeLines};
 
 // Register and history
 pub use history::HistoryRing;
