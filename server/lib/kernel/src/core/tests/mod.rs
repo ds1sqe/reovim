@@ -16,7 +16,6 @@ use reovim_types_text::{
 mod config;
 mod direction;
 mod history;
-mod jumplist;
 mod mark;
 mod mode;
 mod motion_engine;

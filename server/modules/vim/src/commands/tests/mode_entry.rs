@@ -166,12 +166,14 @@ fn test_get_line_indent_single_tab() {
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, WindowLayout,
+        testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, RwLock},
+        v1::{BufferId, KernelContext, MarkBank, RwLock},
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

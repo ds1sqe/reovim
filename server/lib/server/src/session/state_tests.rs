@@ -2,8 +2,9 @@ use {
     super::*,
     parking_lot::RwLock as ParkingLotRwLock,
     reovim_driver_buffer::TestBufferManager,
+    reovim_driver_session::Jumplist,
     reovim_kernel::api::v1::{
-        EventBus, Jumplist, MarkBank, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
+        EventBus, MarkBank, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
     },
     reovim_types_text::{HistoryRing, RegisterBank},
 };

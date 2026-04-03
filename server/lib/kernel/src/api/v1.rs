@@ -82,9 +82,6 @@ pub use crate::ipc::{
 // Core Primitives (core/)
 // ============================================================================
 
-// Jumplist (kernel-owned, will move to provider in Phase 2)
-pub use crate::core::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
-
 // Marks (kernel-owned, will move to provider in Phase 2)
 pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};
 

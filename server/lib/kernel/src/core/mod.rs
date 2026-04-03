@@ -4,7 +4,6 @@
 //!
 //! This module provides kernel-owned abstractions:
 //!
-//! - **Jumplist**: Navigation history per client
 //! - **Mark**: Bookmark operations
 //! - **Mode**: Mode identity and mode stack
 //! - **Option**: Editor option registry
@@ -37,13 +36,9 @@
 //! ```
 
 mod config;
-mod jumplist;
 mod mark;
 mod mode;
 mod option;
-
-// Re-export jumplist types
-pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
 // Re-export mark types
 pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};

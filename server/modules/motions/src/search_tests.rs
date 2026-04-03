@@ -3,13 +3,13 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
-            v1::{Jumplist, MarkBank, ModeId, ModuleId},
+            v1::{MarkBank, ModeId, ModuleId},
         },
         testing::create_test_context,
     },

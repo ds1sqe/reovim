@@ -9,9 +9,10 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::{
-        api::v1::{Buffer, BufferId, RwLock},
+        api::v1::{BufferId, RwLock},
         testing::create_test_context,
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
 };
 

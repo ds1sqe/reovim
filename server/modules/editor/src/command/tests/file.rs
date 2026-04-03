@@ -2,14 +2,15 @@ use {
     super::super::*,
     reovim_driver_command::{ArgKind, Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
     reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::{
-        api::v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeStack, RwLock},
+        api::v1::{BufferId, KernelContext, MarkBank, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

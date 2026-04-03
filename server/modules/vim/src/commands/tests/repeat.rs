@@ -10,13 +10,13 @@ use {
     crate::session_state::{LastChange, OperatorType},
     reovim_driver_command::ArgValue,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, Window, WindowLayout, api::CommandExecutor,
+        ClientId, ExtensionMap, Jumplist, Session, Window, WindowLayout, api::CommandExecutor,
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId},
+            v1::{BufferId, KernelContext, MarkBank, ModeId, ModuleId},
         },
         testing::create_test_context,
     },

@@ -9,17 +9,18 @@ use {
     crate::ids,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, WindowLayout,
         api::{CommandExecutor, CommandHandle},
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, RwLock},
+            v1::{BufferId, CommandId, KernelContext, MarkBank, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::{collections::HashMap, sync::Arc},
 };

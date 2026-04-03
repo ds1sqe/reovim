@@ -8,18 +8,17 @@ use super::super::*;
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, WindowLayout,
+        testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{
-                Buffer, BufferId, CommandId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId,
-                RwLock,
-            },
+            v1::{BufferId, CommandId, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
     std::sync::Arc,
 };

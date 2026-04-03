@@ -1,8 +1,8 @@
 use {
     super::*,
-    crate::{testing::StubExecutor, types::ClientId},
+    crate::{Jumplist, testing::StubExecutor, types::ClientId},
     reovim_kernel::{
-        api::v1::{Jumplist, MarkBank, ModuleId},
+        api::v1::{MarkBank, ModuleId},
         testing::test_mode,
     },
     reovim_types_text::{HistoryRing, RegisterBank},
@@ -6224,7 +6224,7 @@ fn test_jumplist_accessor() {
 
 #[test]
 fn test_jumplist_mut_accessor() {
-    use {crate::testing::TestSessionRuntime, reovim_kernel::api::v1::JumpEntry};
+    use crate::{JumpEntry, testing::TestSessionRuntime};
 
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {

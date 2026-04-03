@@ -2,14 +2,15 @@ use {
     crate::{find_char::*, ids},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, FindCharState, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, FindCharState, Jumplist, Session, SessionRuntime, Window,
+        WindowLayout,
         api::{CommandExecutor, CommandHandle, ExtensionApi},
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
-            v1::{BufferId, CommandId, Jumplist, MarkBank, ModeId, ModuleId},
+            v1::{BufferId, CommandId, MarkBank, ModeId, ModuleId},
         },
         testing::create_test_context,
     },

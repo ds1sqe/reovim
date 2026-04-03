@@ -39,6 +39,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel**: continue the `#740` byte-only extraction — text `Buffer`/Rope and semantic undo test ownership move out of kernel, VFS now owns file-mapping/piece-table primitives, and `KernelContext` drops dead motion/text-object engines (#740)
 - **server**: continue the `#740` contract cleanup — remove the transient `BufferHandle` read wrapper, narrow `BufferReadAccess` to per-buffer lookup, and move illuminate word scanning onto `TextGeometry` instead of `BufferOps` (#740)
 - **search/session**: continue the `#740` contract cleanup — production search callers now use a `TextGeometry`-backed line source instead of direct `BufferOps`, and production `JumpEntry`/`Jumplist` consumers now flow through `reovim-driver-session` instead of the kernel API path (#740)
+- **session/kernel**: continue the `#740` ownership move — `JumpEntry`, `Jumplist`, and `MAX_JUMPLIST_SIZE` now live in `reovim-driver-session`, kernel core no longer implements or exports them, and the remaining imports were migrated to the driver path (#740)
 
 ## [0.14.4] - 2026-04-01
 

@@ -8,14 +8,17 @@ use {
 };
 
 use {
-    reovim_driver_session::{ClientId, ExtensionMap, Session, WindowLayout, testing::StubExecutor},
+    reovim_driver_session::{
+        ClientId, ExtensionMap, Jumplist, Session, WindowLayout, testing::StubExecutor,
+    },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{Buffer, BufferId, Jumplist, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
+            v1::{BufferId, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
