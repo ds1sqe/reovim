@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_search::{BufferOpsLineSource, Direction, SearchKey, SearchProviderRegistry},
+    reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry, TextGeometryLineSource},
     reovim_driver_session::{SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::v1::CommandId,
     reovim_types_text::Position,
@@ -278,9 +278,9 @@ fn search_word(
 
     // Get word under cursor and find word start position for backward search
     let (word_pattern, search_cursor) = {
-        let Some(Some((pattern, word_start))) = runtime.with_buffer_read(buffer_id, |buffer| {
+        let Some(Some((pattern, word_start))) = runtime.with_text_geometry(buffer_id, |buffer| {
             // Get word pattern
-            let source = BufferOpsLineSource(buffer);
+            let source = TextGeometryLineSource::new(buffer);
             let pattern = search_provider.word_at_cursor_source(&source, cursor)?;
 
             // Find word start position for backward search
@@ -336,7 +336,7 @@ fn search_and_move(
     direction: Direction,
 ) -> CommandResult {
     use {
-        reovim_driver_session::ChangeTracker, reovim_kernel::api::v1::JumpEntry,
+        reovim_driver_session::{ChangeTracker, JumpEntry},
         reovim_types_text::Position,
     };
 
@@ -361,8 +361,8 @@ fn search_and_move(
     };
 
     // Search for pattern
-    let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let source = BufferOpsLineSource(buffer);
+    let search_result = runtime.with_text_geometry(buffer_id, |buffer| {
+        let source = TextGeometryLineSource::new(buffer);
         search_provider.find_next_source(&source, cursor, pattern, direction, true)
     });
 
@@ -397,7 +397,7 @@ fn search_and_move_from(
     direction: Direction,
     search_from: Position,
 ) -> CommandResult {
-    use {reovim_driver_session::ChangeTracker, reovim_kernel::api::v1::JumpEntry};
+    use reovim_driver_session::{ChangeTracker, JumpEntry};
 
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
@@ -417,8 +417,8 @@ fn search_and_move_from(
         return CommandResult::error("Regex search engine not registered");
     };
 
-    let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let source = BufferOpsLineSource(buffer);
+    let search_result = runtime.with_text_geometry(buffer_id, |buffer| {
+        let source = TextGeometryLineSource::new(buffer);
         search_provider.find_next_source(&source, search_from, pattern, direction, true)
     });
 

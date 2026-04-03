@@ -9,8 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, JumpEntry},
+    reovim_driver_session::{ChangeTracker, JumpEntry, SessionRuntime},
+    reovim_kernel::api::v1::CommandId,
     reovim_types_text::Position,
 };
 

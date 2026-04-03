@@ -580,7 +580,7 @@ fn execute_search(
     pattern: &str,
     direction: Direction,
 ) {
-    use reovim_driver_search::{BufferOpsLineSource, SearchKey, SearchProviderRegistry};
+    use reovim_driver_search::{SearchKey, SearchProviderRegistry, TextGeometryLineSource};
 
     let Some(buffer_id) = args.buffer_id() else {
         return;
@@ -601,8 +601,8 @@ fn execute_search(
     };
 
     // Search for pattern
-    let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let source = BufferOpsLineSource(buffer);
+    let search_result = runtime.with_text_geometry(buffer_id, |buffer| {
+        let source = TextGeometryLineSource::new(buffer);
         search_provider.find_next_source(&source, cursor, pattern, direction, true)
     });
 

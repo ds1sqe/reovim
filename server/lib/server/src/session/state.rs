@@ -22,11 +22,9 @@ use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
     reovim_driver_layout::RootCompositor,
-    reovim_driver_session::{ClientId, Session as DriverSession},
+    reovim_driver_session::{ClientId, Jumplist, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{
-        BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
-    },
+    reovim_kernel::api::v1::{BufferId, BufferOps, CommandId, KernelContext, ModeId, ModeStack},
     reovim_provider_text::Buffer,
     reovim_types_text::RegisterContent,
 };

@@ -112,6 +112,8 @@ pub mod tick;
 mod transition;
 mod types;
 
+pub use reovim_kernel::api::v1::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
+
 // Empty session handling
 pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHandler};
 

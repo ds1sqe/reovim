@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use {
     reovim_provider_text::{Buffer, HeapMapping, VirtualBuffer},
-    reovim_types_text::{LineIndex, Position},
+    reovim_types_text::{LineIndex, Position, SimpleText},
 };
 
-use super::{BufferLineSource, LineSource, VirtualBufferLineSource};
+use super::{BufferLineSource, LineSource, TextGeometryLineSource, VirtualBufferLineSource};
 
 fn make_vbuf(content: &str) -> VirtualBuffer {
     let original = Arc::new(HeapMapping(content.as_bytes().to_vec()));
@@ -96,6 +96,33 @@ fn vbuf_position_conversion() {
 fn vbuf_content() {
     let vbuf = make_vbuf("hello\nworld");
     let source = VirtualBufferLineSource(&vbuf);
+    assert_eq!(source.content(), "hello\nworld");
+}
+
+#[test]
+fn text_geometry_line_count() {
+    let text = SimpleText::new("a\nb\nc");
+    let source = TextGeometryLineSource::new(&text);
+    assert_eq!(source.line_count(), 3);
+}
+
+#[test]
+fn text_geometry_position_conversion() {
+    let text = SimpleText::new("héllo\nworld");
+    let source = TextGeometryLineSource::new(&text);
+    assert_eq!(source.position_to_byte(Position::new(0, 0)), 0);
+    assert_eq!(source.position_to_byte(Position::new(0, 1)), 1);
+    assert_eq!(source.position_to_byte(Position::new(0, 5)), 6);
+    assert_eq!(source.position_to_byte(Position::new(1, 0)), 7);
+    assert_eq!(source.byte_to_position(6), Position::new(0, 5));
+    assert_eq!(source.byte_to_position(7), Position::new(1, 0));
+    assert_eq!(source.byte_to_position(12), Position::new(1, 5));
+}
+
+#[test]
+fn text_geometry_content() {
+    let text = SimpleText::new("hello\nworld");
+    let source = TextGeometryLineSource::new(&text);
     assert_eq!(source.content(), "hello\nworld");
 }
 

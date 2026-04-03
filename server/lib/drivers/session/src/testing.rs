@@ -28,14 +28,14 @@
 
 use {
     crate::{
-        ClientId, Session, WindowLayout,
+        ClientId, Jumplist, Session, WindowLayout,
         api::{CommandExecutor, CommandHandle, StateChanges},
         extension::ExtensionMap,
         runtime::SessionRuntime,
     },
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Jumplist, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+        BufferId, CommandId, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},

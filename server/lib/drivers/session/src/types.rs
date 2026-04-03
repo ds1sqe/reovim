@@ -21,11 +21,11 @@
 
 use {
     reovim_driver_layout::RootCompositor,
-    reovim_kernel::api::v1::{BufferId, Jumplist, MarkBank, ModeId, ModeStack, WindowId},
+    reovim_kernel::api::v1::{BufferId, MarkBank, ModeId, ModeStack, WindowId},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
-use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
+use crate::{Jumplist, api::Selection as ApiSelection, extension::ExtensionMap};
 
 // ============================================================================
 // SessionShared - Shared Session Infrastructure (#471)

@@ -9,8 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{SessionRuntime, api::BufferApi},
-    reovim_kernel::api::v1::{BufferId, CommandId, JumpEntry, Mark},
+    reovim_driver_session::{JumpEntry, SessionRuntime, api::BufferApi},
+    reovim_kernel::api::v1::{BufferId, CommandId, Mark},
     reovim_types_text::Position,
 };
 

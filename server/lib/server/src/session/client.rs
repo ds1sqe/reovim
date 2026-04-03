@@ -44,10 +44,10 @@ use std::{collections::HashMap, time::SystemTime};
 use {
     reovim_driver_layout::RootCompositor,
     reovim_driver_session::{
-        CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
-        Window, WindowLayout,
+        CursorPosition, ExtensionMap, Jumplist, KeySequence, Selection, SelectionMode, TabPageSet,
+        Viewport, Window, WindowLayout,
     },
-    reovim_kernel::api::v1::{BufferId, Jumplist, MarkBank, ModeStack},
+    reovim_kernel::api::v1::{BufferId, MarkBank, ModeStack},
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 

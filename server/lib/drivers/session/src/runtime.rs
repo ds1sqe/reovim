@@ -147,7 +147,7 @@ pub struct SessionRuntime<'a> {
     /// Global marks (A-Z) remain shared in `kernel.global_marks`.
     local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
     /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
-    jumplist: &'a mut reovim_kernel::api::v1::Jumplist,
+    jumplist: &'a mut crate::Jumplist,
     /// Per-client active buffer (#471).
     ///
     /// Each client tracks which buffer they are viewing independently.
@@ -574,13 +574,13 @@ impl<'a> SessionRuntime<'a> {
 
     /// Get per-client jump list (#654).
     #[must_use]
-    pub const fn jumplist(&self) -> &reovim_kernel::api::v1::Jumplist {
+    pub const fn jumplist(&self) -> &crate::Jumplist {
         self.jumplist
     }
 
     /// Get per-client jump list mutably (#654).
     #[allow(clippy::missing_const_for_fn)]
-    pub fn jumplist_mut(&mut self) -> &mut reovim_kernel::api::v1::Jumplist {
+    pub fn jumplist_mut(&mut self) -> &mut crate::Jumplist {
         self.jumplist
     }
 }

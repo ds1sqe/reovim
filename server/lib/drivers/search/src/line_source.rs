@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use {
     reovim_kernel::api::v1::BufferOps,
     reovim_provider_text::{Buffer, VirtualBuffer},
-    reovim_types_text::Position,
+    reovim_types_text::{Position, TextGeometry},
 };
 
 /// Line-oriented read access to buffer content.
@@ -109,6 +109,79 @@ impl LineSource for VirtualBufferLineSource<'_> {
     fn content(&self) -> String {
         self.0.content()
     }
+}
+
+pub struct TextGeometryLineSource(Vec<String>);
+
+impl TextGeometryLineSource {
+    #[must_use]
+    pub fn new(text: &dyn TextGeometry) -> Self {
+        Self(
+            (0..text.line_count())
+                .filter_map(|idx| text.line(idx).map(Cow::into_owned))
+                .collect(),
+        )
+    }
+}
+
+impl LineSource for TextGeometryLineSource {
+    fn line_count(&self) -> usize {
+        self.0.len()
+    }
+
+    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
+        self.0.get(idx).map(|line| Cow::Borrowed(line.as_str()))
+    }
+
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        self.0.get(idx).map(|line| line.chars().count())
+    }
+
+    fn position_to_byte(&self, pos: Position) -> usize {
+        let line_count = self.0.len();
+        if line_count == 0 {
+            return 0;
+        }
+
+        let line = pos.line.min(line_count - 1);
+        let mut offset = 0;
+        for idx in 0..line {
+            offset += self.0[idx].len() + 1;
+        }
+
+        offset + column_to_byte_offset(&self.0[line], pos.column)
+    }
+
+    fn byte_to_position(&self, byte_offset: usize) -> Position {
+        let line_count = self.0.len();
+        if line_count == 0 {
+            return Position::origin();
+        }
+
+        let mut offset = 0;
+        for idx in 0..line_count {
+            let text = &self.0[idx];
+            let line_end = offset + text.len();
+            if byte_offset <= line_end {
+                return Position::new(idx, byte_to_column(text, byte_offset - offset));
+            }
+            offset = line_end + 1;
+        }
+
+        let last_line = line_count - 1;
+        Position::new(last_line, self.0[last_line].chars().count())
+    }
+}
+
+fn column_to_byte_offset(text: &str, column: usize) -> usize {
+    text.char_indices()
+        .nth(column)
+        .map_or(text.len(), |(idx, _)| idx)
+}
+
+fn byte_to_column(text: &str, byte_offset: usize) -> usize {
+    text.get(..byte_offset)
+        .map_or_else(|| text.chars().count(), |prefix| prefix.chars().count())
 }
 
 /// Adapter wrapping a `&dyn BufferOps` as a [`LineSource`].

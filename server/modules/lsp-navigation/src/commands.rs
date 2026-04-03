@@ -14,8 +14,8 @@ use {
     },
     reovim_driver_picker::{PickerData, PickerItem, push_items},
     reovim_driver_session::{
-        BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TickSchedulerHandle,
-        TransitionContext, WindowApi,
+        BufferApi, ChangeTracker, ExtensionApi, JumpEntry, ModeApi, SessionRuntime,
+        TickSchedulerHandle, TransitionContext, WindowApi,
     },
     reovim_kernel::api::v1::{CommandId, ServiceRegistry},
     reovim_module_microscope::{MicroscopeState, modes::MicroscopeMode},
@@ -651,10 +651,7 @@ fn notify_info(runtime: &mut SessionRuntime<'_>, message: &str) {
 /// Jump to an LSP location (open file + set cursor).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Location) {
-    use {
-        reovim_kernel::api::v1::{JumpEntry, events::kernel::FileOpened},
-        reovim_types_text::Position,
-    };
+    use {reovim_kernel::api::v1::events::kernel::FileOpened, reovim_types_text::Position};
 
     let path = path_from_uri(&location.uri);
     let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
