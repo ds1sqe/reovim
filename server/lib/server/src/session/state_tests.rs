@@ -1,6 +1,5 @@
 use {
     super::*,
-    parking_lot::RwLock as ParkingLotRwLock,
     reovim_driver_buffer::TestBufferManager,
     reovim_driver_session::Jumplist,
     reovim_kernel::api::v1::{
@@ -22,7 +21,6 @@ fn test_kernel() -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     )

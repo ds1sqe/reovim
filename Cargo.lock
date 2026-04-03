@@ -2936,6 +2936,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
+ "reovim-provider-text",
  "reovim-types-text",
  "serde_json",
  "tokio",

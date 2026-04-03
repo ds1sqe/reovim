@@ -17,18 +17,14 @@ fn test_registry_with_session() -> (Arc<SessionRegistry>, Arc<Session>) {
 /// Create a registry with a session that has a real buffer manager.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     // Create a KernelContext with a real buffer manager
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );

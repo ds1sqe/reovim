@@ -1,5 +1,13 @@
 use {super::*, reovim_driver_command::Command};
 
+use {
+    reovim_driver_session::{BufferApi, testing::TestSessionRuntime},
+    reovim_kernel::api::v1::RwLock,
+    reovim_provider_text::{HeapMapping, VirtualBuffer},
+    reovim_types_text::LineIndex,
+    std::sync::Arc,
+};
+
 #[test]
 fn trigger_metadata() {
     let cmd = Trigger;
@@ -49,6 +57,52 @@ fn command_handlers_unique_ids() {
     deduped.sort_by_key(CommandId::name_owned);
     deduped.dedup_by_key(|id| id.name_owned());
     assert_eq!(ids.len(), deduped.len());
+}
+
+#[test]
+fn build_context_materializes_rope_buffer_content() {
+    let mut test = TestSessionRuntime::with_buffer("alpha beta\ngamma\n");
+
+    test.with_runtime(|runtime| {
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor.line = 0;
+            window.cursor.column = 5;
+        }
+
+        let ctx = build_context(runtime).unwrap();
+        assert_eq!(ctx.content, "alpha beta\ngamma");
+        assert_eq!(ctx.prefix, "alpha");
+        assert_eq!(ctx.cursor_offset, 5);
+    });
+}
+
+#[test]
+fn build_context_uses_current_line_for_virtual_buffer() {
+    let mut test = TestSessionRuntime::with_buffer("placeholder\n");
+
+    let virtual_buffer = {
+        let mapping = Arc::new(HeapMapping(b"alpha beta\ngamma\n".to_vec()));
+        let line_index = LineIndex::from_bytes(b"alpha beta\ngamma\n").unwrap();
+        VirtualBuffer::new(mapping, line_index)
+    };
+
+    let virtual_buffer_id = test
+        .kernel()
+        .buffers
+        .register(Arc::new(RwLock::new(virtual_buffer)));
+
+    test.with_runtime(|runtime| {
+        BufferApi::set_active_buffer(runtime, Some(virtual_buffer_id));
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor.line = 0;
+            window.cursor.column = 5;
+        }
+
+        let ctx = build_context(runtime).unwrap();
+        assert_eq!(ctx.content, "alpha beta");
+        assert_eq!(ctx.prefix, "alpha");
+        assert_eq!(ctx.cursor_offset, 5);
+    });
 }
 
 // ========================================================================

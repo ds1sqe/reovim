@@ -119,18 +119,14 @@ async fn test_session_with_state() {
     use std::sync::Arc;
 
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     // Create a kernel context with a real buffer manager
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -402,18 +398,14 @@ async fn test_with_state_sync() {
 #[tokio::test]
 async fn test_with_state_mut_sync() {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -874,18 +866,14 @@ fn test_execute_command_for_client_following_ignored() {
 #[test]
 fn test_add_client_with_active_buffer() {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -912,19 +900,15 @@ fn test_add_client_with_active_buffer() {
 #[test]
 fn test_insert_char_for_client_buffer_path() {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -957,19 +941,15 @@ fn test_insert_char_for_client_buffer_path() {
 #[test]
 fn test_insert_char_for_client_newline() {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -1038,18 +1018,14 @@ fn test_insert_char_for_client_nonexistent_client() {
 fn test_sync_and_set_relation_with_cursor_sync() {
     use {
         crate::session::ClientRelation,
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -1176,13 +1152,12 @@ fn test_insert_char_for_client_with_undo_recording() {
     // insert_char_for_client when an UndoProviderRegistry with a
     // UndoKey::Buffer provider is registered in services.
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
         reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{
-            BufferId, EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
+            BufferId, EventBus, KernelContext, OptionRegistry, ServiceRegistry,
         },
         reovim_types_text::{Edit, Position, UndoResult, UndoTree},
         std::sync::{Arc, Mutex},
@@ -1283,7 +1258,6 @@ fn test_insert_char_for_client_with_undo_recording() {
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,
     );
@@ -1440,18 +1414,14 @@ fn test_insert_char_for_client_shared_extension_sink() {
 #[test]
 fn test_ensure_client_has_window_lazy_sync() {
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -1679,18 +1649,14 @@ fn test_add_client_with_compositor_creates_windows() {
     // add_client_with_metadata() when shared compositor is set and
     // an active buffer exists.
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -1729,18 +1695,14 @@ fn test_ensure_client_has_window_with_compositor() {
     // ensure_client_has_window() when a client has a compositor but
     // empty windows, and the session acquires an active buffer later.
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );

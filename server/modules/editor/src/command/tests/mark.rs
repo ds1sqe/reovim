@@ -56,9 +56,7 @@ fn test_set_mark_global() {
     // Verify global mark was set
     test.with_runtime(|runtime| {
         let mark = runtime
-            .kernel()
-            .global_marks
-            .read()
+            .global_marks()
             .get_global('A')
             .map(|m| (m.position, m.buffer_id));
         assert_eq!(mark, Some((Position::new(0, 0), buf_id)));
@@ -527,7 +525,7 @@ fn test_goto_global_mark_cross_buffer() {
     // Set global mark 'C' pointing to buffer 2 at (0, 5)
     test.with_runtime(|runtime| {
         let mark = Mark::new(Position::new(0, 5), buf2);
-        runtime.kernel().global_marks.write().set_global('C', mark);
+        runtime.global_marks_mut().set_global('C', mark);
     });
 
     // Current buffer is buf1, goto mark 'C' which is in buf2
@@ -573,7 +571,7 @@ fn test_goto_global_mark_cross_buffer_line_mode() {
     // Set global mark 'D' pointing to buffer 2 at (1, 3)
     test.with_runtime(|runtime| {
         let mark = Mark::new(Position::new(1, 3), buf2);
-        runtime.kernel().global_marks.write().set_global('D', mark);
+        runtime.global_marks_mut().set_global('D', mark);
     });
 
     // GotoMarkLine: cross-buffer, line_only=true → column should be 0

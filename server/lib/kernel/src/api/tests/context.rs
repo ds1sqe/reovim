@@ -30,23 +30,20 @@ fn test_kernel_context_debug() {
     assert!(debug_str.contains("KernelContext"));
     assert!(debug_str.contains("Arc<EventBus>"));
     assert!(debug_str.contains("Arc<dyn BufferManager>"));
-    assert!(debug_str.contains("global_marks"));
-    assert!(debug_str.contains("Arc<RwLock<MarkBank>>"));
     assert!(debug_str.contains("Arc<OptionRegistry>"));
     assert!(debug_str.contains("Arc<ServiceRegistry>"));
 }
 
 #[test]
 fn test_kernel_context_new() {
-    use {crate::core::MarkBank, std::sync::Arc};
+    use std::sync::Arc;
 
     let event_bus = Arc::new(EventBus::new());
     let buffers: Arc<dyn BufferManager> = Arc::new(StubBufferManager);
-    let global_marks = Arc::new(RwLock::new(MarkBank::new()));
     let options = Arc::new(OptionRegistry::new());
     let services = Arc::new(ServiceRegistry::new());
 
-    let ctx = KernelContext::new(event_bus, buffers, global_marks, options, services);
+    let ctx = KernelContext::new(event_bus, buffers, options, services);
 
     assert_eq!(ctx.buffers.count(), 0);
 }

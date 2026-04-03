@@ -2466,12 +2466,11 @@ impl reovim_kernel::api::v1::BufferManager for InMemoryBufferManager {
 fn make_kernel_with_services(
     services: std::sync::Arc<reovim_kernel::api::v1::ServiceRegistry>,
 ) -> KernelContext {
-    use reovim_kernel::api::v1::{EventBus, MarkBank, OptionRegistry};
+    use reovim_kernel::api::v1::{EventBus, OptionRegistry};
 
     KernelContext::new(
         std::sync::Arc::new(EventBus::new()),
         std::sync::Arc::new(InMemoryBufferManager::new()),
-        std::sync::Arc::new(reovim_arch::sync::RwLock::new(MarkBank::new())),
         std::sync::Arc::new(OptionRegistry::new()),
         services,
     )

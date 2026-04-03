@@ -633,7 +633,7 @@ pub struct EditingState {
     /// Per-client local marks (a-z, per-client special marks) (#515).
     ///
     /// Each client owns their own local marks. Global marks (A-Z) remain
-    /// shared in `KernelContext.global_marks`.
+    /// shared in `driver_session::SessionShared`.
     pub local_marks: MarkBank,
 
     /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).

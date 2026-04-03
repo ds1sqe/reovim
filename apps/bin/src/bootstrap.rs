@@ -25,7 +25,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    parking_lot::RwLock,
     reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_input::{
@@ -41,8 +40,8 @@ use {
     },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
-        ConfigPaths, EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId,
-        ModuleState, OptionRegistry, ServiceRegistry,
+        ConfigPaths, EventBus, KernelContext, ModeId, Module, ModuleContext, ModuleId, ModuleState,
+        OptionRegistry, ServiceRegistry,
     },
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
@@ -574,7 +573,6 @@ fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(reovim_driver_buffer::TestBufferManager::new()),
-        Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,
     )

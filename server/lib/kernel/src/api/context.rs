@@ -6,10 +6,7 @@ use std::{fmt, path::PathBuf, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
-use crate::{
-    core::{MarkBank, OptionRegistry},
-    ipc::EventBus,
-};
+use crate::{core::OptionRegistry, ipc::EventBus};
 
 use super::{buffer_manager::BufferManager, module::ModuleId, service::ServiceRegistry};
 
@@ -44,10 +41,6 @@ pub struct KernelContext {
     pub event_bus: Arc<EventBus>,
     /// Buffer manager for buffer storage and retrieval.
     pub buffers: Arc<dyn BufferManager>,
-    /// Global mark storage (A-Z, shared special marks) (#515).
-    ///
-    /// Per-client local marks (a-z) are stored in `EditingState.local_marks`.
-    pub global_marks: Arc<RwLock<MarkBank>>,
     /// Option registry for editor settings.
     pub options: Arc<OptionRegistry>,
     /// Service registry for cross-module service discovery.
@@ -59,18 +52,15 @@ pub struct KernelContext {
 
 impl KernelContext {
     /// Create a new kernel context.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         event_bus: Arc<EventBus>,
         buffers: Arc<dyn BufferManager>,
-        global_marks: Arc<RwLock<MarkBank>>,
         options: Arc<OptionRegistry>,
         services: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
             event_bus,
             buffers,
-            global_marks,
             options,
             services,
         }
@@ -82,7 +72,6 @@ impl fmt::Debug for KernelContext {
         f.debug_struct("KernelContext")
             .field("event_bus", &"Arc<EventBus>")
             .field("buffers", &"Arc<dyn BufferManager>")
-            .field("global_marks", &"Arc<RwLock<MarkBank>>")
             .field("options", &"Arc<OptionRegistry>")
             .field("services", &"Arc<ServiceRegistry>")
             .finish()
@@ -291,12 +280,9 @@ impl KernelContext {
         services: Arc<ServiceRegistry>,
         options: Arc<OptionRegistry>,
     ) -> Self {
-        use crate::core::MarkBank;
-
         Self {
             event_bus,
             buffers: Arc::new(StubBufferManager),
-            global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options,
             services,
         }
@@ -308,12 +294,9 @@ impl Default for KernelContext {
     ///
     /// Uses stub implementations. Should only be used in tests.
     fn default() -> Self {
-        use crate::core::MarkBank;
-
         Self {
             event_bus: Arc::new(crate::ipc::EventBus::new()),
             buffers: Arc::new(StubBufferManager),
-            global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options: Arc::new(OptionRegistry::new()),
             services: Arc::new(ServiceRegistry::new()),
         }

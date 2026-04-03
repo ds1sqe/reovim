@@ -81,6 +81,16 @@ pub trait BufferApi: Send {
     /// Returns `None` if the buffer doesn't exist.
     fn buffer_content(&self, buffer: BufferId) -> Option<String>;
 
+    fn buffer_content_if_materializable(&self, buffer: BufferId) -> Option<String> {
+        if self.buffer_capabilities(buffer).is_some_and(|caps| {
+            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+        }) {
+            return None;
+        }
+
+        self.buffer_content(buffer)
+    }
+
     /// Get buffer's file path.
     ///
     /// Returns `None` if the buffer doesn't exist or has no associated file.

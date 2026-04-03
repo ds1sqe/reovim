@@ -34,6 +34,7 @@ tracing = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]
+reovim-provider-text = { workspace = true }
 toml = { workspace = true }
 
 [lints]

@@ -1047,15 +1047,12 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     // Test compositor branch where client_windows has no matching window
     // but active_buffer is set as fallback
     use {
-        parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_layout::{
             CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
             WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
         },
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
-        },
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 
@@ -1135,7 +1132,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );

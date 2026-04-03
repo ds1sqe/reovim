@@ -19,7 +19,7 @@ use crate::ids;
 /// Set mark at current cursor position (m{char}).
 ///
 /// - Lowercase marks (a-z) are buffer-local (stored in per-client `MarkBank`)
-/// - Uppercase marks (A-Z) are global (stored in kernel `global_marks`)
+/// - Uppercase marks (A-Z) are global (stored in session-shared mark storage)
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SetMark;
 
@@ -61,11 +61,7 @@ impl CommandHandler for SetMark {
             CommandResult::Success
         } else if mark_char.is_ascii_uppercase() {
             let mark = Mark::new(pos, buffer_id);
-            runtime
-                .kernel()
-                .global_marks
-                .write()
-                .set_global(mark_char, mark);
+            runtime.global_marks_mut().set_global(mark_char, mark);
             CommandResult::Success
         } else {
             CommandResult::error("Invalid mark character")
@@ -167,9 +163,7 @@ fn goto_mark(
             .map(|pos| (pos, buffer_id))
     } else if mark_char.is_ascii_uppercase() {
         runtime
-            .kernel()
-            .global_marks
-            .read()
+            .global_marks()
             .get_global(mark_char)
             .map(|m| (m.position, m.buffer_id))
     } else {

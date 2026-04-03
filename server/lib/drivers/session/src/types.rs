@@ -4,7 +4,7 @@
 //!
 //! # Design (#471)
 //!
-//! - **`SessionShared`**: Shared session infrastructure (compositor, `terminal_size`)
+//! - **`SessionShared`**: Shared session infrastructure (compositor, global marks)
 //! - **`Session`**: DEPRECATED - legacy type being migrated to `SessionShared`
 //! - **`ClientId`**: Unique client connection identifier
 //! - **Viewport**: Client viewport dimensions and scroll
@@ -35,8 +35,7 @@ use crate::{Jumplist, api::Selection as ApiSelection, extension::ExtensionMap};
 ///
 /// Contains state that is shared across all clients in a session:
 /// - Compositor for window layout management
-/// - Default terminal size
-/// - Active buffer ID (session-level)
+/// - Session-shared uppercase/global marks (A-Z)
 /// - Home mode for initializing new clients
 ///
 /// # Architecture (#471, #491)
@@ -58,8 +57,9 @@ use crate::{Jumplist, api::Selection as ApiSelection, extension::ExtensionMap};
 /// ┌─────────────────────────────────────────────────────────────────┐
 /// │ DRIVER LAYER                                                    │
 /// │   SessionShared  ◄─── Truly shared infrastructure               │
-/// │   ├── compositor  (template for layout)                         │
-/// │   └── home_mode   (bootstrap template for new clients, #491)   │
+/// │   ├── compositor   (template for layout)                        │
+/// │   ├── global_marks (session-shared uppercase marks)             │
+/// │   └── home_mode    (bootstrap template for new clients, #491)   │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 ///
@@ -76,6 +76,11 @@ pub struct SessionShared {
     /// This is set by the layout module during session initialization.
     pub compositor: Option<Box<dyn RootCompositor>>,
 
+    /// Session-shared uppercase/global marks (A-Z).
+    ///
+    /// Local marks (a-z) and special marks remain per-client in `EditingState`.
+    global_marks: MarkBank,
+
     /// Home mode for initializing new clients (#491).
     ///
     /// Bootstrap template for initializing new clients -- each client's
@@ -88,6 +93,7 @@ impl std::fmt::Debug for SessionShared {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionShared")
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .field("global_marks", &"MarkBank")
             .field("home_mode", &self.home_mode)
             .finish()
     }
@@ -107,6 +113,7 @@ impl SessionShared {
     pub fn new(home_mode: ModeId) -> Self {
         Self {
             compositor: None,
+            global_marks: MarkBank::new(),
             home_mode,
         }
     }
@@ -127,6 +134,18 @@ impl SessionShared {
     /// Get a mutable reference to the compositor.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.compositor.as_deref_mut()
+    }
+
+    /// Get the session-shared uppercase/global marks (A-Z).
+    #[must_use]
+    pub const fn global_marks(&self) -> &MarkBank {
+        &self.global_marks
+    }
+
+    /// Get the session-shared uppercase/global marks (A-Z) mutably.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn global_marks_mut(&mut self) -> &mut MarkBank {
+        &mut self.global_marks
     }
 
     /// Get the home mode for initializing new clients (#491).
@@ -803,14 +822,15 @@ impl KeySequence {
 /// │   Session (this struct)                                         │
 /// │   ├── id: ClientId (deprecated, not used at runtime #471)       │
 /// │   └── shared: SessionShared  ◄─── Truly shared infrastructure   │
-/// │       ├── compositor  (template for layout)                     │
-/// │       └── home_mode   (bootstrap template for new clients)      │
+/// │       ├── compositor   (template for layout)                    │
+/// │       ├── global_marks (session-shared uppercase marks)         │
+/// │       └── home_mode    (bootstrap template for new clients)     │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 pub struct Session {
     /// Client identifier (deprecated -- not used at runtime #471).
     pub id: ClientId,
-    /// Shared session infrastructure (compositor, home mode).
+    /// Shared session infrastructure (compositor, global marks, home mode).
     ///
     /// This field contains truly shared state that is accessed by all clients.
     /// `SessionRuntime` accesses shared state via `session.shared`.
@@ -921,6 +941,18 @@ impl Session {
     /// Delegates to `self.shared.compositor_mut()`.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.shared.compositor_mut()
+    }
+
+    /// Get the session-shared uppercase/global marks (A-Z).
+    #[must_use]
+    pub const fn global_marks(&self) -> &MarkBank {
+        self.shared.global_marks()
+    }
+
+    /// Get the session-shared uppercase/global marks (A-Z) mutably.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn global_marks_mut(&mut self) -> &mut MarkBank {
+        self.shared.global_marks_mut()
     }
 }
 

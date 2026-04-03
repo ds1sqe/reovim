@@ -227,6 +227,7 @@ fn test_session_shared_new() {
     let shared = SessionShared::new(mode.clone());
 
     assert!(shared.compositor.is_none());
+    assert!(shared.global_marks().list_global().is_empty());
     // active_buffer and terminal_size are per-client (#471)
     assert_eq!(shared.home_mode(), &mode);
 }
@@ -240,6 +241,7 @@ fn test_session_shared_debug() {
 
     assert!(debug_str.contains("SessionShared"));
     assert!(debug_str.contains("compositor"));
+    assert!(debug_str.contains("global_marks"));
     assert!(debug_str.contains("home_mode"));
 }
 

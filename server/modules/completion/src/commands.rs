@@ -306,15 +306,9 @@ fn drain_pending_notifications(runtime: &mut SessionRuntime<'_>) {
 fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
     let buffer_id = runtime.active_buffer()?;
 
-    // Non-materializable buffers may be multi-GB — skip full content materialization.
-    // Use only the cursor line for prefix extraction.
-    if runtime.buffer_capabilities(buffer_id).is_some_and(|caps| {
-        !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
-    }) {
+    let Some(content) = runtime.buffer_content_if_materializable(buffer_id) else {
         return build_virtual_context(runtime, buffer_id);
-    }
-
-    let content = runtime.buffer_content(buffer_id)?;
+    };
 
     // Get cursor from per-client window (#471).
     let window = runtime.windows().active()?;

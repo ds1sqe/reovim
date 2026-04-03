@@ -100,7 +100,7 @@ pub struct SessionRuntime<'a> {
     /// When `Some`, makes explicit which client's state we're operating on.
     /// When `None`, this is a test runtime without explicit client binding.
     owner: Option<crate::ClientId>,
-    /// Shared session state (template compositor, home mode).
+    /// Shared session state (template compositor, shared uppercase marks, home mode).
     ///
     /// Per-client state is stored in SEPARATE fields below, not in session.
     session: &'a mut Session,
@@ -143,8 +143,6 @@ pub struct SessionRuntime<'a> {
     /// Tracks yank/delete history for numbered registers 0-9.
     clipboard_history: &'a mut reovim_types_text::HistoryRing,
     /// Per-client local marks (a-z, per-client special marks) (#515).
-    ///
-    /// Global marks (A-Z) remain shared in `kernel.global_marks`.
     local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
     /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
     jumplist: &'a mut crate::Jumplist,
@@ -152,7 +150,7 @@ pub struct SessionRuntime<'a> {
     ///
     /// Each client tracks which buffer they are viewing independently.
     active_buffer: &'a mut Option<reovim_kernel::api::v1::BufferId>,
-    /// Kernel context (buffers, registers, global marks).
+    /// Kernel context (buffers, options, services).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
     executor: &'a dyn CommandExecutor,
@@ -187,7 +185,7 @@ impl<'a> SessionRuntime<'a> {
     /// * `mode_stack` - Per-client mode stack (source of truth for mode)
     /// * `windows` - Per-client window layout with cursors
     /// * `extensions` - Per-client module extensions
-    /// * `kernel` - Kernel context (buffers, registers, marks)
+    /// * `kernel` - Kernel context (buffers, options, services)
     /// * `executor` - Command executor
     ///
     /// # Multi-Client Isolation
@@ -269,7 +267,7 @@ impl<'a> SessionRuntime<'a> {
     /// * `owner` - The `ClientId` this runtime is bound to
     /// * `session` - Shared session infrastructure
     /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
-    /// * `kernel` - Kernel context (buffers, global marks)
+    /// * `kernel` - Kernel context (buffers, options, services)
     /// * `executor` - Command executor
     ///
     /// # Example
@@ -570,6 +568,18 @@ impl<'a> SessionRuntime<'a> {
     #[allow(clippy::missing_const_for_fn)]
     pub fn local_marks_mut(&mut self) -> &mut reovim_kernel::api::v1::MarkBank {
         self.local_marks
+    }
+
+    /// Get session-shared uppercase/global marks (A-Z).
+    #[must_use]
+    pub const fn global_marks(&self) -> &reovim_kernel::api::v1::MarkBank {
+        self.session.global_marks()
+    }
+
+    /// Get session-shared uppercase/global marks (A-Z) mutably.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn global_marks_mut(&mut self) -> &mut reovim_kernel::api::v1::MarkBank {
+        self.session.global_marks_mut()
     }
 
     /// Get per-client jump list (#654).

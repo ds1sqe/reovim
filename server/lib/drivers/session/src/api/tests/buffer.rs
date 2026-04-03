@@ -1,5 +1,76 @@
 use super::*;
 
+struct StubBufferApi {
+    content: Option<String>,
+    caps: Option<reovim_kernel::api::v1::BufferCapabilities>,
+}
+
+impl BufferApi for StubBufferApi {
+    fn active_buffer(&self) -> Option<BufferId> {
+        Some(BufferId::new())
+    }
+
+    fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
+
+    fn buffer_line(&self, _buffer: BufferId, _line: usize) -> Option<String> {
+        None
+    }
+
+    fn buffer_line_count(&self, _buffer: BufferId) -> Option<usize> {
+        None
+    }
+
+    fn buffer_line_len(&self, _buffer: BufferId, _line: usize) -> Option<usize> {
+        None
+    }
+
+    fn buffer_text_range(
+        &self,
+        _buffer: BufferId,
+        _start: Position,
+        _end: Position,
+    ) -> Option<String> {
+        None
+    }
+
+    fn buffer_content(&self, _buffer: BufferId) -> Option<String> {
+        self.content.clone()
+    }
+
+    fn buffer_file_path(&self, _buffer: BufferId) -> Option<String> {
+        None
+    }
+
+    fn is_buffer_modified(&self, _buffer: BufferId) -> Option<bool> {
+        None
+    }
+
+    fn set_buffer_modified(&mut self, _buffer: BufferId, _modified: bool) {}
+
+    fn insert_text(&mut self, _buffer: BufferId, _pos: Position, _text: &str) {}
+
+    fn delete_range(&mut self, _buffer: BufferId, _start: Position, _end: Position) {}
+
+    fn replace_content(&mut self, _buffer: BufferId, _content: &str) {}
+
+    fn create_buffer(&mut self, _name: Option<&str>, _content: &str) -> BufferId {
+        BufferId::new()
+    }
+
+    fn delete_buffer(&mut self, _buffer: BufferId) -> Result<(), BufferError> {
+        Ok(())
+    }
+
+    fn rename_buffer(&mut self, _buffer: BufferId, _new_name: &str) {}
+
+    fn buffer_capabilities(
+        &self,
+        _buffer: BufferId,
+    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+        self.caps
+    }
+}
+
 #[test]
 fn test_selection_modes() {
     let start = Position::new(0, 0);
@@ -124,6 +195,36 @@ fn test_buffer_error_clone() {
 #[test]
 fn test_buffer_error_eq() {
     assert_eq!(BufferError::CannotDeleteLastBuffer, BufferError::CannotDeleteLastBuffer);
+}
+
+#[test]
+fn test_buffer_content_if_materializable_returns_content() {
+    let api = StubBufferApi {
+        content: Some("hello".to_string()),
+        caps: Some(reovim_kernel::api::v1::BufferCapabilities::ROPE),
+    };
+
+    assert_eq!(api.buffer_content_if_materializable(BufferId::new()), Some("hello".to_string()));
+}
+
+#[test]
+fn test_buffer_content_if_materializable_skips_virtual() {
+    let api = StubBufferApi {
+        content: Some("hello".to_string()),
+        caps: Some(reovim_kernel::api::v1::BufferCapabilities::VIRTUAL),
+    };
+
+    assert_eq!(api.buffer_content_if_materializable(BufferId::new()), None);
+}
+
+#[test]
+fn test_buffer_content_if_materializable_falls_back_without_caps() {
+    let api = StubBufferApi {
+        content: Some("hello".to_string()),
+        caps: None,
+    };
+
+    assert_eq!(api.buffer_content_if_materializable(BufferId::new()), Some("hello".to_string()));
 }
 
 #[test]

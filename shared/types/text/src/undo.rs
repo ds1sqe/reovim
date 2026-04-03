@@ -631,7 +631,7 @@ impl UndoTree {
     /// Panics if `nodes_data` is empty (tree must have at least a root node).
     #[must_use]
     #[allow(clippy::type_complexity)] // Complex tuple is intentional for persistence API
-pub fn from_serializable(
+    pub fn from_serializable(
         nodes_data: Vec<(
             Vec<Edit>,     // edits
             Position,      // cursor_before

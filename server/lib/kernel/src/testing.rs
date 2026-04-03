@@ -25,9 +25,9 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use {
     crate::api::v1::{
-        BufferCapabilities, BufferId, BufferManager, BufferOps, EventBus, KernelContext, MarkBank,
-        ModeId, ModuleId, OptionRegistry, RwLock, ServiceRegistry, StorageCapabilities,
-        StorageError, StorageOps,
+        BufferCapabilities, BufferId, BufferManager, BufferOps, EventBus, KernelContext, ModeId,
+        ModuleId, OptionRegistry, RwLock, ServiceRegistry, StorageCapabilities, StorageError,
+        StorageOps,
     },
     reovim_types_text::{Position, TextGeometry},
 };
@@ -214,7 +214,7 @@ impl BufferOps for TestTextBuffer {
     }
 
     fn set_content(&mut self, content: &str) {
-        self.content = content.to_owned();
+        content.clone_into(&mut self.content);
         self.modified = true;
     }
 
@@ -282,7 +282,7 @@ impl BufferManager for TestBufferManager {
 /// This is the standard test context used across all modules. It provides:
 /// - Real `TestBufferManager` (stores and retrieves buffers)
 /// - Fresh `EventBus`
-/// - Empty `MarkBank`, `OptionRegistry`, `ServiceRegistry`
+/// - Empty `OptionRegistry` and `ServiceRegistry`
 ///
 /// For tests that need services (undo, search, etc.), create a context
 /// with this function and then register services on `ctx.services`.
@@ -291,7 +291,6 @@ pub fn create_test_context() -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     )
