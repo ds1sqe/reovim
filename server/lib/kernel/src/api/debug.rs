@@ -13,10 +13,7 @@
 //!   details like `HashMap` structures.
 
 use {
-    crate::{
-        core::{MarkBank, ModeStack, SpecialMark},
-        mm::{BufferId, Position},
-    },
+    crate::{core::ModeStack, mm::BufferId},
     reovim_types_text::{RegisterBank, YankType},
 };
 
@@ -77,28 +74,6 @@ pub struct RegistersSnapshot {
     pub named: Vec<RegisterSnapshot>,
 }
 
-/// Snapshot of a single mark.
-#[derive(Debug, Clone)]
-pub struct MarkSnapshot {
-    /// Mark name ('a'-'z' for local, 'A'-'Z' for global, special chars for special marks).
-    pub name: String,
-    /// Mark position.
-    pub position: Position,
-    /// Buffer ID for global marks.
-    pub buffer_id: Option<BufferId>,
-}
-
-/// Snapshot of all marks.
-#[derive(Debug, Clone)]
-pub struct MarksSnapshot {
-    /// Local marks (a-z) for current buffer.
-    pub local: Vec<MarkSnapshot>,
-    /// Global marks (A-Z) across all buffers.
-    pub global: Vec<MarkSnapshot>,
-    /// Special marks ('.', '^', etc.).
-    pub special: Vec<MarkSnapshot>,
-}
-
 /// Snapshot of mode stack.
 #[derive(Debug, Clone)]
 pub struct ModeStackSnapshot {
@@ -155,59 +130,6 @@ pub fn snapshot_registers(bank: &RegisterBank) -> RegistersSnapshot {
     }
 
     RegistersSnapshot { unnamed, named }
-}
-
-/// Create a marks snapshot from `MarkBank`.
-#[must_use]
-pub fn snapshot_marks(bank: &MarkBank) -> MarksSnapshot {
-    // Get local marks
-    let local: Vec<MarkSnapshot> = bank
-        .list_local()
-        .into_iter()
-        .map(|(name, pos)| MarkSnapshot {
-            name: name.to_string(),
-            position: pos,
-            buffer_id: None,
-        })
-        .collect();
-
-    // Get global marks
-    let global: Vec<MarkSnapshot> = bank
-        .list_global()
-        .into_iter()
-        .map(|(name, mark)| MarkSnapshot {
-            name: name.to_string(),
-            position: mark.position,
-            buffer_id: Some(mark.buffer_id),
-        })
-        .collect();
-
-    // Get special marks
-    let special_marks = [
-        (SpecialMark::LastJump, "'"),
-        (SpecialMark::LastEdit, "."),
-        (SpecialMark::LastInsert, "^"),
-        (SpecialMark::VisualStart, "<"),
-        (SpecialMark::VisualEnd, ">"),
-        (SpecialMark::LastExitInsert, "]"),
-    ];
-
-    let special: Vec<MarkSnapshot> = special_marks
-        .iter()
-        .filter_map(|(mark_type, name)| {
-            bank.get_special(*mark_type).map(|mark| MarkSnapshot {
-                name: (*name).to_string(),
-                position: mark.position,
-                buffer_id: Some(mark.buffer_id),
-            })
-        })
-        .collect();
-
-    MarksSnapshot {
-        local,
-        global,
-        special,
-    }
 }
 
 /// Create a mode stack snapshot from `ModeStack`.

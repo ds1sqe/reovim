@@ -50,32 +50,43 @@ fn test_snapshot_registers_with_content() {
 }
 
 #[test]
-fn test_snapshot_marks_empty() {
+fn test_mark_bank_empty() {
     let bank = MarkBank::new();
-    let snapshot = snapshot_marks(&bank);
 
-    assert!(snapshot.local.is_empty());
-    assert!(snapshot.global.is_empty());
-    assert!(snapshot.special.is_empty());
+    assert!(bank.list_local().is_empty());
+    assert!(bank.list_global().is_empty());
+    assert!(bank.get_special(SpecialMark::LastJump).is_none());
+    assert!(bank.get_special(SpecialMark::LastEdit).is_none());
+    assert!(bank.get_special(SpecialMark::LastInsert).is_none());
+    assert!(bank.get_special(SpecialMark::VisualStart).is_none());
+    assert!(bank.get_special(SpecialMark::VisualEnd).is_none());
+    assert!(bank.get_special(SpecialMark::LastExitInsert).is_none());
 }
 
 #[test]
-fn test_snapshot_marks_with_content() {
+fn test_mark_bank_with_content() {
     let mut bank = MarkBank::new();
     let buffer_id = BufferId::new();
 
     bank.set_local('a', Position::new(10, 5));
     bank.set_global('A', Mark::new(Position::new(20, 0), buffer_id));
+    bank.set_special(SpecialMark::LastJump, Mark::new(Position::new(5, 3), buffer_id));
 
-    let snapshot = snapshot_marks(&bank);
+    let local = bank.list_local();
+    assert_eq!(local.len(), 1);
+    assert_eq!(local[0], ('a', Position::new(10, 5)));
 
-    assert_eq!(snapshot.local.len(), 1);
-    assert_eq!(snapshot.local[0].name, "a");
-    assert_eq!(snapshot.local[0].position, Position::new(10, 5));
+    let global = bank.list_global();
+    assert_eq!(global.len(), 1);
+    assert_eq!(global[0].0, 'A');
+    assert_eq!(global[0].1.position, Position::new(20, 0));
+    assert_eq!(global[0].1.buffer_id, buffer_id);
 
-    assert_eq!(snapshot.global.len(), 1);
-    assert_eq!(snapshot.global[0].name, "A");
-    assert_eq!(snapshot.global[0].position, Position::new(20, 0));
+    let mark = bank
+        .get_special(SpecialMark::LastJump)
+        .expect("last jump mark");
+    assert_eq!(mark.position, Position::new(5, 3));
+    assert_eq!(mark.buffer_id, buffer_id);
 }
 
 #[test]
@@ -87,20 +98,4 @@ fn test_snapshot_mode_stack() {
     assert_eq!(snapshot.current, "editor:normal");
     assert_eq!(snapshot.depth, 1);
     assert_eq!(snapshot.stack.len(), 1);
-}
-
-#[test]
-fn test_snapshot_marks_with_special_marks() {
-    let mut bank = MarkBank::new();
-    let buffer_id = BufferId::new();
-
-    bank.set_special(SpecialMark::LastJump, Mark::new(Position::new(5, 3), buffer_id));
-    bank.set_special(SpecialMark::LastEdit, Mark::new(Position::new(10, 0), buffer_id));
-
-    let snapshot = snapshot_marks(&bank);
-
-    // Special marks should be included
-    assert!(snapshot.special.len() >= 2);
-    assert!(snapshot.special.iter().any(|m| m.name == "'"));
-    assert!(snapshot.special.iter().any(|m| m.name == "."));
 }
