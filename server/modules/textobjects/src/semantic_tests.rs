@@ -16,8 +16,9 @@ use {
             ModeStack,
             v1::{BufferId, Jumplist, KernelContext, MarkBank, ModeId},
         },
-        testing::{create_test_context, setup_buffer, test_mode},
+        testing::{create_test_context, test_mode},
     },
+    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 

@@ -842,9 +842,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn create_buffer(&mut self, name: Option<&str>, content: &str) -> BufferId {
-        use reovim_kernel::api::v1::Buffer;
-
-        let mut buffer = Buffer::from_string(content);
+        let mut buffer = reovim_provider_text::Buffer::from_string(content);
         if let Some(name) = name {
             buffer.set_file_path(Some(name.to_string()));
         }

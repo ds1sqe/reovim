@@ -293,14 +293,11 @@ fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<crate::sess
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -558,14 +555,11 @@ fn test_registry_with_syntax_factory() -> (Arc<SessionRegistry>, Arc<crate::sess
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),

@@ -24,7 +24,16 @@
 mod virtual_buffer;
 mod virtual_snapshot;
 
+mod buffer;
+mod rope;
+mod snapshot;
+
 pub use {
+    snapshot::BufferSnapshot,
     virtual_buffer::{HeapMapping, VirtualBuffer},
     virtual_snapshot::VirtualSnapshot,
 };
+
+pub use {buffer::Buffer, rope::Rope};
+
+pub mod testing;

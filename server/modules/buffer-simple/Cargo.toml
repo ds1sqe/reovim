@@ -20,6 +20,9 @@ workspace = true
 reovim-kernel = { workspace = true }
 reovim-capabilities = { workspace = true }
 
+# Buffer type moved to provider-text (#740)
+reovim-provider-text = { workspace = true }
+
 # Driver for BufferManagerKey and registry
 reovim-driver-buffer = { workspace = true }
 

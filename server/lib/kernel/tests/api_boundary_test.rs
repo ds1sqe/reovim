@@ -130,11 +130,10 @@ fn window_id_accessible() {
 
 #[test]
 fn buffer_types_accessible() {
-    // Buffer types should be accessible via api::v1
+    // Buffer identity should be accessible via api::v1.
+    // Concrete text buffers moved to reovim-provider-text (#740).
     let id = BufferId::new();
-    let buf = Buffer::from_string("Hello\nWorld");
-    assert_eq!(buf.line_count(), 2);
-    _ = id; // Verify type compiles
+    assert_ne!(id, BufferId::new());
 }
 
 #[test]

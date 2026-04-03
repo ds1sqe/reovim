@@ -124,15 +124,12 @@ async fn test_session_with_state() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     // Create a kernel context with a real buffer manager
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -410,15 +407,12 @@ async fn test_with_state_mut_sync() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -885,15 +879,12 @@ fn test_add_client_with_active_buffer() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -927,15 +918,12 @@ fn test_insert_char_for_client_buffer_path() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -975,15 +963,12 @@ fn test_insert_char_for_client_newline() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -1058,15 +1043,12 @@ fn test_sync_and_set_relation_with_cursor_sync() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -1202,7 +1184,7 @@ fn test_insert_char_for_client_with_undo_recording() {
         reovim_kernel::api::v1::{
             BufferId, EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{Edit, MotionEngine, Position, TextObjectEngine, UndoResult, UndoTree},
+        reovim_types_text::{Edit, Position, UndoResult, UndoTree},
         std::sync::{Arc, Mutex},
     };
 
@@ -1301,8 +1283,6 @@ fn test_insert_char_for_client_with_undo_recording() {
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,
@@ -1465,15 +1445,12 @@ fn test_ensure_client_has_window_lazy_sync() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -1707,15 +1684,12 @@ fn test_add_client_with_compositor_creates_windows() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -1760,15 +1734,12 @@ fn test_ensure_client_has_window_with_compositor() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),

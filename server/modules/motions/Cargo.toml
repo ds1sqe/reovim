@@ -25,6 +25,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-driver-layout = { workspace = true }
+# Buffer moved to provider-text (#740); tests use setup_buffer from there
+reovim-provider-text = { workspace = true }
 
 [lints]
 workspace = true

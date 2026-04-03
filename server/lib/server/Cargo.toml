@@ -18,6 +18,7 @@ grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
 # Core crates
 reovim-kernel = { workspace = true }
 reovim-types-text = { workspace = true }
+reovim-provider-text = { workspace = true }
 reovim-protocol = { workspace = true }
 reovim-arch = { workspace = true }
 
@@ -69,6 +70,8 @@ reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
+# Buffer moved to provider-text (#740); tests use it via dev-dep
+reovim-provider-text = { workspace = true }
 
 [lints]
 workspace = true

@@ -2,11 +2,14 @@
 //!
 //! Moved from `reovim-kernel` to `reovim-provider-text` as part of #740
 //! (kernel buffer extraction). `VirtualSnapshot` is text-specific: its
-//! fields include `LineIndex` and `PieceTree` with text metrics.
+//! fields include `LineIndex` and byte-level `PieceTree` state.
 
 use std::{fmt, sync::Arc};
 
-use reovim_kernel::api::v1::{FileMapping, LineIndex, PieceTree};
+use {
+    reovim_driver_vfs::{FileMapping, PieceTree},
+    reovim_types_text::LineIndex,
+};
 
 /// Opaque snapshot of virtual buffer state.
 ///

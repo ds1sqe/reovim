@@ -128,3 +128,7 @@ impl<'a> IntoIterator for &'a Transaction {
         self.edits.iter()
     }
 }
+
+#[cfg(test)]
+#[path = "transaction_tests.rs"]
+mod tests;

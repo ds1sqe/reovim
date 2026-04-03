@@ -25,8 +25,9 @@ use {
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
-        Buffer, BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
+        BufferId, BufferOps, CommandId, Jumplist, KernelContext, ModeId, ModeStack,
     },
+    reovim_provider_text::Buffer,
     reovim_types_text::RegisterContent,
 };
 

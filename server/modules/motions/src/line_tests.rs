@@ -12,8 +12,9 @@ use {
             KernelContext, ModeStack,
             v1::{BufferId, Jumplist, MarkBank, ModeId, ModuleId},
         },
-        testing::{create_test_context, setup_buffer},
+        testing::create_test_context,
     },
+    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -758,7 +759,7 @@ fn test_buffer_manager_unregister_nonexistent() {
 
 #[test]
 fn test_buffer_manager_create() {
-    use reovim_kernel::testing::setup_buffer;
+    use reovim_provider_text::testing::setup_buffer;
     let setup = TestSetup::new("hello");
     let bid = setup_buffer(&setup.ctx, "");
     assert!(setup.ctx.buffers.get(bid).is_some());

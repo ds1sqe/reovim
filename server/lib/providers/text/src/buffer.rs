@@ -20,9 +20,14 @@ use std::{
 };
 
 use {
-    super::{BufferId, Position, rope::Rope},
-    reovim_types_text::TextGeometry,
+    reovim_kernel::api::v1::{
+        BufferCapabilities, BufferId, BufferMeta, BufferOps, StorageCapabilities, StorageError,
+        StorageOps,
+    },
+    reovim_types_text::{Position, TextGeometry},
 };
+
+use super::{BufferSnapshot, rope::Rope};
 
 /// A text buffer with rope-based storage.
 ///
@@ -43,7 +48,7 @@ use {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
+/// use reovim_provider_text::Buffer;
 /// # use reovim_types_text::Position;
 ///
 /// let mut buf = Buffer::from_string("Hello\nWorld");
@@ -214,7 +219,7 @@ impl Buffer {
     ///
     /// Used by snapshot types for efficient state capture.
     #[must_use]
-    pub(crate) fn clone_rope(&self) -> Rope {
+    pub fn clone_rope(&self) -> Rope {
         self.text.clone()
     }
 
@@ -422,10 +427,7 @@ impl TextGeometry for Buffer {
 
 // ── BufferOps ──────────────────────────────────────────────────────────────
 
-use crate::api::{
-    BufferCapabilities, BufferOps,
-    storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps},
-};
+// StorageOps, BufferMeta, BufferOps, etc. imported at the top of the file.
 
 // ── StorageOps + BufferMeta (#740) ────────────────────────────────────────
 
@@ -583,6 +585,27 @@ impl BufferOps for Buffer {
 
     fn as_text_geometry(&self) -> &dyn TextGeometry {
         self
+    }
+}
+
+// ── BufferSnapshot helper ──────────────────────────────────────────────────
+
+use reovim_types_text::Cursor;
+
+impl Buffer {
+    /// Create a `BufferSnapshot` from this buffer.
+    ///
+    /// Cursor must be passed explicitly - get it from Window.
+    /// This is O(1) via `Arc` rope sharing.
+    #[must_use]
+    pub fn snapshot(&self, cursor: Cursor) -> BufferSnapshot {
+        BufferSnapshot::from_parts(
+            self.id(),
+            self.clone_rope(),
+            cursor,
+            self.file_path().map(String::from),
+            self.is_modified(),
+        )
     }
 }
 

@@ -59,15 +59,12 @@ fn test_module_context(
     use {
         parking_lot::RwLock,
         reovim_kernel::api::v1::{EventBus, KernelContext, MarkBank, OptionRegistry},
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(reovim_driver_buffer::TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services.clone(),

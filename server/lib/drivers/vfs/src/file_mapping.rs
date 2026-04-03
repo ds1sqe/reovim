@@ -1,7 +1,8 @@
 //! File mapping trait for zero-copy access to original file bytes.
 //!
 //! `FileMapping` abstracts over mmap'd files and heap-backed test data.
-//! The kernel defines the trait; drivers provide implementations.
+//! The VFS layer defines the trait because it owns byte-level mapping and
+//! memory-mapped file access.
 //!
 //! # Implementations
 //!

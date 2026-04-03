@@ -2,7 +2,7 @@
 //!
 //! [`MappedFile`] wraps a `memmap2::Mmap` handle behind an `Arc` so it can
 //! be shared across `VirtualBuffer` clones and snapshots.  It implements the
-//! kernel's [`FileMapping`] trait, keeping the mmap dependency confined to
+//! VFS-layer [`FileMapping`] trait, keeping the mmap dependency confined to
 //! this driver.
 
 use std::{
@@ -11,7 +11,7 @@ use std::{
     time::SystemTime,
 };
 
-use reovim_kernel::api::v1::FileMapping;
+use crate::FileMapping;
 
 // ─── MappedFile ─────────────────────────────────────────────────────────────
 

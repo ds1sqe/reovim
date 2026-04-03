@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use {
-    parking_lot::RwLock, reovim_driver_buffer::BufferCapabilities, reovim_kernel::api::v1::Buffer,
-};
+use {parking_lot::RwLock, reovim_driver_buffer::BufferCapabilities, reovim_provider_text::Buffer};
 
 use super::BufferHandle;
 

@@ -34,6 +34,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **completion**: virtual buffer completion uses line-based access instead of full content materialization (#739)
 - **format**: format commands skip virtual buffers gracefully (#739)
 
+### Refactored
+
+- **kernel**: continue the `#740` byte-only extraction — text `Buffer`/Rope and semantic undo test ownership move out of kernel, VFS now owns file-mapping/piece-table primitives, and `KernelContext` drops dead motion/text-object engines (#740)
+
 ## [0.14.4] - 2026-04-01
 
 ### Added

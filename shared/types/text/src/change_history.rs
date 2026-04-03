@@ -183,3 +183,7 @@ impl History {
             .collect()
     }
 }
+
+#[cfg(test)]
+#[path = "change_history_tests.rs"]
+mod tests;

@@ -12,11 +12,10 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
-    reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{
-        CommandId, FileMapping, LineIndex, ModuleId, events::kernel::FileOpened,
-    },
+    reovim_driver_vfs::{FileMapping, VfsDriver},
+    reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
     reovim_provider_text::VirtualBuffer,
+    reovim_types_text::LineIndex,
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");

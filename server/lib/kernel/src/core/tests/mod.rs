@@ -30,7 +30,4 @@ mod option_value;
 mod register;
 mod textobj;
 
-#[path = "../text_geometry_tests.rs"]
-mod text_geometry;
-
 mod b9_repro;

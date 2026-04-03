@@ -5,9 +5,12 @@
 use std::{borrow::Cow, sync::Arc};
 
 use {
-    reovim_kernel::api::v1::{Buffer, BufferId, BufferOps, FileMapping, LineIndex, StorageOps},
-    reovim_types_text::{Position, TextGeometry},
+    reovim_driver_vfs::FileMapping,
+    reovim_kernel::api::v1::{BufferId, BufferOps, StorageOps},
+    reovim_types_text::{LineIndex, Position, TextGeometry},
 };
+
+use crate::Buffer;
 
 use super::{HeapMapping, VirtualBuffer, VirtualSnapshot};
 

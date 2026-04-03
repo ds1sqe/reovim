@@ -22,15 +22,12 @@ fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
     };
 
     // Create a KernelContext with a real buffer manager
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),

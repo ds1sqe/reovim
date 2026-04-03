@@ -70,6 +70,7 @@
 mod byte_edit;
 mod byte_undo_log;
 mod error;
+mod file_mapping;
 mod filetype;
 mod instance;
 mod mapped_file;
@@ -77,6 +78,7 @@ mod metadata;
 mod mock;
 mod module_ext;
 mod path;
+mod piece_table;
 mod provider;
 mod registry;
 mod scheme;
@@ -92,6 +94,12 @@ pub use {
 
 // Re-export error types
 pub use error::VfsError;
+
+// Re-export byte-level large-file support types
+pub use {
+    file_mapping::FileMapping,
+    piece_table::{Piece, PieceMetrics, PieceSource, PieceTree},
+};
 
 // Re-export VFS implementations
 pub use {

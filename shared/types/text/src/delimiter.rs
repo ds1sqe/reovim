@@ -6,10 +6,9 @@
 //!
 //! # Design Philosophy
 //!
-//! Following the kernel "mechanism, not policy" principle:
-//! - Pure functions operating on any [`TextGeometry`] implementor
-//! - No text object semantics (that's policy in modules)
-//! - No escape sequence handling (that's syntax-aware policy)
+//! These are pure functions operating on any [`TextGeometry`] implementor.
+//! They only depend on abstract text geometry and stay free of syntax or
+//! module-specific policy.
 //!
 //! # Delimiter Types
 //!
@@ -19,8 +18,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::api::v1::*;
-//! # use reovim_types_text::{Position, SimpleText};
+//! use reovim_types_text::{Position, SimpleText, find_delimiter_pair};
 //!
 //! let buffer = SimpleText::new("fn foo(bar, baz) {}");
 //!
@@ -32,7 +30,7 @@
 //! assert_eq!(close, Position::new(0, 15));
 //! ```
 
-use reovim_types_text::{Position, TextGeometry};
+use crate::{Position, TextGeometry};
 
 /// Find matching delimiter pair containing the given position.
 ///
@@ -55,8 +53,7 @@ use reovim_types_text::{Position, TextGeometry};
 /// # Examples
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
-/// # use reovim_types_text::{Position, SimpleText};
+/// use reovim_types_text::{Position, SimpleText, find_delimiter_pair};
 ///
 /// let buffer = SimpleText::new("(hello)");
 /// let result = find_delimiter_pair(&buffer, Position::new(0, 3), '(', ')');
@@ -94,7 +91,7 @@ fn find_symmetric_pair(
     let line = text.line(pos.line)?;
     let chars: Vec<char> = line.chars().collect();
 
-    // Find all quote positions on current line
+    // Find all quote positions on current line.
     let quote_positions: Vec<usize> = chars
         .iter()
         .enumerate()
@@ -102,12 +99,12 @@ fn find_symmetric_pair(
         .map(|(i, _)| i)
         .collect();
 
-    // Need at least 2 quotes to form a pair
+    // Need at least 2 quotes to form a pair.
     if quote_positions.len() < 2 {
         return None;
     }
 
-    // Find pair containing cursor
+    // Find pair containing cursor.
     // Quotes are paired: 0-1, 2-3, 4-5, etc.
     let mut i = 0;
     while i + 1 < quote_positions.len() {
@@ -137,20 +134,20 @@ fn find_asymmetric_pair(
     open: char,
     close: char,
 ) -> Option<(Position, Position)> {
-    // Check if we're at a delimiter character
+    // Check if we're at a delimiter character.
     let line = text.line(pos.line)?;
     let chars: Vec<char> = line.chars().collect();
     let current_char = chars.get(pos.column).copied();
 
     match current_char {
         Some(c) if c == open => {
-            // At opening delimiter: this is the open, search forward for close
+            // At opening delimiter: this is the open, search forward for close.
             let close_pos =
                 find_forward(text, Position::new(pos.line, pos.column + 1), open, close)?;
             Some((pos, close_pos))
         }
         Some(c) if c == close => {
-            // At closing delimiter: search backward for open, this is the close
+            // At closing delimiter: search backward for open, this is the close.
             let open_pos = find_backward(
                 text,
                 Position::new(pos.line, pos.column.saturating_sub(1)),
@@ -160,7 +157,7 @@ fn find_asymmetric_pair(
             Some((open_pos, pos))
         }
         _ => {
-            // Inside delimiters: search both directions
+            // Inside delimiters: search both directions.
             let open_pos = find_backward(text, pos, open, close)?;
             let close_pos = find_forward(text, pos, open, close)?;
             Some((open_pos, close_pos))
@@ -185,7 +182,7 @@ fn find_backward(
             let chars: Vec<char> = line.chars().collect();
             let start = x.min(chars.len().saturating_sub(1));
 
-            // Search backward through this line
+            // Search backward through this line.
             for i in (0..=start).rev() {
                 if i >= chars.len() {
                     continue;
@@ -229,7 +226,7 @@ fn find_forward(
             let chars: Vec<char> = line.chars().collect();
             let start = if y == pos.line { x } else { 0 };
 
-            // Search forward through this line
+            // Search forward through this line.
             for (i, &c) in chars.iter().enumerate().skip(start) {
                 if c == open {
                     depth += 1;
@@ -270,8 +267,8 @@ pub fn find_matching_delimiter(text: &dyn TextGeometry, pos: Position) -> Option
     let chars: Vec<char> = line.chars().collect();
     let c = *chars.get(pos.column)?;
 
-    // Start search from position+1 for opening delimiters (skip the delimiter itself)
-    // For closing delimiters, search backward from position-1
+    // Start search from position+1 for opening delimiters (skip the delimiter itself).
+    // For closing delimiters, search backward from position-1.
     match c {
         '(' => find_forward(text, Position::new(pos.line, pos.column + 1), '(', ')'),
         ')' => find_backward(text, Position::new(pos.line, pos.column.saturating_sub(1)), '(', ')'),
@@ -284,3 +281,7 @@ pub fn find_matching_delimiter(text: &dyn TextGeometry, pos: Position) -> Option
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "delimiter_tests.rs"]
+mod tests;

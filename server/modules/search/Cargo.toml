@@ -24,6 +24,9 @@ reovim-capabilities = { workspace = true }
 # Driver for SearchProvider trait
 reovim-driver-search = { workspace = true }
 
+# Buffer moved to provider-text (#740)
+reovim-provider-text = { workspace = true }
+
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }
 

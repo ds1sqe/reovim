@@ -45,6 +45,8 @@ tracing = { workspace = true }
 [dev-dependencies]
 reovim-testing = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
+# Buffer moved to provider-text (#740); tests use setup_buffer from there
+reovim-provider-text = { workspace = true }
 
 [lints]
 workspace = true

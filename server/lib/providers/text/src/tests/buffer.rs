@@ -1,4 +1,10 @@
-use super::*;
+use std::borrow::Cow;
+
+use {
+    super::*,
+    reovim_kernel::api::v1::BufferId,
+    reovim_types_text::{Position, TextGeometry},
+};
 
 // === Construction ===
 
@@ -630,4 +636,58 @@ fn from_string_single_newline() {
     // "\n".lines() → [""], joined → "". joined.is_empty() → true (L376:br0).
     let buf = Buffer::from_string("\n");
     assert_eq!(buf.line_count(), 0, "single newline normalizes to empty");
+}
+
+// === TextGeometry ===
+
+#[test]
+fn text_geometry_line_count() {
+    let buf = Buffer::from_string("hello\nworld\nfoo");
+    let tg: &dyn TextGeometry = &buf;
+    assert_eq!(tg.line_count(), 3);
+}
+
+#[test]
+fn text_geometry_line_zero_copy() {
+    let buf = Buffer::from_string("hello\nworld");
+    let tg: &dyn TextGeometry = &buf;
+    let line = tg.line(0).unwrap();
+    assert!(matches!(line, Cow::Borrowed(_)));
+    assert_eq!(&*line, "hello");
+}
+
+#[test]
+fn text_geometry_line_out_of_bounds() {
+    let buf = Buffer::from_string("hello");
+    let tg: &dyn TextGeometry = &buf;
+    assert!(tg.line(1).is_none());
+}
+
+#[test]
+fn text_geometry_line_len() {
+    let buf = Buffer::from_string("hello\nab");
+    let tg: &dyn TextGeometry = &buf;
+    assert_eq!(tg.line_len(0), Some(5));
+    assert_eq!(tg.line_len(1), Some(2));
+    assert_eq!(tg.line_len(2), None);
+}
+
+#[test]
+fn text_geometry_is_empty() {
+    let empty = Buffer::new();
+    let non_empty = Buffer::from_string("x");
+    let tg_empty: &dyn TextGeometry = &empty;
+    let tg_full: &dyn TextGeometry = &non_empty;
+    assert!(tg_empty.is_empty());
+    assert!(!tg_full.is_empty());
+}
+
+#[test]
+fn text_geometry_auto_coercion() {
+    fn accepts_geometry(tg: &dyn TextGeometry) -> usize {
+        tg.line_count()
+    }
+
+    let buf = Buffer::from_string("a\nb\nc");
+    assert_eq!(accepts_geometry(&buf), 3);
 }

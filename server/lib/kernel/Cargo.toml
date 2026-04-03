@@ -25,3 +25,7 @@ reovim-types-text = { workspace = true }
 
 # Capability bitflags for BufferOps trait
 bitflags = { workspace = true }
+
+[dev-dependencies]
+# Buffer moved to provider-text (#740); tests import it via dev-dep (no circular dep)
+reovim-provider-text = { workspace = true }

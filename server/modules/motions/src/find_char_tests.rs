@@ -11,8 +11,9 @@ use {
             KernelContext, ModeStack,
             v1::{BufferId, CommandId, Jumplist, MarkBank, ModeId, ModuleId},
         },
-        testing::{create_test_context, setup_buffer},
+        testing::create_test_context,
     },
+    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

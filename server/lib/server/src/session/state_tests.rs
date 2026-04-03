@@ -5,7 +5,7 @@ use {
     reovim_kernel::api::v1::{
         EventBus, Jumplist, MarkBank, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
     },
-    reovim_types_text::{HistoryRing, MotionEngine, RegisterBank, TextObjectEngine},
+    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_mode_id() -> ModeId {
@@ -21,8 +21,6 @@ fn test_kernel() -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
@@ -447,8 +445,7 @@ fn test_with_registries_with_initial_buffer() {
 
     // Create a buffer before creating the state
     let buffer_id = {
-        use reovim_kernel::api::v1::Buffer;
-        let mut buffer = Buffer::new();
+        let mut buffer = reovim_provider_text::Buffer::new();
         buffer.set_content("initial");
         kernel.buffers.register(Arc::new(RwLock::new(buffer)))
     };
@@ -776,7 +773,7 @@ fn test_with_registries_with_buffer_and_no_compositor() {
     let kernel = test_kernel();
 
     // Create a buffer first
-    let mut buffer = reovim_kernel::api::v1::Buffer::new();
+    let mut buffer = reovim_provider_text::Buffer::new();
     buffer.set_content("hello world");
     let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
@@ -800,11 +797,11 @@ fn test_with_registries_multiple_buffers() {
     let kernel = test_kernel();
 
     // Create multiple buffers
-    let mut buf1 = reovim_kernel::api::v1::Buffer::new();
+    let mut buf1 = reovim_provider_text::Buffer::new();
     buf1.set_content("first");
     let id1 = kernel.buffers.register(Arc::new(RwLock::new(buf1)));
 
-    let mut buf2 = reovim_kernel::api::v1::Buffer::new();
+    let mut buf2 = reovim_provider_text::Buffer::new();
     buf2.set_content("second");
     let id2 = kernel.buffers.register(Arc::new(RwLock::new(buf2)));
 
@@ -1274,7 +1271,7 @@ fn test_with_registries_with_buffer_and_compositor_creates_window() {
     let kernel = test_kernel();
 
     // Create a buffer first so buffer_ids is non-empty
-    let mut buffer = reovim_kernel::api::v1::Buffer::new();
+    let mut buffer = reovim_provider_text::Buffer::new();
     buffer.set_content("test content");
     let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 

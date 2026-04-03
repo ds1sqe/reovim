@@ -43,21 +43,12 @@ pub use super::context::{KernelContext, ModuleContext};
 // Memory Management (mm/)
 // ============================================================================
 
-// Buffer types (kernel-owned)
-pub use crate::mm::{Buffer, BufferId, TabId, WindowId};
+// Buffer types
+// Note: Buffer moved to reovim-provider-text (#740). Use reovim_provider_text::Buffer.
+pub use crate::mm::{BufferId, TabId, WindowId};
 
-// Virtual buffer support types (large file support)
-// Note: VirtualBuffer and HeapMapping moved to reovim-provider-text (#740)
-pub use crate::mm::{FileMapping, InvalidUtf8, LineIndex};
-
-// Piece table (byte-only B-tree for large file editing)
-pub use crate::mm::{Piece, PieceMetrics, PieceSource, PieceTree};
-
-// Snapshot for lock-free buffer access
-pub use crate::mm::BufferSnapshot;
-
-// Delimiter matching (kernel-owned, will move to provider in Phase 2)
-pub use crate::mm::{find_delimiter_pair, find_matching_delimiter};
+// Snapshot moved to reovim-provider-text (#740)
+// Note: FileMapping and PieceTree moved to reovim-driver-vfs (#740)
 
 // Line caching
 pub use crate::mm::LineCache;

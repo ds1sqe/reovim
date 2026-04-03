@@ -11,7 +11,7 @@
 //! # Structural Sharing
 //!
 //! `PieceTree` uses `Arc<PieceNode>` for O(1) clone, following the same
-//! pattern as the existing [`Rope`](super::rope::Rope) B-tree.  Mutations
+//! pattern as other persistent B-tree structures in the codebase. Mutations
 //! copy only the path from root to the modified leaf (O(log n) nodes).
 //!
 //! # Invariants
@@ -342,6 +342,10 @@ impl PieceTree {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "piece_table_tests.rs"]
+mod tests;
 
 impl Default for PieceTree {
     fn default() -> Self {

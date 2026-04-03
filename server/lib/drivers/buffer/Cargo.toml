@@ -16,6 +16,9 @@ workspace = true
 # Kernel types for BufferManager trait
 reovim-kernel = { workspace = true }
 
+# Buffer type moved to provider-text (#740)
+reovim-provider-text = { workspace = true }
+
 # Arch for RwLock (used by TestBufferManager)
 reovim-arch = { workspace = true }
 

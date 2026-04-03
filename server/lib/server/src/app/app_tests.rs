@@ -156,15 +156,13 @@ fn test_fallback_get_buffer_with_real_buffer() {
     use {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{Buffer, EventBus, MarkBank, OptionRegistry, ServiceRegistry},
-        reovim_types_text::{MotionEngine, TextObjectEngine},
+        reovim_kernel::api::v1::{EventBus, MarkBank, OptionRegistry, ServiceRegistry},
+        reovim_provider_text::Buffer,
     };
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),

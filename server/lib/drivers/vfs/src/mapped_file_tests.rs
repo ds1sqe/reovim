@@ -2,9 +2,7 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::FileMapping;
-
-use crate::MappedFile;
+use crate::{FileMapping, MappedFile};
 
 #[test]
 fn from_vec_basic() {

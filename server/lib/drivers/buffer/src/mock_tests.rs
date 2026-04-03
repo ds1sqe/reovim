@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, BufferOps},
+    reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps},
+    reovim_provider_text::Buffer,
 };
 
 use super::*;

@@ -48,7 +48,6 @@ use {
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
-    reovim_types_text::{MotionEngine, TextObjectEngine},
 };
 
 // #620: Static module factories — only available when static-modules feature is on.
@@ -575,8 +574,6 @@ fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(reovim_driver_buffer::TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,

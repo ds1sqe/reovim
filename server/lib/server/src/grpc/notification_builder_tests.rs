@@ -1056,7 +1056,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{MotionEngine, TextObjectEngine},
         std::sync::Arc,
     };
 
@@ -1136,8 +1135,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
-        Arc::new(MotionEngine),
-        Arc::new(TextObjectEngine),
         Arc::new(ParkingLotRwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),

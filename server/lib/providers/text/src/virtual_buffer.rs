@@ -22,11 +22,12 @@ use std::{
 use crate::virtual_snapshot::VirtualSnapshot;
 
 use {
+    reovim_driver_vfs::{FileMapping, Piece, PieceMetrics, PieceSource, PieceTree},
     reovim_kernel::api::v1::{
-        BufferCapabilities, BufferId, BufferMeta, BufferOps, FileMapping, LineIndex, Piece,
-        PieceMetrics, PieceSource, PieceTree, StorageCapabilities, StorageError, StorageOps,
+        BufferCapabilities, BufferId, BufferMeta, BufferOps, StorageCapabilities, StorageError,
+        StorageOps,
     },
-    reovim_types_text::{Position, TextGeometry},
+    reovim_types_text::{LineIndex, Position, TextGeometry},
 };
 
 /// Create byte-only metrics from a string's byte length.

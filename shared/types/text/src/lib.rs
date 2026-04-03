@@ -48,6 +48,9 @@ mod selection;
 // --- Traits ---
 mod text_geometry;
 
+// --- Pure text algorithms ---
+mod delimiter;
+
 // --- Direction and motion types ---
 mod direction;
 mod motion;
@@ -87,6 +90,9 @@ pub use domain::Text;
 
 // Traits and helpers
 pub use text_geometry::{SimpleText, TextGeometry};
+
+// Pure text algorithms
+pub use delimiter::{find_delimiter_pair, find_matching_delimiter};
 
 // Direction and motion
 pub use {

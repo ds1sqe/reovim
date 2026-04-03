@@ -6,12 +6,9 @@ use std::{fmt, path::PathBuf, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
-use {
-    crate::{
-        core::{MarkBank, OptionRegistry},
-        ipc::EventBus,
-    },
-    reovim_types_text::{MotionEngine, TextObjectEngine},
+use crate::{
+    core::{MarkBank, OptionRegistry},
+    ipc::EventBus,
 };
 
 use super::{buffer_manager::BufferManager, module::ModuleId, service::ServiceRegistry};
@@ -47,10 +44,6 @@ pub struct KernelContext {
     pub event_bus: Arc<EventBus>,
     /// Buffer manager for buffer storage and retrieval.
     pub buffers: Arc<dyn BufferManager>,
-    /// Motion calculation engine.
-    pub motion: Arc<MotionEngine>,
-    /// Text object calculation engine.
-    pub text_objects: Arc<TextObjectEngine>,
     /// Global mark storage (A-Z, shared special marks) (#515).
     ///
     /// Per-client local marks (a-z) are stored in `EditingState.local_marks`.
@@ -70,8 +63,6 @@ impl KernelContext {
     pub fn new(
         event_bus: Arc<EventBus>,
         buffers: Arc<dyn BufferManager>,
-        motion: Arc<MotionEngine>,
-        text_objects: Arc<TextObjectEngine>,
         global_marks: Arc<RwLock<MarkBank>>,
         options: Arc<OptionRegistry>,
         services: Arc<ServiceRegistry>,
@@ -79,8 +70,6 @@ impl KernelContext {
         Self {
             event_bus,
             buffers,
-            motion,
-            text_objects,
             global_marks,
             options,
             services,
@@ -93,8 +82,6 @@ impl fmt::Debug for KernelContext {
         f.debug_struct("KernelContext")
             .field("event_bus", &"Arc<EventBus>")
             .field("buffers", &"Arc<dyn BufferManager>")
-            .field("motion", &"Arc<MotionEngine>")
-            .field("text_objects", &"Arc<TextObjectEngine>")
             .field("global_marks", &"Arc<RwLock<MarkBank>>")
             .field("options", &"Arc<OptionRegistry>")
             .field("services", &"Arc<ServiceRegistry>")
@@ -304,16 +291,11 @@ impl KernelContext {
         services: Arc<ServiceRegistry>,
         options: Arc<OptionRegistry>,
     ) -> Self {
-        use {
-            crate::core::MarkBank,
-            reovim_types_text::{MotionEngine, TextObjectEngine},
-        };
+        use crate::core::MarkBank;
 
         Self {
             event_bus,
             buffers: Arc::new(StubBufferManager),
-            motion: Arc::new(MotionEngine),
-            text_objects: Arc::new(TextObjectEngine),
             global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options,
             services,
@@ -326,16 +308,11 @@ impl Default for KernelContext {
     ///
     /// Uses stub implementations. Should only be used in tests.
     fn default() -> Self {
-        use {
-            crate::core::MarkBank,
-            reovim_types_text::{MotionEngine, TextObjectEngine},
-        };
+        use crate::core::MarkBank;
 
         Self {
             event_bus: Arc::new(crate::ipc::EventBus::new()),
             buffers: Arc::new(StubBufferManager),
-            motion: Arc::new(MotionEngine),
-            text_objects: Arc::new(TextObjectEngine),
             global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options: Arc::new(OptionRegistry::new()),
             services: Arc::new(ServiceRegistry::new()),

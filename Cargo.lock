@@ -2388,6 +2388,7 @@ version = "0.14.5-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
+ "reovim-provider-text",
 ]
 
 [[package]]
@@ -2638,6 +2639,7 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-provider-text",
  "reovim-types-text",
  "serde_json",
 ]
@@ -2716,6 +2718,7 @@ version = "0.14.5-dev"
 dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
+ "reovim-provider-text",
  "reovim-types-text",
 ]
 
@@ -2736,6 +2739,7 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "tracing",
 ]
 
@@ -2981,6 +2985,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "reovim-types-text",
  "unicode-width",
 ]
@@ -3243,6 +3248,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "reovim-types-text",
  "tracing",
 ]
@@ -3328,6 +3334,7 @@ dependencies = [
  "reovim-driver-search",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "reovim-types-text",
  "tracing",
 ]
@@ -3405,6 +3412,7 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "reovim-types-text",
 ]
 
@@ -3584,6 +3592,7 @@ dependencies = [
  "reovim-module-motions",
  "reovim-module-textobjects",
  "reovim-module-window-ops",
+ "reovim-provider-text",
  "reovim-testing",
  "reovim-types-text",
  "serde_json",
@@ -3757,6 +3766,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-protocol",
+ "reovim-provider-text",
  "reovim-testing",
  "reovim-types-text",
  "serde",

@@ -2,7 +2,7 @@ use super::*;
 
 use std::path::PathBuf;
 
-use crate::api::context::StubBufferManager;
+use crate::{api::context::StubBufferManager, testing::TestTextBuffer};
 
 // ========== KernelContext tests ==========
 
@@ -30,8 +30,6 @@ fn test_kernel_context_debug() {
     assert!(debug_str.contains("KernelContext"));
     assert!(debug_str.contains("Arc<EventBus>"));
     assert!(debug_str.contains("Arc<dyn BufferManager>"));
-    assert!(debug_str.contains("Arc<MotionEngine>"));
-    assert!(debug_str.contains("Arc<TextObjectEngine>"));
     assert!(debug_str.contains("global_marks"));
     assert!(debug_str.contains("Arc<RwLock<MarkBank>>"));
     assert!(debug_str.contains("Arc<OptionRegistry>"));
@@ -40,29 +38,15 @@ fn test_kernel_context_debug() {
 
 #[test]
 fn test_kernel_context_new() {
-    use {
-        crate::core::MarkBank,
-        reovim_types_text::{MotionEngine, TextObjectEngine},
-        std::sync::Arc,
-    };
+    use {crate::core::MarkBank, std::sync::Arc};
 
     let event_bus = Arc::new(EventBus::new());
     let buffers: Arc<dyn BufferManager> = Arc::new(StubBufferManager);
-    let motion = Arc::new(MotionEngine);
-    let text_objects = Arc::new(TextObjectEngine);
     let global_marks = Arc::new(RwLock::new(MarkBank::new()));
     let options = Arc::new(OptionRegistry::new());
     let services = Arc::new(ServiceRegistry::new());
 
-    let ctx = KernelContext::new(
-        event_bus,
-        buffers,
-        motion,
-        text_objects,
-        global_marks,
-        options,
-        services,
-    );
+    let ctx = KernelContext::new(event_bus, buffers, global_marks, options, services);
 
     assert_eq!(ctx.buffers.count(), 0);
 }
@@ -104,8 +88,8 @@ fn test_stub_buffer_manager_register_returns_buffer_id() {
     use std::sync::Arc;
 
     let manager = StubBufferManager;
-    let buf1 = crate::mm::Buffer::new();
-    let buf2 = crate::mm::Buffer::new();
+    let buf1 = TestTextBuffer::new("");
+    let buf2 = TestTextBuffer::new("");
     let id1 = manager.register(Arc::new(RwLock::new(buf1)));
     let id2 = manager.register(Arc::new(RwLock::new(buf2)));
     // Each call returns the buffer's own ID
@@ -117,7 +101,7 @@ fn test_stub_buffer_manager_register() {
     use std::sync::Arc;
 
     let manager = StubBufferManager;
-    let buffer = crate::mm::Buffer::new();
+    let buffer = TestTextBuffer::new("");
     let _id = manager.register(Arc::new(RwLock::new(buffer)));
     // register returns the buffer's ID but doesn't store anything
     assert_eq!(manager.count(), 0);

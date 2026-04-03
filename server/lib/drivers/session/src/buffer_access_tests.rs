@@ -22,7 +22,7 @@ fn test_buffer_read_access_registered_and_retrieved() {
 #[test]
 fn test_buffer_read_access_reads_buffer() {
     let manager = Arc::new(TestBufferManager::new());
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello\nworld");
+    let buf = reovim_provider_text::Buffer::from_string("hello\nworld");
     let bid = manager.register(Arc::new(reovim_arch::sync::RwLock::new(buf)));
 
     let access = BufferReadAccess::new(

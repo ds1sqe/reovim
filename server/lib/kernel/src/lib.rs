@@ -51,7 +51,6 @@ mod testing_tests;
 // Internal modules - NOT accessible from outside
 // ============================================================================
 
-pub(crate) mod block;
 pub(crate) mod core;
 #[allow(dead_code)] // Infrastructure for future use
 pub(crate) mod debug;

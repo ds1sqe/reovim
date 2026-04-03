@@ -2466,16 +2466,11 @@ impl reovim_kernel::api::v1::BufferManager for InMemoryBufferManager {
 fn make_kernel_with_services(
     services: std::sync::Arc<reovim_kernel::api::v1::ServiceRegistry>,
 ) -> KernelContext {
-    use {
-        reovim_kernel::api::v1::{EventBus, MarkBank, OptionRegistry},
-        reovim_types_text::{MotionEngine, TextObjectEngine},
-    };
+    use reovim_kernel::api::v1::{EventBus, MarkBank, OptionRegistry};
 
     KernelContext::new(
         std::sync::Arc::new(EventBus::new()),
         std::sync::Arc::new(InMemoryBufferManager::new()),
-        std::sync::Arc::new(MotionEngine),
-        std::sync::Arc::new(TextObjectEngine),
         std::sync::Arc::new(reovim_arch::sync::RwLock::new(MarkBank::new())),
         std::sync::Arc::new(OptionRegistry::new()),
         services,
@@ -2491,7 +2486,7 @@ fn test_insert_text_no_active_window_uses_zero_position() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+    let buf = reovim_provider_text::Buffer::from_string("hello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -2542,7 +2537,7 @@ fn test_delete_range_no_active_window_uses_zero_position() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello world");
+    let buf = reovim_provider_text::Buffer::from_string("hello world");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3139,7 +3134,7 @@ fn test_undo_with_provider() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+    let buf = reovim_provider_text::Buffer::from_string("hello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3193,7 +3188,7 @@ fn test_redo_with_provider() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("Xhello");
+    let buf = reovim_provider_text::Buffer::from_string("Xhello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3290,7 +3285,7 @@ fn test_undo_mine_with_owner_and_provider() {
     let executor = StubExecutor;
     let client_id = ClientId::new(42);
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+    let buf = reovim_provider_text::Buffer::from_string("hello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3346,7 +3341,7 @@ fn test_redo_mine_with_owner_and_provider() {
     let executor = StubExecutor;
     let client_id = ClientId::new(42);
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("Yhello");
+    let buf = reovim_provider_text::Buffer::from_string("Yhello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3580,7 +3575,7 @@ fn test_undo_with_delete_edits() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("Xhello");
+    let buf = reovim_provider_text::Buffer::from_string("Xhello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3636,7 +3631,7 @@ fn test_redo_with_insert_edits() {
     let mut session = Session::new(ClientId::new(1), test_mode());
     let executor = StubExecutor;
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+    let buf = reovim_provider_text::Buffer::from_string("hello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3693,7 +3688,7 @@ fn test_undo_mine_with_delete_edits() {
     let executor = StubExecutor;
     let client_id = ClientId::new(42);
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("Zhello");
+    let buf = reovim_provider_text::Buffer::from_string("Zhello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));
@@ -3751,7 +3746,7 @@ fn test_redo_mine_with_insert_edits() {
     let executor = StubExecutor;
     let client_id = ClientId::new(42);
 
-    let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+    let buf = reovim_provider_text::Buffer::from_string("hello");
     let buf_id = kernel
         .buffers
         .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buf)));

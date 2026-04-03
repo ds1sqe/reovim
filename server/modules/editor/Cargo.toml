@@ -28,6 +28,8 @@ unicode-width = "0.2"
 
 [dev-dependencies]
 reovim-driver-undo = { workspace = true }
+# Buffer moved to provider-text (#740); tests use it via dev-dep
+reovim-provider-text = { workspace = true }
 
 [lints]
 workspace = true

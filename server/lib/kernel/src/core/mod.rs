@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::api::v1::Buffer;
+//! use reovim_provider_text::Buffer;
 //! use reovim_types_text::{Cursor, Position, Direction, Motion, MotionEngine, WordBoundary};
 //!
 //! let buffer = Buffer::from_string("hello world");
