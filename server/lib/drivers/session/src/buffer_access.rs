@@ -5,20 +5,12 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{BufferManager, Service};
+use reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps, RwLock, Service};
 
 /// Read-only buffer access for bridge tick functions.
 ///
 /// Registered at session creation so bridges can read buffer content
 /// without direct access to `KernelContext`.
-///
-/// # Usage
-///
-/// ```ignore
-/// let Some(access) = services.get::<BufferReadAccess>() else { return false; };
-/// let buffer = access.manager().get(buffer_id)?;
-/// let content = buffer.read().line(0);
-/// ```
 pub struct BufferReadAccess(Arc<dyn BufferManager>);
 
 impl BufferReadAccess {
@@ -28,10 +20,9 @@ impl BufferReadAccess {
         Self(buffers)
     }
 
-    /// Get the underlying buffer manager.
     #[must_use]
-    pub fn manager(&self) -> &dyn BufferManager {
-        &*self.0
+    pub fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+        self.0.get(id)
     }
 }
 

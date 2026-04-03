@@ -4,7 +4,8 @@ use {
     reovim_driver_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
     },
-    reovim_kernel::api::v1::{Buffer, BufferId, BufferManager, RwLock, ServiceRegistry},
+    reovim_kernel::api::v1::{BufferId, BufferManager, RwLock, ServiceRegistry},
+    reovim_provider_text::Buffer,
     std::sync::Arc,
 };
 

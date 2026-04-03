@@ -557,12 +557,17 @@ impl InputServiceImpl {
         session.with_state_mut_sync(|state| {
             for &buffer_id in &changes.modified_buffers {
                 // Get buffer content and file path
-                let Some(handle) = state.buffer(buffer_id) else {
+                let Some(buffer_arc) = state.buffer(buffer_id) else {
                     continue;
                 };
-                let content = handle.content();
-                let file_path = handle.file_path();
-                let total_lines = handle.line_count() as u64;
+                let (content, file_path, total_lines) = {
+                    let buffer = buffer_arc.read();
+                    (
+                        buffer.content(),
+                        buffer.file_path().map(String::from),
+                        buffer.line_count() as u64,
+                    )
+                };
 
                 // Step 1: Update driver (mutable borrow of SyntaxSessionState)
                 let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();

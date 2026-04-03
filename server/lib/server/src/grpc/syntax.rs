@@ -247,32 +247,36 @@ impl SyntaxService for SyntaxServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                let handle = state.buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
+                let (total_lines, content, file_path, start_byte, end_byte) = {
+                    let buffer = buffer_arc.read();
+                    let total_lines = buffer.line_count();
+                    let content = buffer.content();
+                    let file_path = buffer.file_path().map(String::from);
 
-                let total_lines = handle.line_count();
-                let content = handle.content();
-                let file_path = handle.file_path();
+                    // Calculate byte range for requested lines
+                    let start_line = req.start_line.unwrap_or(0) as usize;
+                    let end_line = match req.end_line {
+                        Some(e) if (e as usize) < total_lines => e as usize,
+                        _ => total_lines.saturating_sub(1),
+                    };
+
+                    let start_byte =
+                        buffer.position_to_byte(reovim_types_text::Position::new(start_line, 0));
+                    let end_byte = if end_line < total_lines {
+                        buffer.position_to_byte(reovim_types_text::Position::new(end_line + 1, 0))
+                    } else {
+                        content.len()
+                    };
+
+                    (total_lines, content, file_path, start_byte, end_byte)
+                };
 
                 // Detect language from file path (hardcoded fallback for response)
                 let (language_id, _language_name) = detect_language_from_path(file_path.as_deref());
 
-                // Calculate byte range for requested lines
-                let start_line = req.start_line.unwrap_or(0) as usize;
-                let end_line = match req.end_line {
-                    Some(e) if (e as usize) < total_lines => e as usize,
-                    _ => total_lines.saturating_sub(1),
-                };
-
-                // Convert line range to byte range
-                let start_byte =
-                    handle.position_to_byte(reovim_types_text::Position::new(start_line, 0));
-                let end_byte = if end_line < total_lines {
-                    handle.position_to_byte(reovim_types_text::Position::new(end_line + 1, 0))
-                } else {
-                    content.len()
-                };
                 let byte_range = start_byte..end_byte;
 
                 // Get syntax session state from session-wide extensions (#491)
@@ -337,13 +341,17 @@ impl SyntaxService for SyntaxServiceImpl {
         let (initial_update, syntax_rx) = session
             .with_state_mut(|state| {
                 // Verify buffer exists
-                let handle = state.buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
-
-                let total_lines = handle.line_count() as u64;
-                let content = handle.content();
-                let file_path = handle.file_path();
+                let (total_lines, content, file_path) = {
+                    let buffer = buffer_arc.read();
+                    (
+                        buffer.line_count() as u64,
+                        buffer.content(),
+                        buffer.file_path().map(String::from),
+                    )
+                };
                 let (language_id, _) = detect_language_from_path(file_path.as_deref());
 
                 // Get syntax state and ensure driver exists (#491)
@@ -422,11 +430,10 @@ impl SyntaxService for SyntaxServiceImpl {
             .with_state_mut(|state| {
                 let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
-                let handle = state.buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
-
-                let file_path = handle.file_path();
+                let file_path = buffer_arc.read().file_path().map(String::from);
 
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 

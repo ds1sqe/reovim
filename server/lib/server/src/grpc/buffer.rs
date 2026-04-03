@@ -79,18 +79,21 @@ impl BufferService for BufferServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                let handle = state.buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
+                let buffer = buffer_arc.read();
 
-                let total_lines = handle.line_count();
+                let total_lines = buffer.line_count();
                 let start = req.start_line.unwrap_or(0) as usize;
                 let end = req
                     .end_line
                     .map_or(total_lines, |e| e as usize)
                     .min(total_lines);
 
-                let lines: Vec<String> = (start..end).filter_map(|i| handle.line(i)).collect();
+                let lines: Vec<String> = (start..end)
+                    .filter_map(|i| buffer.line(i).map(std::borrow::Cow::into_owned))
+                    .collect();
 
                 Ok(Response::new(GetRawContentResponse {
                     buffer_id: buffer_id.as_usize() as u64,
@@ -125,13 +128,14 @@ impl BufferService for BufferServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                let handle = state.buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
+                let buffer = buffer_arc.read();
 
                 Ok(Response::new(GetLineCountResponse {
                     buffer_id: buffer_id.as_usize() as u64,
-                    line_count: handle.line_count() as u64,
+                    line_count: buffer.line_count() as u64,
                 }))
             })
             .await
@@ -185,8 +189,9 @@ impl BufferService for BufferServiceImpl {
                 let buffers: Vec<BufferInfo> = all_ids
                     .iter()
                     .filter_map(|&id| {
-                        let handle = state.buffer(id)?;
-                        let file_path = handle.file_path();
+                        let buffer_arc = state.buffer(id)?;
+                        let buffer = buffer_arc.read();
+                        let file_path = buffer.file_path().map(String::from);
                         let name = file_path
                             .as_deref()
                             .and_then(|p| std::path::Path::new(p).file_name())
@@ -213,12 +218,12 @@ impl BufferService for BufferServiceImpl {
                             id: id.as_usize() as u64,
                             name,
                             path: file_path,
-                            line_count: handle.line_count() as u64,
-                            modified: handle.is_modified(),
+                            line_count: buffer.line_count() as u64,
+                            modified: buffer.is_modified(),
                             content_type: None,
                             readonly: None,
                             codec_metadata: codec_meta,
-                            capabilities: handle.capabilities().bits(),
+                            capabilities: buffer.buffer_capabilities().bits(),
                         })
                     })
                     .collect();
@@ -378,7 +383,7 @@ impl BufferService for BufferServiceImpl {
                     .map_err(|e| Status::internal(format!("Codec decode_view failed: {e}")))?;
 
                 // Update buffer content (Rope buffers only — codec views are text)
-                let buffer_arc = state.rope_buffer(buffer_id).ok_or_else(|| {
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
 

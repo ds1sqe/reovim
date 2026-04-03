@@ -31,8 +31,6 @@ use {
     reovim_types_text::RegisterContent,
 };
 
-use super::BufferHandle;
-
 use crate::{
     app::AppState,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
@@ -340,17 +338,7 @@ impl SessionState {
 
     /// Get a buffer by ID from the unified buffer manager.
     #[must_use]
-    pub fn buffer(&self, id: BufferId) -> Option<BufferHandle> {
-        let arc = self.app.kernel.buffers.get(id)?;
-        Some(BufferHandle::new(arc))
-    }
-
-    /// Get a buffer arc by ID (kernel buffers only).
-    ///
-    /// Returns `Arc<RwLock<dyn BufferOps>>` from the unified buffer manager.
-    /// For read-only access via `BufferHandle`, prefer `buffer()`.
-    #[must_use]
-    pub fn rope_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    pub fn buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
         self.app.kernel.buffers.get(id)
     }
 

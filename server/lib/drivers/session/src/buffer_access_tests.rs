@@ -28,7 +28,7 @@ fn test_buffer_read_access_reads_buffer() {
     let access = BufferReadAccess::new(
         Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
     );
-    let buffer_lock = access.manager().get(bid);
+    let buffer_lock = access.get(bid);
     assert!(buffer_lock.is_some());
 
     let guard = buffer_lock.unwrap();
@@ -48,5 +48,5 @@ fn test_buffer_read_access_missing_buffer() {
         Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
     );
 
-    assert!(access.manager().get(BufferId::from_raw(999)).is_none());
+    assert!(access.get(BufferId::from_raw(999)).is_none());
 }

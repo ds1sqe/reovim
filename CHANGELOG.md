@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Refactored
 
 - **kernel**: continue the `#740` byte-only extraction — text `Buffer`/Rope and semantic undo test ownership move out of kernel, VFS now owns file-mapping/piece-table primitives, and `KernelContext` drops dead motion/text-object engines (#740)
+- **server**: continue the `#740` contract cleanup — remove the transient `BufferHandle` read wrapper, narrow `BufferReadAccess` to per-buffer lookup, and move illuminate word scanning onto `TextGeometry` instead of `BufferOps` (#740)
 
 ## [0.14.4] - 2026-04-01
 

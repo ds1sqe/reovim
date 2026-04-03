@@ -13,7 +13,6 @@
 //!
 //! See the [`Client`] struct for details.
 
-mod buffer_handle;
 pub(crate) mod capture;
 mod client;
 pub mod crash_dump;
@@ -28,7 +27,6 @@ mod syntax_state;
 pub mod token_registry;
 
 pub use {
-    buffer_handle::BufferHandle,
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
     client::{
         Client, ClientMetadata, ClientRelation, ClientSelection, EditingState, TransitionResult,

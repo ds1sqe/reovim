@@ -8,8 +8,8 @@ use {
         BufferReadAccess, CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_kernel::api::v1::{BufferId, BufferOps, ServiceRegistry},
-    reovim_types_text::{CharKind, WordType, char_kind, word_bounds},
+    reovim_kernel::api::v1::{BufferId, ServiceRegistry},
+    reovim_types_text::{CharKind, TextGeometry, WordType, char_kind, word_bounds},
     serde_json::json,
 };
 
@@ -119,7 +119,7 @@ impl ExtensionStateBridge for IlluminateBridge {
 
         #[allow(clippy::cast_possible_truncation)]
         let buffer_id = BufferId::from_raw(raw_buffer_id as usize);
-        let Some(buffer_lock) = buffer_access.manager().get(buffer_id) else {
+        let Some(buffer_lock) = buffer_access.get(buffer_id) else {
             state.computed = true;
             return false;
         };
@@ -127,7 +127,7 @@ impl ExtensionStateBridge for IlluminateBridge {
         // Scope the buffer read lock so it's dropped before mutating state.
         let result = {
             let buffer = buffer_lock.read();
-            extract_word_and_occurrences(&*buffer, cursor_line, cursor_col)
+            extract_word_and_occurrences(buffer.as_text_geometry(), cursor_line, cursor_col)
         };
 
         match result {
@@ -156,7 +156,7 @@ impl ExtensionStateBridge for IlluminateBridge {
 /// Returns `None` if the cursor is not on a word character.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_word_and_occurrences(
-    buffer: &dyn BufferOps,
+    buffer: &dyn TextGeometry,
     cursor_line: u32,
     cursor_col: u32,
 ) -> Option<(String, Vec<HighlightRange>)> {
@@ -181,7 +181,7 @@ fn extract_word_and_occurrences(
 /// A match is "whole word" if the characters immediately before and after
 /// are not word characters (alphanumeric or underscore).
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn find_word_occurrences(buffer: &dyn BufferOps, word: &str) -> Vec<HighlightRange> {
+fn find_word_occurrences(buffer: &dyn TextGeometry, word: &str) -> Vec<HighlightRange> {
     let word_chars: Vec<char> = word.chars().collect();
     let word_len = word_chars.len();
     let mut ranges = Vec::new();
