@@ -165,6 +165,21 @@ pub trait BufferMeta: Send + Sync + 'static {
     fn set_modified(&mut self, modified: bool);
 }
 
+/// Combined byte-level buffer trait for the kernel fd table.
+///
+/// `KernelBuffer` unifies `StorageOps` (byte I/O) and `BufferMeta` (identity)
+/// into a single object-safe trait. The kernel's `BufferManager` stores buffers
+/// as `dyn KernelBuffer` — the kernel sees only bytes and metadata, never text.
+///
+/// Text-specific operations (`line()`, `position_to_byte()`, etc.) are provided
+/// by `BufferOps` in the provider layer, not in the kernel.
+///
+/// A blanket implementation is provided: any type implementing both `StorageOps`
+/// and `BufferMeta` automatically implements `KernelBuffer`.
+pub trait KernelBuffer: StorageOps + BufferMeta {}
+
+impl<T: StorageOps + BufferMeta> KernelBuffer for T {}
+
 #[cfg(test)]
 #[path = "tests/storage_ops.rs"]
 mod tests;

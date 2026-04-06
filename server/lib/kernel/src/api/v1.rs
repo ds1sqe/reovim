@@ -113,7 +113,9 @@ pub use super::buffer_ops::BufferOps;
 pub use super::buffer_caps::BufferCapabilities;
 
 // StorageOps - byte-level storage trait (replaces BufferOps in target architecture)
-pub use super::storage_ops::{BufferMeta, StorageCapabilities, StorageError, StorageOps};
+pub use super::storage_ops::{
+    BufferMeta, KernelBuffer, StorageCapabilities, StorageError, StorageOps,
+};
 
 // Note: UndoManager, WindowManager, and policy traits (Operator,
 // KeymapProvider, CommandHandler) have been moved out of the kernel to follow

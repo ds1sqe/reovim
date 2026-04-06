@@ -6,6 +6,15 @@
 //! The manager stores `Arc<RwLock<dyn BufferOps>>`. `BufferOps` extends
 //! `StorageOps + BufferMeta`, so byte-level I/O, identity, and text operations
 //! are all accessible through the same trait object.
+//!
+//! # Migration Plan (#740)
+//!
+//! The target architecture stores `dyn KernelBuffer` (byte-only) instead of
+//! `dyn BufferOps` (text-specific). The migration path:
+//! 1. Add `TextBufferRegistry` service at session layer
+//! 2. Migrate callers to use text registry for text access
+//! 3. Change `BufferManager` to `dyn KernelBuffer`
+//! 4. Move `BufferOps` definition out of kernel
 
 use std::{fmt, sync::Arc};
 
