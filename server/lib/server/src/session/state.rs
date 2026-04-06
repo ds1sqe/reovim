@@ -334,9 +334,21 @@ impl SessionState {
     // Buffer Methods (delegated to kernel)
     // ========================================================================
 
-    /// Get a buffer by ID from the unified buffer manager.
+    /// Get a buffer by ID from the text buffer registry (#740).
+    ///
+    /// Prefers `TextBufferRegistry` when registered (production). Falls back
+    /// to `kernel.buffers` for backward compatibility.
     #[must_use]
     pub fn buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+        if let Some(reg) = self
+            .app
+            .kernel
+            .services
+            .get::<reovim_driver_session::TextBufferRegistry>()
+            && let Some(buf) = reg.get(id)
+        {
+            return Some(buf);
+        }
         self.app.kernel.buffers.get(id)
     }
 
@@ -348,10 +360,17 @@ impl SessionState {
     /// Uses `Buffer::from_string` so buffers start with `modified = false`.
     pub fn create_buffer(&mut self, content: &str) -> BufferId {
         let buffer = Buffer::from_string(content);
-        self.app
+        let arc = Arc::new(RwLock::new(buffer));
+        // Register in text buffer registry (#740).
+        if let Some(reg) = self
+            .app
             .kernel
-            .buffers
-            .register(Arc::new(RwLock::new(buffer)))
+            .services
+            .get::<reovim_driver_session::TextBufferRegistry>()
+        {
+            reg.register(arc.clone());
+        }
+        self.app.kernel.buffers.register(arc)
     }
 
     /// Resolve a key event using the resolver registry.

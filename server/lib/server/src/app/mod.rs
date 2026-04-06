@@ -106,6 +106,15 @@ impl FallbackContext for AppState {
     }
 
     fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+        // Prefer TextBufferRegistry when registered (#740).
+        if let Some(reg) = self
+            .kernel
+            .services
+            .get::<reovim_driver_session::TextBufferRegistry>()
+            && let Some(buf) = reg.get(id)
+        {
+            return Some(buf);
+        }
         self.kernel.buffers.get(id)
     }
 

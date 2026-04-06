@@ -410,7 +410,10 @@ impl<'a> SessionRuntime<'a> {
     ///
     /// Prefers the `TextBufferRegistry` service when available. Falls back
     /// to `kernel.buffers` for backward compatibility during migration.
-    fn text_buffer(
+    ///
+    /// Use this instead of `kernel().buffers.get(id)` for text-specific access.
+    #[must_use]
+    pub fn text_buffer(
         &self,
         id: BufferId,
     ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>>

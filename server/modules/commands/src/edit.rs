@@ -95,11 +95,10 @@ impl CommandHandler for EditCommand {
         };
 
         // Get buffer and set content, then emit events.
-        // Scope the immutable `runtime.kernel()` borrow so we can call
+        // Scope the immutable borrow so we can call
         // `record_buffer_modified` (which needs `&mut self`) afterwards.
         {
-            let kernel = runtime.kernel();
-            let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+            let Some(buffer_arc) = runtime.text_buffer(buffer_id) else {
                 return CommandResult::Error(format!(
                     "execution failed: Buffer {} not found",
                     buffer_id.as_usize()
@@ -122,7 +121,7 @@ impl CommandHandler for EditCommand {
             // Emit FileOpened event for subscribers (LSP, syntax, etc.)
             #[allow(clippy::cast_possible_truncation)]
             let buffer_id_raw = buffer_id.as_usize() as u64;
-            kernel.event_bus.emit(FileOpened {
+            runtime.kernel().event_bus.emit(FileOpened {
                 buffer_id: buffer_id_raw,
                 path: canonical_path,
             });
@@ -275,8 +274,7 @@ fn finish_decoded_open(
         .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
 
     {
-        let kernel = runtime.kernel();
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.text_buffer(buffer_id) else {
             return CommandResult::Error(format!(
                 "execution failed: Buffer {} not found",
                 buffer_id.as_usize()
@@ -292,7 +290,7 @@ fn finish_decoded_open(
 
         #[allow(clippy::cast_possible_truncation)]
         let buffer_id_raw = buffer_id.as_usize() as u64;
-        kernel.event_bus.emit(FileOpened {
+        runtime.kernel().event_bus.emit(FileOpened {
             buffer_id: buffer_id_raw,
             path: canonical_path,
         });
