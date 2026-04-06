@@ -27,8 +27,7 @@ reovim-driver-codec = { workspace = true }
 reovim-domain = { workspace = true }
 reovim-types-text = { workspace = true }
 
-# VFS types for ByteEdit in Index<Text> impl
-reovim-driver-vfs = { workspace = true }
+# ByteEdit moved to reovim-kernel::block (#740)
 
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }

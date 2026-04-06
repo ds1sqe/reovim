@@ -29,8 +29,8 @@
 //! - `sched`: Scheduler and runtime (Linux: `kernel/sched/`)
 //! - `mm`: Memory management / buffers (Linux: `mm/`)
 //! - `ipc`: Inter-process communication / events (Linux: `ipc/`)
-//! - `core`: Core primitives (motion, text objects, commands)
-//! - `block`: Block operations (undo, transactions)
+//! - `core`: Core primitives (options, config, modes, commands)
+//! - `block`: Block I/O subsystem (byte edits, undo log, storage traits)
 //! - `printk`: Kernel logging (Linux: `kernel/printk/`)
 //! - `debug`: Tracing and metrics
 //! - `panic`: Panic handling and recovery
@@ -51,6 +51,7 @@ mod testing_tests;
 // Internal modules - NOT accessible from outside
 // ============================================================================
 
+pub(crate) mod block;
 pub(crate) mod core;
 #[allow(dead_code)] // Infrastructure for future use
 pub(crate) mod debug;

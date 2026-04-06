@@ -1,6 +1,6 @@
 //! Tests for domain-generic codec traits.
 
-use {reovim_domain::Domain, reovim_driver_vfs::ByteEdit};
+use {reovim_domain::Domain, reovim_kernel::api::v1::ByteEdit};
 
 use crate::{CodecError, CodecMetadata, ContentType};
 

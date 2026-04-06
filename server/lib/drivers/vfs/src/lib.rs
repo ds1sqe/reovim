@@ -67,8 +67,7 @@
 //! }
 //! ```
 
-mod byte_edit;
-mod byte_undo_log;
+// byte_undo_log moved to reovim-kernel::block (#740)
 mod error;
 mod file_mapping;
 mod filetype;
@@ -86,11 +85,7 @@ mod standard;
 mod traits;
 mod watch;
 
-// Re-export byte-level edit types
-pub use {
-    byte_edit::ByteEdit,
-    byte_undo_log::{ByteUndoEntry, ByteUndoLog},
-};
+// Note: ByteEdit, ByteUndoLog, ByteUndoEntry moved to reovim-kernel::block (#740)
 
 // Re-export error types
 pub use error::VfsError;

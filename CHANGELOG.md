@@ -45,6 +45,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **session**: add `TextBufferRegistry` service — session-layer registry for text-specific buffer access, decoupling `SessionRuntime` text operations from kernel `BufferManager`. Incremental migration step toward `BufferManager` storing byte-only `dyn KernelBuffer` (#740)
 - **kernel**: `BufferManager` now stores `dyn KernelBuffer` (byte-only) instead of `dyn BufferOps` (text-specific) — the kernel sees only bytes and metadata, text access is exclusively through `TextBufferRegistry` at the session layer (#740)
 - **kernel/provider-text**: continue the `#740` byte-only extraction — `BufferOps`, `BufferCapabilities`, and `LineCache` removed from kernel. `BufferOps` trait and `BufferCapabilities` bitflags now live in `reovim-provider-text`. `LineCache` deleted (dead code). Kernel `api/v1.rs` exports zero text concepts (#740)
+- **kernel**: rebuild `kernel::block` as real byte-level I/O subsystem — `ByteEdit` and `ByteUndoLog` moved from VFS driver to `kernel::block`, `StorageOps`/`BufferMeta`/`KernelBuffer` consolidated from `api/storage_ops.rs` into `block/`. Codec driver and codec-utf8 now import `ByteEdit` from kernel instead of VFS (#740)
 
 ## [0.14.4] - 2026-04-01
 

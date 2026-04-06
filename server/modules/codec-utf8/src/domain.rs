@@ -8,7 +8,7 @@ use {
     reovim_driver_codec::{
         CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
     },
-    reovim_driver_vfs::ByteEdit,
+    reovim_kernel::api::v1::ByteEdit,
     reovim_types_text::{Text, TextEdit, TextPosition},
 };
 

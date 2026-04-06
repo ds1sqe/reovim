@@ -12,7 +12,7 @@ use std::{fmt, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
-use crate::{api::storage_ops::KernelBuffer, mm::BufferId};
+use crate::{block::KernelBuffer, mm::BufferId};
 
 // ============================================================================
 // Error Types

@@ -31,10 +31,9 @@
 // Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
 // BufferOps and BufferCapabilities moved to reovim-provider-text (#740)
-// Byte-level storage traits (StorageOps, BufferMeta, StorageCapabilities)
+// StorageOps, BufferMeta, StorageCapabilities moved to kernel::block (#740)
 mod context;
 mod debug;
-pub(crate) mod storage_ops;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId
 pub(crate) mod module;
 // Service registry for cross-module service discovery

@@ -101,16 +101,17 @@ pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 // Block Operations (block/)
 // ============================================================================
 
+// Byte-level block I/O types from kernel::block
+pub use crate::block::{
+    BufferMeta, ByteEdit, ByteUndoEntry, ByteUndoLog, KernelBuffer, StorageCapabilities,
+    StorageError, StorageOps,
+};
+
 // BufferManager is MECHANISM (pure storage interface, like Linux page cache)
-// It stays in kernel - no I/O policy, just storage lifecycle
+// It stays in api/ - no I/O policy, just storage lifecycle (fd table)
 pub use super::buffer_manager::{BufferError, BufferManager};
 
 // BufferOps and BufferCapabilities moved to reovim-provider-text (#740)
-
-// StorageOps - byte-level storage trait (the kernel's buffer contract)
-pub use super::storage_ops::{
-    BufferMeta, KernelBuffer, StorageCapabilities, StorageError, StorageOps,
-};
 
 // Note: UndoManager, WindowManager, and policy traits (Operator,
 // KeymapProvider, CommandHandler) have been moved out of the kernel to follow

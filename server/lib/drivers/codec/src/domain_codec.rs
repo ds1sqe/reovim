@@ -24,7 +24,7 @@
 //! edit translation) that [`ContentCodec`](crate::ContentCodec) cannot express.
 //! Both trait systems coexist — existing codec modules are unaffected.
 
-use {reovim_domain::Domain, reovim_driver_vfs::ByteEdit};
+use {reovim_domain::Domain, reovim_kernel::api::v1::ByteEdit};
 
 use crate::{CodecError, CodecMetadata};
 

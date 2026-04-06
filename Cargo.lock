@@ -2890,7 +2890,6 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
