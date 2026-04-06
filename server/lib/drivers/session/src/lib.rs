@@ -101,6 +101,7 @@ mod handler_registry;
 mod initial_mode;
 mod jumplist;
 mod leader_key;
+mod mark;
 mod mode;
 mod notification_drain;
 mod notification_queue;
@@ -114,6 +115,9 @@ mod transition;
 mod types;
 
 pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
+
+// Mark types (moved from kernel in #740)
+pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
 
 // Empty session handling
 pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHandler};

@@ -4,13 +4,14 @@
 //!
 //! This module provides kernel-owned abstractions:
 //!
-//! - **Mark**: Bookmark operations
 //! - **Mode**: Mode identity and mode stack
 //! - **Option**: Editor option registry
 //! - **Config**: Configuration system
 //!
 //! Text-specific algorithms (`Motion`, `TextObject`, `Register`) have been
 //! extracted to `reovim-types-text` as part of #740.
+//! Mark types (`Mark`, `MarkBank`, `SpecialMark`) have been moved to
+//! `reovim-driver-session` as part of #740.
 //!
 //! # Example
 //!
@@ -36,12 +37,8 @@
 //! ```
 
 mod config;
-mod mark;
 mod mode;
 mod option;
-
-// Re-export mark types
-pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
 
 // Re-export option types
 pub use option::{

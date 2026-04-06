@@ -4,13 +4,13 @@ use {
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
-            v1::{BufferId, MarkBank, ModeId, ModuleId},
+            v1::{BufferId, ModeId, ModuleId},
         },
         testing::create_test_context,
     },

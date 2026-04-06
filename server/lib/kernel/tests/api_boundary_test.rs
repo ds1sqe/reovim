@@ -31,7 +31,7 @@
 // This SHOULD compile - accessing the public API
 use reovim_kernel::api::v1::*;
 // Text types are in reovim_types_text, not kernel API (Phase 5.5 cleanup)
-use reovim_types_text::{MotionEngine, Position, RegisterBank, TextObjectEngine, UndoTree};
+use reovim_types_text::{MotionEngine, RegisterBank, TextObjectEngine, UndoTree};
 
 // These should NOT compile (uncomment to verify):
 // use reovim_kernel::mm::*;       // ERROR: module `mm` is private
@@ -91,13 +91,7 @@ fn register_bank_accessible() {
     assert!(bank.get().text.is_empty());
 }
 
-#[test]
-fn mark_bank_accessible() {
-    // MarkBank should be accessible via api::v1
-    let mut bank = MarkBank::new();
-    bank.set_local('a', Position::new(10, 5));
-    assert_eq!(bank.get_local('a'), Some(Position::new(10, 5)));
-}
+// MarkBank moved to reovim-driver-session (#740)
 
 #[test]
 fn motion_engine_accessible() {

@@ -404,7 +404,7 @@ impl SessionState {
         let mut temp_tabs = reovim_driver_session::TabPageSet::new();
         let mut temp_registers = reovim_types_text::RegisterBank::new();
         let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
-        let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut temp_local_marks = reovim_driver_session::MarkBank::new();
         let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;
         let mut terminal_size = (80u16, 24u16);
@@ -664,7 +664,7 @@ impl SessionState {
         let mut temp_tabs = reovim_driver_session::TabPageSet::new();
         let mut temp_registers = reovim_types_text::RegisterBank::new();
         let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
-        let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut temp_local_marks = reovim_driver_session::MarkBank::new();
         let mut temp_jumplist = Jumplist::new();
         let mut active_buffer = None;
         let mut terminal_size = (80u16, 24u16);

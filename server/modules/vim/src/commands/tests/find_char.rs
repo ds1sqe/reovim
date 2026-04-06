@@ -9,12 +9,12 @@ use {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, WindowLayout, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, KernelContext, MarkBank, ModeId, ModuleId, RwLock},
+            v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },

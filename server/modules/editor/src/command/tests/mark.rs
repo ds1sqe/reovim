@@ -507,8 +507,7 @@ fn test_goto_special_mark_not_set() {
 #[test]
 fn test_goto_global_mark_cross_buffer() {
     use {
-        reovim_kernel::api::v1::{Mark, RwLock},
-        reovim_provider_text::Buffer,
+        reovim_driver_session::Mark, reovim_kernel::api::v1::RwLock, reovim_provider_text::Buffer,
         std::sync::Arc,
     };
 
@@ -553,8 +552,7 @@ fn test_goto_global_mark_cross_buffer() {
 #[test]
 fn test_goto_global_mark_cross_buffer_line_mode() {
     use {
-        reovim_kernel::api::v1::{Mark, RwLock},
-        reovim_provider_text::Buffer,
+        reovim_driver_session::Mark, reovim_kernel::api::v1::RwLock, reovim_provider_text::Buffer,
         std::sync::Arc,
     };
 

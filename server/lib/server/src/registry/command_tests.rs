@@ -1,9 +1,9 @@
 use {
     super::*,
     reovim_driver_command::{ArgSpec, Command},
-    reovim_driver_session::{ClientId, Jumplist},
+    reovim_driver_session::{ClientId, Jumplist, MarkBank},
     reovim_driver_vfs::MockVfs,
-    reovim_kernel::api::v1::{KernelContext, MarkBank, ModuleId},
+    reovim_kernel::api::v1::{KernelContext, ModuleId},
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 

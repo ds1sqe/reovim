@@ -2,11 +2,11 @@ use {
     super::super::*,
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{KernelContext, MarkBank, ModeStack},
+        api::v1::{KernelContext, ModeStack},
         testing::test_mode,
     },
     reovim_types_text::{HistoryRing, RegisterBank},

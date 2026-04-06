@@ -1,10 +1,8 @@
 use {
     super::*,
     reovim_driver_buffer::TestBufferManager,
-    reovim_driver_session::Jumplist,
-    reovim_kernel::api::v1::{
-        EventBus, MarkBank, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
-    },
+    reovim_driver_session::{Jumplist, MarkBank},
+    reovim_kernel::api::v1::{EventBus, ModuleId, OptionRegistry, RwLock, ServiceRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 

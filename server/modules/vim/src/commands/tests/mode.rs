@@ -9,14 +9,14 @@ use {
     crate::ids,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         api::{CommandExecutor, CommandHandle},
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, CommandId, KernelContext, MarkBank, RwLock},
+            v1::{BufferId, CommandId, KernelContext, RwLock},
         },
         testing::create_test_context,
     },

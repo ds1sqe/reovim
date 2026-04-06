@@ -82,8 +82,8 @@ pub use crate::ipc::{
 // Core Primitives (core/)
 // ============================================================================
 
-// Marks (kernel-owned, will move to provider in Phase 2)
-pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};
+// Note: Mark types (Mark, MarkBank, SpecialMark, MarkResult) moved to
+// reovim-driver-session (#740).
 
 // Options
 pub use crate::core::{
@@ -202,13 +202,9 @@ pub use super::debug::{
     // Snapshot types
     KernelStateSnapshot,
     ModeStackSnapshot,
-    RegisterSnapshot,
-    RegistersSnapshot,
-    YankTypeSnapshot,
     // Snapshot functions
     snapshot_kernel_state,
     snapshot_mode_stack,
-    snapshot_registers,
 };
 
 // ============================================================================

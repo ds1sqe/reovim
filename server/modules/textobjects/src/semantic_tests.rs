@@ -2,8 +2,8 @@ use {
     crate::{TEXTOBJECTS_MODULE, semantic::*},
     reovim_driver_command::{Command, CommandContext, CommandHandler},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, OperatorPendingState, Session, SessionRuntime, Window,
-        WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
+        Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
         testing::StubExecutor,
     },
@@ -14,7 +14,7 @@ use {
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, KernelContext, MarkBank, ModeId},
+            v1::{BufferId, KernelContext, ModeId},
         },
         testing::{create_test_context, test_mode},
     },

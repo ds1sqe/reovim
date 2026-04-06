@@ -16,7 +16,7 @@ use reovim_types_text::{
 mod config;
 mod direction;
 mod history;
-mod mark;
+// Mark tests moved to reovim-driver-session (#740)
 mod mode;
 mod motion_engine;
 mod motion_types;

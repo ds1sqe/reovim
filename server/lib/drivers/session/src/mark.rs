@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use crate::mm::{BufferId, Position};
+use {reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
 
 /// A bookmark position with optional buffer association.
 ///
@@ -22,8 +22,9 @@ use crate::mm::{BufferId, Position};
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
-/// # use reovim_types_text::Position;
+/// use reovim_driver_session::Mark;
+/// use reovim_kernel::api::v1::BufferId;
+/// use reovim_types_text::Position;
 ///
 /// let mark = Mark {
 ///     position: Position::new(10, 5),
@@ -56,7 +57,7 @@ impl Mark {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
+/// use reovim_driver_session::SpecialMark;
 ///
 /// // Jump to last position before current jump
 /// let last_jump = SpecialMark::LastJump; // ''
@@ -93,8 +94,9 @@ pub enum SpecialMark {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::api::v1::*;
-/// # use reovim_types_text::Position;
+/// use reovim_driver_session::{Mark, MarkBank, SpecialMark};
+/// use reovim_kernel::api::v1::BufferId;
+/// use reovim_types_text::Position;
 ///
 /// let mut marks = MarkBank::new();
 ///
@@ -325,3 +327,7 @@ impl MarkResult<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mark_tests.rs"]
+mod tests;

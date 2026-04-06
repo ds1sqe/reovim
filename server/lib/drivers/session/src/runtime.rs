@@ -143,7 +143,7 @@ pub struct SessionRuntime<'a> {
     /// Tracks yank/delete history for numbered registers 0-9.
     clipboard_history: &'a mut reovim_types_text::HistoryRing,
     /// Per-client local marks (a-z, per-client special marks) (#515).
-    local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
+    local_marks: &'a mut crate::MarkBank,
     /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
     jumplist: &'a mut crate::Jumplist,
     /// Per-client active buffer (#471).
@@ -560,25 +560,25 @@ impl<'a> SessionRuntime<'a> {
 
     /// Get per-client local marks (#515).
     #[must_use]
-    pub const fn local_marks(&self) -> &reovim_kernel::api::v1::MarkBank {
+    pub const fn local_marks(&self) -> &crate::MarkBank {
         self.local_marks
     }
 
     /// Get per-client local marks mutably (#515).
     #[allow(clippy::missing_const_for_fn)]
-    pub fn local_marks_mut(&mut self) -> &mut reovim_kernel::api::v1::MarkBank {
+    pub fn local_marks_mut(&mut self) -> &mut crate::MarkBank {
         self.local_marks
     }
 
     /// Get session-shared uppercase/global marks (A-Z).
     #[must_use]
-    pub const fn global_marks(&self) -> &reovim_kernel::api::v1::MarkBank {
+    pub const fn global_marks(&self) -> &crate::MarkBank {
         self.session.global_marks()
     }
 
     /// Get session-shared uppercase/global marks (A-Z) mutably.
     #[allow(clippy::missing_const_for_fn)]
-    pub fn global_marks_mut(&mut self) -> &mut reovim_kernel::api::v1::MarkBank {
+    pub fn global_marks_mut(&mut self) -> &mut crate::MarkBank {
         self.session.global_marks_mut()
     }
 

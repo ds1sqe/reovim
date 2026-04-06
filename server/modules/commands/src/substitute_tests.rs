@@ -4,11 +4,11 @@ use {
     super::SubstituteCommand,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, MarkBank, ModeStack, RwLock},
+        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,

@@ -2,13 +2,12 @@ use {
     super::*,
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
     reovim_kernel::{
         api::v1::{
-            BufferId, KernelContext, MarkBank, ModeStack, OptionScope, OptionSpec, OptionValue,
-            RwLock,
+            BufferId, KernelContext, ModeStack, OptionScope, OptionSpec, OptionValue, RwLock,
         },
         testing::{create_test_context, test_mode},
     },

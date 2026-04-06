@@ -1,10 +1,7 @@
 use {
     super::*,
-    crate::{Jumplist, testing::StubExecutor, types::ClientId},
-    reovim_kernel::{
-        api::v1::{MarkBank, ModuleId},
-        testing::test_mode,
-    },
+    crate::{Jumplist, MarkBank, testing::StubExecutor, types::ClientId},
+    reovim_kernel::{api::v1::ModuleId, testing::test_mode},
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 

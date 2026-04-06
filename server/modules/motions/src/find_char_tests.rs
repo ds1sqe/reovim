@@ -2,7 +2,7 @@ use {
     crate::{find_char::*, ids},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, FindCharState, Jumplist, Session, SessionRuntime, Window,
+        ClientId, ExtensionMap, FindCharState, Jumplist, MarkBank, Session, SessionRuntime, Window,
         WindowLayout,
         api::{CommandExecutor, CommandHandle, ExtensionApi},
         testing::StubExecutor,
@@ -10,7 +10,7 @@ use {
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
-            v1::{BufferId, CommandId, MarkBank, ModeId, ModuleId},
+            v1::{BufferId, CommandId, ModeId, ModuleId},
         },
         testing::create_test_context,
     },
