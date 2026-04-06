@@ -18,6 +18,9 @@
 //! (kernel buffer extraction). Types move here from `reovim-kernel`
 //! with backward compatibility maintained via import updates.
 
+mod buffer_caps;
+mod buffer_ops;
+
 // Large file offsets are u64 but Rust indexing uses usize.
 // Truncation is lossless on our 64-bit-only target.
 #[allow(clippy::cast_possible_truncation)]
@@ -27,6 +30,8 @@ mod virtual_snapshot;
 mod buffer;
 mod rope;
 mod snapshot;
+
+pub use {buffer_caps::BufferCapabilities, buffer_ops::BufferOps};
 
 pub use {
     snapshot::BufferSnapshot,

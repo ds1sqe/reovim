@@ -457,7 +457,7 @@ impl TestSessionRuntime {
         &self,
         id: BufferId,
     ) -> Option<
-        std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>,
+        std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_provider_text::BufferOps>>,
     > {
         self.kernel
             .services

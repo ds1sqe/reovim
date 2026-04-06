@@ -7,12 +7,12 @@ use {
     },
     reovim_kernel::{
         api::v1::{
-            BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, OptionScope, OptionSpec,
+            BufferId, KernelBuffer, KernelContext, ModeStack, OptionScope, OptionSpec,
             OptionValue, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, BufferOps},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

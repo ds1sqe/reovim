@@ -1,15 +1,15 @@
 //! Buffer capability flags.
 //!
-//! `BufferCapabilities` describes what operations a buffer supports.
+//! `BufferCapabilities` describes what operations a text buffer supports.
 //! This replaces boolean `is_virtual_buffer()` checks with fine-grained
 //! capability queries, following the Unix capabilities model.
 //!
 //! # Architecture
 //!
 //! ```text
-//! Kernel (here):  BufferCapabilities definition (text-level capability flags)
-//! Driver:         reovim-driver-buffer re-exports for backward compat
-//! Server:         gRPC sends capabilities as u32 in BufferInfo proto
+//! Provider (here):  BufferCapabilities definition (text-level capability flags)
+//! Driver:           reovim-driver-buffer re-exports for backward compat
+//! Server:           gRPC sends capabilities as u32 in BufferInfo proto
 //! ```
 
 use bitflags::bitflags;

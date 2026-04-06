@@ -2512,6 +2512,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
+ "reovim-provider-text",
  "reovim-types-text",
  "tracing",
 ]
@@ -3740,6 +3741,7 @@ dependencies = [
 name = "reovim-provider-text"
 version = "0.14.5-dev"
 dependencies = [
+ "bitflags 2.11.0",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-types-text",

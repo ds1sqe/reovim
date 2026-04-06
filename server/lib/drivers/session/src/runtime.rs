@@ -417,7 +417,7 @@ impl<'a> SessionRuntime<'a> {
     pub fn text_buffer(
         &self,
         id: BufferId,
-    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>>
+    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_provider_text::BufferOps>>>
     {
         if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>()
             && let Some(buf) = reg.get(id)
@@ -452,7 +452,7 @@ impl<'a> SessionRuntime<'a> {
     /// ```
     pub fn with_buffer_read<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
     where
-        F: FnOnce(&dyn reovim_kernel::api::v1::BufferOps) -> R,
+        F: FnOnce(&dyn reovim_provider_text::BufferOps) -> R,
     {
         let buf_arc = self.text_buffer(buffer)?;
         let buf = buf_arc.read();
@@ -901,7 +901,7 @@ impl BufferApi for SessionRuntime<'_> {
     fn buffer_capabilities(
         &self,
         buffer: BufferId,
-    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+    ) -> Option<reovim_provider_text::BufferCapabilities> {
         self.text_buffer(buffer)
             .map(|buf| buf.read().buffer_capabilities())
     }

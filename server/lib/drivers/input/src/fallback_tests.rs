@@ -8,7 +8,8 @@ use {
         NoOpFallback,
     },
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{BufferId, BufferOps, ModeId},
+    reovim_kernel::api::v1::{BufferId, ModeId},
+    reovim_provider_text::BufferOps,
     reovim_types_text::{Edit, Position},
 };
 

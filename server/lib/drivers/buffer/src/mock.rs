@@ -8,7 +8,7 @@
 //!
 //! ```ignore
 //! use reovim_driver_buffer::TestBufferManager;
-//! use reovim_kernel::api::v1::{Buffer, BufferOps, RwLock};
+//! use reovim_provider_text::BufferOps;
 //! use std::sync::Arc;
 //!
 //! let mgr = TestBufferManager::new();

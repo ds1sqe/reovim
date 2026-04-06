@@ -83,7 +83,7 @@ pub trait BufferApi: Send {
 
     fn buffer_content_if_materializable(&self, buffer: BufferId) -> Option<String> {
         if self.buffer_capabilities(buffer).is_some_and(|caps| {
-            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+            !caps.contains(reovim_provider_text::BufferCapabilities::CONTENT_MATERIALIZABLE)
         }) {
             return None;
         }
@@ -149,7 +149,7 @@ pub trait BufferApi: Send {
     fn buffer_capabilities(
         &self,
         _buffer: BufferId,
-    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+    ) -> Option<reovim_provider_text::BufferCapabilities> {
         None
     }
 

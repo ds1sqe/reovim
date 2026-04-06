@@ -20,9 +20,9 @@ use std::{
 };
 
 use {
+    crate::{BufferCapabilities, BufferOps},
     reovim_kernel::api::v1::{
-        BufferCapabilities, BufferId, BufferMeta, BufferOps, StorageCapabilities, StorageError,
-        StorageOps,
+        BufferId, BufferMeta, StorageCapabilities, StorageError, StorageOps,
     },
     reovim_types_text::{Position, TextGeometry},
 };

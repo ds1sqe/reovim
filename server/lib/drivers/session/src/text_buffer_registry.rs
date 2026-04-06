@@ -15,7 +15,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reovim_arch::sync::RwLock;
-use reovim_kernel::api::v1::{BufferId, BufferOps, Service};
+use reovim_kernel::api::v1::{BufferId, Service};
+use reovim_provider_text::BufferOps;
 
 /// Session-layer registry for text-specific buffer access.
 ///

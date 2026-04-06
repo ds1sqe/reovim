@@ -6,10 +6,10 @@ use {
         Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, BufferOps},
     reovim_types_text::{HistoryRing, Position, RegisterBank, RegisterContent},
     std::sync::Arc,
 };

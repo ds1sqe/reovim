@@ -2,7 +2,7 @@ use super::*;
 
 struct StubBufferApi {
     content: Option<String>,
-    caps: Option<reovim_kernel::api::v1::BufferCapabilities>,
+    caps: Option<reovim_provider_text::BufferCapabilities>,
 }
 
 impl BufferApi for StubBufferApi {
@@ -66,7 +66,7 @@ impl BufferApi for StubBufferApi {
     fn buffer_capabilities(
         &self,
         _buffer: BufferId,
-    ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
+    ) -> Option<reovim_provider_text::BufferCapabilities> {
         self.caps
     }
 }
@@ -201,7 +201,7 @@ fn test_buffer_error_eq() {
 fn test_buffer_content_if_materializable_returns_content() {
     let api = StubBufferApi {
         content: Some("hello".to_string()),
-        caps: Some(reovim_kernel::api::v1::BufferCapabilities::ROPE),
+        caps: Some(reovim_provider_text::BufferCapabilities::ROPE),
     };
 
     assert_eq!(api.buffer_content_if_materializable(BufferId::new()), Some("hello".to_string()));
@@ -211,7 +211,7 @@ fn test_buffer_content_if_materializable_returns_content() {
 fn test_buffer_content_if_materializable_skips_virtual() {
     let api = StubBufferApi {
         content: Some("hello".to_string()),
-        caps: Some(reovim_kernel::api::v1::BufferCapabilities::VIRTUAL),
+        caps: Some(reovim_provider_text::BufferCapabilities::VIRTUAL),
     };
 
     assert_eq!(api.buffer_content_if_materializable(BufferId::new()), None);

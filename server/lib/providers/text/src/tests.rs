@@ -6,13 +6,13 @@ use std::{borrow::Cow, sync::Arc};
 
 use {
     reovim_driver_vfs::FileMapping,
-    reovim_kernel::api::v1::{BufferId, BufferOps, StorageOps},
+    reovim_kernel::api::v1::BufferId,
     reovim_types_text::{LineIndex, Position, TextGeometry},
 };
 
 use crate::Buffer;
 
-use super::{HeapMapping, VirtualBuffer, VirtualSnapshot};
+use super::{BufferOps, HeapMapping, StorageOps, VirtualBuffer, VirtualSnapshot};
 
 /// Helper: create a `VirtualBuffer` from a string.
 fn vbuf_from_str(s: &str) -> VirtualBuffer {

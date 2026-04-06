@@ -43,7 +43,7 @@ fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
 fn text_buf(
     ctx: &KernelContext,
     id: BufferId,
-) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+) -> Arc<RwLock<dyn reovim_provider_text::BufferOps>> {
     ctx.services
         .get::<TextBufferRegistry>()
         .unwrap()

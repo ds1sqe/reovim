@@ -1,4 +1,4 @@
-use crate::api::BufferCapabilities;
+use crate::BufferCapabilities;
 
 #[test]
 fn rope_preset_has_expected_flags() {

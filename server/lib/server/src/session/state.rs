@@ -24,8 +24,8 @@ use {
     reovim_driver_layout::RootCompositor,
     reovim_driver_session::{ClientId, Jumplist, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, BufferOps, CommandId, KernelContext, ModeId, ModeStack},
-    reovim_provider_text::Buffer,
+    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, ModeStack},
+    reovim_provider_text::{Buffer, BufferOps},
     reovim_types_text::RegisterContent,
 };
 

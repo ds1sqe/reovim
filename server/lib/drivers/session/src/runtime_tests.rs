@@ -1693,7 +1693,7 @@ fn test_with_buffer_read() {
     let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
 
     let line_count = harness.with_runtime(|runtime| {
-        runtime.with_buffer_read(buffer_id, reovim_kernel::api::BufferOps::line_count)
+        runtime.with_buffer_read(buffer_id, reovim_provider_text::BufferOps::line_count)
     });
     assert_eq!(line_count, Some(1));
 }
@@ -1706,7 +1706,7 @@ fn test_with_buffer_read_nonexistent() {
     let fake_id = BufferId::new();
 
     let result = harness.with_runtime(|runtime| {
-        runtime.with_buffer_read(fake_id, reovim_kernel::api::BufferOps::line_count)
+        runtime.with_buffer_read(fake_id, reovim_provider_text::BufferOps::line_count)
     });
     assert!(result.is_none());
 }

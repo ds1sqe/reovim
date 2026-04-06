@@ -23,7 +23,7 @@ reovim-arch = { workspace = true }
 # Pure text data types (Position, Edit, Selection) — leaf crate, zero deps
 reovim-types-text = { workspace = true }
 
-# Capability bitflags for BufferOps trait
+# Capability bitflags for StorageCapabilities
 bitflags = { workspace = true }
 
 [dev-dependencies]

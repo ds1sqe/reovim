@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
 use reovim_arch::sync::RwLock;
-use reovim_kernel::{
-    api::v1::{BufferMeta, ServiceRegistry},
-    testing::TestTextBuffer,
-};
+use reovim_kernel::api::v1::ServiceRegistry;
+use reovim_provider_text::Buffer;
 
 use super::TextBufferRegistry;
 
 #[test]
 fn register_and_get() {
     let registry = TextBufferRegistry::new();
-    let buf = Arc::new(RwLock::new(TestTextBuffer::new("hello")));
+    let buf = Arc::new(RwLock::new(Buffer::from_string("hello")));
     let id = registry.register(buf);
 
     let retrieved = registry.get(id);
@@ -22,7 +20,7 @@ fn register_and_get() {
 #[test]
 fn get_missing_returns_none() {
     let registry = TextBufferRegistry::new();
-    let buf = Arc::new(RwLock::new(TestTextBuffer::new("")));
+    let buf = Arc::new(RwLock::new(Buffer::from_string("")));
     let id = buf.read().id();
     assert!(registry.get(id).is_none());
 }
@@ -30,7 +28,7 @@ fn get_missing_returns_none() {
 #[test]
 fn unregister_returns_buffer() {
     let registry = TextBufferRegistry::new();
-    let buf = Arc::new(RwLock::new(TestTextBuffer::new("world")));
+    let buf = Arc::new(RwLock::new(Buffer::from_string("world")));
     let id = registry.register(buf);
 
     let removed = registry.unregister(id);
@@ -42,7 +40,7 @@ fn unregister_returns_buffer() {
 #[test]
 fn unregister_missing_returns_none() {
     let registry = TextBufferRegistry::new();
-    let buf = Arc::new(RwLock::new(TestTextBuffer::new("")));
+    let buf = Arc::new(RwLock::new(Buffer::from_string("")));
     let id = buf.read().id();
     assert!(registry.unregister(id).is_none());
 }
@@ -53,8 +51,8 @@ fn count_and_list() {
     assert_eq!(registry.count(), 0);
     assert!(registry.list().is_empty());
 
-    let buf1 = Arc::new(RwLock::new(TestTextBuffer::new("a")));
-    let buf2 = Arc::new(RwLock::new(TestTextBuffer::new("b")));
+    let buf1 = Arc::new(RwLock::new(Buffer::from_string("a")));
+    let buf2 = Arc::new(RwLock::new(Buffer::from_string("b")));
     let id1 = registry.register(buf1);
     let id2 = registry.register(buf2);
 
@@ -73,7 +71,7 @@ fn service_registry_integration() {
     assert!(reg.is_some());
 
     let reg = reg.unwrap();
-    let buf = Arc::new(RwLock::new(TestTextBuffer::new("via service")));
+    let buf = Arc::new(RwLock::new(Buffer::from_string("via service")));
     let id = reg.register(buf);
 
     assert_eq!(reg.get(id).unwrap().read().content(), "via service");

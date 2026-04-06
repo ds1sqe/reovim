@@ -38,7 +38,7 @@ impl CommandHandler for FormatDocument {
             return CommandResult::Success;
         };
         if runtime.buffer_capabilities(buf_id).is_some_and(|caps| {
-            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+            !caps.contains(reovim_provider_text::BufferCapabilities::CONTENT_MATERIALIZABLE)
         }) {
             debug!("format: skipping non-materializable buffer (file too large)");
             return CommandResult::Success;
@@ -96,7 +96,7 @@ impl CommandHandler for FormatSelection {
             return CommandResult::Success;
         };
         if runtime.buffer_capabilities(buf_id).is_some_and(|caps| {
-            !caps.contains(reovim_kernel::api::v1::BufferCapabilities::CONTENT_MATERIALIZABLE)
+            !caps.contains(reovim_provider_text::BufferCapabilities::CONTENT_MATERIALIZABLE)
         }) {
             return CommandResult::Success;
         }

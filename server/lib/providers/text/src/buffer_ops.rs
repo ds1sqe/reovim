@@ -2,14 +2,13 @@
 //!
 //! `BufferOps` extends `StorageOps + BufferMeta` with text-specific methods.
 //! Both Rope-backed `Buffer` and mmap-backed `VirtualBuffer` implement this
-//! trait. The `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`.
+//! trait. The session-layer `TextBufferRegistry` stores `Arc<RwLock<dyn BufferOps>>`.
 //!
 //! # Architecture
 //!
-//! Byte-level I/O and identity come from supertraits (`StorageOps`, `BufferMeta`).
-//! `BufferOps` adds only text-specific operations (line access, position
-//! conversion, text mutations). During #740, these text methods will move to
-//! `reovim-provider-text` and `BufferManager` will store `dyn StorageOps + BufferMeta`.
+//! Byte-level I/O and identity come from supertraits (`StorageOps`, `BufferMeta`)
+//! which are defined in `reovim-kernel`. `BufferOps` adds only text-specific
+//! operations (line access, position conversion, text mutations).
 //!
 //! ```text
 //! StorageOps (byte I/O)  ─┐
@@ -20,21 +19,16 @@
 use std::borrow::Cow;
 
 use {
-    crate::{
-        api::{
-            BufferCapabilities,
-            storage_ops::{BufferMeta, StorageOps},
-        },
-        mm::Position,
-    },
-    reovim_types_text::TextGeometry,
+    crate::BufferCapabilities,
+    reovim_kernel::api::v1::{BufferMeta, StorageOps},
+    reovim_types_text::{Position, TextGeometry},
 };
 
 /// Text buffer operations extending byte storage with text-specific methods.
 ///
-/// All text buffer types (Rope, mmap-backed) implement this trait. The kernel
-/// `BufferManager` stores `Arc<RwLock<dyn BufferOps>>`, enabling polymorphic
-/// text buffer access.
+/// All text buffer types (Rope, mmap-backed) implement this trait. The
+/// session-layer `TextBufferRegistry` stores `Arc<RwLock<dyn BufferOps>>`,
+/// enabling polymorphic text buffer access.
 ///
 /// Byte-level I/O and metadata methods are inherited from `StorageOps` and
 /// `BufferMeta` supertraits. This trait adds only text-specific operations.

@@ -10,8 +10,7 @@
 use std::borrow::Cow;
 
 use {
-    reovim_kernel::api::v1::BufferOps,
-    reovim_provider_text::{Buffer, VirtualBuffer},
+    reovim_provider_text::{Buffer, BufferOps, VirtualBuffer},
     reovim_types_text::{Position, TextGeometry},
 };
 

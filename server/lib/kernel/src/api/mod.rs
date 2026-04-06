@@ -28,12 +28,9 @@
 // Internal modules (not directly exposed)
 // ============================================================================
 
-// Buffer capability flags (text-level capability flags)
-mod buffer_caps;
 // Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
-// Text buffer operations trait (extends StorageOps + BufferMeta)
-mod buffer_ops;
+// BufferOps and BufferCapabilities moved to reovim-provider-text (#740)
 // Byte-level storage traits (StorageOps, BufferMeta, StorageCapabilities)
 mod context;
 mod debug;

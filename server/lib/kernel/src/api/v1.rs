@@ -50,8 +50,7 @@ pub use crate::mm::{BufferId, TabId, WindowId};
 // Snapshot moved to reovim-provider-text (#740)
 // Note: FileMapping and PieceTree moved to reovim-driver-vfs (#740)
 
-// Line caching
-pub use crate::mm::LineCache;
+// LineCache removed (#740) — dead code, zero production consumers.
 
 // Background task scheduler
 pub use crate::mm::{
@@ -106,13 +105,9 @@ pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 // It stays in kernel - no I/O policy, just storage lifecycle
 pub use super::buffer_manager::{BufferError, BufferManager};
 
-// BufferOps - text buffer operations (extends StorageOps + BufferMeta)
-pub use super::buffer_ops::BufferOps;
+// BufferOps and BufferCapabilities moved to reovim-provider-text (#740)
 
-// BufferCapabilities - capability flags for buffer type queries
-pub use super::buffer_caps::BufferCapabilities;
-
-// StorageOps - byte-level storage trait (replaces BufferOps in target architecture)
+// StorageOps - byte-level storage trait (the kernel's buffer contract)
 pub use super::storage_ops::{
     BufferMeta, KernelBuffer, StorageCapabilities, StorageError, StorageOps,
 };

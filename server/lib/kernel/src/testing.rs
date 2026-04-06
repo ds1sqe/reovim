@@ -21,18 +21,18 @@
 //! downstream crates can use it in their test modules. This follows the
 //! same pattern as `reovim_driver_session::testing`.
 
-use std::{borrow::Cow, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
-use {
-    crate::api::v1::{
-        BufferCapabilities, BufferId, BufferManager, BufferOps, EventBus, KernelBuffer,
-        KernelContext, ModeId, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
-        StorageCapabilities, StorageError, StorageOps,
-    },
-    reovim_types_text::{Position, TextGeometry},
+use crate::api::v1::{
+    BufferId, BufferManager, EventBus, KernelBuffer, KernelContext, ModeId, ModuleId,
+    OptionRegistry, RwLock, ServiceRegistry, StorageCapabilities, StorageError, StorageOps,
 };
 
-/// Minimal text buffer implementation for kernel-only tests.
+/// Minimal byte buffer implementation for kernel-only tests.
+///
+/// Implements `StorageOps + BufferMeta` (i.e., `KernelBuffer`) for byte-level
+/// testing. For text-level tests that need `BufferOps`, use
+/// `reovim_provider_text::testing::setup_buffer` instead.
 pub struct TestTextBuffer {
     id: BufferId,
     content: String,
@@ -130,102 +130,9 @@ impl crate::api::v1::BufferMeta for TestTextBuffer {
     }
 }
 
-impl TextGeometry for TestTextBuffer {
-    fn line_count(&self) -> usize {
-        if self.content.is_empty() {
-            return 0;
-        }
-        self.content.lines().count()
-    }
-
-    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
-        self.content.lines().nth(idx).map(Cow::Borrowed)
-    }
-
-    fn line_len(&self, idx: usize) -> Option<usize> {
-        self.content
-            .lines()
-            .nth(idx)
-            .map(|line| line.chars().count())
-    }
-
-    fn is_empty(&self) -> bool {
-        self.content.is_empty()
-    }
-}
-
-impl BufferOps for TestTextBuffer {
-    fn buffer_capabilities(&self) -> BufferCapabilities {
-        BufferCapabilities::ROPE
-    }
-
-    fn line_count(&self) -> usize {
-        TextGeometry::line_count(self)
-    }
-
-    fn line(&self, idx: usize) -> Option<Cow<'_, str>> {
-        TextGeometry::line(self, idx)
-    }
-
-    fn line_len(&self, idx: usize) -> Option<usize> {
-        TextGeometry::line_len(self, idx)
-    }
-
-    fn content_bytes(&self) -> Vec<u8> {
-        self.content.as_bytes().to_vec()
-    }
-
-    fn position_to_byte(&self, pos: Position) -> usize {
-        let mut offset = 0;
-        for (i, line) in self.content.lines().enumerate() {
-            if i == pos.line {
-                return offset + pos.column.min(line.len());
-            }
-            offset += line.len() + 1;
-        }
-        self.content.len()
-    }
-
-    fn byte_to_position(&self, byte_offset: usize) -> Position {
-        let mut offset = 0;
-        for (i, line) in self.content.lines().enumerate() {
-            let line_end = offset + line.len();
-            if byte_offset <= line_end {
-                return Position::new(i, byte_offset - offset);
-            }
-            offset = line_end + 1;
-        }
-        Position::origin()
-    }
-
-    fn insert_at(&mut self, pos: Position, text: &str) {
-        let offset = self.position_to_byte(pos);
-        self.content.insert_str(offset, text);
-        self.modified = true;
-    }
-
-    fn delete_range(&mut self, start: Position, end: Position) -> String {
-        let start = self.position_to_byte(start);
-        let end = self.position_to_byte(end);
-        let deleted = self.content[start..end].to_owned();
-        self.content.replace_range(start..end, "");
-        self.modified = true;
-        deleted
-    }
-
-    fn set_content(&mut self, content: &str) {
-        content.clone_into(&mut self.content);
-        self.modified = true;
-    }
-
-    fn content(&self) -> String {
-        self.content.clone()
-    }
-
-    fn as_text_geometry(&self) -> &dyn TextGeometry {
-        self
-    }
-}
+// BufferOps and TextGeometry impls removed (#740) — TestTextBuffer is now
+// byte-only (KernelBuffer). For text-level tests, use Buffer from
+// reovim-provider-text.
 
 /// In-memory buffer manager for testing.
 ///
