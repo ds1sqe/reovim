@@ -4,7 +4,7 @@ use {reovim_domain::Domain, reovim_kernel::api::v1::ByteEdit};
 
 use crate::{CodecError, CodecMetadata, ContentType};
 
-use super::{Decode, DecodeOutput, Encode, Index};
+use super::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 
 // ─── Test Domain ────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ impl IdentityIndex {
     }
 }
 
-impl Index<TestDomain> for IdentityIndex {
+impl ByteNotifiable for IdentityIndex {
     fn build(&mut self, raw: &[u8]) {
         self.len = raw.len();
     }
@@ -69,7 +69,9 @@ impl Index<TestDomain> for IdentityIndex {
         // Adjust length: remove old, add new
         self.len = self.len - edit.old_bytes.len() + edit.new_bytes.len();
     }
+}
 
+impl Index<TestDomain> for IdentityIndex {
     fn to_bytes(&self, pos: &TestPos) -> Option<usize> {
         if pos.0 <= self.len { Some(pos.0) } else { None }
     }

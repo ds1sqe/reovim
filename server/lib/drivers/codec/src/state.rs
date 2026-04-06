@@ -33,7 +33,7 @@ use std::collections::HashMap;
 
 use {reovim_driver_session::SessionExtension, reovim_kernel::api::v1::BufferId};
 
-use crate::CodecMetadata;
+use crate::{ByteNotifiable, CodecMetadata};
 
 /// Per-session codec metadata storage.
 ///
@@ -53,6 +53,13 @@ pub struct CodecSessionState {
     raw_bytes: HashMap<usize, Vec<u8>>,
     /// Active view name per buffer (e.g., `"default"`, `"hex"`).
     active_view: HashMap<usize, String>,
+    /// Active codec index per buffer for incremental byte-edit notification.
+    ///
+    /// When present, the session runtime routes [`ByteEdit`] notifications
+    /// through [`ByteNotifiable::notify_byte_edit`] after every mutation.
+    /// Per-buffer (shared across clients), not per-client — the byte-level
+    /// index tracks shared buffer state.
+    indices: HashMap<usize, Box<dyn ByteNotifiable>>,
 }
 
 impl SessionExtension for CodecSessionState {
@@ -81,13 +88,14 @@ impl CodecSessionState {
         self.metadata.get(&buffer_id.as_usize())
     }
 
-    /// Remove metadata, raw bytes, and active view for a buffer.
+    /// Remove metadata, raw bytes, active view, and index for a buffer.
     ///
     /// Call this when a buffer is closed.
     pub fn remove(&mut self, buffer_id: BufferId) -> Option<CodecMetadata> {
         let key = buffer_id.as_usize();
         self.raw_bytes.remove(&key);
         self.active_view.remove(&key);
+        self.indices.remove(&key);
         self.metadata.remove(&key)
     }
 
@@ -109,11 +117,12 @@ impl CodecSessionState {
         self.metadata.is_empty()
     }
 
-    /// Clear all metadata, raw bytes, and active views.
+    /// Clear all metadata, raw bytes, active views, and indices.
     pub fn clear(&mut self) {
         self.metadata.clear();
         self.raw_bytes.clear();
         self.active_view.clear();
+        self.indices.clear();
     }
 
     /// Store raw bytes for a buffer (for view switching).
@@ -144,6 +153,37 @@ impl CodecSessionState {
             .get(&buffer_id.as_usize())
             .map(String::as_str)
     }
+
+    // ── Index management (#740 D.2) ───────────────────────────────────────
+
+    /// Register a codec index for a buffer.
+    ///
+    /// The index receives [`ByteEdit`](reovim_kernel::api::v1::ByteEdit)
+    /// notifications via [`ByteNotifiable::notify_byte_edit`] after every
+    /// production mutation.
+    pub fn set_index(&mut self, buffer_id: BufferId, index: Box<dyn ByteNotifiable>) {
+        self.indices.insert(buffer_id.as_usize(), index);
+    }
+
+    /// Notify the codec index for a buffer about a byte-level edit.
+    ///
+    /// No-op if no index is registered for this buffer.
+    pub fn notify_index(&mut self, buffer_id: BufferId, edit: &reovim_kernel::api::v1::ByteEdit) {
+        if let Some(index) = self.indices.get_mut(&buffer_id.as_usize()) {
+            index.notify(edit);
+        }
+    }
+
+    /// Check whether a buffer has an active codec index.
+    #[must_use]
+    pub fn has_index(&self, buffer_id: BufferId) -> bool {
+        self.indices.contains_key(&buffer_id.as_usize())
+    }
+
+    /// Remove the codec index for a buffer.
+    pub fn remove_index(&mut self, buffer_id: BufferId) {
+        self.indices.remove(&buffer_id.as_usize());
+    }
 }
 
 impl std::fmt::Debug for CodecSessionState {
@@ -152,6 +192,7 @@ impl std::fmt::Debug for CodecSessionState {
             .field("buffer_count", &self.metadata.len())
             .field("cached_raw_count", &self.raw_bytes.len())
             .field("active_view_count", &self.active_view.len())
+            .field("index_count", &self.indices.len())
             .finish()
     }
 }

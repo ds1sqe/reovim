@@ -66,24 +66,18 @@ pub trait Encode<D: Domain>: Send + Sync {
     -> Result<Vec<u8>, CodecError>;
 }
 
-/// Stateful domain index for position mapping and edit translation.
+// ── ByteNotifiable ──────────────────────────────────────────────────────────
+
+/// Domain-agnostic byte-level notification interface for codec indices.
 ///
-/// Maintains a mapping between byte offsets (VFS layer) and domain positions
-/// (provider layer). The index is built once from raw bytes, then updated
-/// incrementally as byte-level edits occur.
+/// Captures the byte-level operations of [`Index<D>`] that do not depend on
+/// the domain type.  This trait enables type-erased storage of index instances
+/// in [`CodecSessionState`](crate::CodecSessionState) so the session runtime
+/// can route [`ByteEdit`] notifications without knowing the domain.
 ///
-/// # Lifecycle
-///
-/// 1. [`build`](Self::build) — Scan raw bytes, build initial index
-/// 2. [`notify`](Self::notify) — Incrementally update on each byte edit
-/// 3. [`to_bytes`](Self::to_bytes) / [`from_bytes`](Self::from_bytes) — Position mapping
-/// 4. [`translate_edit`](Self::translate_edit) — Domain edit → byte edit
-///
-/// # Thread Safety
-///
-/// Implementations must be `Send + Sync`. The `&mut self` on `build` and
-/// `notify` means the caller must hold exclusive access during mutations.
-pub trait Index<D: Domain>: Send + Sync {
+/// Every [`Index<D>`] implementation must also implement `ByteNotifiable`
+/// (enforced by the supertrait bound).
+pub trait ByteNotifiable: Send + Sync {
     /// Build the index from raw bytes.
     ///
     /// Called once when a buffer is first opened or when the codec is switched.
@@ -92,11 +86,32 @@ pub trait Index<D: Domain>: Send + Sync {
 
     /// Incrementally update the index after a byte-level edit.
     ///
-    /// Called after each `ByteEdit` is applied to the VFS storage.
+    /// Called after each [`ByteEdit`] is applied to the VFS storage.
     /// The implementation should update its internal state to reflect
     /// the change without a full rebuild.
     fn notify(&mut self, edit: &ByteEdit);
+}
 
+// ── Index<D> ────────────────────────────────────────────────────────────────
+
+/// Stateful domain index for position mapping and edit translation.
+///
+/// Extends [`ByteNotifiable`] with domain-specific operations.  Maintains
+/// a mapping between byte offsets (VFS layer) and domain positions
+/// (provider layer).
+///
+/// # Lifecycle
+///
+/// 1. [`build`](ByteNotifiable::build) — Scan raw bytes, build initial index
+/// 2. [`notify`](ByteNotifiable::notify) — Incrementally update on each byte edit
+/// 3. [`to_bytes`](Self::to_bytes) / [`offset_to_position`](Self::offset_to_position) — Position mapping
+/// 4. [`translate_edit`](Self::translate_edit) — Domain edit → byte edit
+///
+/// # Thread Safety
+///
+/// Implementations must be `Send + Sync`. The `&mut self` on `build` and
+/// `notify` means the caller must hold exclusive access during mutations.
+pub trait Index<D: Domain>: ByteNotifiable {
     /// Map a domain position to a byte offset.
     ///
     /// Returns `None` if the position is out of bounds.

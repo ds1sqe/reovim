@@ -1,7 +1,7 @@
 //! Tests for UTF-8 domain codec implementations.
 
 use {
-    reovim_driver_codec::{CodecMetadata, ContentType, Decode, Encode, Index},
+    reovim_driver_codec::{ByteNotifiable, CodecMetadata, ContentType, Decode, Encode, Index},
     reovim_kernel::api::v1::ByteEdit,
     reovim_types_text::{Text, TextEdit, TextPosition},
 };
@@ -76,7 +76,7 @@ fn encode_roundtrip_with_bom() {
     assert_eq!(re_encoded, original);
 }
 
-// ─── Index<Text> — build ────────────────────────────────────────────────────
+// ─── ByteNotifiable — build ─────────────────────────────────────────────────
 
 #[test]
 fn index_build_empty() {
@@ -129,7 +129,7 @@ fn index_to_bytes_multi_line() {
     assert_eq!(idx.to_bytes(&TextPosition::new(3, 0)), None);
 }
 
-// ─── Index<Text> — notify ───────────────────────────────────────────────────
+// ─── ByteNotifiable — notify ────────────────────────────────────────────────
 
 #[test]
 fn index_notify_insert_no_newline() {
@@ -231,4 +231,48 @@ fn translate_edit_out_of_bounds() {
 fn utf8_line_index_default() {
     let idx = Utf8LineIndex::default();
     assert!(idx.offset_to_position(0).is_none());
+}
+
+// ─── ByteNotifiable ─────────────────────────────────────────────────────────
+
+#[test]
+fn byte_notifiable_notify() {
+    let mut idx = Utf8LineIndex::new();
+    ByteNotifiable::build(&mut idx, b"hello\nworld");
+
+    // Use ByteNotifiable::notify
+    let edit = ByteEdit::insert(5, b"!");
+    ByteNotifiable::notify(&mut idx, &edit);
+
+    // Verify index was updated (line 1 start shifted by 1)
+    assert_eq!(idx.to_bytes(&TextPosition::new(1, 0)), Some(7));
+}
+
+#[test]
+fn byte_notifiable_build() {
+    let mut idx = Utf8LineIndex::new();
+
+    // Build via ByteNotifiable
+    ByteNotifiable::build(&mut idx, b"a\nb\nc");
+
+    assert_eq!(idx.offset_to_position(0), Some(TextPosition::new(0, 0)));
+    assert_eq!(idx.offset_to_position(2), Some(TextPosition::new(1, 0)));
+    assert_eq!(idx.offset_to_position(4), Some(TextPosition::new(2, 0)));
+}
+
+#[test]
+fn byte_notifiable_is_object_safe() {
+    let mut idx = Utf8LineIndex::new();
+    ByteNotifiable::build(&mut idx, b"hello");
+
+    let notifiable: &mut dyn ByteNotifiable = &mut idx;
+    notifiable.notify(&ByteEdit::insert(5, b"!"));
+}
+
+#[test]
+fn byte_notifiable_boxed_storage() {
+    let mut idx: Box<dyn ByteNotifiable> = Box::new(Utf8LineIndex::new());
+    idx.build(b"line1\nline2");
+    idx.notify(&ByteEdit::insert(5, b"!"));
+    // No panic — proves boxed trait object works for CodecSessionState storage
 }

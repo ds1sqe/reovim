@@ -68,7 +68,7 @@ pub use {
 };
 
 // Domain-generic codec traits
-pub use domain_codec::{Decode, DecodeOutput, Encode, Index};
+pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 
 // Types
 pub use {

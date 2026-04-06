@@ -6,7 +6,8 @@
 
 use {
     reovim_driver_codec::{
-        CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
+        ByteNotifiable, CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode,
+        Index,
     },
     reovim_kernel::api::v1::ByteEdit,
     reovim_types_text::{Text, TextEdit, TextPosition},
@@ -123,7 +124,7 @@ fn count_byte(bytes: &[u8], target: u8) -> usize {
     bytes.iter().filter(|&&b| b == target).count()
 }
 
-impl Index<Text> for Utf8LineIndex {
+impl ByteNotifiable for Utf8LineIndex {
     fn build(&mut self, raw: &[u8]) {
         self.line_starts.clear();
         self.line_starts.push(0);
@@ -188,7 +189,9 @@ impl Index<Text> for Utf8LineIndex {
             self.total_bytes -= old_len - new_len;
         }
     }
+}
 
+impl Index<Text> for Utf8LineIndex {
     fn to_bytes(&self, pos: &TextPosition) -> Option<usize> {
         let line_start = *self.line_starts.get(pos.line)?;
 
