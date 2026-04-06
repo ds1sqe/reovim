@@ -261,6 +261,10 @@ pub fn create_session_state() -> SessionState {
         &kernel.buffers,
     ))));
 
+    // Register TextBufferRegistry for session-layer text access (#740).
+    // SessionRuntime uses this instead of kernel.buffers for text operations.
+    services.register(Arc::new(reovim_driver_session::TextBufferRegistry::new()));
+
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 

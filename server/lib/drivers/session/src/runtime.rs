@@ -54,7 +54,7 @@ use {
 };
 
 use crate::{
-    Selection, Session, SessionExtension, Window,
+    Selection, Session, SessionExtension, TextBufferRegistry, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
         CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,
@@ -406,6 +406,25 @@ impl<'a> SessionRuntime<'a> {
         self.kernel
     }
 
+    /// Get a text buffer by ID from the session-layer text registry (#740).
+    ///
+    /// Prefers the `TextBufferRegistry` service when available. Falls back
+    /// to `kernel.buffers` for backward compatibility during migration.
+    fn text_buffer(
+        &self,
+        id: BufferId,
+    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>>
+    {
+        // Prefer text registry when registered (production + updated tests).
+        if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>()
+            && let Some(buf) = reg.get(id)
+        {
+            return Some(buf);
+        }
+        // Fallback: kernel.buffers still stores dyn BufferOps during migration.
+        self.kernel.buffers.get(id)
+    }
+
     /// Execute a read-only operation on a buffer.
     ///
     /// This method provides temporary read access to a buffer for complex
@@ -433,7 +452,7 @@ impl<'a> SessionRuntime<'a> {
     where
         F: FnOnce(&dyn reovim_kernel::api::v1::BufferOps) -> R,
     {
-        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf_arc = self.text_buffer(buffer)?;
         let buf = buf_arc.read();
         Some(f(&*buf))
     }
@@ -445,7 +464,7 @@ impl<'a> SessionRuntime<'a> {
     where
         F: FnOnce(&dyn reovim_types_text::TextGeometry) -> R,
     {
-        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf_arc = self.text_buffer(buffer)?;
         let buf = buf_arc.read();
         Some(f(buf.as_text_geometry()))
     }
@@ -654,23 +673,17 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_line(&self, buffer: BufferId, line: usize) -> Option<String> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .and_then(|buf| buf.read().line(line).map(String::from))
     }
 
     fn buffer_line_count(&self, buffer: BufferId) -> Option<usize> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .map(|buf| buf.read().line_count())
     }
 
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .and_then(|buf| buf.read().line_len(line))
     }
 
@@ -682,7 +695,7 @@ impl BufferApi for SessionRuntime<'_> {
         start: Position,
         end: Position,
     ) -> Option<String> {
-        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf_arc = self.text_buffer(buffer)?;
         let buf = buf_arc.read();
 
         // Use line-based extraction via BufferOps trait (works for both
@@ -693,34 +706,28 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_content(&self, buffer: BufferId) -> Option<String> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .map(|buf| buf.read().content())
     }
 
     fn buffer_file_path(&self, buffer: BufferId) -> Option<String> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .and_then(|buf| buf.read().file_path().map(String::from))
     }
 
     fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .map(|buf| buf.read().is_modified())
     }
 
     fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
+        if let Some(buf) = self.text_buffer(buffer) {
             buf.write().set_modified(modified);
         }
     }
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
+        if let Some(buf) = self.text_buffer(buffer) {
             // Get cursor from per-client active window (#471)
             // Note: cursor_after will be set by runner from CommandResult
             let cursor_before = self.windows().active().map_or_else(
@@ -763,7 +770,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
+        if let Some(buf) = self.text_buffer(buffer) {
             // Get cursor from per-client active window (#471)
             let cursor_before = self.windows().active().map_or_else(
                 || Position::new(0, 0),
@@ -814,7 +821,7 @@ impl BufferApi for SessionRuntime<'_> {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn replace_content(&mut self, buffer: BufferId, content: &str) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
+        if let Some(buf) = self.text_buffer(buffer) {
             let cursor_before = self.windows().active().map_or_else(
                 || Position::new(0, 0),
                 |w| Position::new(w.cursor.line, w.cursor.column),
@@ -856,10 +863,12 @@ impl BufferApi for SessionRuntime<'_> {
         if let Some(name) = name {
             buffer.set_file_path(Some(name.to_string()));
         }
-        let id = self
-            .kernel
-            .buffers
-            .register(std::sync::Arc::new(reovim_arch::sync::RwLock::new(buffer)));
+        let arc = std::sync::Arc::new(reovim_arch::sync::RwLock::new(buffer));
+        // Register in text buffer registry (session-layer text access, #740).
+        if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>() {
+            reg.register(arc.clone());
+        }
+        let id = self.kernel.buffers.register(arc);
         self.changes.record_buffer_created(id);
         id
     }
@@ -871,12 +880,16 @@ impl BufferApi for SessionRuntime<'_> {
         if self.kernel.buffers.unregister(buffer).is_none() {
             return Err(BufferError::NotFound(buffer));
         }
+        // Unregister from text buffer registry (#740).
+        if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>() {
+            reg.unregister(buffer);
+        }
         self.changes.record_buffer_deleted(buffer);
         Ok(())
     }
 
     fn rename_buffer(&mut self, buffer: BufferId, new_name: &str) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
+        if let Some(buf) = self.text_buffer(buffer) {
             buf.write().set_file_path(Some(new_name.to_string()));
             self.changes
                 .record_buffer_renamed(buffer, new_name.to_string());
@@ -887,9 +900,7 @@ impl BufferApi for SessionRuntime<'_> {
         &self,
         buffer: BufferId,
     ) -> Option<reovim_kernel::api::v1::BufferCapabilities> {
-        self.kernel
-            .buffers
-            .get(buffer)
+        self.text_buffer(buffer)
             .map(|buf| buf.read().buffer_capabilities())
     }
 
@@ -898,7 +909,7 @@ impl BufferApi for SessionRuntime<'_> {
         buffer: BufferId,
         writer: &mut dyn std::io::Write,
     ) -> Result<(), std::io::Error> {
-        self.kernel.buffers.get(buffer).map_or_else(
+        self.text_buffer(buffer).map_or_else(
             || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
             |buf| writer.write_all(buf.read().content().as_bytes()),
         )
@@ -957,7 +968,7 @@ impl WindowApi for SessionRuntime<'_> {
     }
 
     fn set_window_buffer(&mut self, window: WindowId, buffer: BufferId) -> Result<(), WindowError> {
-        if self.kernel.buffers.get(buffer).is_none() {
+        if self.text_buffer(buffer).is_none() {
             return Err(WindowError::BufferNotFound(buffer));
         }
         if let Some(w) = self.windows.get_mut(window) {
@@ -1125,7 +1136,7 @@ impl SessionRuntime<'_> {
     /// Extracted from the 4 undo/redo methods to deduplicate the edit-application
     /// loop and avoid an LLVM coverage gap-region bug on `if let` closing braces.
     fn apply_undo_edits(&self, buffer: BufferId, edits: &[Edit]) {
-        let Some(buf) = self.kernel.buffers.get(buffer) else {
+        let Some(buf) = self.text_buffer(buffer) else {
             return;
         };
         let mut buf = buf.write();

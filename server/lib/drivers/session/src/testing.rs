@@ -116,8 +116,15 @@ impl Default for TestSessionRuntime {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl TestSessionRuntime {
     /// Create a `KernelContext` that uses a real buffer manager for testing.
+    ///
+    /// Also registers a `TextBufferRegistry` service so that
+    /// `SessionRuntime::text_buffer()` resolves through the session-layer
+    /// registry (#740).
     fn make_test_kernel() -> KernelContext {
-        reovim_kernel::testing::create_test_context()
+        let ctx = reovim_kernel::testing::create_test_context();
+        ctx.services
+            .register(Arc::new(crate::TextBufferRegistry::new()));
+        ctx
     }
 
     /// Create a new test runtime with default normal mode.
@@ -170,9 +177,13 @@ impl TestSessionRuntime {
     pub fn with_buffer(content: &str) -> Self {
         let mut test = Self::new();
 
-        // Create buffer with content
+        // Create buffer with content, register in both kernel and text registry (#740).
         let buffer = Buffer::from_string(content);
-        let buffer_id = test.kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+        let arc = Arc::new(RwLock::new(buffer));
+        if let Some(reg) = test.kernel.services.get::<crate::TextBufferRegistry>() {
+            reg.register(arc.clone());
+        }
+        let buffer_id = test.kernel.buffers.register(arc);
 
         // Create a window displaying this buffer
         let mut window = crate::Window::new();
@@ -193,7 +204,11 @@ impl TestSessionRuntime {
     pub fn with_buffer_and_mode(content: &str, mode: ModeId) -> Self {
         let mut test = Self::with_home_mode(mode);
         let buffer = Buffer::from_string(content);
-        let buffer_id = test.kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+        let arc = Arc::new(RwLock::new(buffer));
+        if let Some(reg) = test.kernel.services.get::<crate::TextBufferRegistry>() {
+            reg.register(arc.clone());
+        }
+        let buffer_id = test.kernel.buffers.register(arc);
         let mut window = crate::Window::new();
         window.buffer_id = Some(buffer_id);
         test.windows.add(window);

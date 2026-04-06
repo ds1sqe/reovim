@@ -42,6 +42,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **session/kernel**: continue the `#740` ownership move — `JumpEntry`, `Jumplist`, and `MAX_JUMPLIST_SIZE` now live in `reovim-driver-session`, kernel core no longer implements or exports them, and the remaining imports were migrated to the driver path (#740)
 - **session/kernel**: continue the `#740` ownership move — shared uppercase/global marks now live in `reovim-driver-session::SessionShared` instead of `KernelContext`, `SessionRuntime` exposes the session-owned mark seam, and mark/bootstrap test scaffolding no longer constructs kernel mark storage (#740)
 - **kernel/session**: continue the `#740` extraction — `Mark`, `MarkBank`, `MarkResult`, `SpecialMark` types moved from `reovim-kernel::core` to `reovim-driver-session`, register snapshot debug surface (`YankTypeSnapshot`, `RegisterSnapshot`, `RegistersSnapshot`, `snapshot_registers`) removed from kernel, and all consumers migrated to import marks from the session driver (#740)
+- **session**: add `TextBufferRegistry` service — session-layer registry for text-specific buffer access, decoupling `SessionRuntime` text operations from kernel `BufferManager`. Incremental migration step toward `BufferManager` storing byte-only `dyn KernelBuffer` (#740)
 
 ## [0.14.4] - 2026-04-01
 

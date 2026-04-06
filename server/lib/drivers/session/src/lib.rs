@@ -95,6 +95,8 @@ pub mod api;
 pub mod bridges;
 mod buffer_access;
 mod empty_handler;
+// Note: text_buffer_registry is pub(crate) — only re-export the type, not the module.
+mod text_buffer_registry;
 mod extension;
 mod handler_key;
 mod handler_registry;
@@ -180,3 +182,6 @@ pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
 pub use tick::{TickScheduler, TickSchedulerHandle};
 
 pub use buffer_access::BufferReadAccess;
+
+// Text buffer registry for session-layer text access (#740)
+pub use text_buffer_registry::TextBufferRegistry;
