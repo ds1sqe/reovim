@@ -742,10 +742,12 @@ impl BufferApi for SessionRuntime<'_> {
 
             buf.write().insert_at(pos, text);
 
-            // Record byte-level edit for universal undo (#740)
+            // Record byte-level edit for undo and codec index notification (#740)
+            let byte_edit = ByteEdit::insert(byte_offset, text.as_bytes());
             if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-                reg.push(buffer, vec![ByteEdit::insert(byte_offset, text.as_bytes())]);
+                reg.push(buffer, vec![byte_edit.clone()]);
             }
+            self.changes.record_byte_edit(buffer, byte_edit);
 
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
             let cursor_after = cursor_before;
@@ -792,14 +794,13 @@ impl BufferApi for SessionRuntime<'_> {
                 b.delete_range(start, end)
             };
 
-            // Record byte-level edit for universal undo (#740)
-            if !deleted_text.is_empty()
-                && let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>()
-            {
-                reg.push(
-                    buffer,
-                    vec![ByteEdit::delete(byte_offset, deleted_text.as_bytes())],
-                );
+            // Record byte-level edit for undo and codec index notification (#740)
+            if !deleted_text.is_empty() {
+                let byte_edit = ByteEdit::delete(byte_offset, deleted_text.as_bytes());
+                if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
+                    reg.push(buffer, vec![byte_edit.clone()]);
+                }
+                self.changes.record_byte_edit(buffer, byte_edit);
             }
 
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
@@ -847,17 +848,12 @@ impl BufferApi for SessionRuntime<'_> {
             let old_content = buf.read().content();
             buf.write().set_content(content);
 
-            // Record byte-level edit for universal undo (#740)
+            // Record byte-level edit for undo and codec index notification (#740)
+            let byte_edit = ByteEdit::replace(0, old_content.as_bytes(), content.as_bytes());
             if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-                reg.push(
-                    buffer,
-                    vec![ByteEdit::replace(
-                        0,
-                        old_content.as_bytes(),
-                        content.as_bytes(),
-                    )],
-                );
+                reg.push(buffer, vec![byte_edit.clone()]);
             }
+            self.changes.record_byte_edit(buffer, byte_edit);
 
             // Record for undo as a delete-all + insert-all
             let edits = vec![

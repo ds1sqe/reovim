@@ -92,6 +92,11 @@ pub struct StateChanges {
     /// that don't provide `Modification` (e.g., undo/redo).
     pub modified_buffer_edits:
         Vec<(BufferId, reovim_kernel::api::v1::events::kernel::Modification)>,
+    /// Byte-level edits for codec index notification (#740 D.5).
+    ///
+    /// Recorded alongside `modified_buffer_edits`. The server layer routes
+    /// these to `CodecSessionState::notify_index()` for incremental index updates.
+    pub byte_edits: Vec<(BufferId, reovim_kernel::api::v1::ByteEdit)>,
     /// All buffers affected (for cursor, selection, etc.).
     pub affected_buffers: Vec<BufferId>,
 
@@ -186,6 +191,7 @@ impl StateChanges {
         self.modified_buffers.extend(other.modified_buffers);
         self.modified_buffer_edits
             .extend(other.modified_buffer_edits);
+        self.byte_edits.extend(other.byte_edits);
         self.affected_buffers.extend(other.affected_buffers);
         self.buffers_created.extend(other.buffers_created);
         self.buffers_deleted.extend(other.buffers_deleted);
@@ -254,6 +260,15 @@ impl StateChanges {
     ) {
         self.record_buffer_modified(buffer);
         self.modified_buffer_edits.push((buffer, modification));
+    }
+
+    /// Record a byte-level edit for codec index notification (#740 D.5).
+    pub fn record_byte_edit(
+        &mut self,
+        buffer: BufferId,
+        edit: reovim_kernel::api::v1::ByteEdit,
+    ) {
+        self.byte_edits.push((buffer, edit));
     }
 
     /// Record that a buffer was created.

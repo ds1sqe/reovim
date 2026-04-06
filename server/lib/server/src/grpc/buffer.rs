@@ -393,10 +393,30 @@ impl BufferService for BufferServiceImpl {
                     buffer.set_modified(false);
                 }
 
-                // Update codec state
+                // Update codec state and rebuild index from new raw bytes (#740 D.3)
                 if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
                     codec_state.insert(buffer_id, result.metadata);
                     codec_state.set_active_view(buffer_id, view_name.clone());
+                    // Rebuild the codec index from the raw bytes for the new view.
+                    // The old index is stale after a view switch — re-build rather
+                    // than incremental update since the entire content changed.
+                    if codec_state.has_index(buffer_id) {
+                        codec_state.remove_index(buffer_id);
+                    }
+                }
+
+                // Clear byte undo log — edit history is view-specific (#740 D.3/D.4).
+                // View switches change the decoded content entirely, making old
+                // ByteEdits meaningless.  Domain undo (UndoTree) is also invalid
+                // after a view switch — it is rebuilt implicitly when the buffer
+                // content is replaced above.
+                if let Some(reg) = state
+                    .app
+                    .kernel
+                    .services
+                    .get::<reovim_driver_session::ByteUndoRegistry>()
+                {
+                    reg.remove(buffer_id);
                 }
 
                 Ok(Response::new(SwitchCodecViewResponse {

@@ -330,6 +330,11 @@ impl InputService for InputServiceImpl {
             Self::emit_syntax_updates(&session, &accumulated_changes);
         }
 
+        // Notify codec indices of byte-level edits (#740 D.5)
+        if !accumulated_changes.byte_edits.is_empty() {
+            Self::notify_codec_indices(&session, &accumulated_changes);
+        }
+
         // Return result
         Ok(Response::new(SendKeysResponse {
             ok: any_handled,
@@ -603,6 +608,25 @@ impl InputServiceImpl {
                 if let Some(update) = update {
                     let stream = state.app.extensions.get_or_insert::<SyntaxStreamState>();
                     stream.broadcast(&update);
+                }
+            }
+        });
+    }
+
+    /// Notify codec indices of byte-level edits (#740 D.5).
+    ///
+    /// Routes `ByteEdit` records from `StateChanges` to
+    /// `CodecSessionState::notify_index()` for incremental index updates.
+    fn notify_codec_indices(
+        session: &Session,
+        changes: &reovim_driver_session::StateChanges,
+    ) {
+        use reovim_driver_codec::CodecSessionState;
+
+        session.with_state_mut_sync(|state| {
+            if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
+                for (buffer_id, edit) in &changes.byte_edits {
+                    codec_state.notify_index(*buffer_id, edit);
                 }
             }
         });

@@ -48,7 +48,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel**: rebuild `kernel::block` as real byte-level I/O subsystem — `ByteEdit` and `ByteUndoLog` moved from VFS driver to `kernel::block`, `StorageOps`/`BufferMeta`/`KernelBuffer` consolidated from `api/storage_ops.rs` into `block/`. Codec driver and codec-utf8 now import `ByteEdit` from kernel instead of VFS (#740)
 - **provider-text**: add `VirtualBuffer::from_mapping()` factory — encapsulates `LineIndex` construction inside the provider, removing direct `LineIndex` usage from the `:edit` command module (#740)
 - **session**: add `ByteUndoRegistry` service and wire `ByteEdit` emission into production mutations — `insert_text`, `delete_range`, and `replace_content` now push byte-level edit records to a per-buffer `ByteUndoLog` via `ByteUndoRegistry` (#740)
-- **codec**: add `ByteNotifiable` trait and extend `CodecSessionState` with per-buffer index storage — domain-agnostic notification interface enables type-erased `Index<D>` storage, `Utf8LineIndex` implements it, `CodecSessionState` can now track and notify codec indices per buffer (#740)
+- **codec**: `ByteNotifiable` supertrait for `Index<D>` — domain-agnostic byte-level notification interface (`build`, `notify`) extracted as supertrait, `Index<D>` only has domain-specific methods. `CodecSessionState` extended with per-buffer index storage. View switch clears stale index and byte undo log (#740)
+- **server**: wire `ByteEdit` notification from mutations to codec indices — `StateChanges` carries `byte_edits`, server routes them to `CodecSessionState::notify_index()` after each key event (#740)
 
 ## [0.14.4] - 2026-04-01
 
