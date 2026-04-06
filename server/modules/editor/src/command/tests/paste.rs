@@ -3,16 +3,53 @@ use {
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, RegisterContent, Session, SessionRuntime,
-        Window, WindowLayout, testing::StubExecutor,
+        TextBufferRegistry, Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
+
+/// Read a text buffer from the text registry for assertions.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn text_buf(
+    kernel: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn BufferOps>> {
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 struct TestState {
     session: Session,
@@ -106,7 +143,7 @@ fn test_paste_after_args() {
 
 #[test]
 fn test_paste_after_no_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -146,9 +183,9 @@ fn test_paste_after_no_buffer_returns_error() {
 
 #[test]
 fn test_paste_after_empty_register_returns_success() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -160,9 +197,9 @@ fn test_paste_after_empty_register_returns_success() {
 
 #[test]
 fn test_paste_after_empty_content_returns_success() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise(""));
     let executor = StubExecutor;
@@ -175,9 +212,9 @@ fn test_paste_after_empty_content_returns_success() {
 
 #[test]
 fn test_paste_after_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -219,9 +256,9 @@ fn test_paste_after_no_window_returns_error() {
 
 #[test]
 fn test_paste_after_linewise() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line one\nline two");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("pasted\n"));
     let executor = StubExecutor;
@@ -231,7 +268,7 @@ fn test_paste_after_linewise() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 3);
     assert_eq!(buf_read.line(0).as_deref(), Some("line one"));
@@ -247,9 +284,9 @@ fn test_paste_after_linewise() {
 
 #[test]
 fn test_paste_after_linewise_empty_buffer() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::new();
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state
         .registers
@@ -269,9 +306,9 @@ fn test_paste_after_linewise_empty_buffer() {
 
 #[test]
 fn test_paste_after_characterwise() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("XYZ"));
     let executor = StubExecutor;
@@ -281,7 +318,7 @@ fn test_paste_after_characterwise() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hXYZello"));
 
@@ -292,9 +329,9 @@ fn test_paste_after_characterwise() {
 
 #[test]
 fn test_paste_after_characterwise_on_empty_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("AB"));
     let executor = StubExecutor;
@@ -304,16 +341,16 @@ fn test_paste_after_characterwise_on_empty_line() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("AB"));
 }
 
 #[test]
 fn test_paste_after_characterwise_multiline() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("X\nY"));
     let executor = StubExecutor;
@@ -330,9 +367,9 @@ fn test_paste_after_characterwise_multiline() {
 
 #[test]
 fn test_paste_after_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("X"));
     let executor = StubExecutor;
@@ -343,16 +380,16 @@ fn test_paste_after_with_count() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hXXXello"));
 }
 
 #[test]
 fn test_paste_after_linewise_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line one");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("pasted\n"));
     let executor = StubExecutor;
@@ -363,7 +400,7 @@ fn test_paste_after_linewise_with_count() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 3);
     assert_eq!(buf_read.line(1).as_deref(), Some("pasted"));
@@ -397,7 +434,7 @@ fn test_paste_before_args() {
 
 #[test]
 fn test_paste_before_no_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -437,9 +474,9 @@ fn test_paste_before_no_buffer_returns_error() {
 
 #[test]
 fn test_paste_before_empty_register_returns_success() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -451,9 +488,9 @@ fn test_paste_before_empty_register_returns_success() {
 
 #[test]
 fn test_paste_before_empty_content_returns_success() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise(""));
     let executor = StubExecutor;
@@ -466,9 +503,9 @@ fn test_paste_before_empty_content_returns_success() {
 
 #[test]
 fn test_paste_before_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -510,9 +547,9 @@ fn test_paste_before_no_window_returns_error() {
 
 #[test]
 fn test_paste_before_linewise() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line one\nline two");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("pasted\n"));
     let executor = StubExecutor;
@@ -522,7 +559,7 @@ fn test_paste_before_linewise() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 3);
     assert_eq!(buf_read.line(0).as_deref(), Some("pasted"));
@@ -538,9 +575,9 @@ fn test_paste_before_linewise() {
 
 #[test]
 fn test_paste_before_characterwise() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("XYZ"));
     let executor = StubExecutor;
@@ -550,7 +587,7 @@ fn test_paste_before_characterwise() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("XYZhello"));
 
@@ -561,9 +598,9 @@ fn test_paste_before_characterwise() {
 
 #[test]
 fn test_paste_before_characterwise_multiline() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("A\nB"));
     let executor = StubExecutor;
@@ -580,9 +617,9 @@ fn test_paste_before_characterwise_multiline() {
 
 #[test]
 fn test_paste_before_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("X"));
     let executor = StubExecutor;
@@ -593,7 +630,7 @@ fn test_paste_before_with_count() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("XXhello"));
 }
@@ -602,9 +639,9 @@ fn test_paste_before_with_count() {
 fn test_paste_after_characterwise_single_char_empty_line() {
     // Tests paste on an empty line with characterwise content
     // Covers the branch at line 104-108 where line_len is 0
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("test"));
     let executor = StubExecutor;
@@ -614,7 +651,7 @@ fn test_paste_after_characterwise_single_char_empty_line() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("test"));
 }
@@ -622,9 +659,9 @@ fn test_paste_after_characterwise_single_char_empty_line() {
 #[test]
 fn test_paste_before_linewise_with_count_multiple() {
     // Tests linewise paste with count, multi-line content
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line one");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("A\nB\n"));
     let executor = StubExecutor;
@@ -635,7 +672,7 @@ fn test_paste_before_linewise_with_count_multiple() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 5);
     assert_eq!(buf_read.line(0).as_deref(), Some("A"));
@@ -669,9 +706,9 @@ fn test_paste_before_default() {
 #[test]
 fn test_paste_after_characterwise_multiline_empty_last_line() {
     // "A\n".lines() = ["A"] (single element), so single-line branch is taken.
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("A\n"));
     let executor = StubExecutor;
@@ -691,9 +728,9 @@ fn test_paste_after_characterwise_multiline_empty_last_line() {
 #[test]
 fn test_paste_before_characterwise_multiline_empty_last_line() {
     // "A\n".lines() = ["A"] (single element), so single-line branch is taken.
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("A\n"));
     let executor = StubExecutor;
@@ -716,9 +753,9 @@ fn test_paste_before_characterwise_multiline_empty_last_line() {
 
 #[test]
 fn test_paste_after_characterwise_multiline_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("X\nY"));
     let executor = StubExecutor;
@@ -742,9 +779,9 @@ fn test_paste_after_characterwise_multiline_with_count() {
 
 #[test]
 fn test_paste_before_characterwise_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("AB"));
     let executor = StubExecutor;
@@ -755,7 +792,7 @@ fn test_paste_before_characterwise_with_count() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("ABABhello"));
 
@@ -772,9 +809,9 @@ fn test_paste_before_characterwise_with_count() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_paste_after_linewise_on_second_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("pasted\n"));
     if let Some(window) = state.windows.active_mut() {
@@ -787,7 +824,7 @@ fn test_paste_after_linewise_on_second_line() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 4);
     assert_eq!(buf_read.line(1).as_deref(), Some("line 2"));
@@ -808,9 +845,9 @@ fn test_paste_after_linewise_on_second_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_paste_before_linewise_on_second_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::linewise("pasted\n"));
     if let Some(window) = state.windows.active_mut() {
@@ -823,7 +860,7 @@ fn test_paste_before_linewise_on_second_line() {
     let result = PasteBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 4);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 1"));
@@ -844,9 +881,9 @@ fn test_paste_before_linewise_on_second_line() {
 #[test]
 fn test_paste_after_characterwise_multiline_last_line_empty() {
     // "A\n\n".lines() = ["A", ""], last_line_len = 0, col = 0 branch
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("A\n\n"));
     let executor = StubExecutor;
@@ -867,9 +904,9 @@ fn test_paste_after_characterwise_multiline_last_line_empty() {
 #[test]
 fn test_paste_before_characterwise_multiline_last_line_empty() {
     // "A\n\n".lines() = ["A", ""], last_line_len = 0, col = 0 branch
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("A\n\n"));
     let executor = StubExecutor;
@@ -891,9 +928,9 @@ fn test_paste_before_characterwise_multiline_last_line_empty() {
 fn test_paste_after_named_register_not_set_returns_success() {
     // When a named register (e.g., 'a') hasn't been set, get_register returns None.
     // This covers line 54: `return CommandResult::Success; // Empty register`
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -904,7 +941,7 @@ fn test_paste_after_named_register_not_set_returns_success() {
     assert!(result.is_success());
 
     // Buffer should be unchanged
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hello"));
 }
@@ -913,9 +950,9 @@ fn test_paste_after_named_register_not_set_returns_success() {
 fn test_paste_before_named_register_not_set_returns_success() {
     // When a named register (e.g., 'a') hasn't been set, get_register returns None.
     // This covers line 181: `return CommandResult::Success; // Empty register`
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -926,7 +963,7 @@ fn test_paste_before_named_register_not_set_returns_success() {
     assert!(result.is_success());
 
     // Buffer should be unchanged
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hello"));
 }
@@ -934,9 +971,9 @@ fn test_paste_before_named_register_not_set_returns_success() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_paste_after_characterwise_at_end_of_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     state.registers.set(RegisterContent::characterwise("XY"));
     if let Some(window) = state.windows.active_mut() {
@@ -949,7 +986,7 @@ fn test_paste_after_characterwise_at_end_of_line() {
     let result = PasteAfter.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("helloXY"));
 

@@ -29,11 +29,7 @@ fn apply_case_transform(
     range: Range,
     transform: fn(&str) -> String,
 ) -> Result<(), OperatorError> {
-    let buffer_arc = ctx
-        .kernel
-        .buffers
-        .get(ctx.buffer_id)
-        .ok_or(OperatorError::BufferNotFound(ctx.buffer_id))?;
+    let buffer_arc = ctx.text_buffer()?;
 
     let mut buffer = buffer_arc.write();
 

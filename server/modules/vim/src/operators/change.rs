@@ -38,11 +38,7 @@ impl Operator for ChangeOperator {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, ctx: &mut OperatorContext<'_>, range: Range) -> Result<(), OperatorError> {
         // Get the buffer via kernel's buffer manager
-        let buffer_arc = ctx
-            .kernel
-            .buffers
-            .get(ctx.buffer_id)
-            .ok_or(OperatorError::BufferNotFound(ctx.buffer_id))?;
+        let buffer_arc = ctx.text_buffer()?;
 
         let mut buffer = buffer_arc.write();
 

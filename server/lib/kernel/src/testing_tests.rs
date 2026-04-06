@@ -5,13 +5,21 @@ use crate::{
     testing::*,
 };
 
+/// Helper: read all bytes from a `dyn KernelBuffer` as a UTF-8 string.
+fn read_content(buf: &dyn crate::api::v1::KernelBuffer) -> String {
+    let len = buf.byte_len();
+    let mut bytes = vec![0u8; len];
+    buf.read_bytes(0, &mut bytes);
+    String::from_utf8(bytes).expect("test buffer should be UTF-8")
+}
+
 #[test]
 fn test_buffer_manager_register_and_get() {
     let manager = TestBufferManager::new();
     let buffer = TestTextBuffer::new("hello");
     let id = manager.register(Arc::new(RwLock::new(buffer)));
     let retrieved = manager.get(id).unwrap();
-    assert_eq!(retrieved.read().line(0).as_deref(), Some("hello"));
+    assert_eq!(read_content(&*retrieved.read()), "hello");
 }
 
 #[test]
@@ -26,7 +34,7 @@ fn test_buffer_manager_unregister() {
     let buffer = TestTextBuffer::new("test");
     let id = manager.register(Arc::new(RwLock::new(buffer)));
     let unregistered = manager.unregister(id).unwrap();
-    assert_eq!(unregistered.read().line(0).as_deref(), Some("test"));
+    assert_eq!(read_content(&*unregistered.read()), "test");
     assert!(manager.get(id).is_none());
 }
 
@@ -45,7 +53,7 @@ fn test_buffer_manager_unregister_with_extra_ref() {
     // Hold an extra reference
     let _extra_ref = manager.get(id).unwrap();
     let unregistered = manager.unregister(id).unwrap();
-    assert_eq!(unregistered.read().line(0).as_deref(), Some("shared"));
+    assert_eq!(read_content(&*unregistered.read()), "shared");
 }
 
 #[test]
@@ -86,7 +94,7 @@ fn test_create_test_context() {
     let id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
     let retrieved = ctx.buffers.get(id);
     assert!(retrieved.is_some());
-    assert_eq!(retrieved.unwrap().read().line(0).as_deref(), Some("test content"));
+    assert_eq!(read_content(&*retrieved.unwrap().read()), "test content");
 }
 
 #[test]
@@ -95,7 +103,6 @@ fn test_register_text_buffer() {
     let id = register_text_buffer(&ctx, "hello\nworld");
     let buf = ctx.buffers.get(id).unwrap();
     let guard = buf.read();
-    assert_eq!(guard.line(0).as_deref(), Some("hello"));
-    assert_eq!(guard.line(1).as_deref(), Some("world"));
+    assert_eq!(read_content(&*guard), "hello\nworld");
     drop(guard);
 }

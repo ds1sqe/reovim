@@ -385,10 +385,8 @@ impl TestSessionRuntime {
             .active_buffer
             .expect("No active buffer for content assertion");
         let buffer = self
-            .kernel
-            .buffers
-            .get(buffer_id)
-            .expect("Buffer not found");
+            .text_buffer_arc(buffer_id)
+            .expect("Buffer not found in TextBufferRegistry");
         let content = buffer.read().content();
         assert_eq!(
             content, expected,
@@ -406,10 +404,8 @@ impl TestSessionRuntime {
             .active_buffer
             .expect("No active buffer for line count assertion");
         let buffer = self
-            .kernel
-            .buffers
-            .get(buffer_id)
-            .expect("Buffer not found");
+            .text_buffer_arc(buffer_id)
+            .expect("Buffer not found in TextBufferRegistry");
         let count = buffer.read().line_count();
         assert_eq!(count, expected, "Expected {expected} lines, got {count}");
     }
@@ -450,7 +446,23 @@ impl TestSessionRuntime {
     #[must_use]
     pub fn buffer_content(&self) -> Option<String> {
         self.active_buffer
-            .and_then(|id| self.kernel.buffers.get(id).map(|b| b.read().content()))
+            .and_then(|id| self.text_buffer_arc(id).map(|b| b.read().content()))
+    }
+
+    /// Get a text buffer arc from `TextBufferRegistry`.
+    ///
+    /// Test helper for text-specific access. The kernel's `BufferManager` only
+    /// stores `dyn KernelBuffer` (byte-only); text methods require this path.
+    fn text_buffer_arc(
+        &self,
+        id: BufferId,
+    ) -> Option<
+        std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>,
+    > {
+        self.kernel
+            .services
+            .get::<crate::TextBufferRegistry>()
+            .and_then(|reg| reg.get(id))
     }
 
     /// Get direct access to the kernel context.
@@ -485,6 +497,38 @@ impl CommandExecutor for StubExecutor {
         None
     }
 }
+// ============================================================================
+// Public test helpers for downstream modules (#740)
+// ============================================================================
+
+/// Create a `KernelContext` with `TextBufferRegistry` for testing.
+///
+/// Like `reovim_kernel::testing::create_test_context()` but also registers
+/// a `TextBufferRegistry` so text access via `runtime.text_buffer()` works.
+#[must_use]
+pub fn create_test_kernel() -> reovim_kernel::api::v1::KernelContext {
+    let ctx = reovim_kernel::testing::create_test_context();
+    ctx.services
+        .register(Arc::new(crate::TextBufferRegistry::new()));
+    ctx
+}
+
+/// Create and register a buffer in both kernel and `TextBufferRegistry`.
+///
+/// Use with contexts created by [`create_test_kernel`]. Returns the buffer ID.
+#[must_use]
+pub fn dual_register_buffer(
+    ctx: &reovim_kernel::api::v1::KernelContext,
+    content: &str,
+) -> reovim_kernel::api::v1::BufferId {
+    let buffer = Buffer::from_string(content);
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<crate::TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
 #[cfg(test)]
 #[path = "testing_tests.rs"]
 mod tests;

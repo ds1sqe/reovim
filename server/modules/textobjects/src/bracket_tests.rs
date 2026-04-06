@@ -5,16 +5,15 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi, SelectionMode},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             ModeStack,
             v1::{BufferId, KernelContext, ModeId, ModuleId},
         },
-        testing::{create_test_context, test_mode},
+        testing::test_mode,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -279,8 +278,8 @@ fn test_inner_paren_invalid_buffer_returns_error() {
 
 #[test]
 fn test_inner_paren_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     // Cursor on 'b' inside parens at col 4
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
@@ -299,8 +298,8 @@ fn test_inner_paren_basic() {
 
 #[test]
 fn test_around_paren_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -318,8 +317,8 @@ fn test_around_paren_basic() {
 
 #[test]
 fn test_inner_paren_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -341,8 +340,8 @@ fn test_inner_paren_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_paren_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -363,8 +362,8 @@ fn test_inner_paren_visual_mode_sets_selection() {
 
 #[test]
 fn test_around_paren_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -385,8 +384,8 @@ fn test_around_paren_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_paren_no_matching_brackets_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no brackets here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no brackets here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -404,8 +403,8 @@ fn test_inner_paren_no_matching_brackets_is_noop() {
 
 #[test]
 fn test_inner_square_bracket_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -423,8 +422,8 @@ fn test_inner_square_bracket_basic() {
 
 #[test]
 fn test_around_square_bracket_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -442,8 +441,8 @@ fn test_around_square_bracket_basic() {
 
 #[test]
 fn test_inner_square_bracket_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -465,8 +464,8 @@ fn test_inner_square_bracket_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_square_bracket_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -491,8 +490,8 @@ fn test_inner_square_bracket_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_brace_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -510,8 +509,8 @@ fn test_inner_brace_basic() {
 
 #[test]
 fn test_around_brace_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -529,8 +528,8 @@ fn test_around_brace_basic() {
 
 #[test]
 fn test_inner_brace_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -552,8 +551,8 @@ fn test_inner_brace_operator_pending_stores_range() {
 
 #[test]
 fn test_around_brace_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -578,8 +577,8 @@ fn test_around_brace_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_angle_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -597,8 +596,8 @@ fn test_inner_angle_basic() {
 
 #[test]
 fn test_around_angle_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -616,8 +615,8 @@ fn test_around_angle_basic() {
 
 #[test]
 fn test_inner_angle_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -639,8 +638,8 @@ fn test_inner_angle_operator_pending_stores_range() {
 
 #[test]
 fn test_around_angle_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -665,8 +664,8 @@ fn test_around_angle_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_paren_visual_line_mode_sets_line_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -688,8 +687,8 @@ fn test_inner_paren_visual_line_mode_sets_line_selection() {
 
 #[test]
 fn test_inner_paren_visual_block_mode_sets_block_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -715,8 +714,8 @@ fn test_inner_paren_visual_block_mode_sets_block_selection() {
 
 #[test]
 fn test_empty_buffer_bracket() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -730,8 +729,8 @@ fn test_empty_buffer_bracket() {
 
 #[test]
 fn test_nested_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "((inner))");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "((inner))");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into(); // inside inner
@@ -750,8 +749,8 @@ fn test_nested_brackets() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_bracket_visual_mode_does_not_store_operator_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -790,8 +789,8 @@ fn test_all_bracket_commands_no_buffer_error() {
 
 #[test]
 fn test_multiline_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "func(\n  arg1,\n  arg2\n)");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "func(\n  arg1,\n  arg2\n)");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 2).into(); // on 'a' of arg1
@@ -817,8 +816,8 @@ fn test_multiline_brackets() {
 
 #[test]
 fn test_around_paren_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -840,8 +839,8 @@ fn test_around_paren_operator_pending_stores_range() {
 
 #[test]
 fn test_around_square_bracket_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -863,8 +862,8 @@ fn test_around_square_bracket_operator_pending_stores_range() {
 
 #[test]
 fn test_around_brace_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -886,8 +885,8 @@ fn test_around_brace_operator_pending_stores_range() {
 
 #[test]
 fn test_around_angle_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -909,8 +908,8 @@ fn test_around_angle_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_brace_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -931,8 +930,8 @@ fn test_inner_brace_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_angle_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -953,8 +952,8 @@ fn test_inner_angle_visual_mode_sets_selection() {
 
 #[test]
 fn test_around_square_bracket_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -975,8 +974,8 @@ fn test_around_square_bracket_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_square_bracket_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -998,8 +997,8 @@ fn test_inner_square_bracket_visual_line_mode() {
 
 #[test]
 fn test_inner_brace_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1021,8 +1020,8 @@ fn test_inner_brace_visual_block_mode() {
 
 #[test]
 fn test_inner_angle_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1044,8 +1043,8 @@ fn test_inner_angle_visual_line_mode() {
 
 #[test]
 fn test_no_matching_square_brackets_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no brackets here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no brackets here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1059,8 +1058,8 @@ fn test_no_matching_square_brackets_is_noop() {
 
 #[test]
 fn test_no_matching_braces_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no braces here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no braces here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1074,8 +1073,8 @@ fn test_no_matching_braces_is_noop() {
 
 #[test]
 fn test_no_matching_angles_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no angles here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no angles here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1158,8 +1157,8 @@ fn test_inner_angle_invalid_buffer_returns_error() {
 
 #[test]
 fn test_empty_buffer_square_bracket() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1173,8 +1172,8 @@ fn test_empty_buffer_square_bracket() {
 
 #[test]
 fn test_empty_buffer_brace() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1188,8 +1187,8 @@ fn test_empty_buffer_brace() {
 
 #[test]
 fn test_empty_buffer_angle() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1203,8 +1202,8 @@ fn test_empty_buffer_angle() {
 
 #[test]
 fn test_nested_square_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "[[inner]]");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "[[inner]]");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1222,8 +1221,8 @@ fn test_nested_square_brackets() {
 
 #[test]
 fn test_nested_braces() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "{{inner}}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "{{inner}}");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1241,8 +1240,8 @@ fn test_nested_braces() {
 
 #[test]
 fn test_nested_angle_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "<<inner>>");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "<<inner>>");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1260,8 +1259,8 @@ fn test_nested_angle_brackets() {
 
 #[test]
 fn test_multiline_square_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "arr[\n  elem1,\n  elem2\n]");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "arr[\n  elem1,\n  elem2\n]");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 2).into();
@@ -1283,8 +1282,8 @@ fn test_multiline_square_brackets() {
 
 #[test]
 fn test_multiline_braces() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn {\n  body;\n}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn {\n  body;\n}");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 2).into();
@@ -1306,8 +1305,8 @@ fn test_multiline_braces() {
 
 #[test]
 fn test_multiline_angle_brackets() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "tag<\n  content\n>");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "tag<\n  content\n>");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 2).into();
@@ -1329,8 +1328,8 @@ fn test_multiline_angle_brackets() {
 
 #[test]
 fn test_inner_paren_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "((inner))");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "((inner))");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1353,8 +1352,8 @@ fn test_inner_paren_with_count() {
 
 #[test]
 fn test_inner_paren_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1385,8 +1384,8 @@ fn test_inner_paren_no_active_window_returns_error() {
 
 #[test]
 fn test_around_paren_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1417,8 +1416,8 @@ fn test_around_paren_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_square_bracket_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1449,8 +1448,8 @@ fn test_inner_square_bracket_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_brace_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1481,8 +1480,8 @@ fn test_inner_brace_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_angle_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1517,8 +1516,8 @@ fn test_inner_angle_no_active_window_returns_error() {
 
 #[test]
 fn test_around_paren_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1540,8 +1539,8 @@ fn test_around_paren_visual_line_mode() {
 
 #[test]
 fn test_around_paren_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar)baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1563,8 +1562,8 @@ fn test_around_paren_visual_block_mode() {
 
 #[test]
 fn test_around_square_bracket_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1586,8 +1585,8 @@ fn test_around_square_bracket_visual_line_mode() {
 
 #[test]
 fn test_around_square_bracket_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1609,8 +1608,8 @@ fn test_around_square_bracket_visual_block_mode() {
 
 #[test]
 fn test_around_brace_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1632,8 +1631,8 @@ fn test_around_brace_visual_line_mode() {
 
 #[test]
 fn test_around_brace_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1655,8 +1654,8 @@ fn test_around_brace_visual_block_mode() {
 
 #[test]
 fn test_around_angle_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1678,8 +1677,8 @@ fn test_around_angle_visual_line_mode() {
 
 #[test]
 fn test_around_angle_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1701,8 +1700,8 @@ fn test_around_angle_visual_block_mode() {
 
 #[test]
 fn test_inner_square_bracket_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo[bar]baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1724,8 +1723,8 @@ fn test_inner_square_bracket_visual_block_mode() {
 
 #[test]
 fn test_inner_brace_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo{bar}baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1747,8 +1746,8 @@ fn test_inner_brace_visual_line_mode() {
 
 #[test]
 fn test_inner_angle_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo<bar>baz");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -1812,8 +1811,8 @@ fn test_bracket_copy() {
 
 #[test]
 fn test_around_paren_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "((inner))");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "((inner))");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1832,8 +1831,8 @@ fn test_around_paren_with_count() {
 
 #[test]
 fn test_inner_square_bracket_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "[[inner]]");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "[[inner]]");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1852,8 +1851,8 @@ fn test_inner_square_bracket_with_count() {
 
 #[test]
 fn test_inner_brace_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "{{inner}}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "{{inner}}");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1872,8 +1871,8 @@ fn test_inner_brace_with_count() {
 
 #[test]
 fn test_inner_angle_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "<<inner>>");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "<<inner>>");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 3).into();
@@ -1896,8 +1895,8 @@ fn test_inner_angle_with_count() {
 
 #[test]
 fn test_no_matching_around_parens_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no parens here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no parens here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1911,8 +1910,8 @@ fn test_no_matching_around_parens_is_noop() {
 
 #[test]
 fn test_no_matching_around_square_brackets_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no brackets here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no brackets here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1926,8 +1925,8 @@ fn test_no_matching_around_square_brackets_is_noop() {
 
 #[test]
 fn test_no_matching_around_braces_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no braces here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no braces here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1941,8 +1940,8 @@ fn test_no_matching_around_braces_is_noop() {
 
 #[test]
 fn test_no_matching_around_angles_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no angles here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no angles here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

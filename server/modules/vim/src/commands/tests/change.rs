@@ -9,7 +9,9 @@ use {
 
 use {
     reovim_driver_command::Command,
-    reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
+    reovim_driver_session::{
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
+    },
     reovim_kernel::{
         api::{
             ModeStack,
@@ -21,6 +23,35 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test context with `TextBufferRegistry` registered on the service registry.
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+/// Register a buffer in both the kernel `BufferManager` and the `TextBufferRegistry`.
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
+/// Read text buffer content from the `TextBufferRegistry`.
+fn text_buf(
+    ctx: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+    ctx.services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 use reovim_driver_session::{api::ModeApi, testing::StubExecutor};
 
@@ -174,7 +205,7 @@ fn test_change_to_eol_default() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -186,9 +217,9 @@ fn test_change_line_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -200,7 +231,7 @@ fn test_change_line_single_line() {
     assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
 
     // Line content should be cleared
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "");
 }
@@ -208,9 +239,9 @@ fn test_change_line_single_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_multi_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -226,9 +257,9 @@ fn test_change_line_multi_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_empty_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -247,7 +278,7 @@ fn test_change_line_empty_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -259,9 +290,9 @@ fn test_change_to_eol_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_from_middle() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -277,7 +308,7 @@ fn test_change_to_eol_from_middle() {
     assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
 
     // Buffer should have "hello" (everything from col 5 deleted)
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "hello");
 }
@@ -285,9 +316,9 @@ fn test_change_to_eol_from_middle() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_at_end_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -303,7 +334,7 @@ fn test_change_to_eol_at_end_of_line() {
     assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
 
     // Buffer should be unchanged (already at end of line)
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "hello");
 }
@@ -311,9 +342,9 @@ fn test_change_to_eol_at_end_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_from_start() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -324,7 +355,7 @@ fn test_change_to_eol_from_start() {
     assert_eq!(result, CommandResult::Success);
 
     // Entire line content should be deleted
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "");
 }
@@ -332,9 +363,9 @@ fn test_change_to_eol_from_start() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_count_exceeds_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -350,9 +381,9 @@ fn test_change_line_count_exceeds_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_last_two_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -375,9 +406,9 @@ fn test_change_line_last_two_lines() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_with_count_one_explicit() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -389,7 +420,7 @@ fn test_change_line_with_count_one_explicit() {
     assert_eq!(result, CommandResult::Success);
 
     // Only first line should be changed
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     // First line should be cleared, second line should remain
     assert_eq!(buf.line(0).unwrap(), "");
@@ -398,9 +429,9 @@ fn test_change_line_with_count_one_explicit() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_multi_line_three_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("aaa\nbbb\nccc\nddd");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -416,9 +447,9 @@ fn test_change_line_multi_line_three_lines() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_with_register() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("test line");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -433,9 +464,9 @@ fn test_change_line_with_register() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_cursor_at_middle_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -460,9 +491,9 @@ fn test_change_line_cursor_at_middle_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_empty_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -477,9 +508,9 @@ fn test_change_to_eol_empty_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_with_register() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -497,9 +528,9 @@ fn test_change_to_eol_with_register() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_past_end_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -519,9 +550,9 @@ fn test_change_to_eol_past_end_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_single_char_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("x");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -531,7 +562,7 @@ fn test_change_to_eol_single_char_line() {
     let result = ChangeToEndOfLine.execute(&mut runtime, &args);
     assert_eq!(result, CommandResult::Success);
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "");
 }
@@ -539,9 +570,9 @@ fn test_change_to_eol_single_char_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_to_eol_multiline_only_affects_current() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -554,7 +585,7 @@ fn test_change_to_eol_multiline_only_affects_current() {
     let result = ChangeToEndOfLine.execute(&mut runtime, &args);
     assert_eq!(result, CommandResult::Success);
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     // First line should be truncated, second line untouched
     assert_eq!(buf.line(0).unwrap(), "hel");
@@ -589,9 +620,9 @@ fn test_change_to_eol_clone() {
 #[test]
 fn test_change_line_last_lines_of_buffer() {
     // Tests the branch: end_line >= line_count (changing to end of buffer)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -609,9 +640,9 @@ fn test_change_line_last_lines_of_buffer() {
 fn test_change_line_two_of_two_from_start() {
     // Change all lines (count=2 from line 0 of 2-line buffer)
     // This triggers: end_line (0+2=2) >= line_count (2)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -632,9 +663,9 @@ fn test_change_line_two_of_two_from_start() {
 fn test_change_line_multi_from_middle_to_end() {
     // Change from line 2 with count 3, but only 2 lines remain
     // This triggers: end_line >= line_count
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc\nd");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -653,9 +684,9 @@ fn test_change_line_multi_from_middle_to_end() {
 #[test]
 fn test_change_line_multi_not_at_end() {
     // Change 2 lines from middle (NOT at end of buffer) - the normal case branch
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc\nd\ne");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -677,9 +708,9 @@ fn test_change_line_multi_not_at_end() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_line_registers_deleted_text() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

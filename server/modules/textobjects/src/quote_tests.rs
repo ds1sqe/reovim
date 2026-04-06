@@ -5,16 +5,15 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi, SelectionMode},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             ModeStack,
             v1::{BufferId, KernelContext, ModeId, ModuleId},
         },
-        testing::{create_test_context, test_mode},
+        testing::test_mode,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -269,8 +268,8 @@ fn test_all_quote_commands_no_buffer_error() {
 
 #[test]
 fn test_inner_double_quote_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     // Cursor on 'h' inside quotes at col 5
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
@@ -289,8 +288,8 @@ fn test_inner_double_quote_basic() {
 
 #[test]
 fn test_around_double_quote_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -308,8 +307,8 @@ fn test_around_double_quote_basic() {
 
 #[test]
 fn test_inner_double_quote_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -331,8 +330,8 @@ fn test_inner_double_quote_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_double_quote_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -353,8 +352,8 @@ fn test_inner_double_quote_visual_mode_sets_selection() {
 
 #[test]
 fn test_around_double_quote_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -379,8 +378,8 @@ fn test_around_double_quote_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_single_quote_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -398,8 +397,8 @@ fn test_inner_single_quote_basic() {
 
 #[test]
 fn test_around_single_quote_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -417,8 +416,8 @@ fn test_around_single_quote_basic() {
 
 #[test]
 fn test_inner_single_quote_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -440,8 +439,8 @@ fn test_inner_single_quote_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_single_quote_visual_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -466,8 +465,8 @@ fn test_inner_single_quote_visual_mode() {
 
 #[test]
 fn test_inner_backtick_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -485,8 +484,8 @@ fn test_inner_backtick_basic() {
 
 #[test]
 fn test_around_backtick_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -504,8 +503,8 @@ fn test_around_backtick_basic() {
 
 #[test]
 fn test_inner_backtick_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -527,8 +526,8 @@ fn test_inner_backtick_operator_pending_stores_range() {
 
 #[test]
 fn test_around_backtick_visual_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -553,8 +552,8 @@ fn test_around_backtick_visual_mode() {
 
 #[test]
 fn test_inner_double_quote_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -580,8 +579,8 @@ fn test_inner_double_quote_visual_line_mode() {
 
 #[test]
 fn test_empty_buffer_quote() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -595,8 +594,8 @@ fn test_empty_buffer_quote() {
 
 #[test]
 fn test_no_matching_quotes_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no quotes here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no quotes here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -611,8 +610,8 @@ fn test_no_matching_quotes_is_noop() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_visual_mode_does_not_store_operator_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -636,8 +635,8 @@ fn test_visual_mode_does_not_store_operator_range() {
 #[test]
 fn test_inner_double_quote_visual_block_mode() {
     // Tests visual-block mode handling (line 38-44)
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -660,8 +659,8 @@ fn test_inner_double_quote_visual_block_mode() {
 #[test]
 fn test_around_single_quote_visual_line_mode() {
     // Test around with visual-line mode
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -684,8 +683,8 @@ fn test_around_single_quote_visual_line_mode() {
 #[test]
 fn test_around_backtick_visual_block_mode() {
     // Test around with visual-block mode
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -708,8 +707,8 @@ fn test_around_backtick_visual_block_mode() {
 #[test]
 fn test_inner_double_quote_with_count() {
     // Tests count argument handling
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -732,8 +731,8 @@ fn test_inner_double_quote_with_count() {
 
 #[test]
 fn test_around_double_quote_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -755,8 +754,8 @@ fn test_around_double_quote_operator_pending_stores_range() {
 
 #[test]
 fn test_around_single_quote_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -778,8 +777,8 @@ fn test_around_single_quote_operator_pending_stores_range() {
 
 #[test]
 fn test_around_backtick_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -801,8 +800,8 @@ fn test_around_backtick_operator_pending_stores_range() {
 
 #[test]
 fn test_around_single_quote_visual_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -823,8 +822,8 @@ fn test_around_single_quote_visual_mode() {
 
 #[test]
 fn test_inner_backtick_visual_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -889,8 +888,8 @@ fn test_around_backtick_no_buffer_error() {
 
 #[test]
 fn test_no_matching_single_quotes_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no quotes here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no quotes here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -904,8 +903,8 @@ fn test_no_matching_single_quotes_is_noop() {
 
 #[test]
 fn test_no_matching_backticks_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no backticks here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no backticks here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -943,8 +942,8 @@ fn test_inner_backtick_invalid_buffer_returns_error() {
 
 #[test]
 fn test_inner_single_quote_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -966,8 +965,8 @@ fn test_inner_single_quote_visual_block_mode() {
 
 #[test]
 fn test_inner_backtick_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -989,8 +988,8 @@ fn test_inner_backtick_visual_line_mode() {
 
 #[test]
 fn test_empty_buffer_single_quote() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1004,8 +1003,8 @@ fn test_empty_buffer_single_quote() {
 
 #[test]
 fn test_empty_buffer_backtick() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1023,8 +1022,8 @@ fn test_empty_buffer_backtick() {
 
 #[test]
 fn test_inner_double_quote_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1055,8 +1054,8 @@ fn test_inner_double_quote_no_active_window_returns_error() {
 
 #[test]
 fn test_around_double_quote_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1087,8 +1086,8 @@ fn test_around_double_quote_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_single_quote_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1119,8 +1118,8 @@ fn test_inner_single_quote_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_backtick_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1156,8 +1155,8 @@ fn test_inner_backtick_no_active_window_returns_error() {
 
 #[test]
 fn test_around_double_quote_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1179,8 +1178,8 @@ fn test_around_double_quote_visual_line_mode() {
 
 #[test]
 fn test_around_double_quote_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1202,8 +1201,8 @@ fn test_around_double_quote_visual_block_mode() {
 
 #[test]
 fn test_inner_single_quote_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1225,8 +1224,8 @@ fn test_inner_single_quote_visual_line_mode() {
 
 #[test]
 fn test_around_single_quote_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1248,8 +1247,8 @@ fn test_around_single_quote_visual_block_mode() {
 
 #[test]
 fn test_inner_backtick_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1271,8 +1270,8 @@ fn test_inner_backtick_visual_block_mode() {
 
 #[test]
 fn test_around_backtick_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1336,8 +1335,8 @@ fn test_quote_copy() {
 
 #[test]
 fn test_around_double_quote_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say \"hello\" world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1356,8 +1355,8 @@ fn test_around_double_quote_with_count() {
 
 #[test]
 fn test_inner_single_quote_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say 'hello' world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1376,8 +1375,8 @@ fn test_inner_single_quote_with_count() {
 
 #[test]
 fn test_inner_backtick_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "say `hello` world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "say `hello` world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into();
@@ -1400,8 +1399,8 @@ fn test_inner_backtick_with_count() {
 
 #[test]
 fn test_no_matching_around_double_quotes_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no quotes here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no quotes here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1415,8 +1414,8 @@ fn test_no_matching_around_double_quotes_is_noop() {
 
 #[test]
 fn test_no_matching_around_single_quotes_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no quotes here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no quotes here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1430,8 +1429,8 @@ fn test_no_matching_around_single_quotes_is_noop() {
 
 #[test]
 fn test_no_matching_around_backticks_is_noop() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "no backticks here");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "no backticks here");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1504,8 +1503,8 @@ fn test_around_double_quote_no_buffer_error() {
 
 #[test]
 fn test_around_double_quote_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1519,8 +1518,8 @@ fn test_around_double_quote_empty_buffer() {
 
 #[test]
 fn test_around_single_quote_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1534,8 +1533,8 @@ fn test_around_single_quote_empty_buffer() {
 
 #[test]
 fn test_around_backtick_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

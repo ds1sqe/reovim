@@ -4,17 +4,40 @@ use {
     super::SubstituteCommand,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
 
 struct TestState {
     session: Session,
@@ -84,7 +107,8 @@ impl TestState {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn read_line(kernel: &KernelContext, buffer_id: BufferId, line: usize) -> Option<String> {
-    let buf = kernel.buffers.get(buffer_id)?;
+    let reg = kernel.services.get::<TextBufferRegistry>()?;
+    let buf = reg.get(buffer_id)?;
     let read = buf.read();
     read.line(line).map(std::borrow::Cow::into_owned)
 }
@@ -129,9 +153,9 @@ fn test_substitute_debug() {
 
 #[test]
 fn test_substitute_no_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("test");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     // Clear the window's buffer_id to simulate no buffer
     state.windows = WindowLayout::empty();
@@ -145,9 +169,9 @@ fn test_substitute_no_buffer_returns_error() {
 
 #[test]
 fn test_substitute_empty_args_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -159,9 +183,9 @@ fn test_substitute_empty_args_returns_error() {
 
 #[test]
 fn test_substitute_invalid_syntax_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -174,9 +198,9 @@ fn test_substitute_invalid_syntax_returns_error() {
 
 #[test]
 fn test_substitute_invalid_regex_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -189,9 +213,9 @@ fn test_substitute_invalid_regex_returns_error() {
 
 #[test]
 fn test_substitute_no_match_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -208,9 +232,9 @@ fn test_substitute_no_match_returns_error() {
 
 #[test]
 fn test_substitute_basic_first_match() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("foo bar foo");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -225,9 +249,9 @@ fn test_substitute_basic_first_match() {
 
 #[test]
 fn test_substitute_global_flag() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("foo bar foo");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -242,9 +266,9 @@ fn test_substitute_global_flag() {
 
 #[test]
 fn test_substitute_case_insensitive() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("Hello HELLO hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -263,9 +287,9 @@ fn test_substitute_case_insensitive() {
 
 #[test]
 fn test_substitute_with_range_all_lines() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("foo\nfoo\nfoo");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -283,9 +307,9 @@ fn test_substitute_with_range_all_lines() {
 
 #[test]
 fn test_substitute_current_line_only() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("foo\nfoo\nfoo");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -309,9 +333,9 @@ fn test_substitute_current_line_only() {
 
 #[test]
 fn test_substitute_count_only() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("foo bar foo baz foo");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -331,9 +355,9 @@ fn test_substitute_count_only() {
 
 #[test]
 fn test_substitute_regex_pattern() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("abc123def456");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -352,9 +376,9 @@ fn test_substitute_regex_pattern() {
 
 #[test]
 fn test_substitute_alternate_delimiter() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("/path/to/file");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -370,9 +394,9 @@ fn test_substitute_alternate_delimiter() {
 
 #[test]
 fn test_substitute_escaped_delimiter() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("a/b");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -392,9 +416,9 @@ fn test_substitute_escaped_delimiter() {
 
 #[test]
 fn test_substitute_empty_replacement() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -409,9 +433,9 @@ fn test_substitute_empty_replacement() {
 
 #[test]
 fn test_substitute_empty_pattern_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -424,9 +448,9 @@ fn test_substitute_empty_pattern_returns_error() {
 
 #[test]
 fn test_substitute_multiline_global() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("aaa\nbbb\naaa");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

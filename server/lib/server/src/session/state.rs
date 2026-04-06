@@ -334,22 +334,17 @@ impl SessionState {
     // Buffer Methods (delegated to kernel)
     // ========================================================================
 
-    /// Get a buffer by ID from the text buffer registry (#740).
+    /// Get a text buffer by ID from the `TextBufferRegistry` (#740).
     ///
-    /// Prefers `TextBufferRegistry` when registered (production). Falls back
-    /// to `kernel.buffers` for backward compatibility.
+    /// The kernel's `BufferManager` stores `dyn KernelBuffer` (byte-only).
+    /// All text-specific access goes through `TextBufferRegistry`.
     #[must_use]
     pub fn buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
-        if let Some(reg) = self
-            .app
+        self.app
             .kernel
             .services
             .get::<reovim_driver_session::TextBufferRegistry>()
-            && let Some(buf) = reg.get(id)
-        {
-            return Some(buf);
-        }
-        self.app.kernel.buffers.get(id)
+            .and_then(|reg| reg.get(id))
     }
 
     /// Create a new buffer with the given content.

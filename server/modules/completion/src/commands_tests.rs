@@ -86,10 +86,15 @@ fn build_context_uses_current_line_for_virtual_buffer() {
         VirtualBuffer::new(mapping, line_index)
     };
 
-    let virtual_buffer_id = test
+    let arc = Arc::new(RwLock::new(virtual_buffer));
+    if let Some(reg) = test
         .kernel()
-        .buffers
-        .register(Arc::new(RwLock::new(virtual_buffer)));
+        .services
+        .get::<reovim_driver_session::TextBufferRegistry>()
+    {
+        reg.register(arc.clone());
+    }
+    let virtual_buffer_id = test.kernel().buffers.register(arc);
 
     test.with_runtime(|runtime| {
         BufferApi::set_active_buffer(runtime, Some(virtual_buffer_id));

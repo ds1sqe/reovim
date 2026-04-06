@@ -408,8 +408,9 @@ impl<'a> SessionRuntime<'a> {
 
     /// Get a text buffer by ID from the session-layer text registry (#740).
     ///
-    /// Prefers the `TextBufferRegistry` service when available. Falls back
-    /// to `kernel.buffers` for backward compatibility during migration.
+    /// Resolves text buffers through `TextBufferRegistry`. The kernel's
+    /// `BufferManager` only stores `dyn KernelBuffer` (byte-only); all
+    /// text-specific access goes through this method.
     ///
     /// Use this instead of `kernel().buffers.get(id)` for text-specific access.
     #[must_use]
@@ -418,14 +419,12 @@ impl<'a> SessionRuntime<'a> {
         id: BufferId,
     ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_kernel::api::v1::BufferOps>>>
     {
-        // Prefer text registry when registered (production + updated tests).
         if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>()
             && let Some(buf) = reg.get(id)
         {
             return Some(buf);
         }
-        // Fallback: kernel.buffers still stores dyn BufferOps during migration.
-        self.kernel.buffers.get(id)
+        None
     }
 
     /// Execute a read-only operation on a buffer.

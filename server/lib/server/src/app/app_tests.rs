@@ -155,23 +155,27 @@ fn test_app_state_quit_then_check() {
 fn test_fallback_get_buffer_with_real_buffer() {
     use {
         reovim_driver_buffer::TestBufferManager,
+        reovim_driver_session::TextBufferRegistry,
         reovim_kernel::api::v1::{EventBus, OptionRegistry, ServiceRegistry},
         reovim_provider_text::Buffer,
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    let text_reg = Arc::new(TextBufferRegistry::new());
+    services.register(text_reg.clone());
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
-    // Create and register a buffer
+    // Create and register a buffer in both kernel and TextBufferRegistry
     let mut buffer = Buffer::new();
     buffer.set_content("test content");
-    let buffer_id = kernel
-        .buffers
-        .register(Arc::new(parking_lot::RwLock::new(buffer)));
+    let arc = Arc::new(parking_lot::RwLock::new(buffer));
+    text_reg.register(arc.clone());
+    let buffer_id = kernel.buffers.register(arc);
 
     let app = AppState::new(kernel);
 

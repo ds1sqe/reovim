@@ -5,13 +5,12 @@ use {
     },
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        api::CommandExecutor, testing::StubExecutor,
+        api::CommandExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{KernelContext, ModeId, ModeStack, ModuleId, v1::BufferId},
-        testing::create_test_context,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -43,8 +42,8 @@ struct TestSetup {
 impl TestSetup {
     /// Create test setup with buffer content.
     fn new(content: &str) -> Self {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, content);
+        let ctx = create_test_kernel();
+        let buffer_id = dual_register_buffer(&ctx, content);
 
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         let session = Session::new(ClientId::new(1), home_mode.clone()); // #491
@@ -680,9 +679,8 @@ fn test_word_end_big_id() {
 
 #[test]
 fn test_buffer_manager_create() {
-    use reovim_provider_text::testing::setup_buffer;
     let setup = TestSetup::new("hello");
-    let bid = setup_buffer(&setup.ctx, "");
+    let bid = dual_register_buffer(&setup.ctx, "");
     assert!(setup.ctx.buffers.get(bid).is_some());
     assert_eq!(setup.ctx.buffers.count(), 2); // original + new
 }
@@ -702,7 +700,7 @@ fn test_stub_executor_returns_none() {
 #[test]
 fn test_word_forward_with_invalid_buffer_id() {
     // Tests the `motion_result.is_none()` -> "Buffer not found" path
-    let ctx = create_test_context();
+    let ctx = create_test_kernel();
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);

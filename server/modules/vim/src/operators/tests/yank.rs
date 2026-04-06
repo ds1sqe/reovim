@@ -8,8 +8,8 @@ use super::super::*;
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -22,6 +22,35 @@ use {
     reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test context with `TextBufferRegistry` registered on the service registry.
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+/// Register a buffer in both the kernel `BufferManager` and the `TextBufferRegistry`.
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
+/// Read text buffer content from the `TextBufferRegistry`.
+fn text_buf(
+    ctx: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+    ctx.services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 fn run_command<C: CommandHandler>(
     cmd: &C,
@@ -87,7 +116,7 @@ fn test_yank_is_not_linewise_by_default() {
 
 #[test]
 fn test_yank_buffer_not_found() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -108,9 +137,9 @@ fn test_yank_buffer_not_found() {
 
 #[test]
 fn test_yank_characterwise_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -137,9 +166,9 @@ fn test_yank_characterwise_single_line() {
 
 #[test]
 fn test_yank_characterwise_partial_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -165,9 +194,9 @@ fn test_yank_characterwise_partial_line() {
 
 #[test]
 fn test_yank_characterwise_multi_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -193,9 +222,9 @@ fn test_yank_characterwise_multi_line() {
 
 #[test]
 fn test_yank_linewise_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -221,9 +250,9 @@ fn test_yank_linewise_single_line() {
 
 #[test]
 fn test_yank_linewise_multiple_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -249,9 +278,9 @@ fn test_yank_linewise_multiple_lines() {
 
 #[test]
 fn test_yank_linewise_clamped_end() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -277,9 +306,9 @@ fn test_yank_linewise_clamped_end() {
 
 #[test]
 fn test_yank_to_named_register() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -304,9 +333,9 @@ fn test_yank_to_named_register() {
 
 #[test]
 fn test_yank_does_not_modify_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -325,16 +354,16 @@ fn test_yank_does_not_modify_buffer() {
     yank.execute(&mut op_ctx, range).unwrap();
 
     // Buffer content should be unchanged
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "hello world");
 }
 
 #[test]
 fn test_yank_empty_range() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -360,9 +389,9 @@ fn test_yank_empty_range() {
 
 #[test]
 fn test_yank_characterwise_three_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("aaa\nbbb\nccc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -388,9 +417,9 @@ fn test_yank_characterwise_three_lines() {
 
 #[test]
 fn test_yank_linewise_all_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -415,9 +444,9 @@ fn test_yank_linewise_all_lines() {
 
 #[test]
 fn test_yank_column_clamped_to_line_length() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -443,9 +472,9 @@ fn test_yank_column_clamped_to_line_length() {
 
 #[test]
 fn test_yank_linewise_single_line_only() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("only line");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -471,9 +500,9 @@ fn test_yank_linewise_single_line_only() {
 
 #[test]
 fn test_yank_to_register_z() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -498,9 +527,9 @@ fn test_yank_to_register_z() {
 
 #[test]
 fn test_yank_linewise_last_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("first\nlast");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -525,9 +554,9 @@ fn test_yank_linewise_last_line() {
 
 #[test]
 fn test_yank_characterwise_single_char() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -566,9 +595,9 @@ fn test_yank_operator_debug() {
 
 #[test]
 fn test_yank_characterwise_middle_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcdefgh");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -594,9 +623,9 @@ fn test_yank_characterwise_middle_of_line() {
 
 #[test]
 fn test_yank_linewise_middle_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc\nd\ne");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -622,9 +651,9 @@ fn test_yank_linewise_middle_lines() {
 
 #[test]
 fn test_yank_multiline_two_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -671,7 +700,7 @@ fn test_run_command_helper_with_noop() {
             CommandResult::Success
         }
     }
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
     let result = run_command(&NoopCmd, &ctx, &args);
     assert_eq!(result, CommandResult::Success);
@@ -683,9 +712,9 @@ fn test_run_command_helper_with_noop() {
 
 #[test]
 fn test_yank_characterwise_register_is_characterwise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -709,9 +738,9 @@ fn test_yank_characterwise_register_is_characterwise() {
 
 #[test]
 fn test_yank_linewise_register_is_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -735,9 +764,9 @@ fn test_yank_linewise_register_is_linewise() {
 
 #[test]
 fn test_yank_linewise_all_lines_register_is_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("a\nb\nc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -762,9 +791,9 @@ fn test_yank_linewise_all_lines_register_is_linewise() {
 
 #[test]
 fn test_yank_multiline_characterwise_register_is_characterwise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();
@@ -792,9 +821,9 @@ fn test_yank_multiline_characterwise_register_is_characterwise() {
 
 #[test]
 fn test_yank_does_not_set_cursor_after() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let yank = YankOperator;
     let mut registers = RegisterBank::new();

@@ -14,13 +14,15 @@ fn test_vfs() -> Arc<dyn VfsDriver> {
     Arc::new(reovim_driver_vfs::MockVfs::new())
 }
 
-/// Create a test kernel with a real buffer manager.
+/// Create a test kernel with a real buffer manager and `TextBufferRegistry`.
 fn test_kernel() -> KernelContext {
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(reovim_driver_session::TextBufferRegistry::new()));
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     )
 }
 

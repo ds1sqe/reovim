@@ -285,18 +285,23 @@ fn test_syntax_service_get_session_found() {
     assert!(result.is_ok());
 }
 
-/// Create a registry with a session that has a real buffer manager.
+/// Create a registry with a session that has a real buffer manager and
+/// `TextBufferRegistry` so that `state.buffer()` can resolve buffers.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<crate::session::Session>) {
     use {
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = crate::session::SessionState::with_kernel(kernel);
@@ -543,18 +548,23 @@ mod test_syntax_driver {
     }
 }
 
-/// Create a registry with buffer manager and syntax factory pre-installed.
+/// Create a registry with buffer manager, `TextBufferRegistry`, and syntax
+/// factory pre-installed.
 fn test_registry_with_syntax_factory() -> (Arc<SessionRegistry>, Arc<crate::session::Session>) {
     use {
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = crate::session::SessionState::with_kernel(kernel);

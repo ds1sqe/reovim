@@ -6,8 +6,10 @@
 //! - **Mechanism (Kernel)**: Buffer management, position types, register storage
 //! - **Policy (This Module)**: What operators exist, how they behave
 
+use std::sync::Arc;
+
 use {
-    reovim_kernel::api::v1::{BufferId, KernelContext},
+    reovim_kernel::api::v1::{BufferId, BufferOps, KernelContext, RwLock},
     reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
 };
 
@@ -192,6 +194,24 @@ pub struct OperatorContext<'a> {
     /// This makes `OperatorContext` a bidirectional channel — consistent with
     /// `registers` and `clipboard_history` which are also mutated during execute.
     pub cursor_after: Option<Position>,
+}
+
+impl OperatorContext<'_> {
+    /// Get the text buffer for the active buffer via `TextBufferRegistry`.
+    ///
+    /// The kernel's `BufferManager` stores `dyn KernelBuffer` (byte-only).
+    /// Text-specific access goes through `TextBufferRegistry` at the session layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OperatorError::BufferNotFound` if the buffer is not registered.
+    pub fn text_buffer(&self) -> Result<Arc<RwLock<dyn BufferOps>>, OperatorError> {
+        self.kernel
+            .services
+            .get::<reovim_driver_session::TextBufferRegistry>()
+            .and_then(|reg| reg.get(self.buffer_id))
+            .ok_or(OperatorError::BufferNotFound(self.buffer_id))
+    }
 }
 
 /// Operator execution errors.

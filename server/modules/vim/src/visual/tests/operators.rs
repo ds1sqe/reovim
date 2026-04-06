@@ -181,8 +181,8 @@ fn test_expand_line_mode_none_end_line_len() {
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
-        api::RegisterApi, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        WindowLayout, api::RegisterApi, testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
@@ -192,6 +192,21 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
 
 struct TestState {
     session: Session,
@@ -265,7 +280,7 @@ impl TestState {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_delete_selection_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new(); // No buffer_id set
     let mut state = TestState::with_buffer(None);
     let mut runtime = state.runtime(&ctx);
@@ -277,9 +292,9 @@ fn test_delete_selection_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_delete_selection_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -294,9 +309,9 @@ fn test_delete_selection_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_delete_selection_execute_character_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -329,9 +344,9 @@ fn test_delete_selection_execute_character_mode() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_delete_selection_execute_clears_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -354,7 +369,7 @@ fn test_delete_selection_execute_clears_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_selection_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(None);
     let mut runtime = state.runtime(&ctx);
@@ -366,9 +381,9 @@ fn test_yank_selection_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_selection_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -382,9 +397,9 @@ fn test_yank_selection_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_selection_execute_character_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -412,9 +427,9 @@ fn test_yank_selection_execute_character_mode() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_selection_execute_does_not_delete_text() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -436,7 +451,7 @@ fn test_yank_selection_execute_does_not_delete_text() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_selection_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(None);
     let mut runtime = state.runtime(&ctx);
@@ -448,9 +463,9 @@ fn test_change_selection_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_selection_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -464,9 +479,9 @@ fn test_change_selection_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_selection_execute_character_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -500,7 +515,7 @@ fn test_change_selection_execute_character_mode() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_indent_selection_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(None);
     let mut runtime = state.runtime(&ctx);
@@ -512,9 +527,9 @@ fn test_indent_selection_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_indent_selection_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -528,9 +543,9 @@ fn test_indent_selection_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_indent_selection_execute_indents_lines() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -561,9 +576,9 @@ fn test_indent_selection_execute_indents_lines() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_indent_selection_execute_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -588,7 +603,7 @@ fn test_indent_selection_execute_single_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(None);
     let mut runtime = state.runtime(&ctx);
@@ -600,9 +615,9 @@ fn test_dedent_selection_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    hello\n    world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -616,9 +631,9 @@ fn test_dedent_selection_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_removes_spaces() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    hello\n    world\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -648,9 +663,9 @@ fn test_dedent_selection_execute_removes_spaces() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_removes_tab() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("\thello\n\tworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -673,9 +688,9 @@ fn test_dedent_selection_execute_removes_tab() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_no_leading_whitespace() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -698,9 +713,9 @@ fn test_dedent_selection_execute_no_leading_whitespace() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_execute_partial_spaces() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("  hello\n      world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -771,9 +786,9 @@ fn test_expand_character_mode_multiline() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_delete_selection_middle_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -796,9 +811,9 @@ fn test_delete_selection_middle_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_selection_line_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -825,9 +840,9 @@ fn test_yank_selection_line_mode() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_change_selection_enters_insert_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -846,9 +861,9 @@ fn test_change_selection_enters_insert_mode() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_indent_selection_already_indented() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    hello\n    world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -871,9 +886,9 @@ fn test_indent_selection_already_indented() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_dedent_selection_single_space() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string(" hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -908,7 +923,7 @@ fn test_delete_selection_clones() {
 #[test]
 fn test_delete_selection_nonexistent_buffer() {
     // Exercise the None path of buffer_text_range (line 107)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let fake_id = BufferId::from_raw(9999);
 
     let mut args = CommandContext::new();
@@ -927,7 +942,7 @@ fn test_delete_selection_nonexistent_buffer() {
 #[test]
 fn test_yank_selection_nonexistent_buffer() {
     // Exercise the None path of buffer_text_range (line 169)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let fake_id = BufferId::from_raw(9999);
 
     let mut args = CommandContext::new();
@@ -946,7 +961,7 @@ fn test_yank_selection_nonexistent_buffer() {
 #[test]
 fn test_change_selection_nonexistent_buffer() {
     // Exercise the None path of buffer_text_range (line 227)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let fake_id = BufferId::from_raw(9999);
 
     let mut args = CommandContext::new();
@@ -965,9 +980,9 @@ fn test_change_selection_nonexistent_buffer() {
 #[test]
 fn test_change_selection_linewise() {
     // Exercise the is_linewise branch in ChangeSelection (line 222)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -991,7 +1006,7 @@ fn test_change_selection_linewise() {
 #[test]
 fn test_dedent_selection_nonexistent_buffer() {
     // Exercise the None path of buffer_line (line 348)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let fake_id = BufferId::from_raw(9999);
 
     let mut args = CommandContext::new();

@@ -5,16 +5,15 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             ModeStack,
             v1::{BufferId, KernelContext, ModeId, ModuleId},
         },
-        testing::{create_test_context, test_mode},
+        testing::test_mode,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -220,8 +219,8 @@ fn test_inner_word_invalid_buffer_returns_error() {
 
 #[test]
 fn test_inner_word_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world foo");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -238,8 +237,8 @@ fn test_inner_word_basic() {
 
 #[test]
 fn test_inner_word_middle_of_word() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
 
     // Phase #471: Cursor lives in Window, not Buffer
     let mut window = Window::new();
@@ -263,8 +262,8 @@ fn test_inner_word_middle_of_word() {
 
 #[test]
 fn test_a_word_includes_trailing_whitespace() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -282,8 +281,8 @@ fn test_a_word_includes_trailing_whitespace() {
 
 #[test]
 fn test_inner_word_big_skips_punctuation() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -297,8 +296,8 @@ fn test_inner_word_big_skips_punctuation() {
 
 #[test]
 fn test_inner_word_small_stops_at_punctuation() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -316,8 +315,8 @@ fn test_inner_word_small_stops_at_punctuation() {
 
 #[test]
 fn test_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -332,8 +331,8 @@ fn test_empty_buffer() {
 
 #[test]
 fn test_whitespace_only() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "   ");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "   ");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -360,8 +359,8 @@ fn operator_pending_mode() -> ModeId {
 
 #[test]
 fn test_inner_word_in_operator_pending_mode_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     // Use operator-pending mode (delete mode)
     let mut state = TestState::with_window(buffer_id, operator_pending_mode());
     let executor = StubExecutor;
@@ -384,8 +383,8 @@ fn test_inner_word_in_operator_pending_mode_stores_range() {
 
 #[test]
 fn test_inner_word_in_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     // Use visual mode with custom window
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
@@ -412,8 +411,8 @@ fn test_inner_word_in_visual_mode_sets_selection() {
 
 #[test]
 fn test_around_word_in_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     // Use visual mode with custom window
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
@@ -441,8 +440,8 @@ fn test_around_word_in_visual_mode_sets_selection() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_visual_mode_does_not_store_operator_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, visual_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -477,8 +476,8 @@ fn visual_block_mode() -> ModeId {
 
 #[test]
 fn test_inner_word_visual_line_mode_sets_line_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_line_mode());
@@ -498,8 +497,8 @@ fn test_inner_word_visual_line_mode_sets_line_selection() {
 
 #[test]
 fn test_inner_word_visual_block_mode_sets_block_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_block_mode());
@@ -519,8 +518,8 @@ fn test_inner_word_visual_block_mode_sets_block_selection() {
 
 #[test]
 fn test_a_word_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world foo");
     let mut state = TestState::with_window(buffer_id, operator_pending_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -538,8 +537,8 @@ fn test_a_word_operator_pending_stores_range() {
 
 #[test]
 fn test_a_word_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_mode());
@@ -558,8 +557,8 @@ fn test_a_word_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_word_big_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut state = TestState::with_window(buffer_id, operator_pending_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -577,8 +576,8 @@ fn test_inner_word_big_operator_pending_stores_range() {
 
 #[test]
 fn test_inner_word_big_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_mode());
@@ -597,8 +596,8 @@ fn test_inner_word_big_visual_mode_sets_selection() {
 
 #[test]
 fn test_a_word_big_operator_pending_stores_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut state = TestState::with_window(buffer_id, operator_pending_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -616,8 +615,8 @@ fn test_a_word_big_operator_pending_stores_range() {
 
 #[test]
 fn test_a_word_big_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_mode());
@@ -636,8 +635,8 @@ fn test_a_word_big_visual_mode_sets_selection() {
 
 #[test]
 fn test_inner_word_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world foo bar");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world foo bar");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -729,8 +728,8 @@ fn test_word_descriptions() {
 
 #[test]
 fn test_a_word_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -744,8 +743,8 @@ fn test_a_word_empty_buffer() {
 
 #[test]
 fn test_inner_word_big_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -759,8 +758,8 @@ fn test_inner_word_big_empty_buffer() {
 
 #[test]
 fn test_a_word_big_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -774,8 +773,8 @@ fn test_a_word_big_empty_buffer() {
 
 #[test]
 fn test_inner_word_at_end_of_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into(); // at 'o'
@@ -793,8 +792,8 @@ fn test_inner_word_at_end_of_line() {
 
 #[test]
 fn test_a_word_at_end_of_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 4).into();
@@ -812,8 +811,8 @@ fn test_a_word_at_end_of_line() {
 
 #[test]
 fn test_a_word_visual_line_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_line_mode());
@@ -833,8 +832,8 @@ fn test_a_word_visual_line_mode() {
 
 #[test]
 fn test_a_word_visual_block_mode() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_block_mode());
@@ -854,8 +853,8 @@ fn test_a_word_visual_block_mode() {
 
 #[test]
 fn test_multiline_word() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello\nworld\nfoo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello\nworld\nfoo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 2).into(); // 'r' in world
@@ -881,8 +880,8 @@ fn test_multiline_word() {
 
 #[test]
 fn test_inner_word_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     // Truly empty window layout - no windows at all
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
@@ -914,8 +913,8 @@ fn test_inner_word_no_active_window_returns_error() {
 
 #[test]
 fn test_a_word_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -946,8 +945,8 @@ fn test_a_word_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_word_big_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -978,8 +977,8 @@ fn test_inner_word_big_no_active_window_returns_error() {
 
 #[test]
 fn test_a_word_big_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -1016,8 +1015,8 @@ fn test_a_word_big_no_active_window_returns_error() {
 
 #[test]
 fn test_inner_word_big_visual_line_mode_sets_line_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_line_mode());
@@ -1037,8 +1036,8 @@ fn test_inner_word_big_visual_line_mode_sets_line_selection() {
 
 #[test]
 fn test_inner_word_big_visual_block_mode_sets_block_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_block_mode());
@@ -1058,8 +1057,8 @@ fn test_inner_word_big_visual_block_mode_sets_block_selection() {
 
 #[test]
 fn test_a_word_big_visual_line_mode_sets_line_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_line_mode());
@@ -1079,8 +1078,8 @@ fn test_a_word_big_visual_line_mode_sets_line_selection() {
 
 #[test]
 fn test_a_word_big_visual_block_mode_sets_block_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     let mut state = TestState::with_custom_window(window, visual_block_mode());
@@ -1145,8 +1144,8 @@ fn test_word_copy() {
 
 #[test]
 fn test_inner_word_big_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo-bar baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo-bar baz");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1161,8 +1160,8 @@ fn test_inner_word_big_with_count() {
 
 #[test]
 fn test_a_word_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world foo bar");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world foo bar");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1177,8 +1176,8 @@ fn test_a_word_with_count() {
 
 #[test]
 fn test_a_word_big_with_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello-world foo-bar baz");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello-world foo-bar baz");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1197,8 +1196,8 @@ fn test_a_word_big_with_count() {
 
 #[test]
 fn test_a_word_whitespace_only() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "   ");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "   ");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1212,8 +1211,8 @@ fn test_a_word_whitespace_only() {
 
 #[test]
 fn test_inner_word_big_whitespace_only() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "   ");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "   ");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -1227,8 +1226,8 @@ fn test_inner_word_big_whitespace_only() {
 
 #[test]
 fn test_a_word_big_whitespace_only() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "   ");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "   ");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

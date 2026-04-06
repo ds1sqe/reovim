@@ -5,16 +5,14 @@ use {
         ClientId, ExtensionMap, FindCharState, Jumplist, MarkBank, Session, SessionRuntime, Window,
         WindowLayout,
         api::{CommandExecutor, CommandHandle, ExtensionApi},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
             v1::{BufferId, CommandId, ModeId, ModuleId},
         },
-        testing::create_test_context,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
@@ -223,8 +221,8 @@ fn test_find_char_commands_have_no_args() {
 
 #[test]
 fn test_find_char_forward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -236,8 +234,8 @@ fn test_find_char_forward_execute_returns_success() {
 
 #[test]
 fn test_find_char_backward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -249,8 +247,8 @@ fn test_find_char_backward_execute_returns_success() {
 
 #[test]
 fn test_till_char_forward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -262,8 +260,8 @@ fn test_till_char_forward_execute_returns_success() {
 
 #[test]
 fn test_till_char_backward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -275,8 +273,8 @@ fn test_till_char_backward_execute_returns_success() {
 
 #[test]
 fn test_repeat_find_same_no_prior_find_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -288,8 +286,8 @@ fn test_repeat_find_same_no_prior_find_returns_error() {
 
 #[test]
 fn test_repeat_find_reverse_no_prior_find_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -319,19 +317,19 @@ fn test_find_char_default_trait() {
 
 #[test]
 fn test_buffer_manager_list_and_count() {
-    let ctx = create_test_context();
+    let ctx = create_test_kernel();
     assert_eq!(ctx.buffers.count(), 0);
     assert!(ctx.buffers.list().is_empty());
 
-    let bid = setup_buffer(&ctx, "hello");
+    let bid = dual_register_buffer(&ctx, "hello");
     assert_eq!(ctx.buffers.count(), 1);
     assert!(ctx.buffers.list().contains(&bid));
 }
 
 #[test]
 fn test_buffer_manager_unregister() {
-    let ctx = create_test_context();
-    let bid = setup_buffer(&ctx, "hello");
+    let ctx = create_test_kernel();
+    let bid = dual_register_buffer(&ctx, "hello");
     let result = ctx.buffers.unregister(bid);
     assert!(result.is_some());
     assert_eq!(ctx.buffers.count(), 0);
@@ -339,7 +337,7 @@ fn test_buffer_manager_unregister() {
 
 #[test]
 fn test_buffer_manager_unregister_nonexistent() {
-    let ctx = create_test_context();
+    let ctx = create_test_kernel();
     let bid = BufferId::from_raw(999);
     let result = ctx.buffers.unregister(bid);
     assert!(result.is_none());
@@ -347,8 +345,8 @@ fn test_buffer_manager_unregister_nonexistent() {
 
 #[test]
 fn test_buffer_manager_create() {
-    let ctx = create_test_context();
-    let bid = setup_buffer(&ctx, "");
+    let ctx = create_test_kernel();
+    let bid = dual_register_buffer(&ctx, "");
     assert!(ctx.buffers.get(bid).is_some());
 }
 
@@ -362,8 +360,8 @@ fn test_stub_executor_returns_none() {
 
 #[test]
 fn test_test_state_runtime_method() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "test content");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "test content");
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     // Verify runtime can be created without panicking
@@ -480,8 +478,8 @@ fn test_dispatch_find_char_default() {
 
 #[test]
 fn test_dispatch_find_char_records_state_and_delegates() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -510,8 +508,8 @@ fn test_dispatch_find_char_records_state_and_delegates() {
 
 #[test]
 fn test_dispatch_find_char_backward_till() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -533,8 +531,8 @@ fn test_dispatch_find_char_backward_till() {
 
 #[test]
 fn test_dispatch_find_char_missing_arg() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -550,8 +548,8 @@ fn test_dispatch_find_char_missing_arg() {
 
 #[test]
 fn test_dispatch_find_char_defaults() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -576,8 +574,8 @@ fn test_dispatch_find_char_defaults() {
 
 #[test]
 fn test_repeat_find_same_delegates_with_stored_params() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -599,8 +597,8 @@ fn test_repeat_find_same_delegates_with_stored_params() {
 
 #[test]
 fn test_repeat_find_same_backward_till() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -624,8 +622,8 @@ fn test_repeat_find_same_backward_till() {
 
 #[test]
 fn test_repeat_find_reverse_delegates_with_reversed_params() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);
@@ -649,8 +647,8 @@ fn test_repeat_find_reverse_delegates_with_reversed_params() {
 
 #[test]
 fn test_repeat_find_reverse_from_backward() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id);
     let executor = RecordingExecutor::new();
     let mut runtime = state.runtime(&kernel, &executor);

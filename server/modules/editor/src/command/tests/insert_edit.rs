@@ -2,12 +2,13 @@ use {
     super::*,
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::v1::{
-            BufferId, KernelContext, ModeStack, OptionScope, OptionSpec, OptionValue, RwLock,
+            BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, OptionScope, OptionSpec,
+            OptionValue, RwLock,
         },
         testing::{create_test_context, test_mode},
     },
@@ -15,6 +16,43 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
+
+/// Read a text buffer from the text registry for assertions.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn text_buf(
+    kernel: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn BufferOps>> {
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 struct TestState {
     session: Session,
@@ -174,9 +212,9 @@ fn test_insert_newline_no_buffer_returns_error() {
 
 #[test]
 fn test_insert_newline_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -218,9 +256,9 @@ fn test_insert_newline_no_window_returns_error() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_newline_at_end() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -233,7 +271,7 @@ fn test_insert_newline_at_end() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello"));
@@ -249,9 +287,9 @@ fn test_insert_newline_at_end() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_newline_at_middle() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -264,7 +302,7 @@ fn test_insert_newline_at_middle() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello"));
@@ -275,7 +313,7 @@ fn test_insert_newline_at_middle() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_newline_with_autoindent() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
 
     // Register the option spec so set() can find it
     let _ = kernel.options.register(
@@ -284,7 +322,7 @@ fn test_insert_newline_with_autoindent() {
     );
 
     let buffer = Buffer::from_string("    indented line");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
 
     kernel
         .options
@@ -303,7 +341,7 @@ fn test_insert_newline_with_autoindent() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(1).as_deref(), Some("    "));
@@ -318,7 +356,7 @@ fn test_insert_newline_with_autoindent() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_newline_without_autoindent() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
 
     // Register the option spec so set() can find it
     let _ = kernel.options.register(
@@ -327,7 +365,7 @@ fn test_insert_newline_without_autoindent() {
     );
 
     let buffer = Buffer::from_string("    indented line");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
 
     kernel
         .options
@@ -346,7 +384,7 @@ fn test_insert_newline_without_autoindent() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(1).as_deref(), Some(""));
 
@@ -415,9 +453,9 @@ fn test_insert_tab_no_buffer_returns_error() {
 
 #[test]
 fn test_insert_tab_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -458,7 +496,7 @@ fn test_insert_tab_no_window_returns_error() {
 
 #[test]
 fn test_insert_tab_expandtab() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
 
     // Register the option specs so set() can find them
     let _ = kernel.options.register(
@@ -471,7 +509,7 @@ fn test_insert_tab_expandtab() {
     );
 
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
 
     kernel
         .options
@@ -491,7 +529,7 @@ fn test_insert_tab_expandtab() {
     let result = InsertTab.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("    hello"));
 
@@ -502,7 +540,7 @@ fn test_insert_tab_expandtab() {
 
 #[test]
 fn test_insert_tab_noexpandtab() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
 
     // Register the option spec so set() can find it
     let _ = kernel.options.register(
@@ -511,7 +549,7 @@ fn test_insert_tab_noexpandtab() {
     );
 
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
 
     kernel
         .options
@@ -527,7 +565,7 @@ fn test_insert_tab_noexpandtab() {
     let result = InsertTab.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("\thello"));
 
@@ -542,9 +580,9 @@ fn test_insert_tab_noexpandtab() {
 
 #[test]
 fn test_insert_newline_at_beginning() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     // Cursor at column 0
     let executor = StubExecutor;
@@ -555,7 +593,7 @@ fn test_insert_newline_at_beginning() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some(""));
@@ -574,7 +612,7 @@ fn test_insert_newline_at_beginning() {
 
 #[test]
 fn test_insert_tab_expandtab_custom_tabstop() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
 
     let _ = kernel.options.register(
         OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::bool(true))
@@ -586,7 +624,7 @@ fn test_insert_tab_expandtab_custom_tabstop() {
     );
 
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
 
     kernel
         .options
@@ -606,7 +644,7 @@ fn test_insert_tab_expandtab_custom_tabstop() {
     let result = InsertTab.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     // tabstop=2, expandtab=true -> 2 spaces
     assert_eq!(content.as_deref(), Some("  hello"));
@@ -622,9 +660,9 @@ fn test_insert_tab_expandtab_custom_tabstop() {
 
 #[test]
 fn test_insert_tab_default_options() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -634,7 +672,7 @@ fn test_insert_tab_default_options() {
     let result = InsertTab.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     // Default: expandtab=true, tabstop=4 -> 4 spaces
     assert_eq!(content.as_deref(), Some("    hello"));
@@ -651,9 +689,9 @@ fn test_insert_tab_default_options() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_newline_in_middle_of_multiline() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 4).into();
@@ -666,7 +704,7 @@ fn test_insert_newline_in_middle_of_multiline() {
     let result = InsertNewline.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 4);
     assert_eq!(buf_read.line(1).as_deref(), Some("line"));
@@ -686,9 +724,9 @@ fn test_insert_newline_in_middle_of_multiline() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_insert_tab_in_middle_of_text() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("helloworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -701,7 +739,7 @@ fn test_insert_tab_in_middle_of_text() {
     let result = InsertTab.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     // Default: expandtab=true, tabstop=4 -> 4 spaces
     assert_eq!(content.as_deref(), Some("hello    world"));

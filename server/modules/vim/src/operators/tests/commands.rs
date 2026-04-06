@@ -7,7 +7,9 @@ use {
 };
 
 use {
-    reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
+    reovim_driver_session::{
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
+    },
     reovim_kernel::{
         api::{
             ModeStack,
@@ -19,6 +21,35 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test context with `TextBufferRegistry` registered on the service registry.
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+/// Register a buffer in both the kernel `BufferManager` and the `TextBufferRegistry`.
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
+/// Read text buffer content from the `TextBufferRegistry`.
+fn text_buf(
+    ctx: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+    ctx.services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 use reovim_driver_session::{api::ModeApi, testing::StubExecutor};
 
@@ -175,7 +206,7 @@ fn test_operator_commands_have_correct_ids() {
 
 #[test]
 fn test_delete_command_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -186,9 +217,9 @@ fn test_delete_command_no_buffer() {
 
 #[test]
 fn test_delete_command_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -201,14 +232,14 @@ fn test_delete_command_execute() {
     assert_eq!(result, CommandResult::Success);
 
     // Check buffer was modified
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), " world");
 }
 
 #[test]
 fn test_yank_command_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -219,9 +250,9 @@ fn test_yank_command_no_buffer() {
 
 #[test]
 fn test_yank_command_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -234,7 +265,7 @@ fn test_yank_command_execute() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should be unchanged (yank does not modify)
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "hello world");
 
@@ -246,9 +277,9 @@ fn test_yank_command_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_yank_command_restores_cursor() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -272,7 +303,7 @@ fn test_yank_command_restores_cursor() {
 
 #[test]
 fn test_change_command_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -283,9 +314,9 @@ fn test_change_command_no_buffer() {
 
 #[test]
 fn test_change_command_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -301,16 +332,16 @@ fn test_change_command_execute() {
     assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::INSERT_ID.name());
 
     // Buffer should have text deleted
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), " world");
 }
 
 #[test]
 fn test_delete_command_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -323,16 +354,16 @@ fn test_delete_command_linewise() {
     let result = DeleteCommand.execute(&mut runtime, &args);
     assert_eq!(result, CommandResult::Success);
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "line2\nline3");
 }
 
 #[test]
 fn test_yank_command_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -346,7 +377,7 @@ fn test_yank_command_linewise() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should be unchanged
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf = buf.read();
     assert_eq!(buf.content(), "line1\nline2\nline3");
 
@@ -357,9 +388,9 @@ fn test_yank_command_linewise() {
 
 #[test]
 fn test_change_command_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -378,9 +409,9 @@ fn test_change_command_linewise() {
 
 #[test]
 fn test_delete_command_with_register() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -399,9 +430,9 @@ fn test_delete_command_with_register() {
 
 #[test]
 fn test_delete_command_cursor_after_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -421,9 +452,9 @@ fn test_delete_command_cursor_after_execute() {
 
 #[test]
 fn test_change_command_cursor_at_start() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -454,9 +485,9 @@ fn test_operator_commands_clone() {
 
 #[test]
 fn test_yank_command_no_range_defaults() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -532,7 +563,7 @@ impl UndoProvider for MockUndoProvider {
 }
 
 fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let mock_undo = Arc::new(MockUndoProvider::new());
     let undo_registry = Arc::new(UndoProviderRegistry::new());
     undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
@@ -544,7 +575,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_change_command_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -566,7 +597,7 @@ fn test_change_command_calls_begin_batch() {
 fn test_change_command_enters_insert_mode_with_undo() {
     let (ctx, _mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -585,7 +616,7 @@ fn test_change_command_enters_insert_mode_with_undo() {
 fn test_change_command_records_undo_for_delete() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -608,9 +639,9 @@ fn test_change_command_records_undo_for_delete() {
 
 #[test]
 fn test_delete_command_with_count() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -626,9 +657,9 @@ fn test_delete_command_with_count() {
 
 #[test]
 fn test_yank_command_with_register_and_count() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -648,9 +679,9 @@ fn test_yank_command_with_register_and_count() {
 
 #[test]
 fn test_execute_operator_no_active_window_uses_origin() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -721,9 +752,9 @@ fn test_change_command_no_buffer_skips_undo_batching() {
 
 #[test]
 fn test_yank_command_no_window_cursor_defaults() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -745,7 +776,7 @@ fn test_yank_command_no_window_cursor_defaults() {
 fn test_change_command_linewise_enters_insert_mode() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -774,7 +805,7 @@ fn test_execute_operator_buffer_not_found_returns_error() {
     // Exercise the Err(e) path at line 240 in execute_operator.
     // Provide a buffer_id that doesn't exist in the kernel's buffer manager,
     // so operator.execute() returns Err(BufferNotFound).
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let fake_id = BufferId::from_raw(9999);
 
     let mut args = CommandContext::new();

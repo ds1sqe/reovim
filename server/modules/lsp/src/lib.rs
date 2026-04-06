@@ -109,7 +109,6 @@ impl Module for LspModule {
         // Subscribe to FileOpened events → auto-start LSP server (#564).
         if auto_start {
             let services = Arc::clone(&ctx.services);
-            let buffers = Arc::clone(&ctx.kernel.buffers);
             let file_opened_sub =
                 ctx.kernel
                     .event_bus
@@ -129,8 +128,9 @@ impl Module for LspModule {
                         {
                             // Provider already running — send DidOpen for the new file.
                             let uri = uri_from_path(std::path::Path::new(&event.path));
-                            let content = buffers
-                                .get(buf_id)
+                            let content = services
+                                .get::<reovim_driver_session::TextBufferRegistry>()
+                                .and_then(|reg| reg.get(buf_id))
                                 .map(|b| b.read().content())
                                 .unwrap_or_default();
                             provider.send_request(LspRequest::DidOpen {
@@ -151,8 +151,9 @@ impl Module for LspModule {
                             return EventResult::NotHandled;
                         };
 
-                        let content = buffers
-                            .get(buf_id)
+                        let content = services
+                            .get::<reovim_driver_session::TextBufferRegistry>()
+                            .and_then(|reg| reg.get(buf_id))
                             .map(|b| b.read().content())
                             .unwrap_or_default();
 

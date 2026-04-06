@@ -5,16 +5,14 @@ use {
     },
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
             v1::{BufferId, ModeId, ModuleId},
         },
-        testing::create_test_context,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -40,8 +38,8 @@ struct TestSetup {
 
 impl TestSetup {
     fn new(content: &str) -> Self {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, content);
+        let ctx = create_test_kernel();
+        let buffer_id = dual_register_buffer(&ctx, content);
 
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         let session = Session::new(ClientId::new(1), home_mode.clone());

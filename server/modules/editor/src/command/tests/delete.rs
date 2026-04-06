@@ -2,17 +2,54 @@ use {
     super::super::*,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
+
+/// Read a text buffer from the text registry for assertions.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn text_buf(
+    kernel: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn BufferOps>> {
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 struct TestState {
     session: Session,
@@ -147,9 +184,9 @@ fn test_delete_char_no_buffer_returns_error() {
 
 #[test]
 fn test_delete_char_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -190,9 +227,9 @@ fn test_delete_char_no_window_returns_error() {
 
 #[test]
 fn test_delete_char_single() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -202,16 +239,16 @@ fn test_delete_char_single() {
     let result = DeleteChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("ello"));
 }
 
 #[test]
 fn test_delete_char_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -222,16 +259,16 @@ fn test_delete_char_with_count() {
     let result = DeleteChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("lo"));
 }
 
 #[test]
 fn test_delete_char_count_clamped_to_eol() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -243,15 +280,15 @@ fn test_delete_char_count_clamped_to_eol() {
     assert!(result.is_success());
 
     // Deleting all chars leaves an empty buffer (0 lines)
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     assert_eq!(buf.read().content(), "");
 }
 
 #[test]
 fn test_delete_char_empty_line_is_noop() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -265,9 +302,9 @@ fn test_delete_char_empty_line_is_noop() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_char_at_eol_is_noop() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("ab");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -280,7 +317,7 @@ fn test_delete_char_at_eol_is_noop() {
     let result = DeleteChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("ab"));
 }
@@ -352,9 +389,9 @@ fn test_delete_char_before_no_buffer_returns_error() {
 
 #[test]
 fn test_delete_char_before_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -395,9 +432,9 @@ fn test_delete_char_before_no_window_returns_error() {
 
 #[test]
 fn test_delete_char_before_at_col_zero_first_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -408,7 +445,7 @@ fn test_delete_char_before_at_col_zero_first_line() {
     let result = DeleteCharBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hello"));
 }
@@ -416,9 +453,9 @@ fn test_delete_char_before_at_col_zero_first_line() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_char_before_joins_with_previous_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line one\nline two");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     // Set cursor to start of second line
     if let Some(window) = state.windows.active_mut() {
@@ -433,7 +470,7 @@ fn test_delete_char_before_joins_with_previous_line() {
     assert!(result.is_success());
 
     // Lines should be joined
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("line oneline two"));
@@ -443,9 +480,9 @@ fn test_delete_char_before_joins_with_previous_line() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_char_before_single() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 3).into();
@@ -458,7 +495,7 @@ fn test_delete_char_before_single() {
     let result = DeleteCharBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("helo"));
 
@@ -470,9 +507,9 @@ fn test_delete_char_before_single() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_char_before_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 4).into();
@@ -486,7 +523,7 @@ fn test_delete_char_before_with_count() {
     let result = DeleteCharBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("ho"));
 
@@ -498,9 +535,9 @@ fn test_delete_char_before_with_count() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_char_before_count_clamped() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -514,7 +551,7 @@ fn test_delete_char_before_count_clamped() {
     let result = DeleteCharBefore.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("llo"));
 
@@ -592,9 +629,9 @@ fn test_delete_line_no_buffer_returns_error() {
 
 #[test]
 fn test_delete_line_empty_buffer() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::new();
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -607,9 +644,9 @@ fn test_delete_line_empty_buffer() {
 
 #[test]
 fn test_delete_line_single_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("only line");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -629,9 +666,9 @@ fn test_delete_line_single_line() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_line_middle_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -644,7 +681,7 @@ fn test_delete_line_middle_line() {
     let result = DeleteLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 1"));
@@ -655,9 +692,9 @@ fn test_delete_line_middle_line() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_line_last_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(2, 0).into();
@@ -670,7 +707,7 @@ fn test_delete_line_last_line() {
     let result = DeleteLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 1"));
@@ -680,9 +717,9 @@ fn test_delete_line_last_line() {
 
 #[test]
 fn test_delete_line_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -693,7 +730,7 @@ fn test_delete_line_with_count() {
     let result = DeleteLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 3"));
@@ -709,9 +746,9 @@ fn test_delete_line_with_count() {
 
 #[test]
 fn test_delete_line_with_indented_remaining() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("first\n    indented\nthird");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -795,9 +832,9 @@ fn test_delete_to_eol_no_buffer_returns_error() {
 
 #[test]
 fn test_delete_to_eol_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -838,9 +875,9 @@ fn test_delete_to_eol_no_window_returns_error() {
 
 #[test]
 fn test_delete_to_eol_from_start() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -851,7 +888,7 @@ fn test_delete_to_eol_from_start() {
     assert!(result.is_success());
 
     // Deleting all chars leaves an empty buffer (0 lines)
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     assert_eq!(buf.read().content(), "");
 
     // Check register content (per-client registers, #515)
@@ -864,9 +901,9 @@ fn test_delete_to_eol_from_start() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_to_eol_from_middle() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into();
@@ -879,7 +916,7 @@ fn test_delete_to_eol_from_middle() {
     let result = DeleteToEndOfLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hello"));
 }
@@ -887,9 +924,9 @@ fn test_delete_to_eol_from_middle() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_to_eol_at_eol_is_noop() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 2).into();
@@ -902,7 +939,7 @@ fn test_delete_to_eol_at_eol_is_noop() {
     let result = DeleteToEndOfLine.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let content = buf.read().line(0).map(std::borrow::Cow::into_owned);
     assert_eq!(content.as_deref(), Some("hi"));
 }
@@ -915,9 +952,9 @@ fn test_delete_to_eol_at_eol_is_noop() {
 fn test_delete_line_all_from_first_line() {
     // This tests the else branch at lines 222-228:
     // Deleting to end of buffer from the first line - delete just the content
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("only line here");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -937,9 +974,9 @@ fn test_delete_line_all_from_first_line() {
 #[test]
 fn test_delete_line_all_lines_from_first_with_count() {
     // Delete all lines from the first line using count
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("first\nsecond\nthird");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -961,9 +998,9 @@ fn test_delete_line_all_lines_from_first_with_count() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_delete_line_cursor_beyond_buffer_end() {
     // Cursor at line 5 but buffer has only 2 lines: lines_to_delete = 0
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(5, 0).into();
@@ -977,7 +1014,7 @@ fn test_delete_line_cursor_beyond_buffer_end() {
     assert!(result.is_success());
 
     // Buffer should remain unchanged
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello"));

@@ -106,16 +106,12 @@ impl FallbackContext for AppState {
     }
 
     fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
-        // Prefer TextBufferRegistry when registered (#740).
-        if let Some(reg) = self
-            .kernel
+        // Text access goes through TextBufferRegistry (#740).
+        // The kernel's BufferManager only stores dyn KernelBuffer (byte-only).
+        self.kernel
             .services
             .get::<reovim_driver_session::TextBufferRegistry>()
-            && let Some(buf) = reg.get(id)
-        {
-            return Some(buf);
-        }
-        self.kernel.buffers.get(id)
+            .and_then(|reg| reg.get(id))
     }
 
     fn record_edit(

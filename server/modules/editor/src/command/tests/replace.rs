@@ -2,17 +2,54 @@ use {
     super::super::*,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
+
+/// Read a text buffer from the text registry for assertions.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn text_buf(
+    kernel: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn BufferOps>> {
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 struct TestState {
     session: Session,
@@ -197,9 +234,9 @@ fn test_join_lines_no_buffer_returns_error() {
 
 #[test]
 fn test_join_lines_no_window_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -240,9 +277,9 @@ fn test_join_lines_no_window_returns_error() {
 
 #[test]
 fn test_join_lines_two_lines() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -252,7 +289,7 @@ fn test_join_lines_two_lines() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello world"));
@@ -261,9 +298,9 @@ fn test_join_lines_two_lines() {
 
 #[test]
 fn test_join_lines_strips_leading_whitespace() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\n    world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -273,7 +310,7 @@ fn test_join_lines_strips_leading_whitespace() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello world"));
@@ -282,9 +319,9 @@ fn test_join_lines_strips_leading_whitespace() {
 
 #[test]
 fn test_join_lines_on_last_line_is_noop() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("only line");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -294,7 +331,7 @@ fn test_join_lines_on_last_line_is_noop() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("only line"));
@@ -303,9 +340,9 @@ fn test_join_lines_on_last_line_is_noop() {
 
 #[test]
 fn test_join_lines_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -316,7 +353,7 @@ fn test_join_lines_with_count() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     // First two joins happened: "line 1" + "line 2" + "line 3"
@@ -327,9 +364,9 @@ fn test_join_lines_with_count() {
 
 #[test]
 fn test_join_lines_count_exceeds_remaining() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -340,7 +377,7 @@ fn test_join_lines_count_exceeds_remaining() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 1 line 2"));
@@ -349,9 +386,9 @@ fn test_join_lines_count_exceeds_remaining() {
 
 #[test]
 fn test_join_lines_buffer_not_found() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -367,9 +404,9 @@ fn test_join_lines_buffer_not_found() {
 fn test_join_lines_no_content_after_join_point() {
     // Tests the branch at line 179: new_line_len > line_len check
     // where there's no content after joining (empty next line)
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\n");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -379,7 +416,7 @@ fn test_join_lines_no_content_after_join_point() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     // Empty second line joined, no space should be inserted
@@ -390,9 +427,9 @@ fn test_join_lines_no_content_after_join_point() {
 #[test]
 fn test_replace_char_start_execute() {
     // Execute returns Success even though it's a stub
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -404,9 +441,9 @@ fn test_replace_char_start_execute() {
 #[test]
 fn test_repeat_dot_execute() {
     // Execute returns Success even though it's a stub
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -425,9 +462,9 @@ fn test_repeat_dot_execute() {
 
 #[test]
 fn test_replace_char_start_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -444,9 +481,9 @@ fn test_replace_char_start_with_count() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_join_lines_cursor_position() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 3).into();
@@ -459,7 +496,7 @@ fn test_join_lines_cursor_position() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("hello world"));
     drop(buf_read);
@@ -477,9 +514,9 @@ fn test_join_lines_cursor_position() {
 
 #[test]
 fn test_join_lines_with_empty_next_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\n\nworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -489,7 +526,7 @@ fn test_join_lines_with_empty_next_line() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     // Empty line joined with no trailing space (no content after join)
@@ -504,9 +541,9 @@ fn test_join_lines_with_empty_next_line() {
 
 #[test]
 fn test_join_lines_all_lines() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("a\nb\nc\nd");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -517,7 +554,7 @@ fn test_join_lines_all_lines() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("a b c d"));
@@ -531,9 +568,9 @@ fn test_join_lines_all_lines() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_join_lines_from_middle() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(1, 0).into();
@@ -546,7 +583,7 @@ fn test_join_lines_from_middle() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 2);
     assert_eq!(buf_read.line(0).as_deref(), Some("line 1"));
@@ -561,9 +598,9 @@ fn test_join_lines_from_middle() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_join_lines_on_last_line_multiline() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("line 1\nline 2\nline 3");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(2, 0).into();
@@ -577,7 +614,7 @@ fn test_join_lines_on_last_line_multiline() {
     assert!(result.is_success());
 
     // Should be no-op since cursor is on last line
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 3);
     drop(buf_read);
@@ -589,9 +626,9 @@ fn test_join_lines_on_last_line_multiline() {
 
 #[test]
 fn test_repeat_dot_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -607,9 +644,9 @@ fn test_repeat_dot_with_count() {
 
 #[test]
 fn test_join_lines_strips_tab_whitespace() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello\n\t\tworld");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -619,7 +656,7 @@ fn test_join_lines_strips_tab_whitespace() {
     let result = JoinLines.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 1);
     assert_eq!(buf_read.line(0).as_deref(), Some("hello world"));
@@ -655,9 +692,9 @@ fn test_replace_char_args() {
 
 #[test]
 fn test_replace_char_no_char_arg_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -669,9 +706,9 @@ fn test_replace_char_no_char_arg_error() {
 
 #[test]
 fn test_replace_char_no_buffer_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -683,9 +720,9 @@ fn test_replace_char_no_buffer_error() {
 
 #[test]
 fn test_replace_char_no_window_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -727,9 +764,9 @@ fn test_replace_char_no_window_error() {
 
 #[test]
 fn test_replace_char_single() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -740,7 +777,7 @@ fn test_replace_char_single() {
     let result = ReplaceChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("xello"));
     drop(buf_read);
@@ -748,9 +785,9 @@ fn test_replace_char_single() {
 
 #[test]
 fn test_replace_char_with_count() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -762,7 +799,7 @@ fn test_replace_char_with_count() {
     let result = ReplaceChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("zzzlo"));
     drop(buf_read);
@@ -770,9 +807,9 @@ fn test_replace_char_with_count() {
 
 #[test]
 fn test_replace_char_count_clamps_to_line_end() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -784,7 +821,7 @@ fn test_replace_char_count_clamps_to_line_end() {
     let result = ReplaceChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     // Count clamped to 2 (line length)
     assert_eq!(buf_read.line(0).as_deref(), Some("xx"));
@@ -793,9 +830,9 @@ fn test_replace_char_count_clamps_to_line_end() {
 
 #[test]
 fn test_replace_char_on_empty_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -807,7 +844,7 @@ fn test_replace_char_on_empty_line() {
     assert!(result.is_success());
 
     // No change on empty buffer (line_len == 0 early return)
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line_count(), 0);
     drop(buf_read);
@@ -816,9 +853,9 @@ fn test_replace_char_on_empty_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_replace_char_at_column_offset() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 3).into();
@@ -832,7 +869,7 @@ fn test_replace_char_at_column_offset() {
     let result = ReplaceChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("helXo"));
     drop(buf_read);
@@ -841,9 +878,9 @@ fn test_replace_char_at_column_offset() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_replace_char_at_end_of_line() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 4).into();
@@ -857,7 +894,7 @@ fn test_replace_char_at_end_of_line() {
     let result = ReplaceChar.execute(&mut runtime, &args);
     assert!(result.is_success());
 
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("hell!"));
     drop(buf_read);
@@ -866,9 +903,9 @@ fn test_replace_char_at_end_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_replace_char_cursor_past_end() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hi");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     if let Some(window) = state.windows.active_mut() {
         window.cursor = Position::new(0, 5).into(); // Past end
@@ -883,7 +920,7 @@ fn test_replace_char_cursor_past_end() {
     assert!(result.is_success());
 
     // No change since cursor is past end
-    let buf = kernel.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&kernel, buffer_id);
     let buf_read = buf.read();
     assert_eq!(buf_read.line(0).as_deref(), Some("hi"));
     drop(buf_read);

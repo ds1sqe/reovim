@@ -168,11 +168,16 @@ fn open_large_file(
         .map_or_else(|_| filename.to_string(), |p| p.to_string_lossy().into_owned());
     vbuf.set_file_path(Some(canonical_path.clone()));
 
-    // Register in unified buffer manager (stores as dyn BufferOps)
-    let vbuf_id = runtime
+    // Register in both TextBufferRegistry (text access) and kernel BufferManager (byte identity).
+    let arc = Arc::new(reovim_arch::sync::RwLock::new(vbuf));
+    if let Some(reg) = runtime
         .kernel()
-        .buffers
-        .register(Arc::new(reovim_arch::sync::RwLock::new(vbuf)));
+        .services
+        .get::<reovim_driver_session::TextBufferRegistry>()
+    {
+        reg.register(arc.clone());
+    }
+    let vbuf_id = runtime.kernel().buffers.register(arc);
 
     // Emit FileOpened event for subscribers (LSP, syntax, etc.)
     #[allow(clippy::cast_possible_truncation)]

@@ -4,8 +4,8 @@ use super::super::*;
 use {
     reovim_driver_command::{Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -18,6 +18,35 @@ use {
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
+
+/// Create a test context with `TextBufferRegistry` registered on the service registry.
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+/// Register a buffer in both the kernel `BufferManager` and the `TextBufferRegistry`.
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
+/// Read text buffer content from the `TextBufferRegistry`.
+fn text_buf(
+    ctx: &KernelContext,
+    id: BufferId,
+) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+    ctx.services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 use crate::modes::VIM_MODULE;
 
@@ -211,9 +240,9 @@ fn test_exit_visual_command_id() {
 fn test_enter_visual_activates_selection() {
     use reovim_driver_session::SelectionMode;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -231,9 +260,9 @@ fn test_enter_visual_activates_selection() {
 fn test_enter_visual_line_activates_line_selection() {
     use reovim_driver_session::SelectionMode;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line 1\nline 2");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -251,9 +280,9 @@ fn test_enter_visual_line_activates_line_selection() {
 fn test_enter_visual_block_activates_block_selection() {
     use reovim_driver_session::SelectionMode;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -273,7 +302,7 @@ fn test_enter_visual_no_buffer_succeeds_with_window() {
     // not the buffer_id in args. As long as there's an active window,
     // the command succeeds. The test helper always creates a window,
     // so this now returns Success.
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let result = run_command(&EnterVisualMode, &ctx, &args);
@@ -286,9 +315,9 @@ fn test_enter_visual_no_buffer_succeeds_with_window() {
 
 #[test]
 fn test_exit_visual_clears_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -311,7 +340,7 @@ fn test_exit_visual_clears_selection() {
 
 #[test]
 fn test_exit_visual_without_buffer_succeeds() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     // Should still succeed (just emits event)
@@ -335,9 +364,9 @@ fn test_swap_anchor_swaps_positions() {
     // Phase 8 (#465): This test needs significant rework since selection
     // is now in Window with explicit start/end, not anchor + cursor.
     // The swap_selection_ends() swaps start and end positions.
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -359,9 +388,9 @@ fn test_swap_anchor_swaps_positions() {
 
 #[test]
 fn test_swap_anchor_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -375,9 +404,9 @@ fn test_swap_anchor_noop_without_selection() {
 fn test_toggle_visual_char_exits_if_already_char() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -396,9 +425,9 @@ fn test_toggle_visual_char_exits_if_already_char() {
 fn test_toggle_visual_char_switches_from_line() {
     use reovim_driver_session::{SelectionMode, api::Selection};
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -419,9 +448,9 @@ fn test_toggle_visual_char_switches_from_line() {
 fn test_toggle_visual_line_exits_if_already_line() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -440,9 +469,9 @@ fn test_toggle_visual_line_exits_if_already_line() {
 fn test_toggle_visual_block_switches_mode() {
     use reovim_driver_session::{SelectionMode, api::Selection};
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -506,9 +535,9 @@ fn test_reselect_last_command_id() {
 
 #[test]
 fn test_reselect_last_returns_success() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -559,9 +588,9 @@ fn test_dedent_selection_command_id() {
 
 #[test]
 fn test_delete_selection_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -571,16 +600,16 @@ fn test_delete_selection_noop_without_selection() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should be unchanged
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), "hello world");
 }
 
 #[test]
 fn test_yank_selection_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -592,9 +621,9 @@ fn test_yank_selection_noop_without_selection() {
 
 #[test]
 fn test_change_selection_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -608,9 +637,9 @@ fn test_change_selection_noop_without_selection() {
 fn test_delete_selection_deletes_text() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -622,7 +651,7 @@ fn test_delete_selection_deletes_text() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should have "hello" deleted
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), " world");
 
@@ -634,9 +663,9 @@ fn test_delete_selection_deletes_text() {
 fn test_indent_selection_adds_indentation() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -648,7 +677,7 @@ fn test_indent_selection_adds_indentation() {
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be indented
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert!(buffer.line(0).unwrap().starts_with("    ")); // 4 spaces
     assert!(buffer.line(1).unwrap().starts_with("    "));
@@ -659,9 +688,9 @@ fn test_indent_selection_adds_indentation() {
 fn test_dedent_selection_removes_indentation() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    line1\n    line2\nline3");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -673,7 +702,7 @@ fn test_dedent_selection_removes_indentation() {
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be dedented
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), "line1");
     assert_eq!(buffer.line(1).unwrap(), "line2");
@@ -688,9 +717,9 @@ fn test_dedent_selection_removes_indentation() {
 fn test_yank_selection_yanks_text() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -702,7 +731,7 @@ fn test_yank_selection_yanks_text() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer content should remain unchanged (yank doesn't delete)
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), "hello world");
 
@@ -714,9 +743,9 @@ fn test_yank_selection_yanks_text() {
 fn test_change_selection_changes_text() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -728,7 +757,7 @@ fn test_change_selection_changes_text() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should have "hello" deleted (like delete, but followed by insert mode)
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), " world");
 
@@ -740,9 +769,9 @@ fn test_change_selection_changes_text() {
 fn test_delete_selection_line_mode_deletes_entire_lines() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line one\nline two\nline three");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -754,7 +783,7 @@ fn test_delete_selection_line_mode_deletes_entire_lines() {
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be completely deleted, leaving only "line three"
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line_count(), 1);
     assert_eq!(buffer.line(0).unwrap(), "line three");
@@ -835,9 +864,9 @@ fn test_all_visual_commands_unique_ids() {
 
 #[test]
 fn test_indent_selection_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -846,16 +875,16 @@ fn test_indent_selection_noop_without_selection() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer unchanged
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), "hello");
 }
 
 #[test]
 fn test_dedent_selection_noop_without_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    hello\n    world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -864,7 +893,7 @@ fn test_dedent_selection_noop_without_selection() {
     assert_eq!(result, CommandResult::Success);
 
     // Buffer unchanged
-    let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+    let buffer_arc = text_buf(&ctx, buffer_id);
     let buffer = buffer_arc.read();
     assert_eq!(buffer.line(0).unwrap(), "    hello");
 }
@@ -873,9 +902,9 @@ fn test_dedent_selection_noop_without_selection() {
 fn test_toggle_visual_line_from_char_keeps_selection() {
     use reovim_driver_session::{SelectionMode, api::Selection};
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -894,9 +923,9 @@ fn test_toggle_visual_line_from_char_keeps_selection() {
 fn test_toggle_visual_block_exits_if_already_block() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -913,9 +942,9 @@ fn test_toggle_visual_block_exits_if_already_block() {
 fn test_swap_anchor_with_different_lines() {
     use reovim_driver_session::api::Selection;
 
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);

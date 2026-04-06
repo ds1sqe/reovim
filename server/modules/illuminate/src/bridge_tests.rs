@@ -4,7 +4,7 @@ use {
     reovim_driver_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
     },
-    reovim_kernel::api::v1::{BufferId, BufferManager, RwLock, ServiceRegistry},
+    reovim_kernel::api::v1::{BufferId, RwLock, ServiceRegistry},
     reovim_provider_text::Buffer,
     std::sync::Arc,
 };
@@ -397,15 +397,15 @@ fn test_tick_hold_then_move_resets() {
 // ========================================================================
 
 fn services_with_buffer(content: &str) -> (ServiceRegistry, BufferId) {
-    use reovim_kernel::testing::TestBufferManager;
+    use reovim_driver_session::TextBufferRegistry;
 
-    let manager = Arc::new(TestBufferManager::new());
+    let text_registry = Arc::new(TextBufferRegistry::new());
     let buf = Buffer::from_string(content);
-    let bid = manager.register(Arc::new(RwLock::new(buf)));
+    let bid = text_registry.register(Arc::new(RwLock::new(buf)));
 
     let services = ServiceRegistry::new();
-    services
-        .register(Arc::new(BufferReadAccess::new(Arc::clone(&manager) as Arc<dyn BufferManager>)));
+    services.register(Arc::new(BufferReadAccess::new(Arc::clone(&text_registry))));
+    services.register(text_registry);
 
     (services, bid)
 }

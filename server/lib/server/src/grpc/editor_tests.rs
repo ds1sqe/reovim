@@ -7,18 +7,23 @@ fn test_registry() -> Arc<SessionRegistry> {
     registry
 }
 
-/// Create a registry with a session that has a real buffer manager.
+/// Create a registry with a session that has a real buffer manager and
+/// `TextBufferRegistry` so that `state.buffer()` can resolve buffers.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
     use {
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = crate::session::SessionState::with_kernel(kernel);

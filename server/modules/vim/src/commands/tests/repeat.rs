@@ -10,19 +10,36 @@ use {
     crate::session_state::{LastChange, OperatorType},
     reovim_driver_command::ArgValue,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, Window, WindowLayout,
-        api::CommandExecutor, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, Window,
+        WindowLayout, api::CommandExecutor, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
             ModeStack,
-            v1::{BufferId, KernelContext, ModeId, ModuleId},
+            v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
         },
         testing::create_test_context,
     },
-    reovim_provider_text::testing::setup_buffer,
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
+    std::sync::Arc,
 };
+
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+fn setup_buf(ctx: &KernelContext, content: &str) -> BufferId {
+    let buffer = Buffer::from_string(content);
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
 
 fn test_mode() -> ModeId {
     ModeId::new(ModuleId::new("vim"), "normal")
@@ -118,8 +135,8 @@ fn test_dot_repeat_command_id() {
 
 #[test]
 fn test_dot_repeat_without_vim_state_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -134,8 +151,8 @@ fn test_dot_repeat_without_vim_state_returns_success() {
 
 #[test]
 fn test_dot_repeat_without_last_change_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -156,8 +173,8 @@ fn test_dot_repeat_without_last_change_returns_success() {
 
 #[test]
 fn test_dot_repeat_insert_text() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -190,8 +207,8 @@ fn test_dot_repeat_insert_text() {
 
 #[test]
 fn test_dot_repeat_insert_with_original_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -223,8 +240,8 @@ fn test_dot_repeat_insert_with_original_count() {
 
 #[test]
 fn test_dot_repeat_count_overrides_original() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -318,7 +335,7 @@ fn test_last_change_stores_insert() {
 
 #[test]
 fn test_dot_repeat_no_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = make_test_ctx();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
     let executor = StubExecutor;
@@ -396,8 +413,8 @@ fn test_dot_repeat_command_clone() {
 
 #[test]
 fn test_dot_repeat_insert_empty_text() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -428,8 +445,8 @@ fn test_dot_repeat_insert_empty_text() {
 
 #[test]
 fn test_dot_repeat_insert_with_no_count() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -460,8 +477,8 @@ fn test_dot_repeat_insert_with_no_count() {
 
 #[test]
 fn test_dot_repeat_operator_motion_stub() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -490,8 +507,8 @@ fn test_dot_repeat_operator_motion_stub() {
 
 #[test]
 fn test_dot_repeat_operator_textobj_stub() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello world");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -519,8 +536,8 @@ fn test_dot_repeat_operator_textobj_stub() {
 
 #[test]
 fn test_dot_repeat_insert_with_newline() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -547,8 +564,8 @@ fn test_dot_repeat_insert_with_newline() {
 
 #[test]
 fn test_dot_repeat_count_overrides_none() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -580,8 +597,8 @@ fn test_dot_repeat_count_overrides_none() {
 
 #[test]
 fn test_dot_repeat_insert_no_active_window() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let kernel = make_test_ctx();
+    let buffer_id = setup_buf(&kernel, "hello");
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;

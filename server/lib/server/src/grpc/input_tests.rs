@@ -1975,9 +1975,17 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
     use reovim_driver_input::{InputTarget, KeyCode};
 
     // Need a real BufferManager (not StubBufferManager) so buffers are actually stored
-    let kernel = reovim_kernel::api::v1::KernelContext {
-        buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
-        ..Default::default()
+    let kernel = {
+        let default = reovim_kernel::api::v1::KernelContext::default();
+        default
+            .services
+            .register(std::sync::Arc::new(
+                reovim_driver_session::TextBufferRegistry::new(),
+            ));
+        reovim_kernel::api::v1::KernelContext {
+            buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            ..default
+        }
     };
     let state = crate::session::SessionState::with_kernel(kernel);
     let session =

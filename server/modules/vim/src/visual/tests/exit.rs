@@ -42,8 +42,8 @@ fn test_exit_visual_mode_default() {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, api::Selection,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
+        api::Selection, testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
@@ -53,6 +53,21 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
 
 struct TestState {
     session: Session,
@@ -125,9 +140,9 @@ impl TestState {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_execute_clears_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -149,9 +164,9 @@ fn test_exit_visual_mode_execute_clears_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_execute_no_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -168,9 +183,9 @@ fn test_exit_visual_mode_execute_no_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_execute_clears_line_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -189,9 +204,9 @@ fn test_exit_visual_mode_execute_clears_line_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_execute_clears_block_selection() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -210,9 +225,9 @@ fn test_exit_visual_mode_execute_clears_block_selection() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_sets_normal_mode() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -243,9 +258,9 @@ fn test_exit_visual_mode_description_contains_normal() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_preserves_cursor() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let args = CommandContext::new();
     let mut state = TestState::with_buffer(Some(buffer_id));
@@ -266,7 +281,7 @@ fn test_exit_visual_mode_preserves_cursor() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_visual_mode_no_window() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");

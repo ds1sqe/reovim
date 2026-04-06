@@ -9,12 +9,11 @@ use {
     },
     reovim_kernel::{
         api::{
-            KernelContext, ModeStack,
+            KernelContext, ModeStack, RwLock,
             v1::{BufferId, ModeId, ModuleId},
         },
         testing::create_test_context,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -47,7 +46,17 @@ impl TestSetup {
     /// Create test setup with buffer content.
     fn new(content: &str) -> Self {
         let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, content);
+        ctx.services
+            .register(std::sync::Arc::new(reovim_driver_session::TextBufferRegistry::new()));
+        let buffer = reovim_provider_text::Buffer::from_string(content);
+        let arc = std::sync::Arc::new(RwLock::new(buffer));
+        if let Some(reg) = ctx
+            .services
+            .get::<reovim_driver_session::TextBufferRegistry>()
+        {
+            reg.register(arc.clone());
+        }
+        let buffer_id = ctx.buffers.register(arc);
 
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         let session = Session::new(ClientId::new(1), home_mode.clone()); // #491

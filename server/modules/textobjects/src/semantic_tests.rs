@@ -5,7 +5,7 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_driver_syntax::{
         Annotation, SyntaxEdit, SyntaxSessionState, TextObjectKind, TextObjectRange,
@@ -16,9 +16,8 @@ use {
             ModeStack,
             v1::{BufferId, KernelContext, ModeId},
         },
-        testing::{create_test_context, test_mode},
+        testing::test_mode,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 
@@ -268,7 +267,7 @@ fn test_semantic_copy() {
 
 #[test]
 fn test_no_buffer_returns_success() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -283,8 +282,8 @@ fn test_no_buffer_returns_success() {
 
 #[test]
 fn test_no_syntax_driver_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {}");
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -300,8 +299,8 @@ fn test_no_syntax_driver_returns_success() {
 
 #[test]
 fn test_no_syntax_driver_no_operator_state() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {}");
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -319,8 +318,8 @@ fn test_no_syntax_driver_no_operator_state() {
 
 #[test]
 fn test_all_14_commands_graceful_without_driver() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "let x = 1;");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "let x = 1;");
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -412,8 +411,8 @@ fn make_test_range() -> TextObjectRange {
 
 #[test]
 fn test_linewise_operator_pending_with_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -437,8 +436,8 @@ fn test_linewise_operator_pending_with_range() {
 
 #[test]
 fn test_characterwise_operator_pending_with_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "foo(bar, baz)");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "foo(bar, baz)");
     let executor = StubExecutor;
     let mode = test_mode();
 
@@ -476,8 +475,8 @@ fn visual_block_mode() -> ModeId {
 
 #[test]
 fn test_visual_mode_sets_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
     let executor = StubExecutor;
     let mode = visual_mode();
 
@@ -506,8 +505,8 @@ fn test_visual_mode_sets_selection() {
 
 #[test]
 fn test_visual_line_mode_sets_line_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
     let executor = StubExecutor;
     let mode = visual_line_mode();
 
@@ -530,8 +529,8 @@ fn test_visual_line_mode_sets_line_selection() {
 
 #[test]
 fn test_visual_block_mode_sets_block_selection() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {\n    let x = 1;\n}");
     let executor = StubExecutor;
     let mode = visual_block_mode();
 
@@ -559,8 +558,8 @@ fn test_visual_block_mode_sets_block_selection() {
 #[test]
 fn test_normal_mode_not_visual() {
     // Normal mode → is_visual_mode returns false → operator-pending path taken
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "fn main() {}");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "fn main() {}");
     let executor = StubExecutor;
     let mode = test_mode(); // "normal"
 

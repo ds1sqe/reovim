@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps},
+    reovim_kernel::api::v1::{BufferId, BufferManager},
     reovim_provider_text::Buffer,
 };
 
@@ -10,14 +10,20 @@ use super::*;
 
 fn register_buffer(mgr: &TestBufferManager, content: &str) -> BufferId {
     let buf = Buffer::from_string(content);
-    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
-    mgr.register(arc)
+    mgr.register(Arc::new(RwLock::new(buf)))
 }
 
 fn register_empty(mgr: &TestBufferManager) -> BufferId {
     let buf = Buffer::new();
-    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
-    mgr.register(arc)
+    mgr.register(Arc::new(RwLock::new(buf)))
+}
+
+/// Read all bytes from a `dyn KernelBuffer` as a UTF-8 string.
+fn read_content(buf: &dyn reovim_kernel::api::v1::KernelBuffer) -> String {
+    let len = buf.byte_len();
+    let mut bytes = vec![0u8; len];
+    buf.read_bytes(0, &mut bytes);
+    String::from_utf8(bytes).expect("test buffer should be UTF-8")
 }
 
 #[test]
@@ -33,7 +39,7 @@ fn test_register_with_content() {
     let mgr = TestBufferManager::new();
     let id = register_buffer(&mgr, "test content");
     let arc = mgr.get(id).unwrap();
-    assert_eq!(arc.read().content(), "test content");
+    assert_eq!(read_content(&*arc.read()), "test content");
 }
 
 #[test]

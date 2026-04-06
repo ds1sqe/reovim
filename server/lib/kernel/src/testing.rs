@@ -25,9 +25,9 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use {
     crate::api::v1::{
-        BufferCapabilities, BufferId, BufferManager, BufferOps, EventBus, KernelContext, ModeId,
-        ModuleId, OptionRegistry, RwLock, ServiceRegistry, StorageCapabilities, StorageError,
-        StorageOps,
+        BufferCapabilities, BufferId, BufferManager, BufferOps, EventBus, KernelBuffer,
+        KernelContext, ModeId, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
+        StorageCapabilities, StorageError, StorageOps,
     },
     reovim_types_text::{Position, TextGeometry},
 };
@@ -233,7 +233,7 @@ impl BufferOps for TestTextBuffer {
 /// (returns `None` for all lookups), this implementation actually stores
 /// and retrieves buffers. Use this when tests need real buffer operations.
 pub struct TestBufferManager {
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>>,
+    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn KernelBuffer>>>>,
 }
 
 impl TestBufferManager {
@@ -254,17 +254,17 @@ impl Default for TestBufferManager {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl BufferManager for TestBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.read().get(&id).cloned()
     }
 
-    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+    fn register(&self, buffer: Arc<RwLock<dyn KernelBuffer>>) -> BufferId {
         let id = buffer.read().id();
         self.buffers.write().insert(id, buffer);
         id
     }
 
-    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.write().remove(&id)
     }
 
@@ -310,7 +310,7 @@ pub const fn test_mode() -> ModeId {
 /// Convenience helper that wraps `ctx.buffers.register()`.
 /// Returns the buffer's `BufferId`.
 #[must_use]
-pub fn register_buffer(ctx: &KernelContext, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+pub fn register_buffer(ctx: &KernelContext, buffer: Arc<RwLock<dyn KernelBuffer>>) -> BufferId {
     ctx.buffers.register(buffer)
 }
 

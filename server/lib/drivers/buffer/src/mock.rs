@@ -13,7 +13,7 @@
 //!
 //! let mgr = TestBufferManager::new();
 //! let buf = Buffer::new();
-//! let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
+//! let arc: Arc<RwLock<dyn KernelBuffer>> = Arc::new(RwLock::new(buf));
 //! let id = mgr.register(arc);
 //! assert!(mgr.get(id).is_some());
 //! ```
@@ -22,7 +22,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps},
+    reovim_kernel::api::v1::{BufferId, BufferManager, KernelBuffer},
 };
 
 /// Test buffer manager for testing purposes.
@@ -39,7 +39,7 @@ use {
 /// - Module implementations remain in server/modules/
 pub struct TestBufferManager {
     /// Buffer storage with outer `RwLock` protecting the `HashMap`.
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>>,
+    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn KernelBuffer>>>>,
 }
 
 impl TestBufferManager {
@@ -59,17 +59,17 @@ impl Default for TestBufferManager {
 }
 
 impl BufferManager for TestBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.read().get(&id).cloned()
     }
 
-    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+    fn register(&self, buffer: Arc<RwLock<dyn KernelBuffer>>) -> BufferId {
         let id = buffer.read().id();
         self.buffers.write().insert(id, buffer);
         id
     }
 
-    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.write().remove(&id)
     }
 

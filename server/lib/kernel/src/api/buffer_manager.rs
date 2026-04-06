@@ -3,24 +3,16 @@
 //! Defines the interface for buffer storage and retrieval. The kernel provides
 //! pure storage mechanisms; drivers handle I/O operations (loading, saving).
 //!
-//! The manager stores `Arc<RwLock<dyn BufferOps>>`. `BufferOps` extends
-//! `StorageOps + BufferMeta`, so byte-level I/O, identity, and text operations
-//! are all accessible through the same trait object.
-//!
-//! # Migration Plan (#740)
-//!
-//! The target architecture stores `dyn KernelBuffer` (byte-only) instead of
-//! `dyn BufferOps` (text-specific). The migration path:
-//! 1. Add `TextBufferRegistry` service at session layer
-//! 2. Migrate callers to use text registry for text access
-//! 3. Change `BufferManager` to `dyn KernelBuffer`
-//! 4. Move `BufferOps` definition out of kernel
+//! The manager stores `Arc<RwLock<dyn KernelBuffer>>`. `KernelBuffer` combines
+//! `StorageOps + BufferMeta` — the kernel sees only bytes and identity.
+//! Text-specific operations are provided by `BufferOps` in the session layer's
+//! `TextBufferRegistry`, not through the kernel.
 
 use std::{fmt, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
-use crate::{api::BufferOps, mm::BufferId};
+use crate::{api::storage_ops::KernelBuffer, mm::BufferId};
 
 // ============================================================================
 // Error Types
@@ -55,40 +47,41 @@ impl std::error::Error for BufferError {}
 
 /// Unified buffer manager interface.
 ///
-/// Stores all buffer types as `Arc<RwLock<dyn BufferOps>>`. `BufferOps`
-/// extends `StorageOps + BufferMeta`, providing byte I/O, identity, and
-/// text operations through a single trait object.
+/// Stores all buffer types as `Arc<RwLock<dyn KernelBuffer>>`. `KernelBuffer`
+/// combines `StorageOps + BufferMeta`, providing byte I/O and identity through
+/// a single trait object. Text-specific operations are provided by
+/// `TextBufferRegistry` in the session layer, not through this manager.
 ///
 /// # Design Philosophy
 ///
 /// - **No I/O operations**: No `open()/save()` methods — VFS driver handles these
 /// - **No focus tracking**: Active buffer tracking is a runtime/window concern
-/// - **Thread-safe**: Uses `Arc<RwLock<dyn BufferOps>>` for concurrent access
-/// - **Kernel purity**: Pure mechanisms only, no external dependencies
-/// - **Type-agnostic**: Callers use `BufferOps` trait, not concrete types
+/// - **Thread-safe**: Uses `Arc<RwLock<dyn KernelBuffer>>` for concurrent access
+/// - **Kernel purity**: Pure mechanisms only, no text dependencies
+/// - **Byte-only**: The kernel sees bytes and metadata, never text
 ///
 /// # Register Pattern
 ///
 /// Callers construct the buffer and wrap it before registering:
 /// ```ignore
 /// let buf = Buffer::from_string("hello");
-/// let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
+/// let arc: Arc<RwLock<dyn KernelBuffer>> = Arc::new(RwLock::new(buf));
 /// let id = manager.register(arc);
 /// ```
 pub trait BufferManager: Send + Sync {
     /// Get buffer by ID.
     ///
     /// Returns `None` if the buffer does not exist.
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>>;
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>>;
 
     /// Register a buffer.
     ///
     /// The buffer's own ID (from `BufferMeta::id()`) is used as the key.
     /// Returns the buffer's ID for convenience.
-    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId;
+    fn register(&self, buffer: Arc<RwLock<dyn KernelBuffer>>) -> BufferId;
 
     /// Unregister buffer, returning the arc if it existed.
-    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>>;
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>>;
 
     /// List all buffer IDs. Order is not guaranteed; callers that need
     /// deterministic ordering must sort the result.

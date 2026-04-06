@@ -5,16 +5,15 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             ModeStack,
             v1::{BufferId, KernelContext, ModeId},
         },
-        testing::{create_test_context, test_mode},
+        testing::test_mode,
     },
-    reovim_provider_text::testing::setup_buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
@@ -221,8 +220,8 @@ fn test_inner_paragraph_invalid_buffer_returns_error() {
 
 #[test]
 fn test_inner_paragraph_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -236,8 +235,8 @@ fn test_inner_paragraph_basic() {
 
 #[test]
 fn test_around_paragraph_basic() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -251,8 +250,8 @@ fn test_around_paragraph_basic() {
 
 #[test]
 fn test_inner_paragraph_stores_linewise_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -271,8 +270,8 @@ fn test_inner_paragraph_stores_linewise_range() {
 
 #[test]
 fn test_around_paragraph_stores_linewise_range() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -290,8 +289,8 @@ fn test_around_paragraph_stores_linewise_range() {
 
 #[test]
 fn test_inner_paragraph_with_cursor_position() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four\nline five");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four\nline five");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(3, 0).into(); // on "line four"
@@ -317,8 +316,8 @@ fn test_inner_paragraph_with_cursor_position() {
 
 #[test]
 fn test_empty_buffer_paragraph() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -332,8 +331,8 @@ fn test_empty_buffer_paragraph() {
 
 #[test]
 fn test_single_line_paragraph() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "only one line");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "only one line");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -347,8 +346,8 @@ fn test_single_line_paragraph() {
 
 #[test]
 fn test_all_blank_lines_paragraph() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "\n\n\n");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "\n\n\n");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -362,9 +361,9 @@ fn test_all_blank_lines_paragraph() {
 
 #[test]
 fn test_multiple_paragraphs() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let buffer_id =
-        setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        dual_register_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(3, 0).into(); // on "para two"
@@ -398,9 +397,9 @@ fn test_around_paragraph_invalid_buffer_returns_error() {
 
 #[test]
 fn test_inner_paragraph_with_count() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let buffer_id =
-        setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        dual_register_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -415,9 +414,9 @@ fn test_inner_paragraph_with_count() {
 
 #[test]
 fn test_around_paragraph_with_count() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let buffer_id =
-        setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        dual_register_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -432,8 +431,8 @@ fn test_around_paragraph_with_count() {
 
 #[test]
 fn test_around_paragraph_empty_buffer() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -447,8 +446,8 @@ fn test_around_paragraph_empty_buffer() {
 
 #[test]
 fn test_around_paragraph_single_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "only one line");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "only one line");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -462,8 +461,8 @@ fn test_around_paragraph_single_line() {
 
 #[test]
 fn test_around_paragraph_all_blank_lines() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "\n\n\n");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "\n\n\n");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -477,8 +476,8 @@ fn test_around_paragraph_all_blank_lines() {
 
 #[test]
 fn test_around_paragraph_with_cursor_position() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four\nline five");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\nline two\n\nline four\nline five");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(3, 0).into(); // on "line four"
@@ -500,8 +499,8 @@ fn test_around_paragraph_with_cursor_position() {
 
 #[test]
 fn test_inner_paragraph_cursor_on_blank_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\n\nline three");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\n\nline three");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 0).into(); // on blank line
@@ -519,8 +518,8 @@ fn test_inner_paragraph_cursor_on_blank_line() {
 
 #[test]
 fn test_around_paragraph_cursor_on_blank_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\n\nline three");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\n\nline three");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(1, 0).into(); // on blank line
@@ -538,8 +537,8 @@ fn test_around_paragraph_cursor_on_blank_line() {
 
 #[test]
 fn test_inner_paragraph_at_last_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\n\nlast line");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\n\nlast line");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(2, 0).into(); // on last line
@@ -561,8 +560,8 @@ fn test_inner_paragraph_at_last_line() {
 
 #[test]
 fn test_around_paragraph_at_last_line() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "line one\n\nlast line");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "line one\n\nlast line");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(2, 0).into(); // on last line
@@ -584,8 +583,8 @@ fn test_around_paragraph_at_last_line() {
 
 #[test]
 fn test_inner_paragraph_cursor_mid_column() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world\nfoo bar");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world\nfoo bar");
     let mut window = Window::new();
     window.buffer_id = Some(buffer_id);
     window.cursor = Position::new(0, 5).into(); // on space in "hello world"
@@ -611,8 +610,8 @@ fn test_inner_paragraph_cursor_mid_column() {
 
 #[test]
 fn test_inner_paragraph_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "some text");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "some text");
     // Create state with truly empty window layout (no windows added)
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
@@ -644,8 +643,8 @@ fn test_inner_paragraph_no_active_window_returns_error() {
 
 #[test]
 fn test_around_paragraph_no_active_window_returns_error() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "some text");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "some text");
     let session = Session::new(ClientId::new(1), test_mode());
     let mode_stack = ModeStack::new(test_mode());
     let windows = WindowLayout::empty();
@@ -680,9 +679,9 @@ fn test_around_paragraph_no_active_window_returns_error() {
 
 #[test]
 fn test_around_paragraph_with_count_stores_linewise_range() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let buffer_id =
-        setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        dual_register_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -701,9 +700,9 @@ fn test_around_paragraph_with_count_stores_linewise_range() {
 
 #[test]
 fn test_inner_paragraph_with_count_stores_linewise_range() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let buffer_id =
-        setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        dual_register_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
     let mut state = TestState::with_window(buffer_id, test_mode());
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

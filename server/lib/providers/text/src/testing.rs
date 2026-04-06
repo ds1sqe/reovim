@@ -20,16 +20,17 @@ use std::sync::Arc;
 
 use {
     super::Buffer,
-    reovim_kernel::api::v1::{BufferId, BufferOps, KernelContext, RwLock},
+    reovim_kernel::api::v1::{BufferId, KernelContext, RwLock},
 };
 
 /// Create a buffer with content and register it in the context.
 ///
-/// Convenience helper that combines `Buffer::from_string()` and
-/// `ctx.buffers.register()`. Returns the buffer's ID.
+/// Registers the buffer in the kernel's `BufferManager` as `dyn KernelBuffer`
+/// (byte-only). For text-specific access, use `TextBufferRegistry` at the
+/// session layer.
 #[must_use]
 pub fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
     let buffer = Buffer::from_string(content);
-    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buffer));
+    let arc = Arc::new(RwLock::new(buffer));
     ctx.buffers.register(arc)
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps},
+    reovim_kernel::api::v1::{BufferId, BufferManager},
     reovim_provider_text::Buffer,
 };
 
@@ -10,14 +10,20 @@ use super::*;
 
 fn register_buffer(mgr: &SimpleBufferManager, content: &str) -> BufferId {
     let buf = Buffer::from_string(content);
-    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
-    mgr.register(arc)
+    mgr.register(Arc::new(RwLock::new(buf)))
 }
 
 fn register_empty(mgr: &SimpleBufferManager) -> BufferId {
     let buf = Buffer::new();
-    let arc: Arc<RwLock<dyn BufferOps>> = Arc::new(RwLock::new(buf));
-    mgr.register(arc)
+    mgr.register(Arc::new(RwLock::new(buf)))
+}
+
+/// Read all bytes from a `dyn KernelBuffer` as a UTF-8 string.
+fn read_content(buf: &dyn reovim_kernel::api::v1::KernelBuffer) -> String {
+    let len = buf.byte_len();
+    let mut bytes = vec![0u8; len];
+    buf.read_bytes(0, &mut bytes);
+    String::from_utf8(bytes).expect("test buffer should be UTF-8")
 }
 
 #[test]
@@ -113,8 +119,7 @@ fn test_register_buffer_preserves_content() {
     let mgr = SimpleBufferManager::new();
     let id = register_buffer(&mgr, "hello world");
     let retrieved = mgr.get(id).unwrap();
-    let content = retrieved.read().content();
-    assert_eq!(content, "hello world");
+    assert_eq!(read_content(&*retrieved.read()), "hello world");
 }
 
 #[test]
@@ -122,7 +127,7 @@ fn test_unregister_returns_buffer_arc() {
     let mgr = SimpleBufferManager::new();
     let id = register_buffer(&mgr, "test content");
     let result = mgr.unregister(id).unwrap();
-    assert_eq!(result.read().content(), "test content");
+    assert_eq!(read_content(&*result.read()), "test content");
 }
 
 #[test]
@@ -167,7 +172,7 @@ fn test_unregister_with_shared_reference() {
     // Unregister still works — returns the Arc
     let result = mgr.unregister(id);
     assert!(result.is_some());
-    assert_eq!(result.unwrap().read().content(), "shared");
+    assert_eq!(read_content(&*result.unwrap().read()), "shared");
 }
 
 #[test]

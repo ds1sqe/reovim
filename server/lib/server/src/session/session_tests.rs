@@ -123,12 +123,16 @@ async fn test_session_with_state() {
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
-    // Create a kernel context with a real buffer manager
+    // Create a kernel context with a real buffer manager and TextBufferRegistry
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = SessionState::with_kernel(kernel);
@@ -906,11 +910,15 @@ fn test_insert_char_for_client_buffer_path() {
         std::sync::Arc,
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = SessionState::with_kernel(kernel);
@@ -947,11 +955,15 @@ fn test_insert_char_for_client_newline() {
         std::sync::Arc,
     };
 
+    let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
+        services,
     );
 
     let state = SessionState::with_kernel(kernel);
@@ -1250,6 +1262,9 @@ fn test_insert_char_for_client_with_undo_recording() {
 
     // Create services with an UndoProviderRegistry containing our mock
     let services = Arc::new(ServiceRegistry::new());
+    services.register(Arc::new(
+        reovim_driver_session::TextBufferRegistry::new(),
+    ));
     let undo_registry = Arc::new(UndoProviderRegistry::new());
     let mock_undo = Arc::new(MockUndoProvider::new());
     undo_registry.register(UndoKey::Buffer, Arc::clone(&mock_undo) as Arc<dyn UndoProvider>);

@@ -1,23 +1,25 @@
 //! Buffer read-access service for bridges (#664).
 //!
-//! Wraps `Arc<dyn BufferManager>` as a `Service` so bridges can
-//! read buffer content via `ServiceRegistry` during `tick()`.
+//! Provides text buffer access via `TextBufferRegistry` as a `Service`
+//! so bridges can read buffer content via `ServiceRegistry` during `tick()`.
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{BufferId, BufferManager, BufferOps, RwLock, Service};
+use reovim_kernel::api::v1::{BufferId, BufferOps, RwLock, Service};
+
+use crate::TextBufferRegistry;
 
 /// Read-only buffer access for bridge tick functions.
 ///
-/// Registered at session creation so bridges can read buffer content
+/// Wraps `TextBufferRegistry` to provide text buffer access (`dyn BufferOps`)
 /// without direct access to `KernelContext`.
-pub struct BufferReadAccess(Arc<dyn BufferManager>);
+pub struct BufferReadAccess(Arc<TextBufferRegistry>);
 
 impl BufferReadAccess {
     /// Create a new buffer access wrapper.
     #[must_use]
-    pub fn new(buffers: Arc<dyn BufferManager>) -> Self {
-        Self(buffers)
+    pub const fn new(registry: Arc<TextBufferRegistry>) -> Self {
+        Self(registry)
     }
 
     #[must_use]

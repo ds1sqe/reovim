@@ -4,16 +4,15 @@ use {
     reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        testing::StubExecutor,
+        testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::{
         api::{
             KernelContext, ModeStack,
             v1::{ModeId, ModuleId},
         },
-        testing::create_test_context,
     },
-    reovim_provider_text::{Buffer, testing::setup_buffer},
+    reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
@@ -60,6 +59,7 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
     );
     cmd.execute(&mut runtime, &CommandContext::new())
 }
+
 
 // =========================================================================
 // Command ID Tests
@@ -145,8 +145,8 @@ fn test_search_commands_have_no_args() {
 
 #[test]
 fn test_search_forward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -189,8 +189,8 @@ fn test_search_forward_execute_returns_success() {
 
 #[test]
 fn test_search_backward_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -238,8 +238,8 @@ fn test_search_backward_execute_returns_success() {
 #[test]
 fn test_search_next_no_pattern_returns_success() {
     // SearchNext with no prior search pattern should just return Success
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -285,8 +285,8 @@ fn test_search_next_no_pattern_returns_success() {
 #[test]
 fn test_search_previous_no_pattern_returns_success() {
     // SearchPrevious with no prior search pattern should just return Success
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -332,8 +332,8 @@ fn test_search_previous_no_pattern_returns_success() {
 #[test]
 fn test_search_next_with_pattern_but_no_provider() {
     // SearchNext with pattern stored but no search provider registered
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -386,8 +386,8 @@ fn test_search_next_with_pattern_but_no_provider() {
 
 #[test]
 fn test_search_previous_with_pattern_but_no_provider() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -441,7 +441,7 @@ fn test_search_previous_with_pattern_but_no_provider() {
 #[test]
 fn test_search_next_no_buffer_returns_error() {
     // SearchNext with pattern but no buffer should error
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -510,8 +510,8 @@ fn test_search_word_backward_no_buffer_returns_error() {
 #[test]
 fn test_search_word_forward_no_search_provider() {
     // No search provider registered - should error
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -556,8 +556,8 @@ fn test_search_word_forward_no_search_provider() {
 
 #[test]
 fn test_search_word_backward_no_search_provider() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -606,8 +606,8 @@ fn test_search_word_backward_no_search_provider() {
 
 #[test]
 fn test_clear_search_highlight_execute_returns_success() {
-    let kernel = create_test_context();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let kernel = create_test_kernel();
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -670,7 +670,7 @@ fn test_search_default_traits() {
 #[test]
 fn test_search_next_no_buffer_id_in_args() {
     // n (search next) with a pattern but no buffer_id returns error
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -719,7 +719,7 @@ fn test_search_next_no_buffer_id_in_args() {
 
 #[test]
 fn test_search_previous_no_buffer_id_in_args() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -939,7 +939,7 @@ impl SearchProvider for MockSearchProvider {
 
 /// Create a test context with a mock search provider registered.
 fn create_test_context_with_search() -> KernelContext {
-    let ctx = create_test_context();
+    let ctx = create_test_kernel();
     let search_registry = Arc::new(SearchProviderRegistry::new());
     search_registry.register(SearchKey::Regex, Arc::new(MockSearchProvider));
     ctx.services.register(search_registry);
@@ -953,7 +953,7 @@ fn create_test_context_with_search() -> KernelContext {
 #[test]
 fn test_search_next_with_provider_finds_match() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1006,7 +1006,7 @@ fn test_search_next_with_provider_finds_match() {
 #[test]
 fn test_search_next_with_provider_no_match() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1058,7 +1058,7 @@ fn test_search_next_with_provider_no_match() {
 #[test]
 fn test_search_previous_with_provider_finds_match() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1118,7 +1118,7 @@ fn test_search_previous_with_provider_finds_match() {
 #[test]
 fn test_search_word_forward_with_provider() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1164,7 +1164,7 @@ fn test_search_word_forward_with_provider() {
 #[test]
 fn test_search_word_backward_with_provider() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1214,7 +1214,7 @@ fn test_search_word_backward_with_provider() {
 fn test_search_word_forward_on_whitespace() {
     // Word search on a space should silently succeed (no word under cursor)
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1264,7 +1264,7 @@ fn test_search_word_forward_on_whitespace() {
 fn test_search_word_forward_cursor_past_line_end() {
     // Cursor beyond line length
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1313,7 +1313,7 @@ fn test_search_word_forward_cursor_past_line_end() {
 #[test]
 fn test_search_word_backward_on_whitespace() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1363,7 +1363,7 @@ fn test_search_word_backward_on_whitespace() {
 fn test_search_next_with_provider_and_backward_direction() {
     // SearchNext repeats in the same direction as original search
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1419,7 +1419,7 @@ fn test_search_next_with_provider_and_backward_direction() {
 fn test_search_previous_with_provider_backward_original() {
     // SearchPrevious reverses original direction: if original was Backward, goes Forward
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1576,7 +1576,7 @@ fn test_search_word_forward_with_invalid_buffer() {
 fn test_search_word_at_word_start() {
     // Cursor at the start of a word (column 0)
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1626,7 +1626,7 @@ fn test_search_word_at_word_start() {
 fn test_search_word_backward_at_word_start() {
     // Cursor at the start of second word
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world");
+    let buffer_id = dual_register_buffer(&kernel, "hello world");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1678,12 +1678,12 @@ fn test_search_word_backward_at_word_start() {
 
 #[test]
 fn test_buffer_manager_list_and_count() {
-    let ctx = create_test_context();
+    let ctx = create_test_kernel();
     assert_eq!(ctx.buffers.count(), 0);
     assert!(ctx.buffers.list().is_empty());
 
-    let bid1 = setup_buffer(&ctx, "hello");
-    let bid2 = setup_buffer(&ctx, "world");
+    let bid1 = dual_register_buffer(&ctx, "hello");
+    let bid2 = dual_register_buffer(&ctx, "world");
 
     assert_eq!(ctx.buffers.count(), 2);
     let list = ctx.buffers.list();
@@ -1693,8 +1693,8 @@ fn test_buffer_manager_list_and_count() {
 
 #[test]
 fn test_buffer_manager_unregister() {
-    let ctx = create_test_context();
-    let bid = setup_buffer(&ctx, "hello");
+    let ctx = create_test_kernel();
+    let bid = dual_register_buffer(&ctx, "hello");
     assert_eq!(ctx.buffers.count(), 1);
 
     let buffer = ctx.buffers.unregister(bid);
@@ -1747,7 +1747,7 @@ fn test_search_forward_no_window() {
 
 #[test]
 fn test_clear_search_highlight_no_window() {
-    let kernel = create_test_context();
+    let kernel = create_test_kernel();
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1790,7 +1790,7 @@ fn test_clear_search_highlight_no_window() {
 fn test_search_word_forward_no_window() {
     // search_word early returns "No active window" if no window
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1835,7 +1835,7 @@ fn test_search_word_forward_no_window() {
 #[test]
 fn test_search_next_no_window() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1886,7 +1886,7 @@ fn test_search_next_no_window() {
 #[test]
 fn test_search_word_backward_no_window() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -1931,7 +1931,7 @@ fn test_search_word_backward_no_window() {
 #[test]
 fn test_search_word_forward_empty_buffer() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "");
+    let buffer_id = dual_register_buffer(&kernel, "");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -2029,7 +2029,7 @@ fn test_search_next_with_provider_no_window_no_buffer() {
 fn test_search_word_forward_middle_of_word() {
     // Cursor in middle of a word
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);
@@ -2078,7 +2078,7 @@ fn test_search_word_forward_middle_of_word() {
 #[test]
 fn test_search_word_backward_middle_of_word() {
     let kernel = create_test_context_with_search();
-    let buffer_id = setup_buffer(&kernel, "hello world hello");
+    let buffer_id = dual_register_buffer(&kernel, "hello world hello");
     let home_mode = ModeId::new(ModuleId::new("test"), "normal");
     let mut session = Session::new(ClientId::new(1), home_mode.clone());
     let mut mode_stack = ModeStack::new(home_mode);

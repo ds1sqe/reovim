@@ -84,7 +84,6 @@ impl Module for FormatModule {
         }
 
         // Subscribe to BufferWillSave for format-on-save
-        let buffers = Arc::clone(&ctx.kernel.buffers);
         let options = Arc::clone(&ctx.kernel.options);
         let services = Arc::clone(&ctx.services);
 
@@ -92,7 +91,7 @@ impl Module for FormatModule {
             ctx.kernel
                 .event_bus
                 .subscribe::<BufferWillSave, _>(priority::NORMAL, move |event| {
-                    hook::format_on_save(event, &buffers, &options, &services);
+                    hook::format_on_save(event, &services, &options);
                     EventResult::Handled
                 });
         // Detach so handler survives module drop (bootstrap drops modules after init).

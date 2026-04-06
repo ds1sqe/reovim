@@ -21,7 +21,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_buffer::{BufferManagerKey, BufferManagerRegistry},
     reovim_kernel::api::v1::{
-        BufferId, BufferManager, BufferOps, Module, ModuleContext, ModuleError, ModuleId,
+        BufferId, BufferManager, KernelBuffer, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,
     },
     std::collections::HashMap,
@@ -30,7 +30,9 @@ use {
 /// Simple buffer manager implementation.
 ///
 /// Uses a `HashMap` with outer `RwLock` for concurrent access.
-/// Each buffer is wrapped in `Arc<RwLock<dyn BufferOps>>` for shared ownership.
+/// Each buffer is wrapped in `Arc<RwLock<dyn KernelBuffer>>` for shared ownership.
+/// The kernel sees only bytes and metadata; text access is handled by
+/// `TextBufferRegistry` at the session layer.
 ///
 /// # Design Philosophy
 ///
@@ -40,7 +42,7 @@ use {
 /// - **Simple**: Just manages buffer storage, nothing more
 pub struct SimpleBufferManager {
     /// Buffer storage with outer `RwLock` protecting the `HashMap`.
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn BufferOps>>>>,
+    buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn KernelBuffer>>>>,
 }
 
 impl SimpleBufferManager {
@@ -60,17 +62,17 @@ impl Default for SimpleBufferManager {
 }
 
 impl BufferManager for SimpleBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn get(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.read().get(&id).cloned()
     }
 
-    fn register(&self, buffer: Arc<RwLock<dyn BufferOps>>) -> BufferId {
+    fn register(&self, buffer: Arc<RwLock<dyn KernelBuffer>>) -> BufferId {
         let id = buffer.read().id();
         self.buffers.write().insert(id, buffer);
         id
     }
 
-    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
+    fn unregister(&self, id: BufferId) -> Option<Arc<RwLock<dyn KernelBuffer>>> {
         self.buffers.write().remove(&id)
     }
 

@@ -9,7 +9,8 @@ use {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
+        testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -22,6 +23,21 @@ use {
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
+
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
 
 // ========================================================================
 // Test infrastructure
@@ -134,7 +150,7 @@ fn test_command_description_not_empty() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_no_find_char_arg() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -146,7 +162,7 @@ fn test_execute_no_find_char_arg() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_no_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let mut args = CommandContext::new();
     args.set("find_char", ArgValue::Char('x'));
 
@@ -159,9 +175,9 @@ fn test_execute_no_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_forward() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -180,9 +196,9 @@ fn test_execute_find_char_forward() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_not_found() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -201,9 +217,9 @@ fn test_execute_find_char_not_found() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_backward() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -226,9 +242,9 @@ fn test_execute_find_char_backward() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_till() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -248,9 +264,9 @@ fn test_execute_find_char_till() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_default_direction_is_forward() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -273,9 +289,9 @@ fn test_execute_find_char_default_direction_is_forward() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_last_char_on_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcde");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -293,9 +309,9 @@ fn test_execute_find_char_last_char_on_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_first_char_on_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcde");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -317,9 +333,9 @@ fn test_execute_find_char_first_char_on_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_with_count() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcabc");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -340,9 +356,9 @@ fn test_execute_find_char_with_count() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_till_backward() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -366,9 +382,9 @@ fn test_execute_find_char_till_backward() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_forward_direction_string() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -387,9 +403,9 @@ fn test_execute_find_char_forward_direction_string() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_space_character() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -407,9 +423,9 @@ fn test_execute_find_char_space_character() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_inclusive_default() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("abcdef");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -428,9 +444,9 @@ fn test_execute_find_char_inclusive_default() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_on_empty_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -449,9 +465,9 @@ fn test_execute_find_char_on_empty_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_no_active_window() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -497,7 +513,7 @@ fn test_execute_find_char_no_active_window() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_execute_find_char_buffer_not_found() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     // Register a buffer_id in args but don't put the actual buffer in the manager
     let fake_buffer_id = BufferId::from_raw(999);
 

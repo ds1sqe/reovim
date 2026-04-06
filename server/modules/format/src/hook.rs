@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::{
-        BufferManager, OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry,
+        OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry,
         events::kernel::BufferWillSave,
     },
     tracing::{debug, warn},
@@ -19,16 +19,15 @@ use crate::resolver;
 ///
 /// This function is called synchronously from the event bus. It:
 /// 1. Checks the `autoformat` option (skips if disabled)
-/// 2. Reads buffer content from the kernel
+/// 2. Reads buffer content from `TextBufferRegistry`
 /// 3. Resolves a formatter (external > LSP > no-op)
 /// 4. Writes formatted content back to the buffer
 ///
 /// Formatting failures are logged but never block the save.
 pub fn format_on_save(
     event: &BufferWillSave,
-    buffers: &Arc<dyn BufferManager>,
-    options: &Arc<OptionRegistry>,
     services: &Arc<ServiceRegistry>,
+    options: &Arc<OptionRegistry>,
 ) {
     // Check autoformat option
     if options.get("autoformat", OptionScopeId::Global) == Some(OptionValue::Bool(false)) {
@@ -36,11 +35,15 @@ pub fn format_on_save(
         return;
     }
 
-    // Get buffer
+    // Get buffer from TextBufferRegistry (text access, #740).
     // Buffer IDs are bounded well within usize range.
     #[allow(clippy::cast_possible_truncation)]
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(event.buffer_id as usize);
-    let Some(buf) = buffers.get(buffer_id) else {
+    let Some(registry) = services.get::<reovim_driver_session::TextBufferRegistry>() else {
+        warn!("format-on-save: TextBufferRegistry not available");
+        return;
+    };
+    let Some(buf) = registry.get(buffer_id) else {
         warn!(buffer_id = event.buffer_id, "format-on-save: buffer not found");
         return;
     };

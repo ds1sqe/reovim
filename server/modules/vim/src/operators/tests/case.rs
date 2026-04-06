@@ -8,6 +8,7 @@ use super::super::*;
 use std::sync::Arc;
 
 use {
+    reovim_driver_session::TextBufferRegistry,
     reovim_kernel::{
         api::v1::{BufferId, RwLock},
         testing::create_test_context,
@@ -15,6 +16,38 @@ use {
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
 };
+
+/// Create a test context with `TextBufferRegistry` registered on the service registry.
+fn make_test_ctx() -> reovim_kernel::api::v1::KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+/// Register a buffer in both the kernel `BufferManager` and the `TextBufferRegistry`.
+fn register_buffer(
+    ctx: &reovim_kernel::api::v1::KernelContext,
+    buffer: Buffer,
+) -> reovim_kernel::api::v1::BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
+
+/// Read text buffer content from the `TextBufferRegistry`.
+fn text_buf(
+    ctx: &reovim_kernel::api::v1::KernelContext,
+    id: reovim_kernel::api::v1::BufferId,
+) -> Arc<RwLock<dyn reovim_kernel::api::v1::BufferOps>> {
+    ctx.services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .get(id)
+        .unwrap()
+}
 
 // ============================================================================
 // Operator trait: id, is_text_modifying
@@ -63,9 +96,9 @@ fn toggle_case_operator_is_text_modifying() {
 #[test]
 fn toggle_case_function_via_operator() {
     // We test the toggle_case function by executing the operator on a buffer.
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("Hello World");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = ToggleCaseOperator;
     let mut registers = RegisterBank::new();
@@ -84,15 +117,15 @@ fn toggle_case_function_via_operator() {
     let result = op.execute(&mut op_ctx, range);
     assert!(result.is_ok());
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "hELLO World");
 }
 
 #[test]
 fn toggle_case_all_uppercase() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("ABC");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = ToggleCaseOperator;
     let mut registers = RegisterBank::new();
@@ -110,15 +143,15 @@ fn toggle_case_all_uppercase() {
     let range = Range::new(Position::new(0, 0), Position::new(0, 3));
     op.execute(&mut op_ctx, range).unwrap();
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "abc");
 }
 
 #[test]
 fn toggle_case_non_alphabetic() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("123!@#");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = ToggleCaseOperator;
     let mut registers = RegisterBank::new();
@@ -137,7 +170,7 @@ fn toggle_case_non_alphabetic() {
     op.execute(&mut op_ctx, range).unwrap();
 
     // Non-alphabetic chars remain unchanged; cursor_after set to start
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "123!@#");
 }
 
@@ -147,9 +180,9 @@ fn toggle_case_non_alphabetic() {
 
 #[test]
 fn lowercase_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("HELLO WORLD");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = LowercaseOperator;
     let mut registers = RegisterBank::new();
@@ -167,15 +200,15 @@ fn lowercase_single_line() {
     let range = Range::new(Position::new(0, 0), Position::new(0, 5));
     op.execute(&mut op_ctx, range).unwrap();
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "hello WORLD");
 }
 
 #[test]
 fn lowercase_already_lowercase() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = LowercaseOperator;
     let mut registers = RegisterBank::new();
@@ -195,7 +228,7 @@ fn lowercase_already_lowercase() {
 
     // No change; cursor_after should be set
     assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "hello");
 }
 
@@ -205,9 +238,9 @@ fn lowercase_already_lowercase() {
 
 #[test]
 fn uppercase_single_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = UppercaseOperator;
     let mut registers = RegisterBank::new();
@@ -225,7 +258,7 @@ fn uppercase_single_line() {
     let range = Range::new(Position::new(0, 0), Position::new(0, 5));
     op.execute(&mut op_ctx, range).unwrap();
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     assert_eq!(buf.read().line(0).unwrap(), "HELLO world");
 }
 
@@ -235,7 +268,7 @@ fn uppercase_single_line() {
 
 #[test]
 fn execute_buffer_not_found() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let op = LowercaseOperator;
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -260,9 +293,9 @@ fn execute_buffer_not_found() {
 
 #[test]
 fn lowercase_linewise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("HELLO\nWORLD\nFOO");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = LowercaseOperator;
     let mut registers = RegisterBank::new();
@@ -280,7 +313,7 @@ fn lowercase_linewise() {
     let range = Range::linewise(Position::new(0, 0), Position::new(1, 0));
     op.execute(&mut op_ctx, range).unwrap();
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let buf_ref = buf.read();
     assert_eq!(buf_ref.line(0).unwrap(), "hello");
     assert_eq!(buf_ref.line(1).unwrap(), "world");
@@ -294,9 +327,9 @@ fn lowercase_linewise() {
 
 #[test]
 fn uppercase_multiline_characterwise() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&ctx, buffer);
 
     let op = UppercaseOperator;
     let mut registers = RegisterBank::new();
@@ -315,7 +348,7 @@ fn uppercase_multiline_characterwise() {
     let range = Range::new(Position::new(0, 2), Position::new(2, 2));
     op.execute(&mut op_ctx, range).unwrap();
 
-    let buf = ctx.buffers.get(buffer_id).unwrap();
+    let buf = text_buf(&ctx, buffer_id);
     let text = buf.read().content();
     // Chars from col 2 on line 0 to col 2 on line 2 should be uppercased
     assert!(text.starts_with("he"));

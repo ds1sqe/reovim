@@ -2,18 +2,41 @@ use {
     super::super::*,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
-        api::CommandExecutor, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        Window, WindowLayout, api::CommandExecutor, testing::StubExecutor,
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::{
-        api::v1::{BufferId, KernelContext, ModeStack, RwLock},
+        api::v1::{BufferId, BufferOps, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     std::sync::Arc,
 };
+
+/// Create a test kernel with a `TextBufferRegistry` in services.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn setup_kernel() -> KernelContext {
+    let kernel = create_test_context();
+    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+}
+
+/// Register a buffer in both kernel (byte-level) and text registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    let id = kernel
+        .buffers
+        .register(arc.clone() as Arc<RwLock<dyn KernelBuffer>>);
+    kernel
+        .services
+        .get::<TextBufferRegistry>()
+        .unwrap()
+        .register(arc as Arc<RwLock<dyn BufferOps>>);
+    id
+}
 
 struct TestState {
     session: Session,
@@ -113,7 +136,7 @@ fn test_undo_names() {
 
 #[test]
 fn test_undo_no_active_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -153,9 +176,9 @@ fn test_undo_no_active_buffer_returns_error() {
 
 #[test]
 fn test_undo_nothing_to_undo_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -167,9 +190,9 @@ fn test_undo_nothing_to_undo_returns_error() {
 
 #[test]
 fn test_undo_with_count_nothing_to_undo() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -210,7 +233,7 @@ fn test_redo_names() {
 
 #[test]
 fn test_redo_no_active_buffer_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -250,9 +273,9 @@ fn test_redo_no_active_buffer_returns_error() {
 
 #[test]
 fn test_redo_nothing_to_redo_returns_error() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -264,9 +287,9 @@ fn test_redo_nothing_to_redo_returns_error() {
 
 #[test]
 fn test_redo_with_count_nothing_to_redo() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -286,7 +309,7 @@ fn test_redo_with_count_nothing_to_redo() {
 
 #[test]
 fn test_undo_no_buffer_error_message() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -326,7 +349,7 @@ fn test_undo_no_buffer_error_message() {
 
 #[test]
 fn test_redo_no_buffer_error_message() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let mode = test_mode();
     let mut session = Session::new(ClientId::new(1), mode.clone());
     let executor = StubExecutor;
@@ -366,9 +389,9 @@ fn test_redo_no_buffer_error_message() {
 
 #[test]
 fn test_undo_nothing_to_undo_error_message() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -379,9 +402,9 @@ fn test_undo_nothing_to_undo_error_message() {
 
 #[test]
 fn test_redo_nothing_to_redo_error_message() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -396,9 +419,9 @@ fn test_redo_nothing_to_redo_error_message() {
 
 #[test]
 fn test_undo_default_count_is_one() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("test");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -411,9 +434,9 @@ fn test_undo_default_count_is_one() {
 
 #[test]
 fn test_redo_default_count_is_one() {
-    let kernel = create_test_context();
+    let kernel = setup_kernel();
     let buffer = Buffer::from_string("test");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -532,7 +555,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn create_test_context_with_undo() -> KernelContext {
-    let ctx = create_test_context();
+    let ctx = setup_kernel();
     let undo_registry = UndoProviderRegistry::new();
     undo_registry.register(UndoKey::Buffer, Arc::new(MockUndoProvider));
     ctx.services.register(Arc::new(undo_registry));
@@ -547,7 +570,7 @@ fn create_test_context_with_undo() -> KernelContext {
 fn test_undo_success_with_provider() {
     let kernel = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -560,7 +583,7 @@ fn test_undo_success_with_provider() {
 fn test_redo_success_with_provider() {
     let kernel = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -573,7 +596,7 @@ fn test_redo_success_with_provider() {
 fn test_undo_with_count_success() {
     let kernel = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
@@ -587,7 +610,7 @@ fn test_undo_with_count_success() {
 fn test_redo_with_count_success() {
     let kernel = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buffer(&kernel, buffer);
     let mut state = TestState::with_window(buffer_id);
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);

@@ -256,14 +256,16 @@ pub fn create_session_state() -> SessionState {
     // Create kernel context with service registry
     let kernel = create_kernel_context(Arc::clone(&services));
 
-    // Register BufferReadAccess so bridges can read buffer content in tick() (#664)
-    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(Arc::clone(
-        &kernel.buffers,
-    ))));
-
     // Register TextBufferRegistry for session-layer text access (#740).
     // SessionRuntime uses this instead of kernel.buffers for text operations.
-    services.register(Arc::new(reovim_driver_session::TextBufferRegistry::new()));
+    let text_registry = Arc::new(reovim_driver_session::TextBufferRegistry::new());
+    services.register(Arc::clone(&text_registry));
+
+    // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
+    // Uses TextBufferRegistry for text-specific access (kernel.buffers is byte-only).
+    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(
+        text_registry,
+    )));
 
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));

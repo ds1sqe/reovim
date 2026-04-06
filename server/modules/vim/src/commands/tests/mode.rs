@@ -9,9 +9,8 @@ use {
     crate::ids,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
-        api::{CommandExecutor, CommandHandle},
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
+        WindowLayout, api::{CommandExecutor, CommandHandle}, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -24,6 +23,21 @@ use {
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::{collections::HashMap, sync::Arc},
 };
+
+fn make_test_ctx() -> KernelContext {
+    let ctx = create_test_context();
+    ctx.services
+        .register(Arc::new(TextBufferRegistry::new()));
+    ctx
+}
+
+fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
+    let arc = Arc::new(RwLock::new(buffer));
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
+        reg.register(arc.clone());
+    }
+    ctx.buffers.register(arc)
+}
 
 use reovim_driver_session::api::ModeApi;
 
@@ -346,9 +360,9 @@ fn test_all_mode_commands_default() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -363,7 +377,7 @@ fn test_enter_insert_mode_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_without_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -376,9 +390,9 @@ fn test_enter_insert_mode_without_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_append_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -393,9 +407,9 @@ fn test_enter_insert_mode_append_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_append_moves_cursor() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -417,9 +431,9 @@ fn test_enter_insert_mode_append_moves_cursor() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -442,9 +456,9 @@ fn test_exit_to_normal_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_cursor_at_col_zero() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -462,7 +476,7 @@ fn test_exit_to_normal_cursor_at_col_zero() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_window_mode_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -475,7 +489,7 @@ fn test_enter_window_mode_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cancel_to_normal_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -488,7 +502,7 @@ fn test_cancel_to_normal_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_commandline_mode_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -501,7 +515,7 @@ fn test_enter_commandline_mode_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -514,7 +528,7 @@ fn test_exit_commandline_mode_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cancel_commandline_mode_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -527,7 +541,7 @@ fn test_cancel_commandline_mode_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_search_forward_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -540,7 +554,7 @@ fn test_enter_search_forward_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_search_backward_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -553,7 +567,7 @@ fn test_enter_search_backward_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_without_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -566,9 +580,9 @@ fn test_exit_to_normal_without_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_append_at_end_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -590,7 +604,7 @@ fn test_enter_insert_append_at_end_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_append_without_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -607,9 +621,9 @@ fn test_enter_insert_append_without_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_append_at_start_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -627,9 +641,9 @@ fn test_enter_insert_mode_append_at_start_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_append_empty_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -647,9 +661,9 @@ fn test_enter_insert_mode_append_empty_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_from_middle_of_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -670,9 +684,9 @@ fn test_exit_to_normal_from_middle_of_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_from_column_one() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("ab");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -692,7 +706,7 @@ fn test_exit_to_normal_from_column_one() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_returns_to_normal() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -710,7 +724,7 @@ fn test_exit_commandline_mode_returns_to_normal() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cancel_commandline_mode_returns_to_normal() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -727,9 +741,9 @@ fn test_cancel_commandline_mode_returns_to_normal() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_on_second_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -747,9 +761,9 @@ fn test_enter_insert_mode_on_second_line() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_append_on_second_line() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -836,7 +850,7 @@ impl UndoProvider for MockUndoProvider {
 }
 
 fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let mock_undo = Arc::new(MockUndoProvider::new());
     let undo_registry = Arc::new(UndoProviderRegistry::new());
     undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
@@ -849,7 +863,7 @@ fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
 fn test_enter_insert_mode_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -870,7 +884,7 @@ fn test_enter_insert_mode_calls_begin_batch() {
 fn test_enter_insert_append_calls_begin_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -889,7 +903,7 @@ fn test_enter_insert_append_calls_begin_batch() {
 fn test_exit_to_normal_calls_end_batch() {
     let (ctx, mock_undo) = create_test_context_with_undo();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -917,9 +931,9 @@ use reovim_driver_session::api::ExtensionApi;
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_enter_insert_mode_clears_insert_buffer() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -943,9 +957,9 @@ fn test_enter_insert_mode_clears_insert_buffer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_records_dot_repeat_for_insert() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -976,9 +990,9 @@ fn test_exit_to_normal_records_dot_repeat_for_insert() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_to_normal_does_not_record_empty_insert() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1001,9 +1015,9 @@ fn test_exit_to_normal_does_not_record_empty_insert() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_search_forward_with_pending() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1037,9 +1051,9 @@ fn test_exit_commandline_mode_search_forward_with_pending() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_search_backward_with_pending() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1068,9 +1082,9 @@ fn test_exit_commandline_mode_search_backward_with_pending() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_search_empty_cmdline() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1097,7 +1111,7 @@ fn test_exit_commandline_mode_search_empty_cmdline() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_command_with_input() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -1118,7 +1132,7 @@ fn test_exit_commandline_mode_command_with_input() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_mode_command_empty_input() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -1140,7 +1154,7 @@ fn test_exit_commandline_mode_command_empty_input() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_search_no_buffer_id() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new(); // no buffer_id
 
     let mut state = TestState::with_buffer(None);
@@ -1167,9 +1181,9 @@ fn test_exit_commandline_search_no_buffer_id() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_exit_commandline_search_no_pending() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1272,7 +1286,7 @@ impl SearchProvider for MockSearchProvider {
 }
 
 fn create_test_context_with_search(provider: Arc<dyn SearchProvider>) -> KernelContext {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let search_registry = Arc::new(SearchProviderRegistry::new());
     search_registry.register(SearchKey::Regex, provider);
     ctx.services.register(search_registry);
@@ -1288,7 +1302,7 @@ fn test_exit_commandline_search_with_match_found() {
     }));
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1324,7 +1338,7 @@ fn test_exit_commandline_search_no_match() {
     let mock = Arc::new(MockSearchProvider::with_no_match());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1359,7 +1373,7 @@ fn test_exit_commandline_search_invalid_pattern() {
     let mock = Arc::new(MockSearchProvider::with_error());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1397,7 +1411,7 @@ fn test_exit_commandline_search_backward_with_match() {
     }));
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1436,7 +1450,7 @@ fn test_exit_commandline_search_no_cursor_position() {
     let mock = Arc::new(MockSearchProvider::with_no_match());
     let ctx = create_test_context_with_search(mock);
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1543,7 +1557,7 @@ impl CommandHandler for ExTestCmd {
 }
 
 fn create_test_context_with_name_index(name_index: CommandNameIndex) -> KernelContext {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     ctx.services.register(Arc::new(name_index));
     ctx
 }
@@ -1730,7 +1744,7 @@ fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
 
     let ctx = create_test_context_with_name_index(name_index);
     let buffer = Buffer::from_string("hello");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mock_vfs = Arc::new(reovim_driver_vfs::MockVfs::new());
     let mut args = CommandContext::new();
@@ -1755,9 +1769,9 @@ fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
 #[test]
 fn test_exit_commandline_search_no_search_registry() {
     // No SearchProviderRegistry registered in services
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1790,13 +1804,13 @@ fn test_exit_commandline_search_no_search_registry() {
 #[test]
 fn test_exit_commandline_search_no_search_provider_for_key() {
     // Register an empty SearchProviderRegistry (no Regex key)
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let search_registry = Arc::new(SearchProviderRegistry::new());
     // Don't register any provider
     ctx.services.register(search_registry);
 
     let buffer = Buffer::from_string("hello world");
-    let buffer_id = ctx.buffers.register(Arc::new(RwLock::new(buffer)));
+    let buffer_id = register_buf(&ctx, buffer);
 
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
@@ -1929,7 +1943,7 @@ fn test_cmdline_editing_debug_and_default() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_cursor_left_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -1951,7 +1965,7 @@ fn test_cmdline_cursor_left_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_cursor_right_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -1971,7 +1985,7 @@ fn test_cmdline_cursor_right_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_cursor_home_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -1990,7 +2004,7 @@ fn test_cmdline_cursor_home_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_cursor_end_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2010,7 +2024,7 @@ fn test_cmdline_cursor_end_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_delete_char_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2031,7 +2045,7 @@ fn test_cmdline_delete_char_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_backspace_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2051,7 +2065,7 @@ fn test_cmdline_backspace_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_delete_word_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2093,7 +2107,7 @@ fn test_cmdline_history_debug_and_default() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_history_up_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2119,7 +2133,7 @@ fn test_cmdline_history_up_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_history_down_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2150,7 +2164,7 @@ fn test_cmdline_history_down_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_delete_to_start_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2252,7 +2266,7 @@ fn test_cmdline_complete_next_with_name_index() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_complete_next_empty_input() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2271,7 +2285,7 @@ fn test_cmdline_complete_next_empty_input() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_complete_prev_execute() {
-    let ctx = create_test_context();
+    let ctx = make_test_ctx();
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);
@@ -2293,7 +2307,7 @@ fn test_cmdline_complete_prev_execute() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_cmdline_complete_no_registry() {
-    let ctx = create_test_context(); // no CommandNameIndex
+    let ctx = make_test_ctx(); // no CommandNameIndex
     let args = CommandContext::new();
 
     let mut state = TestState::with_buffer(None);

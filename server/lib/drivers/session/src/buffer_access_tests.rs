@@ -1,19 +1,15 @@
 use std::sync::Arc;
 
-use reovim_kernel::{
-    api::v1::{BufferId, BufferManager, ServiceRegistry},
-    testing::TestBufferManager,
-};
+use reovim_kernel::api::v1::{BufferId, ServiceRegistry};
 
 use super::BufferReadAccess;
+use crate::TextBufferRegistry;
 
 #[test]
 fn test_buffer_read_access_registered_and_retrieved() {
-    let manager = Arc::new(TestBufferManager::new());
+    let registry = Arc::new(TextBufferRegistry::new());
     let services = ServiceRegistry::new();
-    services.register(Arc::new(BufferReadAccess::new(
-        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
-    )));
+    services.register(Arc::new(BufferReadAccess::new(Arc::clone(&registry))));
 
     let access = services.get::<BufferReadAccess>();
     assert!(access.is_some());
@@ -21,13 +17,11 @@ fn test_buffer_read_access_registered_and_retrieved() {
 
 #[test]
 fn test_buffer_read_access_reads_buffer() {
-    let manager = Arc::new(TestBufferManager::new());
+    let registry = Arc::new(TextBufferRegistry::new());
     let buf = reovim_provider_text::Buffer::from_string("hello\nworld");
-    let bid = manager.register(Arc::new(reovim_arch::sync::RwLock::new(buf)));
+    let bid = registry.register(Arc::new(reovim_arch::sync::RwLock::new(buf)));
 
-    let access = BufferReadAccess::new(
-        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
-    );
+    let access = BufferReadAccess::new(Arc::clone(&registry));
     let buffer_lock = access.get(bid);
     assert!(buffer_lock.is_some());
 
@@ -43,10 +37,8 @@ fn test_buffer_read_access_reads_buffer() {
 
 #[test]
 fn test_buffer_read_access_missing_buffer() {
-    let manager = Arc::new(TestBufferManager::new());
-    let access = BufferReadAccess::new(
-        Arc::clone(&manager) as Arc<dyn reovim_kernel::api::v1::BufferManager>
-    );
+    let registry = Arc::new(TextBufferRegistry::new());
+    let access = BufferReadAccess::new(registry);
 
     assert!(access.get(BufferId::from_raw(999)).is_none());
 }
