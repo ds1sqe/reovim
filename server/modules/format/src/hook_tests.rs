@@ -4,11 +4,12 @@ use {
     reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
     reovim_kernel::{
         api::v1::{
-            Buffer, BufferId, BufferManager, OptionRegistry, OptionScopeId, OptionSpec,
+            BufferId, BufferManager, OptionRegistry, OptionScopeId, OptionSpec,
             OptionValue, RwLock, ServiceRegistry, events::kernel::BufferWillSave,
         },
         testing::TestBufferManager,
     },
+    reovim_provider_text::Buffer,
 };
 
 use super::*;

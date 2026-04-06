@@ -3036,6 +3036,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "tracing",
 ]
 

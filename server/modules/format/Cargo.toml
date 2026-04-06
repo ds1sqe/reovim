@@ -25,6 +25,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-capabilities = { workspace = true }
+reovim-provider-text = { workspace = true }
 lsp-types = "0.97"
 tracing.workspace = true
 
