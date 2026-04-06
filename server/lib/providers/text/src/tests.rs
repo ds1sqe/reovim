@@ -21,6 +21,48 @@ fn vbuf_from_str(s: &str) -> VirtualBuffer {
     VirtualBuffer::new(mapping, line_index)
 }
 
+// ── from_mapping factory ─────────────────────────────────────────────
+
+#[test]
+fn from_mapping_valid_utf8() {
+    let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(b"hello\nworld".to_vec()));
+    let vbuf = VirtualBuffer::from_mapping(mapping).unwrap();
+    assert_eq!(vbuf.line_count(), 2);
+    assert_eq!(vbuf.content(), "hello\nworld");
+}
+
+#[test]
+fn from_mapping_empty() {
+    let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(Vec::new()));
+    let vbuf = VirtualBuffer::from_mapping(mapping).unwrap();
+    assert!(vbuf.is_empty());
+    assert_eq!(vbuf.line_count(), 0);
+}
+
+#[test]
+fn from_mapping_invalid_utf8() {
+    let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(vec![0xFF, 0xFE, 0x80]));
+    let result = VirtualBuffer::from_mapping(mapping);
+    assert!(result.is_err());
+}
+
+#[test]
+fn from_mapping_unicode() {
+    let text = "héllo\nwörld\n日本語";
+    let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(text.as_bytes().to_vec()));
+    let vbuf = VirtualBuffer::from_mapping(mapping).unwrap();
+    assert_eq!(vbuf.line_count(), 3);
+    assert_eq!(vbuf.line(2), Some("日本語".to_string()));
+}
+
+#[test]
+fn from_mapping_crlf() {
+    let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(b"hello\r\nworld".to_vec()));
+    let vbuf = VirtualBuffer::from_mapping(mapping).unwrap();
+    assert!(vbuf.has_crlf());
+    assert_eq!(vbuf.line(0), Some("hello".to_string()));
+}
+
 // ── HeapMapping ──────────────────────────────────────────────────────
 
 #[test]

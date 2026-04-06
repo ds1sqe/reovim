@@ -93,7 +93,24 @@ impl fmt::Debug for VirtualBuffer {
 // ── Construction ────────────────────────────────────────────────────────────
 
 impl VirtualBuffer {
-    /// Create a new `VirtualBuffer` from a file mapping.
+    /// Create a `VirtualBuffer` from a file mapping, validating UTF-8.
+    ///
+    /// Builds a [`LineIndex`] internally from the mapped bytes.  This is
+    /// the preferred constructor — callers do not need to construct or
+    /// import `LineIndex` themselves.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InvalidUtf8`] if the mapped bytes are not valid UTF-8.
+    pub fn from_mapping(
+        mapping: Arc<dyn FileMapping>,
+    ) -> Result<Self, reovim_types_text::InvalidUtf8> {
+        let line_index = LineIndex::from_bytes(mapping.as_bytes())?;
+        Ok(Self::new(mapping, line_index))
+    }
+
+    /// Create a new `VirtualBuffer` from a file mapping and a pre-built
+    /// line index.
     ///
     /// The `line_index` is built from the mapped bytes.  The `crlf` flag
     /// is detected during the line index scan.

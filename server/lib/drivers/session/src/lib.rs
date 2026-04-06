@@ -95,6 +95,7 @@ pub mod api;
 pub mod bridges;
 mod buffer_access;
 mod empty_handler;
+mod byte_undo_registry;
 // Note: text_buffer_registry is pub(crate) — only re-export the type, not the module.
 mod text_buffer_registry;
 mod extension;
@@ -185,3 +186,6 @@ pub use buffer_access::BufferReadAccess;
 
 // Text buffer registry for session-layer text access (#740)
 pub use text_buffer_registry::TextBufferRegistry;
+
+// Byte undo registry for per-buffer byte-level undo (#740)
+pub use byte_undo_registry::ByteUndoRegistry;

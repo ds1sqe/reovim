@@ -46,6 +46,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel**: `BufferManager` now stores `dyn KernelBuffer` (byte-only) instead of `dyn BufferOps` (text-specific) — the kernel sees only bytes and metadata, text access is exclusively through `TextBufferRegistry` at the session layer (#740)
 - **kernel/provider-text**: continue the `#740` byte-only extraction — `BufferOps`, `BufferCapabilities`, and `LineCache` removed from kernel. `BufferOps` trait and `BufferCapabilities` bitflags now live in `reovim-provider-text`. `LineCache` deleted (dead code). Kernel `api/v1.rs` exports zero text concepts (#740)
 - **kernel**: rebuild `kernel::block` as real byte-level I/O subsystem — `ByteEdit` and `ByteUndoLog` moved from VFS driver to `kernel::block`, `StorageOps`/`BufferMeta`/`KernelBuffer` consolidated from `api/storage_ops.rs` into `block/`. Codec driver and codec-utf8 now import `ByteEdit` from kernel instead of VFS (#740)
+- **provider-text**: add `VirtualBuffer::from_mapping()` factory — encapsulates `LineIndex` construction inside the provider, removing direct `LineIndex` usage from the `:edit` command module (#740)
+- **session**: add `ByteUndoRegistry` service and wire `ByteEdit` emission into production mutations — `insert_text`, `delete_range`, and `replace_content` now push byte-level edit records to a per-buffer `ByteUndoLog` via `ByteUndoRegistry` (#740)
 
 ## [0.14.4] - 2026-04-01
 

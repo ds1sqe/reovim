@@ -6280,3 +6280,113 @@ fn test_record_buffer_modified_inherent() {
     });
     assert!(!changes.modified_buffers.is_empty());
 }
+
+// ── ByteEdit emission (#740) ────────────────────────────────────────
+
+#[test]
+fn test_insert_text_emits_byte_edit() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    harness.with_runtime(|runtime| {
+        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
+    });
+
+    harness.with_runtime(|runtime| {
+        let reg = runtime
+            .kernel()
+            .services
+            .get::<crate::ByteUndoRegistry>()
+            .expect("ByteUndoRegistry missing");
+        assert!(reg.can_undo(buffer_id));
+    });
+}
+
+#[test]
+fn test_delete_range_emits_byte_edit() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello world");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    harness.with_runtime(|runtime| {
+        runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+    });
+
+    harness.with_runtime(|runtime| {
+        let reg = runtime
+            .kernel()
+            .services
+            .get::<crate::ByteUndoRegistry>()
+            .expect("ByteUndoRegistry missing");
+        assert!(reg.can_undo(buffer_id));
+    });
+}
+
+#[test]
+fn test_delete_range_empty_no_byte_edit() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    // Deleting an empty range should not push a byte edit
+    harness.with_runtime(|runtime| {
+        runtime.delete_range(buffer_id, Position::new(0, 2), Position::new(0, 2));
+    });
+
+    harness.with_runtime(|runtime| {
+        let reg = runtime
+            .kernel()
+            .services
+            .get::<crate::ByteUndoRegistry>()
+            .expect("ByteUndoRegistry missing");
+        assert!(!reg.can_undo(buffer_id));
+    });
+}
+
+#[test]
+fn test_delete_buffer_cleans_up_byte_undo_log() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    // Create a second buffer so deletion is allowed
+    let buffer_id2 = harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+
+    // Insert into first buffer to create an undo entry
+    harness.with_runtime(|runtime| {
+        runtime.insert_text(buffer_id, Position::new(0, 5), "!");
+    });
+
+    // Verify undo log exists
+    harness.with_runtime(|runtime| {
+        let reg = runtime
+            .kernel()
+            .services
+            .get::<crate::ByteUndoRegistry>()
+            .expect("ByteUndoRegistry missing");
+        assert!(reg.can_undo(buffer_id));
+    });
+
+    // Delete the buffer
+    harness.with_runtime(|runtime| {
+        let _ = runtime.delete_buffer(buffer_id);
+    });
+
+    // Verify undo log was cleaned up
+    harness.with_runtime(|runtime| {
+        let reg = runtime
+            .kernel()
+            .services
+            .get::<crate::ByteUndoRegistry>()
+            .expect("ByteUndoRegistry missing");
+        assert!(!reg.can_undo(buffer_id));
+    });
+
+    // Suppress unused variable (second buffer kept alive for delete to work)
+    let _ = buffer_id2;
+}

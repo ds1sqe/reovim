@@ -45,7 +45,7 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
+        BufferId, ByteEdit, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
         events::kernel::{
             CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
         },
@@ -54,7 +54,7 @@ use {
 };
 
 use crate::{
-    Selection, Session, SessionExtension, TextBufferRegistry, Window,
+    ByteUndoRegistry, Selection, Session, SessionExtension, TextBufferRegistry, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
         CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,
@@ -742,6 +742,11 @@ impl BufferApi for SessionRuntime<'_> {
 
             buf.write().insert_at(pos, text);
 
+            // Record byte-level edit for universal undo (#740)
+            if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
+                reg.push(buffer, vec![ByteEdit::insert(byte_offset, text.as_bytes())]);
+            }
+
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
             let cursor_after = cursor_before;
 
@@ -787,6 +792,16 @@ impl BufferApi for SessionRuntime<'_> {
                 b.delete_range(start, end)
             };
 
+            // Record byte-level edit for universal undo (#740)
+            if !deleted_text.is_empty()
+                && let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>()
+            {
+                reg.push(
+                    buffer,
+                    vec![ByteEdit::delete(byte_offset, deleted_text.as_bytes())],
+                );
+            }
+
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
             let cursor_after = cursor_before;
 
@@ -831,6 +846,18 @@ impl BufferApi for SessionRuntime<'_> {
 
             let old_content = buf.read().content();
             buf.write().set_content(content);
+
+            // Record byte-level edit for universal undo (#740)
+            if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
+                reg.push(
+                    buffer,
+                    vec![ByteEdit::replace(
+                        0,
+                        old_content.as_bytes(),
+                        content.as_bytes(),
+                    )],
+                );
+            }
 
             // Record for undo as a delete-all + insert-all
             let edits = vec![
@@ -885,6 +912,10 @@ impl BufferApi for SessionRuntime<'_> {
         // Unregister from text buffer registry (#740).
         if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>() {
             reg.unregister(buffer);
+        }
+        // Clean up byte undo log (#740).
+        if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
+            reg.remove(buffer);
         }
         self.changes.record_buffer_deleted(buffer);
         Ok(())

@@ -15,7 +15,6 @@ use {
     reovim_driver_vfs::{FileMapping, VfsDriver},
     reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
     reovim_provider_text::VirtualBuffer,
-    reovim_types_text::LineIndex,
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -139,8 +138,9 @@ impl CommandHandler for EditCommand {
 /// Open a large file via mmap + `VirtualBuffer` (zero-copy path).
 ///
 /// Called when file size exceeds the large file threshold.
-/// Memory-maps the file, validates UTF-8, builds a `LineIndex`, creates
-/// a `VirtualBuffer`, and registers it in the unified buffer manager.
+/// Memory-maps the file and creates a `VirtualBuffer` (which validates
+/// UTF-8 and builds its line index internally), then registers it in the
+/// unified buffer manager.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn open_large_file(
     runtime: &mut SessionRuntime<'_>,
@@ -153,15 +153,12 @@ fn open_large_file(
         return CommandResult::Error(format!("execution failed: Cannot mmap file '{filename}'"));
     };
 
-    // Build line index — validates UTF-8 during scan
-    let Ok(line_index) = LineIndex::from_bytes(mapped_file.as_bytes()) else {
+    // Create VirtualBuffer backed by the mmap — validates UTF-8 internally
+    let original: Arc<dyn FileMapping> = Arc::new(mapped_file);
+    let Ok(mut vbuf) = VirtualBuffer::from_mapping(original) else {
         // Non-UTF-8 large file — try streaming codec decode
         return open_large_binary(runtime, vfs, path, filename);
     };
-
-    // Create VirtualBuffer backed by the mmap
-    let original: Arc<dyn FileMapping> = Arc::new(mapped_file);
-    let mut vbuf = VirtualBuffer::new(original, line_index);
 
     // Canonicalize the path
     let canonical_path = std::fs::canonicalize(filename)

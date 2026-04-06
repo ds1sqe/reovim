@@ -261,6 +261,10 @@ pub fn create_session_state() -> SessionState {
     let text_registry = Arc::new(reovim_driver_session::TextBufferRegistry::new());
     services.register(Arc::clone(&text_registry));
 
+    // Register ByteUndoRegistry for per-buffer byte-level undo (#740).
+    // SessionRuntime pushes ByteEdits here after every mutation.
+    services.register(Arc::new(reovim_driver_session::ByteUndoRegistry::new()));
+
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
     // Uses TextBufferRegistry for text-specific access (kernel.buffers is byte-only).
     services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(
