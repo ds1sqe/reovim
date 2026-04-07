@@ -81,6 +81,23 @@ pub trait BufferOps: StorageOps + BufferMeta {
     /// Full content as a string.
     fn content(&self) -> String;
 
+    // === Streaming I/O ===
+
+    /// Write buffer content to a writer without String materialization.
+    ///
+    /// For Rope-backed buffers, this materializes content and writes it.
+    /// For `VirtualBuffer`, this iterates pieces and writes each directly
+    /// from the mmap or add buffer — avoiding a full String allocation.
+    ///
+    /// Default implementation materializes via [`content()`](BufferOps::content).
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` if writing fails.
+    fn write_to(&self, writer: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+        writer.write_all(self.content().as_bytes())
+    }
+
     // === TextGeometry Bridge ===
 
     /// Upcast to `TextGeometry` for motion and text object calculations.

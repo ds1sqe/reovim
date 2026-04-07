@@ -50,6 +50,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **session**: add `ByteUndoRegistry` service and wire `ByteEdit` emission into production mutations — `insert_text`, `delete_range`, and `replace_content` now push byte-level edit records to a per-buffer `ByteUndoLog` via `ByteUndoRegistry` (#740)
 - **codec**: `ByteNotifiable` supertrait for `Index<D>` — domain-agnostic byte-level notification interface (`build`, `notify`) extracted as supertrait, `Index<D>` only has domain-specific methods. `CodecSessionState` extended with per-buffer index storage. View switch clears stale index and byte undo log (#740)
 - **server**: wire `ByteEdit` notification from mutations to codec indices — `StateChanges` carries `byte_edits`, server routes them to `CodecSessionState::notify_index()` after each key event (#740)
+- **codec**: `Utf8LineIndex` now stores raw bytes for proper multi-byte UTF-8 char↔byte translation — `to_bytes()` and `offset_to_position()` walk UTF-8 char boundaries instead of assuming ASCII (1 byte = 1 char), mid-character byte offsets correctly return `None` (#740)
+- **provider-text**: `BufferOps::write_to()` method for streaming buffer I/O — default materializes via `content()`, `VirtualBuffer` overrides with piece-by-piece write from mmap/add-buffer. `SessionRuntime::buffer_write_to()` dispatches through this method (#740)
+- **commands**: `:w` uses streaming write for `STREAMABLE` buffers without codec metadata — avoids full `String` materialization for large mmap-backed files (#740)
 
 ## [0.14.4] - 2026-04-01
 

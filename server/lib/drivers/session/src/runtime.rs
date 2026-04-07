@@ -940,7 +940,7 @@ impl BufferApi for SessionRuntime<'_> {
     ) -> Result<(), std::io::Error> {
         self.text_buffer(buffer).map_or_else(
             || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "buffer not found")),
-            |buf| writer.write_all(buf.read().content().as_bytes()),
+            |buf| buf.read().write_to(writer),
         )
     }
 }

@@ -12,6 +12,7 @@ use {
         CommandId, ModuleId,
         events::kernel::{BufferSaved, BufferWillSave},
     },
+    reovim_provider_text::BufferCapabilities,
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -70,17 +71,38 @@ impl CommandHandler for WriteCommand {
             path: path.clone(),
         });
 
-        // Get buffer content AFTER pre-save hooks (formatters may have modified it)
-        let Some(content) = runtime.buffer_content(buffer_id) else {
-            return CommandResult::Error("buffer not found".to_string());
-        };
-
-        // Write via VFS, encoding through codec pipeline if metadata exists
         let Some(vfs) = ctx.vfs() else {
             return CommandResult::Error("VFS not available".to_string());
         };
-        if let Err(e) = encode_and_write(runtime, &path, &content, vfs.as_ref()) {
-            return CommandResult::Error(format!("Write failed: {e}"));
+
+        // Streaming write for STREAMABLE buffers (VirtualBuffer / mmap-backed)
+        // when no codec re-encoding is needed. Avoids full String materialization
+        // for large files.
+        let is_streamable = runtime
+            .buffer_capabilities(buffer_id)
+            .is_some_and(|c| c.contains(BufferCapabilities::STREAMABLE));
+        let has_codec = runtime
+            .shared_ext_mut::<CodecSessionState>()
+            .and_then(|cs| cs.get(buffer_id))
+            .is_some();
+
+        if is_streamable && !has_codec {
+            let mut bytes = Vec::new();
+            if let Err(e) = runtime.buffer_write_to(buffer_id, &mut bytes) {
+                return CommandResult::Error(format!("Write failed: {e}"));
+            }
+            if let Err(e) = vfs.write(Path::new(&path), &bytes) {
+                return CommandResult::Error(format!("Write failed: {e}"));
+            }
+        } else {
+            // Get buffer content AFTER pre-save hooks (formatters may have modified it)
+            let Some(content) = runtime.buffer_content(buffer_id) else {
+                return CommandResult::Error("buffer not found".to_string());
+            };
+            // Encode through codec pipeline if metadata exists
+            if let Err(e) = encode_and_write(runtime, &path, &content, vfs.as_ref()) {
+                return CommandResult::Error(format!("Write failed: {e}"));
+            }
         }
 
         // If saving to a new filename, update the buffer's file path

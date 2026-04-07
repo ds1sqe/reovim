@@ -799,6 +799,10 @@ impl BufferOps for VirtualBuffer {
         Self::content(self)
     }
 
+    fn write_to(&self, writer: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+        Self::write_to(self, writer)
+    }
+
     fn as_text_geometry(&self) -> &dyn TextGeometry {
         self
     }

@@ -92,13 +92,21 @@ impl Encode<Text> for Utf8Codec {
 
 /// UTF-8 line index for position <-> byte offset mapping.
 ///
-/// Stores line start byte offsets for O(log n) position lookups.
-/// Updated incrementally on byte edits.
+/// Stores line start byte offsets for O(log n) position lookups and
+/// maintains a copy of the raw bytes for proper multi-byte UTF-8
+/// char/byte translation. Updated incrementally on byte edits.
 pub struct Utf8LineIndex {
     /// Byte offset of the start of each line. `line_starts[0]` is always 0.
     line_starts: Vec<usize>,
     /// Total byte length of indexed content.
     total_bytes: usize,
+    /// Raw content bytes for proper UTF-8 char↔byte translation.
+    ///
+    /// Maintained in sync with `line_starts` via [`ByteNotifiable::build`]
+    /// and [`ByteNotifiable::notify`]. Required because `TextPosition.column`
+    /// counts Unicode scalar values (chars), not bytes — a direct byte offset
+    /// only works for ASCII content.
+    raw: Vec<u8>,
 }
 
 impl Utf8LineIndex {
@@ -108,6 +116,7 @@ impl Utf8LineIndex {
         Self {
             line_starts: Vec::new(),
             total_bytes: 0,
+            raw: Vec::new(),
         }
     }
 }
@@ -126,6 +135,7 @@ fn count_byte(bytes: &[u8], target: u8) -> usize {
 
 impl ByteNotifiable for Utf8LineIndex {
     fn build(&mut self, raw: &[u8]) {
+        self.raw = raw.to_vec();
         self.line_starts.clear();
         self.line_starts.push(0);
         for (i, &b) in raw.iter().enumerate() {
@@ -140,6 +150,10 @@ impl ByteNotifiable for Utf8LineIndex {
         let offset = edit.offset;
         let old_len = edit.old_bytes.len();
         let new_len = edit.new_bytes.len();
+
+        // Apply edit to raw bytes so to_bytes/offset_to_position stay accurate.
+        let end = (offset + old_len).min(self.raw.len());
+        self.raw.splice(offset..end, edit.new_bytes.iter().copied());
 
         // Count newlines removed and added
         let old_newlines = count_byte(&edit.old_bytes, b'\n');
@@ -194,18 +208,30 @@ impl ByteNotifiable for Utf8LineIndex {
 impl Index<Text> for Utf8LineIndex {
     fn to_bytes(&self, pos: &TextPosition) -> Option<usize> {
         let line_start = *self.line_starts.get(pos.line)?;
-
         let line_end = self
             .line_starts
             .get(pos.line + 1)
             .copied()
             .unwrap_or(self.total_bytes);
 
-        // Assume 1 byte per char (valid for ASCII UTF-8).
-        // Full multi-byte support requires access to the raw bytes.
-        let byte_offset = line_start + pos.column;
-        if byte_offset <= line_end {
-            Some(byte_offset)
+        if pos.column == 0 {
+            return Some(line_start);
+        }
+
+        // Walk UTF-8 chars to find the byte offset of char `pos.column`.
+        let line_bytes = self.raw.get(line_start..line_end)?;
+        let line_str = std::str::from_utf8(line_bytes).ok()?;
+
+        let mut char_count = 0;
+        for (byte_idx, _) in line_str.char_indices() {
+            if char_count == pos.column {
+                return Some(line_start + byte_idx);
+            }
+            char_count += 1;
+        }
+        // Column equals total char count → position just past last char.
+        if char_count == pos.column {
+            Some(line_end)
         } else {
             None
         }
@@ -216,14 +242,22 @@ impl Index<Text> for Utf8LineIndex {
             return None;
         }
 
-        // Binary search for the line containing this offset
+        // Binary search for the line containing this offset.
         let line = match self.line_starts.binary_search(&offset) {
             Ok(i) => i,
             Err(i) => i.saturating_sub(1),
         };
 
         let line_start = self.line_starts[line];
-        let column = offset - line_start;
+
+        if offset == line_start {
+            return Some(TextPosition::new(line, 0));
+        }
+
+        // Count UTF-8 chars from line start to offset.
+        let bytes_in_line = self.raw.get(line_start..offset)?;
+        let line_str = std::str::from_utf8(bytes_in_line).ok()?;
+        let column = line_str.chars().count();
 
         Some(TextPosition::new(line, column))
     }
