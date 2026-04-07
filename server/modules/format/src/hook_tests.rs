@@ -2,12 +2,11 @@ use std::{path::Path, sync::Arc};
 
 use {
     reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
-    reovim_driver_session::TextBufferRegistry,
     reovim_kernel::api::v1::{
         BufferId, OptionRegistry, OptionScopeId, OptionSpec, OptionValue, RwLock, ServiceRegistry,
         events::kernel::BufferWillSave,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
 };
 
 use super::*;

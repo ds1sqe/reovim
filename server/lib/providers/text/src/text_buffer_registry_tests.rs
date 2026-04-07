@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use {
-    reovim_arch::sync::RwLock, reovim_kernel::api::v1::ServiceRegistry,
-    reovim_provider_text::Buffer,
-};
+use {crate::Buffer, reovim_arch::sync::RwLock, reovim_kernel::api::v1::ServiceRegistry};
 
 use super::TextBufferRegistry;
 

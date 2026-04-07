@@ -90,7 +90,7 @@ fn build_context_uses_current_line_for_virtual_buffer() {
     if let Some(reg) = test
         .kernel()
         .services
-        .get::<reovim_driver_session::TextBufferRegistry>()
+        .get::<reovim_provider_text::TextBufferRegistry>()
     {
         reg.register(arc.clone());
     }

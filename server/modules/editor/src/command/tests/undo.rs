@@ -2,15 +2,15 @@ use {
     super::super::*,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
-        Window, WindowLayout, api::CommandExecutor, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
+        api::CommandExecutor, testing::StubExecutor,
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::{
         api::v1::{BufferId, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
-    reovim_provider_text::{Buffer, BufferOps},
+    reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry},
     reovim_types_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     std::sync::Arc,
 };

@@ -2478,7 +2478,7 @@ fn test_insert_text_no_active_window_uses_zero_position() {
     use reovim_kernel::api::v1::ModeStack;
 
     let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
-    let text_registry = std::sync::Arc::new(crate::TextBufferRegistry::new());
+    let text_registry = std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new());
     services.register(std::sync::Arc::clone(&text_registry));
     let kernel = make_kernel_with_services(services);
     let mut session = Session::new(ClientId::new(1), test_mode());
@@ -2534,7 +2534,7 @@ fn test_delete_range_no_active_window_uses_zero_position() {
     use reovim_kernel::api::v1::ModeStack;
 
     let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
-    let text_registry = std::sync::Arc::new(crate::TextBufferRegistry::new());
+    let text_registry = std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new());
     services.register(std::sync::Arc::clone(&text_registry));
     let kernel = make_kernel_with_services(services);
     let mut session = Session::new(ClientId::new(1), test_mode());
@@ -3569,7 +3569,7 @@ fn kernel_with_alternate_undo() -> KernelContext {
     let undo_registry = UndoProviderRegistry::new();
     undo_registry.register(UndoKey::Buffer, std::sync::Arc::new(AlternateUndoProvider));
     services.register(std::sync::Arc::new(undo_registry));
-    services.register(std::sync::Arc::new(crate::TextBufferRegistry::new()));
+    services.register(std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new()));
     make_kernel_with_services(services)
 }
 
@@ -3582,7 +3582,10 @@ fn register_in_both(kernel: &KernelContext, content: &str) -> BufferId {
     let arc = std::sync::Arc::new(reovim_arch::sync::RwLock::new(
         reovim_provider_text::Buffer::from_string(content),
     ));
-    if let Some(reg) = kernel.services.get::<crate::TextBufferRegistry>() {
+    if let Some(reg) = kernel
+        .services
+        .get::<reovim_provider_text::TextBufferRegistry>()
+    {
         reg.register(arc.clone());
     }
     kernel.buffers.register(arc)

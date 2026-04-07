@@ -42,14 +42,14 @@ fn test_exit_visual_mode_default() {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
-        api::Selection, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, api::Selection,
+        testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

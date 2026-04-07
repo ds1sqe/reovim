@@ -105,7 +105,7 @@ fn test_all_manipulation_commands_default() {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout,
         api::{Selection, SelectionMode},
         testing::StubExecutor,
     },
@@ -113,7 +113,7 @@ use {
         ModeStack,
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

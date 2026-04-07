@@ -9,8 +9,7 @@ use {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -19,7 +18,7 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

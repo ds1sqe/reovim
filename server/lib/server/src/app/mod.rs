@@ -111,7 +111,7 @@ impl FallbackContext for AppState {
         // The kernel's BufferManager only stores dyn KernelBuffer (byte-only).
         self.kernel
             .services
-            .get::<reovim_driver_session::TextBufferRegistry>()
+            .get::<reovim_provider_text::TextBufferRegistry>()
             .and_then(|reg| reg.get(id))
     }
 

@@ -209,7 +209,7 @@ impl OperatorContext<'_> {
     pub fn text_buffer(&self) -> Result<Arc<RwLock<dyn BufferOps>>, OperatorError> {
         self.kernel
             .services
-            .get::<reovim_driver_session::TextBufferRegistry>()
+            .get::<reovim_provider_text::TextBufferRegistry>()
             .and_then(|reg| reg.get(self.buffer_id))
             .ok_or(OperatorError::BufferNotFound(self.buffer_id))
     }

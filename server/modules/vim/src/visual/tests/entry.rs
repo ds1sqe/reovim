@@ -73,14 +73,13 @@ fn test_all_visual_entry_default() {
 
 use {
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
-        testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

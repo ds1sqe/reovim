@@ -10,8 +10,8 @@ use {
     crate::session_state::{LastChange, OperatorType},
     reovim_driver_command::ArgValue,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, Window,
-        WindowLayout, api::CommandExecutor, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, Window, WindowLayout,
+        api::CommandExecutor, testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -20,7 +20,7 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

@@ -38,7 +38,7 @@ pub fn format_on_save(
     // Buffer IDs are bounded well within usize range.
     #[allow(clippy::cast_possible_truncation)]
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(event.buffer_id as usize);
-    let Some(registry) = services.get::<reovim_driver_session::TextBufferRegistry>() else {
+    let Some(registry) = services.get::<reovim_provider_text::TextBufferRegistry>() else {
         warn!("format-on-save: TextBufferRegistry not available");
         return;
     };

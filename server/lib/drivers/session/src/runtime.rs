@@ -50,11 +50,12 @@ use {
             CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
         },
     },
+    reovim_provider_text::TextBufferRegistry,
     reovim_types_text::{Edit, Position, UndoResult},
 };
 
 use crate::{
-    ByteUndoRegistry, Selection, Session, SessionExtension, TextBufferRegistry, Window,
+    ByteUndoRegistry, Selection, Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
         CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,

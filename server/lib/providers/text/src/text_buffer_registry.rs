@@ -1,4 +1,4 @@
-//! Text buffer registry for session-layer text access (#740).
+//! Text buffer registry for text access in provider-text (#740).
 //!
 //! Stores `Arc<RwLock<dyn BufferOps>>` independently from the kernel's
 //! `BufferManager`. This decouples text-specific buffer access from the
@@ -17,12 +17,13 @@ use std::{collections::HashMap, sync::Arc};
 use {
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{BufferId, Service},
-    reovim_provider_text::BufferOps,
 };
+
+use crate::BufferOps;
 
 /// Session-layer registry for text-specific buffer access.
 ///
-/// Mirrors the kernel `BufferManager` interface but lives at the session
+/// Mirrors the kernel `BufferManager` interface but lives in the text provider
 /// layer. During the #740 migration, callers switch from
 /// `kernel.buffers.get(id)` to `text_buffers.get(id)` for text operations.
 ///

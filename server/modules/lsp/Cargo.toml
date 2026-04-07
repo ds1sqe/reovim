@@ -29,6 +29,7 @@ reovim-module-macros = { workspace = true }
 
 # Session driver (PendingNotificationQueue, BridgeProvider, ExtensionMap)
 reovim-driver-session = { workspace = true }
+reovim-provider-text = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }

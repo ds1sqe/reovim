@@ -4,8 +4,8 @@ use super::super::*;
 use {
     reovim_driver_command::{Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
-        WindowLayout, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
+        testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -14,7 +14,7 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };

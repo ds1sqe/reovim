@@ -105,6 +105,7 @@ reovim-driver-module-registry = { workspace = true }
 
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
+reovim-provider-text = { workspace = true }
 
 # Display driver (for SharedThemeManager + ThemeLoader bootstrap)
 reovim-driver-display = { workspace = true }

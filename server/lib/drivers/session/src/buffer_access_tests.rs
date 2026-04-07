@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use reovim_kernel::api::v1::{BufferId, ServiceRegistry};
 
-use {super::BufferReadAccess, crate::TextBufferRegistry};
+use {super::BufferReadAccess, reovim_provider_text::TextBufferRegistry};
 
 #[test]
 fn test_buffer_read_access_registered_and_retrieved() {

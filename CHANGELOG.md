@@ -33,6 +33,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **commands**: `:e` command detects file size before loading — large UTF-8 files use mmap path, large binaries try streaming codec, small files use existing Rope path (#739)
 - **completion**: virtual buffer completion uses line-based access instead of full content materialization (#739)
 - **format**: format commands skip virtual buffers gracefully (#739)
+- **session**: move `TextBufferRegistry` from `reovim-driver-session` into `reovim-provider-text`, with session importing it from the provider for boundary-correct ownership (#740)
 
 ### Refactored
 

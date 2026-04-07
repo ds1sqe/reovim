@@ -96,7 +96,6 @@ pub mod bridges;
 mod buffer_access;
 mod byte_undo_registry;
 mod empty_handler;
-// Note: text_buffer_registry is pub(crate) — only re-export the type, not the module.
 mod extension;
 mod handler_key;
 mod handler_registry;
@@ -112,7 +111,6 @@ mod runtime;
 mod snippet_expander;
 pub mod tab;
 pub mod testing;
-mod text_buffer_registry;
 pub mod tick;
 mod transition;
 mod types;
@@ -185,7 +183,5 @@ pub use tick::{TickScheduler, TickSchedulerHandle};
 pub use buffer_access::BufferReadAccess;
 
 // Text buffer registry for session-layer text access (#740)
-pub use text_buffer_registry::TextBufferRegistry;
-
 // Byte undo registry for per-buffer byte-level undo (#740)
 pub use byte_undo_registry::ByteUndoRegistry;

@@ -258,7 +258,7 @@ pub fn create_session_state() -> SessionState {
 
     // Register TextBufferRegistry for session-layer text access (#740).
     // SessionRuntime uses this instead of kernel.buffers for text operations.
-    let text_registry = Arc::new(reovim_driver_session::TextBufferRegistry::new());
+    let text_registry = Arc::new(reovim_provider_text::TextBufferRegistry::new());
     services.register(Arc::clone(&text_registry));
 
     // Register ByteUndoRegistry for per-buffer byte-level undo (#740).

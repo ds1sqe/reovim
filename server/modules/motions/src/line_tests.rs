@@ -47,12 +47,12 @@ impl TestSetup {
     fn new(content: &str) -> Self {
         let ctx = create_test_context();
         ctx.services
-            .register(std::sync::Arc::new(reovim_driver_session::TextBufferRegistry::new()));
+            .register(std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new()));
         let buffer = reovim_provider_text::Buffer::from_string(content);
         let arc = std::sync::Arc::new(RwLock::new(buffer));
         if let Some(reg) = ctx
             .services
-            .get::<reovim_driver_session::TextBufferRegistry>()
+            .get::<reovim_provider_text::TextBufferRegistry>()
         {
             reg.register(arc.clone());
         }

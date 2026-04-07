@@ -181,14 +181,14 @@ fn test_expand_line_mode_none_end_line_len() {
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
-        WindowLayout, api::RegisterApi, testing::StubExecutor,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
+        api::RegisterApi, testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

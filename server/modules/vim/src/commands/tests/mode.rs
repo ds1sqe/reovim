@@ -9,8 +9,7 @@ use {
     crate::ids,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
-        WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         api::{CommandExecutor, CommandHandle},
         testing::StubExecutor,
     },
@@ -21,7 +20,7 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::{collections::HashMap, sync::Arc},
 };

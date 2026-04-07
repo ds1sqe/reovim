@@ -3,13 +3,13 @@ use {
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, RegisterContent, Session, SessionRuntime,
-        TextBufferRegistry, Window, WindowLayout, testing::StubExecutor,
+        Window, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
         api::v1::{BufferId, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
-    reovim_provider_text::{Buffer, BufferOps},
+    reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };

@@ -20,6 +20,7 @@
 
 mod buffer_caps;
 mod buffer_ops;
+mod text_buffer_registry;
 
 // Large file offsets are u64 but Rust indexing uses usize.
 // Truncation is lossless on our 64-bit-only target.
@@ -40,5 +41,7 @@ pub use {
 };
 
 pub use {buffer::Buffer, rope::Rope};
+
+pub use text_buffer_registry::TextBufferRegistry;
 
 pub mod testing;

@@ -1979,7 +1979,7 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
         let default = reovim_kernel::api::v1::KernelContext::default();
         default
             .services
-            .register(std::sync::Arc::new(reovim_driver_session::TextBufferRegistry::new()));
+            .register(std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new()));
         reovim_kernel::api::v1::KernelContext {
             buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
             ..default

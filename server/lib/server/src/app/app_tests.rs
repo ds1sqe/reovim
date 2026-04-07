@@ -155,9 +155,8 @@ fn test_app_state_quit_then_check() {
 fn test_fallback_get_buffer_with_real_buffer() {
     use {
         reovim_driver_buffer::TestBufferManager,
-        reovim_driver_session::TextBufferRegistry,
         reovim_kernel::api::v1::{EventBus, OptionRegistry, ServiceRegistry},
-        reovim_provider_text::Buffer,
+        reovim_provider_text::{Buffer, TextBufferRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());

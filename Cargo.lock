@@ -2240,6 +2240,7 @@ dependencies = [
  "reovim-picker-git-status",
  "reovim-picker-grep",
  "reovim-picker-options",
+ "reovim-provider-text",
  "reovim-server",
  "reovim-types-text",
  "tokio",
@@ -3161,6 +3162,7 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-provider-text",
  "serde_json",
  "tokio",
  "toml 0.8.23",
@@ -3742,6 +3744,7 @@ name = "reovim-provider-text"
 version = "0.14.5-dev"
 dependencies = [
  "bitflags 2.11.0",
+ "reovim-arch",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-types-text",

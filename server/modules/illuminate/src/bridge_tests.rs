@@ -397,7 +397,7 @@ fn test_tick_hold_then_move_resets() {
 // ========================================================================
 
 fn services_with_buffer(content: &str) -> (ServiceRegistry, BufferId) {
-    use reovim_driver_session::TextBufferRegistry;
+    use reovim_provider_text::TextBufferRegistry;
 
     let text_registry = Arc::new(TextBufferRegistry::new());
     let buf = Buffer::from_string(content);

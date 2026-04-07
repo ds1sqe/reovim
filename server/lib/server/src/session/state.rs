@@ -343,7 +343,7 @@ impl SessionState {
         self.app
             .kernel
             .services
-            .get::<reovim_driver_session::TextBufferRegistry>()
+            .get::<reovim_provider_text::TextBufferRegistry>()
             .and_then(|reg| reg.get(id))
     }
 
@@ -361,7 +361,7 @@ impl SessionState {
             .app
             .kernel
             .services
-            .get::<reovim_driver_session::TextBufferRegistry>()
+            .get::<reovim_provider_text::TextBufferRegistry>()
         {
             reg.register(arc.clone());
         }

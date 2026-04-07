@@ -35,7 +35,7 @@ use {
     },
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, ModeStack, ModuleId},
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
@@ -128,8 +128,7 @@ impl TestSessionRuntime {
     /// registry (#740).
     fn make_test_kernel() -> KernelContext {
         let ctx = reovim_kernel::testing::create_test_context();
-        ctx.services
-            .register(Arc::new(crate::TextBufferRegistry::new()));
+        ctx.services.register(Arc::new(TextBufferRegistry::new()));
         ctx.services
             .register(Arc::new(crate::ByteUndoRegistry::new()));
         ctx
@@ -190,7 +189,7 @@ impl TestSessionRuntime {
         // Create buffer with content, register in both kernel and text registry (#740).
         let buffer = Buffer::from_string(content);
         let arc = Arc::new(RwLock::new(buffer));
-        if let Some(reg) = test.kernel.services.get::<crate::TextBufferRegistry>() {
+        if let Some(reg) = test.kernel.services.get::<TextBufferRegistry>() {
             reg.register(arc.clone());
         }
         let buffer_id = test.kernel.buffers.register(arc);
@@ -215,7 +214,7 @@ impl TestSessionRuntime {
         let mut test = Self::with_home_mode(mode);
         let buffer = Buffer::from_string(content);
         let arc = Arc::new(RwLock::new(buffer));
-        if let Some(reg) = test.kernel.services.get::<crate::TextBufferRegistry>() {
+        if let Some(reg) = test.kernel.services.get::<TextBufferRegistry>() {
             reg.register(arc.clone());
         }
         let buffer_id = test.kernel.buffers.register(arc);
@@ -472,7 +471,7 @@ impl TestSessionRuntime {
     {
         self.kernel
             .services
-            .get::<crate::TextBufferRegistry>()
+            .get::<TextBufferRegistry>()
             .and_then(|reg| reg.get(id))
     }
 
@@ -521,8 +520,7 @@ impl CommandExecutor for StubExecutor {
 #[must_use]
 pub fn create_test_kernel() -> reovim_kernel::api::v1::KernelContext {
     let ctx = reovim_kernel::testing::create_test_context();
-    ctx.services
-        .register(Arc::new(crate::TextBufferRegistry::new()));
+    ctx.services.register(Arc::new(TextBufferRegistry::new()));
     ctx.services
         .register(Arc::new(crate::ByteUndoRegistry::new()));
     ctx
@@ -538,7 +536,7 @@ pub fn dual_register_buffer(
 ) -> reovim_kernel::api::v1::BufferId {
     let buffer = Buffer::from_string(content);
     let arc = Arc::new(RwLock::new(buffer));
-    if let Some(reg) = ctx.services.get::<crate::TextBufferRegistry>() {
+    if let Some(reg) = ctx.services.get::<TextBufferRegistry>() {
         reg.register(arc.clone());
     }
     ctx.buffers.register(arc)

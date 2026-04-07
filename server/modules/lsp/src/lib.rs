@@ -129,7 +129,7 @@ impl Module for LspModule {
                             // Provider already running — send DidOpen for the new file.
                             let uri = uri_from_path(std::path::Path::new(&event.path));
                             let content = services
-                                .get::<reovim_driver_session::TextBufferRegistry>()
+                                .get::<reovim_provider_text::TextBufferRegistry>()
                                 .and_then(|reg| reg.get(buf_id))
                                 .map(|b| b.read().content())
                                 .unwrap_or_default();
@@ -152,7 +152,7 @@ impl Module for LspModule {
                         };
 
                         let content = services
-                            .get::<reovim_driver_session::TextBufferRegistry>()
+                            .get::<reovim_provider_text::TextBufferRegistry>()
                             .and_then(|reg| reg.get(buf_id))
                             .map(|b| b.read().content())
                             .unwrap_or_default();

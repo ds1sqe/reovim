@@ -9,9 +9,7 @@ use {
 
 use {
     reovim_driver_command::Command,
-    reovim_driver_session::{
-        ClientId, ExtensionMap, Jumplist, MarkBank, Session, TextBufferRegistry, WindowLayout,
-    },
+    reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
     reovim_kernel::{
         api::{
             ModeStack,
@@ -19,7 +17,7 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, TextBufferRegistry},
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };

@@ -170,7 +170,7 @@ fn open_large_file(
     if let Some(reg) = runtime
         .kernel()
         .services
-        .get::<reovim_driver_session::TextBufferRegistry>()
+        .get::<reovim_provider_text::TextBufferRegistry>()
     {
         reg.register(arc.clone());
     }

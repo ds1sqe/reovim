@@ -10,7 +10,7 @@ use {
     reovim_provider_text::BufferOps,
 };
 
-use crate::TextBufferRegistry;
+use reovim_provider_text::TextBufferRegistry;
 
 /// Read-only buffer access for bridge tick functions.
 ///
