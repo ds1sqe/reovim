@@ -10,7 +10,7 @@
 
 use {
     criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
-    reovim_kernel::api::v1::Buffer,
+    reovim_provider_text::Buffer,
 };
 
 const SIZES: &[usize] = &[1_000, 10_000, 100_000];

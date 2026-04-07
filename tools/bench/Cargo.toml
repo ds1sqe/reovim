@@ -19,6 +19,9 @@ reovim-types-text = { workspace = true }
 # Criterion benchmarking framework
 criterion = { version = "0.5", features = ["html_reports"] }
 
+# Buffer benchmarks (Buffer moved from kernel to provider-text in #740)
+reovim-provider-text = { workspace = true }
+
 # Syntax hot path benchmarks
 reovim-driver-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }

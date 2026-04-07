@@ -8,7 +8,7 @@
 
 use {
     criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main},
-    reovim_kernel::api::v1::*,
+    reovim_provider_text::Buffer,
     reovim_types_text::Position,
 };
 
