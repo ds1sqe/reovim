@@ -1,9 +1,10 @@
 //! Buffer navigation ex-commands: `:bnext`, `:bprevious`, `:bd`.
 
 use {
+    reovim_driver_codec::CodecSessionState,
     reovim_driver_command::{Command, CommandHandler, CommandResult},
     reovim_driver_command_types::CommandContext,
-    reovim_driver_session::{BufferApi, SessionRuntime},
+    reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
@@ -92,7 +93,24 @@ impl CommandHandler for BdeleteCommand {
         let Some(buf_id) = runtime.active_buffer() else {
             return CommandResult::Success;
         };
-        let _ = runtime.kernel().buffers.unregister(buf_id);
+
+        // Route through `BufferApi::delete_buffer` so the session-layer
+        // registries (`TextBufferRegistry`, `ByteUndoRegistry`) are released
+        // and last-buffer protection fires.
+        if let Err(e) = runtime.delete_buffer(buf_id) {
+            return CommandResult::Error(format!("execution failed: {e}"));
+        }
+
+        // #740 Phase 0 (B3): the codec session state lives in the
+        // session-wide shared extensions, which `reovim-driver-session`
+        // cannot name without reversing the dependency graph
+        // (codec → session). Clean up here in the commands layer where the
+        // codec import already exists. Phase 3 migrates this responsibility
+        // into the runtime via the InodeTable extension.
+        if let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>() {
+            codec_state.remove(buf_id);
+        }
+
         CommandResult::Success
     }
 }

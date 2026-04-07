@@ -54,6 +54,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **provider-text**: `BufferOps::write_to()` method for streaming buffer I/O — default materializes via `content()`, `VirtualBuffer` overrides with piece-by-piece write from mmap/add-buffer. `SessionRuntime::buffer_write_to()` dispatches through this method (#740)
 - **commands**: `:w` uses streaming write for `STREAMABLE` buffers without codec metadata — avoids full `String` materialization for large mmap-backed files (#740)
 
+### Fixed
+
+- **commands**: `:bd` / `:bdelete` now releases per-buffer state on close — previously `BdeleteCommand` bypassed `BufferApi::delete_buffer` and called `kernel.buffers.unregister()` directly, leaking `TextBufferRegistry`, `ByteUndoRegistry`, and `CodecSessionState` entries on every buffer close. Routing through `delete_buffer` also restores last-buffer protection (#740)
+- **commands**: `decode_file_content` returns an error when no buffer is active instead of silently dropping codec metadata — a later `:w` then fell back to a UTF-8 encode that corrupted binary files (#740)
+
 ## [0.14.4] - 2026-04-01
 
 ### Added

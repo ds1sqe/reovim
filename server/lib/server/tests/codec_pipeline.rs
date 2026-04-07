@@ -10,18 +10,14 @@
 //! cargo test -p reovim-server --test codec_pipeline
 //! ```
 
-use std::io::Write;
-use std::time::Duration;
+use std::{io::Write, time::Duration};
 
 /// Minimum file size to trigger `VirtualBuffer` (mmap) path: 64 MB + 1 byte.
 const LARGE_FILE_SIZE: usize = 64 * 1024 * 1024 + 1;
 
 /// Generate a temp file path with unique suffix.
 fn temp_path(suffix: &str) -> String {
-    format!(
-        "/tmp/reovim-codec-test-{}-{suffix}",
-        std::process::id()
-    )
+    format!("/tmp/reovim-codec-test-{}-{suffix}", std::process::id())
 }
 
 /// Create a large UTF-8 file (>64 MB) with predictable line content.
@@ -29,9 +25,8 @@ fn temp_path(suffix: &str) -> String {
 /// Each line is "line NNNNN padding...\n" = exactly 100 bytes.
 /// Returns `(path, line_count)`.
 fn create_large_utf8_file(path: &str) -> usize {
-    let mut file = std::io::BufWriter::new(
-        std::fs::File::create(path).expect("Failed to create large file"),
-    );
+    let mut file =
+        std::io::BufWriter::new(std::fs::File::create(path).expect("Failed to create large file"));
     let line_count = LARGE_FILE_SIZE / 100 + 1;
     for i in 0..line_count {
         write!(file, "line {i:>05} ").expect("write");
@@ -165,10 +160,7 @@ async fn large_file_streaming_save_roundtrip() {
     // Compare files byte-for-byte
     let src_size = std::fs::metadata(&src_path).expect("src metadata").len();
     let dst_size = std::fs::metadata(&dst_path).expect("dst metadata").len();
-    assert_eq!(
-        src_size, dst_size,
-        "Saved file size ({dst_size}) != source ({src_size})"
-    );
+    assert_eq!(src_size, dst_size, "Saved file size ({dst_size}) != source ({src_size})");
 
     // Chunk comparison to avoid loading 128MB into memory
     let src_data = std::fs::read(&src_path).expect("read src");
@@ -242,10 +234,7 @@ async fn elf_binary_opens_with_codec_summary() {
         .expect("ELF buffer not found");
 
     // Should have codec metadata
-    assert!(
-        buf.codec_metadata.is_some(),
-        "ELF buffer should have codec metadata"
-    );
+    assert!(buf.codec_metadata.is_some(), "ELF buffer should have codec metadata");
 
     drop(client);
     drop(harness);
@@ -270,14 +259,16 @@ async fn rlib_file_opens_with_codec_summary() {
         return;
     }
 
-    let rlib_path = std::fs::read_dir(&deps_dir)
-        .ok()
-        .and_then(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .find(|e| e.path().extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rlib")))
-                .map(|e| e.path())
-        });
+    let rlib_path = std::fs::read_dir(&deps_dir).ok().and_then(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .find(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("rlib"))
+            })
+            .map(|e| e.path())
+    });
 
     let Some(rlib_path) = rlib_path else {
         eprintln!("Skipping: no .rlib files in target/debug/deps/");
@@ -329,20 +320,15 @@ async fn rlib_file_opens_with_codec_summary() {
         .buffers
         .iter()
         .find(|b| {
-            b.path
-                .as_deref()
-                .is_some_and(|p| {
-                    std::path::Path::new(p)
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("rlib"))
-                })
+            b.path.as_deref().is_some_and(|p| {
+                std::path::Path::new(p)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("rlib"))
+            })
         })
         .expect("rlib buffer not found");
 
-    assert!(
-        buf.codec_metadata.is_some(),
-        "rlib buffer should have codec metadata"
-    );
+    assert!(buf.codec_metadata.is_some(), "rlib buffer should have codec metadata");
 
     drop(client);
     drop(harness);

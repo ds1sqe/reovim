@@ -45,11 +45,34 @@ use crate::{ByteNotifiable, CodecMetadata};
 /// supports multiple views (e.g., structured summary + hex dump),
 /// switching views requires re-decoding the same raw bytes with a
 /// different view name. The raw bytes cache avoids re-reading from disk.
+///
+/// # Bugs deleted by architecture (`#740` Phase 3)
+///
+/// - **B1** (HIGH — data loss): `:w` writes the encoded buffer back to disk
+///   but never updates `raw_bytes`, leaving the cache stale. Once
+///   [`InodeTable`](https://github.com/reovim/reovim/issues/740) replaces
+///   this struct, byte storage will live on `Inode.bytes` (the single
+///   source of truth), so `raw_bytes` ceases to exist and the bug class
+///   cannot recur. No Phase 0 patch — Phase 3 deletes it by structure.
+/// - **B2** (HIGH — type safety): [`crate::DecodeResult::readonly`] is
+///   discarded by every consumer. Phase 3 replaces the runtime flag with
+///   `ContentCodec::translate_edit` returning `Some`/`None`, making
+///   writability a compile-time codec capability. No Phase 0 patch.
+/// - **B4** (LATENT — index stale): `set_index` registers a per-buffer
+///   `dyn ByteNotifiable` index, but no production caller wires the
+///   notification path today, so the index can drift from the underlying
+///   bytes after edits. Becomes load-bearing in Phase 5 once `Mount.index`
+///   participates in `translate_edit` peer notification; documented as a
+///   known limitation here until then.
 #[derive(Default)]
 pub struct CodecSessionState {
     /// Metadata per buffer (`BufferId.as_usize()` -> `CodecMetadata`).
     metadata: HashMap<usize, CodecMetadata>,
     /// Cached raw bytes per buffer for view switching.
+    ///
+    /// SAFETY (`#740` Phase 3): superseded by `Inode.bytes` — the parallel
+    /// copy that fed bug B1 (stale-on-`:w`) is removed when `InodeTable`
+    /// lands.
     raw_bytes: HashMap<usize, Vec<u8>>,
     /// Active view name per buffer (e.g., `"default"`, `"hex"`).
     active_view: HashMap<usize, String>,
@@ -59,6 +82,11 @@ pub struct CodecSessionState {
     /// through [`ByteNotifiable::notify_byte_edit`] after every mutation.
     /// Per-buffer (shared across clients), not per-client — the byte-level
     /// index tracks shared buffer state.
+    ///
+    /// KNOWN LIMITATION (`#740` B4): no production caller wires the
+    /// notification path today, so the index drifts after edits. Phase 5
+    /// makes this load-bearing via `Mount.index` and the multi-mount
+    /// `translate_edit` peer-notification flow.
     indices: HashMap<usize, Box<dyn ByteNotifiable>>,
 }
 

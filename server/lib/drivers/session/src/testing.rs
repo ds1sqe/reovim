@@ -83,6 +83,12 @@ pub struct TestSessionRuntime {
     ///
     /// Commands use this via `runtime.ext::<T>()`, `runtime.ext_mut::<T>()`.
     pub extensions: ExtensionMap,
+    /// Session-wide shared extensions (#543, #740).
+    ///
+    /// Empty by default; tests that need to exercise commands which touch
+    /// shared session state (e.g. `CodecSessionState`) should populate this
+    /// map directly so `runtime.shared_ext_mut::<T>()` returns `Some(_)`.
+    pub shared_extensions: ExtensionMap,
     /// Per-client compositor (#474).
     ///
     /// `None` for tests that don't need compositor. Matches `EditingState.compositor`.
@@ -138,6 +144,7 @@ impl TestSessionRuntime {
             mode_stack: ModeStack::new(home_mode),                      // Per-client state
             windows: WindowLayout::empty(),                             // Per-client state
             extensions: ExtensionMap::new(),                            // Per-client state
+            shared_extensions: ExtensionMap::new(),                     // Shared (#543, #740)
             compositor: None,                                           // Per-client (#474)
             tabs: crate::TabPageSet::new(),                             // Per-client (#401)
             registers: RegisterBank::new(),                             // Per-client (#515)
@@ -160,6 +167,7 @@ impl TestSessionRuntime {
             mode_stack: ModeStack::new(mode),                      // Per-client state
             windows: WindowLayout::empty(),                        // Per-client state
             extensions: ExtensionMap::new(),                       // Per-client state
+            shared_extensions: ExtensionMap::new(),                // Shared (#543, #740)
             compositor: None,                                      // Per-client (#474)
             tabs: crate::TabPageSet::new(),                        // Per-client (#401)
             registers: RegisterBank::new(),                        // Per-client (#515)
@@ -271,7 +279,8 @@ impl TestSessionRuntime {
             terminal_size: &mut self.terminal_size,
         };
         let mut runtime =
-            SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor);
+            SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor)
+                .with_shared_extensions(&mut self.shared_extensions); // #740 Phase 0
         let result = f(&mut runtime);
         let changes = ChangeTracker::take_changes(&mut runtime);
         self.changes.merge(changes);
@@ -302,6 +311,7 @@ impl TestSessionRuntime {
             terminal_size: &mut self.terminal_size,
         };
         SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor)
+            .with_shared_extensions(&mut self.shared_extensions) // #740 Phase 0
     }
 
     /// Take accumulated changes and reset the tracker.

@@ -310,12 +310,27 @@ fn finish_decoded_open(
 /// if no codec modules are loaded.
 ///
 /// Stores codec metadata in `CodecSessionState` for round-trip save.
-#[cfg_attr(coverage_nightly, coverage(off))]
+///
+/// # Errors
+///
+/// - **No active buffer** (`#740` Phase 0, B5): returns `Err("no active buffer")`
+///   when `runtime.active_buffer()` is `None`. Previously this case silently
+///   dropped codec metadata, leaving a later `:w` to fall back to a UTF-8
+///   encode that corrupted binary files. Phase 3 migrates this guard to
+///   `EditError::NoActiveBuffer`.
+/// - **Invalid UTF-8** when no codec applies and the bytes are not UTF-8.
 fn decode_file_content(
     bytes: &[u8],
     filename: &str,
     runtime: &mut SessionRuntime<'_>,
 ) -> Result<String, String> {
+    // #740 Phase 0 (B5): refuse to decode without an active buffer instead
+    // of silently dropping codec metadata. The downstream `:w` would have
+    // re-encoded as UTF-8 and corrupted binary files.
+    let buffer_id = runtime
+        .active_buffer()
+        .ok_or_else(|| "no active buffer".to_string())?;
+
     // Try to use the codec pipeline
     let services = &runtime.kernel().services;
     let classifier_store = services.get::<ContentClassifierStore>();
@@ -342,9 +357,7 @@ fn decode_file_content(
 
                     // Store metadata + raw bytes in shared extensions (per-buffer,
                     // not per-client) for round-trip save and view switching.
-                    if let Some(buffer_id) = runtime.active_buffer()
-                        && let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>()
-                    {
+                    if let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>() {
                         codec_state.insert(buffer_id, result.metadata);
                         codec_state.insert_raw(buffer_id, bytes.to_vec());
                         codec_state.set_active_view(buffer_id, "default".to_string());

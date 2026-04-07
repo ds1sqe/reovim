@@ -44,6 +44,13 @@ pub struct DecodeResult {
     /// Whether the buffer should be read-only.
     ///
     /// Set to `true` for lossy decodes or one-way codecs (like hex dump).
+    ///
+    /// SAFETY (`#740` Phase 3, B2): this flag is currently discarded by
+    /// every consumer (`DecodeResult.readonly` is set but never honoured).
+    /// Phase 3 deletes the field entirely once `ContentCodec::translate_edit`
+    /// becomes the writability seam — codecs that cannot translate decoded
+    /// edits back to byte edits return `None` and are read-only by
+    /// construction. No Phase 0 runtime patch.
     pub readonly: bool,
 
     /// Whether the output was truncated due to input size limits.

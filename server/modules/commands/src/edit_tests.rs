@@ -178,3 +178,61 @@ fn test_edit_execute_invalid_utf8() {
         assert!(result.is_error());
     });
 }
+
+// ========================================================================
+// `decode_file_content` tests (#740 Phase 0, B5)
+// ========================================================================
+
+/// B5: `decode_file_content` returns `Err("no active buffer")` instead of
+/// silently dropping codec metadata when the runtime has no active buffer.
+/// Previously the function fell through to the UTF-8 fallback and a later
+/// `:w` round-trip corrupted binary files.
+#[test]
+fn decode_file_content_no_active_buffer_errors() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    // Construct a runtime with NO active buffer. `with_buffer` would set
+    // one; `new()` leaves `active_buffer = None`.
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"hello", "test.txt", runtime);
+        assert!(result.is_err(), "expected error, got {result:?}");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("no active buffer"),
+            "expected 'no active buffer' in error, got {err:?}"
+        );
+    });
+}
+
+/// B5 (positive control): with an active buffer and valid UTF-8 input but
+/// no codec stores in `kernel.services`, the function falls through to the
+/// UTF-8 fallback and returns the decoded string.
+#[test]
+fn decode_file_content_utf8_fallback_succeeds() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"hello world", "test.txt", runtime);
+        assert_eq!(result, Ok("hello world".to_string()));
+    });
+}
+
+/// B5 (negative control): UTF-8 fallback rejects invalid byte sequences with
+/// a clear error pointing at the offset.
+#[test]
+fn decode_file_content_invalid_utf8_errors() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(&[0xFF, 0xFE, 0x80, 0x90], "binary.bin", runtime);
+        assert!(result.is_err(), "expected error, got {result:?}");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not valid UTF-8"),
+            "expected 'not valid UTF-8' in error, got {err:?}"
+        );
+    });
+}
