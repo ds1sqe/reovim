@@ -6,11 +6,9 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
-    reovim_kernel::{
-        api::{
-            KernelContext, ModeStack,
-            v1::{ModeId, ModuleId},
-        },
+    reovim_kernel::api::{
+        KernelContext, ModeStack,
+        v1::{ModeId, ModuleId},
     },
     reovim_provider_text::Buffer,
     reovim_types_text::{HistoryRing, Position, RegisterBank},
@@ -59,7 +57,6 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
     );
     cmd.execute(&mut runtime, &CommandContext::new())
 }
-
 
 // =========================================================================
 // Command ID Tests

@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::{
-        OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry,
-        events::kernel::BufferWillSave,
+        OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry, events::kernel::BufferWillSave,
     },
     tracing::{debug, warn},
 };

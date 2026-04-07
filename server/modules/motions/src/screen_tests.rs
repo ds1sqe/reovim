@@ -7,11 +7,9 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
-    reovim_kernel::{
-        api::{
-            KernelContext, ModeStack,
-            v1::{BufferId, ModeId, ModuleId},
-        },
+    reovim_kernel::api::{
+        KernelContext, ModeStack,
+        v1::{BufferId, ModeId, ModuleId},
     },
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };

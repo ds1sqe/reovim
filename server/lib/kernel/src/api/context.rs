@@ -310,17 +310,11 @@ impl Default for KernelContext {
 pub struct StubBufferManager;
 
 impl BufferManager for StubBufferManager {
-    fn get(
-        &self,
-        _id: crate::mm::BufferId,
-    ) -> Option<Arc<RwLock<dyn crate::block::KernelBuffer>>> {
+    fn get(&self, _id: crate::mm::BufferId) -> Option<Arc<RwLock<dyn crate::block::KernelBuffer>>> {
         None
     }
 
-    fn register(
-        &self,
-        buffer: Arc<RwLock<dyn crate::block::KernelBuffer>>,
-    ) -> crate::mm::BufferId {
+    fn register(&self, buffer: Arc<RwLock<dyn crate::block::KernelBuffer>>) -> crate::mm::BufferId {
         buffer.read().id()
     }
 

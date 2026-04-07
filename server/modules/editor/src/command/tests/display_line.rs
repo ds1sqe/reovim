@@ -18,7 +18,9 @@ use {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn setup_kernel() -> KernelContext {
     let kernel = create_test_context();
-    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+        .services
+        .register(Arc::new(TextBufferRegistry::new()));
     kernel
 }
 

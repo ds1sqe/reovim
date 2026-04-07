@@ -294,9 +294,7 @@ fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<crate::sess
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(
-        reovim_driver_session::TextBufferRegistry::new(),
-    ));
+    services.register(Arc::new(reovim_driver_session::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -557,9 +555,7 @@ fn test_registry_with_syntax_factory() -> (Arc<SessionRegistry>, Arc<crate::sess
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(
-        reovim_driver_session::TextBufferRegistry::new(),
-    ));
+    services.register(Arc::new(reovim_driver_session::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),

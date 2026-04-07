@@ -4,8 +4,8 @@ use {
     reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
     reovim_driver_session::TextBufferRegistry,
     reovim_kernel::api::v1::{
-        BufferId, OptionRegistry, OptionScopeId, OptionSpec, OptionValue, RwLock,
-        ServiceRegistry, events::kernel::BufferWillSave,
+        BufferId, OptionRegistry, OptionScopeId, OptionSpec, OptionValue, RwLock, ServiceRegistry,
+        events::kernel::BufferWillSave,
     },
     reovim_provider_text::Buffer,
 };
@@ -51,9 +51,7 @@ fn setup_options(autoformat: bool) -> Arc<OptionRegistry> {
     options
 }
 
-fn setup_services_with_formatter(
-    text_buffers: Arc<TextBufferRegistry>,
-) -> Arc<ServiceRegistry> {
+fn setup_services_with_formatter(text_buffers: Arc<TextBufferRegistry>) -> Arc<ServiceRegistry> {
     let services = Arc::new(ServiceRegistry::new());
     let mut registry = FormatterRegistry::new();
     registry.register("rust", Box::new(UpperFormatter));

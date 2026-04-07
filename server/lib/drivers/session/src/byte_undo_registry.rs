@@ -18,8 +18,10 @@
 
 use std::collections::HashMap;
 
-use reovim_arch::sync::RwLock;
-use reovim_kernel::api::v1::{BufferId, ByteEdit, ByteUndoLog, Service};
+use {
+    reovim_arch::sync::RwLock,
+    reovim_kernel::api::v1::{BufferId, ByteEdit, ByteUndoLog, Service},
+};
 
 /// Per-buffer byte-level undo log storage.
 ///
@@ -42,11 +44,7 @@ impl ByteUndoRegistry {
     ///
     /// Creates the log on first use (lazy initialization).
     pub fn push(&self, buffer_id: BufferId, edits: Vec<ByteEdit>) {
-        self.logs
-            .write()
-            .entry(buffer_id)
-            .or_default()
-            .push(edits);
+        self.logs.write().entry(buffer_id).or_default().push(edits);
     }
 
     /// Check if a buffer can undo.

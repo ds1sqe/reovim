@@ -5,8 +5,10 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{BufferId, RwLock, Service};
-use reovim_provider_text::BufferOps;
+use {
+    reovim_kernel::api::v1::{BufferId, RwLock, Service},
+    reovim_provider_text::BufferOps,
+};
 
 use crate::TextBufferRegistry;
 

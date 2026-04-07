@@ -2,8 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_kernel::api::v1::{BufferId, ModeId, RwLock},
-    reovim_provider_text::BufferOps,
-    reovim_provider_text::Buffer,
+    reovim_provider_text::{Buffer, BufferOps},
     reovim_types_text::{Edit, Position},
 };
 

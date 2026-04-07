@@ -263,11 +263,7 @@ impl StateChanges {
     }
 
     /// Record a byte-level edit for codec index notification (#740 D.5).
-    pub fn record_byte_edit(
-        &mut self,
-        buffer: BufferId,
-        edit: reovim_kernel::api::v1::ByteEdit,
-    ) {
+    pub fn record_byte_edit(&mut self, buffer: BufferId, edit: reovim_kernel::api::v1::ByteEdit) {
         self.byte_edits.push((buffer, edit));
     }
 

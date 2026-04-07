@@ -680,8 +680,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_line_count(&self, buffer: BufferId) -> Option<usize> {
-        self.text_buffer(buffer)
-            .map(|buf| buf.read().line_count())
+        self.text_buffer(buffer).map(|buf| buf.read().line_count())
     }
 
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
@@ -708,8 +707,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_content(&self, buffer: BufferId) -> Option<String> {
-        self.text_buffer(buffer)
-            .map(|buf| buf.read().content())
+        self.text_buffer(buffer).map(|buf| buf.read().content())
     }
 
     fn buffer_file_path(&self, buffer: BufferId) -> Option<String> {
@@ -718,8 +716,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool> {
-        self.text_buffer(buffer)
-            .map(|buf| buf.read().is_modified())
+        self.text_buffer(buffer).map(|buf| buf.read().is_modified())
     }
 
     fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool) {

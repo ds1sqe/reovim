@@ -490,10 +490,7 @@ fn large_build_and_lookup() {
     assert_eq!(idx.offset_to_position(0), Some(TextPosition::new(0, 0)));
     // Last line (line 9999). Each line is 41 bytes.
     let last_start = 9999 * 41;
-    assert_eq!(
-        idx.offset_to_position(last_start),
-        Some(TextPosition::new(9999, 0))
-    );
+    assert_eq!(idx.offset_to_position(last_start), Some(TextPosition::new(9999, 0)));
     // Reverse: position → byte.
     assert_eq!(idx.to_bytes(&TextPosition::new(9999, 0)), Some(last_start));
     assert_eq!(idx.to_bytes(&TextPosition::new(5000, 5)), Some(5000 * 41 + 5));
@@ -514,15 +511,9 @@ fn large_insert_many_newlines() {
     assert_eq!(idx.offset_to_position(0), Some(TextPosition::new(0, 0)));
     // After insertion, 500 new (empty) lines were created.
     // Line 3 starts at byte 101 (after first inserted \n at 100).
-    assert_eq!(
-        idx.offset_to_position(101),
-        Some(TextPosition::new(3, 0))
-    );
+    assert_eq!(idx.offset_to_position(101), Some(TextPosition::new(3, 0)));
     // Original line 3 (byte 123) shifted by 500 → byte 623, now line 503.
-    assert_eq!(
-        idx.offset_to_position(623),
-        Some(TextPosition::new(503, 0))
-    );
+    assert_eq!(idx.offset_to_position(623), Some(TextPosition::new(503, 0)));
 }
 
 #[test]
@@ -562,10 +553,7 @@ fn large_replace_preserves_consistency() {
     assert_eq!(idx.to_bytes(&TextPosition::new(1, 0)), Some(6));
     // Last line (999): line k starts at 6 + (k-1)*41 for k >= 1.
     let last_start = 6 + 998 * 41;
-    assert_eq!(
-        idx.to_bytes(&TextPosition::new(999, 0)),
-        Some(last_start)
-    );
+    assert_eq!(idx.to_bytes(&TextPosition::new(999, 0)), Some(last_start));
 }
 
 #[test]

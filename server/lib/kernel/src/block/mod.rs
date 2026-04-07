@@ -23,7 +23,9 @@ mod byte_edit;
 mod byte_undo_log;
 mod storage_ops;
 
-pub use buffer_meta::{BufferMeta, KernelBuffer};
-pub use byte_edit::ByteEdit;
-pub use byte_undo_log::{ByteUndoEntry, ByteUndoLog};
-pub use storage_ops::{StorageCapabilities, StorageError, StorageOps};
+pub use {
+    buffer_meta::{BufferMeta, KernelBuffer},
+    byte_edit::ByteEdit,
+    byte_undo_log::{ByteUndoEntry, ByteUndoLog},
+    storage_ops::{StorageCapabilities, StorageError, StorageOps},
+};

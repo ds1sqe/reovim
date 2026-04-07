@@ -617,10 +617,7 @@ impl InputServiceImpl {
     ///
     /// Routes `ByteEdit` records from `StateChanges` to
     /// `CodecSessionState::notify_index()` for incremental index updates.
-    fn notify_codec_indices(
-        session: &Session,
-        changes: &reovim_driver_session::StateChanges,
-    ) {
+    fn notify_codec_indices(session: &Session, changes: &reovim_driver_session::StateChanges) {
         use reovim_driver_codec::CodecSessionState;
 
         session.with_state_mut_sync(|state| {

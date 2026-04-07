@@ -25,8 +25,7 @@ use {
 /// Create a test context with `TextBufferRegistry` registered on the service registry.
 fn make_test_ctx() -> KernelContext {
     let ctx = create_test_context();
-    ctx.services
-        .register(Arc::new(TextBufferRegistry::new()));
+    ctx.services.register(Arc::new(TextBufferRegistry::new()));
     ctx
 }
 
@@ -40,10 +39,7 @@ fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
 }
 
 /// Read text buffer content from the `TextBufferRegistry`.
-fn text_buf(
-    ctx: &KernelContext,
-    id: BufferId,
-) -> Arc<RwLock<dyn reovim_provider_text::BufferOps>> {
+fn text_buf(ctx: &KernelContext, id: BufferId) -> Arc<RwLock<dyn reovim_provider_text::BufferOps>> {
     ctx.services
         .get::<TextBufferRegistry>()
         .unwrap()

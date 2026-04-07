@@ -458,9 +458,8 @@ impl TestSessionRuntime {
     fn text_buffer_arc(
         &self,
         id: BufferId,
-    ) -> Option<
-        std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_provider_text::BufferOps>>,
-    > {
+    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<dyn reovim_provider_text::BufferOps>>>
+    {
         self.kernel
             .services
             .get::<crate::TextBufferRegistry>()

@@ -10,7 +10,9 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, TextBufferRegistry,
-        WindowLayout, api::{CommandExecutor, CommandHandle}, testing::StubExecutor,
+        WindowLayout,
+        api::{CommandExecutor, CommandHandle},
+        testing::StubExecutor,
     },
     reovim_kernel::{
         api::{
@@ -26,8 +28,7 @@ use {
 
 fn make_test_ctx() -> KernelContext {
     let ctx = create_test_context();
-    ctx.services
-        .register(Arc::new(TextBufferRegistry::new()));
+    ctx.services.register(Arc::new(TextBufferRegistry::new()));
     ctx
 }
 

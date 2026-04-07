@@ -2487,7 +2487,9 @@ fn test_insert_text_no_active_window_uses_zero_position() {
     let buf_arc = std::sync::Arc::new(reovim_arch::sync::RwLock::new(
         reovim_provider_text::Buffer::from_string("hello"),
     ));
-    let buf_id = kernel.buffers.register(std::sync::Arc::clone(&buf_arc) as _);
+    let buf_id = kernel
+        .buffers
+        .register(std::sync::Arc::clone(&buf_arc) as _);
     text_registry.register(buf_arc);
 
     let mut mode_stack = ModeStack::new(test_mode());
@@ -2541,7 +2543,9 @@ fn test_delete_range_no_active_window_uses_zero_position() {
     let buf_arc = std::sync::Arc::new(reovim_arch::sync::RwLock::new(
         reovim_provider_text::Buffer::from_string("hello world"),
     ));
-    let buf_id = kernel.buffers.register(std::sync::Arc::clone(&buf_arc) as _);
+    let buf_id = kernel
+        .buffers
+        .register(std::sync::Arc::clone(&buf_arc) as _);
     text_registry.register(buf_arc);
 
     let mut mode_stack = ModeStack::new(test_mode());
@@ -3574,10 +3578,7 @@ fn kernel_with_alternate_undo() -> KernelContext {
 /// Creates a single concrete `Arc<RwLock<Buffer>>` and coerces it into both
 /// `dyn BufferOps` (for `TextBufferRegistry`) and `dyn KernelBuffer` (for kernel)
 /// at the respective call sites.
-fn register_in_both(
-    kernel: &KernelContext,
-    content: &str,
-) -> BufferId {
+fn register_in_both(kernel: &KernelContext, content: &str) -> BufferId {
     let arc = std::sync::Arc::new(reovim_arch::sync::RwLock::new(
         reovim_provider_text::Buffer::from_string(content),
     ));

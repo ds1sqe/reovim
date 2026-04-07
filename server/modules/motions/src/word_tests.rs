@@ -8,9 +8,7 @@ use {
         api::CommandExecutor,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
-    reovim_kernel::{
-        api::{KernelContext, ModeId, ModeStack, ModuleId, v1::BufferId},
-    },
+    reovim_kernel::api::{KernelContext, ModeId, ModeStack, ModuleId, v1::BufferId},
     reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 

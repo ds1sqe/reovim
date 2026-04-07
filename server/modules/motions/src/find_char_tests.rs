@@ -7,11 +7,9 @@ use {
         api::{CommandExecutor, CommandHandle, ExtensionApi},
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
-    reovim_kernel::{
-        api::{
-            KernelContext, ModeStack,
-            v1::{BufferId, CommandId, ModeId, ModuleId},
-        },
+    reovim_kernel::api::{
+        KernelContext, ModeStack,
+        v1::{BufferId, CommandId, ModeId, ModuleId},
     },
     reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,

@@ -20,8 +20,7 @@ use {
 /// Create a test context with `TextBufferRegistry` registered on the service registry.
 fn make_test_ctx() -> reovim_kernel::api::v1::KernelContext {
     let ctx = create_test_context();
-    ctx.services
-        .register(Arc::new(TextBufferRegistry::new()));
+    ctx.services.register(Arc::new(TextBufferRegistry::new()));
     ctx
 }
 

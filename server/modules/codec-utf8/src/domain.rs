@@ -6,8 +6,7 @@
 
 use {
     reovim_driver_codec::{
-        ByteNotifiable, CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode,
-        Index,
+        ByteNotifiable, CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
     },
     reovim_kernel::api::v1::ByteEdit,
     reovim_types_text::{Text, TextEdit, TextPosition},

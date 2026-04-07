@@ -267,9 +267,7 @@ pub fn create_session_state() -> SessionState {
 
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
     // Uses TextBufferRegistry for text-specific access (kernel.buffers is byte-only).
-    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(
-        text_registry,
-    )));
+    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(text_registry)));
 
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));

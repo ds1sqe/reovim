@@ -94,10 +94,9 @@
 pub mod api;
 pub mod bridges;
 mod buffer_access;
-mod empty_handler;
 mod byte_undo_registry;
+mod empty_handler;
 // Note: text_buffer_registry is pub(crate) — only re-export the type, not the module.
-mod text_buffer_registry;
 mod extension;
 mod handler_key;
 mod handler_registry;
@@ -113,6 +112,7 @@ mod runtime;
 mod snippet_expander;
 pub mod tab;
 pub mod testing;
+mod text_buffer_registry;
 pub mod tick;
 mod transition;
 mod types;

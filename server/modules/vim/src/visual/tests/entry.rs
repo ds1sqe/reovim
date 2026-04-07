@@ -87,8 +87,7 @@ use {
 
 fn make_test_ctx() -> KernelContext {
     let ctx = create_test_context();
-    ctx.services
-        .register(Arc::new(TextBufferRegistry::new()));
+    ctx.services.register(Arc::new(TextBufferRegistry::new()));
     ctx
 }
 

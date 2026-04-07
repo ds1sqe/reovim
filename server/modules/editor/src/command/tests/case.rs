@@ -20,7 +20,9 @@ use {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn setup_kernel() -> KernelContext {
     let kernel = create_test_context();
-    kernel.services.register(Arc::new(TextBufferRegistry::new()));
+    kernel
+        .services
+        .register(Arc::new(TextBufferRegistry::new()));
     kernel
 }
 
@@ -41,10 +43,7 @@ fn register_buffer(kernel: &KernelContext, buffer: Buffer) -> BufferId {
 
 /// Read a text buffer from the text registry for assertions.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn text_buf(
-    kernel: &KernelContext,
-    id: BufferId,
-) -> Arc<RwLock<dyn BufferOps>> {
+fn text_buf(kernel: &KernelContext, id: BufferId) -> Arc<RwLock<dyn BufferOps>> {
     kernel
         .services
         .get::<TextBufferRegistry>()
