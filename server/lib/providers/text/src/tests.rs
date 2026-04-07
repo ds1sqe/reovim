@@ -789,3 +789,106 @@ fn buffer_ops_content() {
     assert_eq!(bo.line_count(), 2);
     assert_eq!(bo.line(0).unwrap(), "hello");
 }
+
+// ── write_to streaming ──────────────────────────────────────────────
+
+#[test]
+fn write_to_unedited_matches_content() {
+    let vbuf = vbuf_from_str("hello\nworld\nfoo");
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    assert_eq!(buf, b"hello\nworld\nfoo");
+    assert_eq!(buf, vbuf.content().as_bytes());
+}
+
+#[test]
+fn write_to_after_insert() {
+    let mut vbuf = vbuf_from_str("hello\nworld");
+    vbuf.insert_at(Position::new(0, 5), " there");
+    // Content is now "hello there\nworld"
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "hello there\nworld");
+    assert_eq!(buf, vbuf.content().as_bytes());
+}
+
+#[test]
+fn write_to_after_delete() {
+    let mut vbuf = vbuf_from_str("hello world\nfoo bar");
+    vbuf.delete_range(Position::new(0, 5), Position::new(0, 11));
+    // Content is now "hello\nfoo bar"
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "hello\nfoo bar");
+    assert_eq!(buf, vbuf.content().as_bytes());
+}
+
+#[test]
+fn write_to_after_multiple_edits() {
+    let mut vbuf = vbuf_from_str("aaa\nbbb\nccc");
+    // Insert at start of line 1
+    vbuf.insert_at(Position::new(1, 0), "X");
+    // Delete last char of line 2
+    vbuf.delete_range(Position::new(2, 2), Position::new(2, 3));
+    // Content is now "aaa\nXbbb\ncc"
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    let written = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(written, vbuf.content());
+}
+
+#[test]
+fn write_to_empty_buffer() {
+    let vbuf = vbuf_from_str("");
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    assert!(buf.is_empty());
+}
+
+#[test]
+fn write_to_unicode_content() {
+    let text = "héllo\n日本語\n😀🎉";
+    let mut vbuf = vbuf_from_str(text);
+    // Insert at line 1, after '日'
+    vbuf.insert_at(Position::new(1, 1), "X");
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    assert_eq!(buf, vbuf.content().as_bytes());
+}
+
+#[test]
+fn write_to_via_buffer_ops_trait() {
+    let mut vbuf = vbuf_from_str("hello\nworld");
+    vbuf.insert_at(Position::new(0, 5), "!");
+    let bo: &dyn BufferOps = &vbuf;
+    let mut buf = Vec::new();
+    bo.write_to(&mut buf).unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "hello!\nworld");
+}
+
+#[test]
+fn write_to_rope_buffer_default_impl() {
+    let buffer = Buffer::from_string("rope content\nline two");
+    let bo: &dyn BufferOps = &buffer;
+    let mut buf = Vec::new();
+    bo.write_to(&mut buf).unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "rope content\nline two");
+}
+
+#[test]
+fn write_to_large_content_consistency() {
+    // Build a 1000-line VirtualBuffer
+    let content: String = (0..1000)
+        .map(|i| format!("line {i:>035}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut vbuf = vbuf_from_str(&content);
+    // Edit in the middle
+    vbuf.insert_at(Position::new(500, 0), "INSERTED ");
+    // Edit near the end
+    vbuf.insert_at(Position::new(999, 0), "LAST ");
+    let mut buf = Vec::new();
+    vbuf.write_to(&mut buf).unwrap();
+    // Streaming write must match materialized content
+    assert_eq!(buf, vbuf.content().as_bytes());
+}
