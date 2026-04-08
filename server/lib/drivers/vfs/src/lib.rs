@@ -68,6 +68,7 @@
 //! ```
 
 // byte_undo_log moved to reovim-kernel::block (#740)
+mod byte_source;
 mod error;
 mod file_mapping;
 mod filetype;
@@ -115,7 +116,10 @@ pub use path::{PathNormalizer, StandardPathNormalizer};
 pub use watch::{WatchEvent, WatchHandle, WatchId};
 
 // Re-export memory-mapped file type
-pub use mapped_file::MappedFile;
+pub use {
+    byte_source::{ByteSource, ByteSourceCapabilities, HeapByteSource, MappedByteSource},
+    mapped_file::MappedFile,
+};
 
 // Re-export traits and related types
 pub use traits::{DirEntry, FileHandle, FileWatcher, OpenOptions, SeekFrom, VfsDriver};
@@ -131,3 +135,7 @@ pub use {registry::VfsProviderRegistry, scheme::VfsScheme};
 
 // Re-export VFS instance wrapper (Epic #465 - ex-command VFS access)
 pub use instance::VfsInstance;
+
+#[cfg(test)]
+#[path = "byte_source_tests.rs"]
+mod byte_source_tests;

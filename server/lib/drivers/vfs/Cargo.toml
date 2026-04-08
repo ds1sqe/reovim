@@ -17,3 +17,4 @@ workspace = true
 reovim-kernel = { workspace = true }
 # Memory-mapped I/O for large file support
 memmap2 = "0.9"
+bitflags = { workspace = true }

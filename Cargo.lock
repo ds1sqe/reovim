@@ -2711,6 +2711,7 @@ dependencies = [
 name = "reovim-driver-vfs"
 version = "0.14.5-dev"
 dependencies = [
+ "bitflags 2.11.0",
  "memmap2",
  "reovim-kernel",
 ]

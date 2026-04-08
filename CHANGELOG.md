@@ -16,6 +16,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **search**: `LineSource` trait with `BufferLineSource` and `VirtualBufferLineSource` adapters for buffer-type-agnostic search (#739)
 - **session**: `buffer_write_to()` and `is_virtual_buffer()` methods on `BufferApi` for streaming write and buffer type detection (#739)
 - **codec**: `decode_streaming()` method on `ContentCodec` for header-only parsing of large binary files (#739)
+- **vfs**: `ByteSource` trait with `HeapByteSource` and `MappedByteSource` implementations for phase 2 inode codec work (#740)
 
 - **driver**: `BufferCapabilities` bitflags in `reovim-driver-buffer` — `CONTENT_MATERIALIZABLE`, `SNAPSHOTTABLE`, `STREAMABLE`, `FILE_BACKED`, `LINE_READABLE`, `EDITABLE` with `ROPE` and `VIRTUAL` presets (#739)
 - **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
