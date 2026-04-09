@@ -27,7 +27,13 @@ reovim-driver-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
 serde_json = { workspace = true }
-regex = "1"
+regex = { workspace = true }
+
+# Large-file gate benchmarks (#739)
+reovim-bench-utils = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+memmap2 = "0.9"
+tempfile = "3"
 
 [[bench]]
 name = "buffer_ops"
@@ -51,4 +57,8 @@ harness = false
 
 [[bench]]
 name = "notification_overhead"
+harness = false
+
+[[bench]]
+name = "large_file_gates"
 harness = false

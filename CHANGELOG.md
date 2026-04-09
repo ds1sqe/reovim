@@ -7,6 +7,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Added
 
 - **bench**: large-file benchmark harness — programmatic UTF-8 log and ELF binary fixture generators, Linux RSS measurement via `/proc/self/status`, and `slow_bench_config()` for multi-second benchmarks (#739)
+- **bench**: large-file performance gate benchmarks (G1–G6) — Criterion benchmarks for all #739 gates: 2 GB UTF-8 open/scroll/edit/write/search and 500 MB ELF open, with RSS measurement (#739)
 - **vfs**: `TreeFixture` VFS fixture factories relocated from `shared/bench` to `reovim-driver-vfs::fixtures` — corrects shared→driver layer violation (#739)
 - **kernel**: virtual buffer architecture — mmap + piece table for multi-GB file editing with constant memory overhead. Files > 64 MB use `VirtualBuffer` backed by zero-copy mmap instead of Rope (#739)
 - **kernel**: `PieceTree` B-tree with `Arc` structural sharing for O(1) clone, matching the existing Rope pattern (#739)

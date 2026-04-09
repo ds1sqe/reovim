@@ -2281,14 +2281,18 @@ name = "reovim-bench"
 version = "0.14.5-dev"
 dependencies = [
  "criterion",
+ "memmap2",
  "regex",
+ "reovim-bench-utils",
  "reovim-driver-syntax",
  "reovim-driver-syntax-treesitter",
+ "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-treesitter-rust",
  "reovim-provider-text",
  "reovim-types-text",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
