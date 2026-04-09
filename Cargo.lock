@@ -1411,6 +1411,7 @@ version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5c8ecfc6c72051981c0459f75ccc585e7ff67c70829560cda8e647882a9abff"
 dependencies = [
+ "chrono",
  "encoding_rs",
  "flate2",
  "indexmap 2.13.0",
@@ -1419,6 +1420,7 @@ dependencies = [
  "md-5",
  "nom",
  "rangemap",
+ "rayon",
  "time",
  "weezl",
 ]
@@ -2908,6 +2910,7 @@ dependencies = [
 name = "reovim-module-codec-pdf"
 version = "0.14.5-dev"
 dependencies = [
+ "lopdf",
  "pdf-extract",
  "reovim-capabilities",
  "reovim-driver-annotation",

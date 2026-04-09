@@ -424,6 +424,7 @@ encoding_rs = "0.8"
 
 # Document format support
 pdf-extract = "0.7"
+lopdf = "0.34"
 
 # Binary format parsing
 goblin = "0.9"

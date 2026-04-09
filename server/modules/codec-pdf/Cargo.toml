@@ -27,8 +27,12 @@ reovim-driver-annotation = { workspace = true }
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }
 
-# PDF text extraction
+# PDF text extraction and structural editing
 pdf-extract = { workspace = true }
+lopdf = { workspace = true }
+
+# VFS byte source access
+reovim-driver-vfs = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
@@ -36,7 +40,6 @@ tracing = { workspace = true }
 [dev-dependencies]
 reovim-testing = { workspace = true }
 reovim-types-text = { workspace = true }
-reovim-driver-vfs = { workspace = true }
 
 [features]
 # Enable for building as standalone dynamic library

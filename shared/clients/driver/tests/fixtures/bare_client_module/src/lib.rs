@@ -40,10 +40,7 @@ pub extern "C" fn reovim_client_module_entry() -> *mut c_void {
 /// Minimal init — returns Success (0). Signature matches
 /// `ClientInitFn = unsafe extern "C" fn(*mut c_void, *const c_void) -> i32`.
 #[unsafe(no_mangle)]
-pub extern "C" fn reovim_client_module_init(
-    _module: *mut c_void,
-    _ctx: *const c_void,
-) -> i32 {
+pub extern "C" fn reovim_client_module_init(_module: *mut c_void, _ctx: *const c_void) -> i32 {
     0
 }
 

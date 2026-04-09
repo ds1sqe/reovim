@@ -193,8 +193,7 @@ impl<O: TuiOutput> TuiApp<O> {
         // env flag for flight #724. The flag disappears once #723 ships
         // render-path FFI and #729 proves the full stack end-to-end.
         let factories = crate::static_client_modules::builtin_client_modules();
-        let builtin_kinds: std::collections::HashSet<&str> =
-            factories.keys().copied().collect();
+        let builtin_kinds: std::collections::HashSet<&str> = factories.keys().copied().collect();
         let dynamic_modules: Vec<Box<dyn reovim_client_driver::ClientModule>> =
             if std::env::var("REOVIM_LOAD_DYNAMIC_CLIENT_MODULES").is_ok() {
                 // SAFETY: `discover_dynamic_client_modules` dlopens `.so`

@@ -1,12 +1,17 @@
-//! PDF text extraction codec.
+//! PDF structured codec.
 //!
 //! Extracts text from PDF files page by page, producing a text view
-//! with page boundary annotations. This is a one-way (decode-only)
-//! codec — PDF documents cannot be saved back from extracted text.
+//! with page boundary annotations. Structural editing supports metadata
+//! field updates via `lopdf` parse → modify → serialize (Plan 07 Phase 6).
 
 use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult},
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
+        TranslateEditError, TreePath, impl_tree_op,
+    },
+    reovim_driver_vfs::ByteSource,
+    reovim_kernel::api::v1::ByteEdit,
 };
 
 use crate::classifier::PDF;
@@ -21,14 +26,36 @@ const MAX_PDF_INPUT_BYTES: usize = 100 * 1024 * 1024;
 /// Annotation kind for page separator lines.
 pub const PDF_PAGE_KIND: &str = "content.pdf.page";
 
-/// PDF text extraction codec.
+/// PDF structural edit operations (Plan 07 Phase 6).
 ///
-/// Extracts text from PDF pages using `pdf-extract`. Each page is
-/// separated by a header line with the page number. Annotations mark
-/// page boundaries and metadata.
+/// Phase 6 supports metadata-only editing: setting string values in the
+/// PDF Info dictionary. The tree path determines which field to edit:
+/// `['metadata', '<field>']` where `<field>` is one of Title, Author,
+/// Subject, Keywords, Creator, or Producer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PdfTreeOp {
+    /// Set a metadata field in the PDF Info dictionary.
+    ///
+    /// The tree path identifies the field (`['metadata', 'Title']`, etc.).
+    /// The `value` replaces the current string content of that field.
+    SetMetadata {
+        /// New string value for the metadata field.
+        value: String,
+    },
+}
+
+impl_tree_op!(PdfTreeOp);
+
+/// Standard PDF Info dictionary fields supported for structural editing.
+const SUPPORTED_METADATA_FIELDS: &[&str] = &[
+    "Title", "Author", "Subject", "Keywords", "Creator", "Producer",
+];
+
+/// PDF text extraction and metadata editing codec.
 ///
-/// This is a one-way codec: `encode()` returns `None` because PDF
-/// content cannot be reconstructed from extracted text.
+/// Decodes PDF files into page-by-page text with annotations. Structural
+/// editing modifies Info dictionary metadata via `lopdf`
+/// parse → modify → serialize, producing a full-file [`ByteEdit`].
 pub struct PdfCodec;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -47,12 +74,8 @@ impl Default for PdfCodec {
     }
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-/// PDF extraction is text-only and lossy; reconstructed bytes cannot be
-/// recreated from the decoded representation, so this codec remains intentionally
-/// read-only. It inherits the default `ContentCodec::translate_edit` which
-/// returns `Err(TranslateEditError::ReadOnly)` (Plan 07 Phase 1).
-impl reovim_driver_codec::ContentCodec for PdfCodec {
+impl ContentCodec for PdfCodec {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         if raw.len() > MAX_PDF_INPUT_BYTES {
             let size_mb = raw.len() / (1024 * 1024);
@@ -80,7 +103,7 @@ impl reovim_driver_codec::ContentCodec for PdfCodec {
         let (content, annotations) = format_pdf_pages(&pages);
 
         let mut metadata = CodecMetadata::new(ContentType::new(PDF));
-        metadata.set("readonly", "true");
+        metadata.set("readonly", "false");
         metadata.set("page_count", pages.len().to_string());
 
         Ok(DecodeResult {
@@ -88,11 +111,150 @@ impl reovim_driver_codec::ContentCodec for PdfCodec {
             annotations,
             metadata,
             lossy: true,
-            readonly: true,
+            readonly: false,
             truncated: false,
         })
     }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn ByteSource,
+        edit: &DecodedEdit,
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Tree { path, op } => op.downcast_ref::<PdfTreeOp>().map_or(
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "pdf codec only accepts Pdf tree operations",
+                }),
+                |pdf_op| translate_pdf_edit(bytes, path, pdf_op),
+            ),
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "pdf codec does not translate text or raw byte edits",
+                })
+            }
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "pdf codec does not support this decoded edit variant",
+            }),
+        }
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Metadata path resolution
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedMetadataPath {
+    field: String,
+}
+
+fn resolve_metadata_path(path: &TreePath) -> Result<ResolvedMetadataPath, TranslateEditError> {
+    let components = path.components();
+    let [kind, field] = components else {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "pdf metadata path must be [metadata, <field>]",
+        });
+    };
+    if kind != "metadata" || field.is_empty() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "pdf metadata path must be [metadata, <field>]",
+        });
+    }
+
+    if !SUPPORTED_METADATA_FIELDS.contains(&field.as_str()) {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "pdf metadata field is not supported for editing",
+        });
+    }
+
+    Ok(ResolvedMetadataPath {
+        field: field.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Core translate_edit dispatch
+
+fn translate_pdf_edit(
+    bytes: &dyn ByteSource,
+    path: &TreePath,
+    op: &PdfTreeOp,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+        reason: "pdf byte source could not be fully read",
+    })?;
+
+    let mut doc = lopdf::Document::load_mem(&raw).map_err(|_| TranslateEditError::Internal {
+        reason: "pdf parse failed during translate_edit",
+    })?;
+
+    let resolved = resolve_metadata_path(path)?;
+
+    match op {
+        PdfTreeOp::SetMetadata { value } => {
+            translate_set_metadata(&raw, &mut doc, &resolved.field, value)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SetMetadata
+
+fn translate_set_metadata(
+    original: &[u8],
+    doc: &mut lopdf::Document,
+    field: &str,
+    value: &str,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let info_id = doc
+        .trailer
+        .get(b"Info")
+        .map_err(|_| TranslateEditError::ConstraintViolation {
+            reason: "pdf has no Info dictionary in trailer",
+        })?
+        .as_reference()
+        .map_err(|_| TranslateEditError::Internal {
+            reason: "pdf Info trailer entry is not an object reference",
+        })?;
+
+    let info_dict = doc
+        .get_dictionary_mut(info_id)
+        .map_err(|_| TranslateEditError::Internal {
+            reason: "pdf Info object is not a dictionary",
+        })?;
+
+    // Check for no-op: if field exists and has the same byte content.
+    if let Ok(existing) = info_dict.get(field.as_bytes())
+        && let Ok(existing_bytes) = existing.as_str()
+        && existing_bytes == value.as_bytes()
+    {
+        return Ok(None);
+    }
+
+    // Set the metadata field.
+    info_dict.set(field, lopdf::Object::string_literal(value));
+
+    // Serialize back.
+    let mut output = Vec::new();
+    doc.save_to(&mut output)
+        .map_err(|_| TranslateEditError::Internal {
+            reason: "pdf serialization failed",
+        })?;
+
+    Ok(Some(ByteEdit::replace(0, original, &output)))
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+
+fn read_all_bytes(bytes: &dyn ByteSource) -> Option<Vec<u8>> {
+    let len = usize::try_from(bytes.len()).ok()?;
+    let data = bytes.read(0..bytes.len()).into_owned();
+    (data.len() == len).then_some(data)
+}
+
+// ---------------------------------------------------------------------------
+// Decode output formatting
 
 /// Format extracted PDF pages into text content with annotations.
 ///

@@ -7,8 +7,8 @@
 //!   extension and assigns `ContentType("document/pdf")`
 //! - [`PdfCodecFactory`] creates [`PdfCodec`] instances that extract text
 //!   from PDF pages with page boundary annotations
-//!
-//! This is a one-way (decode-only) codec — PDF buffers are marked readonly.
+//! - Structural editing supports metadata field updates via `lopdf`
+//!   parse → modify → serialize (Plan 07 Phase 6)
 //!
 //! # Architecture
 //!
@@ -16,7 +16,7 @@
 //! reovim-driver-codec              (trait definitions + stores)
 //!         ^
 //!         |
-//! reovim-module-codec-pdf          (THIS CRATE - PDF text extraction)
+//! reovim-module-codec-pdf          (THIS CRATE - PDF text extraction + metadata editing)
 //! ```
 //!
 //! # Self-Registration Pattern

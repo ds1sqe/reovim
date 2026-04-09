@@ -19,9 +19,7 @@
 //! `server/lib/drivers/module-loader/tests/integration.rs` uses — walking up
 //! from `CARGO_MANIFEST_DIR` to find the workspace root.
 
-use reovim_client_driver::{
-    ClientModule, ClientModuleError, ModuleContext, ProbeResult, Version,
-};
+use reovim_client_driver::{ClientModule, ClientModuleError, ModuleContext, ProbeResult, Version};
 
 /// Minimal client module: one required dep, one optional dep, no chrome,
 /// no buffer contribution, no annotations.
