@@ -632,7 +632,7 @@ async fn test_get_raw_content_uses_client_active_buffer() {
     // Register a client with active_buffer pointing to buf2
     let client_id = ClientId::new(42);
     session.add_client(client_id);
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.active_buffer = Some(buf2);
     });
 

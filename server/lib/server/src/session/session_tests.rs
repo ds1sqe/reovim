@@ -68,6 +68,7 @@ fn test_remove_following_client_also_dumps() {
 
     // Set follower relation
     let _ = session
+        .clients()
         .set_client_relation(follow_id, Some(ClientRelation::Following { target: owner_id }));
 
     // Log event to follower's ring buffer
@@ -98,7 +99,9 @@ fn test_remove_sharing_client_also_dumps() {
     session.add_client(share_id);
 
     // Set sharing relation
-    let _ = session.set_client_relation(share_id, Some(ClientRelation::Sharing { with: owner_id }));
+    let _ = session
+        .clients()
+        .set_client_relation(share_id, Some(ClientRelation::Sharing { with: owner_id }));
 
     // Log event to sharer's ring buffer
     session.with_client_ring_buffer(share_id, |ring| {
@@ -156,7 +159,7 @@ fn test_session_from_state() {
     let state = SessionState::default();
     let session = Session::from_state(SessionId::new("from-state"), state);
     assert_eq!(session.id().name(), "from-state");
-    assert_eq!(session.client_count(), 0);
+    assert_eq!(session.clients().client_count(), 0);
 }
 
 #[test]
@@ -165,8 +168,8 @@ fn test_add_client() {
     let client_id = ClientId::new(1);
 
     session.add_client(client_id);
-    assert_eq!(session.client_count(), 1);
-    assert!(session.has_client(client_id));
+    assert_eq!(session.clients().client_count(), 1);
+    assert!(session.clients().has_client(client_id));
 }
 
 #[test]
@@ -178,8 +181,8 @@ fn test_add_client_with_metadata() {
     let metadata = ClientMetadata::default();
 
     session.add_client_with_metadata(client_id, metadata);
-    assert_eq!(session.client_count(), 1);
-    assert!(session.has_client(client_id));
+    assert_eq!(session.clients().client_count(), 1);
+    assert!(session.clients().has_client(client_id));
 }
 
 #[test]
@@ -196,10 +199,10 @@ fn test_add_client_with_state() {
     let metadata = ClientMetadata::default();
 
     let client = Client::with_mode_stack(client_id, metadata, mode_stack);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
-    assert_eq!(session.client_count(), 1);
-    assert!(session.has_client(client_id));
+    assert_eq!(session.clients().client_count(), 1);
+    assert!(session.clients().has_client(client_id));
 }
 
 #[test]
@@ -208,7 +211,7 @@ fn test_get_client() {
     let client_id = ClientId::new(1);
 
     session.add_client(client_id);
-    let client = session.get_client(client_id);
+    let client = session.clients().get_client(client_id);
     assert!(client.is_some());
     assert_eq!(client.unwrap().id, client_id);
 }
@@ -219,7 +222,7 @@ fn test_client_state() {
     let client_id = ClientId::new(1);
 
     session.add_client(client_id);
-    let state = session.client_state(client_id);
+    let state = session.clients().client_state(client_id);
     assert!(state.is_some());
 }
 
@@ -230,7 +233,7 @@ fn test_update_client_state() {
 
     session.add_client(client_id);
 
-    let updated = session.update_client_state(client_id, |state| {
+    let updated = session.clients().update_client_state(client_id, |state| {
         // Just access the mode_stack to verify we can mutate
         let _ = state.mode_stack.current();
     });
@@ -243,7 +246,9 @@ fn test_update_client_state_nonexistent() {
     let session = Session::new(SessionId::new("test"));
     let client_id = ClientId::new(999);
 
-    let updated = session.update_client_state(client_id, |_state| {});
+    let updated = session
+        .clients()
+        .update_client_state(client_id, |_state| {});
     assert!(!updated);
 }
 
@@ -254,7 +259,9 @@ fn test_with_clients() {
 
     session.add_client(client_id);
 
-    let count = session.with_clients(std::collections::HashMap::len);
+    let count = session
+        .clients()
+        .with_clients(std::collections::HashMap::len);
     assert_eq!(count, 1);
 }
 
@@ -265,7 +272,7 @@ fn test_with_clients_mut() {
 
     session.add_client(client_id);
 
-    session.with_clients_mut(|clients| {
+    session.clients().with_clients_mut(|clients| {
         assert_eq!(clients.len(), 1);
     });
 }
@@ -275,9 +282,9 @@ fn test_has_client() {
     let session = Session::new(SessionId::new("test"));
     let client_id = ClientId::new(1);
 
-    assert!(!session.has_client(client_id));
+    assert!(!session.clients().has_client(client_id));
     session.add_client(client_id);
-    assert!(session.has_client(client_id));
+    assert!(session.clients().has_client(client_id));
 }
 
 #[test]
@@ -292,10 +299,11 @@ fn test_set_client_relation_independent_to_following() {
     session.add_client(follower_id);
 
     let result = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
     assert!(result.is_ok());
-    let client = session.get_client(follower_id).unwrap();
+    let client = session.clients().get_client(follower_id).unwrap();
     assert!(client.is_following());
 }
 
@@ -309,6 +317,7 @@ fn test_set_client_relation_cannot_target_self() {
     session.add_client(client_id);
 
     let result = session
+        .clients()
         .set_client_relation(client_id, Some(ClientRelation::Following { target: client_id }));
 
     assert!(result.is_err());
@@ -324,7 +333,7 @@ fn test_set_client_relation_target_not_found() {
 
     session.add_client(client_id);
 
-    let result = session.set_client_relation(
+    let result = session.clients().set_client_relation(
         client_id,
         Some(ClientRelation::Following {
             target: nonexistent_id,
@@ -345,7 +354,7 @@ fn test_set_client_relation_unchecked() {
     session.add_client(owner_id);
     session.add_client(follower_id);
 
-    let result = session.set_client_relation_unchecked(
+    let result = session.clients().set_client_relation_unchecked(
         follower_id,
         Some(ClientRelation::Following { target: owner_id }),
     );
@@ -361,7 +370,7 @@ fn test_set_client_relation_unchecked_nonexistent() {
     let nonexistent_id = ClientId::new(999);
     let target_id = ClientId::new(1);
 
-    let result = session.set_client_relation_unchecked(
+    let result = session.clients().set_client_relation_unchecked(
         nonexistent_id,
         Some(ClientRelation::Following { target: target_id }),
     );
@@ -380,7 +389,7 @@ fn test_sync_and_set_relation() {
     session.add_client(owner_id);
     session.add_client(sharer_id);
 
-    let result = session.sync_and_set_relation(
+    let result = session.clients().sync_and_set_relation(
         sharer_id,
         owner_id,
         Some(ClientRelation::Sharing { with: owner_id }),
@@ -515,11 +524,14 @@ fn test_update_client_state_following_ignored() {
     session.add_client(follower_id);
 
     session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }))
         .ok();
 
     // Following clients should ignore updates
-    let updated = session.update_client_state(follower_id, |_state| {});
+    let updated = session
+        .clients()
+        .update_client_state(follower_id, |_state| {});
     assert!(!updated);
 }
 
@@ -535,11 +547,14 @@ fn test_update_client_state_sharing() {
     session.add_client(sharer_id);
 
     session
+        .clients()
         .set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }))
         .ok();
 
     // Sharing clients should update target's state
-    let updated = session.update_client_state(sharer_id, |_state| {});
+    let updated = session
+        .clients()
+        .update_client_state(sharer_id, |_state| {});
     assert!(updated);
 }
 
@@ -559,14 +574,14 @@ fn test_remove_client_returns_none_for_nonexistent() {
 #[test]
 fn test_get_client_returns_none_for_nonexistent() {
     let session = Session::new(SessionId::new("test"));
-    let result = session.get_client(ClientId::new(999));
+    let result = session.clients().get_client(ClientId::new(999));
     assert!(result.is_none());
 }
 
 #[test]
 fn test_client_state_returns_none_for_nonexistent() {
     let session = Session::new(SessionId::new("test"));
-    let result = session.client_state(ClientId::new(999));
+    let result = session.clients().client_state(ClientId::new(999));
     assert!(result.is_none());
 }
 
@@ -589,6 +604,7 @@ fn test_client_current_mode_following_returns_none() {
     session.add_client(follower_id);
 
     session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }))
         .ok();
 
@@ -609,6 +625,7 @@ fn test_client_current_mode_sharing_returns_target_mode() {
     session.add_client(sharer_id);
 
     session
+        .clients()
         .set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }))
         .ok();
 
@@ -628,16 +645,16 @@ fn test_multiple_clients() {
     session.add_client(c2);
     session.add_client(c3);
 
-    assert_eq!(session.client_count(), 3);
-    assert!(session.has_client(c1));
-    assert!(session.has_client(c2));
-    assert!(session.has_client(c3));
+    assert_eq!(session.clients().client_count(), 3);
+    assert!(session.clients().has_client(c1));
+    assert!(session.clients().has_client(c2));
+    assert!(session.clients().has_client(c3));
 
     // Remove one
     let removed = session.remove_client(c2);
     assert!(removed.is_some());
-    assert_eq!(session.client_count(), 2);
-    assert!(!session.has_client(c2));
+    assert_eq!(session.clients().client_count(), 2);
+    assert!(!session.clients().has_client(c2));
 }
 
 #[test]
@@ -681,13 +698,19 @@ fn test_set_client_relation_with_cycle_detection() {
     session.add_client(id3);
 
     // id2 follows id3
-    let _ = session.set_client_relation(id2, Some(ClientRelation::Following { target: id3 }));
+    let _ = session
+        .clients()
+        .set_client_relation(id2, Some(ClientRelation::Following { target: id3 }));
 
     // id3 follows id1
-    let _ = session.set_client_relation(id3, Some(ClientRelation::Following { target: id1 }));
+    let _ = session
+        .clients()
+        .set_client_relation(id3, Some(ClientRelation::Following { target: id1 }));
 
     // id1 trying to follow id2 would create cycle: 1 -> 2 -> 3 -> 1
-    let result = session.set_client_relation(id1, Some(ClientRelation::Following { target: id2 }));
+    let result = session
+        .clients()
+        .set_client_relation(id1, Some(ClientRelation::Following { target: id2 }));
     assert!(result.is_err());
 }
 
@@ -697,7 +720,7 @@ fn test_sync_and_set_relation_nonexistent_client() {
 
     let session = Session::new(SessionId::new("test"));
 
-    let result = session.sync_and_set_relation(
+    let result = session.clients().sync_and_set_relation(
         ClientId::new(999),
         ClientId::new(888),
         Some(ClientRelation::Sharing {
@@ -715,7 +738,7 @@ fn test_set_client_relation_client_not_found() {
     let nonexistent = ClientId::new(999);
 
     // Session-level relation setting should fail for non-existent client
-    let result = session.set_client_relation(
+    let result = session.clients().set_client_relation(
         nonexistent,
         Some(ClientRelation::Following {
             target: ClientId::new(1),
@@ -737,14 +760,27 @@ fn test_set_client_relation_back_to_independent() {
 
     // Set following
     let result = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
     assert!(result.is_ok());
-    assert!(session.get_client(follower_id).unwrap().is_following());
+    assert!(
+        session
+            .clients()
+            .get_client(follower_id)
+            .unwrap()
+            .is_following()
+    );
 
     // Set back to independent (None relation)
-    let result = session.set_client_relation(follower_id, None);
+    let result = session.clients().set_client_relation(follower_id, None);
     assert!(result.is_ok());
-    assert!(session.get_client(follower_id).unwrap().is_independent());
+    assert!(
+        session
+            .clients()
+            .get_client(follower_id)
+            .unwrap()
+            .is_independent()
+    );
 }
 
 #[cfg(feature = "grpc")]
@@ -809,6 +845,7 @@ async fn test_resolve_key_for_client_following_ignored() {
     session.add_client(follower_id);
 
     let _ = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
     let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
@@ -852,6 +889,7 @@ fn test_execute_command_for_client_following_ignored() {
     session.add_client(follower_id);
 
     let _ = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
     let cmd_id = reovim_kernel::api::v1::CommandId::new(
@@ -893,7 +931,7 @@ fn test_add_client_with_active_buffer() {
     session.add_client(client_id);
 
     // Client should have a window
-    let state = session.client_state(client_id);
+    let state = session.clients().client_state(client_id);
     assert!(state.is_some());
     let editing_state = state.unwrap();
     assert!(!editing_state.windows.is_empty());
@@ -975,7 +1013,7 @@ fn test_insert_char_for_client_newline() {
     assert!(result.is_some());
 
     // Verify the cursor moved to start of next line
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     let active_window = editing_state.windows.active().unwrap();
     assert_eq!(active_window.cursor.line, 1);
     assert_eq!(active_window.cursor.column, 0);
@@ -1051,7 +1089,7 @@ fn test_sync_and_set_relation_with_cursor_sync() {
     session.add_client(sharer_id);
 
     // Move owner's cursor to a specific position
-    session.update_client_state(owner_id, |state| {
+    session.clients().update_client_state(owner_id, |state| {
         if let Some(w) = state.windows.active_mut() {
             w.cursor.line = 5;
             w.cursor.column = 10;
@@ -1059,7 +1097,7 @@ fn test_sync_and_set_relation_with_cursor_sync() {
     });
 
     // Sync and set relation - sharer should get owner's cursor
-    let result = session.sync_and_set_relation(
+    let result = session.clients().sync_and_set_relation(
         sharer_id,
         owner_id,
         Some(ClientRelation::Sharing { with: owner_id }),
@@ -1067,7 +1105,7 @@ fn test_sync_and_set_relation_with_cursor_sync() {
     assert!(result.is_ok());
 
     // Sharer's cursor should be synced to owner's position
-    let sharer_state = session.client_state(sharer_id).unwrap();
+    let sharer_state = session.clients().client_state(sharer_id).unwrap();
     if let Some(w) = sharer_state.windows.active() {
         assert_eq!(w.cursor.line, 5);
         assert_eq!(w.cursor.column, 10);
@@ -1089,7 +1127,7 @@ fn test_sync_and_set_relation_self_target_error() {
     session.add_client(client_id);
 
     // Attempt to share with self - this triggers CannotTargetSelf
-    let result = session.sync_and_set_relation(
+    let result = session.clients().sync_and_set_relation(
         client_id,
         client_id,
         Some(ClientRelation::Sharing { with: client_id }),
@@ -1110,11 +1148,16 @@ fn test_sync_and_set_relation_would_create_cycle() {
     session.add_client(id2);
 
     // id2 follows id1
-    let _ = session.set_client_relation(id2, Some(ClientRelation::Following { target: id1 }));
+    let _ = session
+        .clients()
+        .set_client_relation(id2, Some(ClientRelation::Following { target: id1 }));
 
     // Try to set id1 → id2 via sync_and_set_relation → cycle
-    let result =
-        session.sync_and_set_relation(id1, id2, Some(ClientRelation::Sharing { with: id2 }));
+    let result = session.clients().sync_and_set_relation(
+        id1,
+        id2,
+        Some(ClientRelation::Sharing { with: id2 }),
+    );
     assert!(result.is_err());
 }
 
@@ -1135,15 +1178,18 @@ fn test_update_client_state_sharing_target_removed() {
     session.add_client(sharer_id);
 
     // Set sharer to share with owner
-    let _ =
-        session.set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }));
+    let _ = session
+        .clients()
+        .set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }));
 
     // Remove the owner (the sharing target)
     session.remove_client(owner_id);
 
     // Now update_client_state for sharer should return false
     // because the target (owner) no longer exists
-    let updated = session.update_client_state(sharer_id, |_state| {});
+    let updated = session
+        .clients()
+        .update_client_state(sharer_id, |_state| {});
     assert!(!updated);
 }
 
@@ -1345,7 +1391,7 @@ fn test_insert_char_for_client_per_client_extension_sink() {
 
     // Install extension into per-client extensions
     let type_id = std::any::TypeId::of::<TestSinkExtension>();
-    session.with_clients_mut(|clients| {
+    session.clients().with_clients_mut(|clients| {
         let client = clients.get_mut(&client_id).unwrap();
         client.state.extensions.get_or_insert::<TestSinkExtension>();
     });
@@ -1355,7 +1401,7 @@ fn test_insert_char_for_client_per_client_extension_sink() {
     assert!(result.is_none()); // Extension path returns None
 
     // Verify the char arrived in the per-client extension
-    session.with_clients(|clients| {
+    session.clients().with_clients(|clients| {
         let client = clients.get(&client_id).unwrap();
         let ext = client.state.extensions.get::<TestSinkExtension>().unwrap();
         assert_eq!(ext.buffer, "q");
@@ -1441,12 +1487,12 @@ fn test_ensure_client_has_window_lazy_sync() {
     session.add_client(client_id);
 
     // Client should have no windows yet
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(editing_state.windows.is_empty());
 
     // Now create a buffer and set it as the client's active_buffer (#471)
     let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
-    session.with_clients_mut(|clients| {
+    session.clients().with_clients_mut(|clients| {
         if let Some(client) = clients.get_mut(&client_id) {
             client.state.active_buffer = Some(buf_id);
         }
@@ -1461,7 +1507,7 @@ fn test_ensure_client_has_window_lazy_sync() {
     let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
 
     // After resolve_key, client should now have a window
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(!editing_state.windows.is_empty());
 }
 
@@ -1487,7 +1533,7 @@ fn test_add_client_with_metadata_tracing_debug_closures() {
     session.add_client(client_id);
 
     // Verify client was added
-    assert!(session.client_state(client_id).is_some());
+    assert!(session.clients().client_state(client_id).is_some());
 }
 
 // =========================================================================
@@ -1529,7 +1575,7 @@ fn test_editing_state_debug_format() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let state = session.client_state(client_id).unwrap();
+    let state = session.clients().client_state(client_id).unwrap();
     let debug_str = format!("{state:?}");
     assert!(debug_str.contains("EditingState"));
     assert!(debug_str.contains("mode_stack"));
@@ -1688,7 +1734,7 @@ fn test_add_client_with_compositor_creates_windows() {
     session.add_client(client_id);
 
     // Verify client has windows from compositor placements
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(!editing_state.windows.is_empty());
     // The compositor returned WindowId(1), so the active window should be set
     assert!(editing_state.windows.active().is_some());
@@ -1730,13 +1776,13 @@ fn test_ensure_client_has_window_with_compositor() {
     session.add_client(client_id);
 
     // Client should have compositor but empty windows
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(editing_state.compositor.is_some());
     assert!(editing_state.windows.is_empty());
 
     // Now create a buffer and set it as the client's active_buffer (#471)
     let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
-    session.with_clients_mut(|clients| {
+    session.clients().with_clients_mut(|clients| {
         if let Some(client) = clients.get_mut(&client_id) {
             client.state.active_buffer = Some(buf_id);
         }
@@ -1753,7 +1799,7 @@ fn test_ensure_client_has_window_with_compositor() {
     let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
 
     // After resolve_key, client should now have windows from compositor
-    let editing_state = session.client_state(client_id).unwrap();
+    let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(!editing_state.windows.is_empty());
     assert!(editing_state.windows.active().is_some());
 }
@@ -1765,7 +1811,9 @@ fn test_ensure_client_has_window_with_compositor() {
 #[test]
 fn test_with_client_extensions_returns_none_for_unknown_client() {
     let session = Session::new(SessionId::new("test"));
-    let result = session.with_client_extensions(ClientId::new(99), |_ext| 42);
+    let result = session
+        .clients()
+        .with_client_extensions(ClientId::new(99), |_ext| 42);
     assert!(result.is_none());
 }
 
@@ -1786,17 +1834,19 @@ fn test_with_client_extensions_reads_extensions() {
 
     // Initially empty
     let has_ext = session
+        .clients()
         .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
         .unwrap();
     assert!(!has_ext);
 
     // Insert extension
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.extensions.get_or_insert::<TestSessionExtension>();
     });
 
     // Now it exists
     let has_ext = session
+        .clients()
         .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
         .unwrap();
     assert!(has_ext);
@@ -1809,7 +1859,9 @@ fn test_with_client_extensions_reads_extensions() {
 #[test]
 fn test_with_client_extensions_mut_returns_none_for_unknown_client() {
     let session = Session::new(SessionId::new("test"));
-    let result = session.with_client_extensions_mut(ClientId::new(99), |_ext| 42);
+    let result = session
+        .clients()
+        .with_client_extensions_mut(ClientId::new(99), |_ext| 42);
     assert!(result.is_none());
 }
 
@@ -1820,12 +1872,15 @@ fn test_with_client_extensions_mut_modifies_extensions() {
     session.add_client(client_id);
 
     // Insert extension via mutable access
-    session.with_client_extensions_mut(client_id, |ext| {
-        ext.get_or_insert::<TestSessionExtension>();
-    });
+    session
+        .clients()
+        .with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<TestSessionExtension>();
+        });
 
     // Verify via read access
     let has_ext = session
+        .clients()
         .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
         .unwrap();
     assert!(has_ext);
@@ -1849,9 +1904,11 @@ fn test_with_bridge_context_provides_own_extensions() {
     session.add_client(client_id);
 
     // Insert extension into client 1
-    session.with_client_extensions_mut(client_id, |ext| {
-        ext.get_or_insert::<TestSessionExtension>();
-    });
+    session
+        .clients()
+        .with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<TestSessionExtension>();
+        });
 
     let has_ext = session
         .with_bridge_context(client_id, |own_ext, _, _| {
@@ -1978,7 +2035,7 @@ fn test_peer_history_with_entries() {
     session.add_client(client_id);
 
     // Push to the client's history ring
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state
             .clipboard_history
             .push(RegisterContent::characterwise("first"));
@@ -2005,7 +2062,7 @@ fn test_peer_history_index_out_of_range() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state
             .clipboard_history
             .push(RegisterContent::characterwise("only"));
@@ -2023,7 +2080,7 @@ fn test_peer_history_index_out_of_range() {
 #[test]
 fn test_connected_client_ids_empty() {
     let session = Session::new(SessionId::new("ids-test"));
-    assert!(session.connected_client_ids().is_empty());
+    assert!(session.clients().connected_client_ids().is_empty());
 }
 
 #[test]
@@ -2033,7 +2090,7 @@ fn test_connected_client_ids_sorted() {
     session.add_client(ClientId::new(1));
     session.add_client(ClientId::new(3));
 
-    let ids = session.connected_client_ids();
+    let ids = session.clients().connected_client_ids();
     assert_eq!(ids.len(), 3);
     assert_eq!(ids[0].as_usize(), 1);
     assert_eq!(ids[1].as_usize(), 3);
@@ -2047,7 +2104,7 @@ fn test_connected_client_ids_after_remove() {
     session.add_client(ClientId::new(2));
     session.remove_client(ClientId::new(1));
 
-    let ids = session.connected_client_ids();
+    let ids = session.clients().connected_client_ids();
     assert_eq!(ids.len(), 1);
     assert_eq!(ids[0].as_usize(), 2);
 }
@@ -2134,7 +2191,7 @@ fn with_tick_mut_returns_none_for_following_client() {
     let session = Session::new(SessionId::new("tick-follow"));
     session.add_client(ClientId::new(1));
     session.add_client(ClientId::new(2));
-    let _ = session.set_client_relation(
+    let _ = session.clients().set_client_relation(
         ClientId::new(2),
         Some(ClientRelation::Following {
             target: ClientId::new(1),

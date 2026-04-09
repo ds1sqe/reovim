@@ -111,12 +111,12 @@ async fn test_stream_drop_removes_client() {
     request.extensions_mut().insert(client_id);
     let response = service.subscribe(request).await.unwrap();
 
-    assert!(session.has_client(client_id));
+    assert!(session.clients().has_client(client_id));
 
     // Drop stream → auto-cleanup
     drop(response);
 
-    assert!(!session.has_client(client_id));
+    assert!(!session.clients().has_client(client_id));
 }
 
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn test_stream_drop_without_token_no_cleanup() {
     drop(response);
 
     // Client should still be present
-    assert!(session.has_client(client_id));
+    assert!(session.clients().has_client(client_id));
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn test_cleanup_idempotent_with_explicit_leave() {
     drop(response); // Should not panic
 
     // Everything already cleaned up
-    assert!(!session.has_client(client_id));
+    assert!(!session.clients().has_client(client_id));
     assert!(!session.presence().contains(client_id));
     assert!(tokens.is_empty());
 }

@@ -480,7 +480,7 @@ fn test_build_cursor_notification_with_client_and_window() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Build cursor notification for this client
     let notification = build_cursor_notification(&session, buffer_id, 99999, 1);
@@ -517,7 +517,7 @@ fn test_build_cursor_notification_wrong_buffer_returns_none() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Ask for a different buffer - should return None
     let other_buffer = reovim_kernel::api::v1::BufferId::from_raw(99);
@@ -547,7 +547,7 @@ fn test_build_selection_notification_with_character_selection() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 11111, 5);
     assert!(notification.is_some());
@@ -588,7 +588,7 @@ fn test_build_selection_notification_with_line_selection() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 22222, 3);
     assert!(notification.is_some());
@@ -622,7 +622,7 @@ fn test_build_selection_notification_with_block_selection() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 33333, 7);
     assert!(notification.is_some());
@@ -654,7 +654,7 @@ fn test_build_selection_notification_no_selection() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Window has no selection
     let notification = build_selection_notification(&session, buffer_id, 44444, 2);
@@ -693,7 +693,7 @@ fn test_build_viewport_notification_with_client_window() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_viewport_notification(&session, window_id, 55555, 4);
     assert!(notification.is_some());
@@ -729,7 +729,7 @@ fn test_build_viewport_notification_wrong_window_returns_none() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Ask for a window that doesn't exist in client's layout
     let wrong_window_id = reovim_kernel::api::v1::WindowId::from_raw(99999);
@@ -750,7 +750,7 @@ fn test_build_mode_notification_with_registered_client() {
     let mode_stack = ModeStack::new(mode);
     let metadata = crate::session::ClientMetadata::default();
     let client = crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_mode_notification(&session, 77777, 8);
     assert_eq!(notification.event_type, "mode_changed");
@@ -782,7 +782,7 @@ fn test_build_layout_notification_with_client_windows() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_layout_notification(&session, 88888, 9);
     assert_eq!(notification.event_type, "layout_changed");
@@ -817,7 +817,7 @@ fn test_build_notifications_cursor_moved_with_client() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Build notifications with cursor_moved
     let mut changes = StateChanges::new();
@@ -848,7 +848,7 @@ fn test_build_notifications_selection_changed_with_client() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let mut changes = StateChanges::new();
     changes.selection_changed = true;
@@ -877,7 +877,7 @@ fn test_build_notifications_scroll_changed_with_client() {
     let metadata = crate::session::ClientMetadata::default();
     let client =
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let mut changes = StateChanges::new();
     changes.scroll_changed = true;
@@ -992,7 +992,7 @@ fn test_build_layout_notification_with_compositor() {
     client.state.compositor = Some(Box::new(TestCompositor {
         focused: Some(WindowId::from_raw(1)),
     }));
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     // Build layout notification - this should hit the compositor branch
     let notification = build_layout_notification(&session, 12345, 1);
@@ -1159,7 +1159,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
     // Per-client active_buffer (#471): set so fallback for unmapped windows works
     client.state.active_buffer = Some(buffer_id);
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
 
     let notification = build_layout_notification(&session, 99999, 1);
 
@@ -1296,7 +1296,7 @@ fn test_extension_changed_with_bridge() {
     let session = Session::new(SessionId::new("test"));
     let client_id = ClientId::new(42);
     session.add_client(client_id);
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         let ext = state.extensions.get_or_insert::<TestBridgeExtension>();
         ext.active = true;
     });

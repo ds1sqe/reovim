@@ -83,6 +83,7 @@ impl ExtensionService for ExtensionServiceImpl {
                 // Use with_client_extensions to avoid cloning EditingState
                 // (EditingState::clone() creates empty ExtensionMap)
                 session
+                    .clients()
                     .with_client_extensions(client_id, |extensions| {
                         let active = bridge.is_active(extensions);
                         let snap = bridge.snapshot(extensions);

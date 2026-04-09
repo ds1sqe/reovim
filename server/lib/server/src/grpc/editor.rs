@@ -104,7 +104,7 @@ impl EditorService for EditorServiceImpl {
         if let Some(cid) = client_id {
             let w = req.width as u16;
             let h = req.height as u16;
-            session.update_client_state(cid, |state| {
+            session.clients().update_client_state(cid, |state| {
                 state.terminal_size = (w, h);
             });
         }
@@ -149,7 +149,7 @@ impl EditorService for EditorServiceImpl {
 
         // Set per-client active_buffer (#471)
         if let Some(cid) = client_id {
-            session.update_client_state(cid, |state| {
+            session.clients().update_client_state(cid, |state| {
                 state.active_buffer = Some(buffer_id);
             });
         }
@@ -170,7 +170,7 @@ impl EditorService for EditorServiceImpl {
 
         // Per-client active_buffer (#471)
         let buffer_id = client_id.and_then(|cid| {
-            session.with_clients(|clients| {
+            session.clients().with_clients(|clients| {
                 clients
                     .get(&cid)
                     .and_then(|c| c.state.active_buffer.map(|id| id.as_usize() as u64))

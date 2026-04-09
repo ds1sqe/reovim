@@ -181,6 +181,7 @@ pub fn build_notifications(
 fn build_mode_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
     // Phase #486, #491: Read mode from per-client state
     let mode_name = session
+        .clients()
         .client_state(ClientId::new(client_id as usize))
         .map_or_else(
             || {
@@ -220,7 +221,9 @@ fn build_cursor_notification(
     client_id: u64,
 ) -> Option<Notification> {
     // Phase #486: Get per-client windows for cursor position
-    let editing_state = session.client_state(ClientId::new(client_id as usize))?;
+    let editing_state = session
+        .clients()
+        .client_state(ClientId::new(client_id as usize))?;
 
     // Find the ACTIVE window displaying this buffer in per-client state.
     // When multiple windows share the same buffer (splits), prefer the
@@ -298,7 +301,9 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
     // #474: Use per-client compositor and windows (same ID namespace).
     // Each client owns a cloned compositor — window IDs from compositor.composite()
     // match the per-client WindowLayout IDs, fixing the cross-namespace mismatch.
-    let editing_state = session.client_state(ClientId::new(client_id as usize));
+    let editing_state = session
+        .clients()
+        .client_state(ClientId::new(client_id as usize));
 
     let focused_id = editing_state.as_ref().and_then(|s| s.windows.active_id());
 
@@ -413,7 +418,9 @@ fn build_selection_notification(
     client_id: u64,
 ) -> Option<Notification> {
     // Phase #486: Get per-client windows for selection
-    let editing_state = session.client_state(ClientId::new(client_id as usize))?;
+    let editing_state = session
+        .clients()
+        .client_state(ClientId::new(client_id as usize))?;
 
     // Find window displaying this buffer in per-client state
     let window = editing_state
@@ -487,7 +494,9 @@ fn build_viewport_notification(
     client_id: u64,
 ) -> Option<Notification> {
     // Phase #486: Get per-client windows for viewport
-    let editing_state = session.client_state(ClientId::new(client_id as usize))?;
+    let editing_state = session
+        .clients()
+        .client_state(ClientId::new(client_id as usize))?;
 
     // Find the window in per-client state
     let window = editing_state.windows.get(window_id)?;

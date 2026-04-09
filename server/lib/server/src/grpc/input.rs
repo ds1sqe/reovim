@@ -119,14 +119,14 @@ impl InputService for InputServiceImpl {
         let client_id = require_client_id(token_client_id)?;
 
         // Client must exist (created via Join())
-        if !session.has_client(client_id) {
+        if !session.clients().has_client(client_id) {
             return Err(Status::failed_precondition(format!(
                 "Client {client_id} not found — call Join() before sending keys"
             )));
         }
 
         // Check client relation for input routing
-        if let Some(client) = session.get_client(client_id)
+        if let Some(client) = session.clients().get_client(client_id)
             && client.is_following()
         {
             // Following: input is ignored (read-only spectator)
@@ -221,6 +221,7 @@ impl InputService for InputServiceImpl {
         // Per-client active_buffer (#471)
         if any_handled
             && let Some(buffer_id) = session
+                .clients()
                 .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
         {
             accumulated_changes.record_cursor_move(buffer_id);
@@ -228,7 +229,7 @@ impl InputService for InputServiceImpl {
 
         // Viewport scroll tracking: adjust scroll_top so cursor stays visible.
         if any_handled {
-            let scrolled_window = session.with_clients_mut(|clients| {
+            let scrolled_window = session.clients().with_clients_mut(|clients| {
                 let client = clients.get_mut(&client_id)?;
                 let window = client.state.windows.active_mut()?;
                 if window.viewport.ensure_cursor_visible(window.cursor.line) {
@@ -245,7 +246,7 @@ impl InputService for InputServiceImpl {
         // #664: Update cursor snapshot for bridge tick consumption.
         // Bridges (illuminate, etc.) read this in tick() to detect cursor movement.
         if accumulated_changes.cursor_moved {
-            session.with_clients_mut(|clients| {
+            session.clients().with_clients_mut(|clients| {
                 let client = clients.get_mut(&client_id)?;
                 let window = client.state.windows.active()?;
                 let buffer_id = window.buffer_id?;
@@ -264,7 +265,7 @@ impl InputService for InputServiceImpl {
         }
 
         // #474: Auto-detect selection changes (defense-in-depth).
-        if let Some(state) = session.client_state(client_id) {
+        if let Some(state) = session.clients().client_state(client_id) {
             Self::ensure_selection_change_recorded(
                 &mut accumulated_changes,
                 &state.windows,
@@ -274,7 +275,7 @@ impl InputService for InputServiceImpl {
 
         // Auto-emit presence update on buffer/window change (#471).
         if accumulated_changes.window_changed || accumulated_changes.focus_changed {
-            let new_buffer_id = session.with_clients(|clients| {
+            let new_buffer_id = session.clients().with_clients(|clients| {
                 let window = clients.get(&client_id)?.state.windows.active()?;
                 Some(window.buffer_id?.as_usize())
             });
@@ -359,6 +360,7 @@ impl InputServiceImpl {
     ) -> bool {
         match bridge.scope() {
             reovim_driver_session::bridges::ExtensionScope::Client => session
+                .clients()
                 .with_client_extensions(client_id, |ext| bridge.is_active(ext))
                 .unwrap_or(false),
             reovim_driver_session::bridges::ExtensionScope::Shared => {
@@ -419,13 +421,15 @@ impl InputServiceImpl {
         from: &str,
         to: &str,
     ) {
-        session.with_client_extensions_mut(client_id, |ext| {
-            for bridge in bridges.values() {
-                if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
-                    bridge.on_mode_changed(from, to, ext);
+        session
+            .clients()
+            .with_client_extensions_mut(client_id, |ext| {
+                for bridge in bridges.values() {
+                    if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                        bridge.on_mode_changed(from, to, ext);
+                    }
                 }
-            }
-        });
+            });
     }
 
     /// Notify all client-scoped bridges of a cursor movement (#662).
@@ -438,27 +442,29 @@ impl InputServiceImpl {
         bridges: &BridgeRegistry,
         changes: &mut StateChanges,
     ) {
-        let Some((line, col)) = session.with_clients(|clients| {
+        let Some((line, col)) = session.clients().with_clients(|clients| {
             let window = clients.get(&client_id)?.state.windows.active()?;
             Some((window.cursor.line, window.cursor.column))
         }) else {
             return;
         };
 
-        session.with_client_extensions_mut(client_id, |ext| {
-            for bridge in bridges.values() {
-                if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
-                    let was_active = bridge.is_active(ext);
-                    bridge.on_cursor_moved(line, col, ext);
-                    let is_active = bridge.is_active(ext);
-                    // If the bridge deactivated, record an extension change
-                    // so the notification pipeline sends the updated state.
-                    if was_active && !is_active {
-                        changes.record_extension_change(bridge.kind().into());
+        session
+            .clients()
+            .with_client_extensions_mut(client_id, |ext| {
+                for bridge in bridges.values() {
+                    if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                        let was_active = bridge.is_active(ext);
+                        bridge.on_cursor_moved(line, col, ext);
+                        let is_active = bridge.is_active(ext);
+                        // If the bridge deactivated, record an extension change
+                        // so the notification pipeline sends the updated state.
+                        if was_active && !is_active {
+                            changes.record_extension_change(bridge.kind().into());
+                        }
                     }
                 }
-            }
-        });
+            });
     }
 
     /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
@@ -919,7 +925,7 @@ impl InputServiceImpl {
         transition: ModeTransition,
     ) -> StateChanges {
         // Update per-client mode stack via session's update_client_state
-        let applied = session.update_client_state(client_id, |editing_state| {
+        let applied = session.clients().update_client_state(client_id, |editing_state| {
             match transition.clone() {
                 ModeTransition::Push { mode, context } => {
                     tracing::debug!(?mode, ?context, %client_id, "Pushing mode (per-client)");
@@ -973,22 +979,24 @@ impl InputServiceImpl {
         while let Some(complete_transition) =
             session.try_on_command_complete_for_client(client_id).await
         {
-            session.update_client_state(client_id, |editing_state| match &complete_transition {
-                ModeTransition::Pop { .. } => {
-                    if editing_state.mode_stack.depth() > 1 {
-                        editing_state.mode_stack.pop();
+            session
+                .clients()
+                .update_client_state(client_id, |editing_state| match &complete_transition {
+                    ModeTransition::Pop { .. } => {
+                        if editing_state.mode_stack.depth() > 1 {
+                            editing_state.mode_stack.pop();
+                        }
                     }
-                }
-                ModeTransition::Push { mode, .. } => {
-                    editing_state.mode_stack.push(mode.clone());
-                }
-                ModeTransition::Set { mode, .. } => {
-                    while editing_state.mode_stack.depth() > 1 {
-                        editing_state.mode_stack.pop();
+                    ModeTransition::Push { mode, .. } => {
+                        editing_state.mode_stack.push(mode.clone());
                     }
-                    editing_state.mode_stack.set(mode.clone());
-                }
-            });
+                    ModeTransition::Set { mode, .. } => {
+                        while editing_state.mode_stack.depth() > 1 {
+                            editing_state.mode_stack.pop();
+                        }
+                        editing_state.mode_stack.set(mode.clone());
+                    }
+                });
 
             // Pop with a result (e.g., delete operator returning ExecuteCommand for
             // the actual deletion): execute it and loop to check for further completions.
@@ -1034,7 +1042,7 @@ impl InputServiceImpl {
 
                 // Set active buffer ID (required for operators like delete/yank)
                 // Per-client active_buffer (#471)
-                if let Some(buffer_id) = session.with_clients(|clients| {
+                if let Some(buffer_id) = session.clients().with_clients(|clients| {
                     clients.get(&client_id).and_then(|c| c.state.active_buffer)
                 }) {
                     cmd_ctx.set_buffer_id(buffer_id);

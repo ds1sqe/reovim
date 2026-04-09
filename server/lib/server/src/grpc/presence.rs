@@ -268,7 +268,7 @@ impl PresenceService for PresenceServiceImpl {
         // Without this, PresenceJoined notifications carry buffer_id: None,
         // and existing clients skip rendering the new cursor (different-buffer filter).
         let mut presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);
-        presence.buffer_id = session.with_clients(|clients| {
+        presence.buffer_id = session.clients().with_clients(|clients| {
             clients.get(&client_id).and_then(|c| {
                 c.state
                     .windows
@@ -287,7 +287,7 @@ impl PresenceService for PresenceServiceImpl {
         let proto_peers: Vec<ProtoClientPresence> = peers.iter().map(to_proto_presence).collect();
 
         // Convert clients to new ClientInfo format (#480)
-        let peers_v2: Vec<ProtoClientInfo> = session.with_clients(|clients| {
+        let peers_v2: Vec<ProtoClientInfo> = session.clients().with_clients(|clients| {
             clients
                 .values()
                 .filter(|c| c.id != client_id) // Exclude self
@@ -509,8 +509,9 @@ impl PresenceService for PresenceServiceImpl {
             .collect();
 
         // New unified format (#480)
-        let clients_v2: Vec<ProtoClientInfo> =
-            session.with_clients(|c| c.values().map(to_proto_client_info).collect());
+        let clients_v2: Vec<ProtoClientInfo> = session
+            .clients()
+            .with_clients(|c| c.values().map(to_proto_client_info).collect());
 
         Ok(Response::new(ListClientsResponse {
             clients,
@@ -542,7 +543,7 @@ impl PresenceService for PresenceServiceImpl {
         let client_id = require_client_id(token_client_id)?;
 
         // Validate client exists
-        if !session.has_client(client_id) {
+        if !session.clients().has_client(client_id) {
             return Ok(Response::new(SetRoleResponse {
                 ok: false,
                 error: Some(format!("Client {client_id} not found")),
@@ -571,7 +572,7 @@ impl PresenceService for PresenceServiceImpl {
         };
 
         // Set the relation with validation
-        match session.set_client_relation(client_id, relation) {
+        match session.clients().set_client_relation(client_id, relation) {
             Ok(()) => Ok(Response::new(SetRoleResponse {
                 ok: true,
                 error: None,
@@ -637,7 +638,7 @@ impl PresenceService for PresenceServiceImpl {
         });
 
         // Set the relation with validation
-        match session.set_client_relation(client_id, relation) {
+        match session.clients().set_client_relation(client_id, relation) {
             Ok(()) => Ok(Response::new(SetRelationResponse {
                 ok: true,
                 error: None,

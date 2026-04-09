@@ -73,7 +73,9 @@ impl BufferService for BufferServiceImpl {
 
         // Resolve buffer_id: explicit > per-client active > any in list
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -122,7 +124,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -158,7 +162,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -274,7 +280,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -355,7 +363,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -441,7 +451,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session
@@ -546,7 +558,9 @@ impl BufferService for BufferServiceImpl {
         let session = self.get_session()?;
 
         let client_active = client_id.and_then(|cid| {
-            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+            session
+                .clients()
+                .with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
         });
 
         session

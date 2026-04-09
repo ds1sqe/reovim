@@ -360,7 +360,7 @@ impl DebugService for DebugServiceImpl {
         let client_id = Self::resolve_target(req.target_client_id)?;
         let session = self.get_session()?;
 
-        let state = session.client_state(client_id).ok_or_else(|| {
+        let state = session.clients().client_state(client_id).ok_or_else(|| {
             Status::not_found(format!("Client {} not found", req.target_client_id))
         })?;
 
@@ -386,7 +386,9 @@ impl DebugService for DebugServiceImpl {
     ) -> Result<Response<DebugListClientsResponse>, Status> {
         let session = self.get_session()?;
 
-        let clients = session.with_clients(|c| c.values().map(to_proto_client_info).collect());
+        let clients = session
+            .clients()
+            .with_clients(|c| c.values().map(to_proto_client_info).collect());
 
         Ok(Response::new(DebugListClientsResponse { clients }))
     }
@@ -413,6 +415,7 @@ impl DebugService for DebugServiceImpl {
 
         let (active, snapshot) = match bridge.scope() {
             ExtensionScope::Client => session
+                .clients()
                 .with_client_extensions(client_id, |extensions| {
                     let active = bridge.is_active(extensions);
                     let snap = bridge.snapshot(extensions);

@@ -10,8 +10,6 @@
 //! The `presence` service tracks display preferences and sync awareness.
 //! The `clients` directory tracks editing roles and state ownership.
 
-use std::collections::HashMap;
-
 use reovim_kernel::api::v1::ServiceRegistry;
 
 use parking_lot::RwLock;
@@ -38,8 +36,8 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
 /// # Client Management (Phase 11.2)
 ///
 /// The session coordinates two client-facing authorities:
-/// - `clients`: role and editing-state ownership (`ClientDirectory`)
-/// - `presence`: display preferences and sync awareness (`PresenceService`)
+/// - `clients`: role and editing-state ownership (`ClientDirectory`) — access via [`Session::clients()`]
+/// - `presence`: display preferences and sync awareness (`PresenceService`) — access via [`Session::presence()`]
 pub struct Session {
     /// Unique session identifier.
     id: SessionId,
@@ -252,13 +250,6 @@ impl Session {
         self.clients.add_client_with_state(client);
     }
 
-    /// Add a client with a specific initial state.
-    ///
-    /// Used for restoring clients or creating clients with pre-configured state.
-    pub fn add_client_with_state(&self, client: Client) {
-        self.clients.add_client_with_state(client);
-    }
-
     /// Remove a client from the session.
     ///
     /// Returns the removed client if found.
@@ -273,149 +264,6 @@ impl Session {
         self.clients.remove_client_with(client_id, |client| {
             log_client_disconnect(client_id, &client.ring_buffer);
         })
-    }
-
-    /// Get a client's role (immutable).
-    #[must_use]
-    pub fn get_client(&self, client_id: ClientId) -> Option<Client> {
-        self.clients.get_client(client_id)
-    }
-
-    /// Set a client's relation with validation.
-    ///
-    /// Use this to change between Independent/Following/Sharing modes.
-    /// Pass `None` for independent, `Some(ClientRelation::Following { target })`
-    /// for following, or `Some(ClientRelation::Sharing { with })` for sharing.
-    ///
-    /// # Validation
-    ///
-    /// Validates the transition:
-    /// - Cannot target self
-    /// - Target must exist
-    /// - Cannot create cycles (A → B → A)
-    /// - Following → Sharing upgrade may require cursor sync (returns `RequiresCursorSync`)
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(TransitionResult)` if:
-    /// - Client not found (`TargetNotFound`)
-    /// - Attempting to target self (`CannotTargetSelf`)
-    /// - Change would create a cycle (`WouldCreateCycle`)
-    /// - Following → Sharing requires cursor sync first (`RequiresCursorSync`)
-    pub fn set_client_relation(
-        &self,
-        client_id: ClientId,
-        relation: Option<super::ClientRelation>,
-    ) -> Result<(), super::TransitionResult> {
-        self.clients.set_client_relation(client_id, relation)
-    }
-
-    /// Set a client's relation without validation.
-    ///
-    /// **Use sparingly** - prefer `set_client_relation()` for safety.
-    /// This is useful for initialization where validation isn't needed.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the client was found and relation set, `false` otherwise.
-    pub fn set_client_relation_unchecked(
-        &self,
-        client_id: ClientId,
-        relation: Option<super::ClientRelation>,
-    ) -> bool {
-        self.clients
-            .set_client_relation_unchecked(client_id, relation)
-    }
-
-    /// Sync cursor and set relation.
-    ///
-    /// Use this when `set_client_relation()` returns `RequiresCursorSync`.
-    /// This syncs the cursor first, then sets the relation.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(TransitionResult)` if:
-    /// - Client or target not found (`TargetNotFound`)
-    /// - Attempting to target self (`CannotTargetSelf`)
-    /// - Change would create a cycle (`WouldCreateCycle`)
-    pub fn sync_and_set_relation(
-        &self,
-        client_id: ClientId,
-        target_id: ClientId,
-        relation: Option<super::ClientRelation>,
-    ) -> Result<(), super::TransitionResult> {
-        self.clients
-            .sync_and_set_relation(client_id, target_id, relation)
-    }
-
-    /// Get the effective editing state for a client.
-    ///
-    /// - Owner: Returns own state
-    /// - Follow: Returns target's state (read-only access)
-    /// - Share: Returns owner's state (for display)
-    ///
-    /// Returns `None` if client not found or target chain is broken.
-    #[must_use]
-    pub fn client_state(&self, client_id: ClientId) -> Option<super::EditingState> {
-        self.clients.client_state(client_id)
-    }
-
-    /// Update a client's editing state via closure.
-    ///
-    /// - Independent: Updates own state
-    /// - Following: No-op (input ignored)
-    /// - Sharing: Updates target's state
-    ///
-    /// Returns `true` if state was updated.
-    pub fn update_client_state<F>(&self, client_id: ClientId, f: F) -> bool
-    where
-        F: FnOnce(&mut super::EditingState),
-    {
-        self.clients.update_client_state(client_id, f)
-    }
-
-    /// Execute a closure with read access to the clients map.
-    pub fn with_clients<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&HashMap<ClientId, Client>) -> R,
-    {
-        self.clients.with_clients(f)
-    }
-
-    /// Execute a closure with write access to the clients map.
-    pub fn with_clients_mut<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut HashMap<ClientId, Client>) -> R,
-    {
-        self.clients.with_clients_mut(f)
-    }
-
-    /// Run a closure on a client's `ExtensionMap` without cloning.
-    ///
-    /// `EditingState::clone()` creates an empty `ExtensionMap` because
-    /// `Box<dyn SessionExtensionDyn>` is not `Clone`. This method provides
-    /// direct read access to extensions through the clients lock.
-    ///
-    /// Respects Follow/Share relations via `effective_state()`.
-    pub fn with_client_extensions<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
-    where
-        F: FnOnce(&ExtensionMap) -> R,
-    {
-        self.clients.with_client_extensions(client_id, f)
-    }
-
-    /// Run a closure with mutable access to a client's `ExtensionMap`.
-    ///
-    /// Used by bridge lifecycle hooks that need to mutate per-client state
-    /// (e.g., auto-dismiss on mode change). Respects Follow/Share relations
-    /// via `ClientDirectory::find_input_target()`.
-    ///
-    /// Returns `None` if the client doesn't exist or input is ignored (Following).
-    pub fn with_client_extensions_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut ExtensionMap) -> R,
-    {
-        self.clients.with_client_extensions_mut(client_id, f)
     }
 
     /// Execute a tick closure with mutable access to client + shared extensions (#546).
@@ -443,22 +291,16 @@ impl Session {
         Some(result)
     }
 
-    /// Get count of connected clients.
-    #[must_use]
-    pub fn client_count(&self) -> usize {
-        self.clients.client_count()
-    }
-
-    /// Check if a client is connected.
-    #[must_use]
-    pub fn has_client(&self, client_id: ClientId) -> bool {
-        self.clients.has_client(client_id)
-    }
-
     /// Get the session ID.
     #[must_use]
     pub const fn id(&self) -> &SessionId {
         &self.id
+    }
+
+    /// Get the client directory (membership and editing-relation authority).
+    #[must_use]
+    pub const fn clients(&self) -> &ClientDirectory {
+        &self.clients
     }
 
     /// Execute a closure with read access to the session state.
@@ -924,14 +766,6 @@ impl Session {
             .get(&client_id)
             .and_then(|client| client.state.clipboard_history.get_by_index(index))
             .cloned()
-    }
-
-    /// List connected client IDs (for peer history navigation).
-    ///
-    /// Returns a sorted list of client IDs currently in this session.
-    #[must_use]
-    pub fn connected_client_ids(&self) -> Vec<ClientId> {
-        self.clients.connected_client_ids()
     }
 }
 

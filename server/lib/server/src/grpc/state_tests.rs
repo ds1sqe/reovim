@@ -332,7 +332,7 @@ async fn test_get_visible_lines_with_scroll() {
     session.add_client(client_id);
 
     // Modify the CLIENT's per-client viewport with scroll
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         if let Some(window) = state.windows.active_mut() {
             let mut viewport = Viewport::new(80, 24);
             viewport.scroll_top = 10; // Scrolled down 10 lines
@@ -400,9 +400,11 @@ async fn test_get_registers_with_content() {
     session.add_client(ClientId::new(1));
 
     // Set a register on the per-client state (#515)
-    session.update_client_state(ClientId::new(1), |state| {
-        state.registers.set(RegisterContent::characterwise("hello"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state.registers.set(RegisterContent::characterwise("hello"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -431,17 +433,19 @@ async fn test_get_registers_specific_register() {
     session.add_client(ClientId::new(1));
 
     // Set multiple registers on per-client state (#515)
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set(RegisterContent::characterwise("unnamed"));
-        state
-            .registers
-            .set_named('a', RegisterContent::linewise("alpha"));
-        state
-            .registers
-            .set_named('b', RegisterContent::characterwise("beta"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set(RegisterContent::characterwise("unnamed"));
+            state
+                .registers
+                .set_named('a', RegisterContent::linewise("alpha"));
+            state
+                .registers
+                .set_named('b', RegisterContent::characterwise("beta"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -556,7 +560,7 @@ async fn test_get_selection_with_char_selection() {
     session.add_client(client_id);
 
     // Modify the CLIENT's per-client state (not shared state)
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Set selection for "hello" (0,0 to 0,5 exclusive)
@@ -610,7 +614,7 @@ async fn test_get_selection_line_mode() {
     session.add_client(client_id);
 
     // Modify the CLIENT's per-client state
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Line-wise selection for lines 0-1
@@ -659,7 +663,7 @@ async fn test_get_selection_block_mode() {
     session.add_client(client_id);
 
     // Modify the CLIENT's per-client state
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Block selection from (0,0) to (1,2) - a 2x2 block
@@ -708,7 +712,7 @@ async fn test_get_selection_reverse() {
     session.add_client(client_id);
 
     // Modify the CLIENT's per-client state
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Selection from column 2 to column 5 (already normalized)
@@ -753,11 +757,13 @@ async fn test_get_mode_per_client_returns_client_mode() {
 
     // Modify the client's per-client mode stack to INSERT mode
     let module = ModuleId::new("editor");
-    session.update_client_state(client_id, |editing_state| {
-        editing_state
-            .mode_stack
-            .push(ModeId::new(module.clone(), "insert"));
-    });
+    session
+        .clients()
+        .update_client_state(client_id, |editing_state| {
+            editing_state
+                .mode_stack
+                .push(ModeId::new(module.clone(), "insert"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -800,14 +806,14 @@ async fn test_cursor_isolation_between_clients() {
     session.add_client(client_b);
 
     // Client A moves cursor to (3, 5)
-    session.update_client_state(client_a, |state| {
+    session.clients().update_client_state(client_a, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.cursor = CursorPosition { line: 3, column: 5 };
         }
     });
 
     // Client B's cursor should still be at default (0, 0)
-    let state_b = session.client_state(client_b).unwrap();
+    let state_b = session.clients().client_state(client_b).unwrap();
     let cursor_b = state_b.windows.active().unwrap().cursor;
     assert_eq!(cursor_b.line, 0, "Client B cursor line should be 0");
     assert_eq!(cursor_b.column, 0, "Client B cursor column should be 0");
@@ -856,7 +862,7 @@ async fn test_mode_isolation_between_clients() {
 
     // Client A enters INSERT mode
     let module = ModuleId::new("editor");
-    session.update_client_state(client_a, |state| {
+    session.clients().update_client_state(client_a, |state| {
         state.mode_stack.push(ModeId::new(module.clone(), "insert"));
     });
 
@@ -898,7 +904,7 @@ async fn test_layout_isolation_per_client() {
     session.add_client(client_a);
 
     // Modify client's window viewport
-    session.update_client_state(client_a, |state| {
+    session.clients().update_client_state(client_a, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(120, 40);
         }
@@ -938,6 +944,7 @@ async fn test_get_visible_lines_with_specific_window_id() {
 
     // Get the window id from client state
     let window_id = session
+        .clients()
         .client_state(client_id)
         .unwrap()
         .windows
@@ -1008,7 +1015,7 @@ async fn test_get_layout_multi_window() {
 
     // Add a second window to the client
     let buffer_id2 = reovim_kernel::api::v1::BufferId::from_raw(99);
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         let window2 = Window::with_buffer(buffer_id2);
         state.windows.add(window2);
     });
@@ -1105,11 +1112,13 @@ async fn test_get_registers_linewise() {
     session.add_client(ClientId::new(1));
 
     // Set register on per-client state (#515)
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set(RegisterContent::linewise("line content\n"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set(RegisterContent::linewise("line content\n"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -1214,6 +1223,7 @@ async fn test_get_mode_following_client_triggers_ring_buffer_log() {
     session.add_client(follower_id);
 
     let _ = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
     // Following client -> client_current_mode returns None -> NotFound with ring buffer log
@@ -1239,6 +1249,7 @@ async fn test_get_cursor_following_client_triggers_ring_buffer_log() {
     session.add_client(follower_id);
 
     let _ = session
+        .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
     // Note: client_state for Following returns target's state, so we need a case
@@ -1395,11 +1406,13 @@ async fn test_get_registers_specific_register_with_content() {
     session.add_client(ClientId::new(1));
 
     // Set a named register on per-client state (#515)
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set_named('a', RegisterContent::characterwise("hello world"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('a', RegisterContent::characterwise("hello world"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -1429,11 +1442,13 @@ async fn test_get_registers_specific_linewise_register() {
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
 
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set_named('b', RegisterContent::linewise("a full line\n"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('b', RegisterContent::linewise("a full line\n"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -1460,15 +1475,17 @@ async fn test_get_registers_multiple_specific() {
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
 
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set_named('a', RegisterContent::characterwise("alpha"));
-        state
-            .registers
-            .set_named('b', RegisterContent::linewise("beta\n"));
-        // 'c' not set
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('a', RegisterContent::characterwise("alpha"));
+            state
+                .registers
+                .set_named('b', RegisterContent::linewise("beta\n"));
+            // 'c' not set
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -1495,14 +1512,16 @@ async fn test_get_registers_specific_empty_register_filtered_out() {
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
 
-    session.update_client_state(ClientId::new(1), |state| {
-        state
-            .registers
-            .set_named('x', RegisterContent::characterwise(""));
-        state
-            .registers
-            .set_named('y', RegisterContent::characterwise("visible"));
-    });
+    session
+        .clients()
+        .update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('x', RegisterContent::characterwise(""));
+            state
+                .registers
+                .set_named('y', RegisterContent::characterwise("visible"));
+        });
 
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
@@ -1564,7 +1583,7 @@ async fn test_selection_isolation_per_client() {
     session.add_client(client_b);
 
     // Client A has a selection
-    session.update_client_state(client_a, |state| {
+    session.clients().update_client_state(client_a, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             window.selection =
@@ -1573,7 +1592,7 @@ async fn test_selection_isolation_per_client() {
     });
 
     // Client B has no selection (just viewport)
-    session.update_client_state(client_b, |state| {
+    session.clients().update_client_state(client_b, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             window.selection = None;
@@ -1632,7 +1651,7 @@ fn test_registry_with_dangling_follower(client_id: ClientId) -> Arc<SessionRegis
     client.relation = Some(ClientRelation::Following {
         target: ClientId::new(99999),
     });
-    session.add_client_with_state(client);
+    session.clients().add_client_with_state(client);
     registry
 }
 

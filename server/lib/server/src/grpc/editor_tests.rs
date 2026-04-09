@@ -93,7 +93,7 @@ async fn test_get_active_buffer_with_buffer() {
     // Per-client active_buffer (#471): add a client and set their active buffer
     let client_id = ClientId::new(1);
     session.add_client(client_id);
-    session.with_clients_mut(|clients| {
+    session.clients().with_clients_mut(|clients| {
         if let Some(client) = clients.get_mut(&client_id) {
             client.state.active_buffer = Some(buf_id);
         }

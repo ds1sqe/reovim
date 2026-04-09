@@ -357,7 +357,7 @@ async fn test_send_keys_following_client_ignored() {
     session.add_client(follower_id);
 
     // Set follower relation
-    let _ = session.set_client_relation(
+    let _ = session.clients().set_client_relation(
         follower_id,
         Some(crate::session::ClientRelation::Following { target: owner_id }),
     );
@@ -489,7 +489,7 @@ async fn test_apply_mode_transition_set() {
 
     // First push a mode
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
     });
 
@@ -517,7 +517,7 @@ async fn test_apply_mode_transition_pop() {
 
     // Push a mode first
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
     });
 
@@ -658,7 +658,7 @@ fn test_emit_notifications_with_cursor_moved() {
 
     // Set up a window displaying the buffer for this client
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         let window = reovim_driver_session::Window::with_buffer(buffer_id);
         state.windows = reovim_driver_session::WindowLayout::single(window);
     });
@@ -861,7 +861,7 @@ async fn test_apply_mode_transition_pop_with_result_cancelled() {
 
     // Push a mode first
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
     });
 
@@ -886,7 +886,7 @@ async fn test_apply_mode_transition_pop_with_data_result() {
 
     // Push a mode first
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
     });
 
@@ -915,7 +915,7 @@ async fn test_apply_mode_transition_pop_with_execute_command_result() {
 
     // Push a mode first
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
     });
 
@@ -948,7 +948,7 @@ async fn test_apply_mode_transition_set_clears_stack() {
     // Push multiple modes
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
     let visual_mode = ModeId::new(ModuleId::new("test"), "visual");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
         state.mode_stack.push(visual_mode);
     });
@@ -1053,7 +1053,7 @@ fn test_handle_pop_result_execute_command_with_active_buffer() {
     session.add_client(client_id);
 
     // Set active buffer via per-client state (#471)
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.active_buffer = Some(BufferId::from_raw(5));
     });
 
@@ -1300,7 +1300,7 @@ async fn test_apply_mode_transition_for_follower_client() {
     session.add_client(follower_id);
 
     // Set follower relation
-    let _ = session.set_client_relation(
+    let _ = session.clients().set_client_relation(
         follower_id,
         Some(crate::session::ClientRelation::Following { target: owner_id }),
     );
@@ -1391,7 +1391,7 @@ fn test_emit_notifications_with_affected_buffers() {
     let buf2 = reovim_kernel::api::v1::BufferId::from_raw(2);
 
     // Set up windows displaying the buffers for this client
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         let window = reovim_driver_session::Window::with_buffer(buf1);
         state.windows = reovim_driver_session::WindowLayout::single(window);
     });
@@ -1434,7 +1434,7 @@ async fn test_apply_mode_transition_pop_multiple_times() {
     // Push two modes
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
     let visual_mode = ModeId::new(ModuleId::new("test"), "visual");
-    session.update_client_state(client_id, |state| {
+    session.clients().update_client_state(client_id, |state| {
         state.mode_stack.push(insert_mode);
         state.mode_stack.push(visual_mode);
     });
@@ -1483,7 +1483,7 @@ async fn test_send_keys_independent_client() {
     session.add_client(client_id);
 
     // Set client as Independent (default)
-    let _ = session.set_client_relation(client_id, None);
+    let _ = session.clients().set_client_relation(client_id, None);
 
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));

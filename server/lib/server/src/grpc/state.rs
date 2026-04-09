@@ -177,7 +177,7 @@ impl StateService for StateServiceImpl {
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.client_state(client_id).ok_or_else(|| {
+        let state = session.clients().client_state(client_id).ok_or_else(|| {
             session.with_client_ring_buffer(client_id, |rb| {
                 rb.log_event(
                     ClientEventType::Error,
@@ -282,7 +282,7 @@ impl StateService for StateServiceImpl {
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.client_state(client_id).ok_or_else(|| {
+        let state = session.clients().client_state(client_id).ok_or_else(|| {
             session.with_client_ring_buffer(client_id, |rb| {
                 rb.log_event(
                     ClientEventType::Error,
@@ -378,7 +378,7 @@ impl StateService for StateServiceImpl {
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.client_state(client_id).ok_or_else(|| {
+        let state = session.clients().client_state(client_id).ok_or_else(|| {
             session.with_client_ring_buffer(client_id, |rb| {
                 rb.log_event(
                     ClientEventType::Error,
@@ -434,7 +434,7 @@ impl StateService for StateServiceImpl {
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.client_state(client_id).ok_or_else(|| {
+        let state = session.clients().client_state(client_id).ok_or_else(|| {
             session.with_client_ring_buffer(client_id, |rb| {
                 rb.log_event(
                     ClientEventType::Error,
@@ -606,7 +606,7 @@ impl StateService for StateServiceImpl {
 
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
-        let client_state = session.client_state(client_id).ok_or_else(|| {
+        let client_state = session.clients().client_state(client_id).ok_or_else(|| {
             Status::not_found(format!("Client {} not found", client_id.as_usize()))
         })?;
 
