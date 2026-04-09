@@ -1,0 +1,16 @@
+[package]
+name = "reovim-client-module-sample"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Sample client module fixture for #729 E2E validation"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+reovim-module-macros = { workspace = true }
+
+[lints]
+workspace = true

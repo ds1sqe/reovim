@@ -28,10 +28,12 @@ pub struct ParsedCmdline {
 ///
 /// Grammar: `[name][!] [arg1 arg2 ...]`
 ///
-/// Command names are alphabetic. Arguments start at the first non-alpha
-/// character after the name (or at whitespace). This allows vim-style
-/// commands like `:s/pat/rep/` where there is no space between the
-/// command name and arguments.
+/// Command names start alphabetic and may continue with ASCII alphanumeric
+/// characters or `-`. Arguments start at the first character that is not a
+/// valid command-name character (or at whitespace). This preserves vim-style
+/// commands like `:s/pat/rep/` where there is no space between the command
+/// name and arguments while also supporting kebab-case ex-commands such as
+/// `:write-quit`.
 ///
 /// Returns `None` for empty or whitespace-only input.
 ///
@@ -65,11 +67,12 @@ pub fn parse_cmdline(input: &str) -> Option<ParsedCmdline> {
         return None;
     }
 
-    // Find where the command name ends. Ex-command names are alphabetic.
-    // The name ends at the first character that is not a letter, giving us
-    // correct parsing for `:s/pat/rep/` (name="s", args="/pat/rep/").
+    // Find where the command name ends. Ex-command names start alphabetic and
+    // may continue with ASCII alphanumeric characters or '-'. This keeps
+    // `:s/pat/rep/` parsing as name="s", args="/pat/rep/" while allowing
+    // kebab-case commands such as `:write-quit`.
     let name_end = input
-        .find(|c: char| !c.is_ascii_alphabetic())
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '-')
         .unwrap_or(input.len());
 
     let cmd_part = &input[..name_end];

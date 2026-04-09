@@ -84,6 +84,24 @@ fn test_parse_long_command_name() {
 }
 
 #[test]
+fn test_parse_kebab_case_command_name() {
+    let parsed = parse_cmdline("write-quit").unwrap();
+    assert_eq!(parsed.name, "write-quit");
+    assert!(!parsed.bang);
+    assert!(parsed.args.is_empty());
+    assert!(parsed.raw_args.is_empty());
+}
+
+#[test]
+fn test_parse_kebab_case_command_with_bang_and_args() {
+    let parsed = parse_cmdline("write-quit! now").unwrap();
+    assert_eq!(parsed.name, "write-quit");
+    assert!(parsed.bang);
+    assert_eq!(parsed.args, vec!["now"]);
+    assert_eq!(parsed.raw_args, "now");
+}
+
+#[test]
 fn test_parsed_cmdline_clone() {
     let parsed = parse_cmdline("w! file.txt").unwrap();
     #[allow(clippy::redundant_clone)]

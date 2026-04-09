@@ -2378,6 +2378,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-module-sample"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-client-tui"
 version = "0.14.5-dev"
 dependencies = [
@@ -2386,9 +2394,11 @@ dependencies = [
  "crossterm",
  "futures",
  "reovim-arch",
+ "reovim-client-cli",
  "reovim-client-driver",
  "reovim-client-model",
  "reovim-driver-display",
+ "reovim-driver-module-registry",
  "reovim-driver-tui",
  "reovim-protocol",
  "reovim-testing",
@@ -3450,6 +3460,17 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-sample"
+version = "1.0.0"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]

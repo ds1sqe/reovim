@@ -130,6 +130,52 @@ sudo cp target/release/libreovim_module_my_module.so /usr/lib/reovim/modules/
 
 ## FFI Entry Points
 
+## Server Modules vs Client Modules
+
+reovim currently supports two dynamic module surfaces:
+
+- **Server modules** implement the kernel-side `Module` trait and are loaded by
+  the server bootstrap / registry path.
+- **Client modules** implement the client-side `ClientModule` trait and are
+  loaded by the TUI client for chrome/render contributions.
+
+### Server module quick start
+
+1. Create a crate with a discoverable package name such as
+   `reovim-module-my-module` so Cargo produces
+   `libreovim_module_my_module.so`.
+2. Implement `reovim_kernel::api::v1::Module`.
+3. Export FFI entry points with `declare_module!(MyModule)`.
+4. Build with `cargo build -p reovim-module-my-module` (or use
+   `./scripts/build-module.sh my-module`).
+5. Install through the registry / XDG module layout under
+   `~/.local/share/reovim/modules/`.
+
+### Client module quick start
+
+1. Create a crate with a discoverable package name such as
+   `reovim-client-module-my-module` so Cargo produces
+   `libreovim_client_module_my_module.so`.
+2. Implement `reovim_client_driver::ClientModule`.
+3. Export FFI entry points with `declare_client_module!(MyClientModule)`.
+4. Build with `cargo build -p reovim-client-module-my-module`.
+5. Put the resulting library in either:
+   - a directory listed in `REOVIM_CLIENT_MODULE_PATH`, or
+   - `~/.local/share/reovim/client-modules/` (XDG default).
+6. Enable dynamic client discovery with `REOVIM_LOAD_DYNAMIC_CLIENT_MODULES=1`
+   while the current opt-in gate remains in place.
+
+### Current rough edges (as of #729)
+
+- `scripts/build-module.sh` currently covers **server modules only**; client
+  modules still use direct `cargo build` flows.
+- Server and client discovery use different XDG roots:
+  `reovim/modules/` vs `reovim/client-modules/`.
+- Headless integration tests that spawn `target/debug/reovim` require a fresh
+  app binary build in addition to building the `.so` fixtures.
+- The authoring story is functional end-to-end, but the docs are still more
+  mature for server modules than for client chrome/render modules.
+
 The `declare_module!` macro generates these FFI symbols:
 
 | Symbol | Type | Purpose |

@@ -84,6 +84,8 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 reovim-testing = { workspace = true }
 reovim-protocol = { workspace = true, features = ["grpc"] }
+reovim-client-cli = { workspace = true }
+reovim-driver-module-registry = { workspace = true }
 reovim-tui-mod-statusline = { workspace = true }
 tempfile = "3"
 
