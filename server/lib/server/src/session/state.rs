@@ -34,6 +34,22 @@ use crate::{
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
+/// No-op command executor for key resolution and mode transition paths.
+///
+/// Resolvers only need `SessionApiDyn` (excludes `CommandExecutor`), so
+/// this stub satisfies the `SessionRuntime::with_owner` constructor without
+/// pulling in the full command registry.
+struct StubExecutor;
+
+impl reovim_driver_session::api::CommandExecutor for StubExecutor {
+    fn get_handle(
+        &self,
+        _id: &reovim_kernel::api::v1::CommandId,
+    ) -> Option<std::sync::Arc<dyn reovim_driver_session::api::CommandHandle>> {
+        None
+    }
+}
+
 /// Session state combining application state with registries.
 ///
 /// This is the complete state for a single editing session. Each session
@@ -422,19 +438,8 @@ impl SessionState {
     {
         use {
             reovim_driver_input::ModeState,
-            reovim_driver_session::{
-                ClientId as DriverClientId, SessionRuntime,
-                api::{CommandExecutor, CommandHandle},
-            },
+            reovim_driver_session::{ClientId as DriverClientId, SessionRuntime},
         };
-
-        // Stub command executor - commands are executed separately
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-                None
-            }
-        }
 
         let reovim_driver_session::ClientContext {
             mode_stack: client_mode_stack,
@@ -577,17 +582,7 @@ impl SessionState {
         client_id: usize,
         client: reovim_driver_session::ClientContext<'_>,
     ) -> Option<reovim_driver_input::ModeTransition> {
-        use reovim_driver_session::{
-            ClientId as DriverClientId, SessionRuntime,
-            api::{CommandExecutor, CommandHandle},
-        };
-
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-                None
-            }
-        }
+        use reovim_driver_session::{ClientId as DriverClientId, SessionRuntime};
 
         let reovim_driver_session::ClientContext {
             mode_stack: client_mode_stack,
