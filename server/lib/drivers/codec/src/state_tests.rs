@@ -596,11 +596,11 @@ impl ContentCodec for FailingDecodeCodec {
 
 struct OrchestrationFactory {
     content_type: &'static str,
-    codec: fn() -> Box<dyn ContentCodec>,
+    codec: fn() -> Arc<dyn ContentCodec>,
 }
 
 impl ContentCodecFactory for OrchestrationFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == self.content_type {
             Some((self.codec)())
         } else {
@@ -621,7 +621,7 @@ fn multi_view_store() -> crate::ContentCodecFactoryStore {
     let store = crate::ContentCodecFactoryStore::new();
     store.add_factory(Arc::new(OrchestrationFactory {
         content_type: "text/multi",
-        codec: || Box::new(MultiViewCodec),
+        codec: || Arc::new(MultiViewCodec),
     }));
     store
 }
@@ -751,7 +751,7 @@ fn switch_view_codec_decode_error_surfaces_as_decode_failed() {
     let store = crate::ContentCodecFactoryStore::new();
     store.add_factory(Arc::new(OrchestrationFactory {
         content_type: "text/failing",
-        codec: || Box::new(FailingDecodeCodec),
+        codec: || Arc::new(FailingDecodeCodec),
     }));
     let mut state = CodecSessionState::new();
     state.mount_decoded(

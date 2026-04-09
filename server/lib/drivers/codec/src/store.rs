@@ -54,9 +54,11 @@ impl ContentCodecFactoryStore {
     /// Find and create a codec for the given content type.
     ///
     /// Iterates registered factories, calling `create()` on each.
-    /// Returns the first `Some` result.
+    /// Returns the first `Some` result. Post-Phase 5 sub-commit 5b the
+    /// codec is wrapped in `Arc` so mounts can share a single instance
+    /// cheaply.
     #[must_use]
-    pub fn find(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    pub fn find(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         self.factories
             .read()
             .iter()

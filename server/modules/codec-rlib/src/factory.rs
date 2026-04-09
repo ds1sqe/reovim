@@ -1,5 +1,7 @@
 //! Rlib codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{classifier::RLIB, codec::RlibCodec};
@@ -25,9 +27,9 @@ impl Default for RlibCodecFactory {
 }
 
 impl ContentCodecFactory for RlibCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == RLIB {
-            Some(Box::new(RlibCodec::new()))
+            Some(Arc::new(RlibCodec::new()))
         } else {
             None
         }

@@ -1,5 +1,7 @@
 //! CJK codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::codec::CjkCodec;
@@ -33,10 +35,10 @@ impl Default for CjkCodecFactory {
 }
 
 impl ContentCodecFactory for CjkCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         for &(ct_str, encoding) in CJK_ENCODINGS {
             if content_type.as_str() == ct_str {
-                return Some(Box::new(CjkCodec::new(encoding, ct_str)));
+                return Some(Arc::new(CjkCodec::new(encoding, ct_str)));
             }
         }
         None

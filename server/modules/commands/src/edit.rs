@@ -227,7 +227,6 @@ fn open_large_binary(
             let Some(buffer_id) = runtime.active_buffer() else {
                 return CommandResult::Error("no active buffer".to_string());
             };
-            let codec: Arc<dyn reovim_driver_codec::ContentCodec> = codec.into();
             if let Some(result) = codec.decode_streaming(handle.as_mut(), file_size) {
                 match result {
                     Ok(decode_result) => {
@@ -374,7 +373,6 @@ fn decode_file_content(
 
         // Find and create the codec
         if let Some(codec) = factories.find(&content_type) {
-            let codec: Arc<dyn reovim_driver_codec::ContentCodec> = codec.into();
             match codec.decode(bytes) {
                 Ok(result) => {
                     if result.truncated {

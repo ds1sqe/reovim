@@ -1,5 +1,7 @@
 //! CSV codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{
@@ -29,12 +31,12 @@ impl Default for CsvCodecFactory {
 }
 
 impl ContentCodecFactory for CsvCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         match content_type.as_str() {
-            s if s == CSV => Some(Box::new(CsvCodec::new(b',', CSV))),
-            s if s == TSV => Some(Box::new(CsvCodec::new(b'\t', TSV))),
-            s if s == PSV => Some(Box::new(CsvCodec::new(b'|', PSV))),
-            s if s == SCSV => Some(Box::new(CsvCodec::new(b';', SCSV))),
+            s if s == CSV => Some(Arc::new(CsvCodec::new(b',', CSV))),
+            s if s == TSV => Some(Arc::new(CsvCodec::new(b'\t', TSV))),
+            s if s == PSV => Some(Arc::new(CsvCodec::new(b'|', PSV))),
+            s if s == SCSV => Some(Arc::new(CsvCodec::new(b';', SCSV))),
             _ => None,
         }
     }

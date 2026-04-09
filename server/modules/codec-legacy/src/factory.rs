@@ -1,5 +1,7 @@
 //! Legacy codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{
@@ -28,10 +30,10 @@ impl Default for LegacyCodecFactory {
 }
 
 impl ContentCodecFactory for LegacyCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         match content_type.as_str() {
-            LATIN_1 => Some(Box::new(LegacyCodec::new(LATIN_1, false))),
-            WINDOWS_1252 => Some(Box::new(LegacyCodec::new(WINDOWS_1252, true))),
+            LATIN_1 => Some(Arc::new(LegacyCodec::new(LATIN_1, false))),
+            WINDOWS_1252 => Some(Arc::new(LegacyCodec::new(WINDOWS_1252, true))),
             _ => None,
         }
     }

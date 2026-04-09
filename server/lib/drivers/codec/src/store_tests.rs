@@ -37,9 +37,9 @@ struct MockFactory {
 }
 
 impl ContentCodecFactory for MockFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == self.content_type {
-            Some(Box::new(MockCodec))
+            Some(Arc::new(MockCodec))
         } else {
             None
         }

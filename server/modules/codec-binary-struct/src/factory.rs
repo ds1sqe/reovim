@@ -1,5 +1,7 @@
 //! Binary struct codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{
@@ -29,10 +31,10 @@ impl Default for BinaryStructCodecFactory {
 }
 
 impl ContentCodecFactory for BinaryStructCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         match content_type.as_str() {
-            s if s == ELF => Some(Box::new(ElfCodec::new())),
-            s if s == ZIP => Some(Box::new(ZipCodec::new())),
+            s if s == ELF => Some(Arc::new(ElfCodec::new())),
+            s if s == ZIP => Some(Arc::new(ZipCodec::new())),
             _ => None,
         }
     }

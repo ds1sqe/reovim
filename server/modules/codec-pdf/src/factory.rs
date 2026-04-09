@@ -1,5 +1,7 @@
 //! PDF codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{classifier::PDF, codec::PdfCodec};
@@ -25,9 +27,9 @@ impl Default for PdfCodecFactory {
 }
 
 impl ContentCodecFactory for PdfCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == PDF {
-            Some(Box::new(PdfCodec::new()))
+            Some(Arc::new(PdfCodec::new()))
         } else {
             None
         }

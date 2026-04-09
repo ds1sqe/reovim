@@ -304,10 +304,9 @@ impl CodecSessionState {
             .bytes(buffer_id)
             .ok_or(SwitchViewError::NoCanonicalBytes)?;
 
-        let codec_box = factories
+        let codec = factories
             .and_then(|store| store.find(&content_type))
             .ok_or(SwitchViewError::NoCodec)?;
-        let codec: Arc<dyn ContentCodec> = codec_box.into();
 
         if !codec.views().iter().any(|v| v.name == view_name) {
             return Err(SwitchViewError::ViewNotAvailable {

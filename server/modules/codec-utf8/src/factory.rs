@@ -1,5 +1,7 @@
 //! UTF-8 codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::codec::Utf8Codec;
@@ -25,9 +27,9 @@ impl Default for Utf8CodecFactory {
 }
 
 impl ContentCodecFactory for Utf8CodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == ContentType::UTF8 {
-            Some(Box::new(Utf8Codec::new()))
+            Some(Arc::new(Utf8Codec::new()))
         } else {
             None
         }

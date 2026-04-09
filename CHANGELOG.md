@@ -38,6 +38,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **format**: format commands skip virtual buffers gracefully (#739)
 - **session**: move `TextBufferRegistry` from `reovim-driver-session` into `reovim-provider-text`, with session importing it from the provider for boundary-correct ownership (#740)
 - **server**: codec orchestration extracted from the `SwitchCodecView` gRPC handler into `CodecSessionState::switch_view` — handler is now a dispatcher that resolves the buffer, calls the codec-driver helper, translates structured errors to `tonic::Status`, and writes the decoded content to the buffer. No codec-side mutation remains in `server/lib/server/src/grpc/buffer.rs` (#740)
+- **codec**: `ContentCodecFactory::create` now returns `Option<Arc<dyn ContentCodec>>` instead of `Option<Box<dyn ContentCodec>>`. `ContentCodecFactoryStore::find` inherits the Arc return type. All in-tree codec module factories (`codec-utf8`, `codec-hex`, `codec-cjk`, `codec-csv`, `codec-legacy`, `codec-pdf`, `codec-rlib`, `codec-binary-struct`) migrated. Callers drop the `Box -> Arc::from` conversion dance, and Phase 5 multi-mount can cheaply share a single codec across sibling mounts (#740)
 
 ### Refactored
 

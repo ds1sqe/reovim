@@ -1,5 +1,7 @@
 //! Hex codec factory.
 
+use std::sync::Arc;
+
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::codec::HexCodec;
@@ -25,9 +27,9 @@ impl Default for HexCodecFactory {
 }
 
 impl ContentCodecFactory for HexCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == ContentType::BINARY_RAW {
-            Some(Box::new(HexCodec::new()))
+            Some(Arc::new(HexCodec::new()))
         } else {
             None
         }

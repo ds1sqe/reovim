@@ -63,9 +63,9 @@ struct TestCodecFactory {
 }
 
 impl ContentCodecFactory for TestCodecFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == self.content_type {
-            Some(Box::new(TestTrackedCodec {
+            Some(Arc::new(TestTrackedCodec {
                 calls: Arc::clone(&self.calls),
                 byte_edit: self.byte_edit.clone(),
             }))
@@ -120,8 +120,7 @@ fn record_codec_buffer(
             .kernel
             .services
             .get::<ContentCodecFactoryStore>()
-            .and_then(|store| store.find(&ContentType::new(content_type)))
-            .map(std::sync::Arc::from);
+            .and_then(|store| store.find(&ContentType::new(content_type)));
 
         if let Some(codec) = codec {
             codec_state.set_source_with_codec(buffer_id, source.to_vec(), codec);

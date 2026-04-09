@@ -1,5 +1,7 @@
 //! Tests for content codec factory trait.
 
+use std::sync::Arc;
+
 use {
     super::*,
     crate::{CodecError, CodecMetadata, DecodeResult},
@@ -31,9 +33,9 @@ impl ContentCodec for NullCodec {
 struct TestFactory;
 
 impl ContentCodecFactory for TestFactory {
-    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
         if content_type.as_str() == "text/utf-8" {
-            Some(Box::new(NullCodec))
+            Some(Arc::new(NullCodec))
         } else {
             None
         }
