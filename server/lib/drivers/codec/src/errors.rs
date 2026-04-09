@@ -88,6 +88,44 @@ pub enum EditError {
     },
 }
 
+/// Errors surfaced by [`crate::CodecSessionState::mount_codec`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum MountCodecError {
+    /// No canonical inode bytes exist for the buffer. Phase 5 5c callers
+    /// must ensure the buffer is bound to an inode (via `set_source` /
+    /// `mount_decoded`) before requesting a secondary mount.
+    #[error("no canonical inode bytes for buffer")]
+    NoCanonicalBytes,
+
+    /// The factory store has no codec registered for the requested
+    /// content type.
+    #[error("no codec for content type '{content_type}'")]
+    NoCodec {
+        /// The content type that was requested.
+        content_type: String,
+    },
+
+    /// The codec driver returned an error while attaching the mount.
+    /// This surfaces any `MountError` that leaked out of the underlying
+    /// `InodeTable::mount` / `mount_additional` call (for example a
+    /// mount id overflow that would only happen after ~18 quintillion
+    /// mounts — effectively unreachable, but still surfaced).
+    #[error(transparent)]
+    Mount(#[from] MountError),
+}
+
+/// Errors surfaced by [`crate::CodecSessionState::unmount_codec`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum UmountCodecError {
+    /// The mount id is not registered on any inode in this session.
+    #[error("mount id not found")]
+    MountNotFound,
+
+    /// The codec driver returned an error while detaching the mount.
+    #[error(transparent)]
+    Umount(#[from] UmountError),
+}
+
 /// Errors surfaced by orchestration helpers that drive codec view switching.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SwitchViewError {

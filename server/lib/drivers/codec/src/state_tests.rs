@@ -772,3 +772,134 @@ fn switch_view_codec_decode_error_surfaces_as_decode_failed() {
         other => panic!("expected DecodeFailed, got {other:?}"),
     }
 }
+
+// ── Phase 5 sub-commit 5c: multi-mount orchestration tests ────────────────
+
+use crate::{MountCodecError, UmountCodecError};
+
+#[test]
+fn mount_codec_adds_first_mount_when_inode_has_no_mounts() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    // set_source binds an inode for the buffer but does NOT mount a codec.
+    state.set_source(buf(1), b"hi".to_vec());
+
+    let handle = state
+        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "default".to_string())
+        .expect("first mount via mount_codec");
+
+    assert_eq!(handle.buffer_id(), buf(1));
+    let mounts = state.list_mounts(buf(1));
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].view_name, "default");
+    assert!(mounts[0].content_valid);
+}
+
+#[test]
+fn mount_codec_adds_additional_when_inode_already_mounted() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+
+    let handle = state
+        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "hex".to_string())
+        .expect("additional mount via mount_codec");
+
+    let mounts = state.list_mounts(buf(1));
+    assert_eq!(mounts.len(), 2);
+    let view_names: Vec<&str> = mounts.iter().map(|m| m.view_name.as_str()).collect();
+    assert!(view_names.contains(&"default"));
+    assert!(view_names.contains(&"hex"));
+    assert!(
+        mounts
+            .iter()
+            .any(|m| m.mount_id == handle.mount_id_for_tests())
+    );
+}
+
+#[test]
+fn mount_codec_no_canonical_bytes() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    let err = state
+        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "default".to_string())
+        .unwrap_err();
+    assert_eq!(err, MountCodecError::NoCanonicalBytes);
+}
+
+#[test]
+fn mount_codec_no_codec_for_content_type() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.set_source(buf(1), b"hi".to_vec());
+    let err = state
+        .mount_codec(&store, buf(1), &ContentType::new("text/unknown"), "default".to_string())
+        .unwrap_err();
+    assert_eq!(
+        err,
+        MountCodecError::NoCodec {
+            content_type: "text/unknown".to_string()
+        }
+    );
+}
+
+#[test]
+fn unmount_codec_removes_the_named_mount() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    let hex = state
+        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "hex".to_string())
+        .expect("hex mount");
+
+    assert_eq!(state.list_mounts(buf(1)).len(), 2);
+    state
+        .unmount_codec(hex.mount_id_for_tests())
+        .expect("umount");
+    let remaining = state.list_mounts(buf(1));
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].view_name, "default");
+}
+
+#[test]
+fn unmount_codec_not_found_returns_error() {
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    // Use a mount id that certainly doesn't exist.
+    let bogus = crate::MountId::from_u64(999_999);
+    let err = state.unmount_codec(bogus).unwrap_err();
+    assert_eq!(err, UmountCodecError::MountNotFound);
+}
+
+#[test]
+fn list_mounts_empty_for_unknown_buffer() {
+    let state = CodecSessionState::new();
+    assert!(state.list_mounts(buf(42)).is_empty());
+}
+
+#[test]
+fn factory_store_available_enumerates_registered_factories() {
+    let store = multi_view_store();
+    let available = store.available();
+    assert_eq!(available.len(), 1);
+    assert_eq!(available[0].0, "text/multi");
+    assert_eq!(available[0].1, vec!["text/multi".to_string()]);
+}

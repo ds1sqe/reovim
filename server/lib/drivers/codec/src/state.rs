@@ -37,9 +37,28 @@ use {
 };
 
 use crate::{
-    ByteNotifiable, CodecMetadata, ContentCodec, ContentCodecFactoryStore, DecodedEdit, InodeTable,
-    Mount, SwitchViewError,
+    ByteNotifiable, CodecMetadata, ContentCodec, ContentCodecFactoryStore, ContentType,
+    DecodedEdit, InodeTable, Mount, MountCodecError, MountHandle, MountId, SwitchViewError,
+    UmountCodecError,
 };
+
+/// Descriptor for a single mount returned by [`CodecSessionState::list_mounts`].
+///
+/// Intentionally wire-friendly: owned strings and bare ids so the gRPC
+/// `ListMounts` handler can convert one-for-one without cloning nested
+/// trait objects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MountInfo {
+    /// Stable identifier for the mount.
+    pub mount_id: MountId,
+
+    /// Human-readable view name assigned when the mount was registered.
+    pub view_name: String,
+
+    /// Whether the mount's decoded view is fresh relative to
+    /// `inode.bytes`. See [`Mount::content_valid`].
+    pub content_valid: bool,
+}
 
 /// Per-session codec storage.
 ///
@@ -330,6 +349,117 @@ impl CodecSessionState {
         }
 
         Ok(result.content)
+    }
+
+    // ── Multi-mount orchestration helpers (#740 Phase 5 sub-commit 5c) ────
+
+    /// Attach a codec mount on a buffer and return the new mount id.
+    ///
+    /// If the buffer's inode already has a mount (as it does whenever
+    /// `:e` has run the decode pipeline), this call uses
+    /// [`InodeTable::mount_additional`] to attach a second (or Nth) view
+    /// alongside the existing ones. If the buffer has canonical bytes
+    /// but no mounts yet, the call uses [`InodeTable::mount`] to create
+    /// the first one. The caller retains responsibility for keeping the
+    /// buffer text in sync with the new mount's view; this helper only
+    /// records the mount inside the codec driver.
+    ///
+    /// # Errors
+    ///
+    /// - [`MountCodecError::NoCanonicalBytes`] — the buffer is not bound
+    ///   to an inode yet. The caller must load bytes via
+    ///   [`CodecSessionState::mount_decoded`] or `set_source` first.
+    /// - [`MountCodecError::NoCodec`] — the factory store has no codec
+    ///   registered for the requested content type.
+    /// - [`MountCodecError::Mount`] — the underlying `InodeTable` mount
+    ///   call failed (effectively unreachable in practice — would only
+    ///   happen on a mount id counter overflow).
+    pub fn mount_codec(
+        &mut self,
+        factories: &ContentCodecFactoryStore,
+        buffer_id: BufferId,
+        content_type: &ContentType,
+        view_name: String,
+    ) -> Result<MountHandle, MountCodecError> {
+        let codec = factories
+            .find(content_type)
+            .ok_or_else(|| MountCodecError::NoCodec {
+                content_type: content_type.as_str().to_string(),
+            })?;
+
+        let inode_id = self
+            .inodes
+            .file_inode(buffer_id)
+            .ok_or(MountCodecError::NoCanonicalBytes)?;
+
+        let mount = Mount::new(view_name, codec);
+
+        let inode = self
+            .inodes
+            .lookup_inode(inode_id)
+            .ok_or(MountCodecError::NoCanonicalBytes)?;
+
+        let handle = if inode.mounts.is_empty() {
+            self.inodes.mount(inode_id, buffer_id, mount)?
+        } else {
+            self.inodes.mount_additional(inode_id, buffer_id, mount)?
+        };
+
+        Ok(handle)
+    }
+
+    /// Detach a previously-registered mount by its id.
+    ///
+    /// Mount handles are not exposed over the wire protocol — the wire
+    /// form is a bare `u64` mount id — so the session state scans every
+    /// bound buffer until it finds the owning inode. Inode count is
+    /// small (one per open file) so the linear scan is fine.
+    ///
+    /// # Errors
+    ///
+    /// - [`UmountCodecError::MountNotFound`] — the mount id is not
+    ///   registered on any inode in this session.
+    /// - [`UmountCodecError::Umount`] — the underlying `InodeTable`
+    ///   unmount call failed.
+    pub fn unmount_codec(&mut self, mount_id: MountId) -> Result<(), UmountCodecError> {
+        let bindings: Vec<BufferId> = self
+            .active_view
+            .keys()
+            .map(|&k| BufferId::from_raw(k))
+            .collect();
+        for buffer_id in bindings {
+            if let Some(inode_id) = self.inodes.file_inode(buffer_id)
+                && let Some(inode) = self.inodes.lookup_inode(inode_id)
+                && inode.mounts.contains_key(&mount_id)
+            {
+                let handle = MountHandle::new(inode_id, buffer_id, mount_id);
+                self.inodes.unmount(handle)?;
+                return Ok(());
+            }
+        }
+        Err(UmountCodecError::MountNotFound)
+    }
+
+    /// Enumerate every mount currently attached to a buffer's inode.
+    ///
+    /// Returns an empty vec if the buffer has no inode bound.
+    #[must_use]
+    pub fn list_mounts(&self, buffer_id: BufferId) -> Vec<MountInfo> {
+        let Some(inode_id) = self.inodes.file_inode(buffer_id) else {
+            return Vec::new();
+        };
+        let Some(inode) = self.inodes.lookup_inode(inode_id) else {
+            return Vec::new();
+        };
+        inode
+            .mounts
+            .iter()
+            .map(|(mount_id, mount)| MountInfo {
+                mount_id: *mount_id,
+                view_name: mount.name.clone(),
+                content_valid: mount.content_valid,
+            })
+            .collect()
     }
 
     // ── Index management (#740 D.2) ───────────────────────────────────────

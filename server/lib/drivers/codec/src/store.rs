@@ -73,6 +73,29 @@ impl ContentCodecFactoryStore {
         std::mem::take(&mut *self.factories.write())
     }
 
+    /// Enumerate every registered factory as `(name, supported_content_types)`.
+    ///
+    /// Used by the Phase 5 sub-commit 5c `ListAvailableCodecs` RPC so a
+    /// client can populate a codec picker UI without draining the store.
+    /// Content type strings are owned so the result outlives the
+    /// `RwLock` read guard.
+    #[must_use]
+    pub fn available(&self) -> Vec<(&'static str, Vec<String>)> {
+        self.factories
+            .read()
+            .iter()
+            .map(|f| {
+                (
+                    f.name(),
+                    f.supported_content_types()
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
     /// Get the number of registered factories.
     #[must_use]
     pub fn len(&self) -> usize {

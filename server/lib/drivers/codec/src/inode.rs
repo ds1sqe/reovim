@@ -138,6 +138,16 @@ impl MountHandle {
         self.buffer
     }
 
+    /// The mount id embedded in this handle.
+    ///
+    /// Exposed for the Phase 5 sub-commit 5c wire protocol: the
+    /// `MountCodec` RPC response echoes the assigned mount id back to
+    /// the client so it can later pass it to `UmountCodec`.
+    #[must_use]
+    pub const fn mount_id(&self) -> MountId {
+        self.mount
+    }
+
     /// Test-only accessor for the mount id embedded in this handle.
     #[cfg(test)]
     #[must_use]

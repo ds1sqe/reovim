@@ -32,8 +32,32 @@ service BufferService {
   // Get available codec views for a buffer.
   rpc GetCodecViews(GetCodecViewsRequest) returns (GetCodecViewsResponse);
 
-  // Switch the active codec view for a buffer.
+  // DEPRECATED — scheduled for removal in v0.11.0.
+  // Phase 5 sub-commit 5c (#740) replaces this with the multi-mount
+  // MountCodec / UmountCodec / ListMounts / ListAvailableCodecs RPCs.
+  // The server keeps this handler as a compatibility shim that routes
+  // through CodecSessionState::switch_view.
   rpc SwitchCodecView(SwitchCodecViewRequest) returns (SwitchCodecViewResponse);
+
+  // Mount a codec on a buffer's inode.
+  //
+  // If the inode already has a mount, this attaches a second (or Nth)
+  // mount via InodeTable::mount_additional. Returns the new mount id.
+  // Phase 5 sub-commit 5c (#740).
+  rpc MountCodec(MountCodecRequest) returns (MountCodecResponse);
+
+  // Unmount a previously-registered codec mount.
+  // Phase 5 sub-commit 5c (#740).
+  rpc UmountCodec(UmountCodecRequest) returns (UmountCodecResponse);
+
+  // List every active mount on a buffer's inode.
+  // Phase 5 sub-commit 5c (#740).
+  rpc ListMounts(ListMountsRequest) returns (ListMountsResponse);
+
+  // List every codec factory the server has registered and the content
+  // types each one can handle. Clients use this to populate a codec
+  // picker UI. Phase 5 sub-commit 5c (#740).
+  rpc ListAvailableCodecs(ListAvailableCodecsRequest) returns (ListAvailableCodecsResponse);
 }
 
 // Raw content
@@ -165,4 +189,59 @@ message SwitchCodecViewRequest {
 message SwitchCodecViewResponse {
   bool ok = 1;
   optional string error = 2;
+}
+
+// Multi-mount RPCs (Plan 06 Phase 5 sub-commit 5c, #740).
+
+message MountCodecRequest {
+  optional uint64 buffer_id = 1;  // Default: active buffer
+  string content_type = 2;        // e.g. "text/utf-8", "binary/raw"
+  optional string view_name = 3;  // Default: "default"
+}
+
+message MountCodecResponse {
+  bool ok = 1;
+  optional string error = 2;
+  // mount id assigned by the server; clients pass this back to
+  // UmountCodec to release the mount.
+  optional uint64 mount_id = 3;
+}
+
+message UmountCodecRequest {
+  uint64 mount_id = 1;
+}
+
+message UmountCodecResponse {
+  bool ok = 1;
+  optional string error = 2;
+}
+
+message ListMountsRequest {
+  optional uint64 buffer_id = 1;  // Default: active buffer
+}
+
+message ListMountsResponse {
+  uint64 buffer_id = 1;
+  repeated MountInfo mounts = 2;
+}
+
+message MountInfo {
+  uint64 mount_id = 1;
+  string view_name = 2;
+  // Whether this mount's decoded view is currently fresh with respect
+  // to the underlying inode bytes. Set false when a sibling mount
+  // applied an edit and the StaleCheck hook (sub-commit 5e) hasn't
+  // re-decoded yet.
+  bool content_valid = 3;
+}
+
+message ListAvailableCodecsRequest {}
+
+message ListAvailableCodecsResponse {
+  repeated AvailableCodec codecs = 1;
+}
+
+message AvailableCodec {
+  string name = 1;                   // Factory name, e.g. "utf-8"
+  repeated string content_types = 2; // Every content type the factory can handle
 }

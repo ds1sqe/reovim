@@ -77,7 +77,10 @@ pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 // Decoded edits and inode/mount primitives.
 pub use {
     decoded_edit::DecodedEdit,
-    errors::{EditError, InodeError, MountError, SwitchViewError, UmountError},
+    errors::{
+        EditError, InodeError, MountCodecError, MountError, SwitchViewError, UmountCodecError,
+        UmountError,
+    },
     inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId},
 };
 
@@ -93,4 +96,4 @@ pub use {
 };
 
 // Per-session state
-pub use state::CodecSessionState;
+pub use state::{CodecSessionState, MountInfo};

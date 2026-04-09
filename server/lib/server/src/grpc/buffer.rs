@@ -8,15 +8,21 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore, SwitchViewError},
+    reovim_driver_codec::{
+        CodecSessionState, ContentCodecFactoryStore, ContentType, MountCodecError, MountId,
+        SwitchViewError, UmountCodecError,
+    },
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
-        BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest, GetAnnotationsResponse,
-        GetCodecViewsRequest, GetCodecViewsResponse, GetLineCountRequest, GetLineCountResponse,
-        GetRawContentRequest, GetRawContentResponse, LineAnnotation, ListBuffersRequest,
-        ListBuffersResponse, OpenFileRequest, OpenFileResponse, SetContentRequest,
-        SetContentResponse, SwitchCodecViewRequest, SwitchCodecViewResponse, WriteFileRequest,
-        WriteFileResponse, buffer_service_server::BufferService,
+        AvailableCodec, BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest,
+        GetAnnotationsResponse, GetCodecViewsRequest, GetCodecViewsResponse, GetLineCountRequest,
+        GetLineCountResponse, GetRawContentRequest, GetRawContentResponse, LineAnnotation,
+        ListAvailableCodecsRequest, ListAvailableCodecsResponse, ListBuffersRequest,
+        ListBuffersResponse, ListMountsRequest, ListMountsResponse, MountCodecRequest,
+        MountCodecResponse, MountInfo as ProtoMountInfo, OpenFileRequest, OpenFileResponse,
+        SetContentRequest, SetContentResponse, SwitchCodecViewRequest, SwitchCodecViewResponse,
+        UmountCodecRequest, UmountCodecResponse, WriteFileRequest, WriteFileResponse,
+        buffer_service_server::BufferService,
     },
     tonic::{Request, Response, Status},
 };
@@ -323,6 +329,13 @@ impl BufferService for BufferServiceImpl {
 
     /// Switch the active codec view for a buffer.
     ///
+    /// **Deprecated** — scheduled for removal in v0.11.0. Clients should
+    /// use `MountCodec` / `UmountCodec` / `ListMounts` /
+    /// `ListAvailableCodecs` directly. This handler is retained as a
+    /// compatibility shim that still routes through
+    /// [`CodecSessionState::switch_view`] so existing test suites keep
+    /// passing while the multi-mount wire protocol rolls out.
+    ///
     /// The handler is strictly a dispatcher: resolve the buffer, confirm
     /// the codec-state and factory-store extensions exist, delegate the
     /// orchestration to [`CodecSessionState::switch_view`], and write the
@@ -334,6 +347,9 @@ impl BufferService for BufferServiceImpl {
         &self,
         request: Request<SwitchCodecViewRequest>,
     ) -> Result<Response<SwitchCodecViewResponse>, Status> {
+        tracing::warn!(
+            "SwitchCodecView RPC is deprecated (#740 Plan 06 Phase 5 5c); use MountCodec / UmountCodec / ListMounts / ListAvailableCodecs — removal scheduled for v0.11.0"
+        );
         let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
@@ -407,6 +423,190 @@ impl BufferService for BufferServiceImpl {
                     ok: true,
                     error: None,
                 }))
+            })
+            .await
+    }
+
+    // ── Multi-mount RPCs (#740 Plan 06 Phase 5 sub-commit 5c) ─────────────
+
+    /// Mount a codec on a buffer's inode.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::significant_drop_tightening)]
+    async fn mount_codec(
+        &self,
+        request: Request<MountCodecRequest>,
+    ) -> Result<Response<MountCodecResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
+
+        session
+            .with_state_mut(|state| {
+                let buffer_id = req
+                    .buffer_id
+                    .map(|id| BufferId::from_raw(id as usize))
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
+                    .ok_or_else(|| Status::not_found("No active buffer"))?;
+
+                let factories = state
+                    .app
+                    .kernel
+                    .services
+                    .get::<ContentCodecFactoryStore>()
+                    .ok_or_else(|| Status::not_found("No codec factory store"))?;
+
+                let codec_state = state
+                    .app
+                    .extensions
+                    .get_mut::<CodecSessionState>()
+                    .ok_or_else(|| Status::not_found("No codec state"))?;
+
+                let view_name = req
+                    .view_name
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string());
+
+                match codec_state.mount_codec(
+                    &factories,
+                    buffer_id,
+                    &ContentType::new(req.content_type.clone()),
+                    view_name,
+                ) {
+                    Ok(handle) => Ok(Response::new(MountCodecResponse {
+                        ok: true,
+                        error: None,
+                        mount_id: Some(handle.mount_id().as_u64()),
+                    })),
+                    Err(MountCodecError::NoCanonicalBytes) => {
+                        Err(Status::failed_precondition("No canonical inode bytes for buffer"))
+                    }
+                    Err(err @ MountCodecError::NoCodec { .. }) => {
+                        Err(Status::not_found(err.to_string()))
+                    }
+                    Err(MountCodecError::Mount(err)) => {
+                        Err(Status::internal(format!("mount failed: {err}")))
+                    }
+                }
+            })
+            .await
+    }
+
+    /// Unmount a previously-registered codec mount.
+    async fn umount_codec(
+        &self,
+        request: Request<UmountCodecRequest>,
+    ) -> Result<Response<UmountCodecResponse>, Status> {
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let mount_id = MountId::from_u64(
+            std::num::NonZeroU64::new(req.mount_id)
+                .ok_or_else(|| Status::invalid_argument("mount_id must be non-zero"))?
+                .get(),
+        );
+
+        session
+            .with_state_mut(|state| {
+                let codec_state = state
+                    .app
+                    .extensions
+                    .get_mut::<CodecSessionState>()
+                    .ok_or_else(|| Status::not_found("No codec state"))?;
+
+                match codec_state.unmount_codec(mount_id) {
+                    Ok(()) => Ok(Response::new(UmountCodecResponse {
+                        ok: true,
+                        error: None,
+                    })),
+                    Err(UmountCodecError::MountNotFound) => {
+                        Err(Status::not_found("mount id not found"))
+                    }
+                    Err(UmountCodecError::Umount(err)) => {
+                        Err(Status::internal(format!("umount failed: {err}")))
+                    }
+                }
+            })
+            .await
+    }
+
+    /// List every active mount on a buffer's inode.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::significant_drop_tightening)]
+    async fn list_mounts(
+        &self,
+        request: Request<ListMountsRequest>,
+    ) -> Result<Response<ListMountsResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
+
+        session
+            .with_state(|state| {
+                let buffer_id = req
+                    .buffer_id
+                    .map(|id| BufferId::from_raw(id as usize))
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
+                    .ok_or_else(|| Status::not_found("No active buffer"))?;
+
+                let mounts = state
+                    .app
+                    .extensions
+                    .get::<CodecSessionState>()
+                    .map(|cs| cs.list_mounts(buffer_id))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|info| ProtoMountInfo {
+                        mount_id: info.mount_id.as_u64(),
+                        view_name: info.view_name,
+                        content_valid: info.content_valid,
+                    })
+                    .collect();
+
+                Ok(Response::new(ListMountsResponse {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    mounts,
+                }))
+            })
+            .await
+    }
+
+    /// List every codec factory the server has registered.
+    async fn list_available_codecs(
+        &self,
+        _request: Request<ListAvailableCodecsRequest>,
+    ) -> Result<Response<ListAvailableCodecsResponse>, Status> {
+        let session = self.get_session()?;
+
+        session
+            .with_state(|state| {
+                let codecs = state
+                    .app
+                    .kernel
+                    .services
+                    .get::<ContentCodecFactoryStore>()
+                    .map(|store| {
+                        store
+                            .available()
+                            .into_iter()
+                            .map(|(name, content_types)| AvailableCodec {
+                                name: name.to_string(),
+                                content_types,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                Ok(Response::new(ListAvailableCodecsResponse { codecs }))
             })
             .await
     }

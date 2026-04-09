@@ -19,6 +19,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **vfs**: `ByteSource` trait with `HeapByteSource` and `MappedByteSource` implementations for phase 2 inode codec work (#740)
 - **codec**: added `ContentCodec::translate_edit` seam (default `None`) and `DecodedEdit` abstraction for decoded-domain mutations (#740)
 - **codec**: introduced inode/mount scaffolding (`Inode`, `InodeId`, `InodeTable`, `Inode.mounts`, `Mount`, `MountHandle`, `MountId`, `InodeError`) as the phase-3 data model for mount-based codec workflows (#740)
+- **protocol**: `MountCodec`, `UmountCodec`, `ListMounts`, and `ListAvailableCodecs` RPCs on `BufferService` for multi-mount codec workflows — clients can attach multiple codec views on one inode, list them, and discover which codec factories the server has registered. `MountHandle::mount_id()` accessor exposes the assigned id in the `MountCodec` response so clients can unmount later (#740)
 
 - **driver**: `BufferCapabilities` bitflags in `reovim-driver-buffer` — `CONTENT_MATERIALIZABLE`, `SNAPSHOTTABLE`, `STREAMABLE`, `FILE_BACKED`, `LINE_READABLE`, `EDITABLE` with `ROPE` and `VIRTUAL` presets (#739)
 - **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
@@ -60,6 +61,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **codec**: `Utf8LineIndex` now stores raw bytes for proper multi-byte UTF-8 char↔byte translation — `to_bytes()` and `offset_to_position()` walk UTF-8 char boundaries instead of assuming ASCII (1 byte = 1 char), mid-character byte offsets correctly return `None` (#740)
 - **provider-text**: `BufferOps::write_to()` method for streaming buffer I/O — default materializes via `content()`, `VirtualBuffer` overrides with piece-by-piece write from mmap/add-buffer. `SessionRuntime::buffer_write_to()` dispatches through this method (#740)
 - **commands**: `:w` uses streaming write for `STREAMABLE` buffers without codec metadata — avoids full `String` materialization for large mmap-backed files (#740)
+
+### Deprecated
+
+- **protocol**: `BufferService::SwitchCodecView` RPC — scheduled for removal in v0.11.0. Use `MountCodec` + `UmountCodec` + `ListMounts` + `ListAvailableCodecs` instead. The server keeps `SwitchCodecView` as a compatibility shim that routes through `CodecSessionState::switch_view` and logs a deprecation warning on every call (#740)
 
 ### Removed
 
