@@ -19,6 +19,7 @@ mod client_directory;
 pub mod crash_dump;
 mod id;
 mod presence;
+mod presence_service;
 mod registry;
 pub mod ring_buffer;
 #[allow(clippy::module_inception)]
@@ -27,7 +28,7 @@ mod state;
 mod syntax_state;
 pub mod token_registry;
 
-pub(crate) use client_directory::ClientDirectory;
+pub(crate) use {client_directory::ClientDirectory, presence_service::PresenceService};
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},

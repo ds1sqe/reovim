@@ -7,8 +7,8 @@
 //! - **Follow**: Read-only spectator
 //! - **Share**: Bidirectional co-edit with owner
 //!
-//! The `presence` map tracks display preferences (cursor position for rendering).
-//! The `clients` map tracks editing roles and state ownership.
+//! The `presence` service tracks display preferences and sync awareness.
+//! The `clients` directory tracks editing roles and state ownership.
 
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 #[cfg(feature = "grpc")]
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
-use super::PresenceMap;
+use super::PresenceService;
 use {reovim_driver_session::ExtensionMap, reovim_types_text::RegisterContent};
 
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
@@ -37,9 +37,9 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
 ///
 /// # Client Management (Phase 11.2)
 ///
-/// The session tracks connected clients via two maps:
-/// - `clients`: Role and editing state ownership (Owner/Follow/Share)
-/// - `presence`: Display preferences and cursor positions (for rendering)
+/// The session coordinates two client-facing authorities:
+/// - `clients`: role and editing-state ownership (`ClientDirectory`)
+/// - `presence`: display preferences and sync awareness (`PresenceService`)
 pub struct Session {
     /// Unique session identifier.
     id: SessionId,
@@ -60,7 +60,7 @@ pub struct Session {
 
     /// Multi-client presence tracking (Phase 14, gRPC only).
     #[cfg(feature = "grpc")]
-    presence: PresenceMap,
+    presence: PresenceService,
 }
 
 /// Log client disconnect with crash dump path.
@@ -93,7 +93,7 @@ impl Session {
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
             #[cfg(feature = "grpc")]
-            presence: PresenceMap::new(),
+            presence: PresenceService::new(),
         }
     }
 
@@ -131,7 +131,7 @@ impl Session {
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
             #[cfg(feature = "grpc")]
-            presence: PresenceMap::new(),
+            presence: PresenceService::new(),
         }
     }
 
@@ -165,7 +165,7 @@ impl Session {
     /// Get the presence map for multi-client tracking (Phase 14, gRPC only).
     #[cfg(feature = "grpc")]
     #[must_use]
-    pub const fn presence(&self) -> &PresenceMap {
+    pub const fn presence(&self) -> &PresenceService {
         &self.presence
     }
 
