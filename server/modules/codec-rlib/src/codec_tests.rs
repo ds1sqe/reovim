@@ -23,6 +23,7 @@ fn default_impl() {
 
 #[test]
 fn translate_edit_text_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = RlibCodec::new();
     let bytes = HeapByteSource::new(b"archive contents");
     let edit = DecodedEdit::Text {
@@ -31,11 +32,12 @@ fn translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]
 fn translate_edit_bytes_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = RlibCodec::new();
     let bytes = HeapByteSource::new(b"archive contents");
     let edit = DecodedEdit::Bytes {
@@ -44,7 +46,7 @@ fn translate_edit_bytes_is_not_supported() {
         new_bytes: b"y".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]

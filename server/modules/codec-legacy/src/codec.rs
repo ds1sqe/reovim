@@ -4,7 +4,9 @@
 //! back to the original encoding. Bidirectional with round-trip guarantees.
 
 use {
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit},
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit, TranslateEditError,
+    },
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -73,37 +75,81 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
         &self,
         bytes: &dyn reovim_driver_vfs::ByteSource,
         edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        let raw = read_all_bytes(bytes)?;
-        let decoded = self.decode(&raw).ok()?;
-
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let (start, end, replacement) = match edit {
             DecodedEdit::Text {
                 start,
                 end,
                 replacement,
             } => (start, end, replacement.as_str()),
-            _ => return None,
+            DecodedEdit::Bytes { .. } => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "legacy codec does not accept byte-shaped edits",
+                });
+            }
+            DecodedEdit::Tree { .. } => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "legacy codec does not accept tree-shaped edits",
+                });
+            }
+            _ => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "legacy codec received an unknown decoded edit variant",
+                });
+            }
         };
 
-        let start_decoded = text_position_to_offset(&decoded.content, start)?;
-        let end_decoded = text_position_to_offset(&decoded.content, end)?;
+        let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+            reason: "legacy codec: failed to read byte source",
+        })?;
+        let decoded = self
+            .decode(&raw)
+            .map_err(|_| TranslateEditError::Internal {
+                reason: "legacy codec: decode failed during translate_edit",
+            })?;
+
+        let start_decoded = text_position_to_offset(&decoded.content, start).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: start position out of range",
+            },
+        )?;
+        let end_decoded = text_position_to_offset(&decoded.content, end).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: end position out of range",
+            },
+        )?;
         if end_decoded < start_decoded {
-            return None;
+            return Err(TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: end offset precedes start offset",
+            });
         }
 
-        let start_raw =
-            encode_prefix_len(&decoded.content, start_decoded, &decoded.metadata, self)?;
-        let end_raw = encode_prefix_len(&decoded.content, end_decoded, &decoded.metadata, self)?;
+        let start_raw = encode_prefix_len(&decoded.content, start_decoded, &decoded.metadata, self)
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: could not compute raw start offset",
+            })?;
+        let end_raw = encode_prefix_len(&decoded.content, end_decoded, &decoded.metadata, self)
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: could not compute raw end offset",
+            })?;
 
-        let old_bytes = raw.get(start_raw..end_raw)?.to_vec();
-        let new_bytes = self.encode_fragment(replacement, &decoded.metadata).ok()?;
+        let old_bytes = raw
+            .get(start_raw..end_raw)
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: byte range slice out of bounds",
+            })?
+            .to_vec();
+        let new_bytes = self
+            .encode_fragment(replacement, &decoded.metadata)
+            .map_err(|_| TranslateEditError::ConstraintViolation {
+                reason: "legacy codec: replacement not representable in encoding",
+            })?;
 
-        Some(ByteEdit {
+        Ok(Some(ByteEdit {
             offset: start_raw,
             old_bytes,
             new_bytes,
-        })
+        }))
     }
 }
 

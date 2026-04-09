@@ -88,6 +88,76 @@ pub enum EditError {
     },
 }
 
+/// Errors surfaced by [`crate::ContentCodec::translate_edit`].
+///
+/// Plan 07 Phase 1 taxonomy: structural codec translation may accept
+/// some decoded-edit operations and reject others. `TranslateEditError`
+/// distinguishes rejection reasons so `InodeTable::apply_edit` can map
+/// them to concrete [`EditError`] variants and so structural codec
+/// authors have a typed vocabulary for "this edit is wrong for this
+/// codec" vs "this edit is physically impossible".
+///
+/// All reason fields are `&'static str` for uniformity with
+/// [`EditError`]. Dynamic context (e.g. which ELF section failed to
+/// parse) is logged via `tracing` at the codec layer. See Plan 07
+/// `~/docs/plans/reovim/740/07-structural-codec-editing.md` §2 for the
+/// pinned semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TranslateEditError {
+    /// Codec cannot translate any edit. All mounts through this codec
+    /// behave read-only by construction (ELF, zip, PDF pre-structural).
+    #[error("codec is read-only")]
+    ReadOnly,
+
+    /// Codec can translate some operations but not this edit variant.
+    ///
+    /// Example: a UTF-8 codec receiving [`crate::DecodedEdit::Bytes`]
+    /// or [`crate::DecodedEdit::Tree`]. Distinct from `ReadOnly` — the
+    /// codec has edit capability, just not for this operation.
+    #[error("unsupported edit variant: {reason}")]
+    UnsupportedEdit {
+        /// Static explanation (e.g. `"utf-8 codec does not accept byte edits"`).
+        reason: &'static str,
+    },
+
+    /// Edit violates a codec-specific domain constraint.
+    ///
+    /// Example: ELF section resize that would change the section count,
+    /// or a zip STORED-entry rewrite with a different payload length.
+    /// The edit is well-formed but domain rules reject it.
+    #[error("constraint violation: {reason}")]
+    ConstraintViolation {
+        /// Static explanation of the violated constraint.
+        reason: &'static str,
+    },
+
+    /// A [`crate::DecodedEdit::Tree`] `TreePath` did not resolve in the
+    /// current tree state.
+    ///
+    /// Example: structural codec receives an edit targeting a tree node
+    /// that has been removed by a prior peer-mount edit, or a path
+    /// component that never existed.
+    #[error("malformed tree path: {reason}")]
+    MalformedPath {
+        /// Static explanation (e.g. `"tree path component not found"`).
+        reason: &'static str,
+    },
+
+    /// Codec hit an I/O, parse, or infrastructure failure while
+    /// translating the edit.
+    ///
+    /// Distinct from `ConstraintViolation` — this is NOT a domain
+    /// constraint, it is infrastructure (e.g. byte-source read failure,
+    /// decode failure). Dynamic context is logged via `tracing` at the
+    /// codec layer; the static reason is enough for callers to
+    /// distinguish the class.
+    #[error("internal translate_edit failure: {reason}")]
+    Internal {
+        /// Static explanation of the infrastructure failure class.
+        reason: &'static str,
+    },
+}
+
 /// Errors surfaced by [`crate::CodecSessionState::mount_codec`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MountCodecError {

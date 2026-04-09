@@ -270,7 +270,8 @@ fn translate_edit_text_replaces_value() {
 
     let translated = codec
         .translate_edit(&HeapByteSource::new(original), &edit)
-        .expect("CSV text edits should translate");
+        .expect("CSV text edits should translate")
+        .expect("produced a byte edit");
 
     let mut expected_content = decoded.content.clone();
     expected_content.replace_range(start..end, "31");
@@ -283,6 +284,7 @@ fn translate_edit_text_replaces_value() {
 
 #[test]
 fn translate_edit_bytes_variant_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = CsvCodec::new(b',', CSV);
     let bytes = HeapByteSource::new(b"name,age\n");
     let edit = DecodedEdit::Bytes {
@@ -291,7 +293,10 @@ fn translate_edit_bytes_variant_is_not_supported() {
         new_bytes: b"X".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 fn position_at_byte_index(text: &str, target: usize) -> Position {

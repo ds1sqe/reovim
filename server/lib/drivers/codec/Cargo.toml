@@ -12,6 +12,14 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enable the test-only verification harness exports
+# (`reovim_driver_codec::testing::harness`) and test-only `DecodedEdit`
+# / `TreeOp` placeholder variants for downstream codec modules to use
+# in their own `#[cfg(test)]` suites. Analogous to `reovim-testing`.
+testing = []
+
 [dependencies]
 # Only depends on kernel layer (for Service trait, BufferId)
 reovim-kernel = { workspace = true }

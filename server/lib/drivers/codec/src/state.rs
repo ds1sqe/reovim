@@ -232,7 +232,9 @@ impl CodecSessionState {
     /// Apply a decoded edit through the active mount for this buffer.
     ///
     /// Returns the translated `ByteEdit` when decoding succeeds so callers
-    /// can notify indices with byte coordinates.
+    /// can notify indices with byte coordinates. Returns `None` for
+    /// three cases: no active mount, codec error, or codec-accepted
+    /// no-op (`InodeTable::apply_edit` returning `Ok(None)`).
     pub fn apply_decoded_edit(
         &mut self,
         buffer_id: BufferId,
@@ -240,8 +242,7 @@ impl CodecSessionState {
         edit: &DecodedEdit,
     ) -> Option<ByteEdit> {
         let handle = self.inodes.active_mount(buffer_id)?;
-        let byte_edit = self.inodes.apply_edit(handle, edit).ok()?;
-        Some(byte_edit)
+        self.inodes.apply_edit(handle, edit).ok().flatten()
     }
 
     /// Set the active view name for a buffer.

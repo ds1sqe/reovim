@@ -60,6 +60,14 @@ mod stale_check;
 mod state;
 mod store;
 
+/// Verification harness for `ContentCodec` implementations.
+///
+/// Gated behind the `testing` feature flag. Enabled automatically under
+/// `#[cfg(test)]` so this crate's own test suite can exercise the
+/// harness against its mock codecs.
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
+
 // ============================================================================
 // Re-exports
 // ============================================================================
@@ -77,10 +85,10 @@ pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 
 // Decoded edits and inode/mount primitives.
 pub use {
-    decoded_edit::DecodedEdit,
+    decoded_edit::{DecodedEdit, TreeOp, TreePath},
     errors::{
-        EditError, InodeError, MountCodecError, MountError, SwitchViewError, UmountCodecError,
-        UmountError,
+        EditError, InodeError, MountCodecError, MountError, SwitchViewError, TranslateEditError,
+        UmountCodecError, UmountError,
     },
     inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId},
 };

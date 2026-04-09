@@ -7,7 +7,9 @@
 //! hex dump formatting.
 
 use {
-    reovim_driver_codec::{CodecError, ContentCodec, DecodeResult, DecodedEdit},
+    reovim_driver_codec::{
+        CodecError, ContentCodec, DecodeResult, DecodedEdit, TranslateEditError,
+    },
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -58,25 +60,44 @@ impl ContentCodec for HexCodec {
         &self,
         bytes: &dyn reovim_driver_vfs::ByteSource,
         edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        let raw = read_all_bytes(bytes)?;
-        let DecodedEdit::Bytes {
-            offset,
-            old_len,
-            new_bytes,
-        } = edit
-        else {
-            return None;
-        };
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Bytes {
+                offset,
+                old_len,
+                new_bytes,
+            } => {
+                let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+                    reason: "hex codec: failed to read byte source",
+                })?;
+                let end = offset.checked_add(*old_len).ok_or(
+                    TranslateEditError::ConstraintViolation {
+                        reason: "hex codec: edit range overflowed",
+                    },
+                )?;
+                let old_bytes = raw
+                    .get(*offset..end)
+                    .ok_or(TranslateEditError::ConstraintViolation {
+                        reason: "hex codec: edit range out of bounds",
+                    })?
+                    .to_vec();
 
-        let end = offset.checked_add(*old_len)?;
-        let old_bytes = raw.get(*offset..end)?.to_vec();
-
-        Some(ByteEdit {
-            offset: *offset,
-            old_bytes,
-            new_bytes: new_bytes.clone(),
-        })
+                Ok(Some(ByteEdit {
+                    offset: *offset,
+                    old_bytes,
+                    new_bytes: new_bytes.clone(),
+                }))
+            }
+            DecodedEdit::Text { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "hex codec does not accept text edits",
+            }),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "hex codec does not accept tree edits",
+            }),
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "hex codec received an unknown decoded edit variant",
+            }),
+        }
     }
 }
 

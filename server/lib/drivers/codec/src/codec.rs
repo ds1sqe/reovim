@@ -7,7 +7,7 @@
 
 use reovim_driver_annotation::Annotation;
 
-use crate::{CodecError, CodecMetadata, DecodedEdit};
+use crate::{CodecError, CodecMetadata, DecodedEdit, TranslateEditError};
 
 /// Result of decoding raw bytes into text.
 ///
@@ -133,18 +133,46 @@ pub trait ContentCodec: Send + Sync {
 
     /// Translate a decoded edit into a byte-level edit.
     ///
-    /// Phase 3 introduces this method as the canonical seam for edit
-    /// capability checks. Codecs that cannot translate user edits should return
-    /// `None` and therefore behave read-only.
+    /// This method is the canonical seam for edit capability checks.
+    /// Plan 07 Phase 1 expands the return shape from the Plan 06
+    /// `Option<ByteEdit>` to distinguish structural-codec rejection
+    /// classes:
     ///
-    /// Default implementation returns `None` to preserve existing behavior for
-    /// codecs that are not yet writable through this seam.
+    /// - `Ok(Some(byte_edit))` — edit accepted, here is the byte diff.
+    ///   `InodeTable::apply_edit` mutates `inode.bytes`, appends undo,
+    ///   and marks peer mounts stale.
+    /// - `Ok(None)` — edit accepted, no observable byte change (clean
+    ///   no-op). `InodeTable::apply_edit` MUST early-return without
+    ///   mutation, undo append, or peer stale-marking. See the Plan 07
+    ///   `Ok(None)` semantic pin.
+    /// - `Err(TranslateEditError::ReadOnly)` — codec cannot translate
+    ///   any edit. Surfaces as [`EditError::ReadOnly`](crate::EditError::ReadOnly).
+    /// - `Err(TranslateEditError::UnsupportedEdit { reason })` —
+    ///   codec can edit some variants but not this one. Surfaces as
+    ///   [`EditError::Unsupported`](crate::EditError::Unsupported).
+    /// - `Err(TranslateEditError::ConstraintViolation { reason })` —
+    ///   edit violates codec-domain constraints. Surfaces as
+    ///   [`EditError::InvalidEdit`](crate::EditError::InvalidEdit).
+    /// - `Err(TranslateEditError::MalformedPath { reason })` — tree
+    ///   path did not resolve. Surfaces as
+    ///   [`EditError::InvalidEdit`](crate::EditError::InvalidEdit).
+    /// - `Err(TranslateEditError::Internal { reason })` — I/O, parse,
+    ///   or infrastructure failure. Surfaces as
+    ///   [`EditError::ApplyFailed`](crate::EditError::ApplyFailed).
+    ///
+    /// Default implementation returns `Err(TranslateEditError::ReadOnly)`
+    /// so codecs that are not writable through this seam inherit
+    /// read-only behavior by construction.
+    ///
+    /// # Errors
+    ///
+    /// See the `Err` variants above.
     fn translate_edit(
         &self,
         _bytes: &dyn reovim_driver_vfs::ByteSource,
         _edit: &DecodedEdit,
-    ) -> Option<reovim_kernel::api::v1::ByteEdit> {
-        None
+    ) -> Result<Option<reovim_kernel::api::v1::ByteEdit>, TranslateEditError> {
+        Err(TranslateEditError::ReadOnly)
     }
 
     /// Available views for this codec.

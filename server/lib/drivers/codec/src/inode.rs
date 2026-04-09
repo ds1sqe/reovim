@@ -8,7 +8,7 @@ use {
 };
 
 use {
-    crate::errors::{EditError, MountError, UmountError},
+    crate::errors::{EditError, MountError, TranslateEditError, UmountError},
     tracing::{debug, trace},
 };
 
@@ -713,26 +713,34 @@ impl InodeTable {
 
     /// Apply a decoded edit by translating it to bytes and mutating canonical content.
     ///
-    /// After the edit lands, every **peer** mount on the same inode
-    /// (i.e. mounts other than `handle.mount`) has its `content_valid`
-    /// flag set to `false`. Phase 5 sub-commit 5e wires the
-    /// `StaleCheck` hook so the next read through a stale mount
-    /// re-decodes from `inode.bytes`. The source mount stays
-    /// `content_valid = true` because the edit originated there.
+    /// Return semantics (Plan 07 Phase 1 pin):
+    ///
+    /// - `Ok(Some(byte_edit))` — the edit mutated `inode.bytes`. Every
+    ///   **peer** mount on the same inode (i.e. mounts other than
+    ///   `handle.mount`) has its `content_valid` flag set to `false` so
+    ///   the `StaleCheck` hook re-decodes from `inode.bytes` on next
+    ///   read. The source mount stays `content_valid = true` because
+    ///   the edit originated there.
+    /// - `Ok(None)` — the codec accepted the edit but determined it is
+    ///   an observable no-op. `inode.bytes` is NOT mutated, peer mounts
+    ///   are NOT marked stale, and the undo log is NOT appended.
+    /// - `Err(_)` — see the error variants below.
     ///
     /// # Errors
     ///
     /// - [`EditError::InodeNotFound`] if the target inode does not exist.
     /// - [`EditError::MountNotFound`] if the mount is not attached to the inode.
-    /// - [`EditError::ReadOnly`] if the codec does not support edit translation.
+    /// - [`EditError::ReadOnly`] if the codec is read-only.
     /// - [`EditError::Unsupported`] if the decoded edit variant is unsupported.
-    /// - [`EditError::InvalidEdit`] if the edit references invalid ranges.
-    /// - [`EditError::ApplyFailed`] if the translated byte edit cannot be applied.
+    /// - [`EditError::InvalidEdit`] if the edit violates a codec-domain
+    ///   constraint or references a missing tree path.
+    /// - [`EditError::ApplyFailed`] if the translated byte edit cannot be
+    ///   applied or the codec hit an infrastructure failure.
     pub fn apply_edit(
         &mut self,
         handle: MountHandle,
         edit: &DecodedEdit,
-    ) -> Result<ByteEdit, EditError> {
+    ) -> Result<Option<ByteEdit>, EditError> {
         let inode_id = handle.inode;
         let mount_id = handle.mount;
 
@@ -750,21 +758,41 @@ impl InodeTable {
             .ok_or(EditError::InodeNotFound { inode_id })?;
 
         let current = read_all_bytes(inode.bytes.as_ref())?;
-        let Some(byte_edit) = mount_codec.translate_edit(inode.bytes.as_ref(), edit) else {
-            return match edit {
-                DecodedEdit::_Reserved => Err(EditError::Unsupported {
-                    reason: "reserved edit variant is not supported",
-                }),
-                DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => Err(EditError::ReadOnly),
-            };
+        let byte_edit = match mount_codec.translate_edit(inode.bytes.as_ref(), edit) {
+            Ok(Some(byte_edit)) => byte_edit,
+            Ok(None) => {
+                // Plan 07 Phase 1 Ok(None) semantics: clean no-op.
+                // Do NOT mutate inode.bytes, do NOT mark peer mounts
+                // stale, do NOT append undo. The codec accepted the
+                // edit and determined it has no observable effect.
+                trace!(
+                    inode_id = %inode_id,
+                    mount_id = %mount_id,
+                    "inode-edit-noop"
+                );
+                return Ok(None);
+            }
+            Err(TranslateEditError::ReadOnly) => return Err(EditError::ReadOnly),
+            Err(TranslateEditError::UnsupportedEdit { reason }) => {
+                return Err(EditError::Unsupported { reason });
+            }
+            Err(
+                TranslateEditError::ConstraintViolation { reason }
+                | TranslateEditError::MalformedPath { reason },
+            ) => {
+                return Err(EditError::InvalidEdit { reason });
+            }
+            Err(TranslateEditError::Internal { reason }) => {
+                return Err(EditError::ApplyFailed { reason });
+            }
         };
 
         let next = apply_byte_edit(current, &byte_edit)?;
         inode.set_bytes(next);
 
-        // Phase 5 sub-commit 5a: mark every peer mount on this inode
-        // stale. The source mount stays valid; others need re-decode on
-        // next read (wired in 5e via StaleCheck).
+        // Mark every peer mount on this inode stale. The source mount
+        // stays valid; others need re-decode on next read (wired via
+        // StaleCheck).
         let mut stale_peers = 0usize;
         for (peer_id, peer) in &mut inode.mounts {
             if *peer_id == mount_id {
@@ -792,7 +820,7 @@ impl InodeTable {
             );
         }
 
-        Ok(byte_edit)
+        Ok(Some(byte_edit))
     }
 
     /// Apply a raw byte edit directly to canonical bytes.

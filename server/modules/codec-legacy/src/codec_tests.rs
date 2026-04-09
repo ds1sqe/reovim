@@ -161,7 +161,10 @@ fn translate_edit_ascii_replacement() {
         replacement: "Z".to_string(),
     };
 
-    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("latin1 replacement accepted")
+        .expect("produced a byte edit");
 
     assert_eq!(translated.offset, 1);
     assert_eq!(translated.old_bytes, b"b");
@@ -181,7 +184,10 @@ fn translate_edit_cp1252_replacement() {
         replacement: "A".to_string(),
     };
 
-    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("cp1252 replacement accepted")
+        .expect("produced a byte edit");
 
     assert_eq!(translated.offset, 0);
     assert_eq!(translated.old_bytes, vec![0x93]);
@@ -190,6 +196,7 @@ fn translate_edit_cp1252_replacement() {
 
 #[test]
 fn translate_edit_bytes_variant_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = latin1_codec();
     let bytes = HeapByteSource::new(b"abc");
     let edit = DecodedEdit::Bytes {
@@ -198,5 +205,8 @@ fn translate_edit_bytes_variant_is_not_supported() {
         new_bytes: b"x".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }

@@ -7,7 +7,7 @@ use {
 
 use {
     super::*,
-    crate::{ContentType, DecodeResult, error::CodecError},
+    crate::{ContentType, DecodeResult, TranslateEditError, error::CodecError},
 };
 
 #[derive(Clone)]
@@ -31,8 +31,8 @@ impl ContentCodec for TestInsertCodec {
         &self,
         _bytes: &dyn reovim_driver_vfs::ByteSource,
         _edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        Some(ByteEdit::insert(0, &self.insert_bytes))
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        Ok(Some(ByteEdit::insert(0, &self.insert_bytes)))
     }
 }
 

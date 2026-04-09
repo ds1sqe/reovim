@@ -8,7 +8,9 @@ use std::fmt::Write;
 
 use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit},
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit, TranslateEditError,
+    },
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -77,23 +79,53 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
         &self,
         bytes: &dyn reovim_driver_vfs::ByteSource,
         edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        let raw = read_all_bytes(bytes)?;
-        let decoded = self.decode(&raw).ok()?;
-
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let (start, end, replacement) = match edit {
             DecodedEdit::Text {
                 start,
                 end,
                 replacement,
             } => (start, end, replacement.as_str()),
-            _ => return None,
+            DecodedEdit::Bytes { .. } => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "csv codec does not accept byte-shaped edits",
+                });
+            }
+            DecodedEdit::Tree { .. } => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "csv codec does not accept tree-shaped edits",
+                });
+            }
+            _ => {
+                return Err(TranslateEditError::UnsupportedEdit {
+                    reason: "csv codec received an unknown decoded edit variant",
+                });
+            }
         };
 
-        let start_offset = text_position_to_offset(&decoded.content, start)?;
-        let end_offset = text_position_to_offset(&decoded.content, end)?;
+        let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+            reason: "csv codec: failed to read byte source",
+        })?;
+        let decoded = self
+            .decode(&raw)
+            .map_err(|_| TranslateEditError::Internal {
+                reason: "csv codec: decode failed during translate_edit",
+            })?;
+
+        let start_offset = text_position_to_offset(&decoded.content, start).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "csv codec: start position out of range",
+            },
+        )?;
+        let end_offset = text_position_to_offset(&decoded.content, end).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "csv codec: end position out of range",
+            },
+        )?;
         if end_offset < start_offset {
-            return None;
+            return Err(TranslateEditError::ConstraintViolation {
+                reason: "csv codec: end offset precedes start offset",
+            });
         }
 
         let mut edited = decoded.content.clone();
@@ -102,11 +134,11 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
         let new_bytes = self.encode_fragment(&edited, &decoded.metadata);
 
         let old_bytes = raw;
-        Some(ByteEdit {
+        Ok(Some(ByteEdit {
             offset: 0,
             old_bytes,
             new_bytes,
-        })
+        }))
     }
 }
 

@@ -48,9 +48,10 @@ impl Default for PdfCodec {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-/// Phase 3: PDF extraction is text-only and lossy; reconstructed bytes cannot be
+/// PDF extraction is text-only and lossy; reconstructed bytes cannot be
 /// recreated from the decoded representation, so this codec remains intentionally
-/// read-only by returning `None` from `translate_edit`.
+/// read-only. It inherits the default `ContentCodec::translate_edit` which
+/// returns `Err(TranslateEditError::ReadOnly)` (Plan 07 Phase 1).
 impl reovim_driver_codec::ContentCodec for PdfCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         if raw.len() > MAX_PDF_INPUT_BYTES {

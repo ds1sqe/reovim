@@ -2,11 +2,93 @@
 //!
 //! `DecodedEdit` represents a user-level edit in the decoded domain.
 //!
-//! The `Text` variant is expressed with text positions so callers can keep
-//! semantic intent in terms of document coordinates. A codec translates these
-//! coordinates to byte offsets when mutating canonical bytes.
+//! - [`DecodedEdit::Text`] — text-shaped edit with document coordinates.
+//!   A faithful text codec translates these coordinates to byte offsets
+//!   when mutating canonical bytes.
+//! - [`DecodedEdit::Bytes`] — direct byte-shaped edit in decoded output
+//!   space. Used by hex/byte codecs that expose raw bytes as the
+//!   decoded view.
+//! - [`DecodedEdit::Tree`] — structural edit targeting a tree-shaped
+//!   decoded view (Plan 07 Phase 1+). A [`TreePath`] identifies a node
+//!   in the tree, and a [`TreeOp`] describes the change. Structural
+//!   codecs (ELF, .rlib, zip, tar.gz, PDF) parse a mount-local tree
+//!   cache and translate `Tree` edits back into canonical byte edits
+//!   immediately — trees are never a parallel source of truth.
 
 use reovim_types_text::Position;
+
+/// Path to a node inside a tree-shaped decoded view.
+///
+/// `TreePath` is format-agnostic: each component is a `String` identifier
+/// interpreted by the codec. Typical patterns:
+///
+/// - ELF: `["sections", "text", "bytes"]`
+/// - zip: `["entries", "README.txt", "data"]`
+/// - PDF: `["metadata", "title"]`
+///
+/// The empty path (`TreePath::root()`) refers to the root of the tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreePath {
+    components: Vec<String>,
+}
+
+impl TreePath {
+    /// Construct a path from an explicit component list.
+    #[must_use]
+    pub const fn new(components: Vec<String>) -> Self {
+        Self { components }
+    }
+
+    /// Construct the root path (empty component list).
+    #[must_use]
+    pub const fn root() -> Self {
+        Self {
+            components: Vec::new(),
+        }
+    }
+
+    /// Whether this is the root path.
+    #[must_use]
+    pub const fn is_root(&self) -> bool {
+        self.components.is_empty()
+    }
+
+    /// Borrow the component list.
+    #[must_use]
+    pub fn components(&self) -> &[String] {
+        &self.components
+    }
+}
+
+/// Structural tree operation.
+///
+/// Plan 07 Phase 1: `TreeOp` is an **enum**, not a trait object. The
+/// fixed 5-format target ladder (ELF, .rlib, zip, tar.gz, PDF) makes an
+/// enum strictly better than `Box<dyn TreeOp>` / `Arc<dyn TreeOp>`:
+///
+/// - `#[derive(Debug, Clone, PartialEq, Eq)]` works without manual
+///   impls; no Arc-identity-equality hazard.
+/// - Each Phase 2–6 lands a new variant here, gated only by the
+///   `#[non_exhaustive]` attribute.
+///
+/// Phase 1 ships exactly one variant — the test/feature-gated
+/// [`TreeOp::Synthetic`] placeholder — so the verification harness can
+/// construct and match `TreeOp` values before any real format is wired up.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeOp {
+    /// Test-only placeholder variant.
+    ///
+    /// Compiled into the crate under `#[cfg(any(test, feature =
+    /// "testing"))]` so the Phase 1 verification harness and unit tests
+    /// can construct a `TreeOp` without needing a real format
+    /// implementation.
+    #[cfg(any(test, feature = "testing"))]
+    Synthetic {
+        /// Human-readable name for diagnostics.
+        name: String,
+    },
+}
 
 /// Domain-agnostic decoded edit representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,8 +114,19 @@ pub enum DecodedEdit {
         new_bytes: Vec<u8>,
     },
 
-    /// Reserved for future structural editing variants.
-    _Reserved,
+    /// A structural edit on a tree-shaped decoded view.
+    ///
+    /// Used by structural codecs (ELF, .rlib, zip, tar.gz, PDF). The
+    /// codec's [`crate::ContentCodec::translate_edit`] implementation
+    /// resolves `path` in its parsed tree cache and applies `op`,
+    /// emitting an equivalent byte-level edit immediately. Bytes remain
+    /// the source of truth; the tree is mount-local cache only.
+    Tree {
+        /// Path of the target node in the codec's tree view.
+        path: TreePath,
+        /// Operation to apply at that node.
+        op: TreeOp,
+    },
 }
 
 impl DecodedEdit {
@@ -43,7 +136,7 @@ impl DecodedEdit {
         match self {
             Self::Text { start, end, .. } => start == end,
             Self::Bytes { old_len, .. } => *old_len == 0,
-            Self::_Reserved => false,
+            Self::Tree { .. } => false,
         }
     }
 
@@ -60,7 +153,7 @@ impl DecodedEdit {
             Self::Bytes {
                 old_len, new_bytes, ..
             } => *old_len > 0 && new_bytes.is_empty(),
-            Self::_Reserved => false,
+            Self::Tree { .. } => false,
         }
     }
 }

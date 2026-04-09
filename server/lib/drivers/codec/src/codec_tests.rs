@@ -5,7 +5,10 @@ use {
     reovim_driver_vfs::HeapByteSource,
 };
 
-use {super::*, crate::ContentType};
+use {
+    super::*,
+    crate::{ContentType, TranslateEditError},
+};
 
 #[test]
 fn decode_result_valid_when_not_lossy() {
@@ -171,7 +174,7 @@ fn mock_codec_decode_roundtrip() {
 }
 
 #[test]
-fn mock_codec_translate_edit_defaults_to_none() {
+fn mock_codec_translate_edit_defaults_to_read_only() {
     let codec = MockCodec;
 
     let bytes = HeapByteSource::new(b"hello");
@@ -181,7 +184,10 @@ fn mock_codec_translate_edit_defaults_to_none() {
         replacement: "x".to_string(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    // Default impl now returns Err(ReadOnly) so codecs that do not
+    // override translate_edit behave read-only by construction (Plan 07
+    // Phase 1).
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]

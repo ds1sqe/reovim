@@ -8,7 +8,9 @@ use {
     reovim_kernel::api::v1::{BufferId, ByteEdit},
 };
 
-use crate::{CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit};
+use crate::{
+    CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit, TranslateEditError,
+};
 
 use super::{
     EditError, InodeId, InodeTable, Mount, MountError, MountHandle, MountId, UmountError,
@@ -65,8 +67,8 @@ impl ContentCodec for CodecReadOnly {
         &self,
         _bytes: &dyn reovim_driver_vfs::ByteSource,
         _edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        None
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        Err(TranslateEditError::ReadOnly)
     }
 }
 
@@ -89,7 +91,7 @@ impl ContentCodec for CodecByteTranslator {
         &self,
         bytes: &dyn reovim_driver_vfs::ByteSource,
         edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let current = bytes.read(0..bytes.len()).into_owned();
 
         match edit {
@@ -97,8 +99,17 @@ impl ContentCodec for CodecByteTranslator {
                 offset,
                 old_len,
                 new_bytes,
-            } => byte_edit_from_bytes(*offset, &current, *old_len, new_bytes.as_slice()).ok(),
-            DecodedEdit::Text { .. } | DecodedEdit::_Reserved => None,
+            } => byte_edit_from_bytes(*offset, &current, *old_len, new_bytes.as_slice())
+                .map(Some)
+                .map_err(|_| TranslateEditError::Internal {
+                    reason: "byte_edit_from_bytes failed",
+                }),
+            DecodedEdit::Text { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "byte-translator does not accept text edits",
+            }),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "byte-translator does not accept tree edits",
+            }),
         }
     }
 }
@@ -258,7 +269,10 @@ fn apply_edit_bytes_insertion_translated_via_codec() {
         new_bytes: b"!".to_vec(),
     };
 
-    let byte_edit = table.apply_edit(handle, &edit).expect("apply edit");
+    let byte_edit = table
+        .apply_edit(handle, &edit)
+        .expect("apply edit")
+        .expect("edit produced a byte edit");
     assert_eq!(byte_edit, ByteEdit::insert(5, b"!"));
 
     let inode = table.get(id).expect("inode exists");
@@ -289,7 +303,8 @@ fn mount_and_apply_edit_emit_debug_traces() {
     assert_eq!(
         table
             .apply_edit(handle, &edit)
-            .expect("decoded edit should apply"),
+            .expect("decoded edit should apply")
+            .expect("edit produced a byte edit"),
         ByteEdit::insert(5, b"!"),
     );
 }

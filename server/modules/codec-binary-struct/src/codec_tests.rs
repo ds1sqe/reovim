@@ -25,6 +25,7 @@ fn elf_default_impl() {
 
 #[test]
 fn elf_translate_edit_text_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = ElfCodec::new();
     let bytes = HeapByteSource::new(b"\x7fELF");
     let edit = DecodedEdit::Text {
@@ -33,11 +34,12 @@ fn elf_translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]
 fn elf_translate_edit_bytes_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = ElfCodec::new();
     let bytes = HeapByteSource::new(vec![0x7f, b'E', b'L', b'F']);
     let edit = DecodedEdit::Bytes {
@@ -46,7 +48,7 @@ fn elf_translate_edit_bytes_is_not_supported() {
         new_bytes: b"x".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]
@@ -249,6 +251,7 @@ fn zip_default_impl() {
 
 #[test]
 fn zip_translate_edit_text_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = ZipCodec::new();
     let bytes = HeapByteSource::new(b"PK\x03\x04");
     let edit = DecodedEdit::Text {
@@ -257,11 +260,12 @@ fn zip_translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]
 fn zip_translate_edit_bytes_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = ZipCodec::new();
     let bytes = HeapByteSource::new(b"PK\x03\x04");
     let edit = DecodedEdit::Bytes {
@@ -270,7 +274,7 @@ fn zip_translate_edit_bytes_is_not_supported() {
         new_bytes: b"y".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
 }
 
 #[test]

@@ -6,7 +6,7 @@
 use {
     reovim_driver_codec::{
         ByteNotifiable, CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult,
-        DecodedEdit, Index,
+        DecodedEdit, Index, TranslateEditError,
     },
     reovim_kernel::api::v1::ByteEdit,
 };
@@ -97,34 +97,72 @@ impl ContentCodec for Utf8Codec {
         &self,
         bytes: &dyn reovim_driver_vfs::ByteSource,
         edit: &DecodedEdit,
-    ) -> Option<ByteEdit> {
-        let raw = read_all_bytes(bytes)?;
-        let decoded = self.decode(&raw).ok()?;
-        let mut index = crate::domain::Utf8LineIndex::new();
-
-        index.build(decoded.content.as_bytes());
-
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {
             DecodedEdit::Text {
                 start,
                 end,
                 replacement,
             } => {
-                let start_decoded = index.to_bytes(start)?;
-                let end_decoded = index.to_bytes(end)?;
-                let start_raw = normalized_offset_to_raw_offset(&raw, start_decoded)?;
-                let end_raw = normalized_offset_to_raw_offset(&raw, end_decoded)?;
+                let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+                    reason: "utf-8 codec: failed to read byte source",
+                })?;
+                let decoded = self
+                    .decode(&raw)
+                    .map_err(|_| TranslateEditError::Internal {
+                        reason: "utf-8 codec: decode failed during translate_edit",
+                    })?;
+                let mut index = crate::domain::Utf8LineIndex::new();
+                index.build(decoded.content.as_bytes());
+
+                let start_decoded =
+                    index
+                        .to_bytes(start)
+                        .ok_or(TranslateEditError::ConstraintViolation {
+                            reason: "utf-8 codec: start position out of range",
+                        })?;
+                let end_decoded =
+                    index
+                        .to_bytes(end)
+                        .ok_or(TranslateEditError::ConstraintViolation {
+                            reason: "utf-8 codec: end position out of range",
+                        })?;
+                let start_raw = normalized_offset_to_raw_offset(&raw, start_decoded).ok_or(
+                    TranslateEditError::ConstraintViolation {
+                        reason: "utf-8 codec: start offset does not map to raw bytes",
+                    },
+                )?;
+                let end_raw = normalized_offset_to_raw_offset(&raw, end_decoded).ok_or(
+                    TranslateEditError::ConstraintViolation {
+                        reason: "utf-8 codec: end offset does not map to raw bytes",
+                    },
+                )?;
                 if start_raw > end_raw {
-                    return None;
+                    return Err(TranslateEditError::ConstraintViolation {
+                        reason: "utf-8 codec: start offset exceeds end offset",
+                    });
                 }
-                let old_bytes = raw.get(start_raw..end_raw)?.to_vec();
-                Some(ByteEdit {
+                let old_bytes = raw
+                    .get(start_raw..end_raw)
+                    .ok_or(TranslateEditError::ConstraintViolation {
+                        reason: "utf-8 codec: byte range slice out of bounds",
+                    })?
+                    .to_vec();
+                Ok(Some(ByteEdit {
                     offset: start_raw,
                     old_bytes,
                     new_bytes: replacement.as_bytes().to_vec(),
-                })
+                }))
             }
-            DecodedEdit::_Reserved | _ => None,
+            DecodedEdit::Bytes { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "utf-8 codec does not accept byte-shaped edits",
+            }),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "utf-8 codec does not accept tree-shaped edits",
+            }),
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "utf-8 codec received an unknown decoded edit variant",
+            }),
         }
     }
 }

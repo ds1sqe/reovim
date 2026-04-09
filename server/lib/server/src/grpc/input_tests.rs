@@ -41,9 +41,9 @@ impl ContentCodec for TestTrackedCodec {
         &self,
         _bytes: &dyn reovim_driver_vfs::ByteSource,
         _edit: &reovim_driver_codec::DecodedEdit,
-    ) -> Option<ByteEdit> {
+    ) -> Result<Option<ByteEdit>, reovim_driver_codec::TranslateEditError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Some(ByteEdit::insert(0, &self.byte_edit))
+        Ok(Some(ByteEdit::insert(0, &self.byte_edit)))
     }
 }
 

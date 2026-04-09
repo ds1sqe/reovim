@@ -79,7 +79,10 @@ fn translate_edit_bytes_variant_replaces_canonical_byte() {
         new_bytes: vec![b'x'],
     };
 
-    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("hex codec accepted bytes edit")
+        .expect("hex codec produced a byte edit");
 
     assert_eq!(translated.offset, 1);
     assert_eq!(translated.old_bytes, vec![b'e']);
@@ -88,6 +91,7 @@ fn translate_edit_bytes_variant_replaces_canonical_byte() {
 
 #[test]
 fn translate_edit_text_variant_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = HexCodec::new();
     let bytes = HeapByteSource::new(b"A");
     let edit = DecodedEdit::Text {
@@ -96,7 +100,10 @@ fn translate_edit_text_variant_is_not_supported() {
         replacement: "58".to_string(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 #[test]

@@ -179,7 +179,8 @@ fn translate_edit_text_insertion_on_plain_utf8() {
 
     let byte_edit = codec
         .translate_edit(&bytes, &edit)
-        .expect("plain text edits should translate");
+        .expect("plain text edits should translate")
+        .expect("produced a byte edit");
 
     assert_eq!(byte_edit, ByteEdit::insert(5, b","));
 }
@@ -199,7 +200,8 @@ fn translate_edit_text_insertion_respects_crlf_and_bom() {
 
     let byte_edit = codec
         .translate_edit(&bytes, &edit)
-        .expect("CRLF + BOM edits should translate");
+        .expect("CRLF + BOM edits should translate")
+        .expect("produced a byte edit");
 
     assert_eq!(byte_edit, ByteEdit::insert(8, b"Z"));
 }
@@ -216,7 +218,8 @@ fn translate_edit_text_requires_valid_range() {
 
     let byte_edit = codec
         .translate_edit(&bytes, &edit)
-        .expect("edit should map");
+        .expect("edit should map")
+        .expect("produced a byte edit");
 
     let raw = "héllo\r\n世界".as_bytes();
     assert_eq!(byte_edit.offset, 1);
@@ -225,6 +228,7 @@ fn translate_edit_text_requires_valid_range() {
 
 #[test]
 fn translate_edit_bytes_edit_is_not_supported() {
+    use reovim_driver_codec::TranslateEditError;
     let codec = Utf8Codec::new();
     let bytes = HeapByteSource::new("hello");
     let edit = DecodedEdit::Bytes {
@@ -233,5 +237,8 @@ fn translate_edit_bytes_edit_is_not_supported() {
         new_bytes: b"x".to_vec(),
     };
 
-    assert!(codec.translate_edit(&bytes, &edit).is_none());
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
