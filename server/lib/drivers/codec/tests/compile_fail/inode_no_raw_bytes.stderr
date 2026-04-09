@@ -4,4 +4,4 @@ error[E0560]: struct `Inode` has no field named `raw_bytes`
 11 |         raw_bytes: Vec::<u8>::new(),
    |         ^^^^^^^^^ `Inode` does not have this field
    |
-   = note: all struct fields are already assigned
+   = note: available fields are: `path`

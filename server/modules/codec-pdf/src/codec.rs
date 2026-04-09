@@ -91,15 +91,6 @@ impl reovim_driver_codec::ContentCodec for PdfCodec {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        // One-way codec: PDF content cannot be reconstructed from text
-        None
-    }
 }
 
 /// Format extracted PDF pages into text content with annotations.

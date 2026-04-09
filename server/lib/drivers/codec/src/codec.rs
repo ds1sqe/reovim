@@ -99,12 +99,26 @@ impl CodecView {
 /// representation and the internal UTF-8 representation. Each codec
 /// handles a specific content type (e.g., UTF-8, hex dump, EUC-KR).
 ///
-/// # Bidirectional vs One-Way
+/// # Faithful vs Transforming
 ///
-/// - **Bidirectional** codecs (e.g., UTF-8, EUC-KR) support both
-///   `decode()` and `encode()`. Files can be edited and saved.
-/// - **One-way** codecs (e.g., hex dump) only support `decode()`.
-///   `encode()` returns `None`, and the buffer is marked readonly.
+/// - **Faithful** codecs (e.g. UTF-8, hex, CSV, CJK, legacy encodings)
+///   override [`translate_edit`](Self::translate_edit) to return
+///   `Some(ByteEdit)`. Decoded edits flow back into `inode.bytes`
+///   atomically so `:w` can persist the current inode bytes without
+///   ever re-encoding.
+/// - **Transforming** codecs (e.g. ELF, rlib, zip, PDF) inherit the
+///   default `translate_edit -> None` and are read-only by
+///   construction. `InodeTable::apply_edit` surfaces
+///   `EditError::ReadOnly` when a user tries to edit through a
+///   transforming mount.
+///
+/// # Encode path removed (#740 Plan 06 Phase 5 sub-commit 5d)
+///
+/// The previous `encode(&str, &CodecMetadata) -> Option<Result<Vec<u8>, _>>`
+/// method has been deleted. `:w` now flushes canonical
+/// `inode.bytes` via [`InodeTable::flush`](crate::InodeTable::flush),
+/// which writes through `ByteSource::write_to`. Bytes are the source
+/// of truth; there is no re-encode on save.
 ///
 /// # Thread Safety
 ///
@@ -132,23 +146,6 @@ pub trait ContentCodec: Send + Sync {
     ) -> Option<reovim_kernel::api::v1::ByteEdit> {
         None
     }
-
-    /// Encode text back into raw bytes.
-    ///
-    /// Returns:
-    /// - `Some(Ok(bytes))` — successful encode
-    /// - `Some(Err(error))` — encode failed (e.g., unmappable character)
-    /// - `None` — codec is one-way (decode only)
-    ///
-    /// # Arguments
-    ///
-    /// * `content` — The text content to encode
-    /// * `metadata` — Metadata from the original decode (for round-trip fidelity)
-    fn encode(
-        &self,
-        content: &str,
-        metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>>;
 
     /// Available views for this codec.
     ///

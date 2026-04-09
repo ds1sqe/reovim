@@ -1,7 +1,7 @@
 //! Tests for PDF codec.
 
 use {
-    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_codec::{ContentCodec, DecodedEdit},
     reovim_driver_vfs::HeapByteSource,
     reovim_types_text::Position,
 };
@@ -96,17 +96,9 @@ fn format_namespace_is_content() {
 }
 
 #[test]
-fn encode_returns_none() {
-    let codec = PdfCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new(PDF));
-    assert!(codec.encode("any content", &metadata).is_none());
-}
-
-#[test]
 fn default_impl() {
     let codec = PdfCodec;
-    let metadata = CodecMetadata::new(ContentType::new(PDF));
-    assert!(codec.encode("x", &metadata).is_none());
+    assert_eq!(std::mem::size_of_val(&codec), std::mem::size_of::<PdfCodec>());
 }
 
 #[test]

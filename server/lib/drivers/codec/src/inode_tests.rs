@@ -44,14 +44,6 @@ impl ContentCodec for CodecNoop {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
-    }
 }
 
 #[derive(Default)]
@@ -67,14 +59,6 @@ impl ContentCodec for CodecReadOnly {
             readonly: false,
             truncated: false,
         })
-    }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
     }
 
     fn translate_edit(
@@ -99,14 +83,6 @@ impl ContentCodec for CodecByteTranslator {
             readonly: false,
             truncated: false,
         })
-    }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
     }
 
     fn translate_edit(
@@ -555,7 +531,7 @@ fn apply_edit_with_no_peers_does_not_panic() {
 }
 
 #[test]
-fn flush_signature_stub_returns_unsupported_until_5d() {
+fn flush_no_path_and_no_override_returns_invalid_input() {
     let mut table = InodeTable::new();
     let id = table.insert(Arc::new(HeapByteSource::new(b"hi".to_vec())));
     let handle = mount_with_buffer(
@@ -568,7 +544,65 @@ fn flush_signature_stub_returns_unsupported_until_5d() {
     .expect("first mount");
 
     let err = table.flush(handle_mount_id(handle), None).unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+}
+
+#[test]
+fn flush_writes_inode_bytes_to_path_override() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let target = dir.path().join("out.bin");
+
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello 5d".to_vec())));
+    let handle = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecNoop) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+
+    table
+        .flush(handle_mount_id(handle), Some(&target))
+        .expect("flush succeeds");
+    let written = std::fs::read(&target).expect("file readable");
+    assert_eq!(written, b"hello 5d");
+
+    // Inode path should have been populated by the path override.
+    let inode = table.lookup_inode(id).expect("inode present");
+    assert_eq!(inode.path.as_deref(), Some(target.as_path()));
+}
+
+#[test]
+fn flush_uses_inode_path_when_override_is_none() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let target = dir.path().join("preset.bin");
+
+    let mut table = InodeTable::new();
+    let id = table.insert_with_path(
+        Arc::new(HeapByteSource::new(b"preset".to_vec())),
+        Arc::<std::path::Path>::from(target.clone()),
+    );
+    table.bind_file(buf(1), id);
+    let handle = table
+        .mount(id, buf(1), Mount::new("default", Arc::new(CodecNoop) as Arc<dyn ContentCodec>))
+        .expect("first mount");
+
+    table
+        .flush(handle_mount_id(handle), None)
+        .expect("flush succeeds");
+    let written = std::fs::read(&target).expect("file readable");
+    assert_eq!(written, b"preset");
+}
+
+#[test]
+fn flush_missing_mount_returns_not_found() {
+    let mut table = InodeTable::new();
+    // Bogus mount id with no matching entry in mount_idx.
+    let bogus = MountId::from_u64(987_654);
+    let err = table.flush(bogus, None).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
 /// Helper: extract `MountId` from a `MountHandle` for test assertions.

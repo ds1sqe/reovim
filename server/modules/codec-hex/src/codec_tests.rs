@@ -70,13 +70,6 @@ fn offset_increments() {
 }
 
 #[test]
-fn encode_returns_none() {
-    let codec = HexCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new(ContentType::BINARY_RAW));
-    assert!(codec.encode("any content", &metadata).is_none());
-}
-
-#[test]
 fn translate_edit_bytes_variant_replaces_canonical_byte() {
     let codec = HexCodec::new();
     let bytes = HeapByteSource::new(b"hello");

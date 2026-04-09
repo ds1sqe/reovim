@@ -55,24 +55,6 @@ fn name() {
 }
 
 #[test]
-fn elf_codec_encode_returns_none() {
-    let factory = BinaryStructCodecFactory::new();
-    let ct = ContentType::new(crate::classifier::ELF);
-    let codec = factory.create(&ct).unwrap();
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("any", &metadata).is_none());
-}
-
-#[test]
-fn zip_codec_encode_returns_none() {
-    let factory = BinaryStructCodecFactory::new();
-    let ct = ContentType::new(crate::classifier::ZIP);
-    let codec = factory.create(&ct).unwrap();
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("any", &metadata).is_none());
-}
-
-#[test]
 fn default_impl() {
     let factory = BinaryStructCodecFactory;
     assert_eq!(factory.name(), "binary-struct");

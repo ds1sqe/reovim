@@ -198,12 +198,30 @@ impl Mount {
     }
 }
 
+/// Maximum inode size (in bytes) the Phase 5 5d edit pipeline will
+/// allow into the heap-promotion path.
+///
+/// `apply_byte_edit_to_source` reads the current `ByteSource` into a
+/// fresh `HeapByteSource` when the edit lands; for mmap-backed inodes
+/// this is a one-shot O(N) copy. Past 512 MB the memory cost is
+/// unreasonable, so the guard returns `EditError::InvalidEdit` with a
+/// user-actionable message. Phase 7 will lift the cap via an
+/// `OverlayByteSource`.
+pub const MMAP_PROMOTION_BUDGET: u64 = 512 * 1024 * 1024;
+
 /// Raw-byte source and active mount registry for a file.
 #[derive(Clone)]
 pub struct Inode {
     /// Canonical bytes for this file.
     pub bytes: Arc<dyn ByteSource>,
-    /// Mounts keyed by `MountId` (single-mount per inode in phase 3).
+    /// Optional on-disk path the inode was loaded from. Populated by
+    /// `:e` via [`InodeTable::insert_with_path`] and by the first
+    /// successful [`InodeTable::flush`] when a scratch buffer is saved
+    /// to a new filename.
+    pub path: Option<Arc<Path>>,
+    /// Mounts keyed by `MountId`. Phase 5 5a relaxed the single-mount
+    /// invariant; use [`InodeTable::mount_additional`] to attach more
+    /// than one mount.
     pub mounts: HashMap<MountId, Mount>,
 }
 
@@ -213,6 +231,17 @@ impl Inode {
     pub fn new(bytes: Arc<dyn ByteSource>) -> Self {
         Self {
             bytes,
+            path: None,
+            mounts: HashMap::new(),
+        }
+    }
+
+    /// Construct an inode with initial bytes, an on-disk path, and no mounts.
+    #[must_use]
+    pub fn with_path(bytes: Arc<dyn ByteSource>, path: Arc<Path>) -> Self {
+        Self {
+            bytes,
+            path: Some(path),
             mounts: HashMap::new(),
         }
     }
@@ -281,6 +310,35 @@ impl InodeTable {
         let previous = self.inodes.insert(id, Inode::new(bytes));
         debug_assert!(previous.is_none());
         id
+    }
+
+    /// Register a new inode with an on-disk path and return its id.
+    ///
+    /// Phase 5 5d: `:e` routes through this constructor so the
+    /// consolidated `:w` flush path can resolve the destination without
+    /// re-asking the caller for a filename.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inode id counter overflows `usize`.
+    pub fn insert_with_path(&mut self, bytes: Arc<dyn ByteSource>, path: Arc<Path>) -> InodeId {
+        let id = self.next_inode_id();
+        let previous = self.inodes.insert(id, Inode::with_path(bytes, path));
+        debug_assert!(previous.is_none());
+        id
+    }
+
+    /// Replace the on-disk path for an existing inode.
+    ///
+    /// # Errors
+    ///
+    /// - [`EditError::InodeNotFound`] if the target inode does not exist.
+    pub fn set_path(&mut self, inode_id: InodeId, path: Arc<Path>) -> Result<(), EditError> {
+        let inode = self
+            .lookup_inode_mut(inode_id)
+            .ok_or(EditError::InodeNotFound { inode_id })?;
+        inode.path = Some(path);
+        Ok(())
     }
 
     /// Bind a buffer to an inode id.
@@ -493,23 +551,67 @@ impl InodeTable {
 
     /// Flush inode bytes to a path. Replaces encode-on-save.
     ///
-    /// **Phase 5 sub-commit 5a ships this method signature only.** The
-    /// real body (byte source → path write, path inheritance, newfile
-    /// scratch-buffer flow) is wired in sub-commit 5d when `:w` is
-    /// consolidated. Calling this method before 5d lands returns
-    /// [`io::ErrorKind::Unsupported`] so no production path silently
-    /// depends on a half-implemented helper.
+    /// Path resolution rules:
+    /// - `path_override = Some(p)` → write to `p`; if `inode.path` is
+    ///   `None`, populate it with `p` (the `:w newfile.txt` scratch
+    ///   buffer flow).
+    /// - `path_override = None`, `inode.path = Some(p)` → write to `p`.
+    /// - Both `None` → `io::ErrorKind::InvalidInput` ("no filename").
+    ///
+    /// Bytes are written via [`ByteSource::write_to`] so heap-backed
+    /// and mmap-backed sources both stream contiguously without an
+    /// extra `Vec` allocation. No `encode` is invoked — Plan 06 Phase 5
+    /// sub-commit 5d deletes the encode-on-save path by architecture.
     ///
     /// # Errors
     ///
-    /// Always returns `io::ErrorKind::Unsupported` until sub-commit 5d.
-    #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::unused_self)]
-    pub fn flush(&mut self, _mount_id: MountId, _path_override: Option<&Path>) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "InodeTable::flush is wired in #740 Plan 06 Phase 5 sub-commit 5d",
-        ))
+    /// - [`io::ErrorKind::NotFound`] if `mount_id` is not registered on
+    ///   any inode in this table.
+    /// - [`io::ErrorKind::InvalidInput`] if no destination path is
+    ///   resolvable (both `path_override` and `inode.path` are `None`).
+    /// - Propagates any I/O error from creating or writing to the file.
+    pub fn flush(&mut self, mount_id: MountId, path_override: Option<&Path>) -> io::Result<()> {
+        let inode_id = self
+            .mount_idx
+            .get(&mount_id)
+            .copied()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "mount id not found"))?;
+
+        let inode = self
+            .inodes
+            .get_mut(&inode_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "inode not found for mount"))?;
+
+        let target: Arc<Path> = match (path_override, inode.path.clone()) {
+            (Some(p), _) => Arc::<Path>::from(p.to_path_buf()),
+            (None, Some(existing)) => existing,
+            (None, None) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "no filename: buffer has no on-disk path and no explicit target was provided",
+                ));
+            }
+        };
+
+        let mut file = std::fs::File::create(&target)?;
+        inode.bytes.write_to(&mut file)?;
+
+        // Populate inode.path for the `:w newfile.txt` scratch flow so
+        // subsequent `:w` calls without an override resolve to the same
+        // file.
+        if inode.path.is_none() {
+            inode.path = Some(Arc::clone(&target));
+        }
+
+        debug!(
+            inode_id = %inode_id,
+            mount_id = %mount_id,
+            path = %target.display(),
+            bytes = inode.bytes.len(),
+            "inode-flushed"
+        );
+
+        Ok(())
     }
 
     /// Count of active file bindings.
@@ -797,6 +899,17 @@ fn apply_byte_edit(mut current: Vec<u8>, edit: &ByteEdit) -> Result<Vec<u8>, Edi
     if edit.offset > current.len() || end > current.len() {
         return Err(EditError::ApplyFailed {
             reason: "byte edit range is out of bounds",
+        });
+    }
+
+    // Phase 5 5d: reject edits on very large inodes. The heap
+    // promotion path for mmap-backed sources is O(N) and we don't
+    // want to silently allocate > 512 MB on a single keystroke.
+    // Phase 7 lifts this via OverlayByteSource.
+    if current.len() as u64 > MMAP_PROMOTION_BUDGET {
+        return Err(EditError::InvalidEdit {
+            reason: "file too large for in-memory edit — mount hex alongside for byte-level editing, \
+                 or use an external tool (#740 Phase 5 MMAP_PROMOTION_BUDGET)",
         });
     }
 

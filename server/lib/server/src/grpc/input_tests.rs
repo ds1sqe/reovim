@@ -45,14 +45,6 @@ impl ContentCodec for TestTrackedCodec {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Some(ByteEdit::insert(0, &self.byte_edit))
     }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, reovim_driver_codec::CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
-    }
 }
 
 #[derive(Clone)]

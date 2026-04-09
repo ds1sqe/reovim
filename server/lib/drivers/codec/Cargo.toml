@@ -42,3 +42,4 @@ thiserror = "2"
 [dev-dependencies]
 trybuild = "1.0"
 tracing-test = "0.2"
+tempfile = "3"

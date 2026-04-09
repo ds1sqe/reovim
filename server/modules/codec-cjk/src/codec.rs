@@ -5,9 +5,7 @@
 //! for characters supported by the encoding.
 
 use {
-    reovim_driver_codec::{
-        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
-    },
+    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit},
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -89,9 +87,7 @@ impl reovim_driver_codec::ContentCodec for CjkCodec {
         let end_raw = encode_prefix_len(&decoded.content, end_decoded, &decoded.metadata, self)?;
         let old_bytes = raw.get(start_raw..end_raw)?.to_vec();
 
-        let Some(Ok(new_bytes)) = self.encode(replacement, &decoded.metadata) else {
-            return None;
-        };
+        let new_bytes = self.encode_fragment(replacement, &decoded.metadata).ok()?;
 
         Some(ByteEdit {
             offset: start_raw,
@@ -99,22 +95,30 @@ impl reovim_driver_codec::ContentCodec for CjkCodec {
             new_bytes,
         })
     }
+}
 
-    fn encode(
+impl CjkCodec {
+    /// Internal helper used by [`ContentCodec::translate_edit`] to
+    /// re-encode a decoded text fragment back into the codec's bytes.
+    ///
+    /// Kept as an inherent method (not a `ContentCodec` trait method)
+    /// after `#740` Plan 06 Phase 5 sub-commit 5d deleted the
+    /// `encode`-on-save path from the public trait surface.
+    fn encode_fragment(
         &self,
         content: &str,
         _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
+    ) -> Result<Vec<u8>, CodecError> {
         let (encoded, _, had_errors) = self.encoding.encode(content);
 
         if had_errors {
-            return Some(Err(CodecError::Other(format!(
+            return Err(CodecError::Other(format!(
                 "content contains characters not representable in {}",
                 self.encoding.name()
-            ))));
+            )));
         }
 
-        Some(Ok(encoded.into_owned()))
+        Ok(encoded.into_owned())
     }
 }
 
@@ -156,10 +160,10 @@ fn encode_prefix_len(
     codec: &CjkCodec,
 ) -> Option<usize> {
     let prefix = decoded.get(0..prefix_len)?;
-    match codec.encode(prefix, metadata) {
-        Some(Ok(bytes)) => Some(bytes.len()),
-        _ => None,
-    }
+    codec
+        .encode_fragment(prefix, metadata)
+        .ok()
+        .map(|b| b.len())
 }
 
 fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {

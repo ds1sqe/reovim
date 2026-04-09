@@ -146,9 +146,7 @@ fn codec_view_debug() {
 }
 
 /// Mock codec for testing the trait.
-struct MockCodec {
-    bidirectional: bool,
-}
+struct MockCodec;
 
 impl ContentCodec for MockCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
@@ -163,50 +161,18 @@ impl ContentCodec for MockCodec {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        if self.bidirectional {
-            Some(Ok(content.as_bytes().to_vec()))
-        } else {
-            None
-        }
-    }
 }
 
 #[test]
-fn mock_codec_bidirectional() {
-    let codec = MockCodec {
-        bidirectional: true,
-    };
+fn mock_codec_decode_roundtrip() {
+    let codec = MockCodec;
     let result = codec.decode(b"hello").unwrap();
     assert_eq!(result.content, "hello");
-
-    let metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
-    let encoded = codec.encode("hello", &metadata).unwrap().unwrap();
-    assert_eq!(encoded, b"hello");
-}
-
-#[test]
-fn mock_codec_one_way() {
-    let codec = MockCodec {
-        bidirectional: false,
-    };
-    let result = codec.decode(b"hello").unwrap();
-    assert_eq!(result.content, "hello");
-
-    let metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
-    assert!(codec.encode("hello", &metadata).is_none());
 }
 
 #[test]
 fn mock_codec_translate_edit_defaults_to_none() {
-    let codec = MockCodec {
-        bidirectional: true,
-    };
+    let codec = MockCodec;
 
     let bytes = HeapByteSource::new(b"hello");
     let edit = DecodedEdit::Text {
@@ -220,18 +186,14 @@ fn mock_codec_translate_edit_defaults_to_none() {
 
 #[test]
 fn mock_codec_decode_error() {
-    let codec = MockCodec {
-        bidirectional: true,
-    };
+    let codec = MockCodec;
     let result = codec.decode(&[0xFF, 0xFE]);
     assert!(result.is_err());
 }
 
 #[test]
 fn views_default_returns_single_default() {
-    let codec = MockCodec {
-        bidirectional: true,
-    };
+    let codec = MockCodec;
     let views = codec.views();
     assert_eq!(views.len(), 1);
     assert_eq!(views[0], CodecView::DEFAULT);
@@ -239,9 +201,7 @@ fn views_default_returns_single_default() {
 
 #[test]
 fn decode_view_default_delegates_to_decode() {
-    let codec = MockCodec {
-        bidirectional: true,
-    };
+    let codec = MockCodec;
     let direct = codec.decode(b"test").unwrap();
     let via_view = codec.decode_view(b"test", "default").unwrap();
     assert_eq!(direct.content, via_view.content);
@@ -250,9 +210,7 @@ fn decode_view_default_delegates_to_decode() {
 
 #[test]
 fn trait_object_works() {
-    let codec: Box<dyn ContentCodec> = Box::new(MockCodec {
-        bidirectional: true,
-    });
+    let codec: Box<dyn ContentCodec> = Box::new(MockCodec);
     let result = codec.decode(b"test").unwrap();
     assert_eq!(result.content, "test");
 }

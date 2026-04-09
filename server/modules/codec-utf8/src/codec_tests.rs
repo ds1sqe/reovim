@@ -80,28 +80,25 @@ fn decode_invalid_utf8_after_bom() {
 
 #[test]
 fn encode_plain() {
-    let codec = Utf8Codec::new();
     let metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
-    let encoded = codec.encode("hello", &metadata).unwrap().unwrap();
+    let encoded = super::encode_fragment("hello", &metadata);
     assert_eq!(encoded, b"hello");
 }
 
 #[test]
 fn encode_with_bom() {
-    let codec = Utf8Codec::new();
     let mut metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
     metadata.set(META_BOM, "true");
-    let encoded = codec.encode("hello", &metadata).unwrap().unwrap();
+    let encoded = super::encode_fragment("hello", &metadata);
     assert_eq!(&encoded[..3], &[0xEF, 0xBB, 0xBF]);
     assert_eq!(&encoded[3..], b"hello");
 }
 
 #[test]
 fn encode_with_crlf() {
-    let codec = Utf8Codec::new();
     let mut metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
     metadata.set(META_LINE_ENDING, LINE_ENDING_CRLF);
-    let encoded = codec.encode("line1\nline2\n", &metadata).unwrap().unwrap();
+    let encoded = super::encode_fragment("line1\nline2\n", &metadata);
     assert_eq!(encoded, b"line1\r\nline2\r\n");
 }
 
@@ -110,10 +107,7 @@ fn round_trip_plain() {
     let codec = Utf8Codec::new();
     let original = b"hello world\n";
     let decoded = codec.decode(original).unwrap();
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = super::encode_fragment(&decoded.content, &decoded.metadata);
     assert_eq!(encoded, original);
 }
 
@@ -123,10 +117,7 @@ fn round_trip_bom() {
     let mut original = vec![0xEF, 0xBB, 0xBF];
     original.extend_from_slice(b"hello\n");
     let decoded = codec.decode(&original).unwrap();
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = super::encode_fragment(&decoded.content, &decoded.metadata);
     assert_eq!(encoded, original);
 }
 
@@ -136,10 +127,7 @@ fn round_trip_crlf() {
     let original = b"line1\r\nline2\r\nline3\r\n";
     let decoded = codec.decode(original).unwrap();
     assert_eq!(decoded.content, "line1\nline2\nline3\n");
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = super::encode_fragment(&decoded.content, &decoded.metadata);
     assert_eq!(encoded, original);
 }
 
@@ -152,10 +140,7 @@ fn round_trip_bom_and_crlf() {
     assert_eq!(decoded.content, "line1\nline2\n");
     assert_eq!(decoded.metadata.get(META_BOM), Some("true"));
     assert_eq!(decoded.metadata.get(META_LINE_ENDING), Some(LINE_ENDING_CRLF));
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = super::encode_fragment(&decoded.content, &decoded.metadata);
     assert_eq!(encoded, original);
 }
 
@@ -164,10 +149,7 @@ fn round_trip_multibyte() {
     let codec = Utf8Codec::new();
     let original = "한글 Hello 日本語\n".as_bytes();
     let decoded = codec.decode(original).unwrap();
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = super::encode_fragment(&decoded.content, &decoded.metadata);
     assert_eq!(encoded, original);
 }
 

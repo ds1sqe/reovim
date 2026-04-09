@@ -41,6 +41,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **server**: codec orchestration extracted from the `SwitchCodecView` gRPC handler into `CodecSessionState::switch_view` — handler is now a dispatcher that resolves the buffer, calls the codec-driver helper, translates structured errors to `tonic::Status`, and writes the decoded content to the buffer. No codec-side mutation remains in `server/lib/server/src/grpc/buffer.rs` (#740)
 - **codec**: `ContentCodecFactory::create` now returns `Option<Arc<dyn ContentCodec>>` instead of `Option<Box<dyn ContentCodec>>`. `ContentCodecFactoryStore::find` inherits the Arc return type. All in-tree codec module factories (`codec-utf8`, `codec-hex`, `codec-cjk`, `codec-csv`, `codec-legacy`, `codec-pdf`, `codec-rlib`, `codec-binary-struct`) migrated. Callers drop the `Box -> Arc::from` conversion dance, and Phase 5 multi-mount can cheaply share a single codec across sibling mounts (#740)
 - **codec**: single-mount invariant relaxed — `InodeTable::mount_additional` lets a second (or Nth) codec view attach to an inode that already has a mount. `InodeTable::apply_edit` now marks every peer mount's `content_valid = false` after an edit lands, so the Phase 5 sub-commit 5e `StaleCheck` hook can re-decode sibling views on next read. Added `InodeTable::flush(mount_id, path_override)` signature stub that returns `io::ErrorKind::Unsupported` until sub-commit 5d wires the consolidated `:w` path (#740)
+- **commands**: `:w` consolidated onto `InodeTable::flush` — the command no longer calls `ContentCodec::encode`. For buffers with a codec mount the save path flushes canonical inode bytes directly via `ByteSource::write_to`; STREAMABLE buffers without a mount still stream via `buffer_write_to`; plain scratch buffers write UTF-8 content. The entire bugclass B1 (parallel raw-bytes cache drifts out of sync with the text buffer) is deleted by architecture (#740)
+- **codec**: `Inode` gained an `Option<Arc<Path>>` path field; `InodeTable::insert_with_path`, `InodeTable::set_path`, and a real `InodeTable::flush(mount_id, path_override)` body land. Path resolution: override wins; else `inode.path`; else `io::ErrorKind::InvalidInput`. A successful flush with a path override populates `inode.path` for the `:w newfile.txt` scratch flow. The live 512 MB `MMAP_PROMOTION_BUDGET` guard in `apply_byte_edit` rejects edits on inodes that exceed the budget with a user-actionable `EditError::InvalidEdit` message (#740)
 
 ### Refactored
 
@@ -69,6 +71,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Removed
 
 - **session**: delete `ByteUndoRegistry` module — per-buffer byte-level undo now lives on `Inode` via `InodeTable`, keeping `reovim-driver-session` codec-agnostic (#740)
+- **codec**: `ContentCodec::encode` trait method deleted workspace-wide. Bytes are the source of truth; `:w` flushes `inode.bytes` directly. Every in-tree codec (UTF-8, hex, CJK, CSV, legacy, rlib, PDF, binary-struct, xxd) has its `encode` impl removed. Faithful codecs (UTF-8, CJK, CSV, legacy) retain a private inherent `encode_fragment` helper for `translate_edit` re-encoding and round-trip tests. Test mocks and round-trip tests updated. The `encode_and_write` helper in `commands/write.rs` is also deleted (#740)
 
 ### Fixed
 

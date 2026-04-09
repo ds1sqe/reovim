@@ -126,10 +126,7 @@ fn encode_simple_csv() {
     metadata.set("delimiter", ",");
     metadata.set("line_ending", "lf");
 
-    let result = codec
-        .encode("Alice  30\nBob    25\n", &metadata)
-        .unwrap()
-        .unwrap();
+    let result = codec.encode_fragment("Alice  30\nBob    25\n", &metadata);
     let text = String::from_utf8(result).unwrap();
     assert!(text.contains("Alice,30"));
     assert!(text.contains("Bob,25"));
@@ -142,7 +139,7 @@ fn encode_crlf() {
     metadata.set("delimiter", ",");
     metadata.set("line_ending", "crlf");
 
-    let result = codec.encode("a  b\n", &metadata).unwrap().unwrap();
+    let result = codec.encode_fragment("a  b\n", &metadata);
     let text = String::from_utf8(result).unwrap();
     assert!(text.contains("\r\n"));
 }
@@ -154,7 +151,7 @@ fn encode_tab_delimiter() {
     metadata.set("delimiter", "\t");
     metadata.set("line_ending", "lf");
 
-    let result = codec.encode("Alice  30\n", &metadata).unwrap().unwrap();
+    let result = codec.encode_fragment("Alice  30\n", &metadata);
     let text = String::from_utf8(result).unwrap();
     assert!(text.contains("Alice\t30"));
 }
@@ -247,10 +244,7 @@ fn round_trip_simple() {
     let codec = CsvCodec::new(b',', CSV);
     let original = b"name,age\nAlice,30\nBob,25\n";
     let decoded = codec.decode(original).unwrap();
-    let encoded = codec
-        .encode(&decoded.content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let encoded = codec.encode_fragment(&decoded.content, &decoded.metadata);
     let re_decoded = codec.decode(&encoded).unwrap();
 
     // Content should be identical after round-trip
@@ -280,10 +274,7 @@ fn translate_edit_text_replaces_value() {
 
     let mut expected_content = decoded.content.clone();
     expected_content.replace_range(start..end, "31");
-    let expected_new_bytes = codec
-        .encode(&expected_content, &decoded.metadata)
-        .unwrap()
-        .unwrap();
+    let expected_new_bytes = codec.encode_fragment(&expected_content, &decoded.metadata);
 
     assert_eq!(translated.offset, 0);
     assert_eq!(translated.old_bytes, original.to_vec());

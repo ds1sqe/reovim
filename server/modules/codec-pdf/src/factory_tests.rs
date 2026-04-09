@@ -45,16 +45,6 @@ fn name() {
 }
 
 #[test]
-fn created_codec_encode_returns_none() {
-    let factory = PdfCodecFactory::new();
-    let ct = ContentType::new(crate::classifier::PDF);
-    let codec = factory.create(&ct).unwrap();
-    let metadata =
-        reovim_driver_codec::CodecMetadata::new(ContentType::new(crate::classifier::PDF));
-    assert!(codec.encode("anything", &metadata).is_none());
-}
-
-#[test]
 fn default_impl() {
     let factory = PdfCodecFactory;
     assert_eq!(factory.name(), "pdf");

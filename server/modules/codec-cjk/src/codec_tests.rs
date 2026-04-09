@@ -36,8 +36,7 @@ fn euc_kr_round_trip() {
 
     // Round-trip encode
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, euc_kr_bytes);
 }
@@ -51,8 +50,7 @@ fn shift_jis_round_trip() {
     assert_eq!(result.content, "日本語");
 
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, shift_jis_bytes);
 }
@@ -66,8 +64,7 @@ fn gbk_round_trip() {
     assert_eq!(result.content, "中文");
 
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, gbk_bytes);
 }
@@ -81,8 +78,7 @@ fn big5_round_trip() {
     assert_eq!(result.content, "中文");
 
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, big5_bytes);
 }
@@ -93,7 +89,7 @@ fn ascii_passthrough() {
     let result = codec.decode(b"Hello").unwrap();
     assert_eq!(result.content, "Hello");
 
-    let encoded = codec.encode("Hello", &result.metadata).unwrap().unwrap();
+    let encoded = codec.encode_fragment("Hello", &result.metadata).unwrap();
     assert_eq!(encoded, b"Hello");
 }
 
@@ -123,7 +119,7 @@ fn encode_unencodable_returns_error() {
     let codec = euc_kr_codec();
     // Emoji can't be encoded in EUC-KR
     let metadata = CodecMetadata::new(ContentType::new("encoding/euc-kr"));
-    let result = codec.encode("Hello 🎉", &metadata).unwrap();
+    let result = codec.encode_fragment("Hello 🎉", &metadata);
     assert!(result.is_err());
 }
 

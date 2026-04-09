@@ -99,7 +99,7 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
         let mut edited = decoded.content.clone();
         edited.replace_range(start_offset..end_offset, replacement);
 
-        let new_bytes = self.encode(&edited, &decoded.metadata)?.ok()?;
+        let new_bytes = self.encode_fragment(&edited, &decoded.metadata);
 
         let old_bytes = raw;
         Some(ByteEdit {
@@ -108,13 +108,15 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
             new_bytes,
         })
     }
+}
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn encode(
-        &self,
-        content: &str,
-        metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
+impl CsvCodec {
+    /// Internal helper used by [`ContentCodec::translate_edit`] to
+    /// re-encode a decoded CSV body back into bytes.
+    ///
+    /// Retained as an inherent method after `#740` Plan 06 Phase 5
+    /// sub-commit 5d deleted the public `ContentCodec::encode` seam.
+    fn encode_fragment(&self, content: &str, metadata: &CodecMetadata) -> Vec<u8> {
         let delimiter = metadata
             .get("delimiter")
             .and_then(|s| s.chars().next())
@@ -125,7 +127,7 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
             _ => "\n",
         };
 
-        Some(Ok(encode_csv(content, delimiter, line_ending)))
+        encode_csv(content, delimiter, line_ending)
     }
 }
 

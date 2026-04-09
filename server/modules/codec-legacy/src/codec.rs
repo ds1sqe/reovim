@@ -4,9 +4,7 @@
 //! back to the original encoding. Bidirectional with round-trip guarantees.
 
 use {
-    reovim_driver_codec::{
-        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
-    },
+    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit},
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -99,9 +97,7 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
         let end_raw = encode_prefix_len(&decoded.content, end_decoded, &decoded.metadata, self)?;
 
         let old_bytes = raw.get(start_raw..end_raw)?.to_vec();
-        let Some(Ok(new_bytes)) = self.encode(replacement, &decoded.metadata) else {
-            return None;
-        };
+        let new_bytes = self.encode_fragment(replacement, &decoded.metadata).ok()?;
 
         Some(ByteEdit {
             offset: start_raw,
@@ -109,35 +105,42 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
             new_bytes,
         })
     }
+}
 
-    fn encode(
+impl LegacyCodec {
+    /// Internal helper used by [`ContentCodec::translate_edit`] to
+    /// re-encode a decoded text fragment back into legacy bytes.
+    ///
+    /// Retained as an inherent method after `#740` Plan 06 Phase 5
+    /// sub-commit 5d deleted the public `ContentCodec::encode` seam.
+    fn encode_fragment(
         &self,
         content: &str,
         _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
+    ) -> Result<Vec<u8>, CodecError> {
         if self.is_windows_1252 {
             let (encoded, _, had_errors) = encoding_rs::WINDOWS_1252.encode(content);
             if had_errors {
-                return Some(Err(CodecError::Other(
+                return Err(CodecError::Other(
                     "content contains characters not representable in Windows-1252".to_string(),
-                )));
+                ));
             }
-            Some(Ok(encoded.into_owned()))
+            Ok(encoded.into_owned())
         } else {
             // Latin-1: check all chars are in 0x00..0xFF range
             let mut bytes = Vec::with_capacity(content.len());
             for ch in content.chars() {
                 let cp = ch as u32;
                 if cp > 0xFF {
-                    return Some(Err(CodecError::Other(format!(
+                    return Err(CodecError::Other(format!(
                         "character U+{cp:04X} not representable in Latin-1"
-                    ))));
+                    )));
                 }
                 // Safe: cp <= 0xFF is guarded above.
                 #[allow(clippy::cast_possible_truncation)]
                 bytes.push(cp as u8);
             }
-            Some(Ok(bytes))
+            Ok(bytes)
         }
     }
 }
@@ -180,10 +183,10 @@ fn encode_prefix_len(
     codec: &LegacyCodec,
 ) -> Option<usize> {
     let prefix = decoded.get(0..prefix_len)?;
-    match codec.encode(prefix, metadata) {
-        Some(Ok(bytes)) => Some(bytes.len()),
-        _ => None,
-    }
+    codec
+        .encode_fragment(prefix, metadata)
+        .ok()
+        .map(|b| b.len())
 }
 
 fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {

@@ -45,9 +45,7 @@ fn elf_classifier_and_factory_integrate() {
     assert_eq!(ct.as_str(), crate::classifier::ELF);
 
     // Factory creates codec for ELF type
-    let codec = factory.create(&ct).unwrap();
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("text", &metadata).is_none());
+    let _codec = factory.create(&ct).unwrap();
 }
 
 #[test]
@@ -61,9 +59,7 @@ fn zip_classifier_and_factory_integrate() {
     assert_eq!(ct.as_str(), crate::classifier::ZIP);
 
     // Factory creates codec for ZIP type
-    let codec = factory.create(&ct).unwrap();
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("text", &metadata).is_none());
+    let _codec = factory.create(&ct).unwrap();
 }
 
 #[test]

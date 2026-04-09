@@ -49,16 +49,6 @@ fn created_codec_decodes() {
 }
 
 #[test]
-fn created_codec_encode_returns_none() {
-    let factory = HexCodecFactory::new();
-    let ct = ContentType::new(ContentType::BINARY_RAW);
-    let codec = factory.create(&ct).unwrap();
-    let metadata =
-        reovim_driver_codec::CodecMetadata::new(ContentType::new(ContentType::BINARY_RAW));
-    assert!(codec.encode("anything", &metadata).is_none());
-}
-
-#[test]
 fn default_impl() {
     let factory = HexCodecFactory;
     assert_eq!(factory.name(), "hex");

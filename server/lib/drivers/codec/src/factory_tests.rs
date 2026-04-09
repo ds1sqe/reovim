@@ -20,14 +20,6 @@ impl ContentCodec for NullCodec {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
-    }
 }
 
 struct TestFactory;

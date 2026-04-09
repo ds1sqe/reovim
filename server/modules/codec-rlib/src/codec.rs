@@ -83,14 +83,6 @@ impl reovim_driver_codec::ContentCodec for RlibCodec {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
-    }
 }
 
 /// Extract rustc version and dependency names from the `.rmeta` section.

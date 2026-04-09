@@ -44,11 +44,7 @@ fn classifier_and_factory_integrate() {
     assert_eq!(ct.as_str(), crate::classifier::PDF);
 
     // Factory creates codec for that content type
-    let codec = factory.create(&ct).unwrap();
-    // Cannot test decode with valid PDF data in unit tests (need real PDF bytes),
-    // but we can verify encode returns None
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("text", &metadata).is_none());
+    let _codec = factory.create(&ct).unwrap();
 }
 
 #[test]

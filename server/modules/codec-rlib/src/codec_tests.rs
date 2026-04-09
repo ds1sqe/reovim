@@ -1,19 +1,12 @@
 //! Tests for rlib codec.
 
 use {
-    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_codec::{ContentCodec, DecodedEdit},
     reovim_driver_vfs::HeapByteSource,
     reovim_types_text::Position,
 };
 
 use super::*;
-
-#[test]
-fn encode_returns_none() {
-    let codec = RlibCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new(RLIB));
-    assert!(codec.encode("any", &metadata).is_none());
-}
 
 #[test]
 fn decode_invalid_data() {
@@ -25,8 +18,7 @@ fn decode_invalid_data() {
 #[test]
 fn default_impl() {
     let codec = RlibCodec;
-    let metadata = CodecMetadata::new(ContentType::new(RLIB));
-    assert!(codec.encode("x", &metadata).is_none());
+    assert_eq!(std::mem::size_of_val(&codec), std::mem::size_of::<RlibCodec>());
 }
 
 #[test]

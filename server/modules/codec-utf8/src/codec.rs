@@ -127,28 +127,32 @@ impl ContentCodec for Utf8Codec {
             DecodedEdit::_Reserved | _ => None,
         }
     }
+}
 
-    fn encode(
-        &self,
-        content: &str,
-        metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        // Restore line endings
-        let text = if metadata.get(META_LINE_ENDING) == Some(LINE_ENDING_CRLF) {
-            content.replace('\n', "\r\n")
-        } else {
-            content.to_string()
-        };
+/// Retained free-function helper for round-trip tests that verify
+/// UTF-8 BOM / CRLF metadata contract.
+///
+/// Kept after `#740` Plan 06 Phase 5 sub-commit 5d deleted the
+/// public `ContentCodec::encode` seam — the consolidated `:w` path
+/// no longer re-encodes, but the BOM + CRLF metadata round-trip
+/// logic still needs coverage.
+#[cfg(test)]
+pub(crate) fn encode_fragment(content: &str, metadata: &CodecMetadata) -> Vec<u8> {
+    // Restore line endings
+    let text = if metadata.get(META_LINE_ENDING) == Some(LINE_ENDING_CRLF) {
+        content.replace('\n', "\r\n")
+    } else {
+        content.to_string()
+    };
 
-        // Restore BOM
-        let mut bytes = Vec::with_capacity(text.len() + 3);
-        if metadata.get(META_BOM) == Some("true") {
-            bytes.extend_from_slice(UTF8_BOM);
-        }
-        bytes.extend_from_slice(text.as_bytes());
-
-        Some(Ok(bytes))
+    // Restore BOM
+    let mut bytes = Vec::with_capacity(text.len() + 3);
+    if metadata.get(META_BOM) == Some("true") {
+        bytes.extend_from_slice(UTF8_BOM);
     }
+    bytes.extend_from_slice(text.as_bytes());
+
+    bytes
 }
 
 fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {

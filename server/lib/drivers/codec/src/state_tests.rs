@@ -34,14 +34,6 @@ impl ContentCodec for TestInsertCodec {
     ) -> Option<ByteEdit> {
         Some(ByteEdit::insert(0, &self.insert_bytes))
     }
-
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
-    }
 }
 
 fn buf(id: usize) -> BufferId {
@@ -524,14 +516,6 @@ impl ContentCodec for MultiViewCodec {
         })
     }
 
-    fn encode(
-        &self,
-        content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        Some(Ok(content.as_bytes().to_vec()))
-    }
-
     fn views(&self) -> &[CodecView] {
         const VIEWS: &[CodecView] = &[
             CodecView {
@@ -571,14 +555,6 @@ struct FailingDecodeCodec;
 impl ContentCodec for FailingDecodeCodec {
     fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
         Err(CodecError::Other("boom".to_string()))
-    }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
     }
 
     fn views(&self) -> &[CodecView] {

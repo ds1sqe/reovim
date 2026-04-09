@@ -69,14 +69,6 @@ impl reovim_driver_codec::ContentCodec for ElfCodec {
             truncated: false,
         })
     }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
-    }
 }
 
 /// ZIP structured summary codec.
@@ -125,14 +117,6 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
             readonly: true,
             truncated: false,
         })
-    }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
     }
 }
 

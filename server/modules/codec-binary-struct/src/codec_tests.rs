@@ -1,7 +1,7 @@
 //! Tests for ELF and ZIP codecs.
 
 use {
-    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_codec::{ContentCodec, DecodedEdit},
     reovim_driver_vfs::HeapByteSource,
     reovim_types_text::Position,
 };
@@ -9,13 +9,6 @@ use {
 use super::*;
 
 // === ELF Codec Tests ===
-
-#[test]
-fn elf_encode_returns_none() {
-    let codec = ElfCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new(ELF));
-    assert!(codec.encode("any", &metadata).is_none());
-}
 
 #[test]
 fn elf_decode_invalid() {
@@ -27,8 +20,7 @@ fn elf_decode_invalid() {
 #[test]
 fn elf_default_impl() {
     let codec = ElfCodec;
-    let metadata = CodecMetadata::new(ContentType::new(ELF));
-    assert!(codec.encode("x", &metadata).is_none());
+    assert_eq!(std::mem::size_of_val(&codec), std::mem::size_of::<ElfCodec>());
 }
 
 #[test]
@@ -243,13 +235,6 @@ fn elf_metadata_has_file_size() {
 // === ZIP Codec Tests ===
 
 #[test]
-fn zip_encode_returns_none() {
-    let codec = ZipCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new(ZIP));
-    assert!(codec.encode("any", &metadata).is_none());
-}
-
-#[test]
 fn zip_decode_invalid() {
     let codec = ZipCodec::new();
     let result = codec.decode(b"not a zip");
@@ -259,8 +244,7 @@ fn zip_decode_invalid() {
 #[test]
 fn zip_default_impl() {
     let codec = ZipCodec;
-    let metadata = CodecMetadata::new(ContentType::new(ZIP));
-    assert!(codec.encode("x", &metadata).is_none());
+    assert_eq!(std::mem::size_of_val(&codec), std::mem::size_of::<ZipCodec>());
 }
 
 #[test]

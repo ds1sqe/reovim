@@ -48,10 +48,6 @@ fn classifier_and_factory_integrate() {
     assert!(result.content.contains("Alice"));
     assert!(!result.lossy);
     assert!(!result.readonly);
-
-    // Bidirectional: can encode back
-    let encoded = codec.encode(&result.content, &result.metadata);
-    assert!(encoded.is_some());
 }
 
 #[test]

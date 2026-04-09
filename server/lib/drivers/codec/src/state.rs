@@ -440,6 +440,17 @@ impl CodecSessionState {
         Err(UmountCodecError::MountNotFound)
     }
 
+    /// Borrow the internal [`InodeTable`] mutably.
+    ///
+    /// Phase 5 sub-commit 5d exposes this so the `:w` command can call
+    /// [`InodeTable::flush`] directly after resolving the active mount
+    /// id via [`CodecSessionState::list_mounts`]. Callers outside the
+    /// consolidated save path should prefer the higher-level
+    /// orchestration helpers on [`CodecSessionState`].
+    pub const fn inode_table_mut(&mut self) -> &mut InodeTable {
+        &mut self.inodes
+    }
+
     /// Enumerate every mount currently attached to a buffer's inode.
     ///
     /// Returns an empty vec if the buffer has no inode bound.

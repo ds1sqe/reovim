@@ -33,8 +33,7 @@ fn latin1_round_trip() {
     let bytes: &[u8] = &[0x63, 0x61, 0x66, 0xE9];
     let result = codec.decode(bytes).unwrap();
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, bytes);
 }
@@ -54,8 +53,7 @@ fn cp1252_round_trip() {
     let bytes: &[u8] = &[0x93, b'h', b'i', 0x94];
     let result = codec.decode(bytes).unwrap();
     let encoded = codec
-        .encode(&result.content, &result.metadata)
-        .unwrap()
+        .encode_fragment(&result.content, &result.metadata)
         .unwrap();
     assert_eq!(encoded, bytes);
 }
@@ -74,7 +72,7 @@ fn ascii_passthrough_latin1() {
     let codec = latin1_codec();
     let result = codec.decode(b"Hello").unwrap();
     assert_eq!(result.content, "Hello");
-    let encoded = codec.encode("Hello", &result.metadata).unwrap().unwrap();
+    let encoded = codec.encode_fragment("Hello", &result.metadata).unwrap();
     assert_eq!(encoded, b"Hello");
 }
 
@@ -83,7 +81,7 @@ fn ascii_passthrough_cp1252() {
     let codec = cp1252_codec();
     let result = codec.decode(b"Hello").unwrap();
     assert_eq!(result.content, "Hello");
-    let encoded = codec.encode("Hello", &result.metadata).unwrap().unwrap();
+    let encoded = codec.encode_fragment("Hello", &result.metadata).unwrap();
     assert_eq!(encoded, b"Hello");
 }
 
@@ -106,7 +104,7 @@ fn latin1_encode_unencodable() {
     let codec = latin1_codec();
     let metadata = CodecMetadata::new(ContentType::new("encoding/latin-1"));
     // Korean character can't be encoded in Latin-1
-    let result = codec.encode("한", &metadata).unwrap();
+    let result = codec.encode_fragment("한", &metadata);
     assert!(result.is_err());
 }
 
@@ -115,7 +113,7 @@ fn cp1252_encode_unencodable() {
     let codec = cp1252_codec();
     let metadata = CodecMetadata::new(ContentType::new("encoding/windows-1252"));
     // Emoji can't be encoded in Windows-1252
-    let result = codec.encode("🎉", &metadata).unwrap();
+    let result = codec.encode_fragment("🎉", &metadata);
     assert!(result.is_err());
 }
 

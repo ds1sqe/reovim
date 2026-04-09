@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use {
-    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore},
+    reovim_driver_codec::CodecSessionState,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
@@ -75,34 +75,56 @@ impl CommandHandler for WriteCommand {
             return CommandResult::Error("VFS not available".to_string());
         };
 
-        // Streaming write for STREAMABLE buffers (VirtualBuffer / mmap-backed)
-        // when no codec re-encoding is needed. Avoids full String materialization
-        // for large files.
-        let is_streamable = runtime
-            .buffer_capabilities(buffer_id)
-            .is_some_and(|c| c.contains(BufferCapabilities::STREAMABLE));
-        let has_codec = runtime
+        // #740 Plan 06 Phase 5 sub-commit 5d: consolidated `:w` path.
+        //
+        // Byte truth lives in `InodeTable.inode.bytes`. Every buffer
+        // mutation in the runtime flows through `apply_decoded_edit`
+        // (faithful codecs) or `apply_byte_edit` (non-codec / STREAMABLE
+        // fallback) inside `notify_codec_indices`, so the inode bytes
+        // stay in sync with the text buffer at all times. `:w` flushes
+        // those bytes directly through `ByteSource::write_to`; there is
+        // no `encode` call on the save path.
+        //
+        // Three paths remain:
+        //   1. Buffer has a codec mount in `CodecSessionState` →
+        //      delegate to `InodeTable::flush` via the active mount.
+        //   2. STREAMABLE buffer without a codec mount (e.g.
+        //      `VirtualBuffer` opened via the mmap fast path with no
+        //      codec pipeline) → write via `buffer_write_to`.
+        //   3. Neither codec mount nor STREAMABLE → materialize buffer
+        //      content as UTF-8 and write. This is the scratch-buffer
+        //      / plain rope buffer path that never went through the
+        //      decode pipeline in the first place.
+        let has_active_mount = runtime
             .shared_ext_mut::<CodecSessionState>()
-            .and_then(|cs| cs.get(buffer_id))
+            .and_then(|cs| cs.list_mounts(buffer_id).into_iter().next())
             .is_some();
 
-        if is_streamable && !has_codec {
-            let mut bytes = Vec::new();
-            if let Err(e) = runtime.buffer_write_to(buffer_id, &mut bytes) {
-                return CommandResult::Error(format!("Write failed: {e}"));
-            }
-            if let Err(e) = vfs.write(Path::new(&path), &bytes) {
-                return CommandResult::Error(format!("Write failed: {e}"));
-            }
+        let write_result = if has_active_mount {
+            flush_via_inode(runtime, buffer_id, &path)
         } else {
-            // Get buffer content AFTER pre-save hooks (formatters may have modified it)
-            let Some(content) = runtime.buffer_content(buffer_id) else {
-                return CommandResult::Error("buffer not found".to_string());
-            };
-            // Encode through codec pipeline if metadata exists
-            if let Err(e) = encode_and_write(runtime, &path, &content, vfs.as_ref()) {
-                return CommandResult::Error(format!("Write failed: {e}"));
+            let is_streamable = runtime
+                .buffer_capabilities(buffer_id)
+                .is_some_and(|c| c.contains(BufferCapabilities::STREAMABLE));
+            if is_streamable {
+                let mut bytes = Vec::new();
+                match runtime.buffer_write_to(buffer_id, &mut bytes) {
+                    Ok(()) => vfs
+                        .write(Path::new(&path), &bytes)
+                        .map_err(|e| e.to_string()),
+                    Err(e) => Err(e.to_string()),
+                }
+            } else {
+                let Some(content) = runtime.buffer_content(buffer_id) else {
+                    return CommandResult::Error("buffer not found".to_string());
+                };
+                vfs.write_str(Path::new(&path), &content)
+                    .map_err(|e| e.to_string())
             }
+        };
+
+        if let Err(e) = write_result {
+            return CommandResult::Error(format!("Write failed: {e}"));
         }
 
         // If saving to a new filename, update the buffer's file path
@@ -125,49 +147,34 @@ impl CommandHandler for WriteCommand {
     }
 }
 
-/// Encode content through codec pipeline and write to VFS.
-///
-/// If codec metadata exists for the buffer, uses the codec to encode
-/// back to the original format. Otherwise falls back to writing UTF-8 bytes.
+/// Phase 5 5d flush path: write canonical inode bytes through
+/// [`InodeTable::flush`] without invoking any codec encode method.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn encode_and_write(
+fn flush_via_inode(
     runtime: &mut SessionRuntime<'_>,
+    buffer_id: reovim_kernel::api::v1::BufferId,
     path: &str,
-    content: &str,
-    vfs: &dyn reovim_driver_vfs::VfsDriver,
 ) -> Result<(), String> {
-    // Check if we have codec metadata for this buffer (shared extensions = per-buffer)
-    if let Some(buffer_id) = runtime.active_buffer() {
-        let codec_state = runtime.shared_ext_mut::<CodecSessionState>();
-        if let Some(metadata) = codec_state.and_then(|cs| cs.get(buffer_id)) {
-            // Try to encode via codec
-            let content_type = metadata.content_type().clone();
-            let metadata_clone = metadata.clone();
+    use reovim_driver_codec::InodeTable;
 
-            let services = &runtime.kernel().services;
-            if let Some(factory_store) = services.get::<ContentCodecFactoryStore>()
-                && let Some(codec) = factory_store.find(&content_type)
-            {
-                match codec.encode(content, &metadata_clone) {
-                    Some(Ok(bytes)) => {
-                        return vfs
-                            .write(Path::new(path), &bytes)
-                            .map_err(|e| e.to_string());
-                    }
-                    Some(Err(e)) => {
-                        return Err(format!("codec encode failed: {e}"));
-                    }
-                    None => {
-                        return Err("buffer is read-only (one-way codec)".to_string());
-                    }
-                }
-            }
-        }
-    }
+    let codec_state = runtime
+        .shared_ext_mut::<CodecSessionState>()
+        .ok_or_else(|| "codec state missing".to_string())?;
 
-    // Fallback: write as UTF-8
-    vfs.write_str(Path::new(path), content)
-        .map_err(|e| e.to_string())
+    let Some(mount) = codec_state.list_mounts(buffer_id).into_iter().next() else {
+        return Err("buffer has no active codec mount".to_string());
+    };
+
+    codec_state
+        .inode_table_mut()
+        .flush(mount.mount_id, Some(Path::new(path)))
+        .map_err(|e| e.to_string())?;
+
+    // Pacify the unused-import lint on the trait — flush is called via
+    // the inherent impl, but documenting the InodeTable reference here
+    // keeps readers on the right breadcrumb.
+    let _ = std::any::type_name::<InodeTable>();
+    Ok(())
 }
 
 /// Write and quit command - save and exit.

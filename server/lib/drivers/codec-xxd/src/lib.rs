@@ -141,14 +141,6 @@ impl reovim_driver_codec::ContentCodec for XxdCodec {
         })
     }
 
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
-    }
-
     fn views(&self) -> &[CodecView] {
         &[HEX_VIEW]
     }

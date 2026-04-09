@@ -2417,6 +2417,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-types-text",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "tracing-test",

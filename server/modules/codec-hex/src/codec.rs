@@ -7,7 +7,7 @@
 //! hex dump formatting.
 
 use {
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentCodec, DecodeResult, DecodedEdit},
+    reovim_driver_codec::{CodecError, ContentCodec, DecodeResult, DecodedEdit},
     reovim_kernel::api::v1::ByteEdit,
 };
 
@@ -77,14 +77,6 @@ impl ContentCodec for HexCodec {
             old_bytes,
             new_bytes: new_bytes.clone(),
         })
-    }
-
-    fn encode(
-        &self,
-        _content: &str,
-        _metadata: &CodecMetadata,
-    ) -> Option<Result<Vec<u8>, CodecError>> {
-        None
     }
 }
 

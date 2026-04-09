@@ -54,11 +54,9 @@ fn default_impl() {
     assert_eq!(factory.name(), "rlib");
 }
 
-#[test]
-fn created_codec_is_one_way() {
-    let factory = RlibCodecFactory::new();
-    let ct = ContentType::new(RLIB);
-    let codec = factory.create(&ct).unwrap();
-    let metadata = reovim_driver_codec::CodecMetadata::new(ct);
-    assert!(codec.encode("text", &metadata).is_none());
-}
+// The historic `created_codec_is_one_way` test asserted that the factory-
+// produced codec's `ContentCodec::encode` returned `None`. That trait
+// method was deleted in #740 Plan 06 Phase 5 sub-commit 5d — read-only
+// codecs are now expressed as "no `translate_edit` override" and the
+// compiler enforces the contract structurally, so the runtime assertion
+// is no longer representable.

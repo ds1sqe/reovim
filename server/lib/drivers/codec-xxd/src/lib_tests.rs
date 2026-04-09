@@ -160,13 +160,6 @@ fn decode_empty() {
 }
 
 #[test]
-fn encode_returns_none() {
-    let codec = XxdCodec::new();
-    let metadata = CodecMetadata::new(ContentType::new("binary/raw"));
-    assert!(codec.encode("anything", &metadata).is_none());
-}
-
-#[test]
 fn views_returns_hex() {
     let codec = XxdCodec::new();
     let views = codec.views();
