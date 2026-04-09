@@ -90,7 +90,7 @@ pub use {
         EditError, InodeError, MountCodecError, MountError, SwitchViewError, TranslateEditError,
         UmountCodecError, UmountError,
     },
-    inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId},
+    inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId, MountMode},
 };
 
 // Parameters and configuration objects.

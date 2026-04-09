@@ -632,3 +632,154 @@ fn handle_mount_id(handle: MountHandle) -> MountId {
     // test-only accessor on MountHandle (added below).
     handle.mount_id_for_tests()
 }
+
+// ── Phase 7 mount mode enforcement tests ─────────────────────────────────
+
+use crate::{MountMode, TreeOp, TreePath, testing::SyntheticTreeOp};
+
+/// Test codec that accepts any tree edit and produces a byte edit that
+/// appends "!" to the current bytes. Used to verify mount mode gating.
+#[derive(Default)]
+struct CodecTreeAcceptor;
+
+impl ContentCodec for CodecTreeAcceptor {
+    fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Ok(DecodeResult {
+            content: String::from_utf8_lossy(raw).into_owned(),
+            annotations: Vec::new(),
+            metadata: CodecMetadata::new(ContentType::new("test/tree-accept")),
+            lossy: false,
+            readonly: false,
+            truncated: false,
+        })
+    }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn reovim_driver_vfs::ByteSource,
+        edit: &DecodedEdit,
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Tree { .. } => {
+                let current = bytes.read(0..bytes.len()).into_owned();
+                Ok(Some(ByteEdit::insert(current.len(), b"!")))
+            }
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "tree-acceptor only accepts tree edits",
+            }),
+        }
+    }
+}
+
+fn mount_with_mode(
+    table: &mut InodeTable,
+    inode_id: InodeId,
+    buffer_id: usize,
+    name: &'static str,
+    codec: Arc<dyn ContentCodec>,
+    mode: MountMode,
+) -> Result<MountHandle, MountError> {
+    table.bind_file(buf(buffer_id), inode_id);
+    table.mount(inode_id, buf(buffer_id), Mount::with_mode(name, codec, mode))
+}
+
+#[test]
+fn summary_mode_rejects_tree_edit_with_readonly() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello")));
+    let handle = mount_with_mode(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecTreeAcceptor),
+        MountMode::Summary,
+    )
+    .expect("mount");
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["test".into()]),
+        op: TreeOp::new(SyntheticTreeOp {
+            name: "test".to_string(),
+        }),
+    };
+
+    let err = table.apply_edit(handle, &edit).unwrap_err();
+    assert_eq!(err, EditError::ReadOnly);
+}
+
+#[test]
+fn structural_mode_accepts_tree_edit() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello")));
+    let handle = mount_with_mode(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecTreeAcceptor),
+        MountMode::Structural,
+    )
+    .expect("mount");
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["test".into()]),
+        op: TreeOp::new(SyntheticTreeOp {
+            name: "test".to_string(),
+        }),
+    };
+
+    let byte_edit = table
+        .apply_edit(handle, &edit)
+        .expect("structural mode allows tree edit")
+        .expect("edit produced a byte edit");
+    assert_eq!(byte_edit, ByteEdit::insert(5, b"!"));
+}
+
+#[test]
+fn summary_mode_allows_text_edits() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello")));
+    let handle = mount_with_mode(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecByteTranslator),
+        MountMode::Summary,
+    )
+    .expect("mount");
+
+    // Bytes edits should still work in summary mode (only Tree is blocked).
+    let edit = DecodedEdit::Bytes {
+        offset: 5,
+        old_len: 0,
+        new_bytes: b"!".to_vec(),
+    };
+    let byte_edit = table
+        .apply_edit(handle, &edit)
+        .expect("summary mode allows byte edits")
+        .expect("edit produced a byte edit");
+    assert_eq!(byte_edit, ByteEdit::insert(5, b"!"));
+}
+
+#[test]
+fn mount_new_defaults_to_summary_mode() {
+    let mount = Mount::new("test", Arc::new(CodecNoop) as Arc<dyn ContentCodec>);
+    assert_eq!(mount.mode, MountMode::Summary);
+}
+
+#[test]
+fn mount_with_mode_sets_structural() {
+    let mount = Mount::with_mode(
+        "test",
+        Arc::new(CodecNoop) as Arc<dyn ContentCodec>,
+        MountMode::Structural,
+    );
+    assert_eq!(mount.mode, MountMode::Structural);
+}
+
+#[test]
+fn mount_mode_default_is_summary() {
+    assert_eq!(MountMode::default(), MountMode::Summary);
+}

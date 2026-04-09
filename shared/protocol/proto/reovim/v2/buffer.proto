@@ -191,12 +191,26 @@ message SwitchCodecViewResponse {
   optional string error = 2;
 }
 
+// Mount mode controls whether a mount is read-only (summary) or
+// supports structural tree edits. Phase 7 (#740).
+enum MountMode {
+  // Read-only decoded view. Text edits pass through the codec but
+  // tree edits are rejected at the mount level.
+  MOUNT_MODE_SUMMARY = 0;
+  // Structural editing enabled. Tree edits are dispatched to the
+  // codec's translate_edit implementation.
+  MOUNT_MODE_STRUCTURAL = 1;
+}
+
 // Multi-mount RPCs (Plan 06 Phase 5 sub-commit 5c, #740).
 
 message MountCodecRequest {
   optional uint64 buffer_id = 1;  // Default: active buffer
   string content_type = 2;        // e.g. "text/utf-8", "binary/raw"
   optional string view_name = 3;  // Default: "default"
+  // Mount mode: defaults to SUMMARY (0) for backward compatibility.
+  // Phase 7 (#740).
+  MountMode mount_mode = 4;
 }
 
 message MountCodecResponse {
@@ -233,6 +247,8 @@ message MountInfo {
   // applied an edit and the StaleCheck hook (sub-commit 5e) hasn't
   // re-decoded yet.
   bool content_valid = 3;
+  // Mount mode: summary or structural. Phase 7 (#740).
+  MountMode mode = 4;
 }
 
 message ListAvailableCodecsRequest {}

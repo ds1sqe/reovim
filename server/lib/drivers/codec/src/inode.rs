@@ -159,6 +159,27 @@ impl MountHandle {
 // ----------------------------------------------------------------------------
 // Mount + Inode
 
+/// Controls whether a mount is read-only (summary) or supports
+/// structural tree edits.
+///
+/// `Summary` is the default for backward compatibility. Existing mounts
+/// created before Phase 7 default to summary mode: they display decoded
+/// content and accept text edits through the codec, but reject
+/// `DecodedEdit::Tree` with `EditError::ReadOnly`.
+///
+/// `Structural` mounts accept `DecodedEdit::Tree` and dispatch them
+/// through `ContentCodec::translate_edit` normally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MountMode {
+    /// Read-only decoded view. Text edits pass through the codec but
+    /// tree edits are rejected at the mount level.
+    #[default]
+    Summary,
+    /// Structural editing enabled. Tree edits are dispatched to the
+    /// codec's `translate_edit` implementation.
+    Structural,
+}
+
 /// A single mounted codec view of an inode.
 #[derive(Clone)]
 pub struct Mount {
@@ -173,6 +194,10 @@ pub struct Mount {
     /// mount applied an edit). Phase 5 sub-commit 5e wires re-decode on
     /// read via the `StaleCheck` hook; Phase 5 sub-commit 5a only marks.
     pub content_valid: bool,
+
+    /// Mount mode: summary (read-only view) or structural (tree edits
+    /// accepted). Defaults to `Summary` for backward compatibility.
+    pub mode: MountMode,
 }
 
 impl std::fmt::Debug for Mount {
@@ -181,19 +206,36 @@ impl std::fmt::Debug for Mount {
             .field("name", &self.name)
             .field("codec", &"<dyn ContentCodec>")
             .field("content_valid", &self.content_valid)
+            .field("mode", &self.mode)
             .finish()
     }
 }
 
 impl Mount {
-    /// Create a new mount. `content_valid` starts `true` since the mount's
-    /// decoded view is fresh at creation time.
+    /// Create a new mount in summary mode. `content_valid` starts `true`
+    /// since the mount's decoded view is fresh at creation time.
     #[must_use]
     pub fn new(name: impl Into<String>, codec: Arc<dyn ContentCodec>) -> Self {
         Self {
             name: name.into(),
             codec,
             content_valid: true,
+            mode: MountMode::Summary,
+        }
+    }
+
+    /// Create a new mount with an explicit mode.
+    #[must_use]
+    pub fn with_mode(
+        name: impl Into<String>,
+        codec: Arc<dyn ContentCodec>,
+        mode: MountMode,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            codec,
+            content_valid: true,
+            mode,
         }
     }
 }
@@ -744,13 +786,21 @@ impl InodeTable {
         let inode_id = handle.inode;
         let mount_id = handle.mount;
 
-        let mount_codec = self
+        let (mount_codec, mount_mode) = self
             .lookup_mount(handle)
-            .map(|mount| mount.codec.clone())
+            .map(|mount| (mount.codec.clone(), mount.mode))
             .ok_or(EditError::MountNotFound { inode_id, mount_id })?;
 
         if self.mount_ref(handle).is_none() {
             return Err(EditError::MountNotFound { inode_id, mount_id });
+        }
+
+        // Phase 7 mount-mode gate: summary mounts reject structural
+        // (tree) edits. The codec is never consulted — the rejection
+        // happens at the mount level, preserving the invariant that
+        // summary mode is always read-only for tree ops.
+        if mount_mode == MountMode::Summary && matches!(edit, DecodedEdit::Tree { .. }) {
+            return Err(EditError::ReadOnly);
         }
 
         let inode = self

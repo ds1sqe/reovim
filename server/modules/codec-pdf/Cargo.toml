@@ -23,6 +23,8 @@ reovim-capabilities = { workspace = true }
 # Driver layer - implements ContentCodec, ContentClassifier, ContentCodecFactory
 reovim-driver-codec = { workspace = true }
 reovim-driver-annotation = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-session = { workspace = true }
 
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }

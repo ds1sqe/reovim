@@ -761,7 +761,13 @@ fn mount_codec_adds_first_mount_when_inode_has_no_mounts() {
     state.set_source(buf(1), b"hi".to_vec());
 
     let handle = state
-        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "default".to_string())
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "default".to_string(),
+            MountMode::Summary,
+        )
         .expect("first mount via mount_codec");
 
     assert_eq!(handle.buffer_id(), buf(1));
@@ -784,7 +790,13 @@ fn mount_codec_adds_additional_when_inode_already_mounted() {
     );
 
     let handle = state
-        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "hex".to_string())
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "hex".to_string(),
+            MountMode::Summary,
+        )
         .expect("additional mount via mount_codec");
 
     let mounts = state.list_mounts(buf(1));
@@ -804,7 +816,13 @@ fn mount_codec_no_canonical_bytes() {
     let store = multi_view_store();
     let mut state = CodecSessionState::new();
     let err = state
-        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "default".to_string())
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "default".to_string(),
+            MountMode::Summary,
+        )
         .unwrap_err();
     assert_eq!(err, MountCodecError::NoCanonicalBytes);
 }
@@ -815,7 +833,13 @@ fn mount_codec_no_codec_for_content_type() {
     let mut state = CodecSessionState::new();
     state.set_source(buf(1), b"hi".to_vec());
     let err = state
-        .mount_codec(&store, buf(1), &ContentType::new("text/unknown"), "default".to_string())
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/unknown"),
+            "default".to_string(),
+            MountMode::Summary,
+        )
         .unwrap_err();
     assert_eq!(
         err,
@@ -837,7 +861,13 @@ fn unmount_codec_removes_the_named_mount() {
         Arc::new(MultiViewCodec),
     );
     let hex = state
-        .mount_codec(&store, buf(1), &ContentType::new("text/multi"), "hex".to_string())
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "hex".to_string(),
+            MountMode::Summary,
+        )
         .expect("hex mount");
 
     assert_eq!(state.list_mounts(buf(1)).len(), 2);
@@ -878,4 +908,65 @@ fn factory_store_available_enumerates_registered_factories() {
     assert_eq!(available.len(), 1);
     assert_eq!(available[0].0, "text/multi");
     assert_eq!(available[0].1, vec!["text/multi".to_string()]);
+}
+
+// ── Phase 7 mount mode tests ─────────────────────────────────────────
+
+#[test]
+fn mount_codec_with_structural_mode() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.set_source(buf(1), b"hi".to_vec());
+
+    let _handle = state
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "default".to_string(),
+            MountMode::Structural,
+        )
+        .expect("mount in structural mode");
+
+    let mounts = state.list_mounts(buf(1));
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].mode, MountMode::Structural);
+}
+
+#[test]
+fn mount_codec_default_summary_mode_in_list() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.set_source(buf(1), b"hi".to_vec());
+
+    let _handle = state
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "default".to_string(),
+            MountMode::Summary,
+        )
+        .expect("mount in summary mode");
+
+    let mounts = state.list_mounts(buf(1));
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].mode, MountMode::Summary);
+}
+
+#[test]
+fn mount_decoded_defaults_to_summary_mode() {
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+
+    let mounts = state.list_mounts(buf(1));
+    assert_eq!(mounts.len(), 1);
+    // mount_decoded uses Mount::new which defaults to Summary
+    assert_eq!(mounts[0].mode, MountMode::Summary);
 }

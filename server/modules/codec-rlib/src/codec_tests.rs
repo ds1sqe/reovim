@@ -7,7 +7,8 @@ use std::{
 
 use {
     reovim_driver_codec::{
-        ContentCodec, DecodedEdit, InodeTable, Mount, TranslateEditError, TreeOp, TreePath,
+        ContentCodec, DecodedEdit, InodeTable, Mount, MountMode, TranslateEditError, TreeOp,
+        TreePath,
     },
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
@@ -432,7 +433,11 @@ fn real_fixture_workflow_reparses_and_restores_original_bytes() {
     table.bind_file(buffer_id, inode_id);
 
     let source_mount = table
-        .mount(inode_id, buffer_id, Mount::new("rlib-source", codec.clone()))
+        .mount(
+            inode_id,
+            buffer_id,
+            Mount::with_mode("rlib-source", codec.clone(), MountMode::Structural),
+        )
         .unwrap();
     let peer_mount = table
         .mount_additional(inode_id, buffer_id, Mount::new("rlib-peer", codec.clone()))

@@ -7,7 +7,8 @@ use std::{
 
 use {
     reovim_driver_codec::{
-        ContentCodec, DecodedEdit, InodeTable, Mount, TranslateEditError, TreeOp, TreePath,
+        ContentCodec, DecodedEdit, InodeTable, Mount, MountMode, TranslateEditError, TreeOp,
+        TreePath,
     },
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
@@ -391,7 +392,11 @@ fn elf_real_fixture_workflow_reparses_and_restores_original_bytes() {
     table.bind_file(buffer_id, inode_id);
 
     let source_mount = table
-        .mount(inode_id, buffer_id, Mount::new("elf-source", codec.clone()))
+        .mount(
+            inode_id,
+            buffer_id,
+            Mount::with_mode("elf-source", codec.clone(), MountMode::Structural),
+        )
         .unwrap();
     let peer_mount = table
         .mount_additional(inode_id, buffer_id, Mount::new("elf-peer", codec.clone()))
@@ -941,7 +946,11 @@ fn zip_edit_propagates_through_peer_stale() {
     table.bind_file(buffer_id, inode_id);
 
     let source_mount = table
-        .mount(inode_id, buffer_id, Mount::new("zip-source", zip_codec))
+        .mount(
+            inode_id,
+            buffer_id,
+            Mount::with_mode("zip-source", zip_codec, MountMode::Structural),
+        )
         .unwrap();
     let peer_mount = table
         .mount_additional(inode_id, buffer_id, Mount::new("zip-peer", peer_codec))
@@ -966,7 +975,7 @@ fn zip_undo_restores_exact_original_bytes() {
     table.bind_file(buffer_id, inode_id);
 
     let mount = table
-        .mount(inode_id, buffer_id, Mount::new("zip", zip_codec))
+        .mount(inode_id, buffer_id, Mount::with_mode("zip", zip_codec, MountMode::Structural))
         .unwrap();
 
     let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Patched Data");
@@ -1193,7 +1202,11 @@ fn zip_real_fixture_workflow_reparses_and_restores_original_bytes() {
     table.bind_file(buffer_id, inode_id);
 
     let mount = table
-        .mount(inode_id, buffer_id, Mount::new("zip", codec.clone()))
+        .mount(
+            inode_id,
+            buffer_id,
+            Mount::with_mode("zip", codec.clone(), MountMode::Structural),
+        )
         .unwrap();
 
     let edits = [

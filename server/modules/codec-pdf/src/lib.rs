@@ -9,6 +9,8 @@
 //!   from PDF pages with page boundary annotations
 //! - Structural editing supports metadata field updates via `lopdf`
 //!   parse → modify → serialize (Plan 07 Phase 6)
+//! - [`PdfSetMetadataCommand`] registers `:pdf-set-metadata` for
+//!   command-line structural editing (Plan 07 Phase 7)
 //!
 //! # Architecture
 //!
@@ -24,19 +26,25 @@
 //! During `init()`, this module registers:
 //! - [`PdfClassifier`] into [`ContentClassifierStore`] (priority 35)
 //! - [`PdfCodecFactory`] into [`ContentCodecFactoryStore`]
+//! - [`PdfSetMetadataCommand`] into [`CommandHandlerStore`]
 
 use std::sync::Arc;
 
 use {
     reovim_driver_codec::{ContentClassifierStore, ContentCodecFactoryStore},
+    reovim_driver_command::CommandHandlerStore,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 pub mod classifier;
 pub mod codec;
+pub mod command;
 pub mod factory;
 
-pub use {classifier::PdfClassifier, codec::PdfCodec, factory::PdfCodecFactory};
+pub use {
+    classifier::PdfClassifier, codec::PdfCodec, command::PdfSetMetadataCommand,
+    factory::PdfCodecFactory,
+};
 
 /// PDF content codec module.
 ///
@@ -81,7 +89,13 @@ impl Module for CodecPdfModule {
         let classifier_store = ctx.services.get_or_create::<ContentClassifierStore>();
         classifier_store.add(Arc::new(PdfClassifier::new()));
 
-        tracing::info!("CodecPdfModule: registered PDF codec and classifier");
+        // Register ex-commands (Phase 7 #740: :pdf-set-metadata)
+        let cmd_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in command::command_handlers() {
+            cmd_store.add(handler);
+        }
+
+        tracing::info!("CodecPdfModule: registered PDF codec, classifier, and commands");
         ProbeResult::Success
     }
 

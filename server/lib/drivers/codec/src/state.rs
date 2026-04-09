@@ -38,8 +38,8 @@ use {
 
 use crate::{
     ByteNotifiable, CodecMetadata, ContentCodec, ContentCodecFactoryStore, ContentType,
-    DecodedEdit, InodeTable, Mount, MountCodecError, MountHandle, MountId, SwitchViewError,
-    UmountCodecError,
+    DecodedEdit, InodeTable, Mount, MountCodecError, MountHandle, MountId, MountMode,
+    SwitchViewError, UmountCodecError,
 };
 
 /// Descriptor for a single mount returned by [`CodecSessionState::list_mounts`].
@@ -58,6 +58,10 @@ pub struct MountInfo {
     /// Whether the mount's decoded view is fresh relative to
     /// `inode.bytes`. See [`Mount::content_valid`].
     pub content_valid: bool,
+
+    /// Mount mode: summary (read-only view) or structural (tree edits
+    /// accepted). Phase 7 (#740).
+    pub mode: MountMode,
 }
 
 /// Per-session codec storage.
@@ -381,6 +385,7 @@ impl CodecSessionState {
         buffer_id: BufferId,
         content_type: &ContentType,
         view_name: String,
+        mode: MountMode,
     ) -> Result<MountHandle, MountCodecError> {
         let codec = factories
             .find(content_type)
@@ -393,7 +398,7 @@ impl CodecSessionState {
             .file_inode(buffer_id)
             .ok_or(MountCodecError::NoCanonicalBytes)?;
 
-        let mount = Mount::new(view_name, codec);
+        let mount = Mount::with_mode(view_name, codec, mode);
 
         let inode = self
             .inodes
@@ -470,6 +475,7 @@ impl CodecSessionState {
                 mount_id: *mount_id,
                 view_name: mount.name.clone(),
                 content_valid: mount.content_valid,
+                mode: mount.mode,
             })
             .collect()
     }

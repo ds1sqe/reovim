@@ -2915,6 +2915,8 @@ dependencies = [
  "reovim-capabilities",
  "reovim-driver-annotation",
  "reovim-driver-codec",
+ "reovim-driver-command",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",

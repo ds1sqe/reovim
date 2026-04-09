@@ -10,7 +10,7 @@ use std::sync::Arc;
 use {
     reovim_driver_codec::{
         CodecSessionState, ContentCodecFactoryStore, ContentType, MountCodecError, MountId,
-        SwitchViewError, UmountCodecError,
+        MountMode, SwitchViewError, UmountCodecError,
     },
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
@@ -483,11 +483,20 @@ impl BufferService for BufferServiceImpl {
                     .clone()
                     .unwrap_or_else(|| "default".to_string());
 
+                // Phase 7 (#740): parse mount mode from proto.
+                // 0 = SUMMARY (default), 1 = STRUCTURAL.
+                let mode = if req.mount_mode == 1 {
+                    MountMode::Structural
+                } else {
+                    MountMode::Summary
+                };
+
                 match codec_state.mount_codec(
                     &factories,
                     buffer_id,
                     &ContentType::new(req.content_type.clone()),
                     view_name,
+                    mode,
                 ) {
                     Ok(handle) => Ok(Response::new(MountCodecResponse {
                         ok: true,
@@ -583,6 +592,10 @@ impl BufferService for BufferServiceImpl {
                         mount_id: info.mount_id.as_u64(),
                         view_name: info.view_name,
                         content_valid: info.content_valid,
+                        mode: match info.mode {
+                            MountMode::Summary => 0,
+                            MountMode::Structural => 1,
+                        },
                     })
                     .collect();
 
