@@ -1,49 +1,4 @@
-use {super::*, reovim_driver_vfs::VfsDriver};
-
-#[test]
-fn test_fixture_flat_creates_files() {
-    let fixture = fixtures::TreeFixture::flat(10);
-    assert_eq!(fixture.root.to_str().unwrap(), "/bench");
-    // MockVfs should have 10 files
-    let entries = fixture
-        .vfs
-        .list_dir(&fixture.root)
-        .expect("root dir should exist");
-    assert_eq!(entries.len(), 10);
-}
-
-#[test]
-fn test_fixture_flat_zero_files() {
-    let fixture = fixtures::TreeFixture::flat(0);
-    let entries = fixture
-        .vfs
-        .list_dir(&fixture.root)
-        .expect("root dir should exist");
-    assert_eq!(entries.len(), 0);
-}
-
-#[test]
-fn test_fixture_nested() {
-    let fixture = fixtures::TreeFixture::nested(3, 2);
-    // Root should exist
-    let entries = fixture
-        .vfs
-        .list_dir(&fixture.root)
-        .expect("root dir should exist");
-    // Root has 2 files + 1 subdirectory
-    assert_eq!(entries.len(), 3);
-}
-
-#[test]
-fn test_fixture_project() {
-    let fixture = fixtures::TreeFixture::project(30);
-    let entries = fixture
-        .vfs
-        .list_dir(&fixture.root)
-        .expect("root dir should exist");
-    // Should have src/, tests/, docs/ subdirectories
-    assert!(!entries.is_empty());
-}
+use super::*;
 
 #[test]
 fn test_scaling_constants() {
@@ -61,4 +16,12 @@ fn test_scaling_constants() {
             assert!(window[0] < window[1]);
         }
     }
+}
+
+#[test]
+fn test_slow_bench_config() {
+    let config = slow_bench_config();
+    // Criterion doesn't expose getters, but we can verify it builds without panic.
+    // The real validation is that benchmarks using this config run correctly.
+    drop(config);
 }

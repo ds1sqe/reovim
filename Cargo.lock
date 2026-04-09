@@ -2296,7 +2296,6 @@ name = "reovim-bench-utils"
 version = "0.14.5-dev"
 dependencies = [
  "criterion",
- "reovim-driver-vfs",
  "serde_json",
 ]
 

@@ -9,10 +9,10 @@
 use {
     reovim_bench_utils::{
         criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
-        fixtures::TreeFixture,
         scaling::SIZES_MEDIUM,
     },
     reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge},
+    reovim_driver_vfs::fixtures::TreeFixture,
     reovim_module_explorer::{ExplorerBridge, ExplorerState, tree::FileTree},
 };
 

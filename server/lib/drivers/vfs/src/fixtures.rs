@@ -1,9 +1,9 @@
-//! VFS tree fixture factories for benchmarking.
+//! VFS tree fixture factories for benchmarking and testing.
 //!
 //! Provides pre-built [`MockVfs`] trees of various shapes and sizes.
-//! Used by module benchmarks to create deterministic test data.
+//! Used by module benchmarks and tests to create deterministic test data.
 
-use {reovim_driver_vfs::MockVfs, std::path::PathBuf};
+use {crate::MockVfs, std::path::PathBuf};
 
 /// Pre-built VFS tree fixture for benchmarking.
 ///
@@ -24,7 +24,7 @@ impl TreeFixture {
     /// # Example
     ///
     /// ```
-    /// use reovim_bench_utils::fixtures::TreeFixture;
+    /// use reovim_driver_vfs::fixtures::TreeFixture;
     ///
     /// let fixture = TreeFixture::flat(100);
     /// // fixture.vfs has /bench/ with 100 .rs files
@@ -54,7 +54,7 @@ impl TreeFixture {
     /// # Example
     ///
     /// ```
-    /// use reovim_bench_utils::fixtures::TreeFixture;
+    /// use reovim_driver_vfs::fixtures::TreeFixture;
     ///
     /// let fixture = TreeFixture::nested(3, 5);
     /// // /bench/
@@ -99,7 +99,7 @@ impl TreeFixture {
     /// # Example
     ///
     /// ```
-    /// use reovim_bench_utils::fixtures::TreeFixture;
+    /// use reovim_driver_vfs::fixtures::TreeFixture;
     ///
     /// let fixture = TreeFixture::project(100);
     /// ```
@@ -163,7 +163,7 @@ impl TreeFixture {
 }
 
 /// Calculate the number of digits needed for zero-padded formatting.
-const fn digit_width(count: usize) -> usize {
+pub(crate) const fn digit_width(count: usize) -> usize {
     if count <= 1 {
         return 1;
     }

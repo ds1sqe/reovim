@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_vfs::VfsDriver};
+use {super::*, crate::VfsDriver};
 
 #[test]
 fn test_digit_width() {
@@ -24,6 +24,24 @@ fn test_flat_file_names_are_zero_padded() {
 }
 
 #[test]
+fn test_flat_zero_files() {
+    let fixture = TreeFixture::flat(0);
+    let entries = fixture.vfs.list_dir(&fixture.root).unwrap();
+    assert_eq!(entries.len(), 0);
+}
+
+#[test]
+fn test_flat_creates_files() {
+    let fixture = TreeFixture::flat(10);
+    assert_eq!(fixture.root.to_str().unwrap(), "/bench");
+    let entries = fixture
+        .vfs
+        .list_dir(&fixture.root)
+        .expect("root dir should exist");
+    assert_eq!(entries.len(), 10);
+}
+
+#[test]
 fn test_nested_total_files() {
     let fixture = TreeFixture::nested(4, 3);
     // 4 levels * 3 files = 12 files total
@@ -38,6 +56,17 @@ fn test_nested_depth_one() {
     let entries = fixture.vfs.list_dir(&fixture.root).unwrap();
     assert_eq!(entries.len(), 5);
     assert!(entries.iter().all(|e| e.is_file));
+}
+
+#[test]
+fn test_nested() {
+    let fixture = TreeFixture::nested(3, 2);
+    let entries = fixture
+        .vfs
+        .list_dir(&fixture.root)
+        .expect("root dir should exist");
+    // Root has 2 files + 1 subdirectory
+    assert_eq!(entries.len(), 3);
 }
 
 #[test]
@@ -80,6 +109,16 @@ fn test_project_zero_files() {
     // Only root config files
     assert!(names.contains(&"Cargo.toml"));
     assert!(names.contains(&"README.md"));
+}
+
+#[test]
+fn test_project() {
+    let fixture = TreeFixture::project(30);
+    let entries = fixture
+        .vfs
+        .list_dir(&fixture.root)
+        .expect("root dir should exist");
+    assert!(!entries.is_empty());
 }
 
 /// Recursively count all files (not directories) under a path.

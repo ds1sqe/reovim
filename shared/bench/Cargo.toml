@@ -16,8 +16,5 @@ workspace = true
 # Criterion benchmarking framework (re-exported for modules)
 criterion = { version = "0.5", features = ["html_reports"] }
 
-# VFS driver (MockVfs for fixture factories)
-reovim-driver-vfs = { workspace = true }
-
 # JSON serialization (for bridge benchmark helpers)
 serde_json = { workspace = true }

@@ -75,6 +75,7 @@ mod filetype;
 mod instance;
 mod mapped_file;
 mod metadata;
+pub mod fixtures;
 mod mock;
 mod module_ext;
 mod path;
