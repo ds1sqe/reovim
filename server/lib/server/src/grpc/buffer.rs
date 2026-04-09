@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_codec::{CodecSessionState, ContentCodec, ContentCodecFactoryStore},
+    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore, SwitchViewError},
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest, GetAnnotationsResponse,
@@ -322,6 +322,12 @@ impl BufferService for BufferServiceImpl {
     }
 
     /// Switch the active codec view for a buffer.
+    ///
+    /// The handler is strictly a dispatcher: resolve the buffer, confirm
+    /// the codec-state and factory-store extensions exist, delegate the
+    /// orchestration to [`CodecSessionState::switch_view`], and write the
+    /// decoded content into the buffer. All codec-side mutation lives in
+    /// the codec driver (see `#740` Plan 06 Phase 4).
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::significant_drop_tightening)]
     async fn switch_codec_view(
@@ -345,65 +351,56 @@ impl BufferService for BufferServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                // Get canonical inode bytes and content type from codec state
-                let codec_state = state
-                    .app
-                    .extensions
-                    .get::<CodecSessionState>()
-                    .ok_or_else(|| Status::not_found("No codec state"))?;
-
-                let source_bytes = codec_state.bytes(buffer_id).ok_or_else(|| {
-                    Status::failed_precondition("No canonical inode bytes for buffer")
-                })?;
-
-                let content_type = codec_state
-                    .get(buffer_id)
-                    .ok_or_else(|| Status::not_found("No codec metadata for buffer"))?
-                    .content_type()
-                    .clone();
-
-                // Find the codec and validate the view name
-                let factory_store = state.app.kernel.services.get::<ContentCodecFactoryStore>();
-                let codec = factory_store
-                    .and_then(|store| store.find(&content_type))
-                    .ok_or_else(|| Status::not_found("No codec for content type"))?;
-                let codec: Arc<dyn ContentCodec> = codec.into();
-
-                let view_name = &req.view_name;
-                if !codec.views().iter().any(|v| v.name == view_name) {
-                    return Ok(Response::new(SwitchCodecViewResponse {
-                        ok: false,
-                        error: Some(format!("View '{view_name}' not available")),
-                    }));
+                // Preflight: CodecSessionState extension must exist; the
+                // factory store is looked up as an Option and passed into
+                // switch_view so the historic bytes-before-codec error
+                // order is preserved.
+                if state.app.extensions.get::<CodecSessionState>().is_none() {
+                    return Err(Status::not_found("No codec state"));
                 }
+                let factories = state.app.kernel.services.get::<ContentCodecFactoryStore>();
 
-                // Decode with the requested view
-                let result = codec
-                    .decode_view(&source_bytes, view_name)
-                    .map_err(|e| Status::internal(format!("Codec decode_view failed: {e}")))?;
+                let content = {
+                    let codec_state = state
+                        .app
+                        .extensions
+                        .get_mut::<CodecSessionState>()
+                        .ok_or_else(|| Status::not_found("No codec state"))?;
 
-                // Update buffer content (Rope buffers only — codec views are text)
+                    match codec_state.switch_view(factories.as_deref(), buffer_id, &req.view_name) {
+                        Ok(content) => content,
+                        Err(SwitchViewError::NoMetadata) => {
+                            return Err(Status::not_found("No codec metadata for buffer"));
+                        }
+                        Err(SwitchViewError::NoCanonicalBytes) => {
+                            return Err(Status::failed_precondition(
+                                "No canonical inode bytes for buffer",
+                            ));
+                        }
+                        Err(SwitchViewError::NoCodec) => {
+                            return Err(Status::not_found("No codec for content type"));
+                        }
+                        Err(err @ SwitchViewError::ViewNotAvailable { .. }) => {
+                            return Ok(Response::new(SwitchCodecViewResponse {
+                                ok: false,
+                                error: Some(err.to_string()),
+                            }));
+                        }
+                        Err(SwitchViewError::DecodeFailed { reason }) => {
+                            return Err(Status::internal(format!(
+                                "Codec decode_view failed: {reason}"
+                            )));
+                        }
+                    }
+                };
+
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
-
                 {
                     let mut buffer = buffer_arc.write();
-                    buffer.set_content(&result.content);
+                    buffer.set_content(&content);
                     buffer.set_modified(false);
-                }
-
-                // Update codec state and rebuild index from new raw bytes (#740 D.3)
-                if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
-                    codec_state.insert(buffer_id, result.metadata);
-                    codec_state.set_active_view(buffer_id, view_name.clone());
-                    codec_state.set_source_with_codec(buffer_id, source_bytes, codec);
-                    // Rebuild the codec index from the raw bytes for the new view.
-                    // The old index is stale after a view switch — re-build rather
-                    // than incremental update since the entire content changed.
-                    if codec_state.has_index(buffer_id) {
-                        codec_state.remove_index(buffer_id);
-                    }
                 }
 
                 Ok(Response::new(SwitchCodecViewResponse {

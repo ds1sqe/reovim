@@ -88,6 +88,36 @@ pub enum EditError {
     },
 }
 
+/// Errors surfaced by orchestration helpers that drive codec view switching.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SwitchViewError {
+    /// No codec metadata has been recorded for the buffer.
+    #[error("no codec metadata for buffer")]
+    NoMetadata,
+
+    /// Canonical inode bytes for the buffer are missing.
+    #[error("no canonical inode bytes for buffer")]
+    NoCanonicalBytes,
+
+    /// The factory store has no codec registered for the current content type.
+    #[error("no codec for content type")]
+    NoCodec,
+
+    /// The requested view name is not exposed by the active codec.
+    #[error("view '{view_name}' not available")]
+    ViewNotAvailable {
+        /// The view that was requested but is not offered by the codec.
+        view_name: String,
+    },
+
+    /// The codec returned an error while decoding the requested view.
+    #[error("codec decode_view failed: {reason}")]
+    DecodeFailed {
+        /// Error message from the codec.
+        reason: String,
+    },
+}
+
 // Compatibility alias used by remaining callsites until all paths migrate.
 #[allow(clippy::module_name_repetitions)]
 pub type InodeError = MountError;

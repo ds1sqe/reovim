@@ -36,7 +36,10 @@ use {
     reovim_kernel::api::v1::{BufferId, ByteEdit},
 };
 
-use crate::{ByteNotifiable, CodecMetadata, ContentCodec, DecodedEdit, InodeTable, Mount};
+use crate::{
+    ByteNotifiable, CodecMetadata, ContentCodec, ContentCodecFactoryStore, DecodedEdit, InodeTable,
+    Mount, SwitchViewError,
+};
 
 /// Per-session codec storage.
 ///
@@ -233,6 +236,101 @@ impl CodecSessionState {
         self.active_view
             .get(&buffer_id.as_usize())
             .map(String::as_str)
+    }
+
+    // ── Orchestration helpers (#740 Phase 4) ───────────────────────────────
+
+    /// Record a freshly-decoded codec attachment on a buffer.
+    ///
+    /// Replaces any existing metadata, active view, and canonical source
+    /// binding for `buffer_id`. This atomicises the trio of calls
+    /// (`insert` + `set_active_view` + `set_source_with_codec`) that `:e`
+    /// and the large-file streaming path previously did inline — the
+    /// orchestration now lives inside the codec driver so gRPC handlers
+    /// and command modules never reach into codec state piecewise.
+    pub fn mount_decoded(
+        &mut self,
+        buffer_id: BufferId,
+        metadata: CodecMetadata,
+        view: String,
+        bytes: Vec<u8>,
+        codec: Arc<dyn ContentCodec>,
+    ) {
+        self.insert(buffer_id, metadata);
+        self.set_active_view(buffer_id, view);
+        self.set_source_with_codec(buffer_id, bytes, codec);
+    }
+
+    /// Decode the buffer's canonical bytes through a different codec view
+    /// and rebind the codec state for that view.
+    ///
+    /// This is the orchestration body that used to live inside the
+    /// `SwitchCodecView` gRPC handler. The caller retains responsibility
+    /// for writing the returned content into the text buffer — that is a
+    /// session/provider concern — but every codec-side mutation happens
+    /// atomically here so the handler shrinks to arg resolution + dispatch.
+    ///
+    /// `factories` is accepted as `Option` so the handler can keep
+    /// `codec_state` / `factory_store` preflight checks in a single place
+    /// without duplicating the bytes/metadata ordering. A missing factory
+    /// store surfaces as `NoCodec` after the bytes check, matching the
+    /// historic handler error order.
+    ///
+    /// # Errors
+    ///
+    /// - [`SwitchViewError::NoMetadata`] — no codec metadata recorded for
+    ///   the buffer.
+    /// - [`SwitchViewError::NoCanonicalBytes`] — canonical inode bytes for
+    ///   the buffer are missing.
+    /// - [`SwitchViewError::NoCodec`] — factory store is missing or has no
+    ///   codec registered for the recorded content type.
+    /// - [`SwitchViewError::ViewNotAvailable`] — the active codec does not
+    ///   expose a view with the requested name.
+    /// - [`SwitchViewError::DecodeFailed`] — the codec returned an error
+    ///   while decoding the requested view.
+    pub fn switch_view(
+        &mut self,
+        factories: Option<&ContentCodecFactoryStore>,
+        buffer_id: BufferId,
+        view_name: &str,
+    ) -> Result<String, SwitchViewError> {
+        let content_type = self
+            .get(buffer_id)
+            .ok_or(SwitchViewError::NoMetadata)?
+            .content_type()
+            .clone();
+
+        let source_bytes = self
+            .bytes(buffer_id)
+            .ok_or(SwitchViewError::NoCanonicalBytes)?;
+
+        let codec_box = factories
+            .and_then(|store| store.find(&content_type))
+            .ok_or(SwitchViewError::NoCodec)?;
+        let codec: Arc<dyn ContentCodec> = codec_box.into();
+
+        if !codec.views().iter().any(|v| v.name == view_name) {
+            return Err(SwitchViewError::ViewNotAvailable {
+                view_name: view_name.to_string(),
+            });
+        }
+
+        let result = codec.decode_view(&source_bytes, view_name).map_err(|e| {
+            SwitchViewError::DecodeFailed {
+                reason: e.to_string(),
+            }
+        })?;
+
+        self.mount_decoded(buffer_id, result.metadata, view_name.to_string(), source_bytes, codec);
+
+        // View switch invalidates any previously-built codec index; Phase 5
+        // wires rebuild via `Mount.index`, this phase just clears the stale
+        // entry so no consumer observes mismatched byte coordinates.
+        if self.has_index(buffer_id) {
+            self.remove_index(buffer_id);
+        }
+
+        Ok(result.content)
     }
 
     // ── Index management (#740 D.2) ───────────────────────────────────────

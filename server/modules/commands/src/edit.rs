@@ -237,10 +237,10 @@ fn open_large_binary(
                                 if let Some(codec_state) =
                                     runtime.shared_ext_mut::<CodecSessionState>()
                                 {
-                                    codec_state.insert(buffer_id, decode_result.metadata.clone());
-                                    codec_state.set_active_view(buffer_id, "default".to_string());
-                                    codec_state.set_source_with_codec(
+                                    codec_state.mount_decoded(
                                         buffer_id,
+                                        decode_result.metadata.clone(),
+                                        "default".to_string(),
                                         canonical,
                                         Arc::clone(&codec),
                                     );
@@ -389,9 +389,13 @@ fn decode_file_content(
                     // Store metadata + canonical inode bytes in shared extensions
                     // (per-buffer, not per-client) for round-trip save and view switching.
                     if let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>() {
-                        codec_state.insert(buffer_id, result.metadata);
-                        codec_state.set_active_view(buffer_id, "default".to_string());
-                        codec_state.set_source_with_codec(buffer_id, bytes.to_vec(), codec);
+                        codec_state.mount_decoded(
+                            buffer_id,
+                            result.metadata,
+                            "default".to_string(),
+                            bytes.to_vec(),
+                            codec,
+                        );
                     }
 
                     return Ok(content);

@@ -505,3 +505,270 @@ fn debug_includes_index_count() {
     let debug = format!("{state:?}");
     assert!(debug.contains("index_count"));
 }
+
+// ── Orchestration helper tests (#740 Phase 4) ─────────────────────────────
+
+use crate::{CodecView, ContentCodecFactory, SwitchViewError, codec::ContentCodec};
+
+struct MultiViewCodec;
+
+impl ContentCodec for MultiViewCodec {
+    fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Ok(DecodeResult {
+            content: String::from_utf8_lossy(raw).into_owned(),
+            annotations: vec![],
+            metadata: CodecMetadata::new(ContentType::new("text/multi")),
+            lossy: false,
+            readonly: false,
+            truncated: false,
+        })
+    }
+
+    fn encode(
+        &self,
+        content: &str,
+        _metadata: &CodecMetadata,
+    ) -> Option<Result<Vec<u8>, CodecError>> {
+        Some(Ok(content.as_bytes().to_vec()))
+    }
+
+    fn views(&self) -> &[CodecView] {
+        const VIEWS: &[CodecView] = &[
+            CodecView {
+                name: "default",
+                display: "Default",
+            },
+            CodecView {
+                name: "hex",
+                display: "Hex",
+            },
+        ];
+        VIEWS
+    }
+
+    fn decode_view(&self, raw: &[u8], view: &str) -> Result<DecodeResult, CodecError> {
+        if view == "hex" {
+            let content = raw
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            return Ok(DecodeResult {
+                content,
+                annotations: vec![],
+                metadata: CodecMetadata::new(ContentType::new("text/multi")),
+                lossy: false,
+                readonly: false,
+                truncated: false,
+            });
+        }
+        self.decode(raw)
+    }
+}
+
+struct FailingDecodeCodec;
+
+impl ContentCodec for FailingDecodeCodec {
+    fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Err(CodecError::Other("boom".to_string()))
+    }
+
+    fn encode(
+        &self,
+        _content: &str,
+        _metadata: &CodecMetadata,
+    ) -> Option<Result<Vec<u8>, CodecError>> {
+        None
+    }
+
+    fn views(&self) -> &[CodecView] {
+        const VIEWS: &[CodecView] = &[CodecView {
+            name: "default",
+            display: "Default",
+        }];
+        VIEWS
+    }
+
+    fn decode_view(&self, _raw: &[u8], _view: &str) -> Result<DecodeResult, CodecError> {
+        Err(CodecError::Other("decode_view failed".to_string()))
+    }
+}
+
+struct OrchestrationFactory {
+    content_type: &'static str,
+    codec: fn() -> Box<dyn ContentCodec>,
+}
+
+impl ContentCodecFactory for OrchestrationFactory {
+    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+        if content_type.as_str() == self.content_type {
+            Some((self.codec)())
+        } else {
+            None
+        }
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec![self.content_type]
+    }
+
+    fn name(&self) -> &'static str {
+        self.content_type
+    }
+}
+
+fn multi_view_store() -> crate::ContentCodecFactoryStore {
+    let store = crate::ContentCodecFactoryStore::new();
+    store.add_factory(Arc::new(OrchestrationFactory {
+        content_type: "text/multi",
+        codec: || Box::new(MultiViewCodec),
+    }));
+    store
+}
+
+#[test]
+fn mount_decoded_sets_metadata_view_and_source() {
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hello".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+
+    assert!(state.contains(buf(1)));
+    assert_eq!(state.active_view(buf(1)), Some("default"));
+    assert_eq!(state.bytes(buf(1)), Some(b"hello".to_vec()));
+}
+
+#[test]
+fn switch_view_decodes_with_requested_view() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+
+    let content = state.switch_view(Some(&store), buf(1), "hex").unwrap();
+    assert_eq!(content, "68 69");
+    assert_eq!(state.active_view(buf(1)), Some("hex"));
+}
+
+#[test]
+fn switch_view_clears_existing_index() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    state.set_index(buf(1), Box::new(MockIndex::new()));
+    assert!(state.has_index(buf(1)));
+
+    state.switch_view(Some(&store), buf(1), "hex").unwrap();
+
+    assert!(!state.has_index(buf(1)));
+}
+
+#[test]
+fn switch_view_no_metadata() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    let err = state.switch_view(Some(&store), buf(1), "hex").unwrap_err();
+    assert_eq!(err, SwitchViewError::NoMetadata);
+}
+
+#[test]
+fn switch_view_no_canonical_bytes() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.insert(buf(1), CodecMetadata::new(ContentType::new("text/multi")));
+    let err = state.switch_view(Some(&store), buf(1), "hex").unwrap_err();
+    assert_eq!(err, SwitchViewError::NoCanonicalBytes);
+}
+
+#[test]
+fn switch_view_no_codec() {
+    let store = crate::ContentCodecFactoryStore::new();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    let err = state.switch_view(Some(&store), buf(1), "hex").unwrap_err();
+    assert_eq!(err, SwitchViewError::NoCodec);
+}
+
+#[test]
+fn switch_view_no_factory_store_acts_as_no_codec() {
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    let err = state.switch_view(None, buf(1), "hex").unwrap_err();
+    assert_eq!(err, SwitchViewError::NoCodec);
+}
+
+#[test]
+fn switch_view_unknown_view_name() {
+    let store = multi_view_store();
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/multi")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(MultiViewCodec),
+    );
+    let err = state
+        .switch_view(Some(&store), buf(1), "binary")
+        .unwrap_err();
+    assert_eq!(
+        err,
+        SwitchViewError::ViewNotAvailable {
+            view_name: "binary".to_string()
+        }
+    );
+}
+
+#[test]
+fn switch_view_codec_decode_error_surfaces_as_decode_failed() {
+    let store = crate::ContentCodecFactoryStore::new();
+    store.add_factory(Arc::new(OrchestrationFactory {
+        content_type: "text/failing",
+        codec: || Box::new(FailingDecodeCodec),
+    }));
+    let mut state = CodecSessionState::new();
+    state.mount_decoded(
+        buf(1),
+        CodecMetadata::new(ContentType::new("text/failing")),
+        "default".to_string(),
+        b"hi".to_vec(),
+        Arc::new(FailingDecodeCodec),
+    );
+
+    let err = state
+        .switch_view(Some(&store), buf(1), "default")
+        .unwrap_err();
+    match err {
+        SwitchViewError::DecodeFailed { reason } => {
+            assert!(reason.contains("decode_view failed"));
+        }
+        other => panic!("expected DecodeFailed, got {other:?}"),
+    }
+}

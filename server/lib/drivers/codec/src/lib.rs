@@ -77,7 +77,7 @@ pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 // Decoded edits and inode/mount primitives.
 pub use {
     decoded_edit::DecodedEdit,
-    errors::{EditError, InodeError, MountError, UmountError},
+    errors::{EditError, InodeError, MountError, SwitchViewError, UmountError},
     inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId},
 };
 

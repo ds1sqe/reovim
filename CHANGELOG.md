@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **completion**: virtual buffer completion uses line-based access instead of full content materialization (#739)
 - **format**: format commands skip virtual buffers gracefully (#739)
 - **session**: move `TextBufferRegistry` from `reovim-driver-session` into `reovim-provider-text`, with session importing it from the provider for boundary-correct ownership (#740)
+- **server**: codec orchestration extracted from the `SwitchCodecView` gRPC handler into `CodecSessionState::switch_view` — handler is now a dispatcher that resolves the buffer, calls the codec-driver helper, translates structured errors to `tonic::Status`, and writes the decoded content to the buffer. No codec-side mutation remains in `server/lib/server/src/grpc/buffer.rs` (#740)
 
 ### Refactored
 
