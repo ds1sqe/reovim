@@ -47,10 +47,14 @@
 
 mod classifier;
 mod codec;
+mod codec_params;
 mod content_type;
+mod decoded_edit;
 mod domain_codec;
 mod error;
+mod errors;
 mod factory;
+mod inode;
 mod metadata;
 mod state;
 mod store;
@@ -69,6 +73,16 @@ pub use {
 
 // Domain-generic codec traits
 pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
+
+// Decoded edits and inode/mount primitives.
+pub use {
+    decoded_edit::DecodedEdit,
+    errors::{EditError, InodeError, MountError, UmountError},
+    inode::{Inode, InodeId, InodeTable, Mount, MountHandle, MountId},
+};
+
+// Parameters and configuration objects.
+pub use codec_params::CodecParams;
 
 // Types
 pub use {

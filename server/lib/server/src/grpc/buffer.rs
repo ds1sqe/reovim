@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore},
+    reovim_driver_codec::{CodecSessionState, ContentCodec, ContentCodecFactoryStore},
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         BufferInfo, CodecMetadata, CodecViewInfo, GetAnnotationsRequest, GetAnnotationsResponse,
@@ -345,17 +345,16 @@ impl BufferService for BufferServiceImpl {
                     .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
-                // Get raw bytes and content type from codec state
+                // Get canonical inode bytes and content type from codec state
                 let codec_state = state
                     .app
                     .extensions
                     .get::<CodecSessionState>()
                     .ok_or_else(|| Status::not_found("No codec state"))?;
 
-                let raw_bytes = codec_state
-                    .get_raw(buffer_id)
-                    .ok_or_else(|| Status::failed_precondition("No cached raw bytes for buffer"))?
-                    .to_vec();
+                let source_bytes = codec_state.bytes(buffer_id).ok_or_else(|| {
+                    Status::failed_precondition("No canonical inode bytes for buffer")
+                })?;
 
                 let content_type = codec_state
                     .get(buffer_id)
@@ -368,6 +367,7 @@ impl BufferService for BufferServiceImpl {
                 let codec = factory_store
                     .and_then(|store| store.find(&content_type))
                     .ok_or_else(|| Status::not_found("No codec for content type"))?;
+                let codec: Arc<dyn ContentCodec> = codec.into();
 
                 let view_name = &req.view_name;
                 if !codec.views().iter().any(|v| v.name == view_name) {
@@ -379,7 +379,7 @@ impl BufferService for BufferServiceImpl {
 
                 // Decode with the requested view
                 let result = codec
-                    .decode_view(&raw_bytes, view_name)
+                    .decode_view(&source_bytes, view_name)
                     .map_err(|e| Status::internal(format!("Codec decode_view failed: {e}")))?;
 
                 // Update buffer content (Rope buffers only — codec views are text)
@@ -397,26 +397,13 @@ impl BufferService for BufferServiceImpl {
                 if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
                     codec_state.insert(buffer_id, result.metadata);
                     codec_state.set_active_view(buffer_id, view_name.clone());
+                    codec_state.set_source_with_codec(buffer_id, source_bytes, codec);
                     // Rebuild the codec index from the raw bytes for the new view.
                     // The old index is stale after a view switch — re-build rather
                     // than incremental update since the entire content changed.
                     if codec_state.has_index(buffer_id) {
                         codec_state.remove_index(buffer_id);
                     }
-                }
-
-                // Clear byte undo log — edit history is view-specific (#740 D.3/D.4).
-                // View switches change the decoded content entirely, making old
-                // ByteEdits meaningless.  Domain undo (UndoTree) is also invalid
-                // after a view switch — it is rebuilt implicitly when the buffer
-                // content is replaced above.
-                if let Some(reg) = state
-                    .app
-                    .kernel
-                    .services
-                    .get::<reovim_driver_session::ByteUndoRegistry>()
-                {
-                    reg.remove(buffer_id);
                 }
 
                 Ok(Response::new(SwitchCodecViewResponse {

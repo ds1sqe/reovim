@@ -1,6 +1,10 @@
 //! Tests for rlib codec.
 
-use reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+    reovim_types_text::Position,
+};
 
 use super::*;
 
@@ -23,6 +27,32 @@ fn default_impl() {
     let codec = RlibCodec;
     let metadata = CodecMetadata::new(ContentType::new(RLIB));
     assert!(codec.encode("x", &metadata).is_none());
+}
+
+#[test]
+fn translate_edit_text_is_not_supported() {
+    let codec = RlibCodec::new();
+    let bytes = HeapByteSource::new(b"archive contents");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
+}
+
+#[test]
+fn translate_edit_bytes_is_not_supported() {
+    let codec = RlibCodec::new();
+    let bytes = HeapByteSource::new(b"archive contents");
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 1,
+        new_bytes: b"y".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }
 
 #[test]

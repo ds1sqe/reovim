@@ -1,6 +1,10 @@
 //! Tests for legacy encoding codec.
 
-use reovim_driver_codec::{ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+    reovim_types_text::Position,
+};
 
 use super::*;
 
@@ -147,4 +151,54 @@ fn latin1_full_range_decode() {
         let expected = (0xA0 + i) as u32;
         assert_eq!(ch as u32, expected);
     }
+}
+
+#[test]
+fn translate_edit_ascii_replacement() {
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 1),
+        end: Position::new(0, 2),
+        replacement: "Z".to_string(),
+    };
+
+    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+
+    assert_eq!(translated.offset, 1);
+    assert_eq!(translated.old_bytes, b"b");
+    assert_eq!(translated.new_bytes, b"Z");
+}
+
+#[test]
+fn translate_edit_cp1252_replacement() {
+    let codec = cp1252_codec();
+
+    // left quote in Windows-1252: 0x93
+    let raw = [0x93, b'h', b'i', 0x94];
+    let bytes = HeapByteSource::new(raw);
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 1),
+        replacement: "A".to_string(),
+    };
+
+    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+
+    assert_eq!(translated.offset, 0);
+    assert_eq!(translated.old_bytes, vec![0x93]);
+    assert_eq!(translated.new_bytes, b"A");
+}
+
+#[test]
+fn translate_edit_bytes_variant_is_not_supported() {
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Bytes {
+        offset: 1,
+        old_len: 1,
+        new_bytes: b"x".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }

@@ -45,9 +45,8 @@ fn command_handlers_count() {
 /// B3: `:bd` releases per-buffer codec metadata via `CodecSessionState`.
 ///
 /// Before this fix, `BdeleteCommand` called `kernel.buffers.unregister()`
-/// directly and bypassed every cleanup hook (`TextBufferRegistry`,
-/// `ByteUndoRegistry`, and `CodecSessionState`). Every buffer close leaked
-/// four `HashMap` entries.
+/// directly and bypassed cleanup hooks (`TextBufferRegistry` and
+/// `CodecSessionState`). Every buffer close leaked shared state.
 #[test]
 fn bdelete_clears_codec_session_state() {
     use {
@@ -70,7 +69,7 @@ fn bdelete_clears_codec_session_state() {
         .get_mut::<CodecSessionState>()
         .expect("codec state inserted above");
     codec_state.insert(buf_a, CodecMetadata::new(ContentType::new(ContentType::UTF8)));
-    codec_state.insert_raw(buf_a, b"first".to_vec());
+    codec_state.set_source(buf_a, b"first".to_vec());
     codec_state.set_active_view(buf_a, "default".to_string());
     codec_state.insert(buf_b, CodecMetadata::new(ContentType::new(ContentType::UTF8)));
     assert!(codec_state.contains(buf_a));

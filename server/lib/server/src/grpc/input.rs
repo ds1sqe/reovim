@@ -20,10 +20,14 @@
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use {
     parking_lot::Mutex,
+    reovim_driver_codec::DecodedEdit,
     reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
     reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
@@ -331,7 +335,9 @@ impl InputService for InputServiceImpl {
         }
 
         // Notify codec indices of byte-level edits (#740 D.5)
-        if !accumulated_changes.byte_edits.is_empty() {
+        if !accumulated_changes.modified_buffer_edits.is_empty()
+            || !accumulated_changes.byte_edits.is_empty()
+        {
             Self::notify_codec_indices(&session, &accumulated_changes);
         }
 
@@ -620,13 +626,70 @@ impl InputServiceImpl {
     fn notify_codec_indices(session: &Session, changes: &reovim_driver_session::StateChanges) {
         use reovim_driver_codec::CodecSessionState;
 
+        let mut decoded_buffers = HashSet::new();
+
         session.with_state_mut_sync(|state| {
             if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
+                for (buffer_id, modification) in &changes.modified_buffer_edits {
+                    let Some(decoded_edit) = Self::modification_to_decoded_edit(modification)
+                    else {
+                        continue;
+                    };
+
+                    let view = codec_state
+                        .active_view(*buffer_id)
+                        .unwrap_or("default")
+                        .to_string();
+
+                    if let Some(byte_edit) =
+                        codec_state.apply_decoded_edit(*buffer_id, &view, &decoded_edit)
+                    {
+                        decoded_buffers.insert(*buffer_id);
+                        codec_state.notify_index(*buffer_id, &byte_edit);
+                    }
+                }
+
                 for (buffer_id, edit) in &changes.byte_edits {
+                    if decoded_buffers.contains(buffer_id) {
+                        continue;
+                    }
+
+                    codec_state.apply_byte_edit(*buffer_id, edit);
                     codec_state.notify_index(*buffer_id, edit);
                 }
             }
         });
+    }
+
+    /// Convert a kernel modification event into a codec decoded edit.
+    fn modification_to_decoded_edit(
+        modification: &reovim_kernel::api::v1::events::kernel::Modification,
+    ) -> Option<DecodedEdit> {
+        use reovim_kernel::api::v1::events::kernel::Modification;
+
+        match modification {
+            Modification::Insert { start, text, .. } => Some(DecodedEdit::Text {
+                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
+                end: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
+                replacement: text.clone(),
+            }),
+            Modification::Delete { start, end, .. } => Some(DecodedEdit::Text {
+                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
+                end: reovim_types_text::Position::new(end.0 as usize, end.1 as usize),
+                replacement: String::new(),
+            }),
+            Modification::Replace {
+                start,
+                end,
+                new_text,
+                ..
+            } => Some(DecodedEdit::Text {
+                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
+                end: reovim_types_text::Position::new(end.0 as usize, end.1 as usize),
+                replacement: new_text.clone(),
+            }),
+            Modification::FullReplace => None,
+        }
     }
 
     /// Convert `ResolveContext` to `CommandContext`.

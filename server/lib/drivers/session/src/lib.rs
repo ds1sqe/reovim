@@ -94,7 +94,6 @@
 pub mod api;
 pub mod bridges;
 mod buffer_access;
-mod byte_undo_registry;
 mod empty_handler;
 mod extension;
 mod handler_key;
@@ -183,5 +182,3 @@ pub use tick::{TickScheduler, TickSchedulerHandle};
 pub use buffer_access::BufferReadAccess;
 
 // Text buffer registry for session-layer text access (#740)
-// Byte undo registry for per-buffer byte-level undo (#740)
-pub use byte_undo_registry::ByteUndoRegistry;

@@ -55,7 +55,7 @@ use {
 };
 
 use crate::{
-    ByteUndoRegistry, Selection, Session, SessionExtension, Window,
+    Selection, Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
         CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,
@@ -740,11 +740,8 @@ impl BufferApi for SessionRuntime<'_> {
 
             buf.write().insert_at(pos, text);
 
-            // Record byte-level edit for undo and codec index notification (#740)
+            // Record byte-level edit for codec index updates and protocol fallback routing (#740)
             let byte_edit = ByteEdit::insert(byte_offset, text.as_bytes());
-            if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-                reg.push(buffer, vec![byte_edit.clone()]);
-            }
             self.changes.record_byte_edit(buffer, byte_edit);
 
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
@@ -792,12 +789,9 @@ impl BufferApi for SessionRuntime<'_> {
                 b.delete_range(start, end)
             };
 
-            // Record byte-level edit for undo and codec index notification (#740)
+            // Record byte-level edit for codec index updates and protocol fallback routing (#740)
             if !deleted_text.is_empty() {
                 let byte_edit = ByteEdit::delete(byte_offset, deleted_text.as_bytes());
-                if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-                    reg.push(buffer, vec![byte_edit.clone()]);
-                }
                 self.changes.record_byte_edit(buffer, byte_edit);
             }
 
@@ -846,11 +840,8 @@ impl BufferApi for SessionRuntime<'_> {
             let old_content = buf.read().content();
             buf.write().set_content(content);
 
-            // Record byte-level edit for undo and codec index notification (#740)
+            // Record byte-level edit for codec index updates and protocol fallback routing (#740)
             let byte_edit = ByteEdit::replace(0, old_content.as_bytes(), content.as_bytes());
-            if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-                reg.push(buffer, vec![byte_edit.clone()]);
-            }
             self.changes.record_byte_edit(buffer, byte_edit);
 
             // Record for undo as a delete-all + insert-all
@@ -906,10 +897,6 @@ impl BufferApi for SessionRuntime<'_> {
         // Unregister from text buffer registry (#740).
         if let Some(reg) = self.kernel.services.get::<TextBufferRegistry>() {
             reg.unregister(buffer);
-        }
-        // Clean up byte undo log (#740).
-        if let Some(reg) = self.kernel.services.get::<ByteUndoRegistry>() {
-            reg.remove(buffer);
         }
         self.changes.record_buffer_deleted(buffer);
         Ok(())

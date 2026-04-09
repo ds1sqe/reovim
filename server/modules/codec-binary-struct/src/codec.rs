@@ -46,6 +46,9 @@ impl Default for ElfCodec {
     }
 }
 
+/// Phase 3: ELF is a transforming-only structured view; byte-level edits cannot be
+/// reconstructed from this summary representation, so decoded text edits are
+/// intentionally unsupported via `translate_edit`.
 impl reovim_driver_codec::ContentCodec for ElfCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let elf = goblin::elf::Elf::parse(raw)
@@ -97,6 +100,9 @@ impl Default for ZipCodec {
     }
 }
 
+/// Phase 3: ZIP is a transforming-only structured view; decoded text edits cannot
+/// be reconstructed from this summary representation, so `translate_edit` remains
+/// intentionally read-only.
 impl reovim_driver_codec::ContentCodec for ZipCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let cursor = std::io::Cursor::new(raw);

@@ -129,8 +129,6 @@ impl TestSessionRuntime {
     fn make_test_kernel() -> KernelContext {
         let ctx = reovim_kernel::testing::create_test_context();
         ctx.services.register(Arc::new(TextBufferRegistry::new()));
-        ctx.services
-            .register(Arc::new(crate::ByteUndoRegistry::new()));
         ctx
     }
 
@@ -511,18 +509,15 @@ impl CommandExecutor for StubExecutor {
 // Public test helpers for downstream modules (#740)
 // ============================================================================
 
-/// Create a `KernelContext` with `TextBufferRegistry` and `ByteUndoRegistry`
-/// for testing.
+/// Create a `KernelContext` with `TextBufferRegistry` for testing.
 ///
 /// Like `reovim_kernel::testing::create_test_context()` but also registers
 /// a `TextBufferRegistry` so text access via `runtime.text_buffer()` works,
-/// and a `ByteUndoRegistry` for byte-level undo recording.
+/// and a `TextBufferRegistry` for session runtime text operations.
 #[must_use]
 pub fn create_test_kernel() -> reovim_kernel::api::v1::KernelContext {
     let ctx = reovim_kernel::testing::create_test_context();
     ctx.services.register(Arc::new(TextBufferRegistry::new()));
-    ctx.services
-        .register(Arc::new(crate::ByteUndoRegistry::new()));
     ctx
 }
 

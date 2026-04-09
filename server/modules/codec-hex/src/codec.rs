@@ -6,7 +6,10 @@
 //! Delegates to [`reovim_driver_codec_xxd::XxdCodec`] for the actual
 //! hex dump formatting.
 
-use reovim_driver_codec::{CodecError, CodecMetadata, DecodeResult};
+use {
+    reovim_driver_codec::{CodecError, CodecMetadata, ContentCodec, DecodeResult, DecodedEdit},
+    reovim_kernel::api::v1::ByteEdit,
+};
 
 // Re-export annotation constants from the xxd driver for backward compatibility.
 pub use reovim_driver_codec_xxd::{HEX_ADDRESS_KIND, HEX_ASCII_KIND, HEX_BYTE_KIND};
@@ -46,9 +49,34 @@ impl Default for HexCodec {
 // the default ["default"] view, not XxdCodec's ["hex"]. This is correct:
 // HexCodec IS the default view for binary/raw content. Multi-view codecs
 // (ELF, ZIP, rlib) will use XxdCodec internally for their "hex" view.
-impl reovim_driver_codec::ContentCodec for HexCodec {
+impl ContentCodec for HexCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         reovim_driver_codec_xxd::XxdCodec::new().decode(raw)
+    }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn reovim_driver_vfs::ByteSource,
+        edit: &DecodedEdit,
+    ) -> Option<ByteEdit> {
+        let raw = read_all_bytes(bytes)?;
+        let DecodedEdit::Bytes {
+            offset,
+            old_len,
+            new_bytes,
+        } = edit
+        else {
+            return None;
+        };
+
+        let end = offset.checked_add(*old_len)?;
+        let old_bytes = raw.get(*offset..end)?.to_vec();
+
+        Some(ByteEdit {
+            offset: *offset,
+            old_bytes,
+            new_bytes: new_bytes.clone(),
+        })
     }
 
     fn encode(
@@ -67,6 +95,12 @@ impl reovim_driver_codec::ContentCodec for HexCodec {
 #[must_use]
 pub fn format_hex_dump(raw: &[u8]) -> (String, Vec<reovim_driver_annotation::Annotation>) {
     reovim_driver_codec_xxd::format_xxd_dump(raw, 16, 8)
+}
+
+fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {
+    let len = usize::try_from(bytes.len()).ok()?;
+    let data = bytes.read(0..bytes.len()).into_owned();
+    (data.len() == len).then_some(data)
 }
 
 #[cfg(test)]

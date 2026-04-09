@@ -1,6 +1,10 @@
 //! Tests for ELF and ZIP codecs.
 
-use reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+    reovim_types_text::Position,
+};
 
 use super::*;
 
@@ -25,6 +29,32 @@ fn elf_default_impl() {
     let codec = ElfCodec;
     let metadata = CodecMetadata::new(ContentType::new(ELF));
     assert!(codec.encode("x", &metadata).is_none());
+}
+
+#[test]
+fn elf_translate_edit_text_is_not_supported() {
+    let codec = ElfCodec::new();
+    let bytes = HeapByteSource::new(b"\x7fELF");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
+}
+
+#[test]
+fn elf_translate_edit_bytes_is_not_supported() {
+    let codec = ElfCodec::new();
+    let bytes = HeapByteSource::new(vec![0x7f, b'E', b'L', b'F']);
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 1,
+        new_bytes: b"x".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }
 
 #[test]
@@ -231,6 +261,32 @@ fn zip_default_impl() {
     let codec = ZipCodec;
     let metadata = CodecMetadata::new(ContentType::new(ZIP));
     assert!(codec.encode("x", &metadata).is_none());
+}
+
+#[test]
+fn zip_translate_edit_text_is_not_supported() {
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(b"PK\x03\x04");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
+}
+
+#[test]
+fn zip_translate_edit_bytes_is_not_supported() {
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(b"PK\x03\x04");
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 1,
+        new_bytes: b"y".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }
 
 #[test]

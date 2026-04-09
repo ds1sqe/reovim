@@ -1,6 +1,10 @@
 //! Tests for CSV codec.
 
-use reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+    reovim_types_text::Position,
+};
 
 use {
     super::*,
@@ -251,4 +255,69 @@ fn round_trip_simple() {
 
     // Content should be identical after round-trip
     assert_eq!(decoded.content, re_decoded.content);
+}
+
+#[test]
+fn translate_edit_text_replaces_value() {
+    let codec = CsvCodec::new(b',', CSV);
+    let original = b"name,age\nAlice,30\nBob,25\n";
+    let decoded = codec.decode(original).unwrap();
+
+    let start = decoded
+        .content
+        .find("30")
+        .expect("value expected in decoded view");
+    let end = start + 2;
+    let edit = DecodedEdit::Text {
+        start: position_at_byte_index(&decoded.content, start),
+        end: position_at_byte_index(&decoded.content, end),
+        replacement: "31".to_string(),
+    };
+
+    let translated = codec
+        .translate_edit(&HeapByteSource::new(original), &edit)
+        .expect("CSV text edits should translate");
+
+    let mut expected_content = decoded.content.clone();
+    expected_content.replace_range(start..end, "31");
+    let expected_new_bytes = codec
+        .encode(&expected_content, &decoded.metadata)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(translated.offset, 0);
+    assert_eq!(translated.old_bytes, original.to_vec());
+    assert_eq!(translated.new_bytes, expected_new_bytes);
+}
+
+#[test]
+fn translate_edit_bytes_variant_is_not_supported() {
+    let codec = CsvCodec::new(b',', CSV);
+    let bytes = HeapByteSource::new(b"name,age\n");
+    let edit = DecodedEdit::Bytes {
+        offset: 1,
+        old_len: 1,
+        new_bytes: b"X".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
+}
+
+fn position_at_byte_index(text: &str, target: usize) -> Position {
+    let mut line = 0usize;
+    let mut column = 0usize;
+
+    let bytes = text.as_bytes();
+    assert!(target <= bytes.len());
+
+    for &byte in &bytes[..target] {
+        if byte == b'\n' {
+            line += 1;
+            column = 0;
+        } else {
+            column += 1;
+        }
+    }
+
+    Position::new(line, column)
 }

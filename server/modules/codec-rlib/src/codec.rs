@@ -47,6 +47,9 @@ impl Default for RlibCodec {
     }
 }
 
+/// Phase 3: Rust `.rlib` summary output is a transform-only representation; byte
+/// edits in this decoded view cannot be mapped back faithfully, so
+/// `translate_edit` stays read-only.
 impl reovim_driver_codec::ContentCodec for RlibCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let archive = goblin::archive::Archive::parse(raw)

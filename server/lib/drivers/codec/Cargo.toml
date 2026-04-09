@@ -16,8 +16,13 @@ workspace = true
 # Only depends on kernel layer (for Service trait, BufferId)
 reovim-kernel = { workspace = true }
 
+tracing = { workspace = true }
+
 # Domain trait for generic codec traits (Decode<D>, Encode<D>, Index<D>)
 reovim-domain = { workspace = true }
+
+# Text types for decoded text positions (including `TextPosition`/`Position`).
+reovim-types-text = { workspace = true }
 
 # Session extension trait (for CodecSessionState as SessionExtension)
 reovim-driver-session = { workspace = true }
@@ -30,3 +35,10 @@ reovim-driver-vfs = { workspace = true }
 
 # Sync primitives for stores
 parking_lot = { workspace = true }
+
+# Error derivations
+thiserror = "2"
+
+[dev-dependencies]
+trybuild = "1.0"
+tracing-test = "0.2"

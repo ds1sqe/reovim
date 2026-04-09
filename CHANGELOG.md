@@ -17,6 +17,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **session**: `buffer_write_to()` and `is_virtual_buffer()` methods on `BufferApi` for streaming write and buffer type detection (#739)
 - **codec**: `decode_streaming()` method on `ContentCodec` for header-only parsing of large binary files (#739)
 - **vfs**: `ByteSource` trait with `HeapByteSource` and `MappedByteSource` implementations for phase 2 inode codec work (#740)
+- **codec**: added `ContentCodec::translate_edit` seam (default `None`) and `DecodedEdit` abstraction for decoded-domain mutations (#740)
+- **codec**: introduced inode/mount scaffolding (`Inode`, `InodeId`, `InodeTable`, `Inode.mounts`, `Mount`, `MountHandle`, `MountId`, `InodeError`) as the phase-3 data model for mount-based codec workflows (#740)
 
 - **driver**: `BufferCapabilities` bitflags in `reovim-driver-buffer` — `CONTENT_MATERIALIZABLE`, `SNAPSHOTTABLE`, `STREAMABLE`, `FILE_BACKED`, `LINE_READABLE`, `EDITABLE` with `ROPE` and `VIRTUAL` presets (#739)
 - **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
@@ -49,16 +51,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel/provider-text**: continue the `#740` byte-only extraction — `BufferOps`, `BufferCapabilities`, and `LineCache` removed from kernel. `BufferOps` trait and `BufferCapabilities` bitflags now live in `reovim-provider-text`. `LineCache` deleted (dead code). Kernel `api/v1.rs` exports zero text concepts (#740)
 - **kernel**: rebuild `kernel::block` as real byte-level I/O subsystem — `ByteEdit` and `ByteUndoLog` moved from VFS driver to `kernel::block`, `StorageOps`/`BufferMeta`/`KernelBuffer` consolidated from `api/storage_ops.rs` into `block/`. Codec driver and codec-utf8 now import `ByteEdit` from kernel instead of VFS (#740)
 - **provider-text**: add `VirtualBuffer::from_mapping()` factory — encapsulates `LineIndex` construction inside the provider, removing direct `LineIndex` usage from the `:edit` command module (#740)
-- **session**: add `ByteUndoRegistry` service and wire `ByteEdit` emission into production mutations — `insert_text`, `delete_range`, and `replace_content` now push byte-level edit records to a per-buffer `ByteUndoLog` via `ByteUndoRegistry` (#740)
+- **session**: remove `ByteUndoRegistry` from production mutation path — `insert_text`, `delete_range`, and `replace_content` now keep byte-level edit emission in `StateChanges` and leave codec-specific byte-index updates to server-level `notify_codec_indices` routing (#740)
 - **codec**: `ByteNotifiable` supertrait for `Index<D>` — domain-agnostic byte-level notification interface (`build`, `notify`) extracted as supertrait, `Index<D>` only has domain-specific methods. `CodecSessionState` extended with per-buffer index storage. View switch clears stale index and byte undo log (#740)
 - **server**: wire `ByteEdit` notification from mutations to codec indices — `StateChanges` carries `byte_edits`, server routes them to `CodecSessionState::notify_index()` after each key event (#740)
 - **codec**: `Utf8LineIndex` now stores raw bytes for proper multi-byte UTF-8 char↔byte translation — `to_bytes()` and `offset_to_position()` walk UTF-8 char boundaries instead of assuming ASCII (1 byte = 1 char), mid-character byte offsets correctly return `None` (#740)
 - **provider-text**: `BufferOps::write_to()` method for streaming buffer I/O — default materializes via `content()`, `VirtualBuffer` overrides with piece-by-piece write from mmap/add-buffer. `SessionRuntime::buffer_write_to()` dispatches through this method (#740)
 - **commands**: `:w` uses streaming write for `STREAMABLE` buffers without codec metadata — avoids full `String` materialization for large mmap-backed files (#740)
 
+### Removed
+
+- **session**: delete `ByteUndoRegistry` module — per-buffer byte-level undo now lives on `Inode` via `InodeTable`, keeping `reovim-driver-session` codec-agnostic (#740)
+
 ### Fixed
 
-- **commands**: `:bd` / `:bdelete` now releases per-buffer state on close — previously `BdeleteCommand` bypassed `BufferApi::delete_buffer` and called `kernel.buffers.unregister()` directly, leaking `TextBufferRegistry`, `ByteUndoRegistry`, and `CodecSessionState` entries on every buffer close. Routing through `delete_buffer` also restores last-buffer protection (#740)
+- **commands**: `:bd` / `:bdelete` now releases per-buffer state on close — previously `BdeleteCommand` bypassed `BufferApi::delete_buffer` and called `kernel.buffers.unregister()` directly, leaking `TextBufferRegistry` and `CodecSessionState` entries on every buffer close. Routing through `delete_buffer` also restores last-buffer protection (#740)
 - **commands**: `decode_file_content` returns an error when no buffer is active instead of silently dropping codec metadata — a later `:w` then fell back to a UTF-8 encode that corrupted binary files (#740)
 
 ## [0.14.4] - 2026-04-01

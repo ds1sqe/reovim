@@ -29,31 +29,29 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use {reovim_driver_session::SessionExtension, reovim_kernel::api::v1::BufferId};
+use {
+    reovim_driver_session::SessionExtension,
+    reovim_kernel::api::v1::{BufferId, ByteEdit},
+};
 
-use crate::{ByteNotifiable, CodecMetadata};
+use crate::{ByteNotifiable, CodecMetadata, ContentCodec, DecodedEdit, InodeTable, Mount};
 
-/// Per-session codec metadata storage.
+/// Per-session codec storage.
 ///
 /// Maps buffer IDs to their codec metadata. Each buffer can have
 /// at most one codec metadata entry (the result of its most recent
 /// decode operation).
 ///
-/// Also caches raw bytes per-buffer for view switching: when a codec
-/// supports multiple views (e.g., structured summary + hex dump),
-/// switching views requires re-decoding the same raw bytes with a
-/// different view name. The raw bytes cache avoids re-reading from disk.
+/// Also owns canonical byte storage via [`InodeTable`], which keeps a
+/// single source of truth for decoded raw bytes.
 ///
 /// # Bugs deleted by architecture (`#740` Phase 3)
 ///
-/// - **B1** (HIGH — data loss): `:w` writes the encoded buffer back to disk
-///   but never updates `raw_bytes`, leaving the cache stale. Once
-///   [`InodeTable`](https://github.com/reovim/reovim/issues/740) replaces
-///   this struct, byte storage will live on `Inode.bytes` (the single
-///   source of truth), so `raw_bytes` ceases to exist and the bug class
-///   cannot recur. No Phase 0 patch — Phase 3 deletes it by structure.
+/// - **B1** (HIGH — data loss): stale per-buffer byte caches drifted from
+///   canonical disk-backed bytes after edits. Canonical bytes now live in
+///   [`InodeTable::Inode`], so the migration is complete by structure.
 /// - **B2** (HIGH — type safety): [`crate::DecodeResult::readonly`] is
 ///   discarded by every consumer. Phase 3 replaces the runtime flag with
 ///   `ContentCodec::translate_edit` returning `Some`/`None`, making
@@ -68,12 +66,8 @@ use crate::{ByteNotifiable, CodecMetadata};
 pub struct CodecSessionState {
     /// Metadata per buffer (`BufferId.as_usize()` -> `CodecMetadata`).
     metadata: HashMap<usize, CodecMetadata>,
-    /// Cached raw bytes per buffer for view switching.
-    ///
-    /// SAFETY (`#740` Phase 3): superseded by `Inode.bytes` — the parallel
-    /// copy that fed bug B1 (stale-on-`:w`) is removed when `InodeTable`
-    /// lands.
-    raw_bytes: HashMap<usize, Vec<u8>>,
+    /// Canonical byte sources and mounts used by codec views.
+    inodes: InodeTable,
     /// Active view name per buffer (e.g., `"default"`, `"hex"`).
     active_view: HashMap<usize, String>,
     /// Active codec index per buffer for incremental byte-edit notification.
@@ -116,12 +110,13 @@ impl CodecSessionState {
         self.metadata.get(&buffer_id.as_usize())
     }
 
-    /// Remove metadata, raw bytes, active view, and index for a buffer.
+    /// Remove metadata, canonical source, active view, codec binding, and index for a
+    /// buffer.
     ///
     /// Call this when a buffer is closed.
     pub fn remove(&mut self, buffer_id: BufferId) -> Option<CodecMetadata> {
         let key = buffer_id.as_usize();
-        self.raw_bytes.remove(&key);
+        let _ = self.inodes.remove_file(buffer_id);
         self.active_view.remove(&key);
         self.indices.remove(&key);
         self.metadata.remove(&key)
@@ -145,28 +140,86 @@ impl CodecSessionState {
         self.metadata.is_empty()
     }
 
-    /// Clear all metadata, raw bytes, active views, and indices.
+    /// Clear all metadata, canonical sources, active views, and indices.
     pub fn clear(&mut self) {
         self.metadata.clear();
-        self.raw_bytes.clear();
+        self.inodes = InodeTable::new();
         self.active_view.clear();
         self.indices.clear();
     }
 
-    /// Store raw bytes for a buffer (for view switching).
-    pub fn insert_raw(&mut self, buffer_id: BufferId, raw: Vec<u8>) {
-        self.raw_bytes.insert(buffer_id.as_usize(), raw);
+    /// Register canonical bytes for a buffer.
+    pub fn set_source(&mut self, buffer_id: BufferId, raw: Vec<u8>) {
+        if let Some(inode_id) = self.inodes.file_inode(buffer_id) {
+            let _ = self.inodes.set_bytes(inode_id, raw);
+        } else {
+            let inode_id = self
+                .inodes
+                .insert(Arc::new(reovim_driver_vfs::HeapByteSource::new(raw)));
+            self.inodes.bind_file(buffer_id, inode_id);
+        }
     }
 
-    /// Get cached raw bytes for a buffer.
+    /// Register canonical bytes and decoded codec for a buffer.
+    pub fn set_source_with_codec(
+        &mut self,
+        buffer_id: BufferId,
+        raw: Vec<u8>,
+        codec: Arc<dyn ContentCodec>,
+    ) {
+        let key = buffer_id.as_usize();
+        let view = self
+            .active_view
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| "default".to_string());
+
+        let Some(inode_id) = self.inodes.file_inode(buffer_id) else {
+            let inode_id = self
+                .inodes
+                .insert(Arc::new(reovim_driver_vfs::HeapByteSource::new(raw)));
+            self.inodes.bind_file(buffer_id, inode_id);
+            self.inodes
+                .mount(inode_id, buffer_id, Mount::new(view, codec))
+                .ok();
+            return;
+        };
+
+        let _ = self.inodes.set_bytes(inode_id, raw);
+        let _ = self.inodes.unmount_all(buffer_id);
+        let _ = self
+            .inodes
+            .mount(inode_id, buffer_id, Mount::new(view, codec));
+    }
+
+    /// Read canonical bytes for a buffer.
     #[must_use]
-    pub fn get_raw(&self, buffer_id: BufferId) -> Option<&[u8]> {
-        self.raw_bytes.get(&buffer_id.as_usize()).map(Vec::as_slice)
+    pub fn bytes(&self, buffer_id: BufferId) -> Option<Vec<u8>> {
+        self.inodes
+            .file_inode(buffer_id)
+            .and_then(|inode_id| self.inodes.read_bytes(inode_id).ok())
     }
 
-    /// Remove cached raw bytes for a buffer.
-    pub fn remove_raw(&mut self, buffer_id: BufferId) {
-        self.raw_bytes.remove(&buffer_id.as_usize());
+    /// Apply a byte-level edit to the canonical source for a buffer.
+    pub fn apply_byte_edit(&mut self, buffer_id: BufferId, edit: &ByteEdit) {
+        if let Some(inode_id) = self.inodes.file_inode(buffer_id) {
+            let _ = self.inodes.apply_byte_edit(inode_id, edit);
+        }
+    }
+
+    /// Apply a decoded edit through the active mount for this buffer.
+    ///
+    /// Returns the translated `ByteEdit` when decoding succeeds so callers
+    /// can notify indices with byte coordinates.
+    pub fn apply_decoded_edit(
+        &mut self,
+        buffer_id: BufferId,
+        _view: &str,
+        edit: &DecodedEdit,
+    ) -> Option<ByteEdit> {
+        let handle = self.inodes.active_mount(buffer_id)?;
+        let byte_edit = self.inodes.apply_edit(handle, edit).ok()?;
+        Some(byte_edit)
     }
 
     /// Set the active view name for a buffer.
@@ -218,10 +271,10 @@ impl std::fmt::Debug for CodecSessionState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CodecSessionState")
             .field("buffer_count", &self.metadata.len())
-            .field("cached_raw_count", &self.raw_bytes.len())
+            .field("source_count", &self.inodes.file_len())
             .field("active_view_count", &self.active_view.len())
             .field("index_count", &self.indices.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

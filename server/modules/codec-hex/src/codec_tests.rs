@@ -1,6 +1,9 @@
 //! Tests for hex dump codec.
 
-use reovim_driver_codec::{ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+};
 
 use super::*;
 
@@ -71,6 +74,36 @@ fn encode_returns_none() {
     let codec = HexCodec::new();
     let metadata = CodecMetadata::new(ContentType::new(ContentType::BINARY_RAW));
     assert!(codec.encode("any content", &metadata).is_none());
+}
+
+#[test]
+fn translate_edit_bytes_variant_replaces_canonical_byte() {
+    let codec = HexCodec::new();
+    let bytes = HeapByteSource::new(b"hello");
+    let edit = DecodedEdit::Bytes {
+        offset: 1,
+        old_len: 1,
+        new_bytes: vec![b'x'],
+    };
+
+    let translated = codec.translate_edit(&bytes, &edit).unwrap();
+
+    assert_eq!(translated.offset, 1);
+    assert_eq!(translated.old_bytes, vec![b'e']);
+    assert_eq!(translated.new_bytes, vec![b'x']);
+}
+
+#[test]
+fn translate_edit_text_variant_is_not_supported() {
+    let codec = HexCodec::new();
+    let bytes = HeapByteSource::new(b"A");
+    let edit = DecodedEdit::Text {
+        start: reovim_types_text::Position::new(0, 0),
+        end: reovim_types_text::Position::new(0, 2),
+        replacement: "58".to_string(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }
 
 #[test]

@@ -597,7 +597,7 @@ async fn test_switch_codec_view_no_codec_factory() {
             let bid = state.create_buffer("content");
             let codec_state = state.app.extensions.get_or_insert::<CodecSessionState>();
             codec_state.insert(bid, CodecMetadata::new(ContentType::new("text/utf-8")));
-            codec_state.insert_raw(bid, b"raw bytes".to_vec());
+            codec_state.set_source(bid, b"raw bytes".to_vec());
         })
         .await;
 

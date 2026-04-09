@@ -1,6 +1,9 @@
 //! Tests for codec trait and `DecodeResult`.
 
-use reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget};
+use {
+    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+    reovim_driver_vfs::HeapByteSource,
+};
 
 use {super::*, crate::ContentType};
 
@@ -197,6 +200,22 @@ fn mock_codec_one_way() {
 
     let metadata = CodecMetadata::new(ContentType::new("text/utf-8"));
     assert!(codec.encode("hello", &metadata).is_none());
+}
+
+#[test]
+fn mock_codec_translate_edit_defaults_to_none() {
+    let codec = MockCodec {
+        bidirectional: true,
+    };
+
+    let bytes = HeapByteSource::new(b"hello");
+    let edit = DecodedEdit::Text {
+        start: reovim_types_text::Position::new(0, 0),
+        end: reovim_types_text::Position::new(0, 1),
+        replacement: "x".to_string(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }
 
 #[test]

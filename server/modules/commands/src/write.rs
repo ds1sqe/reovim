@@ -140,11 +140,6 @@ fn encode_and_write(
     if let Some(buffer_id) = runtime.active_buffer() {
         let codec_state = runtime.shared_ext_mut::<CodecSessionState>();
         if let Some(metadata) = codec_state.and_then(|cs| cs.get(buffer_id)) {
-            // Check readonly (lossy decode means writing back would corrupt data)
-            if metadata.get("readonly") == Some("true") {
-                return Err("buffer is read-only (lossy codec decode)".to_string());
-            }
-
             // Try to encode via codec
             let content_type = metadata.content_type().clone();
             let metadata_clone = metadata.clone();

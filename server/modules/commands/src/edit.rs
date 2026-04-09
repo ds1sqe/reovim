@@ -223,14 +223,44 @@ fn open_large_binary(
 
         if let Some(content_type) = classifiers.classify(&header, filename)
             && let Some(codec) = factories.find(&content_type)
-            && let Some(result) = codec.decode_streaming(handle.as_mut(), file_size)
         {
-            match result {
-                Ok(decode_result) => {
-                    return finish_decoded_open(runtime, filename, &decode_result.content);
-                }
-                Err(e) => {
-                    tracing::warn!("Streaming decode failed for {filename}: {e}");
+            let Some(buffer_id) = runtime.active_buffer() else {
+                return CommandResult::Error("no active buffer".to_string());
+            };
+            let codec: Arc<dyn reovim_driver_codec::ContentCodec> = codec.into();
+            if let Some(result) = codec.decode_streaming(handle.as_mut(), file_size) {
+                match result {
+                    Ok(decode_result) => {
+                        if handle.seek(reovim_driver_vfs::SeekFrom::Start(0)).is_ok() {
+                            let mut canonical = Vec::new();
+                            if handle.read_to_end(&mut canonical).is_ok() {
+                                if let Some(codec_state) =
+                                    runtime.shared_ext_mut::<CodecSessionState>()
+                                {
+                                    codec_state.insert(buffer_id, decode_result.metadata.clone());
+                                    codec_state.set_active_view(buffer_id, "default".to_string());
+                                    codec_state.set_source_with_codec(
+                                        buffer_id,
+                                        canonical,
+                                        Arc::clone(&codec),
+                                    );
+                                }
+
+                                return finish_decoded_open(
+                                    runtime,
+                                    filename,
+                                    &decode_result.content,
+                                );
+                            }
+                        }
+
+                        return CommandResult::Error(format!(
+                            "execution failed: cannot read canonical bytes for '{filename}'"
+                        ));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Streaming decode failed for {filename}: {e}");
+                    }
                 }
             }
         }
@@ -344,6 +374,7 @@ fn decode_file_content(
 
         // Find and create the codec
         if let Some(codec) = factories.find(&content_type) {
+            let codec: Arc<dyn reovim_driver_codec::ContentCodec> = codec.into();
             match codec.decode(bytes) {
                 Ok(result) => {
                     if result.truncated {
@@ -355,12 +386,12 @@ fn decode_file_content(
 
                     let content = result.content;
 
-                    // Store metadata + raw bytes in shared extensions (per-buffer,
-                    // not per-client) for round-trip save and view switching.
+                    // Store metadata + canonical inode bytes in shared extensions
+                    // (per-buffer, not per-client) for round-trip save and view switching.
                     if let Some(codec_state) = runtime.shared_ext_mut::<CodecSessionState>() {
                         codec_state.insert(buffer_id, result.metadata);
-                        codec_state.insert_raw(buffer_id, bytes.to_vec());
                         codec_state.set_active_view(buffer_id, "default".to_string());
+                        codec_state.set_source_with_codec(buffer_id, bytes.to_vec(), codec);
                     }
 
                     return Ok(content);

@@ -35,6 +35,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-testing = { workspace = true }
+reovim-types-text = { workspace = true }
+reovim-driver-vfs = { workspace = true }
 
 [features]
 # Enable for building as standalone dynamic library

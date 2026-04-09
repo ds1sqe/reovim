@@ -1,6 +1,135 @@
 use {
-    super::*, parking_lot::Mutex, reovim_driver_input::TransitionContext, std::collections::HashMap,
+    super::*,
+    crate::session::SessionState,
+    parking_lot::Mutex,
+    reovim_driver_codec::{
+        CodecMetadata, ContentCodec, ContentCodecFactory, ContentCodecFactoryStore, ContentType,
+        DecodeResult,
+    },
+    reovim_driver_input::TransitionContext,
+    reovim_kernel::api::v1::{BufferId, ByteEdit, events::kernel::Modification},
+    std::{
+        collections::HashMap,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    },
 };
+
+// === Helpers for codec routing tests in this module ===
+
+#[derive(Clone)]
+struct TestTrackedCodec {
+    calls: Arc<AtomicUsize>,
+    byte_edit: Vec<u8>,
+}
+
+impl ContentCodec for TestTrackedCodec {
+    fn decode(&self, raw: &[u8]) -> Result<DecodeResult, reovim_driver_codec::CodecError> {
+        Ok(DecodeResult {
+            content: String::from_utf8_lossy(raw).into_owned(),
+            annotations: vec![],
+            metadata: CodecMetadata::new(ContentType::new("text/codec-route")),
+            lossy: false,
+            readonly: false,
+            truncated: false,
+        })
+    }
+
+    fn translate_edit(
+        &self,
+        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _edit: &reovim_driver_codec::DecodedEdit,
+    ) -> Option<ByteEdit> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Some(ByteEdit::insert(0, &self.byte_edit))
+    }
+
+    fn encode(
+        &self,
+        content: &str,
+        _metadata: &CodecMetadata,
+    ) -> Option<Result<Vec<u8>, reovim_driver_codec::CodecError>> {
+        Some(Ok(content.as_bytes().to_vec()))
+    }
+}
+
+#[derive(Clone)]
+struct TestCodecFactory {
+    content_type: &'static str,
+    calls: Arc<AtomicUsize>,
+    byte_edit: Vec<u8>,
+}
+
+impl ContentCodecFactory for TestCodecFactory {
+    fn create(&self, content_type: &ContentType) -> Option<Box<dyn ContentCodec>> {
+        if content_type.as_str() == self.content_type {
+            Some(Box::new(TestTrackedCodec {
+                calls: Arc::clone(&self.calls),
+                byte_edit: self.byte_edit.clone(),
+            }))
+        } else {
+            None
+        }
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec![self.content_type]
+    }
+
+    fn name(&self) -> &'static str {
+        "tracking"
+    }
+}
+
+fn make_codec_session(
+    content_type: &'static str,
+    translate_to: &[u8],
+) -> (Arc<Session>, Arc<AtomicUsize>) {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let state = SessionState::default();
+
+    let factories = ContentCodecFactoryStore::new();
+    factories.add_factory(Arc::new(TestCodecFactory {
+        content_type,
+        calls: Arc::clone(&calls),
+        byte_edit: translate_to.to_vec(),
+    }));
+    state.app.kernel.services.register(Arc::new(factories));
+
+    (Arc::new(Session::from_state(SessionId::new("test"), state)), calls)
+}
+
+fn record_codec_buffer(
+    session: &Arc<Session>,
+    buffer_id: BufferId,
+    source: &[u8],
+    content_type: &str,
+) {
+    session.with_state_mut_sync(|state| {
+        use reovim_driver_codec::{ContentCodecFactoryStore, ContentType};
+
+        let codec_state = state
+            .app
+            .extensions
+            .get_or_insert::<reovim_driver_codec::CodecSessionState>();
+        codec_state.insert(buffer_id, CodecMetadata::new(ContentType::new(content_type)));
+        let codec = state
+            .app
+            .kernel
+            .services
+            .get::<ContentCodecFactoryStore>()
+            .and_then(|store| store.find(&ContentType::new(content_type)))
+            .map(std::sync::Arc::from);
+
+        if let Some(codec) = codec {
+            codec_state.set_source_with_codec(buffer_id, source.to_vec(), codec);
+        } else {
+            codec_state.set_source(buffer_id, source.to_vec());
+        }
+    });
+}
 
 /// Helper: create a fresh snapshot cache for test isolation.
 fn test_cache() -> Mutex<HashMap<(String, u64), String>> {
@@ -2451,4 +2580,90 @@ fn test_snapshot_cache_different_client_ids_are_independent() {
     assert_eq!(c.get(&("ext".to_string(), 1)).unwrap(), "data-1");
     assert_eq!(c.get(&("ext".to_string(), 2)).unwrap(), "data-2");
     drop(c);
+}
+
+// =========================================================================
+// Codec index notification routing tests (#740 D.5)
+// =========================================================================
+
+#[test]
+fn test_notify_codec_indices_uses_decoded_route_when_possible() {
+    let buffer_id = BufferId::from_raw(1);
+    let (session, calls) = make_codec_session("text/codec-route-1", b"D");
+    record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-1");
+
+    let mut changes = StateChanges::new();
+    changes.record_buffer_modified_with_edit(
+        buffer_id,
+        Modification::Insert {
+            start: (0, 0),
+            text: "x".to_string(),
+            start_byte: 0,
+        },
+    );
+
+    InputServiceImpl::notify_codec_indices(&session, &changes);
+
+    let bytes = session.with_state_sync(|state| {
+        state
+            .app
+            .extensions
+            .get::<reovim_driver_codec::CodecSessionState>()
+            .and_then(|codec_state| codec_state.bytes(buffer_id))
+    });
+    assert_eq!(bytes, Some(b"Dabc".to_vec()));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn test_notify_codec_indices_uses_byte_edits_for_full_replace() {
+    let buffer_id = BufferId::from_raw(2);
+    let (session, calls) = make_codec_session("text/codec-route-2", b"D");
+    record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-2");
+
+    let mut changes = StateChanges::new();
+    changes.record_buffer_modified_with_edit(buffer_id, Modification::FullReplace);
+    changes.record_byte_edit(buffer_id, ByteEdit::replace(1, b"b", b"z"));
+
+    InputServiceImpl::notify_codec_indices(&session, &changes);
+
+    let bytes = session.with_state_sync(|state| {
+        state
+            .app
+            .extensions
+            .get::<reovim_driver_codec::CodecSessionState>()
+            .and_then(|codec_state| codec_state.bytes(buffer_id))
+    });
+    assert_eq!(bytes, Some(b"azc".to_vec()));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn test_notify_codec_indices_skips_byte_updates_when_decoded_edit_already_applied() {
+    let buffer_id = BufferId::from_raw(3);
+    let (session, calls) = make_codec_session("text/codec-route-3", b"D");
+    record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-3");
+
+    let mut changes = StateChanges::new();
+    changes.record_buffer_modified_with_edit(
+        buffer_id,
+        Modification::Insert {
+            start: (0, 0),
+            text: "x".to_string(),
+            start_byte: 0,
+        },
+    );
+    changes.record_byte_edit(buffer_id, ByteEdit::insert(0, b"X"));
+
+    InputServiceImpl::notify_codec_indices(&session, &changes);
+
+    let bytes = session.with_state_sync(|state| {
+        state
+            .app
+            .extensions
+            .get::<reovim_driver_codec::CodecSessionState>()
+            .and_then(|codec_state| codec_state.bytes(buffer_id))
+    });
+    assert_eq!(bytes, Some(b"Dabc".to_vec()));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }

@@ -7,7 +7,7 @@
 
 use reovim_driver_annotation::Annotation;
 
-use crate::{CodecError, CodecMetadata};
+use crate::{CodecError, CodecMetadata, DecodedEdit};
 
 /// Result of decoding raw bytes into text.
 ///
@@ -116,6 +116,22 @@ pub trait ContentCodec: Send + Sync {
     ///
     /// Returns [`CodecError`] if the bytes cannot be decoded.
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError>;
+
+    /// Translate a decoded edit into a byte-level edit.
+    ///
+    /// Phase 3 introduces this method as the canonical seam for edit
+    /// capability checks. Codecs that cannot translate user edits should return
+    /// `None` and therefore behave read-only.
+    ///
+    /// Default implementation returns `None` to preserve existing behavior for
+    /// codecs that are not yet writable through this seam.
+    fn translate_edit(
+        &self,
+        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _edit: &DecodedEdit,
+    ) -> Option<reovim_kernel::api::v1::ByteEdit> {
+        None
+    }
 
     /// Encode text back into raw bytes.
     ///

@@ -24,6 +24,8 @@ reovim-capabilities = { workspace = true }
 reovim-driver-codec = { workspace = true }
 reovim-driver-codec-xxd = { workspace = true }
 reovim-driver-annotation = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-types-text = { workspace = true }
 
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }

@@ -1,6 +1,10 @@
 //! Tests for UTF-8 codec.
 
-use reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType};
+use {
+    reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
+    reovim_driver_vfs::HeapByteSource,
+    reovim_kernel::api::v1::ByteEdit,
+};
 
 use super::*;
 
@@ -179,4 +183,73 @@ fn content_type_is_utf8() {
     let codec = Utf8Codec::new();
     let result = codec.decode(b"hello").unwrap();
     assert_eq!(result.metadata.content_type().as_str(), ContentType::UTF8);
+}
+
+#[test]
+fn translate_edit_text_insertion_on_plain_utf8() {
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello world");
+    let edit = DecodedEdit::Text {
+        start: reovim_types_text::Position::new(0, 5),
+        end: reovim_types_text::Position::new(0, 5),
+        replacement: ",".to_string(),
+    };
+
+    let byte_edit = codec
+        .translate_edit(&bytes, &edit)
+        .expect("plain text edits should translate");
+
+    assert_eq!(byte_edit, ByteEdit::insert(5, b","));
+}
+
+#[test]
+fn translate_edit_text_insertion_respects_crlf_and_bom() {
+    let codec = Utf8Codec::new();
+    let mut raw = vec![0xEF, 0xBB, 0xBF];
+    raw.extend_from_slice(b"foo\r\nbar");
+
+    let bytes = HeapByteSource::new(raw);
+    let edit = DecodedEdit::Text {
+        start: reovim_types_text::Position::new(1, 0),
+        end: reovim_types_text::Position::new(1, 0),
+        replacement: "Z".to_string(),
+    };
+
+    let byte_edit = codec
+        .translate_edit(&bytes, &edit)
+        .expect("CRLF + BOM edits should translate");
+
+    assert_eq!(byte_edit, ByteEdit::insert(8, b"Z"));
+}
+
+#[test]
+fn translate_edit_text_requires_valid_range() {
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("héllo\r\n世界");
+    let edit = DecodedEdit::Text {
+        start: reovim_types_text::Position::new(0, 1),
+        end: reovim_types_text::Position::new(1, 0),
+        replacement: String::new(),
+    };
+
+    let byte_edit = codec
+        .translate_edit(&bytes, &edit)
+        .expect("edit should map");
+
+    let raw = "héllo\r\n世界".as_bytes();
+    assert_eq!(byte_edit.offset, 1);
+    assert_eq!(byte_edit.old_bytes, raw[1..8].to_vec());
+}
+
+#[test]
+fn translate_edit_bytes_edit_is_not_supported() {
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello");
+    let edit = DecodedEdit::Bytes {
+        offset: 1,
+        old_len: 1,
+        new_bytes: b"x".to_vec(),
+    };
+
+    assert!(codec.translate_edit(&bytes, &edit).is_none());
 }

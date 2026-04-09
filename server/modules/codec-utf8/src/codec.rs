@@ -3,7 +3,13 @@
 //! Handles BOM detection/stripping, CRLF normalization, and
 //! round-trip encoding that preserves original BOM and line endings.
 
-use reovim_driver_codec::{CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult};
+use {
+    reovim_driver_codec::{
+        ByteNotifiable, CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult,
+        DecodedEdit, Index,
+    },
+    reovim_kernel::api::v1::ByteEdit,
+};
 
 /// UTF-8 BOM bytes.
 pub(crate) const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
@@ -87,6 +93,41 @@ impl ContentCodec for Utf8Codec {
         })
     }
 
+    fn translate_edit(
+        &self,
+        bytes: &dyn reovim_driver_vfs::ByteSource,
+        edit: &DecodedEdit,
+    ) -> Option<ByteEdit> {
+        let raw = read_all_bytes(bytes)?;
+        let decoded = self.decode(&raw).ok()?;
+        let mut index = crate::domain::Utf8LineIndex::new();
+
+        index.build(decoded.content.as_bytes());
+
+        match edit {
+            DecodedEdit::Text {
+                start,
+                end,
+                replacement,
+            } => {
+                let start_decoded = index.to_bytes(start)?;
+                let end_decoded = index.to_bytes(end)?;
+                let start_raw = normalized_offset_to_raw_offset(&raw, start_decoded)?;
+                let end_raw = normalized_offset_to_raw_offset(&raw, end_decoded)?;
+                if start_raw > end_raw {
+                    return None;
+                }
+                let old_bytes = raw.get(start_raw..end_raw)?.to_vec();
+                Some(ByteEdit {
+                    offset: start_raw,
+                    old_bytes,
+                    new_bytes: replacement.as_bytes().to_vec(),
+                })
+            }
+            DecodedEdit::_Reserved | _ => None,
+        }
+    }
+
     fn encode(
         &self,
         content: &str,
@@ -107,6 +148,65 @@ impl ContentCodec for Utf8Codec {
         bytes.extend_from_slice(text.as_bytes());
 
         Some(Ok(bytes))
+    }
+}
+
+fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {
+    let len = usize::try_from(bytes.len()).ok()?;
+    let data = bytes.read(0..bytes.len()).into_owned();
+
+    (data.len() == len).then_some(data)
+}
+
+fn normalized_offset_to_raw_offset(raw: &[u8], normalized_offset: usize) -> Option<usize> {
+    let (raw_after_bom, raw_base): (&[u8], usize) = if raw.starts_with(UTF8_BOM) {
+        (&raw[UTF8_BOM.len()..], UTF8_BOM.len())
+    } else {
+        (raw, 0)
+    };
+
+    let mut decoded_offset = 0usize;
+    let mut raw_index = 0usize;
+    let body = raw_after_bom;
+
+    let text = std::str::from_utf8(body).ok()?;
+
+    while raw_index < body.len() {
+        if decoded_offset == normalized_offset {
+            return Some(raw_base + raw_index);
+        }
+
+        if text[raw_index..].starts_with("\r\n") {
+            // CRLF in canonical bytes corresponds to LF in decoded text.
+            if normalized_offset == decoded_offset + 1 {
+                return Some(raw_base + raw_index + 2);
+            }
+
+            decoded_offset += 1;
+            raw_index += 2;
+            continue;
+        }
+
+        let char_len = text[raw_index..].chars().next()?.len_utf8();
+
+        let next_decoded_offset = decoded_offset + char_len;
+        if normalized_offset < next_decoded_offset {
+            return None;
+        }
+
+        if normalized_offset == next_decoded_offset {
+            raw_index += char_len;
+            return Some(raw_base + raw_index);
+        }
+
+        decoded_offset = next_decoded_offset;
+        raw_index += char_len;
+    }
+
+    if normalized_offset == decoded_offset {
+        Some(raw_base + body.len())
+    } else {
+        None
     }
 }
 

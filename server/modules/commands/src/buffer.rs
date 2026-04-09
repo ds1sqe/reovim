@@ -94,9 +94,9 @@ impl CommandHandler for BdeleteCommand {
             return CommandResult::Success;
         };
 
-        // Route through `BufferApi::delete_buffer` so the session-layer
-        // registries (`TextBufferRegistry`, `ByteUndoRegistry`) are released
-        // and last-buffer protection fires.
+        // Route through `BufferApi::delete_buffer` so session-layer
+        // registries (`TextBufferRegistry`) are released and
+        // last-buffer protection fires.
         if let Err(e) = runtime.delete_buffer(buf_id) {
             return CommandResult::Error(format!("execution failed: {e}"));
         }
