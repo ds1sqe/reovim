@@ -24,7 +24,7 @@ use super::CaptureTracker;
 use super::PresenceMap;
 use {reovim_driver_session::ExtensionMap, reovim_types_text::RegisterContent};
 
-use super::{Client, ClientId, SessionId, SessionState};
+use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
 /// Default channel capacity for notifications.
 #[cfg(feature = "grpc")]
@@ -47,13 +47,8 @@ pub struct Session {
     /// Session state protected by `RwLock`.
     state: RwLock<SessionState>,
 
-    /// Per-client roles and editing state (Phase 11.2).
-    ///
-    /// Maps `ClientId` to `Client` enum which tracks:
-    /// - Owner: Has own `EditingState`
-    /// - Follow: References another client (read-only)
-    /// - Share: Co-edits with owner (bidirectional)
-    clients: RwLock<HashMap<ClientId, Client>>,
+    /// Per-client membership and editing-relation authority.
+    clients: ClientDirectory,
 
     /// Notification broadcast channel (gRPC only).
     #[cfg(feature = "grpc")]
@@ -92,7 +87,7 @@ impl Session {
         Self {
             id,
             state: RwLock::new(SessionState::default()),
-            clients: RwLock::new(HashMap::new()),
+            clients: ClientDirectory::new(),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -130,7 +125,7 @@ impl Session {
         Self {
             id,
             state: RwLock::new(state),
-            clients: RwLock::new(HashMap::new()),
+            clients: ClientDirectory::new(),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -254,16 +249,14 @@ impl Session {
             client.state.windows.add(window);
         }
 
-        let mut clients = self.clients.write();
-        clients.insert(client_id, client);
+        self.clients.add_client_with_state(client);
     }
 
     /// Add a client with a specific initial state.
     ///
     /// Used for restoring clients or creating clients with pre-configured state.
     pub fn add_client_with_state(&self, client: Client) {
-        let mut clients = self.clients.write();
-        clients.insert(client.id, client);
+        self.clients.add_client_with_state(client);
     }
 
     /// Remove a client from the session.
@@ -277,21 +270,15 @@ impl Session {
     /// post-mortem analysis. A `CLIENT_DISCONNECT` entry is logged to the server
     /// ring buffer with the dump file path.
     pub fn remove_client(&self, client_id: ClientId) -> Option<Client> {
-        let mut clients = self.clients.write();
-
-        // Phase #481: Dump ring buffer before removal
-        if let Some(client) = clients.get(&client_id) {
+        self.clients.remove_client_with(client_id, |client| {
             log_client_disconnect(client_id, &client.ring_buffer);
-        }
-
-        clients.remove(&client_id)
+        })
     }
 
     /// Get a client's role (immutable).
     #[must_use]
     pub fn get_client(&self, client_id: ClientId) -> Option<Client> {
-        let clients = self.clients.read();
-        clients.get(&client_id).cloned()
+        self.clients.get_client(client_id)
     }
 
     /// Set a client's relation with validation.
@@ -320,29 +307,7 @@ impl Session {
         client_id: ClientId,
         relation: Option<super::ClientRelation>,
     ) -> Result<(), super::TransitionResult> {
-        let mut clients = self.clients.write();
-
-        // First validate without mutation
-        let validation_result = {
-            let Some(client) = clients.get(&client_id) else {
-                return Err(super::TransitionResult::TargetNotFound(client_id));
-            };
-            Client::validate_relation_change(client, relation, &clients)
-        };
-
-        // If validation passed, apply the change
-        let result = match validation_result {
-            super::TransitionResult::Ok => {
-                if let Some(client) = clients.get_mut(&client_id) {
-                    client.set_relation_unchecked(relation);
-                }
-                Ok(())
-            }
-            other => Err(other),
-        };
-
-        drop(clients);
-        result
+        self.clients.set_client_relation(client_id, relation)
     }
 
     /// Set a client's relation without validation.
@@ -358,11 +323,8 @@ impl Session {
         client_id: ClientId,
         relation: Option<super::ClientRelation>,
     ) -> bool {
-        let mut clients = self.clients.write();
-        clients.get_mut(&client_id).is_some_and(|client| {
-            client.set_relation_unchecked(relation);
-            true
-        })
+        self.clients
+            .set_client_relation_unchecked(client_id, relation)
     }
 
     /// Sync cursor and set relation.
@@ -382,41 +344,8 @@ impl Session {
         target_id: ClientId,
         relation: Option<super::ClientRelation>,
     ) -> Result<(), super::TransitionResult> {
-        let mut clients = self.clients.write();
-
-        // Sync cursor first
-        let target_cursor = clients
-            .get(&target_id)
-            .and_then(|c| c.state.windows.active())
-            .map(|w| w.cursor);
-
-        if let (Some(cursor), Some(client)) = (target_cursor, clients.get_mut(&client_id))
-            && let Some(window) = client.state.windows.active_mut()
-        {
-            window.cursor = cursor;
-        }
-
-        // Validate without mutation
-        let validation_result = {
-            let Some(client) = clients.get(&client_id) else {
-                return Err(super::TransitionResult::TargetNotFound(client_id));
-            };
-            Client::validate_relation_change(client, relation, &clients)
-        };
-
-        // If validation passed, apply the change
-        let result = match validation_result {
-            super::TransitionResult::Ok => {
-                if let Some(client) = clients.get_mut(&client_id) {
-                    client.set_relation_unchecked(relation);
-                }
-                Ok(())
-            }
-            other => Err(other),
-        };
-
-        drop(clients);
-        result
+        self.clients
+            .sync_and_set_relation(client_id, target_id, relation)
     }
 
     /// Get the effective editing state for a client.
@@ -428,11 +357,7 @@ impl Session {
     /// Returns `None` if client not found or target chain is broken.
     #[must_use]
     pub fn client_state(&self, client_id: ClientId) -> Option<super::EditingState> {
-        let clients = self.clients.read();
-        clients
-            .get(&client_id)
-            .and_then(|c| c.effective_state(&clients))
-            .cloned()
+        self.clients.client_state(client_id)
     }
 
     /// Update a client's editing state via closure.
@@ -446,26 +371,7 @@ impl Session {
     where
         F: FnOnce(&mut super::EditingState),
     {
-        let mut clients = self.clients.write();
-
-        // Find the target client ID based on relation
-        let Some(client) = clients.get(&client_id) else {
-            return false;
-        };
-
-        let target_id = match client.relation {
-            None => client_id, // Independent - update own state
-            Some(super::ClientRelation::Sharing { with }) => with, // Sharing - update target's state
-            Some(super::ClientRelation::Following { .. }) => return false, // Following - input ignored
-        };
-
-        // Update the target's state
-        if let Some(target_client) = clients.get_mut(&target_id) {
-            f(&mut target_client.state);
-            true
-        } else {
-            false
-        }
+        self.clients.update_client_state(client_id, f)
     }
 
     /// Execute a closure with read access to the clients map.
@@ -473,8 +379,7 @@ impl Session {
     where
         F: FnOnce(&HashMap<ClientId, Client>) -> R,
     {
-        let clients = self.clients.read();
-        f(&clients)
+        self.clients.with_clients(f)
     }
 
     /// Execute a closure with write access to the clients map.
@@ -482,8 +387,7 @@ impl Session {
     where
         F: FnOnce(&mut HashMap<ClientId, Client>) -> R,
     {
-        let mut clients = self.clients.write();
-        f(&mut clients)
+        self.clients.with_clients_mut(f)
     }
 
     /// Run a closure on a client's `ExtensionMap` without cloning.
@@ -497,31 +401,21 @@ impl Session {
     where
         F: FnOnce(&ExtensionMap) -> R,
     {
-        let clients = self.clients.read();
-        let client = clients.get(&client_id)?;
-        let state = client.effective_state(&clients)?;
-        let result = f(&state.extensions);
-        drop(clients);
-        Some(result)
+        self.clients.with_client_extensions(client_id, f)
     }
 
     /// Run a closure with mutable access to a client's `ExtensionMap`.
     ///
     /// Used by bridge lifecycle hooks that need to mutate per-client state
     /// (e.g., auto-dismiss on mode change). Respects Follow/Share relations
-    /// via [`find_input_target`](Self::find_input_target).
+    /// via `ClientDirectory::find_input_target()`.
     ///
     /// Returns `None` if the client doesn't exist or input is ignored (Following).
     pub fn with_client_extensions_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
     where
         F: FnOnce(&mut ExtensionMap) -> R,
     {
-        let mut clients = self.clients.write();
-        let target_id = Self::find_input_target(&clients, client_id)?;
-        let target_client = clients.get_mut(&target_id)?;
-        let result = f(&mut target_client.state.extensions);
-        drop(clients);
-        Some(result)
+        self.clients.with_client_extensions_mut(client_id, f)
     }
 
     /// Execute a tick closure with mutable access to client + shared extensions (#546).
@@ -537,7 +431,7 @@ impl Session {
         F: FnOnce(&mut ExtensionMap, &mut ExtensionMap, &ServiceRegistry) -> R,
     {
         let mut clients = self.clients.write();
-        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
         let target_client = clients.get_mut(&target_id)?;
 
         let mut state = self.state.write();
@@ -552,13 +446,13 @@ impl Session {
     /// Get count of connected clients.
     #[must_use]
     pub fn client_count(&self) -> usize {
-        self.clients.read().len()
+        self.clients.client_count()
     }
 
     /// Check if a client is connected.
     #[must_use]
     pub fn has_client(&self, client_id: ClientId) -> bool {
-        self.clients.read().contains_key(&client_id)
+        self.clients.has_client(client_id)
     }
 
     /// Get the session ID.
@@ -731,7 +625,7 @@ impl Session {
         let mut state = self.state.write();
 
         // Find the target client ID based on relation
-        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
 
         // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
@@ -757,7 +651,7 @@ impl Session {
         let mut state = self.state.write();
 
         // Find the target client ID based on relation
-        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
 
         // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
@@ -809,7 +703,7 @@ impl Session {
         let mut state = self.state.write();
 
         // Find the target client ID based on relation
-        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
 
         // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
@@ -970,32 +864,12 @@ impl Session {
         let clients = self.clients.read();
 
         // Find the target client ID based on relation
-        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
 
         // Get mode from target's mode stack
         clients
             .get(&target_id)
             .map(|c| c.state.mode_stack.current().clone())
-    }
-
-    /// Find the target client ID for input routing.
-    ///
-    /// - Independent: returns self
-    /// - Following: returns None (input ignored)
-    /// - Sharing: returns target
-    fn find_input_target(
-        clients: &HashMap<ClientId, Client>,
-        client_id: ClientId,
-    ) -> Option<ClientId> {
-        let client = clients.get(&client_id)?;
-        if client.is_independent() {
-            Some(client_id)
-        } else if client.is_sharing() {
-            client.target_id()
-        } else {
-            // Following - input ignored
-            None
-        }
     }
 
     /// Get access to a client's ring buffer.
@@ -1057,9 +931,7 @@ impl Session {
     /// Returns a sorted list of client IDs currently in this session.
     #[must_use]
     pub fn connected_client_ids(&self) -> Vec<ClientId> {
-        let mut ids: Vec<_> = self.clients.read().keys().copied().collect();
-        ids.sort_unstable_by_key(ClientId::as_usize);
-        ids
+        self.clients.connected_client_ids()
     }
 }
 

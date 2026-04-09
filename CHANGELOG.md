@@ -56,6 +56,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
+- **server**: extract `ClientDirectory` from `Session` so client membership, relation validation, and input-target resolution now live behind a dedicated authority while `Session` remains the host/coordinator with temporary forwarders (#741)
 - **kernel**: continue the `#740` byte-only extraction — text `Buffer`/Rope and semantic undo test ownership move out of kernel, VFS now owns file-mapping/piece-table primitives, and `KernelContext` drops dead motion/text-object engines (#740)
 - **server**: continue the `#740` contract cleanup — remove the transient `BufferHandle` read wrapper, narrow `BufferReadAccess` to per-buffer lookup, and move illuminate word scanning onto `TextGeometry` instead of `BufferOps` (#740)
 - **search/session**: continue the `#740` contract cleanup — production search callers now use a `TextGeometry`-backed line source instead of direct `BufferOps`, and production `JumpEntry`/`Jumplist` consumers now flow through `reovim-driver-session` instead of the kernel API path (#740)

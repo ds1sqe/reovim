@@ -15,6 +15,7 @@
 
 pub(crate) mod capture;
 mod client;
+mod client_directory;
 pub mod crash_dump;
 mod id;
 mod presence;
@@ -25,6 +26,8 @@ mod session;
 mod state;
 mod syntax_state;
 pub mod token_registry;
+
+pub(crate) use client_directory::ClientDirectory;
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
