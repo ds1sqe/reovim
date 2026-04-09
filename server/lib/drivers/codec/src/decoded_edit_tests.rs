@@ -1,6 +1,6 @@
 //! Tests for `DecodedEdit`, `TreePath`, and `TreeOp`.
 
-use super::{DecodedEdit, TreeOp, TreePath};
+use super::{DecodedEdit, ElfTreeOp, TreeOp, TreePath};
 
 // ============================================================================
 // TreePath tests
@@ -63,8 +63,47 @@ fn tree_path_partial_eq() {
 }
 
 // ============================================================================
-// TreeOp tests (Phase 1: only Synthetic variant exists)
+// TreeOp tests
 // ============================================================================
+
+#[test]
+fn tree_op_elf_patch_bytes_construction() {
+    let op = TreeOp::Elf(ElfTreeOp::PatchBytes {
+        offset: 4,
+        old_bytes: vec![0x90, 0x90],
+        new_bytes: vec![0x90, 0x91],
+    });
+
+    assert!(matches!(
+        op,
+        TreeOp::Elf(ElfTreeOp::PatchBytes {
+            offset: 4,
+            old_bytes,
+            new_bytes,
+        }) if old_bytes == vec![0x90, 0x90] && new_bytes == vec![0x90, 0x91]
+    ));
+}
+
+#[test]
+fn tree_op_elf_rename_symbol_clone_and_eq() {
+    let op = TreeOp::Elf(ElfTreeOp::RenameSymbol {
+        new_name: "target_new".to_string(),
+    });
+
+    assert_eq!(op, op.clone());
+}
+
+#[test]
+fn tree_op_elf_replace_section_debug_format() {
+    let op = TreeOp::Elf(ElfTreeOp::ReplaceSectionBytes {
+        old_bytes: b"ORIGINAL".to_vec(),
+        new_bytes: b"MODIFIED".to_vec(),
+    });
+
+    let debug = format!("{op:?}");
+    assert!(debug.contains("Elf"));
+    assert!(debug.contains("ReplaceSectionBytes"));
+}
 
 #[test]
 fn tree_op_synthetic_construction() {
@@ -120,6 +159,38 @@ fn decoded_edit_tree_pattern_match() {
         DecodedEdit::Tree { path, op } => {
             assert_eq!(path.components(), &["sections".to_string(), "text".to_string()]);
             assert!(matches!(op, TreeOp::Synthetic { name } if name == "patch"));
+        }
+        _ => panic!("expected DecodedEdit::Tree"),
+    }
+}
+
+#[test]
+fn decoded_edit_tree_pattern_match_elf_variant() {
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            "target_old".to_string(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::RenameSymbol {
+            new_name: "target_new".to_string(),
+        }),
+    };
+
+    match edit {
+        DecodedEdit::Tree { path, op } => {
+            assert_eq!(
+                path.components(),
+                &[
+                    "symbols".to_string(),
+                    "target_old".to_string(),
+                    "name".to_string(),
+                ]
+            );
+            assert!(matches!(
+                op,
+                TreeOp::Elf(ElfTreeOp::RenameSymbol { new_name }) if new_name == "target_new"
+            ));
         }
         _ => panic!("expected DecodedEdit::Tree"),
     }

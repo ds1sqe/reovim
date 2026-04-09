@@ -1,14 +1,19 @@
 //! ELF and ZIP structured binary codecs.
 //!
 //! Produces human-readable summaries of ELF binaries and ZIP archives.
-//! Both are one-way (decode-only) codecs — structured views cannot be
-//! saved back to binary format.
+//! ZIP remains a one-way summary codec. ELF gains a narrow Plan 07
+//! Phase 2 structural-edit surface for in-place tree edits.
 
 use std::fmt::Write;
 
 use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult},
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit, ElfTreeOp,
+        TranslateEditError, TreeOp, TreePath,
+    },
+    reovim_driver_vfs::ByteSource,
+    reovim_kernel::api::v1::ByteEdit,
 };
 
 use crate::classifier::{ELF, ZIP};
@@ -46,10 +51,9 @@ impl Default for ElfCodec {
     }
 }
 
-/// Phase 3: ELF is a transforming-only structured view; byte-level edits cannot be
-/// reconstructed from this summary representation, so decoded text edits are
-/// intentionally unsupported via `translate_edit`.
-impl reovim_driver_codec::ContentCodec for ElfCodec {
+/// ELF still decodes to a read-only human summary, but Plan 07 Phase 2 adds a
+/// narrow structural-edit seam via `DecodedEdit::Tree`.
+impl ContentCodec for ElfCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let elf = goblin::elf::Elf::parse(raw)
             .map_err(|e| CodecError::Other(format!("ELF parse failed: {e}")))?;
@@ -68,6 +72,30 @@ impl reovim_driver_codec::ContentCodec for ElfCodec {
             readonly: true,
             truncated: false,
         })
+    }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn ByteSource,
+        edit: &DecodedEdit,
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Tree {
+                path,
+                op: TreeOp::Elf(op),
+            } => translate_elf_edit(bytes, path, op),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "ELF codec only accepts ELF tree operations",
+            }),
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "ELF codec does not translate text or raw byte edits",
+                })
+            }
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "ELF codec does not support this decoded edit variant",
+            }),
+        }
     }
 }
 
@@ -118,6 +146,314 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
             truncated: false,
         })
     }
+}
+
+fn translate_elf_edit(
+    bytes: &dyn ByteSource,
+    path: &TreePath,
+    op: &ElfTreeOp,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+        reason: "ELF byte source could not be fully read",
+    })?;
+    let elf = goblin::elf::Elf::parse(&raw).map_err(|_| TranslateEditError::Internal {
+        reason: "ELF parse failed during translate_edit",
+    })?;
+
+    match op {
+        ElfTreeOp::PatchBytes {
+            offset,
+            old_bytes,
+            new_bytes,
+        } => translate_elf_patch_bytes(&elf, &raw, path, *offset, old_bytes, new_bytes),
+        ElfTreeOp::RenameSymbol { new_name } => {
+            translate_elf_rename_symbol(&elf, &raw, path, new_name)
+        }
+        ElfTreeOp::ReplaceSectionBytes {
+            old_bytes,
+            new_bytes,
+        } => translate_elf_replace_section(&elf, &raw, path, old_bytes, new_bytes),
+    }
+}
+
+fn translate_elf_patch_bytes(
+    elf: &goblin::elf::Elf<'_>,
+    raw: &[u8],
+    path: &TreePath,
+    offset: usize,
+    old_bytes: &[u8],
+    new_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let section = resolve_section_path(elf, path)?;
+    let section_name = section_name(elf, section)?;
+    if (section.sh_flags & u64::from(goblin::elf::section_header::SHF_EXECINSTR)) == 0
+        && !section_name.starts_with(".text")
+    {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "ELF instruction patch requires an executable section",
+        });
+    }
+
+    if old_bytes.len() != new_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF instruction patch must preserve byte length",
+        });
+    }
+
+    let section_bytes = section_bytes(raw, section)?;
+    let end =
+        offset
+            .checked_add(old_bytes.len())
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "ELF instruction patch range overflowed",
+            })?;
+    let actual = section_bytes
+        .get(offset..end)
+        .ok_or(TranslateEditError::ConstraintViolation {
+            reason: "ELF instruction patch exceeds section bounds",
+        })?;
+    if actual != old_bytes {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF instruction patch old bytes do not match the section contents",
+        });
+    }
+    if old_bytes == new_bytes {
+        return Ok(None);
+    }
+
+    let file_offset = section_file_offset(section)?.checked_add(offset).ok_or(
+        TranslateEditError::ConstraintViolation {
+            reason: "ELF instruction patch file offset overflowed",
+        },
+    )?;
+    Ok(Some(ByteEdit::replace(file_offset, old_bytes, new_bytes)))
+}
+
+fn translate_elf_rename_symbol(
+    elf: &goblin::elf::Elf<'_>,
+    raw: &[u8],
+    path: &TreePath,
+    new_name: &str,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let symbol_name = resolve_symbol_path(path)?;
+    let symbol = resolve_named_symbol(elf, symbol_name)?;
+    if symbol_name.len() != new_name.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF symbol rename must preserve name length",
+        });
+    }
+    if symbol_name == new_name {
+        return Ok(None);
+    }
+
+    let strtab_offset = find_symbol_strtab_offset(elf)?;
+    let name_offset = strtab_offset.checked_add(symbol.name_offset).ok_or(
+        TranslateEditError::ConstraintViolation {
+            reason: "ELF symbol name offset overflowed",
+        },
+    )?;
+    let actual = raw
+        .get(name_offset..name_offset + symbol_name.len())
+        .ok_or(TranslateEditError::Internal {
+            reason: "ELF symbol name range is out of bounds",
+        })?;
+    if actual != symbol_name.as_bytes() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF symbol name bytes do not match the string table contents",
+        });
+    }
+
+    Ok(Some(ByteEdit::replace(
+        name_offset,
+        symbol_name.as_bytes(),
+        new_name.as_bytes(),
+    )))
+}
+
+fn translate_elf_replace_section(
+    elf: &goblin::elf::Elf<'_>,
+    raw: &[u8],
+    path: &TreePath,
+    old_bytes: &[u8],
+    new_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let section = resolve_section_path(elf, path)?;
+    if section.sh_type == goblin::elf::section_header::SHT_NOBITS {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "ELF section replacement does not support NOBITS sections",
+        });
+    }
+    if old_bytes.len() != new_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF section replacement must preserve section size",
+        });
+    }
+
+    let actual = section_bytes(raw, section)?;
+    if actual.len() != old_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF section replacement must cover the full section payload",
+        });
+    }
+    if actual != old_bytes {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF section replacement old bytes do not match the section contents",
+        });
+    }
+    if old_bytes == new_bytes {
+        return Ok(None);
+    }
+
+    Ok(Some(ByteEdit::replace(section_file_offset(section)?, old_bytes, new_bytes)))
+}
+
+fn read_all_bytes(bytes: &dyn ByteSource) -> Option<Vec<u8>> {
+    let len = usize::try_from(bytes.len()).ok()?;
+    let data = bytes.read(0..bytes.len()).into_owned();
+
+    (data.len() == len).then_some(data)
+}
+
+fn resolve_section_path<'a>(
+    elf: &'a goblin::elf::Elf<'_>,
+    path: &TreePath,
+) -> Result<&'a goblin::elf::section_header::SectionHeader, TranslateEditError> {
+    let components = path.components();
+    let [kind, section_name, field] = components else {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF section path must be [sections, <name>, bytes]",
+        });
+    };
+    if kind != "sections" || field != "bytes" || section_name.is_empty() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF section path must be [sections, <name>, bytes]",
+        });
+    }
+
+    let mut matches = elf.section_headers.iter().filter(|section| {
+        elf.shdr_strtab
+            .get_at(section.sh_name)
+            .is_some_and(|candidate| candidate == section_name)
+    });
+    let section = matches.next().ok_or(TranslateEditError::MalformedPath {
+        reason: "ELF section path does not resolve to a section",
+    })?;
+    if matches.next().is_some() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF section path is ambiguous",
+        });
+    }
+
+    Ok(section)
+}
+
+fn resolve_symbol_path(path: &TreePath) -> Result<&str, TranslateEditError> {
+    let components = path.components();
+    let [kind, symbol_name, field] = components else {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF symbol path must be [symbols, <name>, name]",
+        });
+    };
+    if kind != "symbols" || field != "name" || symbol_name.is_empty() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF symbol path must be [symbols, <name>, name]",
+        });
+    }
+
+    Ok(symbol_name)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResolvedSymbol {
+    name_offset: usize,
+}
+
+fn resolve_named_symbol(
+    elf: &goblin::elf::Elf<'_>,
+    symbol_name: &str,
+) -> Result<ResolvedSymbol, TranslateEditError> {
+    let mut matches = elf.syms.iter().filter(|symbol| {
+        elf.strtab
+            .get_at(symbol.st_name)
+            .is_some_and(|candidate| candidate == symbol_name)
+    });
+    let symbol = matches.next().ok_or(TranslateEditError::MalformedPath {
+        reason: "ELF symbol path does not resolve to a symbol",
+    })?;
+    if matches.next().is_some() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF symbol path is ambiguous",
+        });
+    }
+
+    Ok(ResolvedSymbol {
+        name_offset: symbol.st_name,
+    })
+}
+
+fn find_symbol_strtab_offset(elf: &goblin::elf::Elf<'_>) -> Result<usize, TranslateEditError> {
+    let symtab = elf
+        .section_headers
+        .iter()
+        .find(|section| section.sh_type == goblin::elf::section_header::SHT_SYMTAB)
+        .ok_or(TranslateEditError::UnsupportedEdit {
+            reason: "ELF symbol rename requires a symbol table",
+        })?;
+    let link_index = usize::try_from(symtab.sh_link).map_err(|_| TranslateEditError::Internal {
+        reason: "ELF symbol table link index does not fit in usize",
+    })?;
+    let strtab = elf
+        .section_headers
+        .get(link_index)
+        .ok_or(TranslateEditError::Internal {
+            reason: "ELF symbol table string table is missing",
+        })?;
+
+    section_file_offset(strtab)
+}
+
+fn section_file_offset(
+    section: &goblin::elf::section_header::SectionHeader,
+) -> Result<usize, TranslateEditError> {
+    usize::try_from(section.sh_offset).map_err(|_| TranslateEditError::Internal {
+        reason: "ELF section offset does not fit in usize",
+    })
+}
+
+fn section_size(
+    section: &goblin::elf::section_header::SectionHeader,
+) -> Result<usize, TranslateEditError> {
+    usize::try_from(section.sh_size).map_err(|_| TranslateEditError::Internal {
+        reason: "ELF section size does not fit in usize",
+    })
+}
+
+fn section_bytes<'a>(
+    raw: &'a [u8],
+    section: &goblin::elf::section_header::SectionHeader,
+) -> Result<&'a [u8], TranslateEditError> {
+    let offset = section_file_offset(section)?;
+    let size = section_size(section)?;
+    let end = offset
+        .checked_add(size)
+        .ok_or(TranslateEditError::Internal {
+            reason: "ELF section range overflowed",
+        })?;
+
+    raw.get(offset..end).ok_or(TranslateEditError::Internal {
+        reason: "ELF section bytes are out of bounds",
+    })
+}
+
+fn section_name<'a>(
+    elf: &'a goblin::elf::Elf<'_>,
+    section: &goblin::elf::section_header::SectionHeader,
+) -> Result<&'a str, TranslateEditError> {
+    elf.shdr_strtab
+        .get_at(section.sh_name)
+        .ok_or(TranslateEditError::Internal {
+            reason: "ELF section name is missing from the header string table",
+        })
 }
 
 /// Format an ELF binary into a human-readable summary.

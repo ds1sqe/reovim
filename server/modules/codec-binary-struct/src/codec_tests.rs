@@ -1,12 +1,211 @@
 //! Tests for ELF and ZIP codecs.
 
+use std::{
+    process::Command,
+    sync::{Arc, OnceLock},
+};
+
 use {
-    reovim_driver_codec::{ContentCodec, DecodedEdit},
+    reovim_driver_codec::{
+        ContentCodec, DecodedEdit, ElfTreeOp, InodeTable, Mount, TranslateEditError, TreeOp,
+        TreePath,
+    },
     reovim_driver_vfs::HeapByteSource,
+    reovim_kernel::api::v1::{BufferId, ByteEdit},
     reovim_types_text::Position,
 };
 
 use super::*;
+
+#[derive(Debug, Clone)]
+struct ElfFixture {
+    bytes: Vec<u8>,
+    text_section_name: String,
+    text_section_offset: usize,
+    text_patch_offset: usize,
+    text_old_bytes: Vec<u8>,
+    text_new_bytes: Vec<u8>,
+    data_section_name: String,
+    data_section_offset: usize,
+    section_old_bytes: Vec<u8>,
+    section_new_bytes: Vec<u8>,
+    symbol_name: String,
+    symbol_name_offset: usize,
+    symbol_new_name: String,
+}
+
+static ELF_FIXTURE: OnceLock<ElfFixture> = OnceLock::new();
+
+fn elf_fixture() -> &'static ElfFixture {
+    ELF_FIXTURE.get_or_init(build_elf_fixture)
+}
+
+fn build_elf_fixture() -> ElfFixture {
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "reovim-elf-phase2-{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("tests")
+    ));
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    std::fs::create_dir_all(&fixture_dir).unwrap();
+
+    let source_path = fixture_dir.join("fixture.rs");
+    let object_path = fixture_dir.join("fixture.o");
+    std::fs::write(
+        &source_path,
+        r#"
+#[no_mangle]
+pub static target_old: u8 = 7;
+
+#[link_section = ".text.phase2"]
+#[used]
+pub static PHASE2_TEXT: [u8; 4] = [0x90, 0x90, 0xC3, 0xCC];
+
+#[link_section = ".phase2"]
+#[used]
+pub static PHASE2_BYTES: [u8; 8] = *b"ORIGINAL";
+"#,
+    )
+    .unwrap();
+
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let output = Command::new(rustc)
+        .args([
+            "--edition=2021",
+            "--crate-type=lib",
+            "--emit=obj",
+            source_path.to_str().unwrap(),
+            "-o",
+            object_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "fixture compilation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let bytes = std::fs::read(&object_path).unwrap();
+    let elf = goblin::elf::Elf::parse(&bytes).unwrap();
+
+    let (text_section_name, text_section_offset, text_section_bytes) =
+        section_fixture(&elf, &bytes, ".text.phase2");
+    let text_old_bytes = text_section_bytes[..4].to_vec();
+    let text_new_bytes = text_old_bytes.iter().map(|byte| byte ^ 0x5A).collect();
+
+    let (data_section_name, data_section_offset, section_old_bytes) =
+        section_fixture(&elf, &bytes, ".phase2");
+    assert!(section_old_bytes.len() >= 8);
+    let mut section_new_bytes = section_old_bytes.clone();
+    section_new_bytes[..8].copy_from_slice(b"MODIFIED");
+
+    let symbol_name = "target_old".to_string();
+    let symbol_name_offset = symbol_name_offset(&elf, &symbol_name);
+
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+
+    ElfFixture {
+        bytes,
+        text_section_name,
+        text_section_offset,
+        text_patch_offset: 0,
+        text_old_bytes,
+        text_new_bytes,
+        data_section_name,
+        data_section_offset,
+        section_old_bytes,
+        section_new_bytes,
+        symbol_name,
+        symbol_name_offset,
+        symbol_new_name: "target_new".to_string(),
+    }
+}
+
+fn section_fixture(
+    elf: &goblin::elf::Elf<'_>,
+    bytes: &[u8],
+    target_name: &str,
+) -> (String, usize, Vec<u8>) {
+    let section = elf
+        .section_headers
+        .iter()
+        .find(|header| {
+            elf.shdr_strtab
+                .get_at(header.sh_name)
+                .is_some_and(|name| name == target_name)
+        })
+        .unwrap();
+    let offset = usize::try_from(section.sh_offset).unwrap();
+    let size = usize::try_from(section.sh_size).unwrap();
+
+    (target_name.to_string(), offset, bytes[offset..offset + size].to_vec())
+}
+
+fn symbol_name_offset(elf: &goblin::elf::Elf<'_>, target_name: &str) -> usize {
+    let symbol = elf
+        .syms
+        .iter()
+        .find(|sym| {
+            elf.strtab
+                .get_at(sym.st_name)
+                .is_some_and(|name| name == target_name)
+        })
+        .unwrap();
+    let symtab = elf
+        .section_headers
+        .iter()
+        .find(|section| section.sh_type == goblin::elf::section_header::SHT_SYMTAB)
+        .unwrap();
+    let strtab = elf
+        .section_headers
+        .get(usize::try_from(symtab.sh_link).unwrap())
+        .unwrap();
+
+    usize::try_from(strtab.sh_offset).unwrap() + symbol.st_name
+}
+
+fn instruction_patch_edit(fixture: &ElfFixture) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.text_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+            offset: fixture.text_patch_offset,
+            old_bytes: fixture.text_old_bytes.clone(),
+            new_bytes: fixture.text_new_bytes.clone(),
+        }),
+    }
+}
+
+fn symbol_rename_edit(fixture: &ElfFixture, new_name: &str) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            fixture.symbol_name.clone(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::RenameSymbol {
+            new_name: new_name.to_string(),
+        }),
+    }
+}
+
+fn section_replace_edit(fixture: &ElfFixture) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes.clone(),
+        }),
+    }
+}
 
 // === ELF Codec Tests ===
 
@@ -25,7 +224,6 @@ fn elf_default_impl() {
 
 #[test]
 fn elf_translate_edit_text_is_not_supported() {
-    use reovim_driver_codec::TranslateEditError;
     let codec = ElfCodec::new();
     let bytes = HeapByteSource::new(b"\x7fELF");
     let edit = DecodedEdit::Text {
@@ -34,12 +232,14 @@ fn elf_translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 #[test]
 fn elf_translate_edit_bytes_is_not_supported() {
-    use reovim_driver_codec::TranslateEditError;
     let codec = ElfCodec::new();
     let bytes = HeapByteSource::new(vec![0x7f, b'E', b'L', b'F']);
     let edit = DecodedEdit::Bytes {
@@ -48,7 +248,183 @@ fn elf_translate_edit_bytes_is_not_supported() {
         new_bytes: b"x".to_vec(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_instruction_patch_returns_in_place_byte_edit() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &instruction_patch_edit(fixture))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.text_section_offset + fixture.text_patch_offset,
+            &fixture.text_old_bytes,
+            &fixture.text_new_bytes,
+        ))
+    );
+}
+
+#[test]
+fn elf_translate_edit_symbol_rename_returns_in_place_byte_edit() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &symbol_rename_edit(fixture, &fixture.symbol_new_name))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.symbol_name_offset,
+            fixture.symbol_name.as_bytes(),
+            fixture.symbol_new_name.as_bytes(),
+        ))
+    );
+}
+
+#[test]
+fn elf_translate_edit_section_replace_returns_in_place_byte_edit() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &section_replace_edit(fixture))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.data_section_offset,
+            &fixture.section_old_bytes,
+            &fixture.section_new_bytes,
+        ))
+    );
+}
+
+#[test]
+fn elf_translate_edit_same_name_symbol_rename_is_noop() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    assert_eq!(
+        codec.translate_edit(&bytes, &symbol_rename_edit(fixture, &fixture.symbol_name)),
+        Ok(None)
+    );
+}
+
+#[test]
+fn elf_translate_edit_malformed_section_path_is_rejected() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["sections".to_string(), fixture.text_section_name.clone()]),
+        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+            offset: 0,
+            old_bytes: fixture.text_old_bytes.clone(),
+            new_bytes: fixture.text_new_bytes.clone(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_size_changing_symbol_rename_is_rejected() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &symbol_rename_edit(fixture, "too_long_name")),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_patch_requires_executable_section() {
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+            offset: 0,
+            old_bytes: fixture.section_old_bytes[..4].to_vec(),
+            new_bytes: fixture.section_new_bytes[..4].to_vec(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn elf_real_fixture_workflow_reparses_and_restores_original_bytes() {
+    let codec = Arc::new(ElfCodec::new());
+    let fixture = elf_fixture().clone();
+    let mut table = InodeTable::new();
+    let inode_id = table.insert(Arc::new(HeapByteSource::new(fixture.bytes.clone())));
+    let buffer_id = BufferId::from_raw(1);
+    table.bind_file(buffer_id, inode_id);
+
+    let source_mount = table
+        .mount(inode_id, buffer_id, Mount::new("elf-source", codec.clone()))
+        .unwrap();
+    let peer_mount = table
+        .mount_additional(inode_id, buffer_id, Mount::new("elf-peer", codec.clone()))
+        .unwrap();
+
+    let edits = [
+        instruction_patch_edit(&fixture),
+        symbol_rename_edit(&fixture, &fixture.symbol_new_name),
+        section_replace_edit(&fixture),
+    ];
+    let mut inverses = Vec::new();
+
+    for edit in &edits {
+        let byte_edit = table.apply_edit(source_mount, edit).unwrap().unwrap();
+        inverses.push(byte_edit.inverse());
+
+        let current = table.read_bytes(inode_id).unwrap();
+        assert_eq!(current.len(), fixture.bytes.len());
+        codec.decode(&current).unwrap();
+    }
+
+    let inode = table.lookup_inode(inode_id).unwrap();
+    let peer = inode.mounts.get(&peer_mount.mount_id()).unwrap();
+    assert!(!peer.content_valid);
+
+    for inverse in inverses.iter().rev() {
+        table.apply_byte_edit(inode_id, inverse).unwrap();
+    }
+
+    let restored = table.read_bytes(inode_id).unwrap();
+    assert_eq!(restored, fixture.bytes);
+    codec.decode(&restored).unwrap();
 }
 
 #[test]

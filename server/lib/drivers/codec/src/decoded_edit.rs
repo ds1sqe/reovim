@@ -74,9 +74,40 @@ impl TreePath {
 /// Phase 1 ships exactly one variant — the test/feature-gated
 /// [`TreeOp::Synthetic`] placeholder — so the verification harness can
 /// construct and match `TreeOp` values before any real format is wired up.
+/// Phase 2 adds the first real format variant: [`TreeOp::Elf`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElfTreeOp {
+    /// Patch a byte span inside an executable section in place.
+    PatchBytes {
+        /// Section-relative byte offset to replace.
+        offset: usize,
+        /// Expected current bytes at `offset`.
+        old_bytes: Vec<u8>,
+        /// Replacement bytes. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename a symbol in place.
+    RenameSymbol {
+        /// Replacement symbol name. Must be the same length as the
+        /// current symbol name resolved from the tree path.
+        new_name: String,
+    },
+    /// Replace an entire named section payload in place.
+    ReplaceSectionBytes {
+        /// Expected current section payload.
+        old_bytes: Vec<u8>,
+        /// Replacement section payload. Must be the same length as
+        /// `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+}
+
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeOp {
+    /// ELF structural edit (Plan 07 Phase 2).
+    Elf(ElfTreeOp),
+
     /// Test-only placeholder variant.
     ///
     /// Compiled into the crate under `#[cfg(any(test, feature =

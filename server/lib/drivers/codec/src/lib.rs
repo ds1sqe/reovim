@@ -85,7 +85,7 @@ pub use domain_codec::{ByteNotifiable, Decode, DecodeOutput, Encode, Index};
 
 // Decoded edits and inode/mount primitives.
 pub use {
-    decoded_edit::{DecodedEdit, TreeOp, TreePath},
+    decoded_edit::{DecodedEdit, ElfTreeOp, TreeOp, TreePath},
     errors::{
         EditError, InodeError, MountCodecError, MountError, SwitchViewError, TranslateEditError,
         UmountCodecError, UmountError,
