@@ -2246,10 +2246,12 @@ dependencies = [
  "reovim-picker-git-status",
  "reovim-picker-grep",
  "reovim-picker-options",
+ "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
  "reovim-types-text",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-subscriber",
 ]

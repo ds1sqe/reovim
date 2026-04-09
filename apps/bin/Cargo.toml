@@ -80,6 +80,7 @@ static-modules = [
 [dependencies]
 # Server crate
 reovim-server = { workspace = true }
+reovim-protocol = { workspace = true }
 
 # Kernel and drivers for module loading
 reovim-kernel = { workspace = true }
@@ -119,6 +120,7 @@ clap = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
+tonic = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

@@ -22,7 +22,10 @@
 //!
 //! The `SessionState` then queries these registries via `ServiceRegistry`.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use {
     reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
@@ -32,7 +35,9 @@ use {
         ModeInfoStore, ResolverRegistry,
     },
     reovim_driver_module_config::{BuiltinManifest, ModulesConfig},
-    reovim_driver_module_loader::{handle::ModuleHandle, loader::ModuleLoader},
+    reovim_driver_module_loader::{
+        handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,
+    },
     reovim_driver_session::LeaderKeyProvider,
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
@@ -76,6 +81,23 @@ fn parse_builtin_manifest() -> BuiltinManifest {
 struct TrackedModule {
     handle: ModuleHandle,
     state: ModuleState,
+}
+
+struct InitializedModules {
+    tracked: Vec<TrackedModule>,
+    dependents: HashMap<ModuleId, HashSet<ModuleId>>,
+}
+
+/// Result of a single authoritative bootstrap pass.
+pub struct BootstrapResult {
+    /// Session state ready for the default server session.
+    pub session_state: SessionState,
+    /// Live module registry used by runner-side gRPC control-plane wiring.
+    pub module_registry: Arc<ModuleRegistry>,
+    /// Shared module context paired with the live registry.
+    pub module_ctx: Arc<ModuleContext>,
+    /// Extension bridges collected during the same bootstrap pass.
+    pub bridges: reovim_driver_session::bridges::BridgeRegistry,
 }
 
 /// Load user module configuration from `~/.config/reovim/modules.toml`.
@@ -180,70 +202,16 @@ pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
 /// This keeps bootstrap decoupled from individual modules: zero module-specific
 /// imports needed. Modules self-register their bridges during `init()`.
 #[must_use]
+#[allow(dead_code)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
-    use reovim_driver_session::bridges::BridgeRegistry;
-
-    #[cfg(feature = "static-modules")]
-    {
-        use reovim_driver_session::bridges::BridgeProvider;
-        // Load user config to filter modules (#586)
-        let config = load_module_config();
-
-        // Initialize modules in dependency order (#582).
-        // This is a separate init pass (bridges are collected once globally,
-        // sessions are created per-connection).
-        let services = Arc::new(ServiceRegistry::new());
-        register_module_config_store(&config, &services);
-        let kernel = create_kernel_context(Arc::clone(&services));
-        let module_ctx = create_module_context(kernel, Arc::clone(&services));
-        let tracked = initialize_modules(&config, &module_ctx);
-
-        let mut registry = BridgeRegistry::new();
-        if let Some(provider) = services.get::<BridgeProvider>() {
-            for bridge in provider.take_bridges() {
-                registry.register_boxed(bridge);
-            }
-        }
-
-        // Collect module-declared extension kinds and validate contracts (#584)
-        let available_kinds = collect_available_kinds(&tracked);
-        validate_extension_contracts(&tracked, &registry);
-        registry.set_available_kinds(available_kinds);
-
-        registry
-    }
-
-    #[cfg(not(feature = "static-modules"))]
-    {
-        // Dynamic path: bridge collection requires module init (Phase 5).
-        tracing::debug!("Static modules disabled, bridge collection unavailable");
-        BridgeRegistry::new()
-    }
+    bootstrap_runtime().bridges
 }
 
-/// Create a session state with fully-initialized module registries.
-///
-/// This is the entry point for module loading. It:
-/// 1. Creates a `ServiceRegistry` for cross-module service discovery
-/// 2. Initializes all default modules (vim, editor, motions, etc.)
-/// 3. Returns a `SessionState` ready for use
-///
-/// # Example
-///
-/// ```ignore
-/// use apps_bin::bootstrap::create_session_state;
-/// use reovim_server::{Server, ServerConfig};
-///
-/// let server = Server::with_session_factory(
-///     ServerConfig::default(),
-///     Box::new(|| create_session_state()),
-/// );
-/// server.run().await?;
-/// ```
+/// Perform one authoritative bootstrap pass for the runner.
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub fn create_session_state() -> SessionState {
+pub fn bootstrap_runtime() -> BootstrapResult {
     // Load user config (#586)
     let config = load_module_config();
 
@@ -257,35 +225,31 @@ pub fn create_session_state() -> SessionState {
     let kernel = create_kernel_context(Arc::clone(&services));
 
     // Register TextBufferRegistry for session-layer text access (#740).
-    // SessionRuntime uses this instead of kernel.buffers for text operations.
     let text_registry = Arc::new(reovim_provider_text::TextBufferRegistry::new());
     services.register(Arc::clone(&text_registry));
 
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
-    // Uses TextBufferRegistry for text-specific access (kernel.buffers is byte-only).
     services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(text_registry)));
 
     // Create module context for initialization
-    let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
+    let module_ctx = Arc::new(create_module_context(kernel.clone(), Arc::clone(&services)));
 
     // Initialize enabled modules in dependency order (#582, #586, #587).
-    // Since #725, external modules are joined into the unified `tracked`
-    // list by `initialize_modules` — no separate `external: ModuleLoader`
-    // return value.
-    let mut tracked = initialize_modules(&config, &module_ctx);
+    let mut initialized = initialize_modules_with_dependents(&config, module_ctx.as_ref());
 
     // Wire on_all_loaded lifecycle hook (#582, #725)
-    call_on_all_loaded(&mut tracked, &module_ctx);
+    call_on_all_loaded(&mut initialized.tracked, module_ctx.as_ref());
 
     // Check modules.lock staleness (#587) — warning only, missing lock is fine
     check_lockfile_staleness();
 
     // #610: Construct and register ModuleLoadReport for health-check diagnostics
-    build_and_register_load_report(&config, &tracked, &services);
+    build_and_register_load_report(&config, &initialized.tracked, &services);
 
-    // Modules are dropped here — exit() lifecycle requires a ManagedSession
-    // wrapper (future work: no module currently overrides exit() meaningfully).
-    drop(tracked);
+    // Collect bridges from the same bootstrap pass used for the session and registry.
+    let bridges = collect_bridges_from_services(&services, &initialized.tracked);
+
+    let module_registry = build_live_module_registry(initialized);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
@@ -293,7 +257,6 @@ pub fn create_session_state() -> SessionState {
 
     // Register CommandQuerySnapshot for module command queries (#453)
     let command_query_snapshot = Arc::new(CommandQuerySnapshot::from_registry(&command_registry));
-    // Register CommandQueryProvider for module-level access (#522)
     let command_query_provider = Arc::new(reovim_driver_command::CommandQueryProvider::new(
         command_query_snapshot.list_all(),
     ));
@@ -311,7 +274,6 @@ pub fn create_session_state() -> SessionState {
         .and_then(|p| p.get())
         .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
     tracing::info!(mode = %initial_mode, "Selected initial mode from personality module");
-    // Use StandardVfs for real file system operations (required for :e command)
     let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> =
         Arc::new(reovim_driver_vfs::StandardVfs::new());
 
@@ -328,8 +290,6 @@ pub fn create_session_state() -> SessionState {
     }
 
     // Build GutterRenderer from registered annotation sources + display presenters.
-    // Server modules register data sources in AnnotationSourceRegistry during init().
-    // The display layer creates presenters (Style, Color) and pairs them with sources.
     {
         use reovim_driver_display::{
             AnnotationSourceRegistry, BlamePresenter, DiagnosticPresenter, GitSignsPresenter,
@@ -352,8 +312,6 @@ pub fn create_session_state() -> SessionState {
     }
 
     // Wrap server-side ComponentDataProviders into display-side ComponentProviders.
-    // Server modules register data providers in ComponentDataProviderRegistry during init().
-    // The display layer wraps each with a DataProviderAdapter (adds Style from theme).
     {
         use reovim_driver_display::statusline::{
             ComponentDataProviderRegistry, ComponentProviderKey, ComponentProviderRegistry,
@@ -378,7 +336,7 @@ pub fn create_session_state() -> SessionState {
         .and_then(|reg| reg.get(&reovim_driver_layout::CompositorKey::Root))
         .map(|arc| arc.boxed_clone());
 
-    let mut state = SessionState::with_registries(
+    let mut session_state = SessionState::with_registries(
         kernel,
         initial_mode,
         vfs,
@@ -389,19 +347,42 @@ pub fn create_session_state() -> SessionState {
         compositor,
     );
 
-    // Extract syntax factory from SyntaxFactoryStore (populated by treesitter modules)
-    // and configure SyntaxSessionState
-    configure_syntax_highlighting(&mut state, &services);
+    configure_syntax_highlighting(&mut session_state, &services);
+    trigger_empty_session_handlers(&mut session_state, &services);
+    session_state.ensure_initial_compositor_window();
 
-    // Trigger empty session handlers to create scratch buffer if needed
-    trigger_empty_session_handlers(&mut state, &services);
+    BootstrapResult {
+        session_state,
+        module_registry,
+        module_ctx,
+        bridges,
+    }
+}
 
-    // Ensure compositor has an initial window now that buffers exist.
-    // with_registries() checks for buffers but runs before scratch-buffer module,
-    // so we retry here after the scratch buffer has been created.
-    state.ensure_initial_compositor_window();
-
-    state
+/// Create a session state with fully-initialized module registries.
+///
+/// This is the entry point for module loading. It:
+/// 1. Creates a `ServiceRegistry` for cross-module service discovery
+/// 2. Initializes all default modules (vim, editor, motions, etc.)
+/// 3. Returns a `SessionState` ready for use
+///
+/// # Example
+///
+/// ```ignore
+/// use apps_bin::bootstrap::create_session_state;
+/// use reovim_server::{Server, ServerConfig};
+///
+/// let server = Server::with_session_factory(
+///     ServerConfig::default(),
+///     Box::new(|| create_session_state()),
+/// );
+/// server.run().await?;
+/// ```
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(dead_code)]
+pub fn create_session_state() -> SessionState {
+    bootstrap_runtime().session_state
 }
 
 /// Extract registries from `ServiceRegistry` after module initialization.
@@ -611,10 +592,16 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 // (#582 depgraph, #587 externals, #725 registry + unified init).
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_lines)]
-fn initialize_modules(
+#[allow(dead_code)]
+fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<TrackedModule> {
+    initialize_modules_with_dependents(config, ctx).tracked
+}
+
+#[allow(clippy::too_many_lines)]
+fn initialize_modules_with_dependents(
     config: &ModulesConfig,
     ctx: &ModuleContext,
-) -> Vec<TrackedModule> {
+) -> InitializedModules {
     // #620: Create builtin modules from static factory map (or empty for dynamic path)
     #[cfg(feature = "static-modules")]
     let all_modules: Vec<Box<dyn Module>> = {
@@ -764,7 +751,61 @@ fn initialize_modules(
         "Module initialization complete"
     );
 
-    tracked
+    InitializedModules {
+        tracked,
+        dependents: dep_order.dependents,
+    }
+}
+
+fn collect_bridges_from_services(
+    services: &Arc<ServiceRegistry>,
+    tracked: &[TrackedModule],
+) -> reovim_driver_session::bridges::BridgeRegistry {
+    use reovim_driver_session::bridges::BridgeRegistry;
+
+    #[cfg(feature = "static-modules")]
+    {
+        use reovim_driver_session::bridges::BridgeProvider;
+
+        let mut registry = BridgeRegistry::new();
+        if let Some(provider) = services.get::<BridgeProvider>() {
+            for bridge in provider.take_bridges() {
+                registry.register_boxed(bridge);
+            }
+        }
+
+        let available_kinds = collect_available_kinds(tracked);
+        validate_extension_contracts(tracked, &registry);
+        registry.set_available_kinds(available_kinds);
+        registry
+    }
+
+    #[cfg(not(feature = "static-modules"))]
+    {
+        let _ = tracked;
+        tracing::debug!("Static modules disabled, bridge collection unavailable");
+        BridgeRegistry::new()
+    }
+}
+
+fn build_live_module_registry(initialized: InitializedModules) -> Arc<ModuleRegistry> {
+    let InitializedModules {
+        tracked,
+        dependents,
+    } = initialized;
+    let init_order: Vec<ModuleId> = tracked.iter().map(|tm| tm.handle.id().clone()).collect();
+    let mut loader = ModuleLoader::new();
+    let mut states = HashMap::new();
+
+    for tracked_module in tracked {
+        let id = tracked_module.handle.id().clone();
+        states.insert(id, tracked_module.state.clone());
+        loader
+            .insert_handle(tracked_module.handle)
+            .expect("bootstrap module IDs must be unique");
+    }
+
+    ModuleRegistry::from_loader(loader, states, init_order, dependents).into_arc()
 }
 
 /// Initialize a single module handle, logging the result.

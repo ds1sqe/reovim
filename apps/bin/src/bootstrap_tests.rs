@@ -299,8 +299,10 @@ fn test_static_registry_covers_manifest() {
 /// without loading, logs at debug level, and leaves the loader unchanged.
 #[test]
 fn test_load_registry_modules_missing_registry_noop() {
-    use reovim_driver_module_loader::loader::ModuleLoader;
-    use reovim_driver_module_registry::workflow::RegistryPaths;
+    use {
+        reovim_driver_module_loader::loader::ModuleLoader,
+        reovim_driver_module_registry::workflow::RegistryPaths,
+    };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t1-missing");
     // Ensure it really doesn't exist.
@@ -313,11 +315,7 @@ fn test_load_registry_modules_missing_registry_noop() {
 
     load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
 
-    assert_eq!(
-        loader.len(),
-        0,
-        "loader should remain empty when registry path does not exist",
-    );
+    assert_eq!(loader.len(), 0, "loader should remain empty when registry path does not exist");
 }
 
 /// P2-T3: registry module ID conflicts with a builtin → skipped. Verified
@@ -328,9 +326,10 @@ fn test_load_registry_modules_missing_registry_noop() {
 fn test_load_registry_modules_builtin_conflict_skipped() {
     use std::fs;
 
-    use reovim_driver_module_loader::loader::ModuleLoader;
-    use reovim_driver_module_registry::workflow::RegistryPaths;
-    use reovim_kernel::api::v1::ModuleId;
+    use {
+        reovim_driver_module_loader::loader::ModuleLoader,
+        reovim_driver_module_registry::workflow::RegistryPaths, reovim_kernel::api::v1::ModuleId,
+    };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t3-builtin-conflict");
     let _ = fs::remove_dir_all(&tmp);
@@ -360,11 +359,7 @@ fn test_load_registry_modules_builtin_conflict_skipped() {
 
     load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
 
-    assert_eq!(
-        loader.len(),
-        0,
-        "registry module matching builtin should be skipped",
-    );
+    assert_eq!(loader.len(), 0, "registry module matching builtin should be skipped");
 
     let _ = fs::remove_dir_all(&tmp);
 }
@@ -375,8 +370,10 @@ fn test_load_registry_modules_builtin_conflict_skipped() {
 fn test_load_registry_modules_missing_library_path_skipped() {
     use std::fs;
 
-    use reovim_driver_module_loader::loader::ModuleLoader;
-    use reovim_driver_module_registry::workflow::RegistryPaths;
+    use {
+        reovim_driver_module_loader::loader::ModuleLoader,
+        reovim_driver_module_registry::workflow::RegistryPaths,
+    };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t5-no-library");
     let _ = fs::remove_dir_all(&tmp);
@@ -402,11 +399,7 @@ fn test_load_registry_modules_missing_library_path_skipped() {
 
     load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
 
-    assert_eq!(
-        loader.len(),
-        0,
-        "registry module without library_path should be skipped",
-    );
+    assert_eq!(loader.len(), 0, "registry module without library_path should be skipped");
 
     let _ = fs::remove_dir_all(&tmp);
 }

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::ServiceRegistry;
+use {parking_lot::Mutex, reovim_kernel::api::v1::ServiceRegistry};
 
 use crate::{
     ServerConfig, TransportMode,
@@ -19,15 +19,26 @@ use {
     },
     reovim_driver_session::bridges::BridgeRegistry,
     reovim_protocol::v2::{
-        buffer_service_server::BufferServiceServer, command_service_server::CommandServiceServer,
-        debug_service_server::DebugServiceServer, editor_service_server::EditorServiceServer,
-        extension_service_server::ExtensionServiceServer, input_service_server::InputServiceServer,
-        module_service_server::ModuleServiceServer,
+        buffer_service_server::BufferServiceServer,
+        command_service_server::CommandServiceServer,
+        debug_service_server::DebugServiceServer,
+        editor_service_server::EditorServiceServer,
+        extension_service_server::ExtensionServiceServer,
+        input_service_server::InputServiceServer,
+        module_service_server::{ModuleService, ModuleServiceServer},
         notification_service_server::NotificationServiceServer,
-        presence_service_server::PresenceServiceServer, server_service_server::ServerServiceServer,
-        state_service_server::StateServiceServer, syntax_service_server::SyntaxServiceServer,
+        presence_service_server::PresenceServiceServer,
+        server_service_server::ServerServiceServer,
+        state_service_server::StateServiceServer,
+        syntax_service_server::SyntaxServiceServer,
     },
 };
+
+#[cfg(feature = "grpc")]
+type DefaultModuleService = ModuleServiceImpl;
+
+#[cfg(not(feature = "grpc"))]
+type DefaultModuleService = ();
 
 /// Session factory function type.
 ///
@@ -38,7 +49,7 @@ pub type SessionFactory = Box<dyn Fn() -> SessionState + Send + Sync>;
 /// The reovim server.
 ///
 /// Manages sessions and handles client connections via the configured transport.
-pub struct Server {
+pub struct Server<M = DefaultModuleService> {
     /// Server configuration.
     config: ServerConfig,
 
@@ -66,15 +77,26 @@ pub struct Server {
     /// This enables the runner to inject module-initialized registries.
     session_factory: Option<SessionFactory>,
 
+    /// Optional one-shot initial session state for the default server session.
+    ///
+    /// This is separate from `session_factory`: the runner can hand the server
+    /// an already-bootstrapped default session without weakening the reusable
+    /// `SessionFactory` contract for future session creation paths.
+    initial_session_state: Option<Mutex<Option<SessionState>>>,
+
     /// Extension bridge registry for gRPC notification emission (#468).
     ///
     /// Bridges are collected from `BridgeProvider` in bootstrap.
     /// Defaults to empty registry (no extension notifications).
     #[cfg(feature = "grpc")]
     bridge_registry: Arc<BridgeRegistry>,
+
+    /// Concrete gRPC module service implementation.
+    #[cfg(feature = "grpc")]
+    module_service: M,
 }
 
-impl Server {
+impl Server<DefaultModuleService> {
     /// Create a new server with the given configuration.
     ///
     /// This creates a server with empty registries. For full vim functionality,
@@ -88,8 +110,11 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: None,
+            initial_session_state: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
+            #[cfg(feature = "grpc")]
+            module_service: ModuleServiceImpl::new(),
         }
     }
 
@@ -122,8 +147,11 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: Some(services),
             session_factory: None,
+            initial_session_state: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
+            #[cfg(feature = "grpc")]
+            module_service: ModuleServiceImpl::new(),
         }
     }
 
@@ -157,11 +185,16 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: Some(factory),
+            initial_session_state: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
+            #[cfg(feature = "grpc")]
+            module_service: ModuleServiceImpl::new(),
         }
     }
+}
 
+impl<M: Send + Sync> Server<M> {
     /// Set the extension bridge registry (#468).
     ///
     /// Bridges are collected from `BridgeProvider` in bootstrap.
@@ -173,9 +206,41 @@ impl Server {
         self
     }
 
+    /// Replace the default stub module service with a concrete runner-owned implementation.
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub fn with_module_service<M2>(self, module_service: M2) -> Server<M2>
+    where
+        M2: ModuleService + Clone + Send + Sync + 'static,
+    {
+        Server {
+            config: self.config,
+            sessions: self.sessions,
+            tokens: self.tokens,
+            services: self.services,
+            session_factory: self.session_factory,
+            initial_session_state: self.initial_session_state,
+            bridge_registry: self.bridge_registry,
+            module_service,
+        }
+    }
+
+    /// Inject a prebuilt default session state for one-time consumption.
+    #[must_use]
+    pub fn with_initial_session_state(mut self, session_state: SessionState) -> Self {
+        self.initial_session_state = Some(Mutex::new(Some(session_state)));
+        self
+    }
+
     /// Create a session state using the configured factory or default.
     #[allow(clippy::option_if_let_else)] // More readable with if-let
     fn create_session_state(&self) -> SessionState {
+        if let Some(state) = &self.initial_session_state
+            && let Some(session_state) = state.lock().take()
+        {
+            return session_state;
+        }
+
         if let Some(factory) = &self.session_factory {
             factory()
         } else {
@@ -191,7 +256,10 @@ impl Server {
     ///
     /// Returns an error if the transport fails to start (e.g., port in use).
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn run(&self) -> std::io::Result<()> {
+    pub async fn run(&self) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
         // Create the default session with module-initialized state
         let session_state = self.create_session_state();
         let default_session = Arc::new(Session::from_state(
@@ -272,7 +340,10 @@ impl Server {
         port: u16,
         shutdown: Option<std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>>,
         port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
         // TODO: Make bind address configurable (currently 0.0.0.0 for dev testing)
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
             .parse()
@@ -340,8 +411,7 @@ impl Server {
             Arc::clone(&self.tokens),
         );
 
-        // ModuleService is a stub - full implementation is in runner
-        let module_service = ModuleServiceImpl::new();
+        let module_service = self.module_service.clone();
 
         // SyntaxService provides token data for syntax highlighting
         let syntax_service =
@@ -481,7 +551,10 @@ impl Server {
         &self,
         shutdown: impl std::future::Future<Output = ()> + Send + 'static,
         port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
         // Create the default session with module-initialized state
         let session_state = self.create_session_state();
         let default_session = Arc::new(Session::from_state(

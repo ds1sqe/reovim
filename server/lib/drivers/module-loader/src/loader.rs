@@ -101,6 +101,29 @@ impl ModuleLoader {
         Ok(id)
     }
 
+    /// Insert an already-loaded module handle.
+    ///
+    /// Used when another subsystem bootstraps modules first and then hands
+    /// ownership of the live handles to the registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ModuleError::LoadFailed` if a module with the same ID already exists.
+    pub fn insert_handle(&mut self, handle: ModuleHandle) -> Result<ModuleId, ModuleError> {
+        let id = handle.id().clone();
+
+        if self.modules.contains_key(&id) {
+            return Err(ModuleError::LoadFailed(format!(
+                "module '{}' already loaded",
+                id.as_str()
+            )));
+        }
+
+        self.modules.insert(id.clone(), handle);
+        tracing::debug!(module = %id, "inserted existing module handle");
+        Ok(id)
+    }
+
     /// Load dynamic module from path.
     ///
     /// # Safety

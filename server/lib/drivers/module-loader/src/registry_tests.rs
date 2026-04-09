@@ -160,6 +160,26 @@ fn init_all_preserves_dependency_order() {
 }
 
 #[test]
+fn init_module_rebuilds_dependents_for_incremental_runtime_loads() {
+    let registry = ModuleRegistry::new();
+    registry.register(TestModule::new("a")).unwrap();
+    registry
+        .register(TestModule::with_deps("b", &["a"]))
+        .unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_module(&ModuleId::new("a"), &ctx).unwrap();
+    registry.init_module(&ModuleId::new("b"), &ctx).unwrap();
+
+    let result = registry.unload(&ModuleId::new("a"));
+    assert!(matches!(
+        result,
+        Err(ModuleError::InUse { module, by })
+            if module == ModuleId::new("a") && by == ModuleId::new("b")
+    ));
+}
+
+#[test]
 fn init_all_handles_failed_module() {
     let registry = ModuleRegistry::new();
     registry.register(TestModule::new("good")).unwrap();
@@ -621,16 +641,11 @@ fn register_boxed_duplicate_fails() {
 fn unload_nonexistent_module() {
     let registry = ModuleRegistry::new();
     let ctx = ModuleContext::default();
-    // Register and init so dependents map exists
+    // Register and init so dependents map exists.
     registry.register(TestModule::new("x")).unwrap();
     registry.init_all(&ctx).unwrap();
 
-    // Unloading a module that doesn't exist — the handle lookup fails
-    // but the code continues to remove from states/dependents maps
     let unknown = ModuleId::new("unknown");
-    // No dependents for "unknown" so the dependents check passes,
-    // handle lookup returns None so exit() is skipped, then remove calls
-    // are no-ops.
     let result = registry.unload(&unknown);
-    assert!(result.is_ok());
+    assert!(matches!(result, Err(ModuleError::NotLoaded(id)) if id == unknown));
 }

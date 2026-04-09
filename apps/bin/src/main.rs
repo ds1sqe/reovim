@@ -35,10 +35,12 @@
 
 mod bootstrap;
 mod module_cli;
+mod module_service;
 
 use {
     clap::{Parser, Subcommand},
     reovim_server::{Server, ServerConfig, TransportMode},
+    std::sync::Arc,
 };
 
 use {
@@ -381,12 +383,16 @@ async fn run(cli: Cli) -> std::io::Result<()> {
 
             tracing::info!("Starting reovim server (new architecture with modules)");
 
-            // Create server with module-initialized session factory and bridges.
-            // Bridges are collected from modules via BridgeProvider during init().
-            let bridges = bootstrap::collect_bridges();
+            let bootstrap = bootstrap::bootstrap_runtime();
+            let runner_module_service = module_service::RunnerGrpcModuleService::new(
+                Arc::clone(&bootstrap.module_registry),
+                Arc::clone(&bootstrap.module_ctx),
+            );
             let server =
                 Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
-                    .with_bridges(bridges);
+                    .with_initial_session_state(bootstrap.session_state)
+                    .with_bridges(bootstrap.bridges)
+                    .with_module_service(runner_module_service);
             server.run().await
         }
 
@@ -562,9 +568,15 @@ async fn run_integrated() -> std::io::Result<()> {
         instance_name: "default".to_string(),
         default_session_name: "main".to_string(),
     };
-    let bridges = bootstrap::collect_bridges();
+    let bootstrap = bootstrap::bootstrap_runtime();
+    let runner_module_service = module_service::RunnerGrpcModuleService::new(
+        Arc::clone(&bootstrap.module_registry),
+        Arc::clone(&bootstrap.module_ctx),
+    );
     let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
-        .with_bridges(bridges);
+        .with_initial_session_state(bootstrap.session_state)
+        .with_bridges(bootstrap.bridges)
+        .with_module_service(runner_module_service);
 
     // Spawn server task
     let server_task = tokio::spawn(async move {

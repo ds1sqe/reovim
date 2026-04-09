@@ -45,6 +45,26 @@ fn create_session_state_uses_factory() {
 }
 
 #[test]
+fn create_session_state_prefers_initial_session_state_once() {
+    let factory: SessionFactory = Box::new(|| {
+        let mut state = SessionState::default();
+        state.app.running = true;
+        state
+    });
+    let mut initial = SessionState::default();
+    initial.app.running = false;
+
+    let server = Server::with_session_factory(ServerConfig::default(), factory)
+        .with_initial_session_state(initial);
+
+    let first = server.create_session_state();
+    assert!(!first.app.is_running());
+
+    let second = server.create_session_state();
+    assert!(second.app.is_running());
+}
+
+#[test]
 fn sessions_accessor() {
     let server = Server::new(ServerConfig::default());
     assert!(server.sessions().is_empty());

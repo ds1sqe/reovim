@@ -9,14 +9,14 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
 use {
     reovim_arch::sync::Mutex,
     reovim_depgraph::{DepEntry, resolve_dependencies},
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ModuleState},
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ModuleState, Version},
 };
 
 use super::{handle::InitResult, loader::ModuleLoader};
@@ -48,6 +48,21 @@ struct ModuleRegistryInner {
     dependents: HashMap<ModuleId, HashSet<ModuleId>>,
 }
 
+/// Summary of a loaded module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedModuleInfo {
+    /// Module ID.
+    pub id: ModuleId,
+    /// Human-readable module name.
+    pub name: String,
+    /// Module version.
+    pub version: Version,
+    /// Filesystem path for dynamic modules.
+    pub path: Option<PathBuf>,
+    /// Current lifecycle state.
+    pub state: ModuleState,
+}
+
 impl Default for ModuleRegistry {
     fn default() -> Self {
         Self::new()
@@ -70,6 +85,25 @@ impl ModuleRegistry {
                 states: HashMap::new(),
                 init_order: Vec::new(),
                 dependents: HashMap::new(),
+            }),
+        }
+    }
+
+    /// Create a registry from an already-populated loader and lifecycle state.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn from_loader(
+        loader: ModuleLoader,
+        states: HashMap<ModuleId, ModuleState>,
+        init_order: Vec<ModuleId>,
+        dependents: HashMap<ModuleId, HashSet<ModuleId>>,
+    ) -> Self {
+        Self {
+            inner: Mutex::new(ModuleRegistryInner {
+                loader,
+                states,
+                init_order,
+                dependents,
             }),
         }
     }
@@ -127,6 +161,26 @@ impl ModuleRegistry {
         Ok(id)
     }
 
+    /// Load a dynamic module by name using the configured search paths.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure matching ABI compatibility for discovered shared libraries.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the module is not found or loading fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(unsafe_code)]
+    pub unsafe fn load_by_name(&self, name: &str) -> Result<ModuleId, ModuleError> {
+        let mut inner = self.inner.lock();
+        // SAFETY: Caller ensures discovered shared libraries are ABI-compatible
+        let id = unsafe { inner.loader.load_by_name(name)? };
+        inner.states.insert(id.clone(), ModuleState::Loaded);
+        drop(inner);
+        Ok(id)
+    }
+
     /// Initialize all registered modules in dependency order.
     ///
     /// Uses Linux-style deferred probing with multi-pass retry.
@@ -147,24 +201,7 @@ impl ModuleRegistry {
         let mut inner = self.inner.lock();
 
         // 1. Resolve dependencies and build reverse dependency map
-        let entries: Vec<DepEntry<ModuleId>> = inner
-            .loader
-            .modules
-            .values()
-            .map(|h| DepEntry {
-                key: h.id().clone(),
-                required: h.dependencies(),
-                optional: h.optional_dependencies(),
-                provides_caps: h.provides().to_vec(),
-                requires_caps: h.requires().to_vec(),
-            })
-            .collect();
-
-        let dep_order = resolve_dependencies(&entries)
-            .map_err(|e| ModuleError::InitFailed(format!("dependency resolution failed: {e:?}")))?;
-
-        inner.init_order = dep_order.order;
-        inner.dependents = dep_order.dependents;
+        inner.rebuild_dependency_graph()?;
 
         // 2. First pass — try all modules
         let mut deferred = Vec::new();
@@ -229,6 +266,7 @@ impl ModuleRegistry {
     /// Returns error if module not found or init fails.
     pub fn init_module(&self, id: &ModuleId, ctx: &ModuleContext) -> Result<(), ModuleError> {
         let mut inner = self.inner.lock();
+        inner.rebuild_dependency_graph()?;
         inner.init_single(id, ctx).map(|_| ())
     }
 
@@ -254,6 +292,24 @@ impl ModuleRegistry {
         inner.states.get(id).cloned()
     }
 
+    /// List all loaded modules with metadata.
+    #[must_use]
+    pub fn list_modules(&self) -> Vec<LoadedModuleInfo> {
+        let inner = self.inner.lock();
+        inner
+            .loader
+            .modules
+            .values()
+            .map(|handle| LoadedModuleInfo {
+                id: handle.id().clone(),
+                name: handle.name().to_owned(),
+                version: handle.version(),
+                path: handle.path().map(PathBuf::from),
+                state: inner.states.get(handle.id()).cloned().unwrap_or_default(),
+            })
+            .collect()
+    }
+
     /// Unload module (checks reverse dependencies first).
     ///
     /// The `unwrap()` on `deps.iter().next()` is safe because we already
@@ -266,6 +322,10 @@ impl ModuleRegistry {
     #[allow(clippy::missing_panics_doc)]
     pub fn unload(&self, id: &ModuleId) -> Result<(), ModuleError> {
         let mut inner = self.inner.lock();
+
+        if !inner.loader.modules.contains_key(id) {
+            return Err(ModuleError::NotLoaded(id.clone()));
+        }
 
         // CRITICAL: Check if other modules depend on this one
         if let Some(deps) = inner.dependents.get(id)
@@ -294,6 +354,8 @@ impl ModuleRegistry {
         for deps in inner.dependents.values_mut() {
             deps.remove(id);
         }
+
+        inner.rebuild_dependency_graph()?;
 
         drop(inner);
         tracing::info!(module = %id, "unloaded");
@@ -513,6 +575,28 @@ impl ModuleRegistry {
 }
 
 impl ModuleRegistryInner {
+    fn rebuild_dependency_graph(&mut self) -> Result<(), ModuleError> {
+        let entries: Vec<DepEntry<ModuleId>> = self
+            .loader
+            .modules
+            .values()
+            .map(|handle| DepEntry {
+                key: handle.id().clone(),
+                required: handle.dependencies(),
+                optional: handle.optional_dependencies(),
+                provides_caps: handle.provides().to_vec(),
+                requires_caps: handle.requires().to_vec(),
+            })
+            .collect();
+
+        let dep_order = resolve_dependencies(&entries)
+            .map_err(|e| ModuleError::InitFailed(format!("dependency resolution failed: {e:?}")))?;
+
+        self.init_order = dep_order.order;
+        self.dependents = dep_order.dependents;
+        Ok(())
+    }
+
     fn init_single(
         &mut self,
         id: &ModuleId,

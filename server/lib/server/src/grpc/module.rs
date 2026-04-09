@@ -24,7 +24,7 @@ use {
 /// lives in the runner crate. This stub returns unimplemented for all
 /// operations. The runner can provide its own `ModuleService` implementation
 /// with full FFI module loading capabilities.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ModuleServiceImpl;
 
 impl ModuleServiceImpl {
