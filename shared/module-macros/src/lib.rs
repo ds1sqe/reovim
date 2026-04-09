@@ -90,6 +90,7 @@ use {
 /// | `reovim_module_init()` | `fn(*mut c_void, *const c_void) -> i32` | Init trampoline |
 /// | `reovim_module_exit()` | `fn(*mut c_void) -> i32` | Exit trampoline |
 /// | `reovim_module_destroy()` | `fn(*mut c_void)` | Cleanup trampoline |
+/// | `reovim_module_on_all_loaded()` | `fn(*mut c_void, *const c_void)` | Lifecycle hook |
 ///
 /// # Loader Protocol
 ///
@@ -418,6 +419,38 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
                     ));
                 }));
             }
+        }
+
+        // ====================================================================
+        // on_all_loaded Trampoline (#725 — lifecycle hook)
+        // ====================================================================
+        //
+        // Mirrors the client-side `reovim_client_module_on_all_loaded` pattern.
+        // Called by the host after all modules in the same pass have been
+        // initialized, so modules can look up services contributed by their
+        // dependencies.
+        //
+        // # Safety
+        //
+        // - `module` must be a pointer returned by `reovim_module_entry()`
+        // - `ctx` must be a valid `*const ModuleContext` for the duration of
+        //   the call
+        //
+        // Panics inside the module are caught at the FFI boundary and swallowed
+        // (the host logs via the dynamic dispatch site). This mirrors the
+        // `on_all_loaded` error-handling contract used by the trait default.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_module_on_all_loaded(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::std::ffi::c_void,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let ctx = &*(ctx as *const ::reovim_kernel::api::v1::ModuleContext);
+
+                use ::reovim_kernel::api::v1::Module;
+                module.on_all_loaded(ctx);
+            }));
         }
     };
 

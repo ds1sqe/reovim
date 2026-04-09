@@ -20,7 +20,7 @@ fn test_modules_register_services() {
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
 
-    let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
 
     // After module initialization, services should be registered
     // Check for ResolverRegistry (registered by VimModule)
@@ -38,7 +38,7 @@ fn test_resolve_mode_str_valid() {
         let services = Arc::new(ServiceRegistry::new());
         let kernel = create_kernel_context(Arc::clone(&services));
         let ctx = create_module_context(kernel, Arc::clone(&services));
-        let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+        let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
         let (mode_registry, _, _, _) = extract_registries(&services);
         mode_registry
     };
@@ -157,9 +157,9 @@ fn test_on_all_loaded_wired() {
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
-    let (mut tracked, mut external) = initialize_modules(&ModulesConfig::official(), &ctx);
+    let mut tracked = initialize_modules(&ModulesConfig::official(), &ctx);
     // Should not panic — currently no-op for all modules
-    call_on_all_loaded(&mut tracked, &mut external, &ctx);
+    call_on_all_loaded(&mut tracked, &ctx);
     // Verify all modules are in Running state
     for tm in &tracked {
         assert_eq!(tm.state, ModuleState::Running);
@@ -175,12 +175,23 @@ fn test_bootstrap_with_external_discovery() {
     // Bootstrap initializes all builtin modules even when external .so files
     // exist on system search paths. External modules that duplicate builtins
     // are filtered out (#587).
+    //
+    // Since #725 Phase 3, this test also implicitly covers P3-T2:
+    // `tracked` now contains BOTH builtin and external modules, and the
+    // loop below asserts every entry is `Running`. If an external `.so`
+    // is discoverable in the test environment, it passes through the same
+    // unified init loop as builtins and must also reach `Running` — not
+    // the old "init deferred" state. Explicit fixture-based P3-T2
+    // coverage (loading `libreovim_test_dynamic_module.so` via a
+    // controlled `REOVIM_MODULE_PATH`) is deferred to #729 where the E2E
+    // sample module pair exercises the full stack.
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
-    let (tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+    let tracked = initialize_modules(&ModulesConfig::official(), &ctx);
 
-    // All builtins should be initialized and running
+    // All builtins (and any externals that happened to be on the search
+    // path) must be in Running state — never deferred.
     assert!(!tracked.is_empty());
     for tm in &tracked {
         assert_eq!(tm.state, ModuleState::Running);
@@ -225,7 +236,7 @@ fn test_initial_mode_provider_registered_by_vim() {
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
-    let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
 
     let provider = services
         .get::<reovim_driver_session::InitialModeProvider>()
@@ -278,4 +289,124 @@ fn test_static_registry_covers_manifest() {
             "Static registry missing module '{id}' from builtins.toml"
         );
     }
+}
+
+// ============================================================================
+// #725 Phase 2 — load_registry_modules tests
+// ============================================================================
+
+/// P2-T1: registry path does not exist → `load_registry_modules` returns
+/// without loading, logs at debug level, and leaves the loader unchanged.
+#[test]
+fn test_load_registry_modules_missing_registry_noop() {
+    use reovim_driver_module_loader::loader::ModuleLoader;
+    use reovim_driver_module_registry::workflow::RegistryPaths;
+
+    let tmp = std::env::temp_dir().join("reovim-p2-t1-missing");
+    // Ensure it really doesn't exist.
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let paths = RegistryPaths::new(tmp);
+    let mut loader = ModuleLoader::new();
+    let config = ModulesConfig::official();
+    let builtin_ids: Vec<reovim_kernel::api::v1::ModuleId> = Vec::new();
+
+    load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
+
+    assert_eq!(
+        loader.len(),
+        0,
+        "loader should remain empty when registry path does not exist",
+    );
+}
+
+/// P2-T3: registry module ID conflicts with a builtin → skipped. Verified
+/// by constructing a registry with a fake installed entry whose ID matches
+/// a provided builtin ID; expected outcome is loader count = 0 (entry
+/// skipped before any dlopen attempt).
+#[test]
+fn test_load_registry_modules_builtin_conflict_skipped() {
+    use std::fs;
+
+    use reovim_driver_module_loader::loader::ModuleLoader;
+    use reovim_driver_module_registry::workflow::RegistryPaths;
+    use reovim_kernel::api::v1::ModuleId;
+
+    let tmp = std::env::temp_dir().join("reovim-p2-t3-builtin-conflict");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    // Hand-write an `installed.json` with a module ID that collides with a
+    // builtin we pass in as `builtin_ids`. The library_path points at a
+    // nonexistent location — we expect the builtin check to short-circuit
+    // BEFORE the filesystem check, so the nonexistent path never matters.
+    let json = r#"{
+        "modules": {
+            "vim": {
+                "id": "vim",
+                "version": "1.0.0",
+                "source": { "type": "local", "path": "/tmp/fake" },
+                "install_path": "/tmp/fake",
+                "library_path": "/tmp/fake/libnothing.so"
+            }
+        }
+    }"#;
+    fs::write(tmp.join("installed.json"), json).unwrap();
+
+    let paths = RegistryPaths::new(tmp.clone());
+    let mut loader = ModuleLoader::new();
+    let config = ModulesConfig::official();
+    let builtin_ids = vec![ModuleId::new("vim")];
+
+    load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
+
+    assert_eq!(
+        loader.len(),
+        0,
+        "registry module matching builtin should be skipped",
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+/// P2-T5: registry module has `library_path: None` → skipped with warning,
+/// loader unchanged.
+#[test]
+fn test_load_registry_modules_missing_library_path_skipped() {
+    use std::fs;
+
+    use reovim_driver_module_loader::loader::ModuleLoader;
+    use reovim_driver_module_registry::workflow::RegistryPaths;
+
+    let tmp = std::env::temp_dir().join("reovim-p2-t5-no-library");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    // Module entry with library_path omitted (defaults to None via serde).
+    let json = r#"{
+        "modules": {
+            "unbuilt-module": {
+                "id": "unbuilt-module",
+                "version": "0.1.0",
+                "source": { "type": "local", "path": "/tmp/unbuilt" },
+                "install_path": "/tmp/unbuilt"
+            }
+        }
+    }"#;
+    fs::write(tmp.join("installed.json"), json).unwrap();
+
+    let paths = RegistryPaths::new(tmp.clone());
+    let mut loader = ModuleLoader::new();
+    let config = ModulesConfig::official();
+    let builtin_ids = Vec::new();
+
+    load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
+
+    assert_eq!(
+        loader.len(),
+        0,
+        "registry module without library_path should be skipped",
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
 }

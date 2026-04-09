@@ -17,8 +17,8 @@ use {
 use super::{
     discovery::{default_search_paths, discover_modules, find_module},
     handle::{
-        DestroyFn, EntryFn, ExitFn, FfiSymbols, FreeStateFn, InitFn, ModuleHandle, ProbeFn,
-        RestoreStateFn, SaveStateFn, SupportsHotReloadFn,
+        DestroyFn, EntryFn, ExitFn, FfiSymbols, FreeStateFn, InitFn, ModuleHandle, OnAllLoadedFn,
+        ProbeFn, RestoreStateFn, SaveStateFn, SupportsHotReloadFn,
     },
 };
 
@@ -184,6 +184,12 @@ impl ModuleLoader {
             let free_state_fn: Option<Symbol<FreeStateFn>> =
                 library.get(b"reovim_module_free_state").ok();
 
+            // 5c. Optional lifecycle hook (#725) — absent in pre-#725 `.so`
+            // files, which is why it is resolved with `.ok()` rather than
+            // treated as a hard failure.
+            let on_all_loaded_fn: Option<Symbol<OnAllLoadedFn>> =
+                library.get(b"reovim_module_on_all_loaded").ok();
+
             // 6. Create module instance (returns OPAQUE thin pointer)
             let module_ptr = entry_fn();
             if module_ptr.is_null() {
@@ -203,6 +209,7 @@ impl ModuleLoader {
                 save_state: save_state_fn.map(|s| *s),
                 restore_state: restore_state_fn.map(|s| *s),
                 free_state: free_state_fn.map(|s| *s),
+                on_all_loaded: on_all_loaded_fn.map(|s| *s),
             };
 
             // 8. Create handle with opaque pointer
@@ -263,6 +270,19 @@ impl ModuleLoader {
     #[must_use]
     pub fn get_mut(&mut self, id: &ModuleId) -> Option<&mut ModuleHandle> {
         self.modules.get_mut(id)
+    }
+
+    /// Take ownership of a module handle, removing it from the loader (#725).
+    ///
+    /// Unlike [`Self::unload`], this returns an `Option` so callers can
+    /// distinguish "not present" from "error". Used by bootstrap to move
+    /// external module handles into the unified `tracked` init list.
+    ///
+    /// After calling `take`, the returned handle is the sole owner of the
+    /// underlying `libloading::Library`; dropping it runs the dynamic
+    /// module's `destroy` trampoline before unloading the `.so`.
+    pub fn take(&mut self, id: &ModuleId) -> Option<ModuleHandle> {
+        self.modules.remove(id)
     }
 
     /// List all loaded module IDs.

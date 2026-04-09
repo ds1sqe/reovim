@@ -296,3 +296,129 @@ fn test_unload_and_reload() {
     registry.init_module(&id2, &ctx).unwrap();
     assert_eq!(registry.state(&id2), Some(ModuleState::Running));
 }
+
+// ============================================================================
+// #725 Phase 1 — on_all_loaded FFI trampoline
+// ============================================================================
+
+/// P1-T1: verify `declare_module!` emits the `reovim_module_on_all_loaded`
+/// symbol. Catches regressions in the macro output without needing a
+/// behavioral dispatch test.
+#[test]
+fn test_dynamic_module_exports_on_all_loaded_symbol() {
+    let so_path = require_so!();
+
+    // SAFETY: fixture built from workspace source with matching ABI.
+    #[allow(unsafe_code)]
+    let library = unsafe { libloading::Library::new(&so_path) }.unwrap();
+
+    #[allow(unsafe_code)]
+    let sym: Result<
+        libloading::Symbol<
+            unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void),
+        >,
+        _,
+    > = unsafe { library.get(b"reovim_module_on_all_loaded") };
+    assert!(
+        sym.is_ok(),
+        "declare_module! must emit reovim_module_on_all_loaded symbol",
+    );
+}
+
+/// P1-T2: verify `ModuleHandle::on_all_loaded` actually dispatches through
+/// the FFI trampoline for a dynamic module. Uses the test fixture's
+/// `test_module_on_all_loaded_flag` observable + `reset` helper.
+#[test]
+fn test_dynamic_on_all_loaded_fires_via_ffi() {
+    let so_path = require_so!();
+
+    // Reset the fixture's static flag via the dedicated symbol so parallel
+    // test runs do not see leaked state from previous cases.
+    #[allow(unsafe_code)]
+    {
+        let library = unsafe { libloading::Library::new(&so_path) }.unwrap();
+        let reset: libloading::Symbol<unsafe extern "C" fn()> =
+            unsafe { library.get(b"test_module_reset_on_all_loaded_flag") }.unwrap();
+        unsafe { reset() };
+        // Library drops here but the fixture crate stays loaded via refcount
+        // because the next Library::new call below reopens the same path.
+    }
+
+    let mut loader = ModuleLoader::new();
+
+    #[allow(unsafe_code)]
+    let id = unsafe { loader.load_dynamic(&so_path) }.unwrap();
+
+    let ctx = ModuleContext::default();
+    // Init must run before on_all_loaded per the lifecycle contract.
+    loader.get_mut(&id).unwrap().init(&ctx).unwrap();
+
+    // Dispatch on_all_loaded through the handle — this is the FFI path
+    // being tested.
+    loader.get_mut(&id).unwrap().on_all_loaded(&ctx);
+
+    // Read the fixture's static flag via a separate dlsym lookup. The
+    // loader still holds the library alive, so this second `Library::new`
+    // resolves through the OS's dlopen refcount and sees the same static.
+    #[allow(unsafe_code)]
+    let flag_library = unsafe { libloading::Library::new(&so_path) }.unwrap();
+    #[allow(unsafe_code)]
+    let flag_fn: libloading::Symbol<unsafe extern "C" fn() -> bool> =
+        unsafe { flag_library.get(b"test_module_on_all_loaded_flag") }.unwrap();
+
+    #[allow(unsafe_code)]
+    let flag = unsafe { flag_fn() };
+    assert!(
+        flag,
+        "on_all_loaded trampoline should have set the observable flag",
+    );
+}
+
+// ============================================================================
+// #725 Phase 3 — ModuleLoader::take() unit test (P3-T1)
+// ============================================================================
+
+/// Minimal static module for the `take()` unit test. Does not need to be a
+/// separate crate — this is a pure in-test definition.
+struct TakeTestModule;
+
+impl Module for TakeTestModule {
+    fn id(&self) -> ModuleId {
+        ModuleId::new("take-test")
+    }
+    fn name(&self) -> &'static str {
+        "Take Test Module"
+    }
+    fn version(&self) -> Version {
+        Version::new(1, 0, 0)
+    }
+    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+        ProbeResult::Success
+    }
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_loader_take_removes_and_returns_handle() {
+    let mut loader = ModuleLoader::new();
+    let id = loader
+        .register_static(TakeTestModule)
+        .expect("register_static should succeed");
+
+    // Present before take.
+    assert!(loader.get(&id).is_some());
+    assert_eq!(loader.len(), 1);
+
+    // Take transfers ownership — returns Some, then None on repeat.
+    let taken = loader.take(&id);
+    assert!(taken.is_some(), "take should return the handle");
+    assert!(loader.get(&id).is_none());
+    assert_eq!(loader.len(), 0);
+
+    assert!(
+        loader.take(&id).is_none(),
+        "second take should return None",
+    );
+}

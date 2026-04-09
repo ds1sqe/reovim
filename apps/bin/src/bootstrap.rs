@@ -197,7 +197,7 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
         register_module_config_store(&config, &services);
         let kernel = create_kernel_context(Arc::clone(&services));
         let module_ctx = create_module_context(kernel, Arc::clone(&services));
-        let (tracked, _external) = initialize_modules(&config, &module_ctx);
+        let tracked = initialize_modules(&config, &module_ctx);
 
         let mut registry = BridgeRegistry::new();
         if let Some(provider) = services.get::<BridgeProvider>() {
@@ -268,11 +268,14 @@ pub fn create_session_state() -> SessionState {
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 
-    // Initialize enabled modules in dependency order (#582, #586, #587)
-    let (mut tracked, mut external) = initialize_modules(&config, &module_ctx);
+    // Initialize enabled modules in dependency order (#582, #586, #587).
+    // Since #725, external modules are joined into the unified `tracked`
+    // list by `initialize_modules` — no separate `external: ModuleLoader`
+    // return value.
+    let mut tracked = initialize_modules(&config, &module_ctx);
 
-    // Wire on_all_loaded lifecycle hook (#582)
-    call_on_all_loaded(&mut tracked, &mut external, &module_ctx);
+    // Wire on_all_loaded lifecycle hook (#582, #725)
+    call_on_all_loaded(&mut tracked, &module_ctx);
 
     // Check modules.lock staleness (#587) — warning only, missing lock is fine
     check_lockfile_staleness();
@@ -283,7 +286,6 @@ pub fn create_session_state() -> SessionState {
     // Modules are dropped here — exit() lifecycle requires a ManagedSession
     // wrapper (future work: no module currently overrides exit() meaningfully).
     drop(tracked);
-    drop(external);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
@@ -603,11 +605,16 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Commands → `CommandHandlerStore`
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
+// Length justification: this function is the single orchestration point for
+// builtin + external + registry module loading and dependency resolution.
+// Splitting it further would obscure the 1:1 correspondence between phases
+// (#582 depgraph, #587 externals, #725 registry + unified init).
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::too_many_lines)]
 fn initialize_modules(
     config: &ModulesConfig,
     ctx: &ModuleContext,
-) -> (Vec<TrackedModule>, ModuleLoader) {
+) -> Vec<TrackedModule> {
     // #620: Create builtin modules from static factory map (or empty for dynamic path)
     #[cfg(feature = "static-modules")]
     let all_modules: Vec<Box<dyn Module>> = {
@@ -634,7 +641,17 @@ fn initialize_modules(
     let builtin_ids: Vec<ModuleId> = all_handles.iter().map(|h| h.id().clone()).collect();
 
     // Discover and load external .so modules (#587)
-    let external = discover_and_load_externals(config, &builtin_ids);
+    let mut external = discover_and_load_externals(config, &builtin_ids);
+
+    // Load registry-installed modules (#725) into the same loader so they
+    // participate in dependency resolution + unified init alongside builtins
+    // and filesystem-discovered externals.
+    load_registry_modules(
+        &mut external,
+        config,
+        &builtin_ids,
+        &reovim_driver_module_registry::workflow::RegistryPaths::default_paths(),
+    );
 
     tracing::info!(builtin = all_handles.len(), external = external.len(), "Initializing modules");
 
@@ -704,29 +721,36 @@ fn initialize_modules(
         })
         .collect();
 
-    // Initialize in dependency order
+    // Capture external count BEFORE the take-loop drains the loader, so the
+    // post-init trace still reports the number of external modules that
+    // participated in initialization (flight-director S1).
+    let external_count_before_init = external.len();
+
+    // Initialize in dependency order. External module handles are `take()`n
+    // out of the loader and joined into the unified `tracked` list so they
+    // go through the same init path as builtins (#725 Phase 3).
     let mut tracked = Vec::with_capacity(dep_order.order.len());
     for id in &dep_order.order {
-        if let Some(handle) = module_map.remove(id) {
-            let mut tm = TrackedModule {
-                handle,
-                state: ModuleState::Loaded,
-            };
-            tm.state = ModuleState::Initializing;
-            let success = init_single_handle(&mut tm.handle, ctx);
-            tm.state = if success {
-                ModuleState::Running
-            } else {
-                ModuleState::Failed("init returned non-success".into())
-            };
-            tracked.push(tm);
-        } else if external.get(id).is_some() {
-            // External module discovered in depgraph (#587).
-            // Init is deferred — bootstrap currently only initializes builtins.
-            // External modules are initialized when the full ModuleRegistry
-            // orchestrator is used (e.g., via `reovim module` CLI commands).
-            tracing::info!(%id, "External module registered (init deferred)");
-        }
+        let handle = if let Some(handle) = module_map.remove(id) {
+            handle
+        } else if let Some(handle) = external.take(id) {
+            handle
+        } else {
+            continue;
+        };
+
+        let mut tm = TrackedModule {
+            handle,
+            state: ModuleState::Loaded,
+        };
+        tm.state = ModuleState::Initializing;
+        let success = init_single_handle(&mut tm.handle, ctx);
+        tm.state = if success {
+            ModuleState::Running
+        } else {
+            ModuleState::Failed("init returned non-success".into())
+        };
+        tracked.push(tm);
     }
 
     let running = tracked
@@ -736,11 +760,11 @@ fn initialize_modules(
     tracing::info!(
         total = tracked.len(),
         running,
-        external = external.len(),
+        external = external_count_before_init,
         "Module initialization complete"
     );
 
-    (tracked, external)
+    tracked
 }
 
 /// Initialize a single module handle, logging the result.
@@ -776,24 +800,17 @@ fn init_single_handle(handle: &mut ModuleHandle, ctx: &ModuleContext) -> bool {
 /// for all modules (none override this hook), but wires the mechanism
 /// so future modules can use it for cross-module queries.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn call_on_all_loaded(
-    modules: &mut [TrackedModule],
-    external: &mut ModuleLoader,
-    ctx: &ModuleContext,
-) {
+fn call_on_all_loaded(modules: &mut [TrackedModule], ctx: &ModuleContext) {
+    // Since #725, `tracked` contains BOTH builtin and external modules in
+    // dependency order, so a single pass dispatches `on_all_loaded` to
+    // everything. External modules dispatch through the new
+    // `reovim_module_on_all_loaded` FFI trampoline.
     for tm in modules.iter_mut() {
         if tm.state == ModuleState::Running {
             tm.handle.on_all_loaded(ctx);
         }
     }
-    // Call on_all_loaded for external modules (#587)
-    let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
-    for id in &ext_ids {
-        if let Some(handle) = external.get_mut(id) {
-            handle.on_all_loaded(ctx);
-        }
-    }
-    tracing::info!(builtin = modules.len(), external = ext_ids.len(), "on_all_loaded complete");
+    tracing::info!(count = modules.len(), "on_all_loaded complete");
 }
 
 /// Discover and load external `.so` modules from search paths (#587).
@@ -854,6 +871,104 @@ fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId])
     }
 
     loader
+}
+
+/// Load registry-installed modules into an existing loader (#725).
+///
+/// Reads `installed.json` via `module-registry::workflow::list`, applies the
+/// same filters as [`discover_and_load_externals`] (builtin-conflict,
+/// disabled-kind, missing/nonexistent library), and loads each enabled
+/// module via `loader.load_dynamic`. Registry failures are non-fatal —
+/// missing registry means "no installed modules," not an error.
+///
+/// The `paths` argument is injected so tests can point at a tempdir
+/// `RegistryPaths` instead of the user's real install location (#725
+/// countdown addendum Phase 2 test strategy).
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unsafe_code)]
+fn load_registry_modules(
+    loader: &mut ModuleLoader,
+    config: &ModulesConfig,
+    builtin_ids: &[ModuleId],
+    paths: &reovim_driver_module_registry::workflow::RegistryPaths,
+) {
+    use reovim_driver_module_registry::workflow;
+
+    let installed = match workflow::list(paths) {
+        Ok(modules) => modules,
+        Err(e) => {
+            // Not fatal — registry might not exist yet.
+            tracing::debug!(%e, "Could not read module registry, skipping");
+            return;
+        }
+    };
+
+    if installed.is_empty() {
+        return;
+    }
+
+    tracing::info!(count = installed.len(), "Found registry-installed modules");
+
+    for entry in &installed {
+        let id_str = entry.id.as_str();
+
+        // Builtin-wins: check BEFORE dlopen to avoid wasted work.
+        if builtin_ids.iter().any(|b| b.as_str() == id_str) {
+            tracing::debug!(
+                module = %id_str,
+                "Registry module duplicates builtin, skipping"
+            );
+            continue;
+        }
+
+        // Disabled-in-config check — skip before dlopen.
+        if !config.is_module_enabled(id_str) {
+            tracing::info!(
+                module = %id_str,
+                "Registry module disabled by user config, skipping"
+            );
+            continue;
+        }
+
+        // Must have a built library path.
+        let Some(ref lib_path) = entry.library_path else {
+            tracing::warn!(
+                module = %id_str,
+                "Registry module has no compiled library, skipping"
+            );
+            continue;
+        };
+
+        if !lib_path.exists() {
+            tracing::warn!(
+                module = %id_str,
+                path = %lib_path.display(),
+                "Registry module library not found on disk, skipping"
+            );
+            continue;
+        }
+
+        // SAFETY: We trust registry-installed `.so` files because the user
+        // explicitly ran `reovim module install <source>` to place them.
+        // Same trust model as `discover_and_load_externals` for files under
+        // `$REOVIM_MODULE_PATH` and XDG directories.
+        match unsafe { loader.load_dynamic(lib_path) } {
+            Ok(loaded_id) => {
+                tracing::info!(
+                    module = %loaded_id,
+                    path = %lib_path.display(),
+                    "Loaded registry-installed module"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    module = %id_str,
+                    %e,
+                    "Failed to load registry-installed module, skipping"
+                );
+            }
+        }
+    }
 }
 
 /// Compare relative ordering of dependent pairs between hardcoded and
