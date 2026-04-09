@@ -7,7 +7,7 @@
 //! When modules are loaded (via `Server::with_session_factory`), keys are resolved
 //! through the full resolver system:
 //! 1. Parse vim notation keys (e.g., `iHello<Esc>`, `<C-w>h`)
-//! 2. For each key, call `SessionState::resolve_key()` which uses:
+//! 2. For each key, call `SessionState::resolve_key_for_client()` which uses:
 //!    - `ResolverRegistry` to find the mode's resolver
 //!    - `KeymapRegistry` for keybinding lookup
 //!    - `CommandRegistry` for command execution
@@ -99,7 +99,7 @@ impl InputService for InputServiceImpl {
     /// # Key Resolution
     ///
     /// When modules are loaded, keys go through the full resolver system:
-    /// - `SessionState::resolve_key()` finds the appropriate mode resolver
+    /// - `SessionState::resolve_key_for_client()` finds the appropriate mode resolver
     /// - The resolver returns a `ResolveResult` (execute, insert, transition, etc.)
     /// - This method handles each result type appropriately
     /// - State changes are accumulated and emitted as notifications

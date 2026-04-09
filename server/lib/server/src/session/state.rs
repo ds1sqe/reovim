@@ -22,9 +22,9 @@ use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
     reovim_driver_layout::RootCompositor,
-    reovim_driver_session::{ClientId, Jumplist, Session as DriverSession},
+    reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, ModeStack},
+    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
     reovim_provider_text::{Buffer, BufferOps},
     reovim_types_text::RegisterContent,
 };
@@ -383,102 +383,11 @@ impl SessionState {
         self.app.kernel.buffers.register(arc)
     }
 
-    /// Resolve a key event using the resolver registry.
+    /// Resolve a key event with explicit per-client state (#471).
     ///
-    /// This is the primary key resolution method that handles:
-    /// - Operator interception (entering operator-pending mode)
-    /// - Mode-specific key handling (via registered resolvers)
-    /// - Extension access for module state
-    ///
-    /// # Returns
-    ///
-    /// - `Some(ResolveResult)` - if a resolver handled the key
-    /// - `None` - if no resolver is registered for the current mode
-    pub fn resolve_key(
-        &mut self,
-        key: &reovim_driver_input::KeyEvent,
-    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
-    {
-        use {
-            reovim_driver_input::ModeState,
-            reovim_driver_session::{
-                SessionRuntime,
-                api::{CommandExecutor, CommandHandle},
-            },
-        };
-
-        // Stub command executor - commands are executed separately
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-                None
-            }
-        }
-
-        // Phase #491: Use home_mode since current_mode() removed.
-        // This method is DEPRECATED - use resolve_key_for_client() with per-client state.
-        let home_mode = self.driver_session.shared.home_mode().clone();
-        let mode = home_mode.clone();
-        let mut mode_state = ModeState::new(mode.clone());
-
-        // Create SessionRuntime for resolver access to session state
-        // #471 Phase 0: Create temporary per-client state for backward compatibility.
-        // This is DEPRECATED - use resolve_key_for_client() with proper per-client state.
-        let stub_executor = StubExecutor;
-        let mut temp_mode_stack = ModeStack::new(home_mode);
-        let mut temp_windows = reovim_driver_session::WindowLayout::empty();
-        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
-        let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
-        let mut temp_compositor = None;
-        let mut temp_tabs = reovim_driver_session::TabPageSet::new();
-        let mut temp_registers = reovim_types_text::RegisterBank::new();
-        let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
-        let mut temp_local_marks = reovim_driver_session::MarkBank::new();
-        let mut temp_jumplist = Jumplist::new();
-        let mut active_buffer = None;
-        let mut terminal_size = (80u16, 24u16);
-
-        let mut runtime = SessionRuntime::new(
-            &mut self.driver_session,
-            reovim_driver_session::ClientContext {
-                mode_stack: &mut temp_mode_stack,
-                windows: &mut temp_windows,
-                extensions: &mut runtime_ext,
-                compositor: &mut temp_compositor,
-                tabs: &mut temp_tabs,
-                registers: &mut temp_registers,
-                clipboard_history: &mut temp_clipboard_history,
-                local_marks: &mut temp_local_marks,
-                jumplist: &mut temp_jumplist,
-                active_buffer: &mut active_buffer,
-                terminal_size: &mut terminal_size,
-            },
-            &self.app.kernel,
-            &stub_executor,
-        );
-
-        // Call resolver
-        let result = self.resolver_registry.resolve_with_session(
-            &mode,
-            key,
-            &mut mode_state,
-            &self.keymap_registry,
-            &mut runtime,
-            &mut self.app.extensions,
-            &mut temp_client_extensions,
-        );
-
-        // Take accumulated changes
-        let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);
-
-        result.map(|r| (r, changes))
-    }
-
-    /// Resolve a key event with per-client mode stack (#471).
-    ///
-    /// Like `resolve_key()`, but uses a provided per-client mode stack instead
-    /// of the shared session mode stack. This enables multi-client mode isolation
-    /// where each client has independent mode state.
+    /// Uses the caller-provided per-client mode stack instead of any shared
+    /// compatibility path. This enables multi-client mode isolation where each
+    /// client has independent mode state.
     ///
     /// # Arguments
     ///
@@ -651,83 +560,10 @@ impl SessionState {
         result.map(|r| (r, changes))
     }
 
-    /// Try to call `on_command_complete` on the current mode's resolver.
-    ///
-    /// Called after executing a command from `ResolveResult::Execute`.
-    /// For operator-pending modes, this is where the resolver reads
-    /// the post-motion cursor position and builds the final command.
-    ///
-    /// # Flow
-    ///
-    /// 1. Key press → resolver returns `Execute(motion-command)`
-    /// 2. Runner executes the motion → cursor moves
-    /// 3. **This method** → resolver reads end position, returns
-    ///    `ModeTransition::Pop { ExecuteCommand { operator, range } }`
-    /// 4. Runner pops the operator mode and executes the operator command
-    pub fn try_on_command_complete(&mut self) -> Option<reovim_driver_input::ModeTransition> {
-        use reovim_driver_session::{
-            SessionRuntime,
-            api::{CommandExecutor, CommandHandle},
-        };
-
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-                None
-            }
-        }
-
-        // Phase #491: Use home_mode since current_mode() removed.
-        // This method is DEPRECATED - use try_on_command_complete_for_client() with per-client state.
-        let home_mode = self.driver_session.shared.home_mode().clone();
-        let mode = home_mode.clone();
-        let resolver = self.resolver_registry.get(&mode)?;
-
-        // #471 Phase 0: Create temporary per-client state for backward compatibility.
-        let stub_executor = StubExecutor;
-        let mut temp_mode_stack = ModeStack::new(home_mode);
-        let mut temp_windows = reovim_driver_session::WindowLayout::empty();
-        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
-        let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
-        let mut temp_compositor = None;
-        let mut temp_tabs = reovim_driver_session::TabPageSet::new();
-        let mut temp_registers = reovim_types_text::RegisterBank::new();
-        let mut temp_clipboard_history = reovim_types_text::HistoryRing::new();
-        let mut temp_local_marks = reovim_driver_session::MarkBank::new();
-        let mut temp_jumplist = Jumplist::new();
-        let mut active_buffer = None;
-        let mut terminal_size = (80u16, 24u16);
-
-        let mut runtime = SessionRuntime::new(
-            &mut self.driver_session,
-            reovim_driver_session::ClientContext {
-                mode_stack: &mut temp_mode_stack,
-                windows: &mut temp_windows,
-                extensions: &mut runtime_ext,
-                compositor: &mut temp_compositor,
-                tabs: &mut temp_tabs,
-                registers: &mut temp_registers,
-                clipboard_history: &mut temp_clipboard_history,
-                local_marks: &mut temp_local_marks,
-                jumplist: &mut temp_jumplist,
-                active_buffer: &mut active_buffer,
-                terminal_size: &mut terminal_size,
-            },
-            &self.app.kernel,
-            &stub_executor,
-        );
-
-        resolver.on_command_complete(
-            &mut runtime,
-            &mut self.app.extensions,
-            &mut temp_client_extensions,
-        )
-    }
-
     /// Try to call `on_command_complete` with per-client state (#471, #477).
     ///
-    /// Like `try_on_command_complete()`, but uses per-client mode stack, windows,
-    /// and extensions instead of the shared session state.
+    /// Uses per-client mode stack, windows, and extensions from the caller's
+    /// explicit client context.
     ///
     /// # Arguments
     ///

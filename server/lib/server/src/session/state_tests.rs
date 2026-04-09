@@ -2,7 +2,9 @@ use {
     super::*,
     reovim_driver_buffer::TestBufferManager,
     reovim_driver_session::{Jumplist, MarkBank},
-    reovim_kernel::api::v1::{EventBus, ModuleId, OptionRegistry, RwLock, ServiceRegistry},
+    reovim_kernel::api::v1::{
+        EventBus, ModeStack, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
+    },
     reovim_types_text::{HistoryRing, RegisterBank},
 };
 
@@ -331,27 +333,6 @@ fn test_create_buffer_registers_buffers() {
     assert!(buffers.contains(&id1));
     assert!(buffers.contains(&id2));
     assert_ne!(id1, id2);
-}
-
-#[test]
-fn test_resolve_key_returns_none_without_resolver() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('j'));
-    let result = state.resolve_key(&key);
-
-    // No resolver registered, should return None
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_try_on_command_complete_returns_none_without_resolver() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let result = state.try_on_command_complete();
-    assert!(result.is_none());
 }
 
 #[test]
@@ -824,25 +805,6 @@ fn test_with_registries_multiple_buffers() {
 }
 
 #[test]
-fn test_resolve_key_returns_none_for_different_modes() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // Try resolving with several different key types
-    let keys = [
-        reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('j')),
-        reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('k')),
-        reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Escape),
-        reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Enter),
-    ];
-
-    for key in &keys {
-        let result = state.resolve_key(key);
-        assert!(result.is_none(), "No resolver registered, should return None");
-    }
-}
-
-#[test]
 fn test_resolve_key_for_client_different_modes() {
     let kernel = KernelContext::default();
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
@@ -1299,8 +1261,8 @@ fn test_with_registries_with_buffer_and_compositor_creates_window() {
 }
 
 /// A minimal resolver that returns `Some(ModeTransition)` from
-/// `on_command_complete`, used to cover the body of
-/// `try_on_command_complete` and `try_on_command_complete_for_client`.
+/// `on_command_complete`, used to cover the explicit per-client
+/// `try_on_command_complete_for_client` path.
 struct CompletingResolver {
     mode: ModeId,
 }
@@ -1336,28 +1298,6 @@ impl reovim_driver_input::ModeKeyResolver for CompletingResolver {
     fn mode_id(&self) -> &ModeId {
         &self.mode
     }
-}
-
-/// Test `try_on_command_complete` with a registered resolver that returns
-/// `Some(ModeTransition)`, covering lines 571-585.
-#[test]
-fn test_try_on_command_complete_with_resolver() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // Register a resolver for the home mode
-    state
-        .resolver_registry
-        .register(CompletingResolver::new(test_mode_id()));
-
-    let result = state.try_on_command_complete();
-    assert!(result.is_some(), "Should return ModeTransition from resolver");
-
-    // Verify it's a Pop transition
-    assert!(
-        matches!(result.unwrap(), reovim_driver_input::ModeTransition::Pop { result: None }),
-        "Should be a Pop transition"
-    );
 }
 
 /// Test `try_on_command_complete_for_client` with a registered resolver
@@ -1454,22 +1394,6 @@ impl reovim_driver_input::ModeKeyResolver for ExecutingResolver {
     }
 }
 
-/// Test `try_on_command_complete` where the resolver calls
-/// `session.execute_command()`, covering the `StubExecutor::execute`
-/// implementation at lines 554-561.
-#[test]
-fn test_try_on_command_complete_exercises_stub_executor() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    state
-        .resolver_registry
-        .register(ExecutingResolver::new(test_mode_id()));
-
-    let result = state.try_on_command_complete();
-    assert!(result.is_some());
-}
-
 /// Test `try_on_command_complete_for_client` where the resolver calls
 /// `session.execute_command()`, covering the `StubExecutor::execute`
 /// implementation at lines 615-622.
@@ -1516,8 +1440,7 @@ fn test_try_on_command_complete_for_client_exercises_stub_executor() {
 
 /// A resolver that calls `session.execute_command()` during
 /// `resolve_with_session`, exercising the `StubExecutor::execute`
-/// paths in `resolve_key` and `resolve_key_for_client`
-/// (covers lines 389-396 and 491-498).
+/// path in `resolve_key_for_client`.
 struct ExecutingDuringResolveResolver {
     mode: ModeId,
 }
@@ -1562,28 +1485,6 @@ impl reovim_driver_input::ModeKeyResolver for ExecutingDuringResolveResolver {
     fn mode_id(&self) -> &ModeId {
         &self.mode
     }
-}
-
-/// Test `resolve_key` where the resolver calls `session.execute_command()`,
-/// covering the `StubExecutor::execute` at lines 389-396.
-#[test]
-fn test_resolve_key_exercises_stub_executor() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    state
-        .resolver_registry
-        .register(ExecutingDuringResolveResolver::new(test_mode_id()));
-
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
-    let result = state.resolve_key(&key);
-
-    assert!(result.is_some(), "Resolver should handle the key");
-    let (resolve_result, _changes) = result.unwrap();
-    assert!(
-        matches!(resolve_result, reovim_driver_input::ResolveResult::Completed),
-        "Should be Completed"
-    );
 }
 
 /// Test `resolve_key_for_client` where the resolver calls

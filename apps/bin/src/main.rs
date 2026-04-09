@@ -28,7 +28,7 @@
 //!
 //! With module bootstrap enabled, keys are resolved through the full vim resolver system:
 //! 1. `InputService::send_keys()` receives key notation
-//! 2. For each key, `SessionState::resolve_key()` is called
+//! 2. For each key, `SessionState::resolve_key_for_client()` is called
 //! 3. The `ResolverRegistry` finds the appropriate mode resolver (e.g., `VimNormalResolver`)
 //! 4. The resolver returns a `ResolveResult` (execute, insert, transition, etc.)
 //! 5. The result is handled (command execution, mode push/pop, char insertion)

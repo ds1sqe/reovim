@@ -80,6 +80,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Removed
 
+- **server**: deleted deprecated `SessionState::resolve_key()` and `SessionState::try_on_command_complete()` compatibility helpers along with their temporary `temp_*` per-client scaffolding. Session key resolution and command-complete handling now go through the explicit per-client `*_for_client` paths only (#741)
 - **session**: delete `ByteUndoRegistry` module — per-buffer byte-level undo now lives on `Inode` via `InodeTable`, keeping `reovim-driver-session` codec-agnostic (#740)
 - **codec**: `ContentCodec::encode` trait method deleted workspace-wide. Bytes are the source of truth; `:w` flushes `inode.bytes` directly. Every in-tree codec (UTF-8, hex, CJK, CSV, legacy, rlib, PDF, binary-struct, xxd) has its `encode` impl removed. Faithful codecs (UTF-8, CJK, CSV, legacy) retain a private inherent `encode_fragment` helper for `translate_edit` re-encoding and round-trip tests. Test mocks and round-trip tests updated. The `encode_and_write` helper in `commands/write.rs` is also deleted (#740)
 
