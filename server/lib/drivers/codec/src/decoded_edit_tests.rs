@@ -1,6 +1,9 @@
 //! Tests for `DecodedEdit`, `TreePath`, and `TreeOp`.
 
-use super::{DecodedEdit, ElfTreeOp, RlibTreeOp, TreeOp, TreePath, ZipTreeOp};
+use {
+    super::{DecodedEdit, TreeOp, TreePath},
+    crate::testing::SyntheticTreeOp,
+};
 
 // ============================================================================
 // TreePath tests
@@ -63,145 +66,92 @@ fn tree_path_partial_eq() {
 }
 
 // ============================================================================
-// TreeOp tests
+// TreeOp wrapper tests
 // ============================================================================
 
 #[test]
-fn tree_op_elf_patch_bytes_construction() {
-    let op = TreeOp::Elf(ElfTreeOp::PatchBytes {
-        offset: 4,
-        old_bytes: vec![0x90, 0x90],
-        new_bytes: vec![0x90, 0x91],
-    });
-
-    assert!(matches!(
-        op,
-        TreeOp::Elf(ElfTreeOp::PatchBytes {
-            offset: 4,
-            old_bytes,
-            new_bytes,
-        }) if old_bytes == vec![0x90, 0x90] && new_bytes == vec![0x90, 0x91]
-    ));
-}
-
-#[test]
-fn tree_op_elf_rename_symbol_clone_and_eq() {
-    let op = TreeOp::Elf(ElfTreeOp::RenameSymbol {
-        new_name: "target_new".to_string(),
-    });
-
-    assert_eq!(op, op.clone());
-}
-
-#[test]
-fn tree_op_elf_replace_section_debug_format() {
-    let op = TreeOp::Elf(ElfTreeOp::ReplaceSectionBytes {
-        old_bytes: b"ORIGINAL".to_vec(),
-        new_bytes: b"MODIFIED".to_vec(),
-    });
-
-    let debug = format!("{op:?}");
-    assert!(debug.contains("Elf"));
-    assert!(debug.contains("ReplaceSectionBytes"));
-}
-
-#[test]
-fn tree_op_rlib_replace_member_bytes_construction() {
-    let op = TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
-        old_bytes: b"ORIGINAL".to_vec(),
-        new_bytes: b"MODIFIED".to_vec(),
-    });
-
-    assert!(matches!(
-        op,
-        TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
-            old_bytes,
-            new_bytes,
-        }) if old_bytes == b"ORIGINAL" && new_bytes == b"MODIFIED"
-    ));
-}
-
-#[test]
-fn tree_op_rlib_rename_member_clone_and_eq() {
-    let op = TreeOp::Rlib(RlibTreeOp::RenameMember {
-        new_name: "member_new.o".to_string(),
-    });
-
-    assert_eq!(op, op.clone());
-}
-
-#[test]
-fn tree_op_zip_replace_comment_construction() {
-    let op = TreeOp::Zip(ZipTreeOp::ReplaceComment {
-        new_comment: b"NEW COMMENT".to_vec(),
-    });
-
-    assert!(matches!(
-        op,
-        TreeOp::Zip(ZipTreeOp::ReplaceComment { new_comment }) if new_comment == b"NEW COMMENT"
-    ));
-}
-
-#[test]
-fn tree_op_zip_replace_entry_bytes_construction() {
-    let op = TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
-        old_bytes: b"ORIGINAL".to_vec(),
-        new_bytes: b"MODIFIED".to_vec(),
-    });
-
-    assert!(matches!(
-        op,
-        TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
-            old_bytes,
-            new_bytes,
-        }) if old_bytes == b"ORIGINAL" && new_bytes == b"MODIFIED"
-    ));
-}
-
-#[test]
-fn tree_op_zip_rename_entry_clone_and_eq() {
-    let op = TreeOp::Zip(ZipTreeOp::RenameEntry {
-        new_name: "world.txt".to_string(),
-    });
-
-    assert_eq!(op, op.clone());
-}
-
-#[test]
-fn tree_op_zip_debug_format() {
-    let op = TreeOp::Zip(ZipTreeOp::ReplaceComment {
-        new_comment: b"test".to_vec(),
-    });
-
-    let debug = format!("{op:?}");
-    assert!(debug.contains("Zip"));
-    assert!(debug.contains("ReplaceComment"));
-}
-
-#[test]
-fn tree_op_synthetic_construction() {
-    let op = TreeOp::Synthetic {
+fn tree_op_new_wraps_concrete_type() {
+    let op = TreeOp::new(SyntheticTreeOp {
         name: "noop".to_string(),
-    };
-    assert!(matches!(op, TreeOp::Synthetic { name } if name == "noop"));
+    });
+    assert!(op.downcast_ref::<SyntheticTreeOp>().is_some());
 }
 
 #[test]
-fn tree_op_synthetic_clone_and_eq() {
-    let op = TreeOp::Synthetic {
-        name: "replace".to_string(),
-    };
+fn tree_op_downcast_ref_returns_correct_value() {
+    let op = TreeOp::new(SyntheticTreeOp {
+        name: "patch".to_string(),
+    });
+    let inner = op.downcast_ref::<SyntheticTreeOp>().unwrap();
+    assert_eq!(inner.name, "patch");
+}
+
+#[test]
+fn tree_op_downcast_ref_wrong_type_returns_none() {
+    // A second concrete type to test cross-type downcast failure.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct OtherOp;
+    crate::impl_tree_op!(OtherOp);
+
+    let op = TreeOp::new(SyntheticTreeOp {
+        name: "x".to_string(),
+    });
+    assert!(op.downcast_ref::<OtherOp>().is_none());
+}
+
+#[test]
+fn tree_op_clone_preserves_value() {
+    let op = TreeOp::new(SyntheticTreeOp {
+        name: "clone_me".to_string(),
+    });
     let cloned = op.clone();
     assert_eq!(op, cloned);
+    let inner = cloned.downcast_ref::<SyntheticTreeOp>().unwrap();
+    assert_eq!(inner.name, "clone_me");
 }
 
 #[test]
-fn tree_op_synthetic_debug_format() {
-    let op = TreeOp::Synthetic {
+fn tree_op_partial_eq_same_value() {
+    let a = TreeOp::new(SyntheticTreeOp {
+        name: "eq".to_string(),
+    });
+    let b = TreeOp::new(SyntheticTreeOp {
+        name: "eq".to_string(),
+    });
+    assert_eq!(a, b);
+}
+
+#[test]
+fn tree_op_partial_eq_different_value() {
+    let a = TreeOp::new(SyntheticTreeOp {
+        name: "a".to_string(),
+    });
+    let b = TreeOp::new(SyntheticTreeOp {
+        name: "b".to_string(),
+    });
+    assert_ne!(a, b);
+}
+
+#[test]
+fn tree_op_partial_eq_different_types() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct AlphaOp;
+    crate::impl_tree_op!(AlphaOp);
+
+    let a = TreeOp::new(SyntheticTreeOp {
+        name: "x".to_string(),
+    });
+    let b = TreeOp::new(AlphaOp);
+    assert_ne!(a, b);
+}
+
+#[test]
+fn tree_op_debug_format() {
+    let op = TreeOp::new(SyntheticTreeOp {
         name: "rename".to_string(),
-    };
+    });
     let debug = format!("{op:?}");
-    assert!(debug.contains("Synthetic"));
+    assert!(debug.contains("SyntheticTreeOp"));
     assert!(debug.contains("rename"));
 }
 
@@ -213,9 +163,9 @@ fn tree_op_synthetic_debug_format() {
 fn decoded_edit_tree_construction() {
     let edit = DecodedEdit::Tree {
         path: TreePath::root(),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "noop".to_string(),
-        },
+        }),
     };
     assert!(matches!(edit, DecodedEdit::Tree { .. }));
 }
@@ -224,46 +174,15 @@ fn decoded_edit_tree_construction() {
 fn decoded_edit_tree_pattern_match() {
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["sections".to_string(), "text".to_string()]),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "patch".to_string(),
-        },
+        }),
     };
     match edit {
         DecodedEdit::Tree { path, op } => {
             assert_eq!(path.components(), &["sections".to_string(), "text".to_string()]);
-            assert!(matches!(op, TreeOp::Synthetic { name } if name == "patch"));
-        }
-        _ => panic!("expected DecodedEdit::Tree"),
-    }
-}
-
-#[test]
-fn decoded_edit_tree_pattern_match_elf_variant() {
-    let edit = DecodedEdit::Tree {
-        path: TreePath::new(vec![
-            "symbols".to_string(),
-            "target_old".to_string(),
-            "name".to_string(),
-        ]),
-        op: TreeOp::Elf(ElfTreeOp::RenameSymbol {
-            new_name: "target_new".to_string(),
-        }),
-    };
-
-    match edit {
-        DecodedEdit::Tree { path, op } => {
-            assert_eq!(
-                path.components(),
-                &[
-                    "symbols".to_string(),
-                    "target_old".to_string(),
-                    "name".to_string(),
-                ]
-            );
-            assert!(matches!(
-                op,
-                TreeOp::Elf(ElfTreeOp::RenameSymbol { new_name }) if new_name == "target_new"
-            ));
+            let inner = op.downcast_ref::<SyntheticTreeOp>().unwrap();
+            assert_eq!(inner.name, "patch");
         }
         _ => panic!("expected DecodedEdit::Tree"),
     }
@@ -273,23 +192,23 @@ fn decoded_edit_tree_pattern_match_elf_variant() {
 fn decoded_edit_tree_debug_format() {
     let edit = DecodedEdit::Tree {
         path: TreePath::root(),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "n".to_string(),
-        },
+        }),
     };
     let debug = format!("{edit:?}");
     assert!(debug.contains("Tree"));
     assert!(debug.contains("TreePath"));
-    assert!(debug.contains("Synthetic"));
+    assert!(debug.contains("SyntheticTreeOp"));
 }
 
 #[test]
 fn decoded_edit_tree_clone_preserves_fields() {
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["a".to_string()]),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "b".to_string(),
-        },
+        }),
     };
     let cloned = edit.clone();
     assert_eq!(edit, cloned);
@@ -298,19 +217,19 @@ fn decoded_edit_tree_clone_preserves_fields() {
 #[test]
 fn decoded_edit_tree_value_equality_not_identity() {
     // Two independently-constructed Tree edits with logically identical
-    // contents MUST compare equal (verifying we are not on a dyn-trait
-    // identity-equality path).
+    // contents MUST compare equal (verifying value-based equality through
+    // the type-erased wrapper).
     let a = DecodedEdit::Tree {
         path: TreePath::new(vec!["x".to_string()]),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "y".to_string(),
-        },
+        }),
     };
     let b = DecodedEdit::Tree {
         path: TreePath::new(vec!["x".to_string()]),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "y".to_string(),
-        },
+        }),
     };
     assert_eq!(a, b);
 }
@@ -319,9 +238,9 @@ fn decoded_edit_tree_value_equality_not_identity() {
 fn decoded_edit_tree_is_not_insertion_or_deletion() {
     let edit = DecodedEdit::Tree {
         path: TreePath::root(),
-        op: TreeOp::Synthetic {
+        op: TreeOp::new(SyntheticTreeOp {
             name: "x".to_string(),
-        },
+        }),
     };
     // Structural edits do not participate in the simple text-level
     // is_insertion/is_deletion shortcuts.

@@ -9,12 +9,73 @@ use std::fmt::Write;
 use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_driver_codec::{
-        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit, ElfTreeOp,
-        TranslateEditError, TreeOp, TreePath, ZipTreeOp,
+        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
+        TranslateEditError, TreePath, impl_tree_op,
     },
     reovim_driver_vfs::ByteSource,
     reovim_kernel::api::v1::ByteEdit,
 };
+
+/// ELF structural edit operations (Plan 07 Phase 2).
+///
+/// All Phase 2 operations are strict same-size in-place rewrites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElfTreeOp {
+    /// Patch a byte span inside an executable section in place.
+    PatchBytes {
+        /// Section-relative byte offset to replace.
+        offset: usize,
+        /// Expected current bytes at `offset`.
+        old_bytes: Vec<u8>,
+        /// Replacement bytes. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename a symbol in place.
+    RenameSymbol {
+        /// Replacement symbol name. Must be the same length as the
+        /// current symbol name resolved from the tree path.
+        new_name: String,
+    },
+    /// Replace an entire named section payload in place.
+    ReplaceSectionBytes {
+        /// Expected current section payload.
+        old_bytes: Vec<u8>,
+        /// Replacement section payload. Must be the same length as
+        /// `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+}
+
+impl_tree_op!(ElfTreeOp);
+
+/// ZIP structural edit operations (Plan 07 Phase 4).
+///
+/// All Phase 4 operations are strict same-size in-place rewrites.
+/// No archive rebuild, recompression, or layout change is supported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ZipTreeOp {
+    /// Rewrite the archive comment in place with same-length bytes.
+    ReplaceComment {
+        /// Replacement comment bytes. Must be the same length as the
+        /// current archive comment.
+        new_comment: Vec<u8>,
+    },
+    /// Replace a STORED entry payload in place with same-size bytes.
+    ReplaceEntryBytes {
+        /// Expected current entry payload.
+        old_bytes: Vec<u8>,
+        /// Replacement payload. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename an entry in place (both local header and central directory).
+    RenameEntry {
+        /// Replacement entry name. Must be the same length as the current
+        /// entry name resolved from the tree path.
+        new_name: String,
+    },
+}
+
+impl_tree_op!(ZipTreeOp);
 
 use crate::classifier::{ELF, ZIP};
 
@@ -80,13 +141,12 @@ impl ContentCodec for ElfCodec {
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {
-            DecodedEdit::Tree {
-                path,
-                op: TreeOp::Elf(op),
-            } => translate_elf_edit(bytes, path, op),
-            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
-                reason: "ELF codec only accepts ELF tree operations",
-            }),
+            DecodedEdit::Tree { path, op } => op.downcast_ref::<ElfTreeOp>().map_or(
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "ELF codec only accepts ELF tree operations",
+                }),
+                |elf_op| translate_elf_edit(bytes, path, elf_op),
+            ),
             DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "ELF codec does not translate text or raw byte edits",
@@ -152,13 +212,12 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {
-            DecodedEdit::Tree {
-                path,
-                op: TreeOp::Zip(op),
-            } => translate_zip_edit(bytes, path, op),
-            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
-                reason: "ZIP codec only accepts ZIP tree operations",
-            }),
+            DecodedEdit::Tree { path, op } => op.downcast_ref::<ZipTreeOp>().map_or(
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "ZIP codec only accepts ZIP tree operations",
+                }),
+                |zip_op| translate_zip_edit(bytes, path, zip_op),
+            ),
             DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "ZIP codec does not translate text or raw byte edits",

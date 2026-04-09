@@ -7,8 +7,7 @@ use std::{
 
 use {
     reovim_driver_codec::{
-        ContentCodec, DecodedEdit, InodeTable, Mount, RlibTreeOp, TranslateEditError, TreeOp,
-        TreePath,
+        ContentCodec, DecodedEdit, InodeTable, Mount, TranslateEditError, TreeOp, TreePath,
     },
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
@@ -137,7 +136,7 @@ fn payload_replace_edit(fixture: &RlibFixture) -> DecodedEdit {
             fixture.payload_member_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
             old_bytes: fixture.payload_old_bytes.clone(),
             new_bytes: fixture.payload_new_bytes.clone(),
         }),
@@ -151,7 +150,7 @@ fn header_rename_edit(fixture: &RlibFixture, new_name: &str) -> DecodedEdit {
             fixture.header_member_name.clone(),
             "name".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+        op: TreeOp::new(RlibTreeOp::RenameMember {
             new_name: new_name.to_string(),
         }),
     }
@@ -164,7 +163,7 @@ fn sysv_rename_edit(fixture: &RlibFixture, new_name: &str) -> DecodedEdit {
             fixture.sysv_member_name.clone(),
             "name".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+        op: TreeOp::new(RlibTreeOp::RenameMember {
             new_name: new_name.to_string(),
         }),
     }
@@ -305,7 +304,7 @@ fn translate_edit_same_payload_replace_is_noop() {
             fixture.payload_member_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
             old_bytes: fixture.payload_old_bytes.clone(),
             new_bytes: fixture.payload_old_bytes.clone(),
         }),
@@ -333,7 +332,7 @@ fn translate_edit_malformed_member_path_is_rejected() {
     let bytes = HeapByteSource::new(fixture.bytes.clone());
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["members".to_string(), fixture.payload_member_name.clone()]),
-        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
             old_bytes: fixture.payload_old_bytes.clone(),
             new_bytes: fixture.payload_new_bytes.clone(),
         }),
@@ -356,7 +355,7 @@ fn translate_edit_unsupported_target_is_rejected() {
             fixture.payload_member_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+        op: TreeOp::new(RlibTreeOp::RenameMember {
             new_name: fixture.sysv_member_new_name.clone(),
         }),
     };
@@ -378,7 +377,7 @@ fn translate_edit_size_changing_payload_replace_is_rejected() {
             fixture.payload_member_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
             old_bytes: fixture.payload_old_bytes.clone(),
             new_bytes: fixture.payload_new_bytes[..fixture.payload_new_bytes.len() - 1].to_vec(),
         }),
@@ -412,7 +411,7 @@ fn translate_edit_unpatchable_rename_storage_is_rejected() {
     let bytes = HeapByteSource::new(bsd_named_archive_bytes(name, b"DATA"));
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["members".to_string(), name.to_string(), "name".to_string()]),
-        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+        op: TreeOp::new(RlibTreeOp::RenameMember {
             new_name: same_length_name(name),
         }),
     };

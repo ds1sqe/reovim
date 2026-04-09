@@ -10,11 +10,33 @@ use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_driver_codec::{
         CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
-        RlibTreeOp, TranslateEditError, TreeOp, TreePath,
+        TranslateEditError, TreePath, impl_tree_op,
     },
     reovim_driver_vfs::ByteSource,
     reovim_kernel::api::v1::ByteEdit,
 };
+
+/// Rust `.rlib` structural edit operations (Plan 07 Phase 3).
+///
+/// All Phase 3 operations are strict same-size in-place rewrites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RlibTreeOp {
+    /// Replace a whole archive member payload in place.
+    ReplaceMemberBytes {
+        /// Expected current member payload.
+        old_bytes: Vec<u8>,
+        /// Replacement payload. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename an archive member in place.
+    RenameMember {
+        /// Replacement member name. Must be the same length as the current
+        /// member name resolved from the tree path.
+        new_name: String,
+    },
+}
+
+impl_tree_op!(RlibTreeOp);
 
 use crate::classifier::RLIB;
 
@@ -94,13 +116,12 @@ impl ContentCodec for RlibCodec {
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {
-            DecodedEdit::Tree {
-                path,
-                op: TreeOp::Rlib(op),
-            } => translate_rlib_edit(bytes, path, op),
-            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
-                reason: "RLIB codec only accepts RLIB tree operations",
-            }),
+            DecodedEdit::Tree { path, op } => op.downcast_ref::<RlibTreeOp>().map_or(
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "RLIB codec only accepts RLIB tree operations",
+                }),
+                |rlib_op| translate_rlib_edit(bytes, path, rlib_op),
+            ),
             DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "RLIB codec does not translate text or raw byte edits",

@@ -15,6 +15,8 @@
 //!   cache and translate `Tree` edits back into canonical byte edits
 //!   immediately — trees are never a parallel source of truth.
 
+use std::any::Any;
+
 use reovim_types_text::Position;
 
 /// Path to a node inside a tree-shaped decoded view.
@@ -60,117 +62,104 @@ impl TreePath {
     }
 }
 
-/// Structural tree operation.
+/// Object-safe trait for format-specific tree operations.
 ///
-/// Plan 07 Phase 1: `TreeOp` is an **enum**, not a trait object. The
-/// fixed 5-format target ladder (ELF, .rlib, zip, tar.gz, PDF) makes an
-/// enum strictly better than `Box<dyn TreeOp>` / `Arc<dyn TreeOp>`:
+/// Implementors provide format-specific structural edit semantics
+/// (e.g. ELF instruction patch, ZIP entry rename). The driver layer
+/// wraps them in an opaque [`TreeOp`] via [`TreeOp::new`]; codec
+/// `translate_edit` implementations recover the concrete type with
+/// [`TreeOp::downcast_ref`].
 ///
-/// - `#[derive(Debug, Clone, PartialEq, Eq)]` works without manual
-///   impls; no Arc-identity-equality hazard.
-/// - Each Phase 2–6 lands a new variant here, gated only by the
-///   `#[non_exhaustive]` attribute.
-///
-/// Phase 1 ships exactly one variant — the test/feature-gated
-/// [`TreeOp::Synthetic`] placeholder — so the verification harness can
-/// construct and match `TreeOp` values before any real format is wired up.
-/// Phase 2 adds the first real format variant: [`TreeOp::Elf`].
-/// Phase 3 adds [`TreeOp::Rlib`].
-/// Phase 4 adds [`TreeOp::Zip`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ElfTreeOp {
-    /// Patch a byte span inside an executable section in place.
-    PatchBytes {
-        /// Section-relative byte offset to replace.
-        offset: usize,
-        /// Expected current bytes at `offset`.
-        old_bytes: Vec<u8>,
-        /// Replacement bytes. Must be the same length as `old_bytes`.
-        new_bytes: Vec<u8>,
-    },
-    /// Rename a symbol in place.
-    RenameSymbol {
-        /// Replacement symbol name. Must be the same length as the
-        /// current symbol name resolved from the tree path.
-        new_name: String,
-    },
-    /// Replace an entire named section payload in place.
-    ReplaceSectionBytes {
-        /// Expected current section payload.
-        old_bytes: Vec<u8>,
-        /// Replacement section payload. Must be the same length as
-        /// `old_bytes`.
-        new_bytes: Vec<u8>,
-    },
+/// Use the [`impl_tree_op!`] macro for ergonomic blanket implementation
+/// on any `Debug + Clone + PartialEq + Send + Sync + 'static` type.
+pub trait AnyTreeOp: Any + std::fmt::Debug + Send + Sync {
+    /// Clone into a new boxed trait object.
+    fn clone_box(&self) -> Box<dyn AnyTreeOp>;
+    /// Value-equality against an erased peer.
+    fn eq_any(&self, other: &dyn Any) -> bool;
+    /// Upcast to `&dyn Any` for downcasting.
+    fn as_any(&self) -> &dyn Any;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RlibTreeOp {
-    /// Replace a whole archive member payload in place.
-    ReplaceMemberBytes {
-        /// Expected current member payload.
-        old_bytes: Vec<u8>,
-        /// Replacement payload. Must be the same length as `old_bytes`.
-        new_bytes: Vec<u8>,
-    },
-    /// Rename an archive member in place.
-    RenameMember {
-        /// Replacement member name. Must be the same length as the current
-        /// member name resolved from the tree path.
-        new_name: String,
-    },
-}
-
-/// ZIP structural edit operations (Plan 07 Phase 4).
+/// Implement [`AnyTreeOp`] for a concrete type.
 ///
-/// All Phase 4 operations are strict same-size in-place rewrites.
-/// No archive rebuild, recompression, or layout change is supported.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ZipTreeOp {
-    /// Rewrite the archive comment in place with same-length bytes.
-    ReplaceComment {
-        /// Replacement comment bytes. Must be the same length as the
-        /// current archive comment.
-        new_comment: Vec<u8>,
-    },
-    /// Replace a STORED entry payload in place with same-size bytes.
-    ReplaceEntryBytes {
-        /// Expected current entry payload.
-        old_bytes: Vec<u8>,
-        /// Replacement payload. Must be the same length as `old_bytes`.
-        new_bytes: Vec<u8>,
-    },
-    /// Rename an entry in place (both local header and central directory).
-    RenameEntry {
-        /// Replacement entry name. Must be the same length as the current
-        /// entry name resolved from the tree path.
-        new_name: String,
-    },
+/// The type must derive or implement `Debug`, `Clone`, `PartialEq`,
+/// and be `Send + Sync + 'static`.
+///
+/// ```ignore
+/// use reovim_driver_codec::impl_tree_op;
+///
+/// #[derive(Debug, Clone, PartialEq, Eq)]
+/// pub enum MyFormatOp { Rename { new_name: String } }
+///
+/// impl_tree_op!(MyFormatOp);
+/// ```
+#[macro_export]
+macro_rules! impl_tree_op {
+    ($ty:ty) => {
+        impl $crate::AnyTreeOp for $ty {
+            fn clone_box(&self) -> Box<dyn $crate::AnyTreeOp> {
+                Box::new(self.clone())
+            }
+
+            fn eq_any(&self, other: &dyn std::any::Any) -> bool {
+                other.downcast_ref::<Self>().is_some_and(|o| self == o)
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+    };
 }
 
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TreeOp {
-    /// ELF structural edit (Plan 07 Phase 2).
-    Elf(ElfTreeOp),
+/// Opaque type-erased structural tree operation.
+///
+/// Wraps a `Box<dyn AnyTreeOp>` so the driver layer never depends on
+/// format-specific operation types. Each codec module defines its own
+/// concrete op enum (e.g. `ElfTreeOp`, `ZipTreeOp`) and wraps it with
+/// [`TreeOp::new`]. The codec's `translate_edit` recovers the concrete
+/// type via [`TreeOp::downcast_ref`].
+pub struct TreeOp {
+    inner: Box<dyn AnyTreeOp>,
+}
 
-    /// Rust `.rlib` structural edit (Plan 07 Phase 3).
-    Rlib(RlibTreeOp),
+impl TreeOp {
+    /// Wrap a concrete tree-op value.
+    #[must_use]
+    pub fn new<T: AnyTreeOp + 'static>(op: T) -> Self {
+        Self {
+            inner: Box::new(op),
+        }
+    }
 
-    /// ZIP structural edit (Plan 07 Phase 4).
-    Zip(ZipTreeOp),
+    /// Attempt to downcast to a concrete tree-op type.
+    #[must_use]
+    pub fn downcast_ref<T: AnyTreeOp + 'static>(&self) -> Option<&T> {
+        self.inner.as_any().downcast_ref::<T>()
+    }
+}
 
-    /// Test-only placeholder variant.
-    ///
-    /// Compiled into the crate under `#[cfg(any(test, feature =
-    /// "testing"))]` so the Phase 1 verification harness and unit tests
-    /// can construct a `TreeOp` without needing a real format
-    /// implementation.
-    #[cfg(any(test, feature = "testing"))]
-    Synthetic {
-        /// Human-readable name for diagnostics.
-        name: String,
-    },
+impl Clone for TreeOp {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone_box(),
+        }
+    }
+}
+
+impl PartialEq for TreeOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.eq_any(other.inner.as_any())
+    }
+}
+
+impl Eq for TreeOp {}
+
+impl std::fmt::Debug for TreeOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 /// Domain-agnostic decoded edit representation.

@@ -7,8 +7,7 @@ use std::{
 
 use {
     reovim_driver_codec::{
-        ContentCodec, DecodedEdit, ElfTreeOp, InodeTable, Mount, TranslateEditError, TreeOp,
-        TreePath, ZipTreeOp,
+        ContentCodec, DecodedEdit, InodeTable, Mount, TranslateEditError, TreeOp, TreePath,
     },
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
@@ -172,7 +171,7 @@ fn instruction_patch_edit(fixture: &ElfFixture) -> DecodedEdit {
             fixture.text_section_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
             offset: fixture.text_patch_offset,
             old_bytes: fixture.text_old_bytes.clone(),
             new_bytes: fixture.text_new_bytes.clone(),
@@ -187,7 +186,7 @@ fn symbol_rename_edit(fixture: &ElfFixture, new_name: &str) -> DecodedEdit {
             fixture.symbol_name.clone(),
             "name".to_string(),
         ]),
-        op: TreeOp::Elf(ElfTreeOp::RenameSymbol {
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
             new_name: new_name.to_string(),
         }),
     }
@@ -200,7 +199,7 @@ fn section_replace_edit(fixture: &ElfFixture) -> DecodedEdit {
             fixture.data_section_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Elf(ElfTreeOp::ReplaceSectionBytes {
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
             old_bytes: fixture.section_old_bytes.clone(),
             new_bytes: fixture.section_new_bytes.clone(),
         }),
@@ -333,7 +332,7 @@ fn elf_translate_edit_malformed_section_path_is_rejected() {
     let bytes = HeapByteSource::new(fixture.bytes.clone());
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["sections".to_string(), fixture.text_section_name.clone()]),
-        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
             offset: 0,
             old_bytes: fixture.text_old_bytes.clone(),
             new_bytes: fixture.text_new_bytes.clone(),
@@ -369,7 +368,7 @@ fn elf_translate_edit_patch_requires_executable_section() {
             fixture.data_section_name.clone(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
             offset: 0,
             old_bytes: fixture.section_old_bytes[..4].to_vec(),
             new_bytes: fixture.section_new_bytes[..4].to_vec(),
@@ -788,7 +787,7 @@ fn zip_fixture() -> &'static ZipFixture {
 fn zip_comment_edit(new_comment: &[u8]) -> DecodedEdit {
     DecodedEdit::Tree {
         path: TreePath::new(vec!["archive".to_string(), "comment".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
             new_comment: new_comment.to_vec(),
         }),
     }
@@ -797,7 +796,7 @@ fn zip_comment_edit(new_comment: &[u8]) -> DecodedEdit {
 fn zip_entry_bytes_edit(name: &str, old_bytes: &[u8], new_bytes: &[u8]) -> DecodedEdit {
     DecodedEdit::Tree {
         path: TreePath::new(vec!["entries".to_string(), name.to_string(), "bytes".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+        op: TreeOp::new(ZipTreeOp::ReplaceEntryBytes {
             old_bytes: old_bytes.to_vec(),
             new_bytes: new_bytes.to_vec(),
         }),
@@ -807,7 +806,7 @@ fn zip_entry_bytes_edit(name: &str, old_bytes: &[u8], new_bytes: &[u8]) -> Decod
 fn zip_rename_edit(name: &str, new_name: &str) -> DecodedEdit {
     DecodedEdit::Tree {
         path: TreePath::new(vec!["entries".to_string(), name.to_string(), "name".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+        op: TreeOp::new(ZipTreeOp::RenameEntry {
             new_name: new_name.to_string(),
         }),
     }
@@ -1047,7 +1046,7 @@ fn zip_malformed_path_fails() {
 
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["invalid".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
             new_comment: b"x".to_vec(),
         }),
     };
@@ -1067,7 +1066,7 @@ fn zip_malformed_path_unknown_field_fails() {
             "hello.txt".to_string(),
             "metadata".to_string(),
         ]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
             new_comment: b"x".to_vec(),
         }),
     };
@@ -1083,7 +1082,7 @@ fn zip_wrong_op_for_comment_path_fails() {
 
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["archive".to_string(), "comment".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+        op: TreeOp::new(ZipTreeOp::RenameEntry {
             new_name: "x".to_string(),
         }),
     };
@@ -1103,7 +1102,7 @@ fn zip_wrong_op_for_entry_bytes_path_fails() {
             "hello.txt".to_string(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+        op: TreeOp::new(ZipTreeOp::RenameEntry {
             new_name: "world.txt".to_string(),
         }),
     };
@@ -1123,7 +1122,7 @@ fn zip_wrong_op_for_entry_name_path_fails() {
             "hello.txt".to_string(),
             "name".to_string(),
         ]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+        op: TreeOp::new(ZipTreeOp::ReplaceEntryBytes {
             old_bytes: b"Hello World!".to_vec(),
             new_bytes: b"Patched Data".to_vec(),
         }),
@@ -1144,7 +1143,7 @@ fn zip_non_zip_tree_op_fails() {
             "hello.txt".to_string(),
             "bytes".to_string(),
         ]),
-        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
             offset: 0,
             old_bytes: vec![0],
             new_bytes: vec![1],
@@ -1172,7 +1171,7 @@ fn zip_empty_entry_name_in_path_fails() {
 
     let edit = DecodedEdit::Tree {
         path: TreePath::new(vec!["entries".to_string(), String::new(), "bytes".to_string()]),
-        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+        op: TreeOp::new(ZipTreeOp::ReplaceEntryBytes {
             old_bytes: vec![0],
             new_bytes: vec![1],
         }),
