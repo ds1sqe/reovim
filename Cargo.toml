@@ -112,6 +112,7 @@ members = [
     "server/modules/codec-pdf",
     "server/modules/codec-binary-struct",
     "server/modules/codec-rlib",
+    "server/modules/codec-tar-gz",
     "server/modules/codec-csv",
 
     # Client layer - TUI
@@ -365,6 +366,7 @@ reovim-module-codec-legacy = { path = "./server/modules/codec-legacy", version =
 reovim-module-codec-pdf = { path = "./server/modules/codec-pdf", version = "0.14.5-dev" }
 reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-struct", version = "0.14.5-dev" }
 reovim-module-codec-rlib = { path = "./server/modules/codec-rlib", version = "0.14.5-dev" }
+reovim-module-codec-tar-gz = { path = "./server/modules/codec-tar-gz", version = "0.14.5-dev" }
 reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.14.5-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
@@ -421,4 +423,6 @@ pdf-extract = "0.7"
 # Binary format parsing
 goblin = "0.9"
 zip = { version = "8", default-features = false }
+tar = "0.4"
+flate2 = "1"
 csv = "1.3"
