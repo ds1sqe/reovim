@@ -1,6 +1,6 @@
 //! Inode and mount primitives for codec-aware byte storage.
 
-use std::{collections::HashMap, fmt, num::NonZeroU64, sync::Arc};
+use std::{collections::HashMap, fmt, io, num::NonZeroU64, path::Path, sync::Arc};
 
 use {
     reovim_driver_vfs::ByteSource,
@@ -9,7 +9,7 @@ use {
 
 use {
     crate::errors::{EditError, MountError, UmountError},
-    tracing::debug,
+    tracing::{debug, trace},
 };
 
 use crate::{ContentCodec, DecodedEdit};
@@ -137,6 +137,13 @@ impl MountHandle {
     pub const fn buffer_id(&self) -> BufferId {
         self.buffer
     }
+
+    /// Test-only accessor for the mount id embedded in this handle.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn mount_id_for_tests(&self) -> MountId {
+        self.mount
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -150,6 +157,12 @@ pub struct Mount {
 
     /// Codec responsible for translating decoded edits for this mount.
     pub codec: Arc<dyn ContentCodec>,
+
+    /// `false` when this mount's decoded view is known to be stale with
+    /// respect to the underlying `Inode.bytes` (e.g. because a sibling
+    /// mount applied an edit). Phase 5 sub-commit 5e wires re-decode on
+    /// read via the `StaleCheck` hook; Phase 5 sub-commit 5a only marks.
+    pub content_valid: bool,
 }
 
 impl std::fmt::Debug for Mount {
@@ -157,17 +170,20 @@ impl std::fmt::Debug for Mount {
         f.debug_struct("Mount")
             .field("name", &self.name)
             .field("codec", &"<dyn ContentCodec>")
+            .field("content_valid", &self.content_valid)
             .finish()
     }
 }
 
 impl Mount {
-    /// Create a new mount.
+    /// Create a new mount. `content_valid` starts `true` since the mount's
+    /// decoded view is fresh at creation time.
     #[must_use]
     pub fn new(name: impl Into<String>, codec: Arc<dyn ContentCodec>) -> Self {
         Self {
             name: name.into(),
             codec,
+            content_valid: true,
         }
     }
 }
@@ -363,7 +379,12 @@ impl InodeTable {
         self.lookup_mount(handle)
     }
 
-    /// Mount into an inode with single-mount semantics.
+    /// Mount into an inode as the **first** mount.
+    ///
+    /// Phase 5 retains `mount()` as the single-mount bootstrap — it
+    /// rejects a second call with [`MountError::AlreadyMounted`]. Use
+    /// [`InodeTable::mount_additional`] to attach a second (or Nth)
+    /// codec view onto an inode that already has a mount.
     ///
     /// # Errors
     ///
@@ -375,7 +396,6 @@ impl InodeTable {
         buffer_id: BufferId,
         mount: Mount,
     ) -> Result<MountHandle, MountError> {
-        let mount_id = self.next_mount_id();
         let inode = self
             .inodes
             .get_mut(&inode_id)
@@ -384,10 +404,14 @@ impl InodeTable {
         if !inode.mounts.is_empty() {
             return Err(MountError::AlreadyMounted { inode_id });
         }
-        debug_assert!(inode.mounts.len() <= 1);
 
+        let mount_id = self.next_mount_id();
         let handle = MountHandle::new(inode_id, buffer_id, mount_id);
         let mount_name = mount.name.clone();
+        let inode = self
+            .inodes
+            .get_mut(&inode_id)
+            .ok_or(MountError::InodeNotFound { inode_id })?;
         let previous = inode.mounts.insert(mount_id, mount);
         debug_assert!(previous.is_none());
 
@@ -401,6 +425,81 @@ impl InodeTable {
         );
 
         Ok(handle)
+    }
+
+    /// Attach a second (or Nth) codec view onto an inode that already has
+    /// a first mount.
+    ///
+    /// This is the Phase 5 multi-mount extension: two or more mounts can
+    /// coexist on a single inode, each presenting a different codec view
+    /// (e.g. UTF-8 text alongside hex). Edits applied through one mount
+    /// mark every peer mount's `content_valid` as `false` via
+    /// [`InodeTable::apply_edit`] so the 5e `StaleCheck` hook can trigger
+    /// a re-decode on the next read.
+    ///
+    /// # Errors
+    ///
+    /// - [`MountError::InodeNotFound`] if the inode does not exist.
+    /// - [`MountError::AlreadyMounted`] is **not** returned here — the
+    ///   single-mount invariant is relaxed. If no initial mount exists
+    ///   yet, use [`InodeTable::mount`] instead.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inode exists but the mount id counter overflows.
+    pub fn mount_additional(
+        &mut self,
+        inode_id: InodeId,
+        buffer_id: BufferId,
+        mount: Mount,
+    ) -> Result<MountHandle, MountError> {
+        if !self.inodes.contains_key(&inode_id) {
+            return Err(MountError::InodeNotFound { inode_id });
+        }
+
+        let mount_id = self.next_mount_id();
+        let handle = MountHandle::new(inode_id, buffer_id, mount_id);
+        let mount_name = mount.name.clone();
+
+        let inode = self
+            .inodes
+            .get_mut(&inode_id)
+            .ok_or(MountError::InodeNotFound { inode_id })?;
+        let previous = inode.mounts.insert(mount_id, mount);
+        debug_assert!(previous.is_none());
+
+        self.mount_idx.insert(mount_id, inode_id);
+
+        debug!(
+            inode_id = %inode_id,
+            mount_id = %mount_id,
+            mount_name = %mount_name,
+            peer_count = inode.mounts.len(),
+            "inode-mounted-additional"
+        );
+
+        Ok(handle)
+    }
+
+    /// Flush inode bytes to a path. Replaces encode-on-save.
+    ///
+    /// **Phase 5 sub-commit 5a ships this method signature only.** The
+    /// real body (byte source → path write, path inheritance, newfile
+    /// scratch-buffer flow) is wired in sub-commit 5d when `:w` is
+    /// consolidated. Calling this method before 5d lands returns
+    /// [`io::ErrorKind::Unsupported`] so no production path silently
+    /// depends on a half-implemented helper.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `io::ErrorKind::Unsupported` until sub-commit 5d.
+    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::unused_self)]
+    pub fn flush(&mut self, _mount_id: MountId, _path_override: Option<&Path>) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "InodeTable::flush is wired in #740 Plan 06 Phase 5 sub-commit 5d",
+        ))
     }
 
     /// Count of active file bindings.
@@ -502,6 +601,13 @@ impl InodeTable {
 
     /// Apply a decoded edit by translating it to bytes and mutating canonical content.
     ///
+    /// After the edit lands, every **peer** mount on the same inode
+    /// (i.e. mounts other than `handle.mount`) has its `content_valid`
+    /// flag set to `false`. Phase 5 sub-commit 5e wires the
+    /// `StaleCheck` hook so the next read through a stale mount
+    /// re-decodes from `inode.bytes`. The source mount stays
+    /// `content_valid = true` because the edit originated there.
+    ///
     /// # Errors
     ///
     /// - [`EditError::InodeNotFound`] if the target inode does not exist.
@@ -544,6 +650,19 @@ impl InodeTable {
         let next = apply_byte_edit(current, &byte_edit)?;
         inode.set_bytes(next);
 
+        // Phase 5 sub-commit 5a: mark every peer mount on this inode
+        // stale. The source mount stays valid; others need re-decode on
+        // next read (wired in 5e via StaleCheck).
+        let mut stale_peers = 0usize;
+        for (peer_id, peer) in &mut inode.mounts {
+            if *peer_id == mount_id {
+                peer.content_valid = true;
+            } else {
+                peer.content_valid = false;
+                stale_peers += 1;
+            }
+        }
+
         debug!(
             inode_id = %inode_id,
             mount_id = %mount_id,
@@ -552,6 +671,14 @@ impl InodeTable {
             inserted = byte_edit.new_bytes.len(),
             "inode-byte-edit-applied"
         );
+        if stale_peers > 0 {
+            trace!(
+                inode_id = %inode_id,
+                source_mount = %mount_id,
+                stale_peers,
+                "inode-peer-mounts-marked-stale"
+            );
+        }
 
         Ok(byte_edit)
     }

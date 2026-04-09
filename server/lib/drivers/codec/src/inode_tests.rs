@@ -413,3 +413,173 @@ fn mount_ref_returns_none_after_unmount() {
     let _ = table.unmount(handle);
     assert!(table.mount_ref(handle).is_none());
 }
+
+// ── Phase 5 sub-commit 5a: multi-mount relaxation ─────────────────────────
+
+#[test]
+fn mount_additional_allows_second_mount_on_same_inode() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hi".to_vec())));
+    let first = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecNoop) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+
+    let second = table
+        .mount_additional(
+            id,
+            buf(1),
+            Mount::new("hex", Arc::new(CodecNoop) as Arc<dyn ContentCodec>),
+        )
+        .expect("second mount");
+
+    assert_ne!(first, second);
+    assert_eq!(
+        table
+            .lookup_inode(id)
+            .map(|inode| inode.mounts.len())
+            .unwrap_or_default(),
+        2
+    );
+}
+
+#[test]
+fn mount_additional_rejects_missing_inode() {
+    let mut table = InodeTable::new();
+    let err = table
+        .mount_additional(
+            InodeId::from_raw(99),
+            buf(1),
+            Mount::new("default", Arc::new(CodecNoop) as Arc<dyn ContentCodec>),
+        )
+        .unwrap_err();
+    assert!(matches!(err, MountError::InodeNotFound { .. }));
+}
+
+#[test]
+fn mount_content_valid_default_true() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hi".to_vec())));
+    let handle = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecByteTranslator) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+
+    let mount = table.mount_ref(handle).expect("mount visible");
+    assert!(mount.content_valid);
+}
+
+#[test]
+fn apply_edit_marks_peer_mounts_stale_but_preserves_source() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello".to_vec())));
+    let source = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecByteTranslator) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+    let peer = table
+        .mount_additional(
+            id,
+            buf(1),
+            Mount::new("hex", Arc::new(CodecByteTranslator) as Arc<dyn ContentCodec>),
+        )
+        .expect("second mount");
+
+    table
+        .apply_edit(
+            source,
+            &DecodedEdit::Bytes {
+                offset: 0,
+                old_len: 0,
+                new_bytes: b"X".to_vec(),
+            },
+        )
+        .expect("apply edit");
+
+    let inode = table.lookup_inode(id).expect("inode present");
+    let source_mount = inode
+        .mounts
+        .get(&source_mount_id(source))
+        .expect("source mount present");
+    let peer_mount = inode
+        .mounts
+        .get(&source_mount_id(peer))
+        .expect("peer mount present");
+
+    assert!(source_mount.content_valid, "source mount stays valid after its own edit");
+    assert!(!peer_mount.content_valid, "peer mount is marked stale after sibling edit");
+}
+
+#[test]
+fn apply_edit_with_no_peers_does_not_panic() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hello".to_vec())));
+    let handle = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecByteTranslator) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+
+    table
+        .apply_edit(
+            handle,
+            &DecodedEdit::Bytes {
+                offset: 0,
+                old_len: 0,
+                new_bytes: b"!".to_vec(),
+            },
+        )
+        .expect("apply edit");
+
+    let inode = table.lookup_inode(id).expect("inode present");
+    let only = inode
+        .mounts
+        .get(&source_mount_id(handle))
+        .expect("only mount present");
+    assert!(only.content_valid);
+}
+
+#[test]
+fn flush_signature_stub_returns_unsupported_until_5d() {
+    let mut table = InodeTable::new();
+    let id = table.insert(Arc::new(HeapByteSource::new(b"hi".to_vec())));
+    let handle = mount_with_buffer(
+        &mut table,
+        id,
+        1,
+        "default",
+        Arc::new(CodecNoop) as Arc<dyn ContentCodec>,
+    )
+    .expect("first mount");
+
+    let err = table.flush(handle_mount_id(handle), None).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
+}
+
+/// Helper: extract `MountId` from a `MountHandle` for test assertions.
+fn source_mount_id(handle: MountHandle) -> MountId {
+    handle_mount_id(handle)
+}
+
+fn handle_mount_id(handle: MountHandle) -> MountId {
+    // `MountHandle::mount` is private; go through `InodeTable::lookup_mount`
+    // indirectly by reading the observable side effect of the apply_edit
+    // pair in tests. Since we need direct access here, expose via a
+    // test-only accessor on MountHandle (added below).
+    handle.mount_id_for_tests()
+}
