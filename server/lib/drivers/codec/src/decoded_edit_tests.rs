@@ -1,6 +1,6 @@
 //! Tests for `DecodedEdit`, `TreePath`, and `TreeOp`.
 
-use super::{DecodedEdit, ElfTreeOp, TreeOp, TreePath};
+use super::{DecodedEdit, ElfTreeOp, RlibTreeOp, TreeOp, TreePath};
 
 // ============================================================================
 // TreePath tests
@@ -103,6 +103,31 @@ fn tree_op_elf_replace_section_debug_format() {
     let debug = format!("{op:?}");
     assert!(debug.contains("Elf"));
     assert!(debug.contains("ReplaceSectionBytes"));
+}
+
+#[test]
+fn tree_op_rlib_replace_member_bytes_construction() {
+    let op = TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+        old_bytes: b"ORIGINAL".to_vec(),
+        new_bytes: b"MODIFIED".to_vec(),
+    });
+
+    assert!(matches!(
+        op,
+        TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes,
+            new_bytes,
+        }) if old_bytes == b"ORIGINAL" && new_bytes == b"MODIFIED"
+    ));
+}
+
+#[test]
+fn tree_op_rlib_rename_member_clone_and_eq() {
+    let op = TreeOp::Rlib(RlibTreeOp::RenameMember {
+        new_name: "member_new.o".to_string(),
+    });
+
+    assert_eq!(op, op.clone());
 }
 
 #[test]

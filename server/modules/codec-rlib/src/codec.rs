@@ -8,7 +8,12 @@ use std::fmt::Write;
 
 use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
-    reovim_driver_codec::{CodecError, CodecMetadata, ContentType, DecodeResult},
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
+        RlibTreeOp, TranslateEditError, TreeOp, TreePath,
+    },
+    reovim_driver_vfs::ByteSource,
+    reovim_kernel::api::v1::ByteEdit,
 };
 
 use crate::classifier::RLIB;
@@ -47,10 +52,9 @@ impl Default for RlibCodec {
     }
 }
 
-/// Phase 3: Rust `.rlib` summary output is a transform-only representation; byte
-/// edits in this decoded view cannot be mapped back faithfully, so
-/// `translate_edit` stays read-only.
-impl reovim_driver_codec::ContentCodec for RlibCodec {
+/// Phase 3: Rust `.rlib` summary output stays lossy/read-only as text, but gains
+/// a narrow structural-edit seam via `DecodedEdit::Tree`.
+impl ContentCodec for RlibCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let archive = goblin::archive::Archive::parse(raw)
             .map_err(|e| CodecError::Other(format!("rlib archive parse failed: {e}")))?;
@@ -83,6 +87,321 @@ impl reovim_driver_codec::ContentCodec for RlibCodec {
             truncated: false,
         })
     }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn ByteSource,
+        edit: &DecodedEdit,
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Tree {
+                path,
+                op: TreeOp::Rlib(op),
+            } => translate_rlib_edit(bytes, path, op),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB codec only accepts RLIB tree operations",
+            }),
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "RLIB codec does not translate text or raw byte edits",
+                })
+            }
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB codec does not support this decoded edit variant",
+            }),
+        }
+    }
+}
+
+const SYSV_NAME_INDEX_MEMBER_RAW: &str = "//              ";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemberField {
+    Bytes,
+    Name,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResolvedMemberPath<'a> {
+    name: &'a str,
+    field: MemberField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NameIndexMember {
+    data_offset: usize,
+}
+
+fn translate_rlib_edit(
+    bytes: &dyn ByteSource,
+    path: &TreePath,
+    op: &RlibTreeOp,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+        reason: "RLIB byte source could not be fully read",
+    })?;
+    let archive =
+        goblin::archive::Archive::parse(&raw).map_err(|_| TranslateEditError::Internal {
+            reason: "RLIB archive parse failed during translate_edit",
+        })?;
+    let resolved = resolve_member_path(path)?;
+
+    match (resolved.field, op) {
+        (
+            MemberField::Bytes,
+            RlibTreeOp::ReplaceMemberBytes {
+                old_bytes,
+                new_bytes,
+            },
+        ) => {
+            translate_rlib_replace_member_bytes(&archive, &raw, resolved.name, old_bytes, new_bytes)
+        }
+        (MemberField::Name, RlibTreeOp::RenameMember { new_name }) => {
+            translate_rlib_rename_member(&archive, &raw, resolved.name, new_name)
+        }
+        (MemberField::Bytes, RlibTreeOp::RenameMember { .. }) => {
+            Err(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB member rename must target [members, <name>, name]",
+            })
+        }
+        (MemberField::Name, RlibTreeOp::ReplaceMemberBytes { .. }) => {
+            Err(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB member payload replacement must target [members, <name>, bytes]",
+            })
+        }
+    }
+}
+
+fn translate_rlib_replace_member_bytes(
+    archive: &goblin::archive::Archive<'_>,
+    raw: &[u8],
+    member_name: &str,
+    old_bytes: &[u8],
+    new_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let member = archive
+        .get(member_name)
+        .ok_or(TranslateEditError::MalformedPath {
+            reason: "RLIB member path does not resolve to a member",
+        })?;
+
+    if old_bytes.len() != new_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member payload replacement must preserve member size",
+        });
+    }
+
+    let offset = member_payload_offset(member)?;
+    let end = offset
+        .checked_add(member.size())
+        .ok_or(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member payload range overflowed",
+        })?;
+    let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
+        reason: "RLIB member payload range is out of bounds",
+    })?;
+
+    if actual.len() != old_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member payload replacement must cover the full member payload",
+        });
+    }
+    if actual != old_bytes {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member payload old bytes do not match the archive contents",
+        });
+    }
+    if old_bytes == new_bytes {
+        return Ok(None);
+    }
+
+    Ok(Some(ByteEdit::replace(offset, old_bytes, new_bytes)))
+}
+
+fn translate_rlib_rename_member(
+    archive: &goblin::archive::Archive<'_>,
+    raw: &[u8],
+    member_name: &str,
+    new_name: &str,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let member = archive
+        .get(member_name)
+        .ok_or(TranslateEditError::MalformedPath {
+            reason: "RLIB member path does not resolve to a member",
+        })?;
+
+    if member_name.len() != new_name.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member rename must preserve name length",
+        });
+    }
+    if member_name == new_name {
+        return Ok(None);
+    }
+
+    let name_offset = resolve_member_name_storage(raw, member, member_name)?;
+    Ok(Some(ByteEdit::replace(
+        name_offset,
+        member_name.as_bytes(),
+        new_name.as_bytes(),
+    )))
+}
+
+fn read_all_bytes(bytes: &dyn ByteSource) -> Option<Vec<u8>> {
+    let len = usize::try_from(bytes.len()).ok()?;
+    let data = bytes.read(0..bytes.len()).into_owned();
+
+    (data.len() == len).then_some(data)
+}
+
+fn resolve_member_path(path: &TreePath) -> Result<ResolvedMemberPath<'_>, TranslateEditError> {
+    let components = path.components();
+    let [kind, member_name, field] = components else {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "RLIB member path must be [members, <name>, bytes|name]",
+        });
+    };
+    if kind != "members" || member_name.is_empty() {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "RLIB member path must be [members, <name>, bytes|name]",
+        });
+    }
+
+    let field = match field.as_str() {
+        "bytes" => MemberField::Bytes,
+        "name" => MemberField::Name,
+        _ => {
+            return Err(TranslateEditError::MalformedPath {
+                reason: "RLIB member path must be [members, <name>, bytes|name]",
+            });
+        }
+    };
+
+    Ok(ResolvedMemberPath {
+        name: member_name,
+        field,
+    })
+}
+
+fn member_payload_offset(
+    member: &goblin::archive::Member<'_>,
+) -> Result<usize, TranslateEditError> {
+    usize::try_from(member.offset).map_err(|_| TranslateEditError::Internal {
+        reason: "RLIB member payload offset does not fit in usize",
+    })
+}
+
+fn member_header_offset(member: &goblin::archive::Member<'_>) -> Result<usize, TranslateEditError> {
+    usize::try_from(member.header_offset).map_err(|_| TranslateEditError::Internal {
+        reason: "RLIB member header offset does not fit in usize",
+    })
+}
+
+fn resolve_member_name_storage(
+    raw: &[u8],
+    member: &goblin::archive::Member<'_>,
+    member_name: &str,
+) -> Result<usize, TranslateEditError> {
+    let raw_name = member.raw_name();
+    if raw_name.starts_with("#1/") {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "RLIB member rename does not support BSD extended-name storage",
+        });
+    }
+
+    if raw_name.starts_with('/') {
+        let name_index =
+            locate_sysv_name_index(raw)?.ok_or(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB member rename requires a patchable archive name table",
+            })?;
+        let sysv_offset = raw_name
+            .strip_prefix('/')
+            .and_then(|offset| offset.trim_end().parse::<usize>().ok())
+            .ok_or(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB member rename requires a numeric SysV name-table reference",
+            })?;
+        let name_offset = name_index.data_offset.checked_add(sysv_offset).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "RLIB member name offset overflowed",
+            },
+        )?;
+        let name_end = name_offset.checked_add(member_name.len()).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "RLIB member name range overflowed",
+            },
+        )?;
+        let actual = raw
+            .get(name_offset..name_end)
+            .ok_or(TranslateEditError::Internal {
+                reason: "RLIB member name range is out of bounds",
+            })?;
+        if actual != member_name.as_bytes() {
+            return Err(TranslateEditError::ConstraintViolation {
+                reason: "RLIB member name bytes do not match the archive string table contents",
+            });
+        }
+        if raw.get(name_end) != Some(&b'/') {
+            return Err(TranslateEditError::UnsupportedEdit {
+                reason: "RLIB member rename requires slash-terminated SysV name storage",
+            });
+        }
+
+        return Ok(name_offset);
+    }
+
+    let header_offset = member_header_offset(member)?;
+    let name_end = header_offset.checked_add(member_name.len()).ok_or(
+        TranslateEditError::ConstraintViolation {
+            reason: "RLIB header name range overflowed",
+        },
+    )?;
+    let actual = raw
+        .get(header_offset..name_end)
+        .ok_or(TranslateEditError::Internal {
+            reason: "RLIB header name range is out of bounds",
+        })?;
+    if actual != member_name.as_bytes() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "RLIB member name bytes do not match the archive header contents",
+        });
+    }
+    if !matches!(raw.get(name_end), Some(b'/' | b' ')) {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "RLIB member rename requires patchable header-stored name bytes",
+        });
+    }
+
+    Ok(header_offset)
+}
+
+fn locate_sysv_name_index(raw: &[u8]) -> Result<Option<NameIndexMember>, TranslateEditError> {
+    let mut offset = goblin::archive::SIZEOF_MAGIC;
+    while offset + 1 < raw.len() {
+        if offset & 1 == 1 {
+            offset += 1;
+        }
+        let mut member_offset = offset;
+        let member = goblin::archive::Member::parse(raw, &mut member_offset).map_err(|_| {
+            TranslateEditError::Internal {
+                reason: "RLIB archive parse failed during name-index scan",
+            }
+        })?;
+        let next = member_offset.checked_add(member.size()).ok_or(
+            TranslateEditError::ConstraintViolation {
+                reason: "RLIB member range overflowed during name-index scan",
+            },
+        )?;
+
+        if member.raw_name() == SYSV_NAME_INDEX_MEMBER_RAW {
+            return Ok(Some(NameIndexMember {
+                data_offset: member_payload_offset(&member)?,
+            }));
+        }
+
+        offset = next;
+    }
+
+    Ok(None)
 }
 
 /// Extract rustc version and dependency names from the `.rmeta` section.

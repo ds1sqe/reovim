@@ -1,12 +1,193 @@
 //! Tests for rlib codec.
 
+use std::{
+    process::Command,
+    sync::{Arc, OnceLock},
+};
+
 use {
-    reovim_driver_codec::{ContentCodec, DecodedEdit},
+    reovim_driver_codec::{
+        ContentCodec, DecodedEdit, InodeTable, Mount, RlibTreeOp, TranslateEditError, TreeOp,
+        TreePath,
+    },
     reovim_driver_vfs::HeapByteSource,
+    reovim_kernel::api::v1::{BufferId, ByteEdit},
     reovim_types_text::Position,
 };
 
 use super::*;
+
+#[derive(Debug, Clone)]
+struct RlibFixture {
+    bytes: Vec<u8>,
+    payload_member_name: String,
+    payload_member_offset: usize,
+    payload_old_bytes: Vec<u8>,
+    payload_new_bytes: Vec<u8>,
+    header_member_name: String,
+    header_member_name_offset: usize,
+    header_member_new_name: String,
+    sysv_member_name: String,
+    sysv_member_name_offset: usize,
+    sysv_member_new_name: String,
+}
+
+static RLIB_FIXTURE: OnceLock<RlibFixture> = OnceLock::new();
+
+fn rlib_fixture() -> &'static RlibFixture {
+    RLIB_FIXTURE.get_or_init(build_rlib_fixture)
+}
+
+fn build_rlib_fixture() -> RlibFixture {
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "reovim-rlib-phase3-{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("tests")
+    ));
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    std::fs::create_dir_all(&fixture_dir).unwrap();
+
+    let source_path = fixture_dir.join("fixture.rs");
+    let rlib_path = fixture_dir.join("libfixture.rlib");
+    std::fs::write(
+        &source_path,
+        r#"
+#[used]
+pub static PHASE3_BYTES: [u8; 8] = *b"ORIGINAL";
+
+pub fn phase3_value() -> u8 {
+    PHASE3_BYTES[0]
+}
+"#,
+    )
+    .unwrap();
+
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let output = Command::new(rustc)
+        .args([
+            "--edition=2021",
+            "--crate-type=rlib",
+            source_path.to_str().unwrap(),
+            "-o",
+            rlib_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "fixture compilation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let bytes = std::fs::read(&rlib_path).unwrap();
+    let archive = goblin::archive::Archive::parse(&bytes).unwrap();
+
+    let header_member_name = "lib.rmeta".to_string();
+    let header_member = archive.get(&header_member_name).unwrap();
+    let header_member_name_offset =
+        resolve_member_name_storage(&bytes, header_member, &header_member_name).unwrap();
+
+    let sysv_member_name = archive
+        .members()
+        .into_iter()
+        .find(|name| {
+            *name != header_member_name
+                && archive
+                    .get(name)
+                    .is_some_and(|member| member.raw_name().starts_with('/'))
+        })
+        .unwrap()
+        .to_string();
+    let sysv_member = archive.get(&sysv_member_name).unwrap();
+    let sysv_member_name_offset =
+        resolve_member_name_storage(&bytes, sysv_member, &sysv_member_name).unwrap();
+    let payload_member_offset = member_payload_offset(sysv_member).unwrap();
+    let payload_old_bytes = archive.extract(&sysv_member_name, &bytes).unwrap().to_vec();
+    let mut payload_new_bytes = payload_old_bytes.clone();
+    payload_new_bytes[0] ^= 0x5A;
+
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+
+    RlibFixture {
+        bytes,
+        payload_member_name: sysv_member_name.clone(),
+        payload_member_offset,
+        payload_old_bytes,
+        payload_new_bytes,
+        header_member_name: header_member_name.clone(),
+        header_member_name_offset,
+        header_member_new_name: same_length_name(&header_member_name),
+        sysv_member_name: sysv_member_name.clone(),
+        sysv_member_name_offset,
+        sysv_member_new_name: same_length_name(&sysv_member_name),
+    }
+}
+
+fn same_length_name(name: &str) -> String {
+    let mut bytes = name.as_bytes().to_vec();
+    let first = bytes.first_mut().unwrap();
+    *first = if *first == b'Z' { b'Y' } else { b'Z' };
+    String::from_utf8(bytes).unwrap()
+}
+
+fn payload_replace_edit(fixture: &RlibFixture) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    }
+}
+
+fn header_rename_edit(fixture: &RlibFixture, new_name: &str) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.header_member_name.clone(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+            new_name: new_name.to_string(),
+        }),
+    }
+}
+
+fn sysv_rename_edit(fixture: &RlibFixture, new_name: &str) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.sysv_member_name.clone(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+            new_name: new_name.to_string(),
+        }),
+    }
+}
+
+fn bsd_named_archive_bytes(name: &str, payload: &[u8]) -> Vec<u8> {
+    let file_size = name.len() + payload.len();
+    let mut archive = Vec::new();
+    archive.extend_from_slice(goblin::archive::MAGIC);
+    archive.extend_from_slice(format!("{:<16}", format!("#1/{}", name.len())).as_bytes());
+    archive.extend_from_slice(format!("{:<12}", 0).as_bytes());
+    archive.extend_from_slice(format!("{:<6}", 0).as_bytes());
+    archive.extend_from_slice(format!("{:<6}", 0).as_bytes());
+    archive.extend_from_slice(format!("{:<8}", 0).as_bytes());
+    archive.extend_from_slice(format!("{file_size:<10}").as_bytes());
+    archive.extend_from_slice(b"`\n");
+    archive.extend_from_slice(name.as_bytes());
+    archive.extend_from_slice(payload);
+    if archive.len() & 1 == 1 {
+        archive.push(b'\n');
+    }
+    archive
+}
 
 #[test]
 fn decode_invalid_data() {
@@ -23,7 +204,6 @@ fn default_impl() {
 
 #[test]
 fn translate_edit_text_is_not_supported() {
-    use reovim_driver_codec::TranslateEditError;
     let codec = RlibCodec::new();
     let bytes = HeapByteSource::new(b"archive contents");
     let edit = DecodedEdit::Text {
@@ -32,12 +212,14 @@ fn translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 #[test]
 fn translate_edit_bytes_is_not_supported() {
-    use reovim_driver_codec::TranslateEditError;
     let codec = RlibCodec::new();
     let bytes = HeapByteSource::new(b"archive contents");
     let edit = DecodedEdit::Bytes {
@@ -46,7 +228,250 @@ fn translate_edit_bytes_is_not_supported() {
         new_bytes: b"y".to_vec(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_payload_replace_returns_in_place_byte_edit() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &payload_replace_edit(fixture))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.payload_member_offset,
+            &fixture.payload_old_bytes,
+            &fixture.payload_new_bytes,
+        ))
+    );
+}
+
+#[test]
+fn translate_edit_header_member_rename_returns_in_place_byte_edit() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &header_rename_edit(fixture, &fixture.header_member_new_name))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.header_member_name_offset,
+            fixture.header_member_name.as_bytes(),
+            fixture.header_member_new_name.as_bytes(),
+        ))
+    );
+}
+
+#[test]
+fn translate_edit_sysv_member_rename_returns_in_place_byte_edit() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let result = codec
+        .translate_edit(&bytes, &sysv_rename_edit(fixture, &fixture.sysv_member_new_name))
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Some(ByteEdit::replace(
+            fixture.sysv_member_name_offset,
+            fixture.sysv_member_name.as_bytes(),
+            fixture.sysv_member_new_name.as_bytes(),
+        ))
+    );
+}
+
+#[test]
+fn translate_edit_same_payload_replace_is_noop() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_old_bytes.clone(),
+        }),
+    };
+
+    assert_eq!(codec.translate_edit(&bytes, &edit), Ok(None));
+}
+
+#[test]
+fn translate_edit_same_name_rename_is_noop() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    assert_eq!(
+        codec.translate_edit(&bytes, &sysv_rename_edit(fixture, &fixture.sysv_member_name)),
+        Ok(None)
+    );
+}
+
+#[test]
+fn translate_edit_malformed_member_path_is_rejected() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["members".to_string(), fixture.payload_member_name.clone()]),
+        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_unsupported_target_is_rejected() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+            new_name: fixture.sysv_member_new_name.clone(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_size_changing_payload_replace_is_rejected() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Rlib(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes[..fixture.payload_new_bytes.len() - 1].to_vec(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_size_changing_member_rename_is_rejected() {
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    assert!(matches!(
+        codec.translate_edit(
+            &bytes,
+            &sysv_rename_edit(fixture, &format!("{}x", fixture.sysv_member_name))
+        ),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_unpatchable_rename_storage_is_rejected() {
+    let codec = RlibCodec::new();
+    let name = "this_is_a_bsd_named_member.o";
+    let bytes = HeapByteSource::new(bsd_named_archive_bytes(name, b"DATA"));
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["members".to_string(), name.to_string(), "name".to_string()]),
+        op: TreeOp::Rlib(RlibTreeOp::RenameMember {
+            new_name: same_length_name(name),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn real_fixture_workflow_reparses_and_restores_original_bytes() {
+    let codec = Arc::new(RlibCodec::new());
+    let fixture = rlib_fixture().clone();
+    let mut table = InodeTable::new();
+    let inode_id = table.insert(Arc::new(HeapByteSource::new(fixture.bytes.clone())));
+    let buffer_id = BufferId::from_raw(1);
+    table.bind_file(buffer_id, inode_id);
+
+    let source_mount = table
+        .mount(inode_id, buffer_id, Mount::new("rlib-source", codec.clone()))
+        .unwrap();
+    let peer_mount = table
+        .mount_additional(inode_id, buffer_id, Mount::new("rlib-peer", codec.clone()))
+        .unwrap();
+
+    assert_eq!(table.read_bytes(inode_id).unwrap(), fixture.bytes);
+
+    let edits = [
+        payload_replace_edit(&fixture),
+        sysv_rename_edit(&fixture, &fixture.sysv_member_new_name),
+    ];
+    let mut inverses = Vec::new();
+
+    for edit in &edits {
+        let byte_edit = table.apply_edit(source_mount, edit).unwrap().unwrap();
+        inverses.push(byte_edit.inverse());
+
+        let current = table.read_bytes(inode_id).unwrap();
+        assert_eq!(current.len(), fixture.bytes.len());
+        let decoded = codec.decode(&current).unwrap();
+        assert!(decoded.content.contains("Archive Members"));
+    }
+
+    let current = table.read_bytes(inode_id).unwrap();
+    let decoded = codec.decode(&current).unwrap();
+    assert!(decoded.content.contains(&fixture.sysv_member_new_name));
+
+    let inode = table.lookup_inode(inode_id).unwrap();
+    let peer = inode.mounts.get(&peer_mount.mount_id()).unwrap();
+    assert!(!peer.content_valid);
+
+    for inverse in inverses.iter().rev() {
+        table.apply_byte_edit(inode_id, inverse).unwrap();
+    }
+
+    let restored = table.read_bytes(inode_id).unwrap();
+    assert_eq!(restored, fixture.bytes);
+    codec.decode(&restored).unwrap();
 }
 
 #[test]

@@ -75,6 +75,7 @@ impl TreePath {
 /// [`TreeOp::Synthetic`] placeholder — so the verification harness can
 /// construct and match `TreeOp` values before any real format is wired up.
 /// Phase 2 adds the first real format variant: [`TreeOp::Elf`].
+/// Phase 3 adds [`TreeOp::Rlib`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ElfTreeOp {
     /// Patch a byte span inside an executable section in place.
@@ -102,11 +103,31 @@ pub enum ElfTreeOp {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RlibTreeOp {
+    /// Replace a whole archive member payload in place.
+    ReplaceMemberBytes {
+        /// Expected current member payload.
+        old_bytes: Vec<u8>,
+        /// Replacement payload. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename an archive member in place.
+    RenameMember {
+        /// Replacement member name. Must be the same length as the current
+        /// member name resolved from the tree path.
+        new_name: String,
+    },
+}
+
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeOp {
     /// ELF structural edit (Plan 07 Phase 2).
     Elf(ElfTreeOp),
+
+    /// Rust `.rlib` structural edit (Plan 07 Phase 3).
+    Rlib(RlibTreeOp),
 
     /// Test-only placeholder variant.
     ///

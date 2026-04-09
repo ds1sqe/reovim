@@ -23,6 +23,7 @@ reovim-capabilities = { workspace = true }
 # Driver layer - implements ContentCodec, ContentClassifier, ContentCodecFactory
 reovim-driver-codec = { workspace = true }
 reovim-driver-annotation = { workspace = true }
+reovim-driver-vfs = { workspace = true }
 
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }
@@ -36,7 +37,6 @@ tracing = { workspace = true }
 [dev-dependencies]
 reovim-testing = { workspace = true }
 reovim-types-text = { workspace = true }
-reovim-driver-vfs = { workspace = true }
 
 [features]
 # Enable for building as standalone dynamic library
