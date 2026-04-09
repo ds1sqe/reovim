@@ -708,6 +708,14 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn buffer_content(&self, buffer: BufferId) -> Option<String> {
+        // #740 Plan 06 Phase 5 sub-commit 5e: consult the installed
+        // StaleCheck hook before materialising the decoded view. The
+        // hook is a no-op when unset (tests, headless) and idempotent
+        // when set. It owns its own interior mutability if it needs
+        // to mutate state — this call site passes &self.
+        if let Some(hook) = self.session.shared.stale_check() {
+            hook.refresh_if_stale(buffer);
+        }
         self.text_buffer(buffer).map(|buf| buf.read().content())
     }
 

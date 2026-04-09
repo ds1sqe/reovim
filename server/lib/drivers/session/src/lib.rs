@@ -108,6 +108,7 @@ mod notification_queue;
 mod operator_state;
 mod runtime;
 mod snippet_expander;
+mod stale_check;
 pub mod tab;
 pub mod testing;
 pub mod tick;
@@ -150,6 +151,9 @@ pub use transition::{PopResult, TransitionContext};
 
 // Session runtime (implements all API traits)
 pub use runtime::SessionRuntime;
+
+// StaleCheck hook — Phase 5 sub-commit 5e seam for codec re-decode on read.
+pub use stale_check::StaleCheck;
 
 // Session API traits (re-export for convenience)
 pub use api::{

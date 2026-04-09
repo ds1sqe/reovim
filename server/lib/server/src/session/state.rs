@@ -120,7 +120,14 @@ impl SessionState {
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
         // Create driver session with home_mode in SessionShared (#491)
         // ClientId(0) is a placeholder - real clients get IDs from server layer
-        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
+        // #740 Plan 06 Phase 5 sub-commit 5e: install the codec-side
+        // StaleCheck hook so BufferApi::buffer_content can consult the
+        // re-decode trigger before returning text content.
+        driver_session
+            .shared
+            .install_stale_check(reovim_driver_codec::install_stale_check());
 
         Self {
             driver_session,
@@ -152,6 +159,14 @@ impl SessionState {
     ) -> Self {
         // Create driver session with home_mode in SessionShared (#491)
         let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
+        // #740 Plan 06 Phase 5 sub-commit 5e: install the codec-side
+        // StaleCheck hook at session init so the re-decode trigger is
+        // available as soon as any BufferApi::buffer_content call
+        // lands.
+        driver_session
+            .shared
+            .install_stale_check(reovim_driver_codec::install_stale_check());
 
         // Set compositor if provided by a module
         if let Some(c) = compositor {

@@ -88,6 +88,16 @@ pub struct SessionShared {
     /// Bootstrap template for initializing new clients -- each client's
     /// mode evolves independently after init.
     home_mode: ModeId,
+
+    /// Optional stale-content hook (`#740` Plan 06 Phase 5 sub-commit 5e).
+    ///
+    /// When set, [`SessionRuntime::buffer_content`](crate::SessionRuntime)
+    /// calls [`StaleCheck::refresh_if_stale`](crate::StaleCheck::refresh_if_stale)
+    /// before returning text content. Installed by the codec driver
+    /// during module init so the session driver does not have to name
+    /// `reovim-driver-codec` directly. `None` in tests and any
+    /// headless path that never loads a codec module.
+    stale_check: Option<std::sync::Arc<dyn crate::StaleCheck>>,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -97,6 +107,7 @@ impl std::fmt::Debug for SessionShared {
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
             .field("global_marks", &"MarkBank")
             .field("home_mode", &self.home_mode)
+            .field("stale_check", &self.stale_check.as_ref().map(|_| "<dyn StaleCheck>"))
             .finish()
     }
 }
@@ -117,7 +128,32 @@ impl SessionShared {
             compositor: None,
             global_marks: MarkBank::new(),
             home_mode,
+            stale_check: None,
         }
+    }
+
+    /// Install a [`StaleCheck`](crate::StaleCheck) hook.
+    ///
+    /// Called once by the codec driver during module init so
+    /// [`SessionRuntime::buffer_content`](crate::SessionRuntime) can
+    /// consult the hook on the read path. Calling this a second time
+    /// replaces the previous hook — there is no chaining behaviour.
+    pub fn install_stale_check(&mut self, hook: std::sync::Arc<dyn crate::StaleCheck>) {
+        self.stale_check = Some(hook);
+    }
+
+    /// Borrow the installed stale-check hook, if any.
+    #[must_use]
+    pub fn stale_check(&self) -> Option<&std::sync::Arc<dyn crate::StaleCheck>> {
+        self.stale_check.as_ref()
+    }
+
+    /// Drop the installed stale-check hook.
+    ///
+    /// Primarily used by tests that want to isolate their assertions
+    /// from a previously-installed hook.
+    pub fn clear_stale_check(&mut self) {
+        self.stale_check = None;
     }
 
     /// Set the compositor for this session.

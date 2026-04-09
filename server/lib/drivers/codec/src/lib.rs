@@ -56,6 +56,7 @@ mod errors;
 mod factory;
 mod inode;
 mod metadata;
+mod stale_check;
 mod state;
 mod store;
 
@@ -97,3 +98,6 @@ pub use {
 
 // Per-session state
 pub use state::{CodecSessionState, MountInfo};
+
+// StaleCheck adapter (#740 Plan 06 Phase 5 sub-commit 5e).
+pub use stale_check::{InodeStaleCheck, install as install_stale_check};
