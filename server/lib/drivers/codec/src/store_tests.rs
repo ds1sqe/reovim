@@ -125,6 +125,208 @@ fn factory_store_debug() {
     assert!(debug.contains("count"));
 }
 
+// --- ContentCodecFactoryStore priority tests (#740 Phase 6) ---
+
+/// Mock codec that records the name of the factory that built it so
+/// tests can assert which factory won priority dispatch.
+struct MockNamedCodec {
+    source: &'static str,
+}
+
+impl ContentCodec for MockNamedCodec {
+    fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Ok(DecodeResult {
+            content: self.source.to_string(),
+            annotations: vec![],
+            metadata: CodecMetadata::new(ContentType::new("text/utf-8")),
+            lossy: false,
+            readonly: false,
+            truncated: false,
+        })
+    }
+}
+
+struct MockNamedFactory {
+    content_type: &'static str,
+    name: &'static str,
+}
+
+impl ContentCodecFactory for MockNamedFactory {
+    fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
+        if content_type.as_str() == self.content_type {
+            Some(Arc::new(MockNamedCodec { source: self.name }))
+        } else {
+            None
+        }
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec![self.content_type]
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+#[test]
+fn factory_store_higher_priority_wins() {
+    let store = ContentCodecFactoryStore::new();
+    // Register low priority first, then high priority.
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "low",
+        }),
+        10,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "high",
+        }),
+        200,
+    );
+
+    let codec = store
+        .find(&ContentType::new("text/utf-8"))
+        .expect("high-priority codec found");
+    let result = codec.decode(b"ignored").unwrap();
+    assert_eq!(result.content, "high");
+}
+
+#[test]
+fn factory_store_equal_priority_first_registered_wins() {
+    let store = ContentCodecFactoryStore::new();
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "first",
+        }),
+        100,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "second",
+        }),
+        100,
+    );
+
+    let codec = store.find(&ContentType::new("text/utf-8")).unwrap();
+    let result = codec.decode(b"ignored").unwrap();
+    assert_eq!(result.content, "first");
+}
+
+#[test]
+fn factory_store_add_factory_uses_default_priority() {
+    let store = ContentCodecFactoryStore::new();
+    // Default-priority factory first.
+    store.add_factory(Arc::new(MockNamedFactory {
+        content_type: "text/utf-8",
+        name: "default",
+    }));
+    // Explicit high-priority factory second — still wins.
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "override",
+        }),
+        DEFAULT_FACTORY_PRIORITY + 1,
+    );
+
+    let codec = store.find(&ContentType::new("text/utf-8")).unwrap();
+    let result = codec.decode(b"ignored").unwrap();
+    assert_eq!(result.content, "override");
+}
+
+#[test]
+fn factory_store_low_priority_used_as_fallback() {
+    let store = ContentCodecFactoryStore::new();
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "text/utf-8",
+            name: "fallback",
+        }),
+        1,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "application/octet-stream",
+            name: "primary",
+        }),
+        1000,
+    );
+
+    // Primary does not claim text/utf-8 → fallback wins.
+    let codec = store.find(&ContentType::new("text/utf-8")).unwrap();
+    let result = codec.decode(b"ignored").unwrap();
+    assert_eq!(result.content, "fallback");
+}
+
+#[test]
+fn factory_store_take_preserves_priority_order() {
+    let store = ContentCodecFactoryStore::new();
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "a",
+            name: "low",
+        }),
+        10,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "b",
+            name: "high",
+        }),
+        1000,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "c",
+            name: "mid",
+        }),
+        500,
+    );
+
+    let taken = store.take_factories();
+    assert_eq!(taken.len(), 3);
+    assert_eq!(taken[0].name(), "high");
+    assert_eq!(taken[1].name(), "mid");
+    assert_eq!(taken[2].name(), "low");
+}
+
+#[test]
+fn factory_store_available_lists_in_priority_order() {
+    let store = ContentCodecFactoryStore::new();
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "a",
+            name: "lowest",
+        }),
+        1,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "b",
+            name: "middle",
+        }),
+        50,
+    );
+    store.add_factory_with_priority(
+        Arc::new(MockNamedFactory {
+            content_type: "c",
+            name: "highest",
+        }),
+        999,
+    );
+
+    let available = store.available();
+    assert_eq!(available[0].0, "highest");
+    assert_eq!(available[1].0, "middle");
+    assert_eq!(available[2].0, "lowest");
+}
+
 // --- ContentClassifierStore tests ---
 
 #[test]
