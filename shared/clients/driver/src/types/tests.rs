@@ -1528,7 +1528,8 @@ fn client_module_probe_capabilities_roundtrip_via_copy() {
 fn client_api_version_exists() {
     let v = CLIENT_MODULE_API_VERSION;
     assert_eq!(v.major, 0);
-    assert_eq!(v.minor, 3);
+    // Bumped to 0.4.0 in #723 for the render-path trampolines.
+    assert_eq!(v.minor, 4);
     assert_eq!(v.patch, 0);
 }
 

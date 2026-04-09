@@ -3703,6 +3703,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-panicking-client-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-picker-buffers"
 version = "0.14.5-dev"
 dependencies = [

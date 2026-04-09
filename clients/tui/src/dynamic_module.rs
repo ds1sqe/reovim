@@ -1,24 +1,28 @@
 //! Dynamic client module wrapper — bridges [`ClientModuleHandle`] (from the
 //! driver crate) into the full [`ClientModule`] trait.
 //!
-//! # Role within flight #724
+//! # Role within flights #724 and #723
 //!
 //! `ClientModuleHandle` already dispatches 23 FFI trampolines for lifecycle,
 //! events, role declaration, and chrome metadata. It does NOT implement the
-//! `ClientModule` trait because the trait's render methods (`chrome_render`,
-//! `transform_line`, etc.) have no FFI trampolines yet — those land in #723.
+//! `ClientModule` trait directly because the TUI still needs a concrete wrapper
+//! for discovery/loading and because three borrowed-slice trait methods remain
+//! unsafely unrepresentable for dynamic modules.
 //!
 //! `DynamicClientModule` is a thin wrapper that:
 //!
-//! - Delegates the 25 FFI-backed methods to the underlying handle.
-//! - Returns explicit `TODO(#723)` stubs for the 13 render-path methods.
+//! - Delegates every FFI-backed identity/lifecycle/event/render method to the
+//!   underlying handle.
+//! - Leaves `fold_ranges`, `virtual_lines`, and `inline_decorations` as empty
+//!   slices for dynamic modules because the trait returns `&[T]` borrowed from
+//!   `&self`, while the dynamic path only produces owned `Vec<T>` snapshots.
 //!
 //! This exists so dynamic `.so` client modules can sit inside the same
 //! `Vec<Box<dyn ClientModule>>` that the TUI's `ClientModuleLoader` manages
-//! for builtin factories. After #723 lands, the render-path stubs are
-//! replaced with FFI dispatch calls and the wrapper either stays thin or is
-//! collapsed into a `ClientModuleHandle` direct-impl (decision belongs to
-//! #723 per the mission doc).
+//! for builtin factories. After #723 landed, the wrapper stayed in place: it
+//! still provides the `is_dynamic` assertion in `new()` and is the right place
+//! to hold any future wrapper-local cache if the borrowed-slice trait methods
+//! are redesigned.
 //!
 //! # Design fork
 //!
@@ -41,10 +45,10 @@ use reovim_client_driver::{
 
 /// Wraps a dynamically-loaded [`ClientModuleHandle`] as a full [`ClientModule`].
 ///
-/// FFI-backed methods delegate to the handle. The 13 render-path methods are
-/// explicit `TODO(#723)` stubs: they return the trait defaults but are listed
-/// here deliberately so the #723 implementer sees each dispatch seam from the
-/// code instead of by cross-referencing the plan.
+/// FFI-backed methods delegate to the handle. The only deliberate limitation is
+/// the three borrowed-slice render hooks (`fold_ranges`, `virtual_lines`,
+/// `inline_decorations`): dynamic modules currently return empty slices there
+/// until the trait is redesigned to return owned data.
 ///
 /// # Safety and threading
 ///
@@ -67,10 +71,7 @@ impl DynamicClientModule {
     /// `ClientModuleLoader::new`.
     #[must_use]
     pub fn new(handle: ClientModuleHandle) -> Self {
-        assert!(
-            handle.is_dynamic(),
-            "DynamicClientModule requires a dynamic ClientModuleHandle",
-        );
+        assert!(handle.is_dynamic(), "DynamicClientModule requires a dynamic ClientModuleHandle");
         Self { handle }
     }
 
@@ -157,7 +158,7 @@ impl ClientModule for DynamicClientModule {
     }
 
     // ========================================================================
-    // Events — 7 methods with FFI, 2 stubs (TODO #723)
+    // Events — 9 methods with FFI
     // ========================================================================
 
     fn on_notification(&mut self, data: &str) {
@@ -184,18 +185,12 @@ impl ClientModule for DynamicClientModule {
         self.handle.on_mode_change(mode);
     }
 
-    fn on_capabilities_changed(&mut self, _caps: &dyn PlatformCapabilities) {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_on_capabilities_changed). Until #723 lands,
-        // dynamic modules receive no capability change notification. Static
-        // modules are unaffected (they use the trait default through the
-        // ClientModuleHandle static branch).
+    fn on_capabilities_changed(&mut self, caps: &dyn PlatformCapabilities) {
+        self.handle.on_capabilities_changed(caps);
     }
 
-    fn on_theme_changed(&mut self, _theme: &dyn ThemeProvider) {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_on_theme_changed). Same rationale as
-        // on_capabilities_changed.
+    fn on_theme_changed(&mut self, theme: &dyn ThemeProvider) {
+        self.handle.on_theme_changed(theme);
     }
 
     fn tick(&mut self) -> bool {
@@ -225,94 +220,82 @@ impl ClientModule for DynamicClientModule {
     }
 
     // ========================================================================
-    // Chrome render — 1 stub (TODO #723)
+    // Chrome render — 1 FFI-backed method
     // ========================================================================
 
     fn chrome_render(
         &self,
-        _surface: &mut dyn RenderSurface,
-        _bounds: Rect,
-        _caps: &dyn PlatformCapabilities,
+        surface: &mut dyn RenderSurface,
+        bounds: Rect,
+        caps: &dyn PlatformCapabilities,
     ) {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_chrome_render) with an FfiRenderSurface vtable
-        // wrapping `surface`. Until then, dynamic modules contribute no chrome
-        // content — has_chrome() still reports correctly so layout allocates
-        // the right region, which simply renders empty.
+        self.handle.chrome_render(surface, bounds, caps);
     }
 
     // ========================================================================
-    // Buffer contribution — 1 FFI method + 7 stubs (TODO #723)
+    // Buffer contribution — 4 FFI-backed methods + 3 safe limitations
     // ========================================================================
 
     fn buffer_contrib_priority(&self) -> u16 {
         self.handle.buffer_contrib_priority()
     }
 
-    fn classify_token(&self, _category: &str) -> Option<RenderBehavior> {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_classify_token).
-        None
+    fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+        self.handle.classify_token(category)
     }
 
-    fn transform_line(
-        &self,
-        _buf: BufferId,
-        _line: usize,
-        _text: &str,
-    ) -> Option<TransformedLine> {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_transform_line).
-        None
+    fn transform_line(&self, buf: BufferId, line: usize, text: &str) -> Option<TransformedLine> {
+        self.handle.transform_line(buf, line, text)
     }
 
-    fn map_cursor_column(&self, _buf: BufferId, _line: usize, _col: usize) -> Option<u16> {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_map_cursor_column).
-        None
+    fn map_cursor_column(&self, buf: BufferId, line: usize, col: usize) -> Option<u16> {
+        self.handle.map_cursor_column(buf, line, col)
     }
+
+    // `fold_ranges`, `virtual_lines`, `inline_decorations` return `&[T]`
+    // borrowed from `&self` in the trait signature. This assumes the
+    // owning storage lives in the module instance, which dynamic modules
+    // cannot honor without Sync-compatible interior mutability (the
+    // `ClientModule` trait requires `Send + Sync`, ruling out `RefCell`).
+    //
+    // For flight #723 we return empty slices for dynamic modules. Dynamic
+    // modules still contribute `chrome_render`, `transform_line`,
+    // `annotate`, `classify_token`, `cursor_position`, and the 4 chrome
+    // metadata methods — that covers the render-path core. Fold/virtual/
+    // inline-decoration contributions are deferred until the trait is
+    // revised to return owned `Vec<T>` (follow-on issue; the #723
+    // countdown addendum acknowledges this limitation).
 
     fn fold_ranges(&self) -> &[(usize, usize)] {
-        // TODO(#723): dispatch via FFI trampoline returning a leaked
-        // &'static slice (reovim_client_module_fold_ranges).
         &[]
     }
 
     fn virtual_lines(&self) -> &[VirtualLine] {
-        // TODO(#723): same pattern as fold_ranges.
         &[]
     }
 
     fn inline_decorations(&self, _line: usize) -> &[InlineDecoration] {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_inline_decorations).
         &[]
     }
 
-    fn cursor_position(&self, _w: u16, _h: u16) -> Option<(u16, u16)> {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_cursor_position).
-        None
+    fn cursor_position(&self, w: u16, h: u16) -> Option<(u16, u16)> {
+        self.handle.cursor_position(w, h)
     }
 
     // ========================================================================
-    // Annotations — 1 FFI method + 2 stubs (TODO #723)
+    // Annotations — 2 FFI-backed methods + priority metadata
     // ========================================================================
 
     fn annotation_column_width(
         &self,
-        _ctx: &AnnotationContext,
-        _caps: &dyn PlatformCapabilities,
+        ctx: &AnnotationContext,
+        caps: &dyn PlatformCapabilities,
     ) -> ColumnWidth {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_annotation_column_width).
-        ColumnWidth::Fixed(0)
+        self.handle.annotation_column_width(ctx, caps)
     }
 
-    fn annotate(&self, _line: usize, _ctx: &AnnotationContext) -> Option<GutterCell> {
-        // TODO(#723): dispatch via FFI trampoline
-        // (reovim_client_module_annotate).
-        None
+    fn annotate(&self, line: usize, ctx: &AnnotationContext) -> Option<GutterCell> {
+        self.handle.annotate(line, ctx)
     }
 
     fn annotation_priority(&self) -> u16 {
@@ -371,10 +354,7 @@ pub unsafe fn discover_dynamic_client_modules<
         return Vec::new();
     }
 
-    tracing::info!(
-        count = discovered.len(),
-        "discovered dynamic client module files",
-    );
+    tracing::info!(count = discovered.len(), "discovered dynamic client module files",);
 
     // SAFETY: caller accepted the FFI trust model documented above; we
     // forward that invariant into the filter loop, which itself only calls

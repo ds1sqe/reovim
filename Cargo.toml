@@ -175,6 +175,7 @@ members = [
     "shared/clients/driver/tests/fixtures/incompatible_api_client_module",
     "shared/clients/driver/tests/fixtures/no_init_client_module",
     "shared/clients/driver/tests/fixtures/bare_client_module",
+    "shared/clients/driver/tests/fixtures/panicking_client_module",
 ]
 exclude = [
     # Python projects (not Rust)

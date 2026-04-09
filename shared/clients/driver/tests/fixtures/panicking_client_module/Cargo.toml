@@ -1,0 +1,16 @@
+[package]
+name = "reovim-panicking-client-module"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Panicking client module fixture for render/event panic containment tests (#723)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+reovim-module-macros = { workspace = true }
+
+[lints]
+workspace = true

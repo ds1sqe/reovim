@@ -990,6 +990,353 @@ pub fn declare_client_module(input: TokenStream) -> TokenStream {
             }));
             result.unwrap_or(0)
         }
+
+        // ====================================================================
+        // Render Trampolines (#723 — API 0.4.0)
+        // ====================================================================
+        //
+        // All render trampolines follow the same pattern:
+        //   1. catch_unwind(AssertUnwindSafe(...)) around the entire body
+        //   2. Cast module pointer to concrete type
+        //   3. Convert FFI args -> Rust args (vtable refs, context decodes)
+        //   4. Call the trait method
+        //   5. Marshal return -> FFI representation (sentinel for None,
+        //      out-pointer + thread-local for slices, heap for transformed
+        //      lines)
+        //
+        // # Backward compatibility
+        //
+        // Every trampoline is individually resolved with `.ok()` on the host
+        // side — old `.so` files compiled against 0.3.0 simply lack these
+        // symbols and the handle's dispatch methods fall through to trait
+        // defaults. Host code observes the same behavior either way.
+
+        /// Chrome render trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_chrome_render(
+            module: *mut ::std::ffi::c_void,
+            surface: *mut ::reovim_client_driver::ffi::FfiRenderSurface,
+            bounds: ::reovim_client_driver::Rect,
+            caps: *const ::reovim_client_driver::ffi::FfiPlatformCaps,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                let mut surface_ref =
+                    ::reovim_client_driver::ffi::FfiRenderSurfaceRef::new(&mut *surface);
+                let caps_snap = &*caps;
+                let caps_impl =
+                    ::reovim_client_driver::ffi::FfiCapsImpl::new(caps_snap);
+                use ::reovim_client_driver::ClientModule;
+                module.chrome_render(&mut surface_ref, bounds, &caps_impl);
+            }));
+        }
+
+        /// Annotate trampoline (#723). Returns an FFI gutter cell; the
+        /// sentinel `FfiGutterCell::NONE` (text_len == 0) represents `None`.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_annotate(
+            module: *mut ::std::ffi::c_void,
+            line: usize,
+            ctx: *const ::reovim_client_driver::ffi::FfiAnnotationContext,
+        ) -> ::reovim_client_driver::ffi::FfiGutterCell {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                let ctx_owned = (*ctx).into_ctx();
+                use ::reovim_client_driver::ClientModule;
+                module
+                    .annotate(line, &ctx_owned)
+                    .as_ref()
+                    .map_or(
+                        ::reovim_client_driver::ffi::FfiGutterCell::NONE,
+                        ::reovim_client_driver::ffi::FfiGutterCell::from_cell,
+                    )
+            }));
+            result.unwrap_or(::reovim_client_driver::ffi::FfiGutterCell::NONE)
+        }
+
+        /// Annotation column width trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_annotation_column_width(
+            module: *mut ::std::ffi::c_void,
+            ctx: *const ::reovim_client_driver::ffi::FfiAnnotationContext,
+            caps: *const ::reovim_client_driver::ffi::FfiPlatformCaps,
+        ) -> ::reovim_client_driver::ffi::FfiColumnWidth {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                let ctx_owned = (*ctx).into_ctx();
+                let caps_snap = &*caps;
+                let caps_impl =
+                    ::reovim_client_driver::ffi::FfiCapsImpl::new(caps_snap);
+                use ::reovim_client_driver::ClientModule;
+                let w = module.annotation_column_width(&ctx_owned, &caps_impl);
+                ::reovim_client_driver::ffi::FfiColumnWidth::from_width(w)
+            }));
+            result.unwrap_or(::reovim_client_driver::ffi::FfiColumnWidth::ZERO)
+        }
+
+        /// Transform line trampoline (#723).
+        ///
+        /// Returns a pointer to a heap-allocated `FfiTransformedLine`
+        /// owned by the module's `.so`. The host must call
+        /// `reovim_client_module_free_transformed_line` on the pointer
+        /// after reading the fields.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_transform_line(
+            module: *mut ::std::ffi::c_void,
+            buf: usize,
+            line: usize,
+            text_ptr: *const u8,
+            text_len: usize,
+        ) -> *mut ::reovim_client_driver::ffi::FfiTransformedLine {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                // SAFETY: text_ptr/text_len come from a Rust &str on the
+                // host side (UTF-8 by type system).
+                let text = ::std::str::from_utf8_unchecked(
+                    ::std::slice::from_raw_parts(text_ptr, text_len),
+                );
+                use ::reovim_client_driver::ClientModule;
+                #[allow(clippy::option_if_let_else)]
+                match module.transform_line(
+                    ::reovim_client_driver::BufferId(buf),
+                    line,
+                    text,
+                ) {
+                    Some(tl) => {
+                        #[allow(deprecated)]
+                        ::reovim_client_driver::ffi::FfiTransformedLine::from_rust(tl)
+                    }
+                    None => ::std::ptr::null_mut(),
+                }
+            }));
+            result.unwrap_or(::std::ptr::null_mut())
+        }
+
+        /// Free a transformed line allocated by this module (#723).
+        ///
+        /// **Must only be called with pointers returned by this module's
+        /// own `reovim_client_module_transform_line` trampoline.** The
+        /// free runs in module context to match the allocator that
+        /// created the heap blocks.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_free_transformed_line(
+            ptr: *mut ::reovim_client_driver::ffi::FfiTransformedLine,
+        ) {
+            if !ptr.is_null() {
+                let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                    #[allow(deprecated)]
+                    ::reovim_client_driver::ffi::FfiTransformedLine::free(ptr);
+                }));
+            }
+        }
+
+        /// Map cursor column trampoline (#723).
+        ///
+        /// Returns -1 for `None`, otherwise the u16 value as i32.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_map_cursor_column(
+            module: *mut ::std::ffi::c_void,
+            buf: usize,
+            line: usize,
+            col: usize,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                module
+                    .map_cursor_column(::reovim_client_driver::BufferId(buf), line, col)
+                    .map_or(-1_i32, i32::from)
+            }));
+            result.unwrap_or(-1)
+        }
+
+        /// Fold ranges trampoline (#723).
+        ///
+        /// Writes `out_ptr`/`out_len` from a thread-local `Vec<FfiFoldRange>`
+        /// cache. The output is valid until the next call to this function
+        /// on the same thread (single-threaded render path invariant).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_fold_ranges(
+            module: *mut ::std::ffi::c_void,
+            out_ptr: *mut *const ::reovim_client_driver::ffi::FfiFoldRange,
+            out_len: *mut usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                let ranges = module.fold_ranges();
+
+                // SAFETY on the RefCell below:
+                //   1. Thread-local storage — never crosses threads.
+                //   2. `catch_unwind` wraps this block exactly once per FFI
+                //      invocation; there is no retry on the same thread.
+                //   3. Drop-safe: if the trait method panics mid-iteration,
+                //      the `RefMut` guard releases during unwinding before
+                //      `catch_unwind` catches.
+                ::std::thread_local! {
+                    static CACHE: ::std::cell::RefCell<
+                        ::std::vec::Vec<::reovim_client_driver::ffi::FfiFoldRange>
+                    > = const { ::std::cell::RefCell::new(::std::vec::Vec::new()) };
+                }
+                CACHE.with(|cache| {
+                    let mut cache = cache.borrow_mut();
+                    cache.clear();
+                    cache.extend(ranges.iter().map(|(start_line, line_count)| {
+                        ::reovim_client_driver::ffi::FfiFoldRange {
+                            start_line: *start_line,
+                            line_count: *line_count,
+                        }
+                    }));
+                    *out_ptr = cache.as_ptr();
+                    *out_len = cache.len();
+                });
+            }));
+        }
+
+        /// Virtual lines trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_virtual_lines(
+            module: *mut ::std::ffi::c_void,
+            out_ptr: *mut *const ::reovim_client_driver::ffi::FfiVirtualLine,
+            out_len: *mut usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                let lines = module.virtual_lines();
+
+                // SAFETY: see fold_ranges RefCell rationale above.
+                ::std::thread_local! {
+                    static CACHE: ::std::cell::RefCell<
+                        ::std::vec::Vec<::reovim_client_driver::ffi::FfiVirtualLine>
+                    > = const { ::std::cell::RefCell::new(::std::vec::Vec::new()) };
+                }
+                CACHE.with(|cache| {
+                    let mut cache = cache.borrow_mut();
+                    cache.clear();
+                    cache.extend(
+                        lines
+                            .iter()
+                            .map(::reovim_client_driver::ffi::FfiVirtualLine::from_rust),
+                    );
+                    *out_ptr = cache.as_ptr();
+                    *out_len = cache.len();
+                });
+            }));
+        }
+
+        /// Inline decorations trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_inline_decorations(
+            module: *mut ::std::ffi::c_void,
+            line: usize,
+            out_ptr: *mut *const ::reovim_client_driver::ffi::FfiInlineDecoration,
+            out_len: *mut usize,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                let decos = module.inline_decorations(line);
+
+                // SAFETY: see fold_ranges RefCell rationale above.
+                ::std::thread_local! {
+                    static CACHE: ::std::cell::RefCell<
+                        ::std::vec::Vec<::reovim_client_driver::ffi::FfiInlineDecoration>
+                    > = const { ::std::cell::RefCell::new(::std::vec::Vec::new()) };
+                }
+                CACHE.with(|cache| {
+                    let mut cache = cache.borrow_mut();
+                    cache.clear();
+                    cache.extend(
+                        decos
+                            .iter()
+                            .map(::reovim_client_driver::ffi::FfiInlineDecoration::from_deco),
+                    );
+                    *out_ptr = cache.as_ptr();
+                    *out_len = cache.len();
+                });
+            }));
+        }
+
+        /// Cursor position trampoline (#723).
+        ///
+        /// Writes into `out_col`/`out_row` and returns 1 if a cursor
+        /// position was set, 0 otherwise.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_cursor_position(
+            module: *mut ::std::ffi::c_void,
+            w: u16,
+            h: u16,
+            out_col: *mut u16,
+            out_row: *mut u16,
+        ) -> i32 {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_client_driver::ClientModule;
+                if let Some((c, r)) = module.cursor_position(w, h) {
+                    *out_col = c;
+                    *out_row = r;
+                    1_i32
+                } else {
+                    0_i32
+                }
+            }));
+            result.unwrap_or(0)
+        }
+
+        /// Classify token trampoline (#723).
+        ///
+        /// Returns `FfiRenderBehavior::NONE` (tag 255) for `None`.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_classify_token(
+            module: *mut ::std::ffi::c_void,
+            cat_ptr: *const u8,
+            cat_len: usize,
+        ) -> ::reovim_client_driver::ffi::FfiRenderBehavior {
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                // SAFETY: cat_ptr/cat_len come from a Rust &str on the host.
+                let category = ::std::str::from_utf8_unchecked(
+                    ::std::slice::from_raw_parts(cat_ptr, cat_len),
+                );
+                use ::reovim_client_driver::ClientModule;
+                ::reovim_client_driver::ffi::FfiRenderBehavior::from_option(
+                    module.classify_token(category),
+                )
+            }));
+            result.unwrap_or(::reovim_client_driver::ffi::FfiRenderBehavior::NONE)
+        }
+
+        /// On capabilities changed trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_capabilities_changed(
+            module: *mut ::std::ffi::c_void,
+            caps: *const ::reovim_client_driver::ffi::FfiPlatformCaps,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let caps_snap = &*caps;
+                let caps_impl =
+                    ::reovim_client_driver::ffi::FfiCapsImpl::new(caps_snap);
+                use ::reovim_client_driver::ClientModule;
+                module.on_capabilities_changed(&caps_impl);
+            }));
+        }
+
+        /// On theme changed trampoline (#723).
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_client_module_on_theme_changed(
+            module: *mut ::std::ffi::c_void,
+            theme: *const ::reovim_client_driver::ffi::FfiThemeProvider,
+        ) {
+            let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let theme_ref =
+                    ::reovim_client_driver::ffi::FfiThemeRef::new(&*theme);
+                use ::reovim_client_driver::ClientModule;
+                module.on_theme_changed(&theme_ref);
+            }));
+        }
     };
 
     expanded.into()

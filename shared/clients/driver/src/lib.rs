@@ -4,6 +4,7 @@
 pub mod chrome_utils;
 pub mod conceal;
 pub mod discovery;
+pub mod ffi;
 pub mod handle;
 pub mod loader;
 #[cfg(feature = "serde")]

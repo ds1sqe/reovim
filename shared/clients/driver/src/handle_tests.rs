@@ -539,11 +539,27 @@ fn ffi_symbols_all_none_backward_compat() {
         chrome_z_order: None,
         buffer_contrib_priority: None,
         annotation_priority: None,
+        // #723 render-path symbols — all absent in pre-0.4.0 modules.
+        chrome_render: None,
+        annotate: None,
+        annotation_column_width: None,
+        transform_line: None,
+        free_transformed_line: None,
+        map_cursor_column: None,
+        fold_ranges: None,
+        virtual_lines: None,
+        inline_decorations: None,
+        cursor_position: None,
+        classify_token: None,
+        on_capabilities_changed: None,
+        on_theme_changed: None,
     };
-    // Verify all optional fields are None (backward compat with pre-0.3.0).
+    // Verify all optional fields are None (backward compat with pre-0.4.0).
     assert!(ffi.on_notification.is_none());
     assert!(ffi.tick.is_none());
     assert!(ffi.has_chrome.is_none());
+    assert!(ffi.chrome_render.is_none());
+    assert!(ffi.transform_line.is_none());
 }
 
 unsafe extern "C" fn dummy_init(_: *mut std::ffi::c_void, _: *const std::ffi::c_void) -> i32 {
@@ -579,10 +595,7 @@ fn expected_handle_leaks_counts_fixed_plus_deps() {
     // Zero deps: exactly the fixed count.
     assert_eq!(expected_handle_leaks(0, 0), HANDLE_LEAKS_PER_MODULE_FIXED);
     // Mixed deps: fixed + required + optional.
-    assert_eq!(
-        expected_handle_leaks(2, 3),
-        HANDLE_LEAKS_PER_MODULE_FIXED + 5,
-    );
+    assert_eq!(expected_handle_leaks(2, 3), HANDLE_LEAKS_PER_MODULE_FIXED + 5,);
 }
 
 #[test]
@@ -593,11 +606,8 @@ fn leak_wrapper_increments_counter_lower_bound() {
     let _a = crate::handle::test_leak_str("hello".to_string());
     let _b = crate::handle::test_leak_str("world".to_string());
     // slice with 3 elements — expects 3 string leaks + 1 slice leak = 4
-    let _s = crate::handle::test_leak_str_slice(vec![
-        "x".to_string(),
-        "y".to_string(),
-        "z".to_string(),
-    ]);
+    let _s =
+        crate::handle::test_leak_str_slice(vec!["x".to_string(), "y".to_string(), "z".to_string()]);
     let after = crate::handle::HANDLE_LEAK_COUNTER.load(Ordering::Relaxed);
 
     let delta = after.saturating_sub(before);

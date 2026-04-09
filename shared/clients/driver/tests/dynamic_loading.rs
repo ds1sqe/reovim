@@ -22,8 +22,10 @@
 
 use std::{fs, path::PathBuf};
 
-use reovim_client_driver::handle::{
-    ClientModuleHandle, HANDLE_LEAKS_PER_MODULE_FIXED, LoadError,
+use reovim_client_driver::{
+    Color, ColorDepth, Insets, Rect, RenderSurface, RenderingModel, Style, ThemeProvider,
+    handle::{ClientModuleHandle, HANDLE_LEAKS_PER_MODULE_FIXED, LoadError},
+    traits::PlatformCapabilities,
 };
 
 // =============================================================================
@@ -68,6 +70,119 @@ fn no_init_fixture_path() -> Option<PathBuf> {
 /// Locate the bare fixture (T1 optional-symbol degradation).
 fn bare_fixture_path() -> Option<PathBuf> {
     fixture_lib_path("reovim_bare_client_module")
+}
+
+/// Locate the panicking render fixture (T2).
+fn panicking_fixture_path() -> Option<PathBuf> {
+    fixture_lib_path("reovim_panicking_client_module")
+}
+
+struct NoopSurface {
+    writes: usize,
+}
+
+impl NoopSurface {
+    const fn new() -> Self {
+        Self { writes: 0 }
+    }
+}
+
+impl RenderSurface for NoopSurface {
+    fn write_styled(&mut self, _x: u16, _y: u16, _text: &str, _style: Style) -> u16 {
+        self.writes += 1;
+        0
+    }
+
+    fn apply_style(&mut self, _x: u16, _y: u16, _style: Style) {
+        self.writes += 1;
+    }
+
+    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {
+        self.writes += 1;
+    }
+
+    fn fill(&mut self, _rect: Rect, _ch: char, _style: Style) {
+        self.writes += 1;
+    }
+
+    fn clear(&mut self, _rect: Rect) {
+        self.writes += 1;
+    }
+
+    fn size(&self) -> (u16, u16) {
+        (80, 24)
+    }
+}
+
+struct NoopCaps;
+
+impl PlatformCapabilities for NoopCaps {
+    fn rendering_model(&self) -> RenderingModel {
+        RenderingModel::CellGrid
+    }
+    fn grid_size(&self) -> Option<(u16, u16)> {
+        Some((80, 24))
+    }
+    fn color_depth(&self) -> ColorDepth {
+        ColorDepth::TrueColor
+    }
+    fn pixel_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn reliable_unicode_width(&self) -> bool {
+        true
+    }
+    fn dark_mode(&self) -> bool {
+        false
+    }
+    fn smooth_scroll(&self) -> bool {
+        false
+    }
+    fn pointer_events(&self) -> bool {
+        false
+    }
+    fn touch_input(&self) -> bool {
+        false
+    }
+    fn haptic(&self) -> bool {
+        false
+    }
+    fn safe_area(&self) -> Insets {
+        Insets::ZERO
+    }
+    fn has_focus(&self) -> bool {
+        true
+    }
+    fn clipboard_available(&self) -> bool {
+        false
+    }
+    fn screen_reader_active(&self) -> bool {
+        false
+    }
+}
+
+struct NoopTheme;
+
+impl ThemeProvider for NoopTheme {
+    fn highlight(&self, _group: &str) -> Style {
+        Style::default()
+    }
+
+    fn highlight_with_fallback(&self, _groups: &[&str]) -> Style {
+        Style::default()
+    }
+
+    fn foreground(&self) -> Style {
+        Style::default()
+    }
+
+    fn background(&self) -> Style {
+        Style::default()
+    }
+
+    fn is_dark(&self) -> bool {
+        true
+    }
 }
 
 /// Skip test if fixture `.so` is not present.
@@ -127,10 +242,7 @@ fn t1_bare_fixture_loads_with_no_optional_symbols() {
     assert!(handle.is_dynamic());
 
     // Role declaration — all optional, must default to false.
-    assert!(
-        !handle.has_chrome(),
-        "missing has_chrome symbol should default to false",
-    );
+    assert!(!handle.has_chrome(), "missing has_chrome symbol should default to false");
     assert!(
         !handle.has_buffer_contrib(),
         "missing has_buffer_contrib symbol should default to false",
@@ -151,11 +263,7 @@ fn t1_bare_fixture_loads_with_no_optional_symbols() {
         0,
         "missing chrome_priority symbol should default to 0",
     );
-    assert_eq!(
-        handle.chrome_z_order(),
-        0,
-        "missing chrome_z_order symbol should default to 0",
-    );
+    assert_eq!(handle.chrome_z_order(), 0, "missing chrome_z_order symbol should default to 0");
 
     // Priorities — all optional, default 0.
     assert_eq!(
@@ -170,20 +278,14 @@ fn t1_bare_fixture_loads_with_no_optional_symbols() {
     );
 
     // Tick — optional, defaults to false.
-    assert!(
-        !handle.tick(),
-        "missing tick symbol should default to false",
-    );
+    assert!(!handle.tick(), "missing tick symbol should default to false");
 
     // Events — optional, calling them must not panic (no-op).
     handle.on_notification(r#"{"k":"v"}"#);
     handle.on_mode_change("normal");
     handle.on_cursor_update(reovim_client_driver::BufferId(1), 0, 0);
     handle.on_buffer_focus(reovim_client_driver::BufferId(1));
-    handle.on_option_changed(
-        "wrap",
-        &reovim_client_driver::OptionValue::Bool(true),
-    );
+    handle.on_option_changed("wrap", &reovim_client_driver::OptionValue::Bool(true));
     // No assertions — the contract is "no crash, no error." Reaching this
     // point proves graceful degradation for 5 event trampolines.
 }
@@ -241,6 +343,64 @@ fn t2_handle_leak_count_matches_constant() {
     assert_eq!(handle.optional_dependencies(), &["optional-dep"]);
 }
 
+#[test]
+fn t2_panicking_chrome_render_is_swallowed_by_trampoline() {
+    let Some(so_path) = panicking_fixture_path() else {
+        eprintln!(
+            "SKIP: panicking fixture .so not found. \
+             Run: cargo build -p reovim-panicking-client-module",
+        );
+        return;
+    };
+
+    let handle = unsafe { ClientModuleHandle::load_from_path(&so_path) }
+        .expect("panicking fixture should load successfully");
+    let mut surface = NoopSurface::new();
+    let caps = NoopCaps;
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle.chrome_render(
+            &mut surface,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 3,
+            },
+            &caps,
+        );
+    }));
+
+    assert!(result.is_ok(), "module panic must not escape chrome_render");
+    assert_eq!(surface.writes, 0, "surface remains valid after swallowed panic");
+}
+
+#[test]
+fn t2_panicking_event_trampolines_do_not_escape() {
+    let Some(so_path) = panicking_fixture_path() else {
+        eprintln!(
+            "SKIP: panicking fixture .so not found. \
+             Run: cargo build -p reovim-panicking-client-module",
+        );
+        return;
+    };
+
+    let mut handle = unsafe { ClientModuleHandle::load_from_path(&so_path) }
+        .expect("panicking fixture should load successfully");
+    let caps = NoopCaps;
+    let theme = NoopTheme;
+
+    let caps_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle.on_capabilities_changed(&caps);
+    }));
+    assert!(caps_result.is_ok(), "module panic must not escape on_capabilities_changed");
+
+    let theme_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle.on_theme_changed(&theme);
+    }));
+    assert!(theme_result.is_ok(), "module panic must not escape on_theme_changed");
+}
+
 // =============================================================================
 // T5 — load_from_path error paths
 // =============================================================================
@@ -251,10 +411,7 @@ fn t5_file_not_found() {
     // SAFETY: path does not exist, so load_from_path returns an error
     // before any unsafe FFI calls.
     let err = unsafe { ClientModuleHandle::load_from_path(&missing) }.unwrap_err();
-    assert!(
-        matches!(err, LoadError::FileNotFound(_)),
-        "expected FileNotFound, got {err:?}",
-    );
+    assert!(matches!(err, LoadError::FileNotFound(_)), "expected FileNotFound, got {err:?}");
     let msg = err.to_string();
     assert!(msg.contains("dlopen failed"), "message: {msg}");
 }
@@ -270,10 +427,7 @@ fn t5_not_a_shared_library() {
 
     fs::remove_file(&tmp).ok();
 
-    assert!(
-        matches!(err, LoadError::DlopenFailed(_)),
-        "expected DlopenFailed, got {err:?}",
-    );
+    assert!(matches!(err, LoadError::DlopenFailed(_)), "expected DlopenFailed, got {err:?}");
     let msg = err.to_string();
     assert!(msg.contains("dlopen failed"), "message: {msg}");
 }
@@ -302,10 +456,7 @@ fn t5_incompatible_api_version() {
         other => panic!("expected IncompatibleApiVersion, got {other:?}"),
     }
     let msg = err.to_string();
-    assert!(
-        msg.contains("incompatible API version"),
-        "message: {msg}",
-    );
+    assert!(msg.contains("incompatible API version"), "message: {msg}");
     assert!(msg.contains("99"), "message should cite module version: {msg}");
 }
 
@@ -333,10 +484,7 @@ fn t5_missing_init_symbol() {
         other => panic!("expected MissingSymbol for init, got {other:?}"),
     }
     let msg = err.to_string();
-    assert!(
-        msg.contains("no reovim_client_module_init symbol"),
-        "message: {msg}",
-    );
+    assert!(msg.contains("no reovim_client_module_init symbol"), "message: {msg}");
 }
 
 #[test]
@@ -346,8 +494,8 @@ fn t5_fixture_loads_and_probe_has_expected_identity() {
     // valid fixture. Covers the implicit contract that error-path tests
     // rely on a real success branch existing.
     let so_path = require_fixture!();
-    let handle = unsafe { ClientModuleHandle::load_from_path(&so_path) }
-        .expect("fixture should load");
+    let handle =
+        unsafe { ClientModuleHandle::load_from_path(&so_path) }.expect("fixture should load");
     assert_eq!(handle.kind(), "minimal-client");
     assert_eq!(handle.version().major, 1);
 }
@@ -451,10 +599,7 @@ mod t4_cross_type_deps {
         // After resolve_and_reorder, dynamic-b must come before static-a.
         let pos_a = kinds.iter().position(|k| *k == "static-a").unwrap();
         let pos_b = kinds.iter().position(|k| *k == "dynamic-b").unwrap();
-        assert!(
-            pos_b < pos_a,
-            "dynamic-b should be ordered before static-a but got {kinds:?}",
-        );
+        assert!(pos_b < pos_a, "dynamic-b should be ordered before static-a but got {kinds:?}");
 
         // Drop to silence unused-field warnings.
         drop(loader);

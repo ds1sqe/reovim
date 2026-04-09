@@ -152,7 +152,7 @@ impl std::fmt::Display for Version {
 ///   (`chrome_position`, `chrome_requested_size`, `chrome_priority`,
 ///   `chrome_z_order`, `buffer_contrib_priority`, `annotation_priority`),
 ///   capability flags in `ClientModuleProbe`.
-pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 3, 0);
+pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 4, 0);
 
 /// Check if a required API version is compatible with the provided version.
 ///
@@ -428,6 +428,11 @@ pub enum RenderingModel {
 // =============================================================================
 
 /// Axis-aligned rectangle in screen coordinates.
+///
+/// `#[repr(C)]` since #723 — `Rect` crosses FFI as a render-trampoline argument
+/// and must have a stable layout. All fields are `u16` so the layout is
+/// identical to `[u16; 4]` on every supported target.
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rect {
     pub x: u16,
@@ -475,6 +480,10 @@ impl Rect {
 }
 
 /// Edge insets (padding/margin from screen edges).
+///
+/// `#[repr(C)]` since #723 — `Insets` is embedded in `FfiPlatformCaps` and
+/// must share layout with the module-side binding.
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Insets {
     pub top: u16,
@@ -816,6 +825,17 @@ impl Attributes {
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
+    }
+
+    /// Reconstruct `Attributes` from its raw bit representation.
+    ///
+    /// Used by #723's `FfiStyle` round-trip: the wire format carries the raw
+    /// `u8` and the host rehydrates via this helper. Unknown bits are
+    /// preserved verbatim (forward-compatible with attributes added in a
+    /// future minor version).
+    #[must_use]
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
     }
 }
 
