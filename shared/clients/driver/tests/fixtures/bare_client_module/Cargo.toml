@@ -1,0 +1,15 @@
+[package]
+name = "reovim-bare-client-module"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Fixture exporting only required FFI symbols — tests optional-symbol graceful degradation (T1)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+
+[lints]
+workspace = true

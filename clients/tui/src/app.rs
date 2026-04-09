@@ -186,10 +186,38 @@ impl<O: TuiOutput> TuiApp<O> {
             Self::apply_theme_internal(&theme_loader, &mut theme_manager, theme_name);
         }
 
-        // Load client modules via factory map + dependency-resolving loader
+        // Load client modules via factory map + dependency-resolving loader.
+        //
+        // Dynamic `.so` modules from `REOVIM_CLIENT_MODULE_PATH` / the XDG
+        // data dir are opt-in behind the `REOVIM_LOAD_DYNAMIC_CLIENT_MODULES`
+        // env flag for flight #724. The flag disappears once #723 ships
+        // render-path FFI and #729 proves the full stack end-to-end.
         let factories = crate::static_client_modules::builtin_client_modules();
-        let module_loader = ClientModuleLoader::new(factories, disabled_kinds)
-            .expect("client module dependency resolution failed");
+        let builtin_kinds: std::collections::HashSet<&str> =
+            factories.keys().copied().collect();
+        let dynamic_modules: Vec<Box<dyn reovim_client_driver::ClientModule>> =
+            if std::env::var("REOVIM_LOAD_DYNAMIC_CLIENT_MODULES").is_ok() {
+                // SAFETY: `discover_dynamic_client_modules` dlopens `.so`
+                // files from user-trusted search paths (same trust model as
+                // server-side `discover_and_load_externals()`). The TUI's
+                // single-dispatch invariant — documented on
+                // `DynamicClientModule` and inherited from
+                // `ClientModuleHandle` — is upheld here because this call
+                // runs on the TUI construction thread before the event loop
+                // starts.
+                #[allow(unsafe_code)]
+                unsafe {
+                    crate::dynamic_module::discover_dynamic_client_modules(
+                        disabled_kinds,
+                        &builtin_kinds,
+                    )
+                }
+            } else {
+                Vec::new()
+            };
+        let module_loader =
+            ClientModuleLoader::new_with_dynamic(factories, disabled_kinds, dynamic_modules)
+                .expect("client module dependency resolution failed");
 
         // Create server handle adapter for module init() calls.
         // Clone the gRPC client so modules get their own handle while the app

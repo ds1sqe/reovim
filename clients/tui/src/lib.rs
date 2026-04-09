@@ -104,6 +104,9 @@ pub mod server_handle;
 // Client module factory map
 pub mod static_client_modules;
 
+// Dynamic client module wrapper (#724)
+pub mod dynamic_module;
+
 // Unified TUI app (Issue #493)
 #[cfg(feature = "grpc")]
 pub mod app;

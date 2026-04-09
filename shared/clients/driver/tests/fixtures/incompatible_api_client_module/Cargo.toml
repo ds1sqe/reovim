@@ -1,0 +1,15 @@
+[package]
+name = "reovim-incompatible-api-client-module"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Fixture with an intentionally incompatible API version (T5 error path coverage)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+reovim-client-driver = { workspace = true }
+
+[lints]
+workspace = true

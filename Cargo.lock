@@ -2266,6 +2266,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-bare-client-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
+]
+
+[[package]]
 name = "reovim-bench"
 version = "0.14.5-dev"
 dependencies = [
@@ -2729,6 +2736,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-incompatible-api-client-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
+]
+
+[[package]]
 name = "reovim-kernel"
 version = "0.14.5-dev"
 dependencies = [
@@ -2736,6 +2750,14 @@ dependencies = [
  "reovim-arch",
  "reovim-provider-text",
  "reovim-types-text",
+]
+
+[[package]]
+name = "reovim-minimal-client-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -3671,6 +3693,13 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-no-init-client-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-client-driver",
 ]
 
 [[package]]

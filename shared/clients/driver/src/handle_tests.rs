@@ -318,8 +318,8 @@ fn handle_is_dynamic_false() {
 fn handle_dependencies_static() {
     let module = Box::new(HandleTestModule::new());
     let handle = ClientModuleHandle::from_static(module);
-    assert_eq!(handle.dependencies(), vec!["dep-a"]);
-    assert_eq!(handle.optional_dependencies(), vec!["opt-b"]);
+    assert_eq!(handle.dependencies(), &["dep-a"]);
+    assert_eq!(handle.optional_dependencies(), &["opt-b"]);
 }
 
 #[test]
@@ -553,3 +553,76 @@ unsafe extern "C" fn dummy_exit(_: *mut std::ffi::c_void) -> i32 {
     0
 }
 unsafe extern "C" fn dummy_destroy(_: *mut std::ffi::c_void) {}
+
+// =============================================================================
+// T2 — leak counter + HANDLE_LEAKS_PER_MODULE_FIXED contract (#724)
+// =============================================================================
+//
+// The counter lives on an atomic shared across parallel test threads, so a
+// precise delta-equals-expected assertion would be racy. These tests assert
+// the LOWER-BOUND contract: each leak helper call adds AT LEAST its expected
+// allocation to the counter. Combined with the identity assertions elsewhere
+// (handle_dependencies_static) and the load-path integration tests in
+// `tests/dynamic_loading.rs`, this catches regressions where the wrapper
+// forgets to leak (delta < minimum) without requiring global test
+// serialization.
+
+#[test]
+fn handle_leaks_per_module_fixed_is_documented_constant() {
+    // Kind + name + deps_slice + opt_deps_slice = 4 fixed leaks.
+    assert_eq!(crate::handle::HANDLE_LEAKS_PER_MODULE_FIXED, 4);
+}
+
+#[test]
+fn expected_handle_leaks_counts_fixed_plus_deps() {
+    use crate::handle::{HANDLE_LEAKS_PER_MODULE_FIXED, expected_handle_leaks};
+    // Zero deps: exactly the fixed count.
+    assert_eq!(expected_handle_leaks(0, 0), HANDLE_LEAKS_PER_MODULE_FIXED);
+    // Mixed deps: fixed + required + optional.
+    assert_eq!(
+        expected_handle_leaks(2, 3),
+        HANDLE_LEAKS_PER_MODULE_FIXED + 5,
+    );
+}
+
+#[test]
+fn leak_wrapper_increments_counter_lower_bound() {
+    use std::sync::atomic::Ordering;
+
+    let before = crate::handle::HANDLE_LEAK_COUNTER.load(Ordering::Relaxed);
+    let _a = crate::handle::test_leak_str("hello".to_string());
+    let _b = crate::handle::test_leak_str("world".to_string());
+    // slice with 3 elements — expects 3 string leaks + 1 slice leak = 4
+    let _s = crate::handle::test_leak_str_slice(vec![
+        "x".to_string(),
+        "y".to_string(),
+        "z".to_string(),
+    ]);
+    let after = crate::handle::HANDLE_LEAK_COUNTER.load(Ordering::Relaxed);
+
+    let delta = after.saturating_sub(before);
+    // Our calls contributed exactly 2 + 3 + 1 = 6 increments. Parallel tests
+    // may raise the delta higher, but never lower.
+    let our_contribution: usize = 2 + 3 + 1;
+    assert!(
+        delta >= our_contribution,
+        "expected at least {our_contribution} leaks, got delta {delta}",
+    );
+}
+
+#[test]
+fn from_static_contributes_expected_leak_count_lower_bound() {
+    use std::sync::atomic::Ordering;
+
+    let before = crate::handle::HANDLE_LEAK_COUNTER.load(Ordering::Relaxed);
+    // HandleTestModule: 1 required dep + 1 optional dep.
+    let _h = ClientModuleHandle::from_static(Box::new(HandleTestModule::new()));
+    let after = crate::handle::HANDLE_LEAK_COUNTER.load(Ordering::Relaxed);
+
+    let delta = after.saturating_sub(before);
+    let expected = crate::handle::expected_handle_leaks(1, 1);
+    assert!(
+        delta >= expected,
+        "from_static should contribute >= {expected} leaks, got {delta}",
+    );
+}

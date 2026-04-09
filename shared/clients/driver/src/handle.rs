@@ -13,12 +13,136 @@
 //! rendering methods (chrome, virtual lines, etc.) are not wired through FFI
 //! in this phase — they return defaults.
 
-use std::{ffi::c_void, path::PathBuf};
+use std::{
+    ffi::c_void,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError,
     ClientModuleProbe, ModuleContext, OptionValue, ProbeResult, Version,
+    types::{CLIENT_MODULE_API_VERSION, is_client_compatible},
 };
+
+// =============================================================================
+// Leak counters and constants
+// =============================================================================
+
+/// Fixed static allocations leaked per [`ClientModuleHandle`] construction.
+///
+/// Counts the 4 fixed leaks: `kind`, `name`, `deps` slice, `optional_deps` slice.
+/// Does NOT include individual dependency strings (which vary per module).
+///
+/// Use [`expected_handle_leaks`] (test-only) to compute the total expected leaks
+/// for a handle with a given dep count.
+///
+/// Bounded by module count (max ~20 client modules), ~200 bytes total per handle.
+/// See the #724 countdown addendum for rationale.
+pub const HANDLE_LEAKS_PER_MODULE_FIXED: usize = 4;
+
+/// Compute the total expected `Box::leak` count for a handle whose module
+/// declares `required_deps` required dependencies and `optional_deps` optional.
+///
+/// Test-only helper used by the leak-bound test (T2) in `handle_tests.rs`.
+#[cfg(test)]
+#[allow(dead_code)] // consumed by T2 leak bound test
+pub(crate) const fn expected_handle_leaks(required_deps: usize, optional_deps: usize) -> usize {
+    HANDLE_LEAKS_PER_MODULE_FIXED + required_deps + optional_deps
+}
+
+/// Test-only counter for [`Box::leak`] calls inside [`ClientModuleHandle`]
+/// construction. Used by the T2 leak-bound test to verify that each handle
+/// produces a predictable number of leaked allocations.
+#[cfg(test)]
+pub(crate) static HANDLE_LEAK_COUNTER: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Leak a `String` into `&'static str`, incrementing the test counter.
+fn leak_str(s: String) -> &'static str {
+    #[cfg(test)]
+    HANDLE_LEAK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Box::leak(s.into_boxed_str())
+}
+
+/// Leak a vector of strings into `&'static [&'static str]`, incrementing the
+/// test counter once for each element string PLUS once for the slice itself.
+fn leak_str_slice(strs: Vec<String>) -> &'static [&'static str] {
+    let leaked: Vec<&'static str> = strs.into_iter().map(leak_str).collect();
+    #[cfg(test)]
+    HANDLE_LEAK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Box::leak(leaked.into_boxed_slice())
+}
+
+/// Direct test access to the leak wrappers so T2 can exercise the counter
+/// outside of full handle construction.
+#[cfg(test)]
+#[allow(dead_code)] // consumed by handle_tests::leak_wrapper_*
+pub(crate) fn test_leak_str(s: String) -> &'static str {
+    leak_str(s)
+}
+
+/// Direct test access to the slice-leak wrapper.
+#[cfg(test)]
+#[allow(dead_code)] // consumed by handle_tests::leak_wrapper_*
+pub(crate) fn test_leak_str_slice(strs: Vec<String>) -> &'static [&'static str] {
+    leak_str_slice(strs)
+}
+
+// =============================================================================
+// LoadError — failures from `ClientModuleHandle::load_from_path`
+// =============================================================================
+
+/// Error returned from [`ClientModuleHandle::load_from_path`] when a dynamic
+/// client module `.so` cannot be loaded.
+///
+/// Error messages are part of the test contract (T5) — downstream diagnostics
+/// and the discovery filter code rely on them to log skip reasons. Do NOT
+/// rename these variants or change the `Display` output without updating the
+/// tests in `handle_tests.rs`.
+#[derive(Debug)]
+pub enum LoadError {
+    /// The path does not exist on disk.
+    FileNotFound(PathBuf),
+    /// `libloading::Library::new` failed (not a shared library, dlopen error).
+    DlopenFailed(String),
+    /// The `REOVIM_CLIENT_MODULE_API_VERSION` symbol was not found.
+    MissingApiVersion(String),
+    /// The module's API version is not compatible with the host.
+    IncompatibleApiVersion {
+        /// Version advertised by the module's `.so`.
+        module: (u32, u32),
+        /// Version provided by this host.
+        host: (u32, u32),
+    },
+    /// A required FFI symbol is missing from the `.so`.
+    MissingSymbol {
+        /// Name of the missing symbol (e.g., `reovim_client_module_probe`).
+        symbol: String,
+        /// Underlying `libloading` error message.
+        source: String,
+    },
+    /// `reovim_client_module_entry()` returned a null pointer.
+    EntryReturnedNull,
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FileNotFound(path) => write!(f, "dlopen failed: file not found: {}", path.display()),
+            Self::DlopenFailed(msg) => write!(f, "dlopen failed: {msg}"),
+            Self::MissingApiVersion(msg) => write!(f, "no API version symbol: {msg}"),
+            Self::IncompatibleApiVersion { module, host } => write!(
+                f,
+                "incompatible API version: module requires {}.{}, host provides {}.{}",
+                module.0, module.1, host.0, host.1,
+            ),
+            Self::MissingSymbol { symbol, source } => write!(f, "no {symbol} symbol: {source}"),
+            Self::EntryReturnedNull => write!(f, "entry returned null"),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
 
 // =============================================================================
 // FFI Function Types
@@ -162,17 +286,28 @@ pub struct ClientFfiSymbols {
 /// Provides lifecycle dispatch (init/exit/`on_all_loaded`) for both module types.
 /// Static modules delegate through `ClientModule` trait. Dynamic modules
 /// dispatch through FFI trampolines.
+///
+/// # Leaked identity strings
+///
+/// `kind`, `name`, `deps`, and `optional_deps` are stored as `&'static` slices
+/// backed by [`Box::leak`]. This is a deliberate bounded leak (max ~20 modules
+/// × a handful of short strings each) that exists so [`ClientModule::name`]
+/// and friends can return `&'static str` / `&[&'static str]` directly, which
+/// in turn lets `DynamicClientModule` (a thin wrapper over this handle)
+/// implement the full `ClientModule` trait without its own second-order leaks.
+///
+/// See [`HANDLE_LEAKS_PER_MODULE_FIXED`] and the #724 countdown addendum.
 pub struct ClientModuleHandle {
     /// Leaked kind string (for `&'static str` lifetime requirement).
     kind: &'static str,
-    /// Module name.
-    name: String,
+    /// Leaked module name.
+    name: &'static str,
     /// Module version.
     version: Version,
-    /// Dependencies (from probe or static module).
-    deps: Vec<String>,
-    /// Optional dependencies.
-    optional_deps: Vec<String>,
+    /// Required dependencies (leaked slice of leaked strings).
+    deps: &'static [&'static str],
+    /// Optional dependencies (leaked slice of leaked strings).
+    optional_deps: &'static [&'static str],
     /// Probe metadata (dynamic modules only; kept for introspection).
     #[allow(dead_code)]
     probe: Option<ClientModuleProbe>,
@@ -200,23 +335,26 @@ unsafe impl Sync for ClientModuleHandle {}
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl ClientModuleHandle {
     /// Create a handle wrapping a static `Box<dyn ClientModule>`.
+    ///
+    /// Leaks the module's identity strings (kind, name, dependencies) per the
+    /// bounded-leak rationale on [`ClientModuleHandle`].
     #[must_use]
     pub fn from_static(module: Box<dyn ClientModule>) -> Self {
-        // Leak the kind string for &'static str lifetime. Bounded by module count
-        // (max ~20 modules, each leaking one short string). Not a real leak.
-        let kind: &'static str = Box::leak(module.kind().to_string().into_boxed_str());
-        let name = module.name().to_string();
+        let kind = leak_str(module.kind().to_string());
+        let name = leak_str(module.name().to_string());
         let version = module.version();
-        let deps = module
+        let deps_vec: Vec<String> = module
             .dependencies()
             .iter()
             .map(|s| (*s).to_string())
             .collect();
-        let optional_deps = module
+        let optional_deps_vec: Vec<String> = module
             .optional_dependencies()
             .iter()
             .map(|s| (*s).to_string())
             .collect();
+        let deps = leak_str_slice(deps_vec);
+        let optional_deps = leak_str_slice(optional_deps_vec);
 
         Self {
             kind,
@@ -250,20 +388,24 @@ impl ClientModuleHandle {
         ptr: *mut c_void,
         ffi: ClientFfiSymbols,
     ) -> Self {
-        // Leak the kind string for &'static str lifetime (same bounded pattern as from_static).
-        let kind: &'static str = Box::leak(probe.id_str().to_string().into_boxed_str());
-        let name = probe.name_str().to_string();
+        // Leak all identity strings up-front so handle accessors can return
+        // `&'static` references that `DynamicClientModule` forwards directly
+        // to the `ClientModule` trait (no second-order leak in the wrapper).
+        let kind = leak_str(probe.id_str().to_string());
+        let name = leak_str(probe.name_str().to_string());
         let version = probe.version;
-        let deps = probe
+        let deps_vec: Vec<String> = probe
             .required_deps()
             .iter()
             .map(|s| (*s).to_string())
             .collect();
-        let optional_deps = probe
+        let optional_deps_vec: Vec<String> = probe
             .optional_deps()
             .iter()
             .map(|s| (*s).to_string())
             .collect();
+        let deps = leak_str_slice(deps_vec);
+        let optional_deps = leak_str_slice(optional_deps_vec);
 
         Self {
             kind,
@@ -280,6 +422,211 @@ impl ClientModuleHandle {
         }
     }
 
+    /// Load a dynamic client module from a `.so` path.
+    ///
+    /// Performs:
+    /// 1. `dlopen` the shared library (fails with [`LoadError::FileNotFound`]
+    ///    or [`LoadError::DlopenFailed`]).
+    /// 2. Read `REOVIM_CLIENT_MODULE_API_VERSION` and reject incompatible
+    ///    modules.
+    /// 3. Call `reovim_client_module_probe()` for identity metadata.
+    /// 4. Call `reovim_client_module_entry()` for the module instance pointer.
+    /// 5. Resolve the 3 required FFI symbols (`init`, `exit`, `destroy`) and
+    ///    the 20 optional event/role/chrome/priority symbols.
+    /// 6. Build the [`ClientModuleHandle`] via [`Self::from_dynamic`].
+    ///
+    /// Error messages follow the format asserted by T5 tests in
+    /// `handle_tests.rs`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the path points to a shared library built from
+    /// workspace source with matching ABI. Loading untrusted `.so` files
+    /// executes arbitrary native code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoadError`] if the library cannot be opened, the API version
+    /// symbol is missing or incompatible, a required FFI symbol is not found,
+    /// or `reovim_client_module_entry()` returns null.
+    // Full load path requires a real .so with declare_client_module! FFI exports;
+    // covered by T1/T5 integration tests against the minimal fixture. Length
+    // justification: one `library.get` per FFI symbol (3 required + 17 optional),
+    // each with its own error mapping — splitting into helpers would obscure the
+    // 1:1 correspondence to the FFI contract.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(clippy::too_many_lines)]
+    pub unsafe fn load_from_path(path: &Path) -> Result<Self, LoadError> {
+        use libloading::{Library, Symbol};
+
+        // 1. Check file existence so we return a distinct error variant from
+        //    "dlopen failed on a file that does exist."
+        if !path.exists() {
+            return Err(LoadError::FileNotFound(path.to_path_buf()));
+        }
+
+        // SAFETY: The entire function body is `unsafe` because every FFI
+        // operation requires the ABI guarantees documented above. The caller
+        // has accepted that contract by invoking `load_from_path`.
+        unsafe {
+            // 2. dlopen
+            let library = Library::new(path)
+                .map_err(|e| LoadError::DlopenFailed(e.to_string()))?;
+
+            // 3. API version check (fast static symbol).
+            let api_version: Symbol<&'static Version> = library
+                .get(b"REOVIM_CLIENT_MODULE_API_VERSION")
+                .map_err(|e| LoadError::MissingApiVersion(e.to_string()))?;
+            let module_api = **api_version;
+            if !is_client_compatible(module_api, CLIENT_MODULE_API_VERSION) {
+                return Err(LoadError::IncompatibleApiVersion {
+                    module: (module_api.major, module_api.minor),
+                    host: (CLIENT_MODULE_API_VERSION.major, CLIENT_MODULE_API_VERSION.minor),
+                });
+            }
+
+            // 4. Probe metadata.
+            let probe_fn: Symbol<ClientProbeFn> = library
+                .get(b"reovim_client_module_probe")
+                .map_err(|e| LoadError::MissingSymbol {
+                    symbol: "reovim_client_module_probe".to_string(),
+                    source: e.to_string(),
+                })?;
+            let probe = probe_fn();
+
+            // 5. Entry (instance creation).
+            let entry_fn: Symbol<ClientEntryFn> = library
+                .get(b"reovim_client_module_entry")
+                .map_err(|e| LoadError::MissingSymbol {
+                    symbol: "reovim_client_module_entry".to_string(),
+                    source: e.to_string(),
+                })?;
+            let ptr = entry_fn();
+            if ptr.is_null() {
+                return Err(LoadError::EntryReturnedNull);
+            }
+
+            // 6. Required lifecycle symbols.
+            let init_sym: Symbol<ClientInitFn> = library
+                .get(b"reovim_client_module_init")
+                .map_err(|e| LoadError::MissingSymbol {
+                    symbol: "reovim_client_module_init".to_string(),
+                    source: e.to_string(),
+                })?;
+            let exit_sym: Symbol<ClientExitFn> = library
+                .get(b"reovim_client_module_exit")
+                .map_err(|e| LoadError::MissingSymbol {
+                    symbol: "reovim_client_module_exit".to_string(),
+                    source: e.to_string(),
+                })?;
+            let destroy_sym: Symbol<ClientDestroyFn> = library
+                .get(b"reovim_client_module_destroy")
+                .map_err(|e| LoadError::MissingSymbol {
+                    symbol: "reovim_client_module_destroy".to_string(),
+                    source: e.to_string(),
+                })?;
+
+            // 7. Optional symbols (graceful degradation for pre-0.3.0 modules).
+            //    Missing symbols become `None` — the handle's dispatch methods
+            //    return the documented default behavior.
+            let on_all_loaded = library
+                .get::<ClientOnAllLoadedFn>(b"reovim_client_module_on_all_loaded")
+                .ok()
+                .map(|s| *s);
+            let on_notification = library
+                .get::<ClientOnNotificationFn>(b"reovim_client_module_on_notification")
+                .ok()
+                .map(|s| *s);
+            let on_mode_change = library
+                .get::<ClientOnModeChangeFn>(b"reovim_client_module_on_mode_change")
+                .ok()
+                .map(|s| *s);
+            let on_cursor_update = library
+                .get::<ClientOnCursorUpdateFn>(b"reovim_client_module_on_cursor_update")
+                .ok()
+                .map(|s| *s);
+            let on_buffer_focus = library
+                .get::<ClientOnBufferFocusFn>(b"reovim_client_module_on_buffer_focus")
+                .ok()
+                .map(|s| *s);
+            let on_buffer_update = library
+                .get::<ClientOnBufferUpdateFn>(b"reovim_client_module_on_buffer_update")
+                .ok()
+                .map(|s| *s);
+            let on_option_changed = library
+                .get::<ClientOnOptionChangedFn>(b"reovim_client_module_on_option_changed")
+                .ok()
+                .map(|s| *s);
+            let tick = library
+                .get::<ClientTickFn>(b"reovim_client_module_tick")
+                .ok()
+                .map(|s| *s);
+            let has_chrome = library
+                .get::<ClientHasChromeFn>(b"reovim_client_module_has_chrome")
+                .ok()
+                .map(|s| *s);
+            let has_buffer_contrib = library
+                .get::<ClientHasBufferContribFn>(b"reovim_client_module_has_buffer_contrib")
+                .ok()
+                .map(|s| *s);
+            let has_annotations = library
+                .get::<ClientHasAnnotationsFn>(b"reovim_client_module_has_annotations")
+                .ok()
+                .map(|s| *s);
+            let chrome_position = library
+                .get::<ClientChromePositionFn>(b"reovim_client_module_chrome_position")
+                .ok()
+                .map(|s| *s);
+            let chrome_requested_size = library
+                .get::<ClientChromeRequestedSizeFn>(b"reovim_client_module_chrome_requested_size")
+                .ok()
+                .map(|s| *s);
+            let chrome_priority = library
+                .get::<ClientChromePriorityFn>(b"reovim_client_module_chrome_priority")
+                .ok()
+                .map(|s| *s);
+            let chrome_z_order = library
+                .get::<ClientChromeZOrderFn>(b"reovim_client_module_chrome_z_order")
+                .ok()
+                .map(|s| *s);
+            let buffer_contrib_priority = library
+                .get::<ClientBufferContribPriorityFn>(
+                    b"reovim_client_module_buffer_contrib_priority",
+                )
+                .ok()
+                .map(|s| *s);
+            let annotation_priority = library
+                .get::<ClientAnnotationPriorityFn>(b"reovim_client_module_annotation_priority")
+                .ok()
+                .map(|s| *s);
+
+            let ffi = ClientFfiSymbols {
+                init: *init_sym,
+                exit: *exit_sym,
+                destroy: *destroy_sym,
+                on_all_loaded,
+                on_notification,
+                on_mode_change,
+                on_cursor_update,
+                on_buffer_focus,
+                on_buffer_update,
+                on_option_changed,
+                tick,
+                has_chrome,
+                has_buffer_contrib,
+                has_annotations,
+                chrome_position,
+                chrome_requested_size,
+                chrome_priority,
+                chrome_z_order,
+                buffer_contrib_priority,
+                annotation_priority,
+            };
+
+            Ok(Self::from_dynamic(library, path.to_path_buf(), probe, ptr, ffi))
+        }
+    }
+
     /// Module kind identifier.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
@@ -288,8 +635,8 @@ impl ClientModuleHandle {
 
     /// Human-readable module name.
     #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub const fn name(&self) -> &'static str {
+        self.name
     }
 
     /// Module version.
@@ -321,14 +668,16 @@ impl ClientModuleHandle {
         self.static_module.as_deref_mut()
     }
 
-    /// Required dependencies.
-    pub fn dependencies(&self) -> Vec<&str> {
-        self.deps.iter().map(String::as_str).collect()
+    /// Required dependencies (static slice — safe to pass through FFI wrappers).
+    #[must_use]
+    pub const fn dependencies(&self) -> &'static [&'static str] {
+        self.deps
     }
 
-    /// Optional dependencies.
-    pub fn optional_dependencies(&self) -> Vec<&str> {
-        self.optional_deps.iter().map(String::as_str).collect()
+    /// Optional dependencies (static slice — safe to pass through FFI wrappers).
+    #[must_use]
+    pub const fn optional_dependencies(&self) -> &'static [&'static str] {
+        self.optional_deps
     }
 
     /// Path to the `.so` file (dynamic modules only).

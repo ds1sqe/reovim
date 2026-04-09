@@ -196,11 +196,34 @@ impl ClientModuleLoader {
         factories: HashMap<&'static str, ClientModuleFactory, S>,
         disabled: &HashSet<String, S2>,
     ) -> Result<Self, ClientModuleLoaderError> {
-        let modules: Vec<Box<dyn ClientModule>> = factories
+        Self::new_with_dynamic(factories, disabled, Vec::new())
+    }
+
+    /// Create a loader from factory map **plus** pre-built dynamic modules.
+    ///
+    /// Factories are filtered by the `disabled` set and instantiated. Dynamic
+    /// modules are assumed to already be filtered by the discovery layer (see
+    /// `clients/tui/src/dynamic_module.rs::discover_dynamic_client_modules`).
+    /// Both sets are merged into a single module vector and fed through the
+    /// same dependency resolver as [`Self::new`], so a static module can
+    /// depend on a dynamic module and vice versa — flight 1 (#724) covers
+    /// the cross-type case in test T4.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientModuleLoaderError::DependencyResolution`] on cycle or
+    /// missing dependency across the combined set.
+    pub fn new_with_dynamic<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
+        factories: HashMap<&'static str, ClientModuleFactory, S>,
+        disabled: &HashSet<String, S2>,
+        dynamic_modules: Vec<Box<dyn ClientModule>>,
+    ) -> Result<Self, ClientModuleLoaderError> {
+        let mut modules: Vec<Box<dyn ClientModule>> = factories
             .into_iter()
             .filter(|(kind, _)| !disabled.contains(*kind))
             .map(|(_, factory)| factory())
             .collect();
+        modules.extend(dynamic_modules);
         let states = vec![ClientModuleState::Loaded; modules.len()];
 
         let (modules, states, init_order) = resolve_and_reorder(modules, states)?;

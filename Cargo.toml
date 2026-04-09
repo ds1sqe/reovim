@@ -171,6 +171,10 @@ members = [
 
     # Test fixtures (cdylib modules for integration testing)
     "server/lib/drivers/module-loader/tests/fixtures/test_module",
+    "shared/clients/driver/tests/fixtures/minimal_client_module",
+    "shared/clients/driver/tests/fixtures/incompatible_api_client_module",
+    "shared/clients/driver/tests/fixtures/no_init_client_module",
+    "shared/clients/driver/tests/fixtures/bare_client_module",
 ]
 exclude = [
     # Python projects (not Rust)
