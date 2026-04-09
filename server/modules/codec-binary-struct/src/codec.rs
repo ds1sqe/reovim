@@ -1,8 +1,8 @@
 //! ELF and ZIP structured binary codecs.
 //!
 //! Produces human-readable summaries of ELF binaries and ZIP archives.
-//! ZIP remains a one-way summary codec. ELF gains a narrow Plan 07
-//! Phase 2 structural-edit surface for in-place tree edits.
+//! Both gain narrow Plan 07 structural-edit surfaces for in-place tree
+//! edits: ELF in Phase 2, ZIP in Phase 4.
 
 use std::fmt::Write;
 
@@ -10,7 +10,7 @@ use {
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_driver_codec::{
         CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit, ElfTreeOp,
-        TranslateEditError, TreeOp, TreePath,
+        TranslateEditError, TreeOp, TreePath, ZipTreeOp,
     },
     reovim_driver_vfs::ByteSource,
     reovim_kernel::api::v1::ByteEdit,
@@ -120,9 +120,8 @@ impl Default for ZipCodec {
     }
 }
 
-/// Phase 3: ZIP is a transforming-only structured view; decoded text edits cannot
-/// be reconstructed from this summary representation, so `translate_edit` remains
-/// intentionally read-only.
+/// ZIP still decodes to a read-only human summary, but Plan 07 Phase 4 adds a
+/// narrow structural-edit seam via `DecodedEdit::Tree`.
 impl reovim_driver_codec::ContentCodec for ZipCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let cursor = std::io::Cursor::new(raw);
@@ -145,6 +144,30 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
             readonly: true,
             truncated: false,
         })
+    }
+
+    fn translate_edit(
+        &self,
+        bytes: &dyn ByteSource,
+        edit: &DecodedEdit,
+    ) -> Result<Option<ByteEdit>, TranslateEditError> {
+        match edit {
+            DecodedEdit::Tree {
+                path,
+                op: TreeOp::Zip(op),
+            } => translate_zip_edit(bytes, path, op),
+            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
+                reason: "ZIP codec only accepts ZIP tree operations",
+            }),
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+                Err(TranslateEditError::UnsupportedEdit {
+                    reason: "ZIP codec does not translate text or raw byte edits",
+                })
+            }
+            _ => Err(TranslateEditError::UnsupportedEdit {
+                reason: "ZIP codec does not support this decoded edit variant",
+            }),
+        }
     }
 }
 
@@ -454,6 +477,382 @@ fn section_name<'a>(
         .ok_or(TranslateEditError::Internal {
             reason: "ELF section name is missing from the header string table",
         })
+}
+
+// ============================================================================
+// ZIP structural editing (Plan 07 Phase 4)
+// ============================================================================
+
+/// ZIP local file header size (fixed portion before filename).
+const ZIP_LOCAL_HEADER_FIXED_SIZE: usize = 30;
+
+/// ZIP central directory header size (fixed portion before filename).
+const ZIP_CENTRAL_DIR_HEADER_FIXED_SIZE: usize = 46;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ZipEntryField {
+    Bytes,
+    Name,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ZipTargetPath<'a> {
+    ArchiveComment,
+    Entry { name: &'a str, field: ZipEntryField },
+}
+
+fn resolve_zip_target_path(path: &TreePath) -> Result<ZipTargetPath<'_>, TranslateEditError> {
+    let components = path.components();
+    match components {
+        [kind, field] if kind == "archive" && field == "comment" => {
+            Ok(ZipTargetPath::ArchiveComment)
+        }
+        [kind, entry_name, field] if kind == "entries" && !entry_name.is_empty() => {
+            let entry_field = match field.as_str() {
+                "bytes" => ZipEntryField::Bytes,
+                "name" => ZipEntryField::Name,
+                _ => {
+                    return Err(TranslateEditError::MalformedPath {
+                        reason: "ZIP entry path must be [entries, <name>, bytes|name]",
+                    });
+                }
+            };
+            Ok(ZipTargetPath::Entry {
+                name: entry_name,
+                field: entry_field,
+            })
+        }
+        _ => Err(TranslateEditError::MalformedPath {
+            reason: "ZIP tree path must be [archive, comment] or [entries, <name>, bytes|name]",
+        }),
+    }
+}
+
+fn translate_zip_edit(
+    bytes: &dyn ByteSource,
+    path: &TreePath,
+    op: &ZipTreeOp,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
+        reason: "ZIP byte source could not be fully read",
+    })?;
+    let cursor = std::io::Cursor::new(&raw[..]);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|_| TranslateEditError::Internal {
+        reason: "ZIP parse failed during translate_edit",
+    })?;
+    let target = resolve_zip_target_path(path)?;
+
+    match (target, op) {
+        (ZipTargetPath::ArchiveComment, ZipTreeOp::ReplaceComment { new_comment }) => {
+            translate_zip_replace_comment(&archive, &raw, new_comment)
+        }
+        (
+            ZipTargetPath::Entry {
+                name,
+                field: ZipEntryField::Bytes,
+            },
+            ZipTreeOp::ReplaceEntryBytes {
+                old_bytes,
+                new_bytes,
+            },
+        ) => translate_zip_replace_entry_bytes(&mut archive, &raw, name, old_bytes, new_bytes),
+        (
+            ZipTargetPath::Entry {
+                name,
+                field: ZipEntryField::Name,
+            },
+            ZipTreeOp::RenameEntry { new_name },
+        ) => translate_zip_rename_entry(&mut archive, &raw, name, new_name),
+        (ZipTargetPath::ArchiveComment, _) => Err(TranslateEditError::UnsupportedEdit {
+            reason: "ZIP archive comment only supports ReplaceComment",
+        }),
+        (
+            ZipTargetPath::Entry {
+                field: ZipEntryField::Bytes,
+                ..
+            },
+            ZipTreeOp::RenameEntry { .. },
+        ) => Err(TranslateEditError::UnsupportedEdit {
+            reason: "ZIP entry rename must target [entries, <name>, name]",
+        }),
+        (
+            ZipTargetPath::Entry {
+                field: ZipEntryField::Name,
+                ..
+            },
+            ZipTreeOp::ReplaceEntryBytes { .. },
+        ) => Err(TranslateEditError::UnsupportedEdit {
+            reason: "ZIP entry payload replacement must target [entries, <name>, bytes]",
+        }),
+        (
+            ZipTargetPath::Entry {
+                field: ZipEntryField::Bytes,
+                ..
+            },
+            ZipTreeOp::ReplaceComment { .. },
+        )
+        | (
+            ZipTargetPath::Entry {
+                field: ZipEntryField::Name,
+                ..
+            },
+            ZipTreeOp::ReplaceComment { .. },
+        ) => Err(TranslateEditError::UnsupportedEdit {
+            reason: "ZIP ReplaceComment must target [archive, comment]",
+        }),
+    }
+}
+
+fn translate_zip_replace_comment<R: std::io::Read + std::io::Seek>(
+    archive: &zip::ZipArchive<R>,
+    raw: &[u8],
+    new_comment: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let current_comment = archive.comment();
+    if new_comment.len() != current_comment.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP archive comment replacement must preserve comment length",
+        });
+    }
+    if current_comment == new_comment {
+        return Ok(None);
+    }
+
+    // EOCD comment is at the very end of the file, occupying the last
+    // `comment.len()` bytes.
+    let comment_offset =
+        raw.len()
+            .checked_sub(current_comment.len())
+            .ok_or(TranslateEditError::Internal {
+                reason: "ZIP archive comment offset underflowed",
+            })?;
+
+    // Verify the bytes at that offset match the current comment.
+    let actual = raw
+        .get(comment_offset..raw.len())
+        .ok_or(TranslateEditError::Internal {
+            reason: "ZIP archive comment range is out of bounds",
+        })?;
+    if actual != current_comment {
+        return Err(TranslateEditError::Internal {
+            reason: "ZIP archive comment bytes do not match at expected offset",
+        });
+    }
+
+    Ok(Some(ByteEdit::replace(comment_offset, current_comment, new_comment)))
+}
+
+fn translate_zip_replace_entry_bytes<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    raw: &[u8],
+    entry_name: &str,
+    old_bytes: &[u8],
+    new_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let entry = find_zip_entry_by_name(archive, entry_name)?;
+
+    if entry.compression != zip::CompressionMethod::Stored {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "ZIP entry payload replacement only supports STORED entries",
+        });
+    }
+    if old_bytes.len() != new_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP entry payload replacement must preserve payload size",
+        });
+    }
+
+    let data_start = entry.data_start.ok_or(TranslateEditError::Internal {
+        reason: "ZIP entry data start offset is not available",
+    })?;
+    let data_offset = usize::try_from(data_start).map_err(|_| TranslateEditError::Internal {
+        reason: "ZIP entry data start offset does not fit in usize",
+    })?;
+    let data_size = usize::try_from(entry.size).map_err(|_| TranslateEditError::Internal {
+        reason: "ZIP entry size does not fit in usize",
+    })?;
+    let data_end =
+        data_offset
+            .checked_add(data_size)
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "ZIP entry data range overflowed",
+            })?;
+    let actual = raw
+        .get(data_offset..data_end)
+        .ok_or(TranslateEditError::Internal {
+            reason: "ZIP entry data range is out of bounds",
+        })?;
+
+    if actual.len() != old_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP entry payload replacement must cover the full entry payload",
+        });
+    }
+    if actual != old_bytes {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP entry payload old bytes do not match the archive contents",
+        });
+    }
+    if old_bytes == new_bytes {
+        return Ok(None);
+    }
+
+    Ok(Some(ByteEdit::replace(data_offset, old_bytes, new_bytes)))
+}
+
+fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    raw: &[u8],
+    entry_name: &str,
+    new_name: &str,
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let entry = find_zip_entry_by_name(archive, entry_name)?;
+
+    if entry_name.len() != new_name.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP entry rename must preserve name length",
+        });
+    }
+    if entry_name == new_name {
+        return Ok(None);
+    }
+
+    let old_name_bytes = entry_name.as_bytes();
+    let new_name_bytes = new_name.as_bytes();
+
+    // Locate the name field in the local header (30 bytes into the header).
+    let local_name_offset = usize::try_from(entry.header_start)
+        .map_err(|_| TranslateEditError::Internal {
+            reason: "ZIP local header offset does not fit in usize",
+        })?
+        .checked_add(ZIP_LOCAL_HEADER_FIXED_SIZE)
+        .ok_or(TranslateEditError::ConstraintViolation {
+            reason: "ZIP local header name offset overflowed",
+        })?;
+    verify_name_at_offset(raw, local_name_offset, old_name_bytes, "local header")?;
+
+    // Locate the name field in the central directory (46 bytes into the header).
+    let central_name_offset = usize::try_from(entry.central_header_start)
+        .map_err(|_| TranslateEditError::Internal {
+            reason: "ZIP central directory offset does not fit in usize",
+        })?
+        .checked_add(ZIP_CENTRAL_DIR_HEADER_FIXED_SIZE)
+        .ok_or(TranslateEditError::ConstraintViolation {
+            reason: "ZIP central directory name offset overflowed",
+        })?;
+    verify_name_at_offset(raw, central_name_offset, old_name_bytes, "central directory")?;
+
+    // Emit a single ByteEdit spanning from the earlier name to the end
+    // of the later name, with both occurrences patched in place.
+    if local_name_offset < central_name_offset {
+        emit_dual_name_patch(
+            raw,
+            local_name_offset,
+            central_name_offset,
+            old_name_bytes,
+            new_name_bytes,
+        )
+    } else {
+        emit_dual_name_patch(
+            raw,
+            central_name_offset,
+            local_name_offset,
+            old_name_bytes,
+            new_name_bytes,
+        )
+    }
+}
+
+/// Build a single `ByteEdit` that patches two same-length name occurrences
+/// within one contiguous span of bytes.
+fn emit_dual_name_patch(
+    raw: &[u8],
+    first_offset: usize,
+    second_offset: usize,
+    old_name: &[u8],
+    new_name: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    let span_end = second_offset.checked_add(old_name.len()).ok_or(
+        TranslateEditError::ConstraintViolation {
+            reason: "ZIP rename span end overflowed",
+        },
+    )?;
+    let old_span = raw
+        .get(first_offset..span_end)
+        .ok_or(TranslateEditError::Internal {
+            reason: "ZIP rename span is out of bounds",
+        })?;
+    let mut new_span = old_span.to_vec();
+    new_span[..new_name.len()].copy_from_slice(new_name);
+    let second_rel = second_offset - first_offset;
+    new_span[second_rel..second_rel + new_name.len()].copy_from_slice(new_name);
+    Ok(Some(ByteEdit::replace(first_offset, old_span, &new_span)))
+}
+
+/// Entry metadata resolved from a zip archive by name lookup.
+#[derive(Debug, Clone, Copy)]
+struct ResolvedZipEntry {
+    compression: zip::CompressionMethod,
+    size: u64,
+    data_start: Option<u64>,
+    header_start: u64,
+    central_header_start: u64,
+}
+
+fn find_zip_entry_by_name<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    name: &str,
+) -> Result<ResolvedZipEntry, TranslateEditError> {
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index_raw(i)
+            .map_err(|_| TranslateEditError::Internal {
+                reason: "ZIP entry access failed during name lookup",
+            })?;
+        if entry.name() == name {
+            return Ok(ResolvedZipEntry {
+                compression: entry.compression(),
+                size: entry.size(),
+                data_start: entry.data_start(),
+                header_start: entry.header_start(),
+                central_header_start: entry.central_header_start(),
+            });
+        }
+    }
+    Err(TranslateEditError::MalformedPath {
+        reason: "ZIP entry name does not resolve to an entry",
+    })
+}
+
+fn verify_name_at_offset(
+    raw: &[u8],
+    offset: usize,
+    expected: &[u8],
+    location: &'static str,
+) -> Result<(), TranslateEditError> {
+    let end =
+        offset
+            .checked_add(expected.len())
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "ZIP name verification range overflowed",
+            })?;
+    let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
+        reason: if location == "local header" {
+            "ZIP local header name range is out of bounds"
+        } else {
+            "ZIP central directory name range is out of bounds"
+        },
+    })?;
+    if actual != expected {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: if location == "local header" {
+                "ZIP local header name bytes do not match"
+            } else {
+                "ZIP central directory name bytes do not match"
+            },
+        });
+    }
+    Ok(())
 }
 
 /// Format an ELF binary into a human-readable summary.

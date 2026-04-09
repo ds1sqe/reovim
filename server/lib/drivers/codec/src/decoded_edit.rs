@@ -76,6 +76,7 @@ impl TreePath {
 /// construct and match `TreeOp` values before any real format is wired up.
 /// Phase 2 adds the first real format variant: [`TreeOp::Elf`].
 /// Phase 3 adds [`TreeOp::Rlib`].
+/// Phase 4 adds [`TreeOp::Zip`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ElfTreeOp {
     /// Patch a byte span inside an executable section in place.
@@ -120,6 +121,33 @@ pub enum RlibTreeOp {
     },
 }
 
+/// ZIP structural edit operations (Plan 07 Phase 4).
+///
+/// All Phase 4 operations are strict same-size in-place rewrites.
+/// No archive rebuild, recompression, or layout change is supported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ZipTreeOp {
+    /// Rewrite the archive comment in place with same-length bytes.
+    ReplaceComment {
+        /// Replacement comment bytes. Must be the same length as the
+        /// current archive comment.
+        new_comment: Vec<u8>,
+    },
+    /// Replace a STORED entry payload in place with same-size bytes.
+    ReplaceEntryBytes {
+        /// Expected current entry payload.
+        old_bytes: Vec<u8>,
+        /// Replacement payload. Must be the same length as `old_bytes`.
+        new_bytes: Vec<u8>,
+    },
+    /// Rename an entry in place (both local header and central directory).
+    RenameEntry {
+        /// Replacement entry name. Must be the same length as the current
+        /// entry name resolved from the tree path.
+        new_name: String,
+    },
+}
+
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeOp {
@@ -128,6 +156,9 @@ pub enum TreeOp {
 
     /// Rust `.rlib` structural edit (Plan 07 Phase 3).
     Rlib(RlibTreeOp),
+
+    /// ZIP structural edit (Plan 07 Phase 4).
+    Zip(ZipTreeOp),
 
     /// Test-only placeholder variant.
     ///

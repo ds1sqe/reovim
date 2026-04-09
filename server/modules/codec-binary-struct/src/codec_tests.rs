@@ -8,7 +8,7 @@ use std::{
 use {
     reovim_driver_codec::{
         ContentCodec, DecodedEdit, ElfTreeOp, InodeTable, Mount, TranslateEditError, TreeOp,
-        TreePath,
+        TreePath, ZipTreeOp,
     },
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
@@ -636,7 +636,10 @@ fn zip_translate_edit_text_is_not_supported() {
         replacement: "x".to_string(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 #[test]
@@ -650,7 +653,10 @@ fn zip_translate_edit_bytes_is_not_supported() {
         new_bytes: b"y".to_vec(),
     };
 
-    assert!(matches!(codec.translate_edit(&bytes, &edit), Err(TranslateEditError::ReadOnly)));
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
 }
 
 #[test]
@@ -732,4 +738,518 @@ fn zip_metadata_has_file_size() {
     let codec = ZipCodec::new();
     let result = codec.decode(&zip_bytes).unwrap();
     assert_eq!(result.metadata.get("file_size"), Some(zip_bytes.len().to_string()).as_deref());
+}
+
+// ============================================================================
+// ZIP structural editing tests (Plan 07 Phase 4)
+// ============================================================================
+
+/// Build a real zip archive fixture for structural editing tests.
+///
+/// The fixture has:
+/// - An archive comment "TESTCOMMENT!" (12 bytes, patchable same-length)
+/// - A STORED entry "hello.txt" with payload b"Hello World!" (12 bytes)
+/// - A DEFLATED entry "compress__.txt" with payload b"Compressed content"
+///
+/// Entry names are chosen to be exactly the right length for same-length
+/// rename tests (e.g. "hello.txt" → "world.txt", both 9 bytes).
+fn build_zip_fixture() -> Vec<u8> {
+    let buf = Vec::new();
+    let cursor = std::io::Cursor::new(buf);
+    let mut writer = zip::ZipWriter::new(cursor);
+
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("hello.txt", stored).unwrap();
+    std::io::Write::write_all(&mut writer, b"Hello World!").unwrap();
+
+    writer.start_file("compress__.txt", stored).unwrap();
+    std::io::Write::write_all(&mut writer, b"Compressed content").unwrap();
+
+    writer.set_comment("TESTCOMMENT!");
+
+    let result_cursor = writer.finish().unwrap();
+    result_cursor.into_inner()
+}
+
+#[derive(Debug, Clone)]
+struct ZipFixture {
+    bytes: Vec<u8>,
+}
+
+static ZIP_FIXTURE: OnceLock<ZipFixture> = OnceLock::new();
+
+fn zip_fixture() -> &'static ZipFixture {
+    ZIP_FIXTURE.get_or_init(|| ZipFixture {
+        bytes: build_zip_fixture(),
+    })
+}
+
+fn zip_comment_edit(new_comment: &[u8]) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec!["archive".to_string(), "comment".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+            new_comment: new_comment.to_vec(),
+        }),
+    }
+}
+
+fn zip_entry_bytes_edit(name: &str, old_bytes: &[u8], new_bytes: &[u8]) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec!["entries".to_string(), name.to_string(), "bytes".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes: old_bytes.to_vec(),
+            new_bytes: new_bytes.to_vec(),
+        }),
+    }
+}
+
+fn zip_rename_edit(name: &str, new_name: &str) -> DecodedEdit {
+    DecodedEdit::Tree {
+        path: TreePath::new(vec!["entries".to_string(), name.to_string(), "name".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+            new_name: new_name.to_string(),
+        }),
+    }
+}
+
+// --- Positive path tests ---
+
+#[test]
+fn zip_noop_round_trip_is_byte_identical() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+
+    let result = codec.decode(&fixture.bytes).unwrap();
+    assert!(result.content.contains("ZIP Archive Contents"));
+    assert!(result.content.contains("hello.txt"));
+
+    let cursor = std::io::Cursor::new(&fixture.bytes);
+    let archive = zip::ZipArchive::new(cursor).unwrap();
+    assert_eq!(archive.comment(), b"TESTCOMMENT!");
+}
+
+#[test]
+fn zip_replace_comment_same_length_succeeds() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_comment_edit(b"NEWCOMMENT!!");
+    let byte_edit = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
+
+    let mut patched = fixture.bytes.clone();
+    patched[byte_edit.offset..byte_edit.offset + byte_edit.old_bytes.len()]
+        .copy_from_slice(&byte_edit.new_bytes);
+
+    let cursor = std::io::Cursor::new(&patched);
+    let archive = zip::ZipArchive::new(cursor).unwrap();
+    assert_eq!(archive.comment(), b"NEWCOMMENT!!");
+}
+
+#[test]
+fn zip_replace_comment_noop_returns_none() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_comment_edit(b"TESTCOMMENT!");
+    let result = codec.translate_edit(&bytes, &edit).unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn zip_replace_stored_entry_bytes_succeeds() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Patched Data");
+    let byte_edit = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
+
+    let mut patched = fixture.bytes.clone();
+    patched[byte_edit.offset..byte_edit.offset + byte_edit.old_bytes.len()]
+        .copy_from_slice(&byte_edit.new_bytes);
+
+    let cursor = std::io::Cursor::new(&patched);
+    let mut archive = zip::ZipArchive::new(cursor).unwrap();
+    // Use by_index_raw to read without CRC validation — the in-place
+    // data patch leaves the stored CRC stale.
+    let mut entry = archive.by_index_raw(0).unwrap();
+    assert_eq!(entry.name(), "hello.txt");
+    let mut content = Vec::new();
+    std::io::Read::read_to_end(&mut entry, &mut content).unwrap();
+    assert_eq!(content, b"Patched Data");
+}
+
+#[test]
+fn zip_replace_entry_bytes_noop_returns_none() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Hello World!");
+    let result = codec.translate_edit(&bytes, &edit).unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn zip_rename_entry_same_length_succeeds() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_rename_edit("hello.txt", "world.txt");
+    let byte_edit = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
+
+    let mut patched = fixture.bytes.clone();
+    patched[byte_edit.offset..byte_edit.offset + byte_edit.old_bytes.len()]
+        .copy_from_slice(&byte_edit.new_bytes);
+
+    let cursor = std::io::Cursor::new(&patched);
+    let mut archive = zip::ZipArchive::new(cursor).unwrap();
+    assert!(archive.by_name("world.txt").is_ok());
+    assert!(archive.by_name("hello.txt").is_err());
+
+    let mut entry = archive.by_name("world.txt").unwrap();
+    let mut content = Vec::new();
+    std::io::Read::read_to_end(&mut entry, &mut content).unwrap();
+    assert_eq!(content, b"Hello World!");
+}
+
+#[test]
+fn zip_rename_entry_noop_returns_none() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_rename_edit("hello.txt", "hello.txt");
+    let result = codec.translate_edit(&bytes, &edit).unwrap();
+    assert!(result.is_none());
+}
+
+// --- Shared structural gates ---
+
+#[test]
+fn zip_edit_propagates_through_peer_stale() {
+    let fixture = zip_fixture();
+    let zip_codec: Arc<dyn ContentCodec> = Arc::new(ZipCodec::new());
+    let peer_codec: Arc<dyn ContentCodec> = Arc::new(ZipCodec::new());
+    let buffer_id = BufferId::from_raw(1);
+
+    let mut table = InodeTable::new();
+    let inode_id = table.insert(Arc::new(HeapByteSource::new(fixture.bytes.clone())));
+    table.bind_file(buffer_id, inode_id);
+
+    let source_mount = table
+        .mount(inode_id, buffer_id, Mount::new("zip-source", zip_codec))
+        .unwrap();
+    let peer_mount = table
+        .mount_additional(inode_id, buffer_id, Mount::new("zip-peer", peer_codec))
+        .unwrap();
+
+    let edit = zip_comment_edit(b"NEWCOMMENT!!");
+    table.apply_edit(source_mount, &edit).unwrap();
+
+    let inode = table.lookup_inode(inode_id).unwrap();
+    let peer = inode.mounts.get(&peer_mount.mount_id()).unwrap();
+    assert!(!peer.content_valid);
+}
+
+#[test]
+fn zip_undo_restores_exact_original_bytes() {
+    let fixture = zip_fixture();
+    let zip_codec: Arc<dyn ContentCodec> = Arc::new(ZipCodec::new());
+    let buffer_id = BufferId::from_raw(1);
+
+    let mut table = InodeTable::new();
+    let inode_id = table.insert(Arc::new(HeapByteSource::new(fixture.bytes.clone())));
+    table.bind_file(buffer_id, inode_id);
+
+    let mount = table
+        .mount(inode_id, buffer_id, Mount::new("zip", zip_codec))
+        .unwrap();
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Patched Data");
+    let byte_edit = table.apply_edit(mount, &edit).unwrap().unwrap();
+
+    // Undo via inverse ByteEdit.
+    table
+        .apply_byte_edit(inode_id, &byte_edit.inverse())
+        .unwrap();
+
+    let restored = table.read_bytes(inode_id).unwrap();
+    assert_eq!(restored, fixture.bytes);
+}
+
+// --- Explicit refusal tests ---
+
+#[test]
+fn zip_replace_comment_wrong_length_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_comment_edit(b"short");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn zip_replace_entry_bytes_wrong_size_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"short");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn zip_replace_entry_bytes_old_mismatch_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Wrong data!!", b"Patched Data");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn zip_rename_entry_wrong_length_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_rename_edit("hello.txt", "toolongname.txt");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn zip_entry_not_found_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("missing.txt", b"data", b"data");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::MalformedPath { .. })));
+}
+
+#[test]
+fn zip_malformed_path_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["invalid".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+            new_comment: b"x".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::MalformedPath { .. })));
+}
+
+#[test]
+fn zip_malformed_path_unknown_field_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "metadata".to_string(),
+        ]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceComment {
+            new_comment: b"x".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::MalformedPath { .. })));
+}
+
+#[test]
+fn zip_wrong_op_for_comment_path_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["archive".to_string(), "comment".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+            new_name: "x".to_string(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::UnsupportedEdit { .. })));
+}
+
+#[test]
+fn zip_wrong_op_for_entry_bytes_path_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Zip(ZipTreeOp::RenameEntry {
+            new_name: "world.txt".to_string(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::UnsupportedEdit { .. })));
+}
+
+#[test]
+fn zip_wrong_op_for_entry_name_path_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes: b"Hello World!".to_vec(),
+            new_bytes: b"Patched Data".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::UnsupportedEdit { .. })));
+}
+
+#[test]
+fn zip_non_zip_tree_op_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::Elf(ElfTreeOp::PatchBytes {
+            offset: 0,
+            old_bytes: vec![0],
+            new_bytes: vec![1],
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::UnsupportedEdit { .. })));
+}
+
+#[test]
+fn zip_malformed_bytes_fails_on_translate() {
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(b"not a zip at all".to_vec());
+
+    let edit = zip_comment_edit(b"test");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::Internal { .. })));
+}
+
+#[test]
+fn zip_empty_entry_name_in_path_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["entries".to_string(), String::new(), "bytes".to_string()]),
+        op: TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes: vec![0],
+            new_bytes: vec![1],
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::MalformedPath { .. })));
+}
+
+// --- Real fixture workflow: full sequence ---
+
+#[test]
+fn zip_real_fixture_workflow_reparses_and_restores_original_bytes() {
+    let fixture = zip_fixture();
+    let codec = Arc::new(ZipCodec::new());
+    let buffer_id = BufferId::from_raw(1);
+
+    let mut table = InodeTable::new();
+    let inode_id = table.insert(Arc::new(HeapByteSource::new(fixture.bytes.clone())));
+    table.bind_file(buffer_id, inode_id);
+
+    let mount = table
+        .mount(inode_id, buffer_id, Mount::new("zip", codec.clone()))
+        .unwrap();
+
+    let edits = [
+        zip_comment_edit(b"NEWCOMMENT!!"),
+        zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Patched Data"),
+        zip_rename_edit("hello.txt", "world.txt"),
+    ];
+    let mut inverses = Vec::new();
+
+    for edit in &edits {
+        let byte_edit = table.apply_edit(mount, edit).unwrap().unwrap();
+        inverses.push(byte_edit.inverse());
+
+        let current = table.read_bytes(inode_id).unwrap();
+        assert_eq!(current.len(), fixture.bytes.len());
+        let decoded = codec.decode(&current).unwrap();
+        assert!(decoded.content.contains("ZIP Archive Contents"));
+    }
+
+    // Verify final state has all three edits applied.
+    let current = table.read_bytes(inode_id).unwrap();
+    let cursor = std::io::Cursor::new(&current);
+    let mut archive = zip::ZipArchive::new(cursor).unwrap();
+    assert_eq!(archive.comment(), b"NEWCOMMENT!!");
+    assert!(archive.by_name("world.txt").is_ok());
+    assert!(archive.by_name("hello.txt").is_err());
+
+    // Undo all three edits via inverse ByteEdits.
+    for inverse in inverses.iter().rev() {
+        table.apply_byte_edit(inode_id, inverse).unwrap();
+    }
+
+    let restored = table.read_bytes(inode_id).unwrap();
+    assert_eq!(restored, fixture.bytes);
+    codec.decode(&restored).unwrap();
+}
+
+#[test]
+fn zip_accepted_edit_preserves_archive_length() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World!", b"Patched Data");
+    let result = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
+    assert_eq!(result.old_bytes.len(), result.new_bytes.len());
+}
+
+#[test]
+fn zip_rename_preserves_archive_length() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = zip_rename_edit("hello.txt", "world.txt");
+    let result = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
+    assert_eq!(result.old_bytes.len(), result.new_bytes.len());
 }

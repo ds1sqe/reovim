@@ -1,6 +1,6 @@
 //! Tests for `DecodedEdit`, `TreePath`, and `TreeOp`.
 
-use super::{DecodedEdit, ElfTreeOp, RlibTreeOp, TreeOp, TreePath};
+use super::{DecodedEdit, ElfTreeOp, RlibTreeOp, TreeOp, TreePath, ZipTreeOp};
 
 // ============================================================================
 // TreePath tests
@@ -128,6 +128,54 @@ fn tree_op_rlib_rename_member_clone_and_eq() {
     });
 
     assert_eq!(op, op.clone());
+}
+
+#[test]
+fn tree_op_zip_replace_comment_construction() {
+    let op = TreeOp::Zip(ZipTreeOp::ReplaceComment {
+        new_comment: b"NEW COMMENT".to_vec(),
+    });
+
+    assert!(matches!(
+        op,
+        TreeOp::Zip(ZipTreeOp::ReplaceComment { new_comment }) if new_comment == b"NEW COMMENT"
+    ));
+}
+
+#[test]
+fn tree_op_zip_replace_entry_bytes_construction() {
+    let op = TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+        old_bytes: b"ORIGINAL".to_vec(),
+        new_bytes: b"MODIFIED".to_vec(),
+    });
+
+    assert!(matches!(
+        op,
+        TreeOp::Zip(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes,
+            new_bytes,
+        }) if old_bytes == b"ORIGINAL" && new_bytes == b"MODIFIED"
+    ));
+}
+
+#[test]
+fn tree_op_zip_rename_entry_clone_and_eq() {
+    let op = TreeOp::Zip(ZipTreeOp::RenameEntry {
+        new_name: "world.txt".to_string(),
+    });
+
+    assert_eq!(op, op.clone());
+}
+
+#[test]
+fn tree_op_zip_debug_format() {
+    let op = TreeOp::Zip(ZipTreeOp::ReplaceComment {
+        new_comment: b"test".to_vec(),
+    });
+
+    let debug = format!("{op:?}");
+    assert!(debug.contains("Zip"));
+    assert!(debug.contains("ReplaceComment"));
 }
 
 #[test]
