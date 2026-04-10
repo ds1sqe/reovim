@@ -892,3 +892,31 @@ fn write_to_large_content_consistency() {
     // Streaming write must match materialized content
     assert_eq!(buf, vbuf.content().as_bytes());
 }
+
+// ── for_each_chunk ──────────────────────────────────────────────────
+
+#[test]
+fn for_each_chunk_unedited() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    let mut chunks = Vec::new();
+    vbuf.for_each_chunk(|bytes| chunks.push(bytes.to_vec()));
+    let joined: Vec<u8> = chunks.into_iter().flatten().collect();
+    assert_eq!(joined, b"hello\nworld");
+}
+
+#[test]
+fn for_each_chunk_after_edit() {
+    let mut vbuf = vbuf_from_str("hello\nworld");
+    vbuf.insert_at(Position::new(0, 5), " there");
+    let mut all_bytes = Vec::new();
+    vbuf.for_each_chunk(|bytes| all_bytes.extend_from_slice(bytes));
+    assert_eq!(all_bytes, vbuf.content().as_bytes());
+}
+
+#[test]
+fn for_each_chunk_empty() {
+    let vbuf = vbuf_from_str("");
+    let mut count = 0;
+    vbuf.for_each_chunk(|_| count += 1);
+    assert_eq!(count, 0);
+}

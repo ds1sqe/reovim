@@ -246,3 +246,176 @@ fn invalid_utf8_display() {
     // Also test std::error::Error impl exists
     let _: &dyn std::error::Error = &err;
 }
+
+// ── apply_insert ─────────────────────────────────────────────────────
+
+/// Build a `LineIndex` via full rebuild and compare with incremental.
+#[allow(clippy::cast_possible_truncation)] // test values are always small
+fn assert_incremental_insert_matches_rebuild(initial: &[u8], offset: u64, inserted: &[u8]) {
+    let mut inc = LineIndex::from_bytes(initial).unwrap();
+    inc.apply_insert(offset, inserted);
+
+    // Build expected via full rebuild.
+    let mut full_content = initial.to_vec();
+    let off = offset as usize;
+    full_content.splice(off..off, inserted.iter().copied());
+    let expected = LineIndex::build_from_str(std::str::from_utf8(&full_content).unwrap());
+
+    assert_eq!(
+        inc.offsets, expected.offsets,
+        "offsets mismatch: initial={initial:?}, offset={offset}, inserted={inserted:?}"
+    );
+    assert_eq!(inc.total_bytes, expected.total_bytes, "total_bytes mismatch");
+}
+
+#[test]
+fn apply_insert_no_newlines() {
+    assert_incremental_insert_matches_rebuild(b"hello", 5, b" world");
+}
+
+#[test]
+fn apply_insert_single_newline() {
+    assert_incremental_insert_matches_rebuild(b"helloworld", 5, b"\n");
+}
+
+#[test]
+fn apply_insert_multiple_newlines() {
+    assert_incremental_insert_matches_rebuild(b"AC", 1, b"X\nY\nZ");
+}
+
+#[test]
+fn apply_insert_at_beginning() {
+    assert_incremental_insert_matches_rebuild(b"hello\nworld", 0, b"prefix\n");
+}
+
+#[test]
+fn apply_insert_at_end() {
+    assert_incremental_insert_matches_rebuild(b"hello\nworld", 11, b"\nappended");
+}
+
+#[test]
+fn apply_insert_at_newline_boundary() {
+    // Insert right after the \n (start of line 1).
+    assert_incremental_insert_matches_rebuild(b"a\nb", 2, b"X\nY");
+}
+
+#[test]
+fn apply_insert_into_empty() {
+    assert_incremental_insert_matches_rebuild(b"", 0, b"hello\nworld");
+}
+
+#[test]
+fn apply_insert_empty_text() {
+    let mut idx = LineIndex::from_bytes(b"hello").unwrap();
+    let before = idx.clone();
+    idx.apply_insert(3, b"");
+    assert_eq!(idx, before);
+}
+
+#[test]
+fn apply_insert_crlf_sets_flag() {
+    let mut idx = LineIndex::from_bytes(b"hello").unwrap();
+    assert!(!idx.has_crlf());
+    idx.apply_insert(5, b"\r\n");
+    assert!(idx.has_crlf());
+}
+
+#[test]
+fn apply_insert_sequential() {
+    // Simulate multiple edits and compare with rebuild each time.
+    let mut idx = LineIndex::build_from_str("a\nb\nc");
+    let mut content = b"a\nb\nc".to_vec();
+
+    // Insert "X" at byte 2 (start of line 1).
+    idx.apply_insert(2, b"X");
+    content.splice(2..2, b"X".iter().copied());
+    let expected = LineIndex::build_from_str(std::str::from_utf8(&content).unwrap());
+    assert_eq!(idx.offsets, expected.offsets, "after first insert");
+
+    // Insert "\nNEW\n" at byte 5.
+    idx.apply_insert(5, b"\nNEW\n");
+    content.splice(5..5, b"\nNEW\n".iter().copied());
+    let expected = LineIndex::build_from_str(std::str::from_utf8(&content).unwrap());
+    assert_eq!(idx.offsets, expected.offsets, "after second insert");
+    assert_eq!(idx.total_bytes, expected.total_bytes);
+}
+
+// ── apply_delete ─────────────────────────────────────────────────────
+
+#[allow(clippy::cast_possible_truncation)] // test values are always small
+fn assert_incremental_delete_matches_rebuild(initial: &[u8], start: u64, end: u64) {
+    let mut inc = LineIndex::from_bytes(initial).unwrap();
+    inc.apply_delete(start, end);
+
+    let mut full_content = initial.to_vec();
+    full_content.drain(start as usize..end as usize);
+    let expected = if full_content.is_empty() {
+        LineIndex::build_from_str("")
+    } else {
+        LineIndex::build_from_str(std::str::from_utf8(&full_content).unwrap())
+    };
+
+    assert_eq!(
+        inc.offsets, expected.offsets,
+        "offsets mismatch: initial={initial:?}, start={start}, end={end}"
+    );
+    assert_eq!(inc.total_bytes, expected.total_bytes, "total_bytes mismatch");
+}
+
+#[test]
+fn apply_delete_no_newlines() {
+    assert_incremental_delete_matches_rebuild(b"hello world", 5, 6);
+}
+
+#[test]
+fn apply_delete_single_newline() {
+    assert_incremental_delete_matches_rebuild(b"hello\nworld", 5, 6);
+}
+
+#[test]
+fn apply_delete_across_newlines() {
+    // "hello\nbeautiful\nworld" → delete "lo\nbeautiful\nwo"
+    assert_incremental_delete_matches_rebuild(b"hello\nbeautiful\nworld", 3, 18);
+}
+
+#[test]
+fn apply_delete_from_beginning() {
+    assert_incremental_delete_matches_rebuild(b"hello\nworld", 0, 6);
+}
+
+#[test]
+fn apply_delete_to_end() {
+    assert_incremental_delete_matches_rebuild(b"hello\nworld", 5, 11);
+}
+
+#[test]
+fn apply_delete_entire_content() {
+    assert_incremental_delete_matches_rebuild(b"hello\nworld", 0, 11);
+}
+
+#[test]
+fn apply_delete_zero_range() {
+    let mut idx = LineIndex::from_bytes(b"hello").unwrap();
+    let before = idx.clone();
+    idx.apply_delete(2, 2);
+    assert_eq!(idx, before);
+}
+
+#[test]
+fn apply_delete_then_insert() {
+    let mut idx = LineIndex::build_from_str("hello\nworld\nfoo");
+    let mut content = b"hello\nworld\nfoo".to_vec();
+
+    // Delete "world\n"
+    idx.apply_delete(6, 12);
+    content.drain(6..12);
+    let expected = LineIndex::build_from_str(std::str::from_utf8(&content).unwrap());
+    assert_eq!(idx.offsets, expected.offsets, "after delete");
+
+    // Insert "bar\nbaz\n"
+    idx.apply_insert(6, b"bar\nbaz\n");
+    content.splice(6..6, b"bar\nbaz\n".iter().copied());
+    let expected = LineIndex::build_from_str(std::str::from_utf8(&content).unwrap());
+    assert_eq!(idx.offsets, expected.offsets, "after insert");
+    assert_eq!(idx.total_bytes, expected.total_bytes);
+}

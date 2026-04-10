@@ -279,26 +279,51 @@ impl VirtualBuffer {
     ///
     /// O(n) — walks all pieces and copies bytes.
     /// For large files, prefer line-based access.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the backing bytes are not valid UTF-8.  This should never
+    /// happen: original content is validated at construction, and the add
+    /// buffer is always a `String`.
     #[must_use]
     pub fn content(&self) -> String {
-        let mut result = String::with_capacity(self.pieces.byte_len() as usize);
+        let total = self.pieces.byte_len() as usize;
+        let mut buf = Vec::with_capacity(total);
         for piece in self.pieces.iter_pieces() {
-            result.push_str(&self.piece_text(piece));
+            buf.extend_from_slice(self.resolve_piece_bytes(piece));
         }
+        // All backing bytes are valid UTF-8: original validated at construction,
+        // add_buffer is always a String.
+        let s = String::from_utf8(buf).expect("backing bytes are valid UTF-8");
         if self.crlf {
-            result.replace("\r\n", "\n")
+            s.replace("\r\n", "\n")
         } else {
-            result
+            s
         }
     }
 
     /// Materialize a byte range from pieces as a `String`.
+    ///
+    /// Walks only the pieces that overlap the requested range and copies
+    /// the relevant sub-slices directly from the backing stores (mmap /
+    /// add buffer) without allocating intermediate per-piece Strings.
     fn materialize_byte_range(&self, byte_start: u64, byte_end: u64) -> String {
         if byte_start >= byte_end {
             return String::new();
         }
 
-        let mut result = String::new();
+        let range_len = (byte_end - byte_start) as usize;
+        let mut buf = Vec::with_capacity(range_len);
+
+        self.collect_bytes_in_range(byte_start, byte_end, &mut buf);
+
+        // All backing bytes are valid UTF-8: original validated at
+        // construction, add_buffer is always a String.
+        String::from_utf8(buf).expect("backing bytes are valid UTF-8")
+    }
+
+    /// Copy bytes from pieces in `[byte_start, byte_end)` into `buf`.
+    fn collect_bytes_in_range(&self, byte_start: u64, byte_end: u64, buf: &mut Vec<u8>) {
         let mut cumulative = 0u64;
 
         for piece in self.pieces.iter_pieces() {
@@ -306,29 +331,26 @@ impl VirtualBuffer {
             let piece_end = cumulative + piece.metrics.byte_len;
             cumulative = piece_end;
 
-            if piece_end <= byte_start || piece_start >= byte_end {
+            if piece_end <= byte_start {
                 continue;
             }
-
-            let text = self.piece_text(piece);
-            let slice_start = byte_start.saturating_sub(piece_start) as usize;
-            let slice_end = (byte_end - piece_start).min(piece.metrics.byte_len) as usize;
-
-            // Ensure we're on char boundaries
-            let text_bytes = text.as_bytes();
-            let safe_start = find_char_boundary(text_bytes, slice_start);
-            let safe_end = find_char_boundary(text_bytes, slice_end);
-
-            if safe_start < safe_end && safe_end <= text_bytes.len() {
-                result.push_str(&text[safe_start..safe_end]);
+            if piece_start >= byte_end {
+                break;
             }
-        }
 
-        result
+            let local_start = byte_start.saturating_sub(piece_start) as usize;
+            let local_end = (byte_end - piece_start).min(piece.metrics.byte_len) as usize;
+
+            let bytes = self.resolve_piece_bytes(piece);
+            buf.extend_from_slice(&bytes[local_start..local_end]);
+        }
     }
 
-    /// Get the text for a piece.
-    fn piece_text(&self, piece: &Piece) -> String {
+    /// Resolve a piece to its backing byte slice without allocation.
+    ///
+    /// For `Original` pieces this returns a sub-slice of the mmap.
+    /// For `Add` pieces this returns a sub-slice of the append buffer.
+    fn resolve_piece_bytes<'a>(&'a self, piece: &Piece) -> &'a [u8] {
         match piece.source {
             PieceSource::Original {
                 byte_start,
@@ -337,24 +359,22 @@ impl VirtualBuffer {
                 let bytes = self.original.as_bytes();
                 let start = byte_start as usize;
                 let end = start + byte_len as usize;
-                // SAFETY: LineIndex validated UTF-8 at construction
-                String::from_utf8_lossy(&bytes[start..end]).into_owned()
+                &bytes[start..end]
             }
-            PieceSource::Add { offset, len } => self.add_buffer[offset..offset + len].to_string(),
+            PieceSource::Add { offset, len } => &self.add_buffer.as_bytes()[offset..offset + len],
         }
     }
-}
 
-/// Find the nearest char boundary at or before `idx` in UTF-8 bytes.
-fn find_char_boundary(bytes: &[u8], idx: usize) -> usize {
-    if idx >= bytes.len() {
-        return bytes.len();
+    /// Invoke a closure with each contiguous byte chunk of the buffer.
+    ///
+    /// This yields raw `&[u8]` slices directly from the backing stores
+    /// without any String allocation — suitable for byte-level regex
+    /// search or streaming output.
+    pub fn for_each_chunk(&self, mut f: impl FnMut(&[u8])) {
+        for piece in self.pieces.iter_pieces() {
+            f(self.resolve_piece_bytes(piece));
+        }
     }
-    let mut i = idx;
-    while i > 0 && (bytes[i] & 0xC0) == 0x80 {
-        i -= 1;
-    }
-    i
 }
 
 // ── Position Conversion ─────────────────────────────────────────────────────
@@ -437,8 +457,7 @@ impl VirtualBuffer {
         self.pieces = self.pieces.insert(byte_offset, piece);
         self.modified = true;
 
-        // Rebuild line index from materialized content
-        self.rebuild_line_index();
+        self.line_index.apply_insert(byte_offset, text.as_bytes());
     }
 
     /// Delete text at a position.
@@ -450,15 +469,32 @@ impl VirtualBuffer {
         }
 
         let byte_start = self.position_to_byte(pos) as u64;
-        let content = self.content();
-        let char_start = content[..byte_start as usize].chars().count();
-        let char_end = (char_start + count).min(content.chars().count());
+        let total_bytes = self.pieces.byte_len();
 
-        // Find byte range for the chars to delete
-        let byte_end = content
-            .char_indices()
-            .nth(char_end)
-            .map_or(content.len(), |(i, _)| i) as u64;
+        // Find byte_end by counting `count` chars from byte_start without
+        // materializing the entire buffer.  We read a chunk large enough
+        // to cover the requested char count (worst case: 4 bytes per char
+        // for UTF-8) and scan it.
+        let estimate = (byte_start + count as u64 * 4).min(total_bytes);
+        let chunk = self.materialize_byte_range(byte_start, estimate);
+
+        let byte_end = if let Some((i, _)) = chunk.char_indices().nth(count) {
+            byte_start + i as u64
+        } else {
+            // Fewer chars than requested — delete to end of chunk.
+            // If the estimate didn't cover enough, extend to total.
+            if estimate < total_bytes {
+                let rest = self.materialize_byte_range(estimate, total_bytes);
+                let remaining = count - chunk.chars().count();
+                let extra = rest
+                    .char_indices()
+                    .nth(remaining)
+                    .map_or(rest.len(), |(i, _)| i);
+                estimate + extra as u64
+            } else {
+                byte_start + chunk.len() as u64
+            }
+        };
 
         if byte_start >= byte_end {
             return String::new();
@@ -470,7 +506,7 @@ impl VirtualBuffer {
         self.pieces = self.pieces.delete(byte_start, delete_len);
         self.modified = true;
 
-        self.rebuild_line_index();
+        self.line_index.apply_delete(byte_start, byte_end);
 
         deleted
     }
@@ -502,7 +538,7 @@ impl VirtualBuffer {
         self.pieces = self.pieces.delete(byte_start, delete_len);
         self.modified = true;
 
-        self.rebuild_line_index();
+        self.line_index.apply_delete(byte_start, byte_end);
 
         deleted
     }
@@ -573,25 +609,7 @@ impl VirtualBuffer {
     fn content_bytes_vec(&self) -> Vec<u8> {
         let mut result = Vec::with_capacity(self.pieces.byte_len() as usize);
         for piece in self.pieces.iter_pieces() {
-            match piece.source {
-                PieceSource::Original {
-                    byte_start,
-                    byte_len,
-                } => {
-                    let bytes = self.original.as_bytes();
-                    let start = byte_start as usize;
-                    let end = start + byte_len as usize;
-                    result.extend_from_slice(&bytes[start..end]);
-                }
-                PieceSource::Add { offset, len } => {
-                    result.extend_from_slice(
-                        self.add_buffer
-                            .as_bytes()
-                            .get(offset..offset + len)
-                            .unwrap_or_default(),
-                    );
-                }
-            }
+            result.extend_from_slice(self.resolve_piece_bytes(piece));
         }
         result
     }
@@ -670,13 +688,15 @@ impl StorageOps for VirtualBuffer {
     }
 
     fn read_bytes(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let content = self.content_bytes_vec();
-        if offset >= content.len() {
+        let total = self.pieces.byte_len() as usize;
+        if offset >= total {
             return 0;
         }
-        let available = &content[offset..];
-        let count = buf.len().min(available.len());
-        buf[..count].copy_from_slice(&available[..count]);
+        let end = (offset + buf.len()).min(total);
+        let mut tmp = Vec::with_capacity(end - offset);
+        self.collect_bytes_in_range(offset as u64, end as u64, &mut tmp);
+        let count = tmp.len().min(buf.len());
+        buf[..count].copy_from_slice(&tmp[..count]);
         count
     }
 
@@ -723,8 +743,9 @@ impl StorageOps for VirtualBuffer {
             return Vec::new();
         }
         let end = (offset + max_len).min(total);
-        let content = self.content_bytes_vec();
-        content[offset..end].to_vec()
+        let mut buf = Vec::with_capacity(end - offset);
+        self.collect_bytes_in_range(offset as u64, end as u64, &mut buf);
+        buf
     }
 }
 

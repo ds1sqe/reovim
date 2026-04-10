@@ -8,6 +8,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 - **bench**: large-file benchmark harness — programmatic UTF-8 log and ELF binary fixture generators, Linux RSS measurement via `/proc/self/status`, and `slow_bench_config()` for multi-second benchmarks (#739)
 - **bench**: large-file performance gate benchmarks (G1–G6) — Criterion benchmarks for all #739 gates: 2 GB UTF-8 open/scroll/edit/write/search and 500 MB ELF open, with RSS measurement (#739)
+- **text**: `LineIndex::apply_insert()` and `apply_delete()` for incremental newline-offset updates without full content rebuild — O(lines) instead of O(bytes) (#739)
+- **text**: `VirtualBuffer::for_each_chunk()` yields raw `&[u8]` slices from pieces for zero-allocation byte-level iteration (#739)
 - **vfs**: `TreeFixture` VFS fixture factories relocated from `shared/bench` to `reovim-driver-vfs::fixtures` — corrects shared→driver layer violation (#739)
 - **kernel**: virtual buffer architecture — mmap + piece table for multi-GB file editing with constant memory overhead. Files > 64 MB use `VirtualBuffer` backed by zero-copy mmap instead of Rope (#739)
 - **kernel**: `PieceTree` B-tree with `Arc` structural sharing for O(1) clone, matching the existing Rope pattern (#739)
@@ -38,6 +40,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **text**: `VirtualBuffer` line access, edit, and search paths rewritten for O(requested_range) instead of O(file_size) — eliminates per-piece String allocation in `materialize_byte_range()`, replaces full-content `rebuild_line_index()` with incremental `apply_insert`/`apply_delete`, and fixes `delete_at`/`read_bytes`/`read_chunk` to avoid materializing the entire buffer (#739)
 - **kernel**: `MotionEngine::calculate` and `TextObjectEngine::range` accept `&dyn TextGeometry` instead of `&Buffer` — motions and text objects now work on virtual buffers (#739)
 - **session**: `with_text_geometry()` on `SessionRuntime` dispatches to either buffer type — 11 motion/textobject modules migrated (#739)
 

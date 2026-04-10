@@ -49,20 +49,14 @@ pub fn parse_vm_rss(status_text: &str) -> io::Result<u64> {
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty VmRSS value"))?;
 
             let kb: u64 = kb_str.parse().map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("VmRSS not a number: {e}"),
-                )
+                io::Error::new(io::ErrorKind::InvalidData, format!("VmRSS not a number: {e}"))
             })?;
 
             return Ok(kb * 1024);
         }
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        "VmRSS not found in /proc/self/status",
-    ))
+    Err(io::Error::new(io::ErrorKind::NotFound, "VmRSS not found in /proc/self/status"))
 }
 
 /// Capture RSS delta around a closure.

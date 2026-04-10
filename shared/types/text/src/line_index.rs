@@ -185,6 +185,77 @@ impl LineIndex {
         self.offsets = offsets;
         self.has_crlf = has_crlf;
     }
+
+    /// Incrementally update after an insertion at `byte_offset`.
+    ///
+    /// Shifts existing newline offsets past the insertion point and inserts
+    /// new entries for any `\n` bytes in the inserted text.  Runs in
+    /// O(offsets.len()) — proportional to the number of lines, not the file
+    /// size — which is vastly cheaper than a full [`rebuild`](Self::rebuild)
+    /// for large files with small edits.
+    ///
+    /// `has_crlf` is only ever set to `true`, never reset to `false`.
+    pub fn apply_insert(&mut self, byte_offset: u64, text: &[u8]) {
+        let delta = text.len() as u64;
+        if delta == 0 {
+            return;
+        }
+
+        // Find the first offset at or past the insertion point.
+        let split = self.offsets.partition_point(|&off| off < byte_offset);
+
+        // Shift every offset from `split` onward by `delta`.
+        for off in &mut self.offsets[split..] {
+            *off += delta;
+        }
+
+        // Collect newline positions within the inserted text.
+        let new_offsets: Vec<u64> = text
+            .iter()
+            .enumerate()
+            .filter(|&(_, &b)| b == b'\n')
+            .map(|(i, _)| byte_offset + i as u64)
+            .collect();
+
+        // Splice the new offsets into the correct position (already sorted
+        // because we iterate `text` left-to-right and the shifted tail is
+        // strictly greater than any offset inside the inserted text).
+        if !new_offsets.is_empty() {
+            self.offsets.splice(split..split, new_offsets);
+        }
+
+        self.total_bytes += delta;
+
+        // Conservative CRLF detection — only ever set, never cleared.
+        if !self.has_crlf {
+            self.has_crlf = text.windows(2).any(|w| w == b"\r\n");
+        }
+    }
+
+    /// Incrementally update after a deletion of bytes `[byte_start, byte_end)`.
+    ///
+    /// Removes newline offsets that fall inside the deleted range and shifts
+    /// the remaining offsets backward.  Same O(offsets.len()) cost as
+    /// [`apply_insert`](Self::apply_insert).
+    ///
+    /// `has_crlf` is never cleared (conservative).
+    pub fn apply_delete(&mut self, byte_start: u64, byte_end: u64) {
+        let delta = byte_end.saturating_sub(byte_start);
+        if delta == 0 {
+            return;
+        }
+
+        // Remove offsets within [byte_start, byte_end) and shift the rest.
+        self.offsets
+            .retain(|&off| off < byte_start || off >= byte_end);
+
+        let shift_start = self.offsets.partition_point(|&off| off < byte_start);
+        for off in &mut self.offsets[shift_start..] {
+            *off -= delta;
+        }
+
+        self.total_bytes -= delta;
+    }
 }
 
 #[cfg(test)]

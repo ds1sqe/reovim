@@ -71,26 +71,16 @@ pub fn write_utf8_log(w: &mut dyn Write, target_bytes: u64) -> io::Result<u64> {
                 match tag.split_once(':').map_or(tag, |(name, _)| name) {
                     "id" => {
                         // Zero-pad to 8 digits.
-                        let _ = std::fmt::Write::write_fmt(
-                            &mut buf,
-                            format_args!("{seq:08}"),
-                        );
+                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{seq:08}"));
                     }
                     "octet" => {
-                        let _ =
-                            std::fmt::Write::write_fmt(&mut buf, format_args!("{octet}"));
+                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{octet}"));
                     }
                     "ms" => {
-                        let _ = std::fmt::Write::write_fmt(
-                            &mut buf,
-                            format_args!("{ms:03}"),
-                        );
+                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{ms:03}"));
                     }
                     "pct" => {
-                        let _ = std::fmt::Write::write_fmt(
-                            &mut buf,
-                            format_args!("{pct:02}"),
-                        );
+                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{pct:02}"));
                     }
                     _ => {}
                 }

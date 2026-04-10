@@ -23,20 +23,17 @@
 // G3/G4 use large BatchSize::LargeInput to avoid re-opening the 2 GB file per
 // iteration — the input is the already-opened buffer, not the fixture file.
 
-use std::{
-    io::Write,
-    path::Path,
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{io::Write, path::Path, sync::Arc, time::SystemTime};
 
-use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use memmap2::Mmap;
-use regex::Regex;
-use reovim_bench_utils::{large_file, rss};
-use reovim_driver_vfs::{FileMapping, MappedFile};
-use reovim_provider_text::{HeapMapping, VirtualBuffer};
-use reovim_types_text::Position;
+use {
+    criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main},
+    memmap2::Mmap,
+    regex::Regex,
+    reovim_bench_utils::{large_file, rss},
+    reovim_driver_vfs::{FileMapping, MappedFile},
+    reovim_provider_text::{HeapMapping, VirtualBuffer},
+    reovim_types_text::Position,
+};
 
 // ─── Fixture sizes ────────────────────────────────────────────────────────────
 
@@ -134,8 +131,7 @@ fn bench_g1_open_2gb_utf8(c: &mut Criterion) {
     // Measure RSS delta for one open (outside Criterion timing loop).
     let (line_count, rss_before, rss_after) = rss::measure_rss(|| {
         let mapping = mmap_open(&path);
-        let buf = VirtualBuffer::from_mapping(mapping)
-            .expect("G1 RSS: UTF-8 validation failed");
+        let buf = VirtualBuffer::from_mapping(mapping).expect("G1 RSS: UTF-8 validation failed");
         buf.line_count()
     });
     let rss_delta_mb = (rss_after.saturating_sub(rss_before)) as f64 / (1024.0 * 1024.0);
@@ -159,8 +155,7 @@ fn bench_g2_scroll_2gb(c: &mut Criterion) {
     let path = tmpfile.path().to_path_buf();
 
     let mapping = mmap_open(&path);
-    let buf = VirtualBuffer::from_mapping(mapping)
-        .expect("G2: UTF-8 validation failed");
+    let buf = VirtualBuffer::from_mapping(mapping).expect("G2: UTF-8 validation failed");
     let lc = buf.line_count();
     eprintln!("[G2] Buffer open: {lc} lines");
 
@@ -176,15 +171,11 @@ fn bench_g2_scroll_2gb(c: &mut Criterion) {
     ];
 
     for &(label, idx) in positions {
-        group.bench_with_input(
-            BenchmarkId::new("line_access", label),
-            &idx,
-            |b, &idx| {
-                b.iter(|| {
-                    std::hint::black_box(buf.line(idx));
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("line_access", label), &idx, |b, &idx| {
+            b.iter(|| {
+                std::hint::black_box(buf.line(idx));
+            });
+        });
     }
 
     group.finish();
@@ -199,8 +190,7 @@ fn bench_g3_insert_delete_2gb(c: &mut Criterion) {
     let path = tmpfile.path().to_path_buf();
 
     let mapping = mmap_open(&path);
-    let base_buf = VirtualBuffer::from_mapping(mapping)
-        .expect("G3: UTF-8 validation failed");
+    let base_buf = VirtualBuffer::from_mapping(mapping).expect("G3: UTF-8 validation failed");
     let lc = base_buf.line_count();
     eprintln!("[G3] Buffer open: {lc} lines");
     eprintln!("[G3] NOTE: rebuild_line_index() is O(n) — this is the production path.");
@@ -253,10 +243,7 @@ fn bench_g3_insert_delete_2gb(c: &mut Criterion) {
             b.iter_batched_ref(
                 || base_buf.clone(),
                 |buf| {
-                    let _ = buf.delete_range(
-                        Position::new(mid, 0),
-                        Position::new(mid + 1, 0),
-                    );
+                    let _ = buf.delete_range(Position::new(mid, 0), Position::new(mid + 1, 0));
                 },
                 BatchSize::LargeInput,
             );
@@ -275,8 +262,7 @@ fn bench_g4_write_2gb(c: &mut Criterion) {
     let path = tmpfile.path().to_path_buf();
 
     let mapping = mmap_open(&path);
-    let base_buf = VirtualBuffer::from_mapping(mapping)
-        .expect("G4: UTF-8 validation failed");
+    let base_buf = VirtualBuffer::from_mapping(mapping).expect("G4: UTF-8 validation failed");
     let lc = base_buf.line_count();
     eprintln!("[G4] Buffer open: {lc} lines — applying small edit before write");
 
@@ -310,8 +296,7 @@ fn bench_g5_search_2gb(c: &mut Criterion) {
     let path = tmpfile.path().to_path_buf();
 
     let mapping = mmap_open(&path);
-    let buf = VirtualBuffer::from_mapping(mapping)
-        .expect("G5: UTF-8 validation failed");
+    let buf = VirtualBuffer::from_mapping(mapping).expect("G5: UTF-8 validation failed");
     let lc = buf.line_count();
     eprintln!("[G5] Buffer open: {lc} lines");
     eprintln!("[G5] NOTE: inline regex scan — not the full SearchProvider module stack.");
@@ -416,10 +401,10 @@ fn bench_g6_open_500mb_elf(c: &mut Criterion) {
         // ELF magic
         data.extend_from_slice(&[0x7f, b'E', b'L', b'F']);
         data.extend_from_slice(&[2, 1, 1, 0]); // class, data, version, osabi
-        data.extend_from_slice(&[0u8; 8]);      // padding
-        data.extend_from_slice(&[2, 0]);         // e_type: ET_EXEC
-        data.extend_from_slice(&[0x3E, 0]);      // e_machine: EM_X86_64
-        data.extend_from_slice(&[1, 0, 0, 0]);   // e_version
+        data.extend_from_slice(&[0u8; 8]); // padding
+        data.extend_from_slice(&[2, 0]); // e_type: ET_EXEC
+        data.extend_from_slice(&[0x3E, 0]); // e_machine: EM_X86_64
+        data.extend_from_slice(&[1, 0, 0, 0]); // e_version
         // Zero fill remaining bytes to reach 500 MB.
         data.resize(SIZE_500MB as usize, 0u8);
         let mapping: Arc<dyn FileMapping> = Arc::new(HeapMapping(data));
