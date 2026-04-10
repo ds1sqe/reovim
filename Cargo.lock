@@ -2345,8 +2345,10 @@ name = "reovim-client-cli"
 version = "0.14.5-dev"
 dependencies = [
  "clap",
+ "reovim-driver-module-registry",
  "reovim-protocol",
  "serde_json",
+ "tempfile",
  "tokio",
  "tonic",
  "tracing",

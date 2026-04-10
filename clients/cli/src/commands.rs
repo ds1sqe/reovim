@@ -2,9 +2,16 @@
 //!
 //! Each function executes a CLI command and formats the output.
 
-use std::fmt::Write;
+use std::{collections::HashSet, fmt::Write};
 
-use crate::{GrpcClient, GrpcClientError, OutputFormat};
+use {
+    crate::{GrpcClient, GrpcClientError, ModuleSubcommand, OutputFormat},
+    reovim_driver_module_registry::{
+        CheckReport, InstalledModule, ModuleInfo as RegistryModuleInfo, ModuleSource,
+        RegistryPaths, workflow,
+    },
+    reovim_protocol::v2::ListModulesResponse,
+};
 
 /// Send keys to a target client via `DebugService`.
 ///
@@ -316,6 +323,284 @@ pub async fn registers(
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
+    }
+}
+
+/// Manage installed third-party modules.
+///
+/// Local operations stay on the registry workflow path. Only `list --loaded`
+/// uses gRPC for loaded-status enrichment.
+///
+/// # Errors
+///
+/// Returns an error if the local workflow fails or the optional gRPC query fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn module(
+    client: Option<&mut GrpcClient>,
+    subcommand: &ModuleSubcommand,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    module_with_paths(client, subcommand, format, &RegistryPaths::default_paths()).await
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+async fn module_with_paths(
+    client: Option<&mut GrpcClient>,
+    subcommand: &ModuleSubcommand,
+    format: OutputFormat,
+    paths: &RegistryPaths,
+) -> Result<String, GrpcClientError> {
+    match subcommand {
+        ModuleSubcommand::Install { source, rev } => {
+            let source = parse_module_source(source, rev.as_deref());
+            match workflow::install(&source, paths) {
+                Ok(module) => Ok(format_install_result(&module, format)),
+                Err(err) => Err(GrpcClientError::OperationFailed(err.to_string())),
+            }
+        }
+        ModuleSubcommand::Remove { id } => match workflow::remove(id, paths) {
+            Ok(()) => Ok(format_remove_result(id, format)),
+            Err(err) => Err(GrpcClientError::OperationFailed(err.to_string())),
+        },
+        ModuleSubcommand::Update { id: Some(id) } => match workflow::update(id, paths) {
+            Ok(module) => Ok(format_update_result(&module, format)),
+            Err(err) => Err(GrpcClientError::OperationFailed(err.to_string())),
+        },
+        ModuleSubcommand::Update { id: None } => {
+            let installed = workflow::list(paths)
+                .map_err(|err| GrpcClientError::OperationFailed(err.to_string()))?;
+            let mut results = Vec::with_capacity(installed.len());
+            for module in &installed {
+                match workflow::update(&module.id, paths) {
+                    Ok(updated) => results.push(Ok(updated)),
+                    Err(err) => results.push(Err((module.id.clone(), err.to_string()))),
+                }
+            }
+            Ok(format_update_all_results(&results, format))
+        }
+        ModuleSubcommand::List { loaded } => {
+            let installed = workflow::list(paths)
+                .map_err(|err| GrpcClientError::OperationFailed(err.to_string()))?;
+            let loaded_ids = if *loaded {
+                let client = client.ok_or_else(|| {
+                    GrpcClientError::ConnectionFailed(
+                        "--loaded requires a reachable gRPC server".to_string(),
+                    )
+                })?;
+                collect_loaded_module_ids(&client.module_list().await?)
+            } else {
+                HashSet::new()
+            };
+            Ok(format_module_list(&installed, &loaded_ids, format))
+        }
+        ModuleSubcommand::Info { id } => match workflow::info(id, paths) {
+            Ok(info) => Ok(format_module_info(&info, format)),
+            Err(err) => Err(GrpcClientError::OperationFailed(err.to_string())),
+        },
+        ModuleSubcommand::Check => match workflow::check(paths) {
+            Ok(report) => Ok(format_check_report(&report, format)),
+            Err(err) => Err(GrpcClientError::OperationFailed(err.to_string())),
+        },
+    }
+}
+
+fn parse_module_source(source: &str, rev: Option<&str>) -> ModuleSource {
+    if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@")
+    {
+        rev.map_or_else(|| ModuleSource::git(source), |rev| ModuleSource::git_rev(source, rev))
+    } else {
+        ModuleSource::path(source)
+    }
+}
+
+fn collect_loaded_module_ids(response: &ListModulesResponse) -> HashSet<String> {
+    response
+        .modules
+        .iter()
+        .filter(|module| module.loaded)
+        .map(|module| module.id.clone())
+        .collect()
+}
+
+fn format_install_result(module: &InstalledModule, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Plain => {
+            format!("Installed {} v{} from {}", &module.id, &module.version, &module.source)
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "id": &module.id,
+            "version": &module.version,
+            "source": &module.source,
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_remove_result(id: &str, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Plain => format!("Removed {id}"),
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "id": id,
+            "removed": true,
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_update_result(module: &InstalledModule, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Plain => format!("Updated {} to v{}", &module.id, &module.version),
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "id": &module.id,
+            "version": &module.version,
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_update_all_results(
+    results: &[Result<InstalledModule, (String, String)>],
+    format: OutputFormat,
+) -> String {
+    match format {
+        OutputFormat::Plain => {
+            if results.is_empty() {
+                return "No modules installed".to_string();
+            }
+
+            let mut output = String::new();
+            for result in results {
+                match result {
+                    Ok(module) => {
+                        let _ = writeln!(output, "Updated {} to v{}", &module.id, &module.version);
+                    }
+                    Err((id, error)) => {
+                        let _ = writeln!(output, "Failed {id}: {error}");
+                    }
+                }
+            }
+            output.trim_end().to_string()
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "results": results.iter().map(|result| match result {
+                Ok(module) => serde_json::json!({
+                    "id": &module.id,
+                    "ok": true,
+                    "version": &module.version,
+                    "error": serde_json::Value::Null,
+                }),
+                Err((id, error)) => serde_json::json!({
+                    "id": id,
+                    "ok": false,
+                    "version": serde_json::Value::Null,
+                    "error": error,
+                }),
+            }).collect::<Vec<_>>(),
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_module_list(
+    installed: &[InstalledModule],
+    loaded_ids: &HashSet<String>,
+    format: OutputFormat,
+) -> String {
+    match format {
+        OutputFormat::Plain => {
+            if installed.is_empty() {
+                return "No modules installed".to_string();
+            }
+
+            let mut output = String::new();
+            for module in installed {
+                let loaded = if loaded_ids.contains(&module.id) {
+                    " [loaded]"
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    output,
+                    "  {} v{} [{}]{}",
+                    &module.id, &module.version, &module.source, loaded
+                );
+            }
+            output.trim_end().to_string()
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "modules": installed.iter().map(|module| serde_json::json!({
+                "id": &module.id,
+                "version": &module.version,
+                "source": &module.source,
+                "install_path": &module.install_path,
+                "library_path": &module.library_path,
+                "loaded": loaded_ids.contains(&module.id),
+            })).collect::<Vec<_>>(),
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_module_info(info: &RegistryModuleInfo, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Plain => {
+            let mut output = String::new();
+            let _ = writeln!(output, "ID:        {}", &info.id);
+            let _ = writeln!(output, "Version:   {}", &info.version);
+            let _ = writeln!(output, "Source:    {}", &info.source);
+            let _ = writeln!(output, "Path:      {}", info.install_path.display());
+            let _ = writeln!(
+                output,
+                "Library:   {}",
+                if info.library_exists { "OK" } else { "MISSING" }
+            );
+            if !info.provides.is_empty() {
+                let _ = writeln!(output, "Provides:  {}", info.provides.join(", "));
+            }
+            if !info.requires.is_empty() {
+                let _ = writeln!(output, "Requires:  {}", info.requires.join(", "));
+            }
+            output.trim_end().to_string()
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "id": &info.id,
+            "version": &info.version,
+            "source": &info.source,
+            "install_path": &info.install_path,
+            "library_exists": info.library_exists,
+            "provides": &info.provides,
+            "requires": &info.requires,
+        }))
+        .unwrap_or_default(),
+    }
+}
+
+fn format_check_report(report: &CheckReport, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Plain => {
+            if report.is_clean() {
+                return format!("OK ({} valid)", report.valid.len());
+            }
+
+            let mut output = String::new();
+            for (id, reason) in &report.broken {
+                let _ = writeln!(output, "BROKEN: {id} — {reason}");
+            }
+            for path in &report.orphaned {
+                let _ = writeln!(output, "ORPHAN: {}", path.display());
+            }
+            output.trim_end().to_string()
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "clean": report.is_clean(),
+            "valid": &report.valid,
+            "broken": report.broken.iter().map(|(id, reason)| serde_json::json!({
+                "id": id,
+                "reason": reason,
+            })).collect::<Vec<_>>(),
+            "orphaned": report.orphaned.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+        }))
+        .unwrap_or_default(),
     }
 }
 

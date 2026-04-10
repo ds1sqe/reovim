@@ -337,6 +337,7 @@ async fn injected_server_uses_runner_module_service() {
         .into_inner();
 
     assert_eq!(response.modules.len(), 1);
+    assert_eq!(response.modules[0].id, "runner-static");
     assert_eq!(response.modules[0].name, "Runner Static Module");
     assert_eq!(response.modules[0].version, "1.2.3");
     assert!(response.modules[0].loaded);
@@ -396,6 +397,7 @@ async fn real_dynamic_module_flow_loads_lists_reloads_and_unloads() {
         .expect("list RPC should succeed")
         .into_inner();
     assert_eq!(list.modules.len(), 1);
+    assert_eq!(list.modules[0].id, "test-dynamic");
     assert_eq!(list.modules[0].name, "Test Dynamic Module");
     assert!(list.modules[0].loaded);
     assert!(

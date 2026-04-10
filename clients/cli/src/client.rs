@@ -40,6 +40,8 @@ use {
         ListBuffersResponse,
         ListClientsRequest,
         ListClientsResponse,
+        ListModulesRequest,
+        ListModulesResponse,
         // Phase 17 (#481): Debug types
         LogTailRequest,
         LogTailResponse,
@@ -54,6 +56,7 @@ use {
         buffer_service_client::BufferServiceClient,
         debug_service_client::DebugServiceClient,
         input_service_client::InputServiceClient,
+        module_service_client::ModuleServiceClient,
         presence_service_client::PresenceServiceClient,
         server_service_client::ServerServiceClient,
         state_service_client::StateServiceClient,
@@ -70,6 +73,8 @@ pub enum GrpcClientError {
     GrpcError(tonic::Status),
     /// Invalid CLI argument combination.
     InvalidArgument(String),
+    /// Local workflow or filesystem operation failed.
+    OperationFailed(String),
     /// Web capture script failed.
     CaptureError(String),
 }
@@ -80,6 +85,7 @@ impl std::fmt::Display for GrpcClientError {
             Self::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
             Self::GrpcError(status) => write!(f, "gRPC error: {status}"),
             Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
+            Self::OperationFailed(msg) => write!(f, "Operation failed: {msg}"),
             Self::CaptureError(msg) => write!(f, "Capture error: {msg}"),
         }
     }
@@ -121,6 +127,7 @@ pub struct GrpcClient {
     state: StateServiceClient<Channel>,
     buffer: BufferServiceClient<Channel>,
     server: ServerServiceClient<Channel>,
+    module: ModuleServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
     debug: DebugServiceClient<Channel>,
     /// Server address for error messages.
@@ -164,6 +171,9 @@ impl GrpcClient {
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             server: ServerServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            module: ModuleServiceClient::new(channel.clone())
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             presence: PresenceServiceClient::new(channel.clone())
@@ -438,6 +448,18 @@ impl GrpcClient {
     pub async fn info(&mut self) -> Result<InfoResponse, GrpcClientError> {
         let request = self.make_request(InfoRequest {});
         let response = self.server.info(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List loaded modules via `ModuleService`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn module_list(&mut self) -> Result<ListModulesResponse, GrpcClientError> {
+        let request = self.make_request(ListModulesRequest {});
+        let response = self.module.list(request).await?;
         Ok(response.into_inner())
     }
 

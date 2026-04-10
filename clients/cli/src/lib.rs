@@ -30,6 +30,7 @@
 //! - `buffer [ID]` - Get buffer content
 //! - `ping` - Health check
 //! - `version` - Get server version
+//! - `module <SUBCOMMAND>` - Manage installed third-party modules
 //!
 //! # Protocol
 //!
@@ -173,6 +174,67 @@ pub enum CliCommand {
 
     /// List registered extensions.
     Extensions,
+
+    /// Manage installed modules (install, remove, update, list, info, check).
+    Module {
+        /// Module management subcommand.
+        #[command(subcommand)]
+        subcommand: ModuleSubcommand,
+    },
+}
+
+/// Module management subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ModuleSubcommand {
+    /// Install a module from a git URL or local path.
+    Install {
+        /// Git URL (https://... or git@...) or local path.
+        source: String,
+
+        /// Pin to a specific git branch, tag, or commit.
+        #[arg(long)]
+        rev: Option<String>,
+    },
+
+    /// Remove an installed module.
+    Remove {
+        /// Module ID.
+        id: String,
+    },
+
+    /// Update an installed module (or all if no ID given).
+    Update {
+        /// Module ID to update. Omit to update all installed modules.
+        id: Option<String>,
+    },
+
+    /// List installed modules with optional loaded-status from a running server.
+    List {
+        /// Include loaded status from a running server.
+        #[arg(long)]
+        loaded: bool,
+    },
+
+    /// Show details for an installed module.
+    Info {
+        /// Module ID.
+        id: String,
+    },
+
+    /// Check integrity of all installed modules.
+    Check,
+}
+
+impl CliCommand {
+    const fn requires_grpc(&self) -> bool {
+        match self {
+            Self::Module {
+                subcommand: ModuleSubcommand::List { loaded },
+            } => *loaded,
+            Self::Module { .. } => false,
+            _ => true,
+        }
+    }
 }
 
 impl CliArgs {
@@ -183,23 +245,39 @@ impl CliArgs {
     /// Returns an error if the gRPC connection fails or the command fails.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn execute(&self) -> Result<String, GrpcClientError> {
-        let mut client = GrpcClient::connect(&self.grpc).await?;
+        let mut client = if self.command.requires_grpc() {
+            Some(GrpcClient::connect(&self.grpc).await?)
+        } else {
+            None
+        };
 
         match &self.command {
             CliCommand::Keys {
                 keys,
                 client: target,
-            } => commands::keys(&mut client, keys, *target, self.format).await,
+            } => {
+                let client = connected_client(&mut client, "keys")?;
+                commands::keys(client, keys, *target, self.format).await
+            }
             CliCommand::Mode { client: target } => {
-                commands::mode(&mut client, *target, self.format).await
+                let client = connected_client(&mut client, "mode")?;
+                commands::mode(client, *target, self.format).await
             }
             CliCommand::Cursor { client: target } => {
-                commands::cursor(&mut client, *target, self.format).await
+                let client = connected_client(&mut client, "cursor")?;
+                commands::cursor(client, *target, self.format).await
             }
-            CliCommand::Buffers => commands::buffers(&mut client, self.format).await,
-            CliCommand::Buffer { id } => commands::buffer(&mut client, *id, self.format).await,
+            CliCommand::Buffers => {
+                let client = connected_client(&mut client, "buffers")?;
+                commands::buffers(client, self.format).await
+            }
+            CliCommand::Buffer { id } => {
+                let client = connected_client(&mut client, "buffer")?;
+                commands::buffer(client, *id, self.format).await
+            }
             CliCommand::Registers { name } => {
-                commands::registers(&mut client, name.clone(), self.format).await
+                let client = connected_client(&mut client, "registers")?;
+                commands::registers(client, name.clone(), self.format).await
             }
             CliCommand::Capture {
                 client: client_id,
@@ -210,9 +288,10 @@ impl CliArgs {
                 dpr,
                 output,
             } => {
+                let client = connected_client(&mut client, "capture")?;
                 let address = &self.grpc;
                 commands::capture(
-                    &mut client,
+                    client,
                     *client_id,
                     capture_format,
                     web_url.as_deref(),
@@ -225,16 +304,46 @@ impl CliArgs {
                 )
                 .await
             }
-            CliCommand::Ping => commands::ping(&mut client, self.format).await,
-            CliCommand::Version => commands::version(&mut client, self.format).await,
-            CliCommand::Clients => commands::clients(&mut client, self.format).await,
+            CliCommand::Ping => {
+                let client = connected_client(&mut client, "ping")?;
+                commands::ping(client, self.format).await
+            }
+            CliCommand::Version => {
+                let client = connected_client(&mut client, "version")?;
+                commands::version(client, self.format).await
+            }
+            CliCommand::Clients => {
+                let client = connected_client(&mut client, "clients")?;
+                commands::clients(client, self.format).await
+            }
             CliCommand::ExtensionState {
                 kind,
                 client: target,
-            } => commands::extension_state(&mut client, kind, *target, self.format).await,
-            CliCommand::Extensions => commands::extensions(&mut client, self.format).await,
+            } => {
+                let client = connected_client(&mut client, "extension-state")?;
+                commands::extension_state(client, kind, *target, self.format).await
+            }
+            CliCommand::Extensions => {
+                let client = connected_client(&mut client, "extensions")?;
+                commands::extensions(client, self.format).await
+            }
+            CliCommand::Module { subcommand } => {
+                commands::module(client.as_mut(), subcommand, self.format).await
+            }
         }
     }
+}
+
+#[allow(clippy::result_large_err)]
+fn connected_client<'a>(
+    client: &'a mut Option<GrpcClient>,
+    command: &str,
+) -> Result<&'a mut GrpcClient, GrpcClientError> {
+    client.as_mut().ok_or_else(|| {
+        GrpcClientError::ConnectionFailed(format!(
+            "internal error: missing gRPC client for '{command}' command"
+        ))
+    })
 }
 
 #[cfg(test)]

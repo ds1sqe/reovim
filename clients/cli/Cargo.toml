@@ -25,11 +25,15 @@ clap = { workspace = true, features = ["derive"] }
 # Serialization (for JSON output)
 serde_json = { workspace = true }
 
+# Local module registry workflow
+reovim-driver-module-registry = { workspace = true }
+
 # Logging
 tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"
 
 [lints]
 workspace = true

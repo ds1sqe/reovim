@@ -36,6 +36,7 @@ impl RunnerModuleService {
             modules: modules
                 .into_iter()
                 .map(|module| ModuleInfo {
+                    id: module.id.as_str().to_string(),
                     name: module.name,
                     version: module.version.to_string(),
                     path: module
