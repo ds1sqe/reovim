@@ -64,7 +64,13 @@ fn env_search_paths() -> Option<Vec<PathBuf>> {
 /// Get shared library extension for the current platform.
 #[must_use]
 pub const fn library_extension() -> &'static str {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "netbsd",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "dragonfly",
+    ))]
     {
         "so"
     }
