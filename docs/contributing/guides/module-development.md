@@ -167,8 +167,9 @@ reovim currently supports two dynamic module surfaces:
 
 ### Current rough edges (as of #729)
 
-- `scripts/build-module.sh` currently covers **server modules only**; client
-  modules still use direct `cargo build` flows.
+- `scripts/build-module.sh` currently builds **server modules only**; client
+  modules still use direct `cargo build` flows, but the script can now verify a
+  prebuilt client `.so` via `--no-build --client --verify-only <path>`.
 - Server and client discovery use different XDG roots:
   `reovim/modules/` vs `reovim/client-modules/`.
 - Headless integration tests that spawn `target/debug/reovim` require a fresh

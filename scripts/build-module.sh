@@ -16,6 +16,9 @@
 #   --install-config Install example config to ~/.config/reovim/ (auto with --install)
 #   --verify         Verify FFI symbols after build (default: on)
 #   --no-verify      Skip FFI symbol verification
+#   --client         Verify client-module exports (verify-only mode only)
+#   --no-build       Skip cargo build (requires --verify-only)
+#   --verify-only    Verify an already-built library path and exit
 #
 # Output:
 #   Release: target/release/libreovim_module_<name>.so (Linux)
@@ -42,6 +45,9 @@ INSTALL_CONFIG=false
 INSTALL_CONFIG_ONLY=false
 VERIFY=true
 BUILD_ALL=false
+CLIENT=false
+NO_BUILD=false
+VERIFY_ONLY_PATH=""
 MODULE_NAME=""
 
 # Parse arguments
@@ -73,6 +79,18 @@ while [[ $# -gt 0 ]]; do
             VERIFY=false
             shift
             ;;
+        --client)
+            CLIENT=true
+            shift
+            ;;
+        --no-build)
+            NO_BUILD=true
+            shift
+            ;;
+        --verify-only)
+            VERIFY_ONLY_PATH="$2"
+            shift 2
+            ;;
         -h|--help)
             head -30 "$0" | tail -28
             exit 0
@@ -94,10 +112,27 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate arguments
-if [[ "$INSTALL_CONFIG_ONLY" == false && "$BUILD_ALL" == false && -z "$MODULE_NAME" ]]; then
+if [[ "$CLIENT" == true && -z "$VERIFY_ONLY_PATH" ]]; then
+    echo -e "${RED}Error: --client is only supported with --no-build --verify-only <path>${NC}" >&2
+    echo -e "${YELLOW}Hint: build client modules with cargo, then verify the resulting .so artifact${NC}" >&2
+    exit 1
+fi
+
+if [[ "$NO_BUILD" == true && -z "$VERIFY_ONLY_PATH" ]]; then
+    echo -e "${RED}Error: --no-build requires --verify-only <path>${NC}" >&2
+    exit 1
+fi
+
+if [[ -n "$VERIFY_ONLY_PATH" && "$NO_BUILD" == false ]]; then
+    echo -e "${RED}Error: --verify-only requires --no-build${NC}" >&2
+    exit 1
+fi
+
+if [[ "$INSTALL_CONFIG_ONLY" == false && "$BUILD_ALL" == false && -z "$MODULE_NAME" && -z "$VERIFY_ONLY_PATH" ]]; then
     echo -e "${RED}Error: Specify a module name or --all${NC}" >&2
     echo "Usage: $0 <module-name> [--debug] [--install]"
     echo "       $0 --all [--debug] [--install]"
+    echo "       $0 --no-build --verify-only <path> [--client]"
     echo "       $0 --install-config"
     exit 1
 fi
@@ -168,6 +203,9 @@ verify_ffi_symbols() {
 
     echo -e "${BLUE}  Verifying FFI symbols...${NC}"
 
+    local symbol_dump
+    symbol_dump="$(nm -gD "$lib_path" 2>/dev/null || nm "$lib_path" 2>/dev/null || true)"
+
     # Expected FFI symbols
     local expected_symbols=(
         "REOVIM_MODULE_API_VERSION"
@@ -184,12 +222,9 @@ verify_ffi_symbols() {
 
     local missing=0
     for sym in "${expected_symbols[@]}"; do
-        if ! nm -gD "$lib_path" 2>/dev/null | grep -q "$sym"; then
-            # Try without -D for macOS
-            if ! nm "$lib_path" 2>/dev/null | grep -q "$sym"; then
-                echo -e "${RED}    Missing symbol: $sym${NC}" >&2
-                missing=$((missing + 1))
-            fi
+        if ! grep -Fq "$sym" <<< "$symbol_dump"; then
+            echo -e "${RED}    Missing symbol: $sym${NC}" >&2
+            missing=$((missing + 1))
         fi
     done
 
@@ -201,6 +236,88 @@ verify_ffi_symbols() {
 
     echo -e "${GREEN}  All 10 FFI symbols verified${NC}"
     return 0
+}
+
+# Verify client FFI exports in a built library
+verify_client_ffi_symbols() {
+    local lib_path=$1
+
+    if [[ ! -f "$lib_path" ]]; then
+        echo -e "${RED}Error: Library not found: $lib_path${NC}" >&2
+        return 1
+    fi
+
+    echo -e "${BLUE}  Verifying client FFI exports...${NC}"
+
+    local symbol_dump
+    symbol_dump="$(nm -gD "$lib_path" 2>/dev/null || nm "$lib_path" 2>/dev/null || true)"
+
+    local expected_symbols=(
+        "REOVIM_CLIENT_MODULE_API_VERSION"
+        "reovim_client_module_probe"
+        "reovim_client_module_entry"
+        "reovim_client_module_init"
+        "reovim_client_module_exit"
+        "reovim_client_module_destroy"
+        "reovim_client_module_on_all_loaded"
+        "reovim_client_module_on_notification"
+        "reovim_client_module_on_mode_change"
+        "reovim_client_module_on_cursor_update"
+        "reovim_client_module_on_buffer_focus"
+        "reovim_client_module_on_buffer_update"
+        "reovim_client_module_on_option_changed"
+        "reovim_client_module_tick"
+        "reovim_client_module_has_chrome"
+        "reovim_client_module_has_buffer_contrib"
+        "reovim_client_module_has_annotations"
+        "reovim_client_module_chrome_position"
+        "reovim_client_module_chrome_requested_size"
+        "reovim_client_module_chrome_priority"
+        "reovim_client_module_chrome_z_order"
+        "reovim_client_module_buffer_contrib_priority"
+        "reovim_client_module_annotation_priority"
+        "reovim_client_module_chrome_render"
+        "reovim_client_module_annotate"
+        "reovim_client_module_annotation_column_width"
+        "reovim_client_module_transform_line"
+        "reovim_client_module_free_transformed_line"
+        "reovim_client_module_map_cursor_column"
+        "reovim_client_module_fold_ranges"
+        "reovim_client_module_virtual_lines"
+        "reovim_client_module_inline_decorations"
+        "reovim_client_module_cursor_position"
+        "reovim_client_module_classify_token"
+        "reovim_client_module_on_capabilities_changed"
+        "reovim_client_module_on_theme_changed"
+    )
+
+    local missing=0
+    for sym in "${expected_symbols[@]}"; do
+        if ! grep -Fq "$sym" <<< "$symbol_dump"; then
+            echo -e "${RED}    Missing symbol: $sym${NC}" >&2
+            missing=$((missing + 1))
+        fi
+    done
+
+    if [[ $missing -gt 0 ]]; then
+        echo -e "${RED}  Error: Missing $missing client FFI export(s)${NC}" >&2
+        echo -e "${YELLOW}  Hint: Ensure the module uses declare_client_module!() macro${NC}" >&2
+        return 1
+    fi
+
+    echo -e "${GREEN}  All 36 client exports verified${NC}"
+    return 0
+}
+
+verify_symbols_for_mode() {
+    local lib_path=$1
+    local module=${2:-artifact}
+
+    if [[ "$CLIENT" == true ]]; then
+        verify_client_ffi_symbols "$lib_path"
+    else
+        verify_ffi_symbols "$lib_path" "$module"
+    fi
 }
 
 # Install module to XDG data directory
@@ -288,7 +405,7 @@ build_module() {
 
     # Verify FFI symbols
     if [[ "$VERIFY" == true ]]; then
-        verify_ffi_symbols "$lib_path" "$module" || return 1
+        verify_symbols_for_mode "$lib_path" "$module" || return 1
     fi
 
     # Install if requested
@@ -306,6 +423,13 @@ cd "$REPO_ROOT"
 if [[ "$INSTALL_CONFIG_ONLY" == true ]]; then
     echo -e "${YELLOW}==> Installing config${NC}"
     install_config
+    exit 0
+fi
+
+# Handle verify-only mode
+if [[ -n "$VERIFY_ONLY_PATH" ]]; then
+    echo -e "${YELLOW}==> Verifying artifact: $VERIFY_ONLY_PATH${NC}"
+    verify_symbols_for_mode "$VERIFY_ONLY_PATH" || exit 1
     exit 0
 fi
 

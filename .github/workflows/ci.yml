@@ -37,6 +37,33 @@ jobs:
           cargo +${{ env.NIGHTLY }} clippy
           --all-targets --all-features --workspace -- -D warnings
 
+  # ─── Verify: Dynamic module artifacts ───
+  verify-dynamic-modules:
+    name: Dynamic Module Symbols
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
+      - uses: Swatinem/rust-cache@v2
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build server test module .so
+        run: cargo build -p reovim-test-dynamic-module --lib
+      - name: Build sample client module .so
+        run: cargo build -p reovim-client-module-sample --lib
+      - name: Verify server FFI symbols (test module)
+        run: |
+          ./scripts/build-module.sh --no-build \
+            --verify-only target/debug/libreovim_test_dynamic_module.so
+      - name: Verify client FFI exports (sample client module)
+        run: |
+          ./scripts/build-module.sh --no-build --client \
+            --verify-only target/debug/libreovim_client_module_sample.so
+
   # ─── Stable Checks (MSRV + doc tests, non-blocking) ───
   stable-checks:
     name: Stable Checks
