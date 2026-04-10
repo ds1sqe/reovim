@@ -589,6 +589,15 @@ fn format_check_report(report: &CheckReport, format: OutputFormat) -> String {
             for path in &report.orphaned {
                 let _ = writeln!(output, "ORPHAN: {}", path.display());
             }
+            if !report.constraint_violations.is_empty() {
+                if !output.is_empty() {
+                    output.push('\n');
+                }
+                let _ = writeln!(output, "Constraint violations:");
+                for violation in &report.constraint_violations {
+                    let _ = writeln!(output, "  - {violation}");
+                }
+            }
             output.trim_end().to_string()
         }
         OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
@@ -599,6 +608,7 @@ fn format_check_report(report: &CheckReport, format: OutputFormat) -> String {
                 "reason": reason,
             })).collect::<Vec<_>>(),
             "orphaned": report.orphaned.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+            "constraint_violations": &report.constraint_violations,
         }))
         .unwrap_or_default(),
     }

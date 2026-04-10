@@ -2682,6 +2682,7 @@ name = "reovim-driver-module-registry"
 version = "0.14.5-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-depgraph",
  "serde",
  "serde_json",
  "tempfile",

@@ -2,6 +2,45 @@ use std::path::PathBuf;
 
 use super::*;
 
+fn create_module_crate(
+    root: &std::path::Path,
+    id: &str,
+    version: &str,
+    dependencies: &[(&str, &str)],
+) -> PathBuf {
+    std::fs::create_dir_all(root.join("src")).unwrap();
+
+    let dependency_lines = if dependencies.is_empty() {
+        String::new()
+    } else {
+        let deps = dependencies
+            .iter()
+            .map(|(target, range)| format!("{target} = \"{range}\""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("\n[dependencies]\n{deps}\n")
+    };
+
+    std::fs::write(
+        root.join("module.toml"),
+        format!(
+            "[module]\nid = \"{id}\"\nname = \"{id}\"\nversion = \"{version}\"\n{dependency_lines}"
+        ),
+    )
+    .unwrap();
+
+    std::fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{id}\"\nversion = \"{version}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[features]\ndynamic = []\n"
+        ),
+    )
+    .unwrap();
+
+    std::fs::write(root.join("src/lib.rs"), "pub fn sample() {}\n").unwrap();
+    root.to_path_buf()
+}
+
 // ============================================================================
 // RegistryPaths tests
 // ============================================================================
@@ -146,6 +185,244 @@ fn test_update_not_installed() {
     let paths = RegistryPaths::new(dir.path().to_path_buf());
     let result = update("nonexistent", &paths);
     assert!(matches!(result, Err(RegistryError::NotInstalled(_))));
+}
+
+#[test]
+fn test_check_install_constraints_no_deps_ok() {
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+        "#,
+    )
+    .unwrap();
+    let installed = InstalledModules::new();
+    assert!(check_install_constraints(&manifest, &installed).is_ok());
+}
+
+#[test]
+fn test_check_install_constraints_satisfied() {
+    let dir = tempfile::tempdir().unwrap();
+    let vim_dir = dir.path().join("vim");
+    create_module_crate(&vim_dir, "vim", "0.9.1", &[]);
+
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+
+        [dependencies]
+        vim = "^0.9.0"
+        "#,
+    )
+    .unwrap();
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".into(),
+        version: "0.9.1".into(),
+        source: ModuleSource::path(vim_dir.to_string_lossy().into_owned()),
+        install_path: vim_dir,
+        library_path: None,
+    });
+    assert!(check_install_constraints(&manifest, &installed).is_ok());
+}
+
+#[test]
+fn test_check_install_constraints_violated() {
+    let dir = tempfile::tempdir().unwrap();
+    let vim_dir = dir.path().join("vim");
+    create_module_crate(&vim_dir, "vim", "0.8.0", &[]);
+
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+
+        [dependencies]
+        vim = "^0.9.0"
+        "#,
+    )
+    .unwrap();
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".into(),
+        version: "0.8.0".into(),
+        source: ModuleSource::path(vim_dir.to_string_lossy().into_owned()),
+        install_path: vim_dir,
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_check_install_constraints_reverse_violation() {
+    let dir = tempfile::tempdir().unwrap();
+    let existing_dir = dir.path().join("existing-mod");
+    create_module_crate(&existing_dir, "existing-mod", "1.0.0", &[("new-mod", "^2.0.0")]);
+
+    let new_manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+        "#,
+    )
+    .unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "existing-mod".into(),
+        version: "1.0.0".into(),
+        source: ModuleSource::path(existing_dir.to_string_lossy().into_owned()),
+        install_path: existing_dir,
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&new_manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_install_constraint_violation_does_not_write_installed_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::new(dir.path().join("registry"));
+    std::fs::create_dir_all(&paths.modules_dir).unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".into(),
+        version: "0.8.0".into(),
+        source: ModuleSource::path("/fake"),
+        install_path: dir.path().join("vim"),
+        library_path: None,
+    });
+    save_metadata(&installed, &paths).unwrap();
+    let before = std::fs::read_to_string(&paths.installed_json).unwrap();
+
+    let source_dir = dir.path().join("new-mod");
+    create_module_crate(&source_dir, "new-mod", "1.0.0", &[("vim", "^0.9.0")]);
+
+    let result = install(&ModuleSource::path(source_dir.to_string_lossy().into_owned()), &paths);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+
+    let after = std::fs::read_to_string(&paths.installed_json).unwrap();
+    assert_eq!(before, after);
+}
+
+#[test]
+fn test_parse_semver_str_valid() {
+    assert_eq!(parse_semver_str("1.2.3"), Some((1, 2, 3)));
+    assert_eq!(parse_semver_str("0.9.0"), Some((0, 9, 0)));
+}
+
+#[test]
+fn test_parse_semver_str_with_metadata() {
+    assert_eq!(parse_semver_str("1.0.0-alpha"), Some((1, 0, 0)));
+    assert_eq!(parse_semver_str("1.0.0+build.1"), Some((1, 0, 0)));
+}
+
+#[test]
+fn test_parse_semver_str_invalid() {
+    assert_eq!(parse_semver_str("not-a-version"), None);
+    assert_eq!(parse_semver_str("1.2"), None);
+}
+
+#[test]
+fn test_check_install_constraints_invalid_new_constraint_string_is_violation() {
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+
+        [dependencies]
+        vim = "not-a-range"
+        "#,
+    )
+    .unwrap();
+
+    let result = check_install_constraints(&manifest, &InstalledModules::new());
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_check_install_constraints_invalid_installed_version_is_violation() {
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+
+        [dependencies]
+        vim = "^0.9.0"
+        "#,
+    )
+    .unwrap();
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".into(),
+        version: "bad-version".into(),
+        source: ModuleSource::path("/fake"),
+        install_path: "/fake".into(),
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_check_install_constraints_invalid_new_version_is_violation() {
+    let manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "bad-version"
+        "#,
+    )
+    .unwrap();
+
+    let result = check_install_constraints(&manifest, &InstalledModules::new());
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_git_constraint_check_happens_before_permanent_install_dir_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::new(dir.path().join("registry"));
+    std::fs::create_dir_all(&paths.modules_dir).unwrap();
+
+    let vim_dir = dir.path().join("vim");
+    create_module_crate(&vim_dir, "vim", "0.8.0", &[]);
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".into(),
+        version: "0.8.0".into(),
+        source: ModuleSource::path(vim_dir.to_string_lossy().into_owned()),
+        install_path: vim_dir,
+        library_path: None,
+    });
+    save_metadata(&installed, &paths).unwrap();
+
+    let clone_dir = paths.modules_dir.join(".tmp-clone");
+    create_module_crate(&clone_dir, "new-mod", "1.0.0", &[("vim", "^0.9.0")]);
+    let manifest = load_manifest(&clone_dir).expect("cloned manifest should load");
+    let result = check_install_constraints(&manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+    assert!(!paths.modules_dir.join("new-mod").exists());
+    let _ = std::fs::remove_dir_all(&clone_dir);
 }
 
 #[test]
@@ -363,6 +640,92 @@ fn test_check_library_path_none() {
     assert_eq!(report.broken.len(), 1);
     assert_eq!(report.broken[0].0, "no-lib");
     assert!(report.broken[0].1.contains("no library path recorded"));
+}
+
+#[test]
+fn test_check_reports_constraint_violations() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::new(dir.path().to_path_buf());
+
+    let vim_dir = dir.path().join("vim");
+    create_module_crate(&vim_dir, "vim", "0.8.0", &[]);
+    let consumer_dir = dir.path().join("consumer");
+    create_module_crate(&consumer_dir, "consumer", "1.0.0", &[("vim", "^0.9.0")]);
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".to_string(),
+        version: "0.8.0".to_string(),
+        source: ModuleSource::path(vim_dir.to_string_lossy().into_owned()),
+        install_path: vim_dir,
+        library_path: None,
+    });
+    installed.insert(InstalledModule {
+        id: "consumer".to_string(),
+        version: "1.0.0".to_string(),
+        source: ModuleSource::path(consumer_dir.to_string_lossy().into_owned()),
+        install_path: consumer_dir,
+        library_path: None,
+    });
+    save_metadata(&installed, &paths).unwrap();
+
+    let report = check(&paths).unwrap();
+    assert_eq!(report.constraint_violations.len(), 1);
+    assert!(report.constraint_violations[0].contains("consumer"));
+}
+
+#[test]
+fn test_check_reports_invalid_installed_version_as_violation() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::new(dir.path().to_path_buf());
+
+    let vim_dir = dir.path().join("vim");
+    create_module_crate(&vim_dir, "vim", "0.9.0", &[]);
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "vim".to_string(),
+        version: "bad-version".to_string(),
+        source: ModuleSource::path(vim_dir.to_string_lossy().into_owned()),
+        install_path: vim_dir,
+        library_path: None,
+    });
+    save_metadata(&installed, &paths).unwrap();
+
+    let report = check(&paths).unwrap();
+    assert!(
+        report
+            .constraint_violations
+            .iter()
+            .any(|msg| msg.contains("invalid version 'bad-version'"))
+    );
+}
+
+#[test]
+fn test_check_reports_invalid_constraint_string_as_violation() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RegistryPaths::new(dir.path().to_path_buf());
+
+    let bad_dir = dir.path().join("bad-mod");
+    create_module_crate(&bad_dir, "bad-mod", "1.0.0", &[("vim", "not-a-range")]);
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "bad-mod".to_string(),
+        version: "1.0.0".to_string(),
+        source: ModuleSource::path(bad_dir.to_string_lossy().into_owned()),
+        install_path: bad_dir,
+        library_path: None,
+    });
+    save_metadata(&installed, &paths).unwrap();
+
+    let report = check(&paths).unwrap();
+    assert!(
+        report
+            .constraint_violations
+            .iter()
+            .any(|msg| msg.contains("invalid constraint"))
+    );
 }
 
 // ============================================================================

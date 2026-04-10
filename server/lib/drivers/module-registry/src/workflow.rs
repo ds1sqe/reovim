@@ -9,7 +9,10 @@ use std::{
     process::Command,
 };
 
-use crate::{InstalledModule, InstalledModules, ModuleManifest, ModuleSource};
+use {
+    crate::{InstalledModule, InstalledModules, ModuleManifest, ModuleSource},
+    reovim_depgraph::{SemVer, VersionRange, check_version_constraints},
+};
 
 // ============================================================================
 // Registry Paths
@@ -74,6 +77,8 @@ pub enum RegistryError {
     AlreadyInstalled(String),
     /// Metadata load/save error.
     Metadata(String),
+    /// Version constraint violation.
+    ConstraintViolation(String),
 }
 
 impl fmt::Display for RegistryError {
@@ -86,6 +91,7 @@ impl fmt::Display for RegistryError {
             Self::NotInstalled(id) => write!(f, "module '{id}' is not installed"),
             Self::AlreadyInstalled(id) => write!(f, "module '{id}' is already installed"),
             Self::Metadata(msg) => write!(f, "metadata error: {msg}"),
+            Self::ConstraintViolation(msg) => write!(f, "version constraint violation: {msg}"),
         }
     }
 }
@@ -118,13 +124,15 @@ pub struct CheckReport {
     pub broken: Vec<(String, String)>,
     /// Orphaned `.so` files not tracked in installed.json.
     pub orphaned: Vec<PathBuf>,
+    /// Version constraint violations among installed modules.
+    pub constraint_violations: Vec<String>,
 }
 
 impl CheckReport {
     /// Whether all checks passed.
     #[must_use]
     pub const fn is_clean(&self) -> bool {
-        self.broken.is_empty() && self.orphaned.is_empty()
+        self.broken.is_empty() && self.orphaned.is_empty() && self.constraint_violations.is_empty()
     }
 }
 
@@ -179,7 +187,7 @@ pub fn install(
     let mut installed = load_metadata(paths)?;
 
     // Determine source path (clone for git, use directly for local)
-    let (source_path, module_id) = match source {
+    let (source_path, module_id, manifest) = match source {
         ModuleSource::Git { url, rev } => {
             let clone_dir = paths.modules_dir.join(".tmp-clone");
             if clone_dir.exists() {
@@ -187,11 +195,16 @@ pub fn install(
             }
             git_clone(url, rev.as_deref(), &clone_dir)?;
             let manifest = load_manifest(&clone_dir)?;
-            let id = manifest.module.id;
+            let id = manifest.module.id.clone();
 
             if installed.contains(&id) {
                 std::fs::remove_dir_all(&clone_dir)?;
                 return Err(RegistryError::AlreadyInstalled(id));
+            }
+
+            if let Err(err) = check_install_constraints(&manifest, &installed) {
+                let _ = std::fs::remove_dir_all(&clone_dir);
+                return Err(err);
             }
 
             // Move clone to permanent location
@@ -200,24 +213,23 @@ pub fn install(
                 std::fs::remove_dir_all(&install_dir)?;
             }
             std::fs::rename(&clone_dir, &install_dir)?;
-            (install_dir, id)
+            (install_dir, id, manifest)
         }
         ModuleSource::Path { path } => {
             let source_path = PathBuf::from(path);
             let manifest = load_manifest(&source_path)?;
-            let id = manifest.module.id;
+            let id = manifest.module.id.clone();
 
             if installed.contains(&id) {
                 return Err(RegistryError::AlreadyInstalled(id));
             }
 
+            check_install_constraints(&manifest, &installed)?;
+
             // For path sources, the install path is the source itself
-            (source_path, id)
+            (source_path, id, manifest)
         }
     };
-
-    // Parse manifest for metadata
-    let manifest = load_manifest(&source_path)?;
 
     // Build the module
     let library_path = build_module(&source_path, manifest.crate_name())?;
@@ -383,6 +395,8 @@ pub fn check(paths: &RegistryPaths) -> Result<CheckReport, RegistryError> {
         }
     }
 
+    report.constraint_violations = check_all_constraints(&installed);
+
     Ok(report)
 }
 
@@ -446,6 +460,165 @@ fn save_metadata(installed: &InstalledModules, paths: &RegistryPaths) -> Result<
 fn load_manifest(dir: &Path) -> Result<ModuleManifest, RegistryError> {
     let manifest_path = dir.join("module.toml");
     ModuleManifest::load(&manifest_path).map_err(|e| RegistryError::Manifest(e.to_string()))
+}
+
+pub(crate) fn check_install_constraints(
+    new_manifest: &ModuleManifest,
+    installed: &InstalledModules,
+) -> Result<(), RegistryError> {
+    let mut versions = Vec::new();
+    for module in installed.modules.values() {
+        let parsed = parse_semver_str(&module.version).ok_or_else(|| {
+            RegistryError::ConstraintViolation(format!(
+                "installed module '{id}' has invalid version '{version}'",
+                id = module.id,
+                version = module.version
+            ))
+        })?;
+        versions.push((module.id.as_str(), parsed));
+    }
+
+    let new_id = new_manifest.id();
+    let mut constraint_data = Vec::new();
+    for (target, range) in new_manifest.dependency_constraints() {
+        validate_constraint_string(new_id, target, range)?;
+        constraint_data.push((new_id.to_string(), target.clone(), range.clone()));
+    }
+
+    if !constraint_data.is_empty() {
+        let constraint_refs: Vec<(&str, &str, &str)> = constraint_data
+            .iter()
+            .map(|(source, target, range)| (source.as_str(), target.as_str(), range.as_str()))
+            .collect();
+        let violations = check_version_constraints(&constraint_refs, &versions);
+        if !violations.is_empty() {
+            let messages: Vec<String> = violations.iter().map(ToString::to_string).collect();
+            return Err(RegistryError::ConstraintViolation(messages.join("; ")));
+        }
+    }
+
+    let new_version = parse_semver_str(new_manifest.version()).ok_or_else(|| {
+        RegistryError::ConstraintViolation(format!(
+            "module '{id}' has invalid version '{version}'",
+            id = new_id,
+            version = new_manifest.version()
+        ))
+    })?;
+    let new_version_map = vec![(new_id, new_version)];
+
+    for installed_module in installed.modules.values() {
+        let installed_manifest_path = installed_module.install_path.join("module.toml");
+        let installed_manifest = ModuleManifest::load(&installed_manifest_path).map_err(|err| {
+            RegistryError::ConstraintViolation(format!(
+                "installed module '{id}' has unreadable manifest '{path}': {err}",
+                id = installed_module.id,
+                path = installed_manifest_path.display()
+            ))
+        })?;
+
+        let mut reverse_constraints = Vec::new();
+        for (target, range) in installed_manifest.dependency_constraints() {
+            if target != new_id {
+                continue;
+            }
+            validate_constraint_string(&installed_module.id, target, range)?;
+            reverse_constraints.push((
+                installed_module.id.as_str(),
+                target.as_str(),
+                range.as_str(),
+            ));
+        }
+
+        if reverse_constraints.is_empty() {
+            continue;
+        }
+
+        let violations = check_version_constraints(&reverse_constraints, &new_version_map);
+        if !violations.is_empty() {
+            let messages: Vec<String> = violations.iter().map(ToString::to_string).collect();
+            return Err(RegistryError::ConstraintViolation(messages.join("; ")));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_constraint_string(
+    source: &str,
+    target: &str,
+    range: &str,
+) -> Result<(), RegistryError> {
+    VersionRange::parse(range).ok_or_else(|| {
+        RegistryError::ConstraintViolation(format!(
+            "module '{source}' declares invalid constraint '{source} -> {target} {range}'"
+        ))
+    })?;
+    Ok(())
+}
+
+pub(crate) fn parse_semver_str(version: &str) -> Option<SemVer> {
+    let version = version.split('+').next()?;
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch_str = parts.next()?;
+    let patch = patch_str.split('-').next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn check_all_constraints(installed: &InstalledModules) -> Vec<String> {
+    let mut versions = Vec::new();
+    let mut violations = Vec::new();
+
+    for module in installed.modules.values() {
+        match parse_semver_str(&module.version) {
+            Some(version) => versions.push((module.id.as_str(), version)),
+            None => violations.push(format!(
+                "installed module '{id}' has invalid version '{version}'",
+                id = module.id,
+                version = module.version
+            )),
+        }
+    }
+
+    let mut constraint_data = Vec::new();
+    for module in installed.modules.values() {
+        let path = module.install_path.join("module.toml");
+        match ModuleManifest::load(&path) {
+            Ok(manifest) => {
+                for (target, range) in manifest.dependency_constraints() {
+                    if VersionRange::parse(range).is_none() {
+                        violations.push(format!(
+                            "installed module '{source}' declares invalid constraint '{source} -> {target} {range}'",
+                            source = module.id,
+                            target = target,
+                            range = range
+                        ));
+                    }
+                    constraint_data.push((module.id.clone(), target.clone(), range.clone()));
+                }
+            }
+            Err(err) => violations.push(format!(
+                "installed module '{id}' has unreadable manifest '{path}': {err}",
+                id = module.id,
+                path = path.display()
+            )),
+        }
+    }
+
+    let constraint_refs: Vec<(&str, &str, &str)> = constraint_data
+        .iter()
+        .map(|(source, target, range)| (source.as_str(), target.as_str(), range.as_str()))
+        .collect();
+    violations.extend(
+        check_version_constraints(&constraint_refs, &versions)
+            .iter()
+            .map(ToString::to_string),
+    );
+    violations
 }
 
 // Shells out to `git clone` — not testable without real git repos.

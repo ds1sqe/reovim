@@ -143,10 +143,14 @@ fn test_format_check_report_json_structure() {
     report
         .broken
         .push(("sample".to_string(), "missing library".to_string()));
+    report
+        .constraint_violations
+        .push("sample requires vim ^0.9.0 but found 0.8.0".to_string());
     let json = format_check_report(&report, OutputFormat::Json);
     let value: serde_json::Value = serde_json::from_str(&json).expect("json should parse");
     assert_eq!(value["clean"], false);
     assert_eq!(value["broken"][0]["id"], "sample");
+    assert_eq!(value["constraint_violations"][0], "sample requires vim ^0.9.0 but found 0.8.0");
 }
 
 #[test]
@@ -174,6 +178,37 @@ fn test_format_check_report_clean() {
     let report = CheckReport::default();
     let output = format_check_report(&report, OutputFormat::Plain);
     assert!(output.contains("OK"));
+}
+
+#[test]
+fn test_format_check_report_plain_includes_constraint_violations() {
+    let mut report = CheckReport::default();
+    report
+        .constraint_violations
+        .push("sample requires vim ^0.9.0 but found 0.8.0".to_string());
+
+    let output = format_check_report(&report, OutputFormat::Plain);
+    assert!(output.contains("Constraint violations:"));
+    assert!(output.contains("sample requires vim ^0.9.0 but found 0.8.0"));
+}
+
+#[test]
+fn test_format_check_report_plain_combines_broken_orphaned_and_constraint_violations() {
+    let mut report = CheckReport::default();
+    report
+        .broken
+        .push(("sample".to_string(), "missing library".to_string()));
+    report
+        .orphaned
+        .push(std::path::PathBuf::from("/tmp/orphan.so"));
+    report
+        .constraint_violations
+        .push("sample requires vim ^0.9.0 but found 0.8.0".to_string());
+
+    let output = format_check_report(&report, OutputFormat::Plain);
+    assert!(output.contains("BROKEN: sample"));
+    assert!(output.contains("ORPHAN: /tmp/orphan.so"));
+    assert!(output.contains("Constraint violations:"));
 }
 
 #[tokio::test(flavor = "current_thread")]
