@@ -81,7 +81,7 @@ reovim uses a tmux-like session model:
 │  Server                                                       │
 │  ├── Session "default"                                        │
 │  │   ├── driver::Session (SSOT for editing state)             │
-│  │   ├── Kernel (buffers, events)                             │
+│  │   ├── Kernel (buffers, [events](event-layers.md))           │
 │  │   └── Clients: [ClientId(1), ClientId(2)]                  │
 │  └── Session "project-a"                                      │
 │      └── ...                                                  │
