@@ -188,6 +188,12 @@ impl ServiceRegistry {
     /// The pointer cast is sound because `type_name` uniquely identifies the
     /// concrete type within a crate version. This is the same cast that
     /// `Arc::downcast` performs internally, minus the `TypeId` check.
+    ///
+    /// **Invariant**: correctness requires `T` to be a concrete named type with
+    /// a stable fully-qualified path — not a generic monomorphization or a type
+    /// re-exported under a different module path. All current call sites use
+    /// named type aliases from a single crate (e.g., `CommandHandlerStore`,
+    /// `ModeInfoStore`), satisfying this requirement.
     #[must_use]
     #[allow(unsafe_code)]
     pub fn get<T: Service>(&self) -> Option<Arc<T>> {
