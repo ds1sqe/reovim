@@ -31,13 +31,7 @@
 //! let driver = vfs_registry.get(&VfsScheme::File);
 //! ```
 
-use std::{
-    any::Any,
-    collections::HashMap,
-    fmt,
-    hash::Hash,
-    sync::Arc,
-};
+use std::{any::Any, collections::HashMap, fmt, hash::Hash, sync::Arc};
 
 use reovim_arch::sync::RwLock;
 
@@ -58,14 +52,14 @@ use reovim_arch::sync::RwLock;
 ///
 /// 1. **Same crate version**: All compilation units (host binary and dynamic
 ///    `.so` modules) must link against the **same version** of the crate that
-///    defines the service type. Different versions produce the same type_name
+///    defines the service type. Different versions produce the same `type_name`
 ///    but potentially different layouts, causing unsound pointer casts.
 ///
 /// 2. **Stable type path**: The type must have a unique, fully-qualified path.
 ///    Named type aliases (e.g., `CommandHandlerStore`) are safe. Generic
 ///    monomorphizations (e.g., `MultiServiceRegistry<K, T>`) are safe when
 ///    all cdylibs share the same crate version, but carry higher risk under
-///    version skew since the expanded type_name would still match.
+///    version skew since the expanded `type_name` would still match.
 pub trait Service: Send + Sync + 'static {}
 
 // ============================================================================

@@ -142,7 +142,9 @@ fn test_check_report_with_orphaned_not_clean() {
 #[test]
 fn test_check_report_with_constraint_violations_not_clean() {
     let mut report = CheckReport::default();
-    report.constraint_violations.push("vim requires ^0.9.0".into());
+    report
+        .constraint_violations
+        .push("vim requires ^0.9.0".into());
     assert!(!report.is_clean());
 }
 

@@ -1,5 +1,7 @@
-use super::*;
-use reovim_driver_module_registry::{InstalledModule, InstalledModules, RegistryError};
+use {
+    super::*,
+    reovim_driver_module_registry::{InstalledModule, InstalledModules, RegistryError},
+};
 
 /// Create a unique temp directory for the test, returning its path.
 /// The caller is responsible for removing it when done.
@@ -176,10 +178,8 @@ fn test_install_constraint_violation_reported() {
 
     // workflow::install checks constraints before calling cargo build, so the
     // path-source install path returns ConstraintViolation without shelling out.
-    let result = workflow::install(
-        &ModuleSource::path(source_dir.to_string_lossy().into_owned()),
-        &paths,
-    );
+    let result =
+        workflow::install(&ModuleSource::path(source_dir.to_string_lossy().into_owned()), &paths);
 
     std::fs::remove_dir_all(&dir).ok();
     assert!(

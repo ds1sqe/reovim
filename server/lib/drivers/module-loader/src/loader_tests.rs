@@ -2,8 +2,7 @@ use std::path::PathBuf;
 
 use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
-use super::handle::ModuleHandle;
-use super::loader::ModuleLoader;
+use super::{handle::ModuleHandle, loader::ModuleLoader};
 
 // ============================================================================
 // Test module

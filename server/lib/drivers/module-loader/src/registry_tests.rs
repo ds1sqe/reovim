@@ -656,7 +656,7 @@ fn unload_nonexistent_module() {
 
 /// Branch 332:1 — dependents map has an entry for the module but the set is
 /// empty (a former dependent was already unloaded).  The guard
-/// `if let Some(deps) && !deps.is_empty()` must NOT return InUse, allowing
+/// `if let Some(deps) && !deps.is_empty()` must NOT return `InUse`, allowing
 /// execution to fall through to the exit call on line 342-344.
 #[test]
 fn unload_with_empty_dependents_set_succeeds() {
@@ -721,8 +721,5 @@ fn unload_calls_exit_on_module() {
 
     registry.unload(&ModuleId::new("exit-tracker")).unwrap();
 
-    assert!(
-        EXIT_CALLED.load(Ordering::SeqCst),
-        "exit() was not called during unload"
-    );
+    assert!(EXIT_CALLED.load(Ordering::SeqCst), "exit() was not called during unload");
 }

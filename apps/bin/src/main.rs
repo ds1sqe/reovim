@@ -389,9 +389,9 @@ async fn run(cli: Cli) -> std::io::Result<()> {
                 Arc::clone(&bootstrap.module_ctx),
             );
             let server = Server::new(config)
-                    .with_initial_session_state(bootstrap.session_state)
-                    .with_bridges(bootstrap.bridges)
-                    .with_module_service(runner_module_service);
+                .with_initial_session_state(bootstrap.session_state)
+                .with_bridges(bootstrap.bridges)
+                .with_module_service(runner_module_service);
             server.run().await
         }
 

@@ -812,8 +812,10 @@ fn loader_exit_failure_continues() {
 
 #[test]
 fn loader_modules_mut_slice_returns_mutable_slice() {
-    let modules: Vec<Box<dyn ClientModule>> =
-        vec![Box::new(SimpleModule("slice_a")), Box::new(SimpleModule("slice_b"))];
+    let modules: Vec<Box<dyn ClientModule>> = vec![
+        Box::new(SimpleModule("slice_a")),
+        Box::new(SimpleModule("slice_b")),
+    ];
     let mut loader = ClientModuleLoader::from_modules_for_test(modules).unwrap();
 
     let slice = loader.modules_mut_slice();

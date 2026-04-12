@@ -70,7 +70,7 @@ impl RunnerModuleService {
                     ok: true,
                     error: None,
                 },
-                Err(error) => load_init_failed(error),
+                Err(error) => load_init_failed(&error),
             },
             Err(error) => LoadModuleResponse {
                 ok: false,
@@ -95,7 +95,7 @@ impl RunnerModuleService {
                 ok: false,
                 error: Some(format!("module '{}' is not loaded", request.name)),
             },
-            Err(error) => unload_unexpected(error),
+            Err(error) => unload_unexpected(&error),
         }
     }
 
@@ -124,7 +124,7 @@ impl RunnerModuleService {
                     )),
                 }
             }
-            Err(error) => reload_unexpected(error),
+            Err(error) => reload_unexpected(&error),
         }
     }
 }
@@ -134,15 +134,15 @@ impl RunnerModuleService {
 // without purpose-built dynamic modules.
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn load_init_failed(error: ModuleError) -> LoadModuleResponse {
+fn load_init_failed(error: &ModuleError) -> LoadModuleResponse {
     LoadModuleResponse {
         ok: false,
-        error: Some(format_init_error(&error)),
+        error: Some(format_init_error(error)),
     }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn unload_unexpected(error: ModuleError) -> UnloadModuleResponse {
+fn unload_unexpected(error: &ModuleError) -> UnloadModuleResponse {
     UnloadModuleResponse {
         ok: false,
         error: Some(error.to_string()),
@@ -150,7 +150,7 @@ fn unload_unexpected(error: ModuleError) -> UnloadModuleResponse {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn reload_unexpected(error: ModuleError) -> ReloadModuleResponse {
+fn reload_unexpected(error: &ModuleError) -> ReloadModuleResponse {
     ReloadModuleResponse {
         ok: false,
         error: Some(error.to_string()),

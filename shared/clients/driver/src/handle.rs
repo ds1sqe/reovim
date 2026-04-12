@@ -1492,7 +1492,6 @@ impl ClientModuleHandle {
     }
 }
 
-
 // Dynamic cleanup path requires a real .so module.
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for ClientModuleHandle {

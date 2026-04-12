@@ -474,9 +474,15 @@ async fn reload_nonexistent_module_returns_error() {
 #[tokio::test]
 async fn reload_in_use_dependency_returns_blocker_name() {
     let registry = ModuleRegistry::new().into_arc();
-    registry.register(ProviderTestModule).expect("register provider");
-    registry.register(ConsumerTestModule).expect("register consumer");
-    registry.init_all(&ModuleContext::default()).expect("init_all");
+    registry
+        .register(ProviderTestModule)
+        .expect("register provider");
+    registry
+        .register(ConsumerTestModule)
+        .expect("register consumer");
+    registry
+        .init_all(&ModuleContext::default())
+        .expect("init_all");
     let service =
         RunnerGrpcModuleService::new(Arc::clone(&registry), Arc::new(ModuleContext::default()));
 
