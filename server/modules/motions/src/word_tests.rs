@@ -1,5 +1,6 @@
 use {
     crate::{ids, word::*},
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
@@ -9,7 +10,6 @@ use {
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
     reovim_kernel::api::{KernelContext, ModeId, ModeStack, ModuleId, v1::BufferId},
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 // =========================================================================

@@ -30,9 +30,9 @@ use {
     memmap2::Mmap,
     regex::Regex,
     reovim_bench_utils::{large_file, rss},
+    reovim_domain_text::Position,
     reovim_driver_vfs::{FileMapping, MappedFile},
     reovim_provider_text::{HeapMapping, VirtualBuffer},
-    reovim_types_text::Position,
 };
 
 // ─── Fixture sizes ────────────────────────────────────────────────────────────

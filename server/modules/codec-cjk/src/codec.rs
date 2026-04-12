@@ -168,7 +168,7 @@ impl CjkCodec {
     }
 }
 
-fn text_position_to_offset(text: &str, pos: &reovim_types_text::Position) -> Option<usize> {
+fn text_position_to_offset(text: &str, pos: &reovim_domain_text::Position) -> Option<usize> {
     let mut line_start = 0usize;
 
     for _ in 0..pos.line {

@@ -19,7 +19,7 @@ workspace = true
 # Kernel layer (FFI types)
 reovim-kernel = { workspace = true }
 # Text types (YankType)
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 # Session driver (for SessionRuntime access in FFI bridge)
 reovim-driver-session = { workspace = true }

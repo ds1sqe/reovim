@@ -25,7 +25,7 @@ const DEFAULT_HISTORY_CAPACITY: usize = 256;
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let mut ring = HistoryRing::new();
 /// ring.push(RegisterContent::characterwise("first"));

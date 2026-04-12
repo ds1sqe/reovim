@@ -32,9 +32,9 @@ impl ReovimPosition {
     }
 }
 
-impl From<reovim_types_text::Position> for ReovimPosition {
+impl From<reovim_domain_text::Position> for ReovimPosition {
     #[allow(clippy::cast_possible_truncation)]
-    fn from(pos: reovim_types_text::Position) -> Self {
+    fn from(pos: reovim_domain_text::Position) -> Self {
         Self {
             line: pos.line as u32,
             column: pos.column as u32,
@@ -42,7 +42,7 @@ impl From<reovim_types_text::Position> for ReovimPosition {
     }
 }
 
-impl From<ReovimPosition> for reovim_types_text::Position {
+impl From<ReovimPosition> for reovim_domain_text::Position {
     fn from(pos: ReovimPosition) -> Self {
         Self::new(pos.line as usize, pos.column as usize)
     }
@@ -133,16 +133,16 @@ pub enum ReovimYankType {
     Linewise = 1,
 }
 
-impl From<reovim_types_text::YankType> for ReovimYankType {
-    fn from(yt: reovim_types_text::YankType) -> Self {
+impl From<reovim_domain_text::YankType> for ReovimYankType {
+    fn from(yt: reovim_domain_text::YankType) -> Self {
         match yt {
-            reovim_types_text::YankType::Characterwise => Self::Characterwise,
-            reovim_types_text::YankType::Linewise => Self::Linewise,
+            reovim_domain_text::YankType::Characterwise => Self::Characterwise,
+            reovim_domain_text::YankType::Linewise => Self::Linewise,
         }
     }
 }
 
-impl From<ReovimYankType> for reovim_types_text::YankType {
+impl From<ReovimYankType> for reovim_domain_text::YankType {
     fn from(yt: ReovimYankType) -> Self {
         match yt {
             ReovimYankType::Characterwise => Self::Characterwise,

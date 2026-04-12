@@ -48,7 +48,7 @@ pub trait TextGeometry {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{SimpleText, TextGeometry};
+/// use reovim_domain_text::{SimpleText, TextGeometry};
 ///
 /// let text = SimpleText::new("hello\nworld");
 /// assert_eq!(text.line_count(), 2);

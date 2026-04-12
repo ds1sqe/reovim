@@ -164,6 +164,7 @@ fn test_get_line_indent_single_tab() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
@@ -174,7 +175,6 @@ use {
         v1::{BufferId, KernelContext, RwLock},
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 
@@ -725,10 +725,10 @@ fn test_enter_insert_first_non_blank_on_second_line() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{Edit, UndoResult, UndoTree},
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{OptionSpec, OptionValue},
-    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

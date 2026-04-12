@@ -4,9 +4,9 @@
 
 use {
     crate::args::ArgValue,
+    reovim_domain_text::Position,
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, WindowId},
-    reovim_types_text::Position,
     std::{collections::HashMap, sync::Arc},
 };
 

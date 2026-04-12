@@ -10,12 +10,12 @@
 //! HOW: parsing, variable resolution, tab-stop tracking, and mode transition.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         SnippetExpander, TransitionContext,
     },
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::Position,
 };
 
 use crate::{

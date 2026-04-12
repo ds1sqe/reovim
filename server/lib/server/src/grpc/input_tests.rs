@@ -2320,8 +2320,8 @@ fn test_ensure_selection_change_cursor_moved_with_selection() {
     // Window with selection
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_types_text::Position::new(0, 0),
-        reovim_types_text::Position::new(0, 5),
+        reovim_domain_text::Position::new(0, 0),
+        reovim_domain_text::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 
@@ -2339,8 +2339,8 @@ fn test_ensure_selection_change_already_recorded_is_noop() {
 
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_types_text::Position::new(0, 0),
-        reovim_types_text::Position::new(0, 5),
+        reovim_domain_text::Position::new(0, 0),
+        reovim_domain_text::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 
@@ -2373,8 +2373,8 @@ fn test_ensure_selection_change_no_cursor_moved_is_noop() {
 
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_types_text::Position::new(0, 0),
-        reovim_types_text::Position::new(0, 5),
+        reovim_domain_text::Position::new(0, 0),
+        reovim_domain_text::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 

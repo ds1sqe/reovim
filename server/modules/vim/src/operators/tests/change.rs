@@ -6,6 +6,7 @@
 use super::super::*;
 
 use {
+    reovim_domain_text::{HistoryRing, Position, Register, RegisterBank},
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
@@ -19,7 +20,6 @@ use {
         testing::create_test_context,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
     std::sync::Arc,
 };
 
@@ -555,11 +555,11 @@ fn test_change_to_register_z() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{Edit, UndoResult, UndoTree},
     reovim_driver_undo::{
         UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
     },
     reovim_driver_vfs::VfsDriver,
-    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

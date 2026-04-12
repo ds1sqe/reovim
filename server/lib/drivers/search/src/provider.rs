@@ -5,8 +5,8 @@ use {
         LineSource,
         types::{Direction, SearchError, SearchMatch},
     },
+    reovim_domain_text::Position,
     reovim_provider_text::Buffer,
-    reovim_types_text::Position,
 };
 
 /// Search provider interface for finding patterns in buffers.

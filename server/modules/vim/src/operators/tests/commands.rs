@@ -1,12 +1,13 @@
 #![allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
 use {
     super::super::*,
+    reovim_domain_text::Position,
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::SessionRuntime,
-    reovim_types_text::Position,
 };
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
     reovim_kernel::{
         api::{
@@ -16,7 +17,6 @@ use {
         testing::create_test_context,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 
@@ -498,9 +498,9 @@ fn test_yank_command_no_range_defaults() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{Edit, UndoResult, UndoTree},
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_types_text::{Edit, UndoResult, UndoTree},
 };
 
 struct MockUndoProvider {

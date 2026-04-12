@@ -1,9 +1,9 @@
 //! Tests for jump list command handlers.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler},
     reovim_driver_session::{JumpEntry, testing::TestSessionRuntime},
-    reovim_types_text::Position,
 };
 
 use crate::command::{JumpBackward, JumpForward};

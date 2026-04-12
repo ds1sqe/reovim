@@ -5,11 +5,11 @@
 //! new domain-aware trait system.
 
 use {
+    reovim_domain_text::{Text, TextEdit, TextPosition},
     reovim_driver_codec::{
         ByteNotifiable, CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
     },
     reovim_kernel::api::v1::ByteEdit,
-    reovim_types_text::{Text, TextEdit, TextPosition},
 };
 
 use crate::codec::{LINE_ENDING_CRLF, LINE_ENDING_LF, META_BOM, META_LINE_ENDING, UTF8_BOM};

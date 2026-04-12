@@ -8,6 +8,7 @@ use {
 
 use {
     crate::session_state::{LastChange, OperatorType},
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::ArgValue,
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, Window, WindowLayout,
@@ -21,7 +22,6 @@ use {
         testing::create_test_context,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

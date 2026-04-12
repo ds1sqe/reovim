@@ -95,8 +95,8 @@ fn translate_edit_text_variant_is_not_supported() {
     let codec = HexCodec::new();
     let bytes = HeapByteSource::new(b"A");
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 0),
-        end: reovim_types_text::Position::new(0, 2),
+        start: reovim_domain_text::Position::new(0, 0),
+        end: reovim_domain_text::Position::new(0, 2),
         replacement: "58".to_string(),
     };
 

@@ -25,7 +25,7 @@ reovim-driver-codec = { workspace = true }
 
 # Domain trait and text types for Decode<Text>/Encode<Text>/Index<Text>
 reovim-domain = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 
 # ByteEdit moved to reovim-kernel::block (#740)

@@ -11,6 +11,7 @@
 //! - **Visual mode** (v, V, Ctrl-V): Update selection to cover the text object
 
 use {
+    reovim_domain_text::{Position, TextObject, TextObjectEngine},
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
@@ -19,7 +20,6 @@ use {
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::{Position, TextObject, TextObjectEngine},
 };
 
 use crate::ids;

@@ -1,5 +1,6 @@
 use {
     crate::{TEXTOBJECTS_MODULE, bracket::*},
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
@@ -14,7 +15,6 @@ use {
         },
         testing::test_mode,
     },
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 // =========================================================================

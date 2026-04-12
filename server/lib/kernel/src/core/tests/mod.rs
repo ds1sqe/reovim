@@ -7,10 +7,10 @@ use crate::{
     mm::{BufferId, Cursor, WindowId},
 };
 
-use reovim_types_text::Position;
+use reovim_domain_text::Position;
 
-// Text types extracted to reovim-types-text (#740)
-use reovim_types_text::{
+// Text types extracted to reovim-domain-text (#740)
+use reovim_domain_text::{
     Direction, HistoryRing, LinePosition, Motion, MotionEngine, Register, RegisterBank,
     RegisterContent, SimpleText, TextObject, TextObjectEngine, WordBoundary, YankType,
 };

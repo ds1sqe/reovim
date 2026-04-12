@@ -29,7 +29,7 @@
 //! }
 //! ```
 
-use {reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
+use {reovim_domain_text::Position, reovim_kernel::api::v1::BufferId};
 
 /// Buffer content and lifecycle operations.
 ///

@@ -19,7 +19,7 @@ use super::TextPosition;
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{TextEdit, TextPosition};
+/// use reovim_domain_text::{TextEdit, TextPosition};
 ///
 /// let insert = TextEdit::insert(TextPosition::new(0, 5), "Hello");
 /// assert!(insert.is_insert());
@@ -128,7 +128,7 @@ impl TextEdit {
     /// # Example
     ///
     /// ```
-    /// use reovim_types_text::{TextEdit, TextPosition};
+    /// use reovim_domain_text::{TextEdit, TextPosition};
     ///
     /// // An insert at (0,5) transformed through an earlier insert of "abc" at (0,2)
     /// let edit = TextEdit::insert(TextPosition::new(0, 5), "hello");
@@ -177,7 +177,7 @@ pub struct TextDimensions {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::text_dimensions;
+/// use reovim_domain_text::text_dimensions;
 ///
 /// let dims = text_dimensions("hello");
 /// assert_eq!(dims.line_count, 0);
@@ -231,7 +231,7 @@ pub fn delete_end(pos: TextPosition, text: &str) -> TextPosition {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{TextEdit, TextPosition, transform_position};
+/// use reovim_domain_text::{TextEdit, TextPosition, transform_position};
 ///
 /// // Insert "abc" at (0,2) shifts position (0,5) to (0,8)
 /// let pos = transform_position(

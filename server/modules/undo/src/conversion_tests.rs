@@ -1,9 +1,9 @@
 use {
+    reovim_domain_text::{Edit, EditOrigin, Position, UndoTree},
     reovim_protocol::v1::undo::{
         SerializableEdit, SerializableEditOrigin, SerializablePosition, SerializableUndoNode,
         SerializableUndoTree, UndoFileFormat,
     },
-    reovim_types_text::{Edit, EditOrigin, Position, UndoTree},
 };
 
 use super::*;

@@ -9,13 +9,13 @@
 //! range and inserts the typed character directly through the session API.
 
 use {
+    reovim_domain_text::Edit,
     reovim_driver_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult,
     },
     reovim_driver_session::{ExtensionMap, SessionApiDyn},
     reovim_kernel::api::v1::ModeId,
-    reovim_types_text::Edit,
 };
 
 use crate::{ids, state::SnippetSessionState};

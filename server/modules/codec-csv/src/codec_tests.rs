@@ -1,9 +1,9 @@
 //! Tests for CSV codec.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
     reovim_driver_vfs::HeapByteSource,
-    reovim_types_text::Position,
 };
 
 use {

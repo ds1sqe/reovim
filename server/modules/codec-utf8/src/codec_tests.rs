@@ -172,8 +172,8 @@ fn translate_edit_text_insertion_on_plain_utf8() {
     let codec = Utf8Codec::new();
     let bytes = HeapByteSource::new("hello world");
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 5),
-        end: reovim_types_text::Position::new(0, 5),
+        start: reovim_domain_text::Position::new(0, 5),
+        end: reovim_domain_text::Position::new(0, 5),
         replacement: ",".to_string(),
     };
 
@@ -193,8 +193,8 @@ fn translate_edit_text_insertion_respects_crlf_and_bom() {
 
     let bytes = HeapByteSource::new(raw);
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(1, 0),
-        end: reovim_types_text::Position::new(1, 0),
+        start: reovim_domain_text::Position::new(1, 0),
+        end: reovim_domain_text::Position::new(1, 0),
         replacement: "Z".to_string(),
     };
 
@@ -211,8 +211,8 @@ fn translate_edit_text_requires_valid_range() {
     let codec = Utf8Codec::new();
     let bytes = HeapByteSource::new("héllo\r\n世界");
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 1),
-        end: reovim_types_text::Position::new(1, 0),
+        start: reovim_domain_text::Position::new(0, 1),
+        end: reovim_domain_text::Position::new(1, 0),
         replacement: String::new(),
     };
 

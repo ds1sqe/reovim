@@ -34,9 +34,9 @@ use {
         runtime::SessionRuntime,
     },
     reovim_arch::sync::RwLock,
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, ModeStack, ModuleId},
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
 

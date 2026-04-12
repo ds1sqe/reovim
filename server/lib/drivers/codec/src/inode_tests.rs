@@ -348,8 +348,8 @@ fn apply_edit_text_requires_translatable_codec() {
     .expect("mount");
 
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 0),
-        end: reovim_types_text::Position::new(0, 0),
+        start: reovim_domain_text::Position::new(0, 0),
+        end: reovim_domain_text::Position::new(0, 0),
         replacement: String::new(),
     };
 

@@ -18,4 +18,4 @@ reovim-kernel = { workspace = true }
 # Text provider for Buffer, VirtualBuffer, BufferOps
 reovim-provider-text = { workspace = true }
 # Text types (Position)
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }

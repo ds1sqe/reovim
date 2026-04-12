@@ -1,10 +1,10 @@
 [package]
-name = "reovim-types-text"
+name = "reovim-domain-text"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Pure text data types (Position, Edit, Selection) — zero-dependency leaf crate"
+description = "Text content domain for reovim: data types, algorithms, and storage. Events are in the sibling crate reovim-domain-text-events."
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true

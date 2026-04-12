@@ -11,7 +11,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::TextPosition;
+/// use reovim_domain_text::TextPosition;
 ///
 /// let pos = TextPosition::new(5, 10);
 /// assert_eq!(pos.line, 5);
@@ -88,7 +88,7 @@ impl std::fmt::Display for TextPosition {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::{Cursor, TextPosition};
+/// use reovim_domain_text::{Cursor, TextPosition};
 ///
 /// let mut cursor = Cursor::new(TextPosition::new(0, 5));
 ///

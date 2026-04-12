@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command_types::ArgValue as CmdArgValue,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
-    reovim_types_text::Position,
 };
 
 use crate::{
@@ -709,7 +709,7 @@ fn test_resolve_input_with_registers() {
     let mode = test_mode();
     let keymap = NoOpKeymap;
     let registers = std::sync::Arc::new(reovim_kernel::api::v1::RwLock::new(
-        reovim_types_text::RegisterBank::new(),
+        reovim_domain_text::RegisterBank::new(),
     ));
 
     let input = ResolveInput::with_registers(&keys, &mode, &keymap, &registers);

@@ -42,13 +42,13 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_layout::RootCompositor,
     reovim_driver_session::{
         CursorPosition, ExtensionMap, Jumplist, KeySequence, MarkBank, Selection, SelectionMode,
         TabPageSet, Viewport, Window, WindowLayout,
     },
     reovim_kernel::api::v1::{BufferId, ModeStack},
-    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};

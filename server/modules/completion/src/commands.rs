@@ -13,6 +13,7 @@ use std::{
 };
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
@@ -25,7 +26,6 @@ use {
         SnippetExpanderRegistry,
     },
     reovim_kernel::api::v1::{BufferId, CommandId, ServiceRegistry, oneshot},
-    reovim_types_text::Position,
     tracing::{debug, info, warn},
 };
 

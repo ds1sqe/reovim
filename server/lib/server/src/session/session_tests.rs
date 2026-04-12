@@ -1204,6 +1204,7 @@ fn test_insert_char_for_client_with_undo_recording() {
     // insert_char_for_client when an UndoProviderRegistry with a
     // UndoKey::Buffer provider is registered in services.
     use {
+        reovim_domain_text::{Edit, Position, UndoResult, UndoTree},
         reovim_driver_buffer::TestBufferManager,
         reovim_driver_input::InputTarget,
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
@@ -1211,7 +1212,6 @@ fn test_insert_char_for_client_with_undo_recording() {
         reovim_kernel::api::v1::{
             BufferId, EventBus, KernelContext, OptionRegistry, ServiceRegistry,
         },
-        reovim_types_text::{Edit, Position, UndoResult, UndoTree},
         std::sync::{Arc, Mutex},
     };
 

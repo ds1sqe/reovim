@@ -1,5 +1,6 @@
 use {
     crate::{ids, line::*},
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
@@ -14,7 +15,6 @@ use {
         },
         testing::create_test_context,
     },
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 // =========================================================================

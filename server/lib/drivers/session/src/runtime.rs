@@ -38,6 +38,7 @@
 //! ```
 
 use {
+    reovim_domain_text::{Edit, Position, UndoResult},
     reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_driver_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_driver_layout::{
@@ -49,7 +50,6 @@ use {
         events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
     reovim_provider_text::TextBufferRegistry,
-    reovim_types_text::{Edit, Position, UndoResult},
 };
 
 use crate::{
@@ -136,11 +136,11 @@ pub struct SessionRuntime<'a> {
     ///
     /// Each client owns their own registers (unnamed, named a-z/A-Z).
     /// System clipboard (+, *) remains shared via `ClipboardProvider`.
-    registers: &'a mut reovim_types_text::RegisterBank,
+    registers: &'a mut reovim_domain_text::RegisterBank,
     /// Per-client clipboard history ring (#515).
     ///
     /// Tracks yank/delete history for numbered registers 0-9.
-    clipboard_history: &'a mut reovim_types_text::HistoryRing,
+    clipboard_history: &'a mut reovim_domain_text::HistoryRing,
     /// Per-client local marks (a-z, per-client special marks) (#515).
     local_marks: &'a mut crate::MarkBank,
     /// Per-client jump list for Ctrl-O / Ctrl-I navigation (#654).
@@ -463,7 +463,7 @@ impl<'a> SessionRuntime<'a> {
     /// Use this for motions, text objects, and any read-only text access.
     pub fn with_text_geometry<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
     where
-        F: FnOnce(&dyn reovim_types_text::TextGeometry) -> R,
+        F: FnOnce(&dyn reovim_domain_text::TextGeometry) -> R,
     {
         let buf_arc = self.text_buffer(buffer)?;
         let buf = buf_arc.read();
@@ -541,25 +541,25 @@ impl<'a> SessionRuntime<'a> {
 
     /// Get per-client registers (#515).
     #[must_use]
-    pub const fn registers(&self) -> &reovim_types_text::RegisterBank {
+    pub const fn registers(&self) -> &reovim_domain_text::RegisterBank {
         self.registers
     }
 
     /// Get per-client registers mutably (#515).
     #[allow(clippy::missing_const_for_fn)]
-    pub fn registers_mut(&mut self) -> &mut reovim_types_text::RegisterBank {
+    pub fn registers_mut(&mut self) -> &mut reovim_domain_text::RegisterBank {
         self.registers
     }
 
     /// Get per-client clipboard history (#515).
     #[must_use]
-    pub const fn clipboard_history(&self) -> &reovim_types_text::HistoryRing {
+    pub const fn clipboard_history(&self) -> &reovim_domain_text::HistoryRing {
         self.clipboard_history
     }
 
     /// Get per-client clipboard history mutably (#515).
     #[allow(clippy::missing_const_for_fn)]
-    pub fn clipboard_history_mut(&mut self) -> &mut reovim_types_text::HistoryRing {
+    pub fn clipboard_history_mut(&mut self) -> &mut reovim_domain_text::HistoryRing {
         self.clipboard_history
     }
 
@@ -572,8 +572,8 @@ impl<'a> SessionRuntime<'a> {
         &mut self,
     ) -> (
         &KernelContext,
-        &mut reovim_types_text::RegisterBank,
-        &mut reovim_types_text::HistoryRing,
+        &mut reovim_domain_text::RegisterBank,
+        &mut reovim_domain_text::HistoryRing,
     ) {
         (self.kernel, self.registers, self.clipboard_history)
     }

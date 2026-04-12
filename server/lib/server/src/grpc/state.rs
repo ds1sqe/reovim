@@ -598,7 +598,7 @@ impl StateService for StateServiceImpl {
         &self,
         request: Request<GetRegistersRequest>,
     ) -> Result<Response<GetRegistersResponse>, Status> {
-        use reovim_types_text::YankType;
+        use reovim_domain_text::YankType;
 
         let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();

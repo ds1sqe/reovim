@@ -21,11 +21,11 @@
 //! - `*` and `#` - search word under cursor forward/backward
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry, TextGeometryLineSource},
     reovim_driver_session::{SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::{ids, search_state::SearchState};
@@ -254,7 +254,7 @@ fn search_word(
     args: &CommandContext,
     direction: Direction,
 ) -> CommandResult {
-    use reovim_types_text::Position;
+    use reovim_domain_text::Position;
 
     // Get active buffer and cursor position
     let Some(buffer_id) = args.buffer_id() else {
@@ -336,8 +336,8 @@ fn search_and_move(
     direction: Direction,
 ) -> CommandResult {
     use {
+        reovim_domain_text::Position,
         reovim_driver_session::{ChangeTracker, JumpEntry},
-        reovim_types_text::Position,
     };
 
     // Get active buffer and cursor position

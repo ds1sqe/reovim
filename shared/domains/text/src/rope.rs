@@ -158,7 +158,7 @@ impl RopeNode {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::Rope;
+/// use reovim_domain_text::Rope;
 ///
 /// let r = Rope::from_str("hello\nworld");
 /// assert_eq!(r.line_count(), 2);

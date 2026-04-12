@@ -20,7 +20,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use {reovim_driver_session::ExtensionMap, reovim_types_text::RegisterContent};
+use {reovim_domain_text::RegisterContent, reovim_driver_session::ExtensionMap};
 
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
@@ -584,9 +584,9 @@ impl Session {
         Option<reovim_domain_text_events::TextBufferModified>,
     )> {
         use {
+            reovim_domain_text::{Edit, Position},
             reovim_driver_input::InputTarget,
             reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-            reovim_types_text::{Edit, Position},
         };
 
         match target {

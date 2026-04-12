@@ -5,9 +5,9 @@
 use std::{borrow::Cow, sync::Arc};
 
 use {
+    reovim_domain_text::{LineIndex, Position, TextGeometry},
     reovim_driver_vfs::FileMapping,
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::{LineIndex, Position, TextGeometry},
 };
 
 use crate::Buffer;

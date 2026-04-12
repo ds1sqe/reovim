@@ -21,8 +21,8 @@ use std::{
 
 use {
     crate::{BufferCapabilities, BufferOps},
+    reovim_domain_text::{Position, TextGeometry},
     reovim_kernel::api::v1::{BufferId, BufferMeta, StorageCapabilities, StorageError, StorageOps},
-    reovim_types_text::{Position, TextGeometry},
 };
 
 use super::{BufferSnapshot, rope::Rope};
@@ -47,7 +47,7 @@ use super::{BufferSnapshot, rope::Rope};
 ///
 /// ```
 /// use reovim_provider_text::Buffer;
-/// # use reovim_types_text::Position;
+/// # use reovim_domain_text::Position;
 ///
 /// let mut buf = Buffer::from_string("Hello\nWorld");
 /// assert_eq!(buf.line_count(), 2);
@@ -588,7 +588,7 @@ impl BufferOps for Buffer {
 
 // ── BufferSnapshot helper ──────────────────────────────────────────────────
 
-use reovim_types_text::Cursor;
+use reovim_domain_text::Cursor;
 
 impl Buffer {
     /// Create a `BufferSnapshot` from this buffer.

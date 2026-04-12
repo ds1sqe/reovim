@@ -296,7 +296,7 @@ impl VimNormalResolver {
                 // Store in register via input's register access
                 // Note: We store as text - macros are just key notation strings
                 if let Some(registers) = input.registers {
-                    use reovim_types_text::RegisterContent;
+                    use reovim_domain_text::RegisterContent;
                     registers
                         .write()
                         .set_named(register, RegisterContent::characterwise(&notation));

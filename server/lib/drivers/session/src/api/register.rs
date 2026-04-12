@@ -20,7 +20,7 @@
 //! ```
 
 // Re-export text types for ergonomics
-pub use reovim_types_text::{RegisterContent, YankType};
+pub use reovim_domain_text::{RegisterContent, YankType};
 
 /// Register access for yank/paste operations.
 ///

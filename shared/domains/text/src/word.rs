@@ -18,7 +18,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_types_text::*;
+//! use reovim_domain_text::*;
 //!
 //! let text: Vec<char> = "hello_world foo.bar".chars().collect();
 //!
@@ -68,7 +68,7 @@ pub enum WordType {
 /// # Examples
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// assert_eq!(char_kind('a'), CharKind::Word);
 /// assert_eq!(char_kind('_'), CharKind::Word);
@@ -105,7 +105,7 @@ pub fn char_kind(c: char) -> CharKind {
 /// # Examples
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let text: Vec<char> = "hello world".chars().collect();
 /// assert_eq!(word_start(&text, 3, WordType::Small), 0); // 'l' is part of "hello"
@@ -155,7 +155,7 @@ pub fn word_start(chars: &[char], pos: usize, word_type: WordType) -> usize {
 /// # Examples
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let text: Vec<char> = "hello world".chars().collect();
 /// assert_eq!(word_end(&text, 0, WordType::Small), 4); // "hello" ends at 4
@@ -205,7 +205,7 @@ pub fn word_end(chars: &[char], pos: usize, word_type: WordType) -> usize {
 /// # Examples
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let text: Vec<char> = "hello world".chars().collect();
 /// let (start, end) = word_bounds(&text, 2, WordType::Small);

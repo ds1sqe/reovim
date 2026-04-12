@@ -18,7 +18,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_types_text::{Position, SimpleText, find_delimiter_pair};
+//! use reovim_domain_text::{Position, SimpleText, find_delimiter_pair};
 //!
 //! let buffer = SimpleText::new("fn foo(bar, baz) {}");
 //!
@@ -53,7 +53,7 @@ use crate::{Position, TextGeometry};
 /// # Examples
 ///
 /// ```
-/// use reovim_types_text::{Position, SimpleText, find_delimiter_pair};
+/// use reovim_domain_text::{Position, SimpleText, find_delimiter_pair};
 ///
 /// let buffer = SimpleText::new("(hello)");
 /// let result = find_delimiter_pair(&buffer, Position::new(0, 3), '(', ')');

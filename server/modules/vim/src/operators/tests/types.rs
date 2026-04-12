@@ -1,7 +1,7 @@
 use {
     super::super::*,
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 #[test]
@@ -214,7 +214,7 @@ fn test_operator_error_debug() {
 
 #[test]
 fn test_operator_context_fields() {
-    use reovim_types_text::Register;
+    use reovim_domain_text::Register;
     let kernel = reovim_kernel::api::v1::KernelContext::default();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -236,7 +236,7 @@ fn test_operator_context_fields() {
 
 #[test]
 fn test_operator_context_default_register() {
-    use reovim_types_text::Register;
+    use reovim_domain_text::Register;
     let kernel = reovim_kernel::api::v1::KernelContext::default();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();

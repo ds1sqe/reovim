@@ -1,8 +1,8 @@
 use {
     super::*,
     crate::{Jumplist, MarkBank, testing::StubExecutor, types::ClientId},
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_kernel::{api::v1::ModuleId, testing::test_mode},
-    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_mode_2() -> ModeId {
@@ -2023,7 +2023,7 @@ fn test_record_edit_without_provider() {
     harness.with_runtime(|runtime| {
         runtime.record_edit(
             buffer_id,
-            vec![reovim_types_text::Edit::Insert {
+            vec![reovim_domain_text::Edit::Insert {
                 position: Position::new(0, 0),
                 text: "x".to_string(),
             }],
@@ -2045,7 +2045,7 @@ fn test_record_edit_mine_without_owner() {
     harness.with_runtime(|runtime| {
         runtime.record_edit_mine(
             buffer_id,
-            vec![reovim_types_text::Edit::Insert {
+            vec![reovim_domain_text::Edit::Insert {
                 position: Position::new(0, 0),
                 text: "x".to_string(),
             }],
@@ -3055,8 +3055,8 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
-        let mut tree = reovim_types_text::UndoTree::new();
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_domain_text::UndoTree> {
+        let mut tree = reovim_domain_text::UndoTree::new();
         tree.push(
             vec![Edit::Insert {
                 position: Position::new(0, 0),
@@ -3503,7 +3503,7 @@ impl reovim_driver_undo::UndoProvider for AlternateUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_domain_text::UndoTree> {
         None
     }
 
@@ -5715,7 +5715,7 @@ fn test_local_marks_mut_accessor() {
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {
         let marks = runtime.local_marks_mut();
-        marks.set_local('a', reovim_types_text::Position::new(0, 5));
+        marks.set_local('a', reovim_domain_text::Position::new(0, 5));
         assert!(marks.get_local('a').is_some());
     });
 }

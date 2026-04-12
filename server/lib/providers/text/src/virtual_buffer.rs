@@ -23,9 +23,9 @@ use crate::virtual_snapshot::VirtualSnapshot;
 
 use {
     crate::{BufferCapabilities, BufferOps},
+    reovim_domain_text::{LineIndex, Position, TextGeometry},
     reovim_driver_vfs::{FileMapping, Piece, PieceMetrics, PieceSource, PieceTree},
     reovim_kernel::api::v1::{BufferId, BufferMeta, StorageCapabilities, StorageError, StorageOps},
-    reovim_types_text::{LineIndex, Position, TextGeometry},
 };
 
 /// Create byte-only metrics from a string's byte length.
@@ -102,7 +102,7 @@ impl VirtualBuffer {
     /// Returns [`InvalidUtf8`] if the mapped bytes are not valid UTF-8.
     pub fn from_mapping(
         mapping: Arc<dyn FileMapping>,
-    ) -> Result<Self, reovim_types_text::InvalidUtf8> {
+    ) -> Result<Self, reovim_domain_text::InvalidUtf8> {
         let line_index = LineIndex::from_bytes(mapping.as_bytes())?;
         Ok(Self::new(mapping, line_index))
     }

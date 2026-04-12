@@ -11,12 +11,12 @@
 
 use {
     regex::Regex,
+    reovim_domain_text::Position,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},
-    reovim_types_text::Position,
 };
 
 /// Module ID for commands module.

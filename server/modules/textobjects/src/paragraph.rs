@@ -5,6 +5,7 @@
 //! These commands select paragraph regions (contiguous non-blank lines).
 
 use {
+    reovim_domain_text::{Position, TextObject, TextObjectEngine},
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
@@ -12,7 +13,6 @@ use {
         OperatorPendingState, SessionRuntime, TextObjRange, api::ExtensionApi,
     },
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::{Position, TextObject, TextObjectEngine},
 };
 
 use crate::ids;

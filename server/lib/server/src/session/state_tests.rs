@@ -1,11 +1,11 @@
 use {
     super::*,
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_buffer::TestBufferManager,
     reovim_driver_session::{Jumplist, MarkBank},
     reovim_kernel::api::v1::{
         EventBus, ModeStack, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
     },
-    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_mode_id() -> ModeId {

@@ -17,7 +17,7 @@ workspace = true
 reovim-kernel = { workspace = true }
 
 # Types layer (for Position)
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 # Driver layer (for VfsDriver)
 reovim-driver-vfs = { workspace = true }

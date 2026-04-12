@@ -1,13 +1,13 @@
 #![allow(clippy::doc_markdown, clippy::equatable_if_let)]
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
         ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
-    reovim_types_text::Position,
 };
 
 use {
@@ -326,6 +326,7 @@ fn test_motion_key_with_count_returns_execute() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{Edit, UndoResult},
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         TextObjRange, WindowError,
@@ -335,7 +336,6 @@ use {
         },
     },
     reovim_kernel::api::v1::{BufferId, WindowId},
-    reovim_types_text::{Edit, UndoResult},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.

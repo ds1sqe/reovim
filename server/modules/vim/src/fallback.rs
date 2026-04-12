@@ -20,10 +20,10 @@
 //! explicit keybindings to commands in insert mode (see keymap/insert.rs).
 
 use {
+    reovim_domain_text::{Edit, Position},
     reovim_driver_input::{
         FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
     },
-    reovim_types_text::{Edit, Position},
 };
 
 use crate::modes::VimMode;

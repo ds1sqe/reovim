@@ -15,7 +15,7 @@ use crate::{TextGeometry, TextPosition, direction::WordBoundary};
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// // Delete inner word: diw
 /// let inner_word = TextObject::InnerWord(WordBoundary::Word);
@@ -140,7 +140,7 @@ impl TextObject {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let buffer = SimpleText::new("hello world");
 /// let pos = TextPosition::new(0, 0);

@@ -3,7 +3,7 @@
 //! Manages tab stop tracking, position updates through buffer edits,
 //! and cursor navigation for an expanded snippet.
 
-use reovim_types_text::{Edit, Position, transform_position};
+use reovim_domain_text::{Edit, Position, transform_position};
 
 use crate::{
     ast::{SnippetBody, SnippetElement, TabStopId},

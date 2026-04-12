@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use {
     super::*,
+    reovim_domain_text::{Position, TextGeometry},
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::{Position, TextGeometry},
 };
 
 // === Construction ===

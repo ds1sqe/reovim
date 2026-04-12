@@ -674,8 +674,8 @@ impl InputServiceImpl {
 
         match &event.edit {
             TextEdit::Insert { position, text } => DecodedEdit::Text {
-                start: reovim_types_text::Position::new(position.line, position.column),
-                end: reovim_types_text::Position::new(position.line, position.column),
+                start: reovim_domain_text::Position::new(position.line, position.column),
+                end: reovim_domain_text::Position::new(position.line, position.column),
                 replacement: text.clone(),
             },
             TextEdit::Delete { position, text } => {
@@ -691,8 +691,8 @@ impl InputServiceImpl {
                     }
                 }
                 DecodedEdit::Text {
-                    start: reovim_types_text::Position::new(position.line, position.column),
-                    end: reovim_types_text::Position::new(end_line, end_col),
+                    start: reovim_domain_text::Position::new(position.line, position.column),
+                    end: reovim_domain_text::Position::new(end_line, end_col),
                     replacement: String::new(),
                 }
             }

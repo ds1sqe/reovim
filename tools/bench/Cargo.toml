@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 # Kernel layer (for benchmarking)
 reovim-kernel = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 [dev-dependencies]
 # Criterion benchmarking framework

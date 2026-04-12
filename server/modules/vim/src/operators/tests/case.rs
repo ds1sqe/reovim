@@ -8,12 +8,12 @@ use super::super::*;
 use std::sync::Arc;
 
 use {
+    reovim_domain_text::{HistoryRing, Position, Register, RegisterBank},
     reovim_kernel::{
         api::v1::{BufferId, RwLock},
         testing::create_test_context,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, Position, Register, RegisterBank},
 };
 
 /// Create a test context with `TextBufferRegistry` registered on the service registry.

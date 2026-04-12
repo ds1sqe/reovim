@@ -1,5 +1,6 @@
 use {
     super::super::*,
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
@@ -9,7 +10,6 @@ use {
         api::v1::{KernelContext, ModeStack},
         testing::test_mode,
     },
-    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 #[test]

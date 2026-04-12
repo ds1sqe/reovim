@@ -841,7 +841,7 @@ fn test_window_split_from_inherits_viewport() {
 fn test_window_split_from_no_selection() {
     use {
         crate::api::{Selection, SelectionMode},
-        reovim_types_text::Position,
+        reovim_domain_text::Position,
     };
 
     let mut source = Window::new();

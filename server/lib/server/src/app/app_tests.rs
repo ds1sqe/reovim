@@ -188,9 +188,9 @@ fn test_fallback_get_buffer_with_real_buffer() {
 #[test]
 fn test_fallback_record_edit_with_undo_provider() {
     use {
+        reovim_domain_text::{UndoResult, UndoTree},
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProviderRegistry},
         reovim_driver_vfs::VfsDriver,
-        reovim_types_text::{UndoResult, UndoTree},
         std::sync::atomic::{AtomicBool, Ordering},
     };
 

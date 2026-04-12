@@ -18,6 +18,7 @@
 //! command execution.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::Direction,
     reovim_driver_session::{
@@ -27,7 +28,6 @@ use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::CommandId,
     reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
-    reovim_types_text::Position,
     std::sync::Arc,
 };
 

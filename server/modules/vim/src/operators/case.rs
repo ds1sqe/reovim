@@ -8,8 +8,8 @@
 //! Unlike delete/yank/change, case operators do not modify registers.
 
 use {
+    reovim_domain_text::{Edit, Position},
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_types_text::{Edit, Position},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte};

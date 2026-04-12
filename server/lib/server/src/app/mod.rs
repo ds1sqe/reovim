@@ -6,11 +6,11 @@
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_domain_text::{Edit, Position},
     reovim_driver_input::{ExtensionMap, FallbackContext},
     reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
     reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ServiceRegistry},
     reovim_provider_text::BufferOps,
-    reovim_types_text::{Edit, Position},
     std::sync::Arc,
 };
 

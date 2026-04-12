@@ -23,7 +23,7 @@ serde_json = { workspace = true }
 [dev-dependencies]
 parking_lot = { workspace = true }
 reovim-driver-buffer = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 [lints]
 workspace = true

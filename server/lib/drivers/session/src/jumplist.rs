@@ -16,7 +16,7 @@
 //! ```
 //! use reovim_driver_session::{JumpEntry, Jumplist};
 //! use reovim_kernel::api::v1::BufferId;
-//! use reovim_types_text::Position;
+//! use reovim_domain_text::Position;
 //!
 //! let buffer_id = BufferId::new();
 //! let mut jumplist = Jumplist::new();
@@ -37,7 +37,7 @@
 //! }
 //! ```
 
-use {reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
+use {reovim_domain_text::Position, reovim_kernel::api::v1::BufferId};
 
 /// Maximum number of entries in the jump list.
 pub const MAX_JUMPLIST_SIZE: usize = 100;
@@ -124,7 +124,7 @@ impl Jumplist {
     /// ```
     /// use reovim_driver_session::{JumpEntry, Jumplist};
     /// use reovim_kernel::api::v1::BufferId;
-    /// use reovim_types_text::Position;
+    /// use reovim_domain_text::Position;
     ///
     /// let buf = BufferId::new();
     /// let mut list = Jumplist::new();
@@ -197,7 +197,7 @@ impl Jumplist {
     /// ```
     /// use reovim_driver_session::{JumpEntry, Jumplist};
     /// use reovim_kernel::api::v1::BufferId;
-    /// use reovim_types_text::Position;
+    /// use reovim_domain_text::Position;
     ///
     /// let buf = BufferId::new();
     /// let mut list = Jumplist::new();

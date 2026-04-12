@@ -184,8 +184,8 @@ fn apply_decoded_edit_updates_source() {
             buf(1),
             "default",
             &DecodedEdit::Text {
-                start: reovim_types_text::Position::new(0, 0),
-                end: reovim_types_text::Position::new(0, 0),
+                start: reovim_domain_text::Position::new(0, 0),
+                end: reovim_domain_text::Position::new(0, 0),
                 replacement: "a".to_string(),
             },
         )
@@ -212,8 +212,8 @@ fn apply_decoded_edit_reuses_mount_for_same_view() {
         buf(1),
         "default",
         &DecodedEdit::Text {
-            start: reovim_types_text::Position::new(0, 0),
-            end: reovim_types_text::Position::new(0, 0),
+            start: reovim_domain_text::Position::new(0, 0),
+            end: reovim_domain_text::Position::new(0, 0),
             replacement: "a".to_string(),
         },
     );
@@ -222,8 +222,8 @@ fn apply_decoded_edit_reuses_mount_for_same_view() {
         buf(1),
         "default",
         &DecodedEdit::Text {
-            start: reovim_types_text::Position::new(1, 0),
-            end: reovim_types_text::Position::new(1, 0),
+            start: reovim_domain_text::Position::new(1, 0),
+            end: reovim_domain_text::Position::new(1, 0),
             replacement: "b".to_string(),
         },
     );
@@ -249,8 +249,8 @@ fn set_active_view_does_not_invalidate_mount() {
         buf(1),
         "default",
         &DecodedEdit::Text {
-            start: reovim_types_text::Position::new(0, 0),
-            end: reovim_types_text::Position::new(0, 0),
+            start: reovim_domain_text::Position::new(0, 0),
+            end: reovim_domain_text::Position::new(0, 0),
             replacement: "a".to_string(),
         },
     );
@@ -278,8 +278,8 @@ fn set_active_view_does_not_invalidate_mount() {
         buf(1),
         "hex",
         &DecodedEdit::Text {
-            start: reovim_types_text::Position::new(0, 0),
-            end: reovim_types_text::Position::new(0, 0),
+            start: reovim_domain_text::Position::new(0, 0),
+            end: reovim_domain_text::Position::new(0, 0),
             replacement: "b".to_string(),
         },
     );
@@ -303,8 +303,8 @@ fn remove_clears_mounts_and_source() {
         buf(1),
         "default",
         &DecodedEdit::Text {
-            start: reovim_types_text::Position::new(0, 0),
-            end: reovim_types_text::Position::new(0, 0),
+            start: reovim_domain_text::Position::new(0, 0),
+            end: reovim_domain_text::Position::new(0, 0),
             replacement: "a".to_string(),
         },
     );

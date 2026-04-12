@@ -1,4 +1,4 @@
-use {super::*, reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
+use {super::*, reovim_domain_text::Position, reovim_kernel::api::v1::BufferId};
 
 fn test_buffer_id() -> BufferId {
     BufferId::new()

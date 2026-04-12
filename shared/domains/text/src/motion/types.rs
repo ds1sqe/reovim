@@ -10,7 +10,7 @@ use crate::direction::{Direction, LinePosition, WordBoundary};
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// // Character motion (h, l)
 /// let left = Motion::Char(Direction::Backward);

@@ -15,7 +15,7 @@ fn test_version_compatibility() {
 #[test]
 fn test_all_types_accessible_via_v1() {
     // Verify key kernel types are accessible via api::v1.
-    // Note: text types (Position, Edit, etc.) are in reovim_types_text, not here.
+    // Note: text types (Position, Edit, etc.) are in reovim_domain_text, not here.
     let _: BufferId;
     let _: fn() -> EventBus = EventBus::new;
     let _: fn() -> Runtime = Runtime::new;

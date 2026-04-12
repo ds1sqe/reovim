@@ -9,7 +9,7 @@
 //! - **Config**: Configuration system
 //!
 //! Text-specific algorithms (`Motion`, `TextObject`, `Register`) have been
-//! extracted to `reovim-types-text` as part of #740.
+//! extracted to `reovim-domain-text` as part of #740.
 //! Mark types (`Mark`, `MarkBank`, `SpecialMark`) have been moved to
 //! `reovim-driver-session` as part of #740.
 //!
@@ -17,7 +17,7 @@
 //!
 //! ```
 //! use reovim_provider_text::Buffer;
-//! use reovim_types_text::{Cursor, Position, Direction, Motion, MotionEngine, WordBoundary};
+//! use reovim_domain_text::{Cursor, Position, Direction, Motion, MotionEngine, WordBoundary};
 //!
 //! let buffer = Buffer::from_string("hello world");
 //! let cursor = Cursor::new(Position::new(0, 0));

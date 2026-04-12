@@ -6,12 +6,12 @@
 //! - `GotoMarkExact` (`` ` ``{char}) - jump to mark exact position
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{JumpEntry, Mark, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{BufferId, CommandId},
-    reovim_types_text::Position,
 };
 
 use crate::ids;

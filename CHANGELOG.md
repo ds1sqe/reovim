@@ -48,6 +48,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **BREAKING (internal)**: Renamed `reovim-types-text` crate to `reovim-domain-text` and relocated from `shared/types/text/` to `shared/domains/text/` alongside its sibling `reovim-domain-text-events`. All workspace imports updated from `reovim_types_text` to `reovim_domain_text` (#740)
 - **text**: `VirtualBuffer` line access, edit, and search paths rewritten for O(requested_range) instead of O(file_size) — eliminates per-piece String allocation in `materialize_byte_range()`, replaces full-content `rebuild_line_index()` with incremental `apply_insert`/`apply_delete`, and fixes `delete_at`/`read_bytes`/`read_chunk` to avoid materializing the entire buffer (#739)
 - **kernel**: `MotionEngine::calculate` and `TextObjectEngine::range` accept `&dyn TextGeometry` instead of `&Buffer` — motions and text objects now work on virtual buffers (#739)
 - **session**: `with_text_geometry()` on `SessionRuntime` dispatches to either buffer type — 11 motion/textobject modules migrated (#739)

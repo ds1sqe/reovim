@@ -18,7 +18,7 @@ reovim-kernel = { workspace = true }
 # Buffer moved to provider-text (#740)
 reovim-provider-text = { workspace = true }
 # Text types (Position, Edit, RegisterContent, etc.)
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 # Text-domain events for dual-emission transition (#740 Plan 09 Phase 6)
 reovim-domain-text-events = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)

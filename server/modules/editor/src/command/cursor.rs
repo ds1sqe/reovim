@@ -11,12 +11,12 @@
 //! - Movements clamp to valid positions (no-op at boundaries)
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{ChangeTracker, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::ids;

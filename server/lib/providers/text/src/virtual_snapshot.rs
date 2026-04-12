@@ -7,8 +7,8 @@
 use std::{fmt, sync::Arc};
 
 use {
+    reovim_domain_text::LineIndex,
     reovim_driver_vfs::{FileMapping, PieceTree},
-    reovim_types_text::LineIndex,
 };
 
 /// Opaque snapshot of virtual buffer state.

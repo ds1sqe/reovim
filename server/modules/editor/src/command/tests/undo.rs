@@ -1,5 +1,6 @@
 use {
     super::super::*,
+    reovim_domain_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
@@ -11,7 +12,6 @@ use {
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry},
-    reovim_types_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     std::sync::Arc,
 };
 
@@ -526,7 +526,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         1
     }
 
-    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_types_text::UndoTree> {
+    fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_domain_text::UndoTree> {
         None
     }
 

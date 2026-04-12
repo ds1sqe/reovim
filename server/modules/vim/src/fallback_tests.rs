@@ -1,9 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
+    reovim_domain_text::{Edit, Position},
     reovim_kernel::api::v1::{BufferId, ModeId, RwLock},
     reovim_provider_text::{Buffer, BufferOps},
-    reovim_types_text::{Edit, Position},
 };
 
 use super::*;

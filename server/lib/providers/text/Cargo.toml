@@ -13,7 +13,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 reovim-kernel = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 bitflags = { workspace = true }

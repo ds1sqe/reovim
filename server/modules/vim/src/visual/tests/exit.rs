@@ -2,9 +2,9 @@
 use {
     super::super::*,
     crate::ids,
+    reovim_domain_text::Position,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{SessionRuntime, api::ModeApi},
-    reovim_types_text::Position,
 };
 
 use {reovim_driver_command::Command, reovim_kernel::testing::create_test_context};
@@ -41,6 +41,7 @@ fn test_exit_visual_mode_default() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, api::Selection,
         testing::StubExecutor,
@@ -50,7 +51,6 @@ use {
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

@@ -14,10 +14,10 @@
 //! the original count, it does NOT multiply. This matches Vim behavior.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::{

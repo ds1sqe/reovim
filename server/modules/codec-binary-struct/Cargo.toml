@@ -37,7 +37,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-testing = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 [features]
 # Enable for building as standalone dynamic library

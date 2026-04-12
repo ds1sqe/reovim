@@ -266,8 +266,8 @@ fn insertion_detection() {
 #[test]
 fn deletion_detection() {
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 0),
-        end: reovim_types_text::Position::new(0, 3),
+        start: reovim_domain_text::Position::new(0, 0),
+        end: reovim_domain_text::Position::new(0, 3),
         replacement: String::new(),
     };
     assert!(!edit.is_insertion());
@@ -277,12 +277,12 @@ fn deletion_detection() {
 #[test]
 fn text_edit_variant_fields_used() {
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 2),
-        end: reovim_types_text::Position::new(0, 3),
+        start: reovim_domain_text::Position::new(0, 2),
+        end: reovim_domain_text::Position::new(0, 3),
         replacement: "x".to_string(),
     };
-    let expected_start = reovim_types_text::Position::new(0, 2);
-    let expected_end = reovim_types_text::Position::new(0, 3);
+    let expected_start = reovim_domain_text::Position::new(0, 2);
+    let expected_end = reovim_domain_text::Position::new(0, 3);
 
     assert!(matches!(
         edit,

@@ -1,10 +1,10 @@
 use {
     super::*,
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{ArgSpec, Command},
     reovim_driver_session::{ClientId, Jumplist, MarkBank},
     reovim_driver_vfs::MockVfs,
     reovim_kernel::api::v1::{KernelContext, ModuleId},
-    reovim_types_text::{HistoryRing, RegisterBank},
 };
 
 fn test_vfs() -> Arc<dyn VfsDriver> {

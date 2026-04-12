@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_vfs::ByteSource, reovim_kernel::api::v1::ByteEdit, reovim_types_text::Position,
+    reovim_domain_text::Position, reovim_driver_vfs::ByteSource, reovim_kernel::api::v1::ByteEdit,
 };
 
 use {

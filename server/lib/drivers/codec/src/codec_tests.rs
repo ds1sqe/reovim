@@ -179,8 +179,8 @@ fn mock_codec_translate_edit_defaults_to_read_only() {
 
     let bytes = HeapByteSource::new(b"hello");
     let edit = DecodedEdit::Text {
-        start: reovim_types_text::Position::new(0, 0),
-        end: reovim_types_text::Position::new(0, 1),
+        start: reovim_domain_text::Position::new(0, 0),
+        end: reovim_domain_text::Position::new(0, 1),
         replacement: "x".to_string(),
     };
 

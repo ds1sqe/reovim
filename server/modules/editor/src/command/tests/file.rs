@@ -1,5 +1,6 @@
 use {
     super::super::*,
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{ArgKind, Command, CommandContext, CommandResult},
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
@@ -11,7 +12,6 @@ use {
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

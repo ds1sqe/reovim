@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_types_text::{Position, Selection, SelectionMode};
+//! use reovim_domain_text::{Position, Selection, SelectionMode};
 //!
 //! let mut selection = Selection::default();
 //!

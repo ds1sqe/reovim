@@ -1,5 +1,6 @@
 use {
     crate::{SearchState, ids, search::*},
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{
@@ -11,7 +12,6 @@ use {
         v1::{ModeId, ModuleId},
     },
     reovim_provider_text::Buffer,
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
     std::sync::Arc,
 };
 

@@ -1,5 +1,6 @@
 use {
     crate::{find_char::*, ids},
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         ClientId, ExtensionMap, FindCharState, Jumplist, MarkBank, Session, SessionRuntime, Window,
@@ -11,7 +12,6 @@ use {
         KernelContext, ModeStack,
         v1::{BufferId, CommandId, ModeId, ModuleId},
     },
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

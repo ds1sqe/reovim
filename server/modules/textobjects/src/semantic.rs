@@ -14,6 +14,7 @@
 //! | Block (TS)  | --    | --     | deferred   |
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         OperatorPendingState, SessionRuntime, TextObjRange,
@@ -21,7 +22,6 @@ use {
     },
     reovim_driver_syntax::{SyntaxSessionState, TextObjectKind, TextObjectScope},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::ids;

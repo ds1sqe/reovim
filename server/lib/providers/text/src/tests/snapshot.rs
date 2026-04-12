@@ -1,8 +1,8 @@
 use crate::{Buffer, BufferSnapshot};
 
 use {
+    reovim_domain_text::{Cursor, Position, Rope},
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::{Cursor, Position, Rope},
 };
 
 fn make_snapshot(content: &str, cursor: Cursor) -> BufferSnapshot {

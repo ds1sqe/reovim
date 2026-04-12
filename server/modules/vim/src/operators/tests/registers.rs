@@ -1,4 +1,4 @@
-use {super::*, reovim_types_text::YankType};
+use {super::*, reovim_domain_text::YankType};
 
 fn content(text: &str) -> RegisterContent {
     RegisterContent::new(text.to_string(), YankType::Characterwise)

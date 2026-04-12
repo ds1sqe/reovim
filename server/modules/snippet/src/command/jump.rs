@@ -3,13 +3,13 @@
 //! Navigate between tab stops in the active snippet.
 
 use {
+    reovim_domain_text::{Edit, Position},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },
     reovim_kernel::api::v1::{CommandId, ModeId},
-    reovim_types_text::{Edit, Position},
 };
 
 use crate::{ids, state::SnippetSessionState};
@@ -228,8 +228,8 @@ fn apply_single_mirror(
         let edit = Edit::delete(mirror.old_start, &mirror.old_placeholder);
         runtime.delete_range(buffer_id, mirror.old_start, mirror.old_end);
         active.update_positions(&edit);
-        *dest_start = reovim_types_text::transform_position(*dest_start, &edit);
-        *dest_end = reovim_types_text::transform_position(*dest_end, &edit);
+        *dest_start = reovim_domain_text::transform_position(*dest_start, &edit);
+        *dest_end = reovim_domain_text::transform_position(*dest_end, &edit);
     }
 
     // Insert the new text at the mirror position.
@@ -238,8 +238,8 @@ fn apply_single_mirror(
         let edit = Edit::insert(insert_pos, new_text);
         runtime.insert_text(buffer_id, insert_pos, new_text);
         active.update_positions(&edit);
-        *dest_start = reovim_types_text::transform_position(*dest_start, &edit);
-        *dest_end = reovim_types_text::transform_position(*dest_end, &edit);
+        *dest_start = reovim_domain_text::transform_position(*dest_start, &edit);
+        *dest_end = reovim_domain_text::transform_position(*dest_end, &edit);
     }
 
     // Compute the end position of the newly-inserted text.

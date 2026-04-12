@@ -1,5 +1,6 @@
 use {
     crate::{ids, screen::*},
+    reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
@@ -11,7 +12,6 @@ use {
         KernelContext, ModeStack,
         v1::{BufferId, ModeId, ModuleId},
     },
-    reovim_types_text::{HistoryRing, Position, RegisterBank},
 };
 
 // =========================================================================

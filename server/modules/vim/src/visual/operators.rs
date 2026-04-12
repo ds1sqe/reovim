@@ -8,13 +8,13 @@
 //! - `<` - Dedent selection
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ModeApi, RegisterContent, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::{ids, modes::VimMode};

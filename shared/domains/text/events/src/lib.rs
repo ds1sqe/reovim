@@ -21,7 +21,7 @@ use reovim_kernel::api::v1::{Event, events::kernel::priority};
 pub use reovim_kernel::api::v1::{BufferId, WindowId};
 
 /// Re-export text types used in event payloads.
-pub use reovim_types_text::{TextEdit, TextPosition};
+pub use reovim_domain_text::{TextEdit, TextPosition};
 
 /// A buffer's text content was modified by a semantic text edit.
 ///

@@ -1,6 +1,6 @@
 use super::*;
 
-use reovim_types_text::Position;
+use reovim_domain_text::Position;
 
 #[test]
 fn test_default_state() {

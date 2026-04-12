@@ -10,8 +10,8 @@
 use std::borrow::Cow;
 
 use {
+    reovim_domain_text::{Position, TextGeometry},
     reovim_provider_text::{Buffer, BufferOps, VirtualBuffer},
-    reovim_types_text::{Position, TextGeometry},
 };
 
 /// Line-oriented read access to buffer content.

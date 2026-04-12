@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use {
     crate::{BufferCapabilities, BufferOps},
+    reovim_domain_text::{Position, TextGeometry},
     reovim_kernel::api::v1::{BufferId, BufferMeta, StorageCapabilities, StorageError, StorageOps},
-    reovim_types_text::{Position, TextGeometry},
 };
 
 /// Minimal mock implementing `StorageOps + BufferMeta + BufferOps`.

@@ -20,9 +20,9 @@
 //! ```
 
 use {
+    reovim_domain_text::{HistoryRing, Register, RegisterBank, RegisterContent},
     reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_kernel::api::v1::KernelContext,
-    reovim_types_text::{HistoryRing, Register, RegisterBank, RegisterContent},
 };
 
 /// Convert a vim register prefix character to a kernel `Register`.

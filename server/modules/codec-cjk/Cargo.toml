@@ -29,7 +29,7 @@ reovim-module-macros = { workspace = true }
 # Encoding support
 encoding_rs = { workspace = true }
 reovim-driver-vfs = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

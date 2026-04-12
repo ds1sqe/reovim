@@ -21,7 +21,7 @@ unstable-api = []
 reovim-arch = { workspace = true }
 
 # Pure text data types (Position, Edit, Selection) — leaf crate, zero deps
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 
 # Capability bitflags for StorageCapabilities
 bitflags = { workspace = true }

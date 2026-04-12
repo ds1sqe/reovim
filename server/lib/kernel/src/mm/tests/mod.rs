@@ -2,8 +2,8 @@
 
 use super::*;
 
-// Text types extracted to reovim-types-text (#740)
-use reovim_types_text::{
+// Text types extracted to reovim-domain-text (#740)
+use reovim_domain_text::{
     CharKind, Edit, Position, Selection, SelectionMode, TextDimensions, WordType, char_kind,
     delete_end, next_word_end, next_word_start, text_dimensions, transform_position, word_bounds,
     word_end, word_start,
@@ -16,7 +16,7 @@ mod saturator;
 mod selection;
 mod word;
 
-// LineIndex tests moved to reovim-types-text (#740)
+// LineIndex tests moved to reovim-domain-text (#740)
 // PieceTree tests moved to reovim-driver-vfs (#740)
 // BufferSnapshot tests moved to reovim-provider-text (#740)
 // VirtualBuffer tests moved to reovim-provider-text (#740)

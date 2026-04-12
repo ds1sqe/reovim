@@ -9,12 +9,12 @@
 //! - CJK double-width characters (take 2 display columns)
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, OptionScopeId},
-    reovim_types_text::Position,
 };
 
 use {super::super::display_lines, crate::ids};

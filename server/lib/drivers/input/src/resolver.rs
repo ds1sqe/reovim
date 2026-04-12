@@ -46,9 +46,9 @@
 use std::{any::TypeId, collections::HashMap};
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_session::{ExtensionMap, SessionExtension, TextInputSink},
     reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack},
-    reovim_types_text::Position,
 };
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};
@@ -207,8 +207,9 @@ pub struct ResolveInput<'a> {
     ///
     /// Provides read/write access to registers for macro recording/playback.
     /// This is optional because not all resolve contexts need register access.
-    pub registers:
-        Option<&'a std::sync::Arc<reovim_kernel::api::v1::RwLock<reovim_types_text::RegisterBank>>>,
+    pub registers: Option<
+        &'a std::sync::Arc<reovim_kernel::api::v1::RwLock<reovim_domain_text::RegisterBank>>,
+    >,
 }
 
 impl<'a> ResolveInput<'a> {
@@ -230,7 +231,7 @@ impl<'a> ResolveInput<'a> {
         mode: &'a ModeId,
         keymap: &'a dyn KeymapQuery,
         registers: &'a std::sync::Arc<
-            reovim_kernel::api::v1::RwLock<reovim_types_text::RegisterBank>,
+            reovim_kernel::api::v1::RwLock<reovim_domain_text::RegisterBank>,
         >,
     ) -> Self {
         Self {

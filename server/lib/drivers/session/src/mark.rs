@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use {reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
+use {reovim_domain_text::Position, reovim_kernel::api::v1::BufferId};
 
 /// A bookmark position with optional buffer association.
 ///
@@ -24,7 +24,7 @@ use {reovim_kernel::api::v1::BufferId, reovim_types_text::Position};
 /// ```
 /// use reovim_driver_session::Mark;
 /// use reovim_kernel::api::v1::BufferId;
-/// use reovim_types_text::Position;
+/// use reovim_domain_text::Position;
 ///
 /// let mark = Mark {
 ///     position: Position::new(10, 5),
@@ -96,7 +96,7 @@ pub enum SpecialMark {
 /// ```
 /// use reovim_driver_session::{Mark, MarkBank, SpecialMark};
 /// use reovim_kernel::api::v1::BufferId;
-/// use reovim_types_text::Position;
+/// use reovim_domain_text::Position;
 ///
 /// let mut marks = MarkBank::new();
 ///

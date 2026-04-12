@@ -20,7 +20,7 @@ dynamic = []
 [dependencies]
 reovim-module-vim = { workspace = true, optional = true }
 reovim-kernel = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-driver-picker = { workspace = true }
 reovim-driver-session = { workspace = true }

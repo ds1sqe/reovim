@@ -30,6 +30,7 @@ use {
         search::{JumpMatch, generate_labels},
         state::JumpSessionState,
     },
+    reovim_domain_text::{Cursor, Direction, Motion, MotionEngine, Position},
     reovim_driver_command::{
         ArgValue, Command, CommandContext, CommandHandler, CommandPriority, CommandResult,
     },
@@ -37,7 +38,6 @@ use {
         ExtensionApi, ModeApi, SessionRuntime, TransitionContext, api::ChangeTracker,
     },
     reovim_kernel::api::v1::{CommandId, ModuleId},
-    reovim_types_text::{Cursor, Direction, Motion, MotionEngine, Position},
 };
 
 /// Vim module's command ID for find-char execution.

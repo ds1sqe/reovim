@@ -19,7 +19,7 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::YankType;
+/// use reovim_domain_text::YankType;
 ///
 /// // yw yanks characterwise
 /// let char_yank = YankType::Characterwise;
@@ -124,7 +124,7 @@ impl Default for RegisterContent {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::Register;
+/// use reovim_domain_text::Register;
 ///
 /// let default = Register::Default;
 /// assert!(default.is_bank_register());
@@ -199,7 +199,7 @@ impl Register {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let mut bank = RegisterBank::new();
 ///
@@ -350,7 +350,7 @@ impl RegisterBank {
     /// # Example
     ///
     /// ```
-    /// use reovim_types_text::*;
+    /// use reovim_domain_text::*;
     ///
     /// let mut bank = RegisterBank::new();
     /// bank.set(RegisterContent::characterwise("hello"));
@@ -374,7 +374,7 @@ impl RegisterBank {
     /// # Example
     ///
     /// ```
-    /// use reovim_types_text::*;
+    /// use reovim_domain_text::*;
     ///
     /// let mut bank = RegisterBank::new();
     /// assert!(bank.set_register(&Register::Slot('a'), RegisterContent::characterwise("alpha")));

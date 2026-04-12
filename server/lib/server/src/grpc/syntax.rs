@@ -264,9 +264,9 @@ impl SyntaxService for SyntaxServiceImpl {
                     };
 
                     let start_byte =
-                        buffer.position_to_byte(reovim_types_text::Position::new(start_line, 0));
+                        buffer.position_to_byte(reovim_domain_text::Position::new(start_line, 0));
                     let end_byte = if end_line < total_lines {
-                        buffer.position_to_byte(reovim_types_text::Position::new(end_line + 1, 0))
+                        buffer.position_to_byte(reovim_domain_text::Position::new(end_line + 1, 0))
                     } else {
                         content.len()
                     };

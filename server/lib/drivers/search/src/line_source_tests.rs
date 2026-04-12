@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use {
+    reovim_domain_text::{LineIndex, Position, SimpleText},
     reovim_provider_text::{Buffer, HeapMapping, VirtualBuffer},
-    reovim_types_text::{LineIndex, Position, SimpleText},
 };
 
 use super::{BufferLineSource, LineSource, TextGeometryLineSource, VirtualBufferLineSource};

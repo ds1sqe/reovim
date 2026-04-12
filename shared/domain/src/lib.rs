@@ -9,7 +9,7 @@
 //!
 //! This crate has no dependencies. It defines only the trait contract.
 //! Concrete domain implementations live in their own crates
-//! (e.g., `reovim-types-text` for the text domain).
+//! (e.g., `reovim-domain-text` for the text domain).
 //!
 //! # Example
 //!

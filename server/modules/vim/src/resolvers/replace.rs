@@ -8,12 +8,12 @@
 //! and the `ReplaceBackspace` command handler can access it.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
         Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
-    reovim_types_text::Position,
 };
 
 use crate::{VimSessionState, ids, modes::VimMode, session_state::ReplaceRestoreEntry};

@@ -4,8 +4,8 @@
 //! provider-owned text state and does not belong in the kernel.
 
 use {
+    reovim_domain_text::{Cursor, Position, Rope},
     reovim_kernel::api::v1::BufferId,
-    reovim_types_text::{Cursor, Position, Rope},
 };
 
 /// Read-only snapshot of buffer state.

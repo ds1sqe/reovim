@@ -1,9 +1,9 @@
 //! Tests for mark command handlers.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{api::BufferApi, testing::TestSessionRuntime},
-    reovim_types_text::Position,
 };
 
 use crate::command::{GotoMarkExact, GotoMarkLine, SetMark};

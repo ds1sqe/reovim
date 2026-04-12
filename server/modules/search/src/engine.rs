@@ -4,9 +4,9 @@
 
 use {
     regex::Regex,
+    reovim_domain_text::Position,
     reovim_driver_search::{Direction, LineSource, SearchError, SearchMatch, SearchProvider},
     reovim_provider_text::Buffer,
-    reovim_types_text::Position,
 };
 
 /// Regex-based search engine implementing `SearchProvider`.

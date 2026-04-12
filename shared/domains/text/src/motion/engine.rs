@@ -19,7 +19,7 @@ const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let buffer = SimpleText::new("hello world");
 /// let cursor = Cursor::new(TextPosition::new(0, 0));

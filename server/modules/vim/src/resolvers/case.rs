@@ -15,13 +15,13 @@
 use std::sync::RwLock;
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
         ExtensionMap, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
         ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::ModeId,
-    reovim_types_text::Position,
 };
 
 use {

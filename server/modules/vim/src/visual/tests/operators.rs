@@ -179,6 +179,7 @@ fn test_expand_line_mode_none_end_line_len() {
 // ========================================================================
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
@@ -189,7 +190,6 @@ use {
         v1::{BufferId, KernelContext, ModeId, ModuleId, RwLock},
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 

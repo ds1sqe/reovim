@@ -17,7 +17,7 @@
 
 use std::any::Any;
 
-use reovim_types_text::Position;
+use reovim_domain_text::Position;
 
 /// Path to a node inside a tree-shaped decoded view.
 ///

@@ -20,8 +20,8 @@ use std::borrow::Cow;
 
 use {
     crate::BufferCapabilities,
+    reovim_domain_text::{Position, TextGeometry},
     reovim_kernel::api::v1::{BufferMeta, StorageOps},
-    reovim_types_text::{Position, TextGeometry},
 };
 
 /// Text buffer operations extending byte storage with text-specific methods.

@@ -3,8 +3,8 @@
 //! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
 
 use {
+    reovim_domain_text::{Edit, Position, RegisterContent},
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_types_text::{Edit, Position, RegisterContent},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};

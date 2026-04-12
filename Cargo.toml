@@ -160,7 +160,7 @@ members = [
 
     # Shared types
     "shared/domain",
-    "shared/types/text",
+    "shared/domains/text",
 
     # Shared domain events
     "shared/domains/text/events",
@@ -243,7 +243,7 @@ reovim-capabilities = { path = "./shared/capabilities", version = "0.14.5-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.14.5-dev" }
 reovim-bench-utils = { path = "./shared/bench", version = "0.14.5-dev" }
 reovim-domain = { path = "./shared/domain", version = "0.14.5-dev" }
-reovim-types-text = { path = "./shared/types/text", version = "0.14.5-dev" }
+reovim-domain-text = { path = "./shared/domains/text", version = "0.14.5-dev" }
 reovim-domain-text-events = { path = "./shared/domains/text/events", version = "0.14.5-dev" }
 reovim-net = { path = "./shared/net", version = "0.14.5-dev" }
 reovim-log = { path = "./shared/log", version = "0.14.5-dev" }

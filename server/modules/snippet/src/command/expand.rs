@@ -5,13 +5,13 @@
 use std::path::Path;
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::Position,
 };
 
 use crate::{

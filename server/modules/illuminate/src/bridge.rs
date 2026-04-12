@@ -4,12 +4,12 @@
 //! Implements tick-based cursor-hold detection using the cursor shadow pattern.
 
 use {
+    reovim_domain_text::{CharKind, TextGeometry, WordType, char_kind, word_bounds},
     reovim_driver_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::{BufferId, ServiceRegistry},
-    reovim_types_text::{CharKind, TextGeometry, WordType, char_kind, word_bounds},
     serde_json::json,
 };
 

@@ -10,7 +10,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::Direction;
+/// use reovim_domain_text::Direction;
 ///
 /// let forward = Direction::Forward;
 /// let backward = Direction::Backward;
@@ -59,7 +59,7 @@ impl Direction {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::WordBoundary;
+/// use reovim_domain_text::WordBoundary;
 ///
 /// let word = WordBoundary::Word;
 /// let big_word = WordBoundary::BigWord;
@@ -95,7 +95,7 @@ impl WordBoundary {
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::LinePosition;
+/// use reovim_domain_text::LinePosition;
 ///
 /// let start = LinePosition::Start;           // 0
 /// let first = LinePosition::FirstNonBlank;   // ^

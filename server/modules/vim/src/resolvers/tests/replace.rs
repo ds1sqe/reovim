@@ -1,12 +1,12 @@
 #![allow(clippy::doc_markdown, clippy::significant_drop_tightening)]
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
         ModeState, Modifiers, ResolveInput, ResolveResult,
     },
     reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModuleId, WindowId},
-    reovim_types_text::Position,
 };
 
 use {
@@ -63,6 +63,7 @@ fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
 // =========================================================================
 
 use {
+    reovim_domain_text::{Edit, UndoResult},
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         Selection, WindowError,
@@ -71,7 +72,6 @@ use {
             WindowApi,
         },
     },
-    reovim_types_text::{Edit, UndoResult},
 };
 
 /// Mock session with configurable buffer content.

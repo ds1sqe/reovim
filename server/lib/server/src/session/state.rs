@@ -19,6 +19,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
+    reovim_domain_text::RegisterContent,
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
     reovim_driver_layout::RootCompositor,
@@ -26,7 +27,6 @@ use {
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
     reovim_provider_text::{Buffer, BufferOps},
-    reovim_types_text::RegisterContent,
 };
 
 use crate::{

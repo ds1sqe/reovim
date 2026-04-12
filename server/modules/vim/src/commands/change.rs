@@ -10,12 +10,12 @@
 //! deleting, which is why they belong in the vim module.
 
 use {
+    reovim_domain_text::{Position, RegisterContent},
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::{Position, RegisterContent},
 };
 
 /// Helper to get cursor position from the active window.

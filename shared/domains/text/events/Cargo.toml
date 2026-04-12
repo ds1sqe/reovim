@@ -14,4 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-types-text = { workspace = true }
+reovim-domain-text = { workspace = true }

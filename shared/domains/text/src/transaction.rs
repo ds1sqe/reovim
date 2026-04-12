@@ -13,7 +13,7 @@ use crate::Edit;
 /// # Example
 ///
 /// ```
-/// use reovim_types_text::*;
+/// use reovim_domain_text::*;
 ///
 /// let mut txn = Transaction::new();
 /// txn.push(Edit::insert(Position::new(0, 0), "Hello"));

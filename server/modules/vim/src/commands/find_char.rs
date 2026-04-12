@@ -21,10 +21,10 @@
 //! a future phase when commands have API support (#394).
 
 use {
+    reovim_domain_text::{Cursor, Direction, Motion, MotionEngine, Position},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{SessionRuntime, api::ChangeTracker},
     reovim_kernel::api::v1::CommandId,
-    reovim_types_text::{Cursor, Direction, Motion, MotionEngine, Position},
 };
 
 use crate::ids::EXECUTE_FIND_CHAR;

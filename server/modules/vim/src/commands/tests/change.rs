@@ -2,12 +2,13 @@
 use {
     super::super::*,
     crate::{ids, modes::VimMode},
+    reovim_domain_text::Position,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::SessionRuntime,
-    reovim_types_text::Position,
 };
 
 use {
+    reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::Command,
     reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
     reovim_kernel::{
@@ -18,7 +19,6 @@ use {
         testing::create_test_context,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_types_text::{HistoryRing, RegisterBank},
     std::sync::Arc,
 };
 
