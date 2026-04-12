@@ -403,3 +403,33 @@ fn test_load_registry_modules_missing_library_path_skipped() {
 
     let _ = fs::remove_dir_all(&tmp);
 }
+
+/// P2-T6: installed.json is corrupt (invalid JSON) → `load_registry_modules`
+/// recovers gracefully, logs the error, and leaves the loader unchanged.
+#[test]
+fn test_load_registry_modules_corrupt_installed_json() {
+    use std::fs;
+
+    use {
+        reovim_driver_module_loader::loader::ModuleLoader,
+        reovim_driver_module_registry::workflow::RegistryPaths,
+    };
+
+    let tmp = std::env::temp_dir().join("reovim-p2-t6-corrupt-json");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    // Write garbage to installed.json
+    fs::write(tmp.join("installed.json"), "{{not valid json!!!").unwrap();
+
+    let paths = RegistryPaths::new(tmp.clone());
+    let mut loader = ModuleLoader::new();
+    let config = ModulesConfig::official();
+    let builtin_ids = Vec::new();
+
+    load_registry_modules(&mut loader, &config, &builtin_ids, &paths);
+
+    assert_eq!(loader.len(), 0, "corrupt installed.json should be skipped gracefully");
+
+    let _ = fs::remove_dir_all(&tmp);
+}

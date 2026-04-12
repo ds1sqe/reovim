@@ -354,23 +354,9 @@ pub fn bootstrap_runtime() -> BootstrapResult {
 
 /// Create a session state with fully-initialized module registries.
 ///
-/// This is the entry point for module loading. It:
-/// 1. Creates a `ServiceRegistry` for cross-module service discovery
-/// 2. Initializes all default modules (vim, editor, motions, etc.)
-/// 3. Returns a `SessionState` ready for use
-///
-/// # Example
-///
-/// ```ignore
-/// use apps_bin::bootstrap::create_session_state;
-/// use reovim_server::{Server, ServerConfig};
-///
-/// let server = Server::with_session_factory(
-///     ServerConfig::default(),
-///     Box::new(|| create_session_state()),
-/// );
-/// server.run().await?;
-/// ```
+/// Used by tests that need a complete session state without wiring a full
+/// server. Production code uses `bootstrap_runtime()` directly.
+#[cfg(test)]
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub fn create_session_state() -> SessionState {

@@ -388,8 +388,7 @@ async fn run(cli: Cli) -> std::io::Result<()> {
                 Arc::clone(&bootstrap.module_registry),
                 Arc::clone(&bootstrap.module_ctx),
             );
-            let server =
-                Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
+            let server = Server::new(config)
                     .with_initial_session_state(bootstrap.session_state)
                     .with_bridges(bootstrap.bridges)
                     .with_module_service(runner_module_service);
@@ -573,7 +572,7 @@ async fn run_integrated() -> std::io::Result<()> {
         Arc::clone(&bootstrap.module_registry),
         Arc::clone(&bootstrap.module_ctx),
     );
-    let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
+    let server = Server::new(config)
         .with_initial_session_state(bootstrap.session_state)
         .with_bridges(bootstrap.bridges)
         .with_module_service(runner_module_service);
