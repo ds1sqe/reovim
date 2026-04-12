@@ -60,6 +60,9 @@ mod stale_check;
 mod state;
 mod store;
 
+/// Codec driver events (file-type lifecycle, codec selection).
+pub mod events;
+
 /// Verification harness for `ContentCodec` implementations.
 ///
 /// Gated behind the `testing` feature flag. Enabled automatically under
