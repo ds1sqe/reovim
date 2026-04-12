@@ -3,7 +3,7 @@
 //! Buffer Operations Module
 //!
 //! This module handles buffer lifecycle events from the kernel `EventBus`.
-//! It subscribes to `BufferCreated`, `BufferModified`, `BufferClosed`, and `BufferSwitched`
+//! It subscribes to `BufferCreated`, `TextBufferModified`, `BufferClosed`, and `BufferSwitched`
 //! events and provides coordinated buffer state management.
 //!
 //! # Architecture
@@ -15,7 +15,7 @@
 //! # Event Subscriptions
 //!
 //! - `BufferCreated`: Initialize buffer-specific state
-//! - `BufferModified`: Track dirty state, schedule reparse
+//! - `TextBufferModified` (text-domain): Track dirty state, schedule reparse
 //! - `BufferClosed`: Cleanup buffer-specific resources
 //! - `BufferSwitched`: Update active buffer tracking
 
@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use reovim_kernel::api::v1::{
     EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription, Version,
-    events::kernel::{BufferClosed, BufferCreated, BufferModified, BufferSwitched, priority},
+    events::kernel::{BufferClosed, BufferCreated, BufferSwitched, priority},
     pr_info,
 };
 
@@ -83,14 +83,17 @@ impl Module for BufferOps {
         sub_created.detach();
         self.subscriptions.push(sub_created);
 
-        // Subscribe to buffer modification events
+        // Subscribe to text-domain buffer modification events (#740 Plan 09 Phase 7c)
         // Priority: NORMAL (50) - content change, standard priority
-        let sub_modified =
-            bus.subscribe_with_context::<BufferModified, _>(priority::NORMAL, |event, _ctx| {
-                pr_info!("Buffer {} modified: {:?}", event.buffer_id, event.modification);
-                // Future: Trigger treesitter reparse, update dirty flags
-                EventResult::Handled
-            });
+        let sub_modified = bus
+            .subscribe_with_context::<reovim_domain_text_events::TextBufferModified, _>(
+                priority::NORMAL,
+                |event, _ctx| {
+                    pr_info!("Buffer {} modified: {:?}", event.buffer_id.as_usize(), event.edit);
+                    // Future: Trigger treesitter reparse, update dirty flags
+                    EventResult::Handled
+                },
+            );
         sub_modified.detach();
         self.subscriptions.push(sub_modified);
 

@@ -3,7 +3,8 @@
 //! Window Operations Module
 //!
 //! This module handles window lifecycle and viewport events from the kernel `EventBus`.
-//! It subscribes to `WindowCreated`, `WindowClosed`, `WindowFocused`, and `ViewportScrolled`
+//! It subscribes to `WindowCreated`, `WindowClosed`, `WindowFocused`, and
+//! `reovim_domain_text_events::ViewportScrolled`
 //! events and provides coordinated window state management.
 //!
 //! # Architecture
@@ -31,7 +32,7 @@
 //! - `WindowCreated`: Initialize window-specific state
 //! - `WindowClosed`: Cleanup window-specific resources
 //! - `WindowFocused`: Update active window tracking, trigger highlights
-//! - `ViewportScrolled`: Handle lazy loading, update visible ranges
+//! - `ViewportScrolled` (text-domain): Handle lazy loading, update visible ranges
 
 pub mod command;
 pub mod ids;
@@ -43,7 +44,7 @@ use {
     reovim_kernel::api::v1::{
         EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription,
         Version,
-        events::kernel::{ViewportScrolled, WindowClosed, WindowCreated, WindowFocused, priority},
+        events::kernel::{WindowClosed, WindowCreated, WindowFocused, priority},
         pr_info,
     },
 };
@@ -132,21 +133,24 @@ impl Module for WindowOps {
         sub_focused.detach();
         self.subscriptions.push(sub_focused);
 
-        // Subscribe to viewport scroll events
+        // Subscribe to text-domain viewport scroll events (#740 Plan 09 Phase 7c)
         // Priority: NORMAL (50) - standard priority for viewport updates
-        let sub_scrolled =
-            bus.subscribe_with_context::<ViewportScrolled, _>(priority::NORMAL, |event, _ctx| {
-                pr_info!(
-                    "Window {} viewport scrolled: buffer={}, lines {}..{}",
-                    event.window_id,
-                    event.buffer_id,
-                    event.top_line,
-                    event.bottom_line
-                );
-                // Future: Trigger lazy syntax highlighting for visible range
-                // _ctx.request_render() available when needed
-                EventResult::Handled
-            });
+        let sub_scrolled = bus
+            .subscribe_with_context::<reovim_domain_text_events::ViewportScrolled, _>(
+                priority::NORMAL,
+                |event, _ctx| {
+                    pr_info!(
+                        "Window {} viewport scrolled: buffer={}, lines {}..{}",
+                        event.window_id.as_usize(),
+                        event.buffer_id.as_usize(),
+                        event.top_line,
+                        event.bottom_line
+                    );
+                    // Future: Trigger lazy syntax highlighting for visible range
+                    // _ctx.request_render() available when needed
+                    EventResult::Handled
+                },
+            );
         sub_scrolled.detach();
         self.subscriptions.push(sub_scrolled);
 

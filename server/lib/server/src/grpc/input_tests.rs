@@ -7,7 +7,7 @@ use {
         DecodeResult,
     },
     reovim_driver_input::TransitionContext,
-    reovim_kernel::api::v1::{BufferId, ByteEdit, events::kernel::Modification},
+    reovim_kernel::api::v1::{BufferId, ByteEdit},
     std::{
         collections::HashMap,
         sync::{
@@ -2584,12 +2584,17 @@ fn test_notify_codec_indices_uses_decoded_route_when_possible() {
     record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-1");
 
     let mut changes = StateChanges::new();
-    changes.record_buffer_modified_with_edit(
+    changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        Modification::Insert {
-            start: (0, 0),
-            text: "x".to_string(),
+        reovim_domain_text_events::TextBufferModified {
+            buffer_id,
+            edit: reovim_domain_text_events::TextEdit::insert(
+                reovim_domain_text_events::TextPosition::new(0, 0),
+                "x".to_string(),
+            ),
             start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 1,
         },
     );
 
@@ -2612,8 +2617,10 @@ fn test_notify_codec_indices_uses_byte_edits_for_full_replace() {
     let (session, calls) = make_codec_session("text/codec-route-2", b"D");
     record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-2");
 
+    // FullReplace has no TextEdit equivalent, so text_buffer_edits is empty.
+    // notify_codec_indices falls through to byte_edits.
     let mut changes = StateChanges::new();
-    changes.record_buffer_modified_with_edit(buffer_id, Modification::FullReplace);
+    changes.record_buffer_modified(buffer_id);
     changes.record_byte_edit(buffer_id, ByteEdit::replace(1, b"b", b"z"));
 
     InputServiceImpl::notify_codec_indices(&session, &changes);
@@ -2636,12 +2643,17 @@ fn test_notify_codec_indices_skips_byte_updates_when_decoded_edit_already_applie
     record_codec_buffer(&session, buffer_id, b"abc", "text/codec-route-3");
 
     let mut changes = StateChanges::new();
-    changes.record_buffer_modified_with_edit(
+    changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        Modification::Insert {
-            start: (0, 0),
-            text: "x".to_string(),
+        reovim_domain_text_events::TextBufferModified {
+            buffer_id,
+            edit: reovim_domain_text_events::TextEdit::insert(
+                reovim_domain_text_events::TextPosition::new(0, 0),
+                "x".to_string(),
+            ),
             start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 1,
         },
     );
     changes.record_byte_edit(buffer_id, ByteEdit::insert(0, b"X"));

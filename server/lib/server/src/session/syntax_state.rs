@@ -301,6 +301,47 @@ pub fn modification_to_syntax_edit(
     }
 }
 
+/// Convert a `TextBufferModified` event into a `SyntaxEdit` for incremental
+/// tree-sitter parsing (#740 Plan 09 Phase 7d).
+///
+/// This is the text-domain equivalent of `modification_to_syntax_edit`.
+/// Uses `TextEdit` position and byte offsets from the event directly,
+/// avoiding the `u32` → `usize` casts in the kernel path.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)] // TextPosition uses usize; SyntaxEdit uses u32
+pub fn text_event_to_syntax_edit(
+    event: &reovim_domain_text_events::TextBufferModified,
+) -> SyntaxEdit {
+    use reovim_domain_text_events::TextEdit;
+
+    match &event.edit {
+        TextEdit::Insert { position, text } => {
+            let (new_end_row, new_end_col) =
+                compute_end_position(position.line as u32, position.column as u32, text);
+            SyntaxEdit::insert(
+                event.start_byte,
+                position.line as u32,
+                position.column as u32,
+                event.new_end_byte,
+                new_end_row,
+                new_end_col,
+            )
+        }
+        TextEdit::Delete { position, text } => {
+            let (old_end_row, old_end_col) =
+                compute_end_position(position.line as u32, position.column as u32, text);
+            SyntaxEdit::delete(
+                event.start_byte,
+                position.line as u32,
+                position.column as u32,
+                event.old_end_byte,
+                old_end_row,
+                old_end_col,
+            )
+        }
+    }
+}
+
 /// Build a `TokenUpdate` from a syntax driver's current highlights.
 ///
 /// This is a standalone function to avoid double-borrow issues when

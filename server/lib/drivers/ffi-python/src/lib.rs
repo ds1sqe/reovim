@@ -241,7 +241,7 @@ impl PyModuleBase {
     /// ```python
     /// def event_handlers(self):
     ///     return [
-    ///         EventHandlerRegistration("BufferChanged")
+    ///         EventHandlerRegistration("TextBufferModified")
     ///             .with_description("Handle buffer changes")
     ///     ]
     /// ```

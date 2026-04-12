@@ -336,7 +336,7 @@ impl InputService for InputServiceImpl {
         }
 
         // Notify codec indices of byte-level edits (#740 D.5)
-        if !accumulated_changes.modified_buffer_edits.is_empty()
+        if !accumulated_changes.text_buffer_edits.is_empty()
             || !accumulated_changes.byte_edits.is_empty()
         {
             Self::notify_codec_indices(&session, &accumulated_changes);
@@ -554,7 +554,7 @@ impl InputServiceImpl {
     /// 2. Access `SyntaxStreamState`, broadcast the update
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
         use crate::session::{
-            SyntaxSessionState, SyntaxStreamState, build_token_update, modification_to_syntax_edit,
+            SyntaxSessionState, SyntaxStreamState, build_token_update, text_event_to_syntax_edit,
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)
@@ -592,12 +592,13 @@ impl InputServiceImpl {
                     syntax.ensure_driver_from_path(buffer_id, path, &content);
                 }
 
-                // Try incremental update if edit info available, fall back to full reparse (#655)
+                // Try incremental update if text-domain edit available, fall back to full reparse
+                // (#655, migrated to text_buffer_edits in #740 Plan 09 Phase 7d)
                 let edit_info = changes
-                    .modified_buffer_edits
+                    .text_buffer_edits
                     .iter()
-                    .find(|(id, _)| *id == buffer_id)
-                    .and_then(|(_, modification)| modification_to_syntax_edit(modification));
+                    .find(|event| event.buffer_id == buffer_id)
+                    .map(text_event_to_syntax_edit);
 
                 if let Some(driver) = syntax.get_mut(buffer_id) {
                     if let Some(ref edit) = edit_info {
@@ -636,22 +637,19 @@ impl InputServiceImpl {
 
         session.with_state_mut_sync(|state| {
             if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
-                for (buffer_id, modification) in &changes.modified_buffer_edits {
-                    let Some(decoded_edit) = Self::modification_to_decoded_edit(modification)
-                    else {
-                        continue;
-                    };
+                for event in &changes.text_buffer_edits {
+                    let decoded_edit = Self::text_edit_to_decoded_edit(event);
 
                     let view = codec_state
-                        .active_view(*buffer_id)
+                        .active_view(event.buffer_id)
                         .unwrap_or("default")
                         .to_string();
 
                     if let Some(byte_edit) =
-                        codec_state.apply_decoded_edit(*buffer_id, &view, &decoded_edit)
+                        codec_state.apply_decoded_edit(event.buffer_id, &view, &decoded_edit)
                     {
-                        decoded_buffers.insert(*buffer_id);
-                        codec_state.notify_index(*buffer_id, &byte_edit);
+                        decoded_buffers.insert(event.buffer_id);
+                        codec_state.notify_index(event.buffer_id, &byte_edit);
                     }
                 }
 
@@ -667,34 +665,86 @@ impl InputServiceImpl {
         });
     }
 
-    /// Convert a kernel modification event into a codec decoded edit.
-    fn modification_to_decoded_edit(
+    /// Convert a `TextBufferModified` event into a codec decoded edit
+    /// (#740 Plan 09 Phase 7d).
+    fn text_edit_to_decoded_edit(
+        event: &reovim_domain_text_events::TextBufferModified,
+    ) -> DecodedEdit {
+        use reovim_domain_text_events::TextEdit;
+
+        match &event.edit {
+            TextEdit::Insert { position, text } => DecodedEdit::Text {
+                start: reovim_types_text::Position::new(position.line, position.column),
+                end: reovim_types_text::Position::new(position.line, position.column),
+                replacement: text.clone(),
+            },
+            TextEdit::Delete { position, text } => {
+                // Compute end position from start + deleted text content
+                let mut end_line = position.line;
+                let mut end_col = position.column;
+                for ch in text.chars() {
+                    if ch == '\n' {
+                        end_line += 1;
+                        end_col = 0;
+                    } else {
+                        end_col += 1;
+                    }
+                }
+                DecodedEdit::Text {
+                    start: reovim_types_text::Position::new(position.line, position.column),
+                    end: reovim_types_text::Position::new(end_line, end_col),
+                    replacement: String::new(),
+                }
+            }
+        }
+    }
+
+    /// Convert a kernel `Modification` to a `TextBufferModified` event (#740 Phase 7d).
+    ///
+    /// Transitional bridge: produces text-domain events from kernel types until
+    /// `session.rs::insert_char_for_client` returns text-domain types directly
+    /// (Phase 8).
+    #[allow(clippy::cast_possible_truncation)]
+    fn modification_to_text_buffer_modified(
+        buffer_id: reovim_kernel::api::v1::BufferId,
         modification: &reovim_kernel::api::v1::events::kernel::Modification,
-    ) -> Option<DecodedEdit> {
-        use reovim_kernel::api::v1::events::kernel::Modification;
+    ) -> Option<reovim_domain_text_events::TextBufferModified> {
+        use {
+            reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition},
+            reovim_kernel::api::v1::events::kernel::Modification,
+        };
 
         match modification {
-            Modification::Insert { start, text, .. } => Some(DecodedEdit::Text {
-                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
-                end: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
-                replacement: text.clone(),
-            }),
-            Modification::Delete { start, end, .. } => Some(DecodedEdit::Text {
-                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
-                end: reovim_types_text::Position::new(end.0 as usize, end.1 as usize),
-                replacement: String::new(),
-            }),
-            Modification::Replace {
+            Modification::Insert {
                 start,
-                end,
-                new_text,
-                ..
-            } => Some(DecodedEdit::Text {
-                start: reovim_types_text::Position::new(start.0 as usize, start.1 as usize),
-                end: reovim_types_text::Position::new(end.0 as usize, end.1 as usize),
-                replacement: new_text.clone(),
+                text,
+                start_byte,
+            } => Some(TextBufferModified {
+                buffer_id,
+                edit: TextEdit::insert(
+                    TextPosition::new(start.0 as usize, start.1 as usize),
+                    text.clone(),
+                ),
+                start_byte: *start_byte,
+                old_end_byte: *start_byte,
+                new_end_byte: start_byte + text.len(),
             }),
-            Modification::FullReplace => None,
+            Modification::Delete {
+                start,
+                text,
+                start_byte,
+                ..
+            } => Some(TextBufferModified {
+                buffer_id,
+                edit: TextEdit::delete(
+                    TextPosition::new(start.0 as usize, start.1 as usize),
+                    text.clone(),
+                ),
+                start_byte: *start_byte,
+                old_end_byte: start_byte + text.len(),
+                new_end_byte: *start_byte,
+            }),
+            Modification::Replace { .. } | Modification::FullReplace => None,
         }
     }
 
@@ -824,9 +874,16 @@ impl InputServiceImpl {
 
                     // Record buffer modification and cursor movement for notification
                     if let Some((buffer_id, modification)) = modified_buffer {
-                        if let Some(edit) = modification {
+                        if let Some(ref edit) = modification {
                             // Use incremental syntax path (edit info available)
-                            changes.record_buffer_modified_with_edit(buffer_id, edit);
+                            changes.record_buffer_modified_with_edit(buffer_id, edit.clone());
+                            // Also record text-domain edit for Phase 7d migration (#740)
+                            if let Some(text_event) =
+                                Self::modification_to_text_buffer_modified(buffer_id, edit)
+                            {
+                                changes
+                                    .record_buffer_modified_with_text_edit(buffer_id, text_event);
+                            }
                         } else {
                             changes.record_buffer_modified(buffer_id);
                         }

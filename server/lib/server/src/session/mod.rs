@@ -45,6 +45,7 @@ pub use {
     state::SessionState,
     syntax_state::{
         SyntaxSessionState, SyntaxStreamState, build_token_update, modification_to_syntax_edit,
+        text_event_to_syntax_edit,
     },
     token_registry::{SessionToken, TokenRegistry},
 };

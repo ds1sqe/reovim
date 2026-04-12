@@ -24,7 +24,10 @@
 //! }
 //! ```
 
-use reovim_kernel::api::v1::{BufferId, OptionValue, WindowId};
+use {
+    reovim_domain_text_events::TextBufferModified,
+    reovim_kernel::api::v1::{BufferId, OptionValue, WindowId},
+};
 
 /// Represents a single option change.
 #[derive(Debug, Clone)]
@@ -92,6 +95,14 @@ pub struct StateChanges {
     /// that don't provide `Modification` (e.g., undo/redo).
     pub modified_buffer_edits:
         Vec<(BufferId, reovim_kernel::api::v1::events::kernel::Modification)>,
+    /// Text-domain edit details for modified buffers (#740 Plan 09 Phase 7).
+    ///
+    /// Parallel to `modified_buffer_edits`. Contains `TextBufferModified` events
+    /// with full byte-offset info for incremental syntax parsing and codec index
+    /// updates. Empty for `FullReplace` edits (no `TextEdit` equivalent —
+    /// consumers use `byte_edits` or buffer-reload). Server layer migrates to
+    /// this field in Phase 7d; `modified_buffer_edits` is removed in Phase 8.
+    pub text_buffer_edits: Vec<TextBufferModified>,
     /// Byte-level edits for codec index notification (#740 D.5).
     ///
     /// Recorded alongside `modified_buffer_edits`. The server layer routes
@@ -191,6 +202,7 @@ impl StateChanges {
         self.modified_buffers.extend(other.modified_buffers);
         self.modified_buffer_edits
             .extend(other.modified_buffer_edits);
+        self.text_buffer_edits.extend(other.text_buffer_edits);
         self.byte_edits.extend(other.byte_edits);
         self.affected_buffers.extend(other.affected_buffers);
         self.buffers_created.extend(other.buffers_created);
@@ -260,6 +272,20 @@ impl StateChanges {
     ) {
         self.record_buffer_modified(buffer);
         self.modified_buffer_edits.push((buffer, modification));
+    }
+
+    /// Record buffer modification with text-domain edit info (#740 Plan 09 Phase 7).
+    ///
+    /// Like `record_buffer_modified_with_edit` but stores a `TextBufferModified`
+    /// event for the text-domain layer. Server layer migrates to consume this
+    /// field in Phase 7d; `modified_buffer_edits` is removed in Phase 8.
+    pub fn record_buffer_modified_with_text_edit(
+        &mut self,
+        buffer: BufferId,
+        event: TextBufferModified,
+    ) {
+        self.record_buffer_modified(buffer);
+        self.text_buffer_edits.push(event);
     }
 
     /// Record a byte-level edit for codec index notification (#740 D.5).

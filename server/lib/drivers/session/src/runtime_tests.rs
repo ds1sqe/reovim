@@ -5874,15 +5874,14 @@ fn test_signal_queue_independent_of_state_changes() {
 // #664: CursorMoved event emission from record_cursor_move
 // =========================================================================
 
-/// `record_cursor_move` should emit a `CursorMoved` kernel event with correct from/to.
+/// `record_cursor_move` should emit a text-domain `CursorMoved` event with correct
+/// `WindowId`, `BufferId`, and `TextPosition` from/to fields.
 #[test]
 fn test_record_cursor_move_emits_cursor_moved_event() {
     use {
-        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
-        std::sync::{
-            Arc,
-            atomic::{AtomicBool, AtomicU64, Ordering},
-        },
+        reovim_domain_text_events::CursorMoved as TextCursorMoved,
+        reovim_kernel::api::v1::{EventResult, ModeStack},
+        std::sync::{Arc, Mutex},
     };
 
     let mut session = Session::new(ClientId::new(1), test_mode());
@@ -5905,30 +5904,13 @@ fn test_record_cursor_move_emits_cursor_moved_event() {
     window.cursor = Position::new(3, 7).into();
     w.add(window);
 
-    // Subscribe to CursorMoved before creating runtime
-    let received = Arc::new(AtomicBool::new(false));
-    let received_buf = Arc::new(AtomicU64::new(0));
-    let received_to_line = Arc::new(AtomicU64::new(0));
-    let received_to_col = Arc::new(AtomicU64::new(0));
-    let received_from_line = Arc::new(AtomicU64::new(0));
-    let received_from_col = Arc::new(AtomicU64::new(0));
-
-    let r1 = Arc::clone(&received);
-    let rb = Arc::clone(&received_buf);
-    let rtl = Arc::clone(&received_to_line);
-    let rtc = Arc::clone(&received_to_col);
-    let rfl = Arc::clone(&received_from_line);
-    let rfc = Arc::clone(&received_from_col);
-
+    // Subscribe to text-domain CursorMoved before creating runtime
+    let captured = Arc::new(Mutex::new(None::<TextCursorMoved>));
+    let cap = Arc::clone(&captured);
     let _sub = kernel
         .event_bus
-        .subscribe::<CursorMoved, _>(50, move |event| {
-            r1.store(true, Ordering::SeqCst);
-            rb.store(event.buffer_id, Ordering::SeqCst);
-            rtl.store(u64::from(event.to.0), Ordering::SeqCst);
-            rtc.store(u64::from(event.to.1), Ordering::SeqCst);
-            rfl.store(u64::from(event.from.0), Ordering::SeqCst);
-            rfc.store(u64::from(event.from.1), Ordering::SeqCst);
+        .subscribe::<TextCursorMoved, _>(50, move |event| {
+            *cap.lock().unwrap() = Some(*event);
             EventResult::Handled
         });
 
@@ -5955,21 +5937,22 @@ fn test_record_cursor_move_emits_cursor_moved_event() {
     // Move cursor to (3, 7) same as initial — from and to should match
     rt.record_cursor_move(buf);
 
-    assert!(received.load(Ordering::SeqCst));
-    assert_eq!(received_buf.load(Ordering::SeqCst), buf.as_usize() as u64);
+    let event = captured.lock().unwrap().expect("CursorMoved should fire");
+    assert_eq!(event.buffer_id, buf);
     // from = snapshot at construction = (3, 7)
-    assert_eq!(received_from_line.load(Ordering::SeqCst), 3);
-    assert_eq!(received_from_col.load(Ordering::SeqCst), 7);
+    assert_eq!(event.from.line, 3);
+    assert_eq!(event.from.column, 7);
     // to = current cursor = (3, 7)
-    assert_eq!(received_to_line.load(Ordering::SeqCst), 3);
-    assert_eq!(received_to_col.load(Ordering::SeqCst), 7);
+    assert_eq!(event.to.line, 3);
+    assert_eq!(event.to.column, 7);
 }
 
 /// When there is no active window, `CursorMoved` should NOT be emitted.
 #[test]
 fn test_record_cursor_move_no_window_no_event() {
     use {
-        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        reovim_domain_text_events::CursorMoved as TextCursorMoved,
+        reovim_kernel::api::v1::{EventResult, ModeStack},
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -5993,10 +5976,12 @@ fn test_record_cursor_move_no_window_no_event() {
 
     let received = Arc::new(AtomicBool::new(false));
     let r1 = Arc::clone(&received);
-    let _sub = kernel.event_bus.subscribe::<CursorMoved, _>(50, move |_| {
-        r1.store(true, Ordering::SeqCst);
-        EventResult::Handled
-    });
+    let _sub = kernel
+        .event_bus
+        .subscribe::<TextCursorMoved, _>(50, move |_| {
+            r1.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
 
     let buf = BufferId::new();
     let mut rt = SessionRuntime::new(
@@ -6027,7 +6012,8 @@ fn test_record_cursor_move_no_window_no_event() {
 #[test]
 fn test_record_cursor_move_multiple_updates_snapshot() {
     use {
-        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        reovim_domain_text_events::CursorMoved as TextCursorMoved,
+        reovim_kernel::api::v1::{EventResult, ModeStack},
         std::sync::{Arc, Mutex},
     };
 
@@ -6051,15 +6037,17 @@ fn test_record_cursor_move_multiple_updates_snapshot() {
     w.add(window);
 
     #[allow(clippy::type_complexity)]
-    let events: Arc<Mutex<Vec<(u32, u32, u32, u32)>>> = Arc::new(Mutex::new(Vec::new()));
+    let events: Arc<Mutex<Vec<(usize, usize, usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
     let events_clone = Arc::clone(&events);
     let _sub = kernel
         .event_bus
-        .subscribe::<CursorMoved, _>(50, move |event| {
-            events_clone
-                .lock()
-                .unwrap()
-                .push((event.from.0, event.from.1, event.to.0, event.to.1));
+        .subscribe::<TextCursorMoved, _>(50, move |event| {
+            events_clone.lock().unwrap().push((
+                event.from.line,
+                event.from.column,
+                event.to.line,
+                event.to.column,
+            ));
             EventResult::Handled
         });
 
@@ -6582,6 +6570,145 @@ fn test_record_cursor_move_dual_emission() {
 
     assert!(old_fired.load(Ordering::SeqCst), "old kernel CursorMoved should fire");
     assert!(new_fired.load(Ordering::SeqCst), "new text-domain CursorMoved should fire");
+}
+
+// =========================================================================
+// FullReplace sanity: old event only, no TextBufferModified (#740 Phase 7)
+// =========================================================================
+
+/// Verify that `replace_content` (`FullReplace`) emits old kernel `BufferModified`
+/// but does NOT emit `TextBufferModified` — there is no `TextEdit::FullReplace`.
+#[test]
+fn test_fullreplace_emits_old_event_only() {
+    use {
+        crate::testing::TestSessionRuntime,
+        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+
+    let old_fired = Arc::new(AtomicBool::new(false));
+    let new_fired = Arc::new(AtomicBool::new(false));
+
+    let old_flag = Arc::clone(&old_fired);
+    let _sub_old = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferModified, _>(50, move |_event| {
+            old_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let new_flag = Arc::clone(&new_fired);
+    let _sub_new = harness
+        .kernel()
+        .event_bus
+        .subscribe::<reovim_domain_text_events::TextBufferModified, _>(50, move |_event| {
+            new_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(buffer_id, "completely new content");
+    });
+
+    assert!(
+        old_fired.load(Ordering::SeqCst),
+        "old kernel BufferModified should fire for FullReplace"
+    );
+    assert!(
+        !new_fired.load(Ordering::SeqCst),
+        "TextBufferModified should NOT fire for FullReplace (no TextEdit equivalent)"
+    );
+}
+
+// =========================================================================
+// StateChanges text_buffer_edits field (#740 Plan 09 Phase 7)
+// =========================================================================
+
+/// Verify that `insert_text` populates `text_buffer_edits` in `StateChanges`.
+#[test]
+fn test_insert_text_populates_text_buffer_edits() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
+    });
+
+    let changes = harness.take_changes();
+    assert_eq!(changes.text_buffer_edits.len(), 1);
+    let event = &changes.text_buffer_edits[0];
+    assert_eq!(event.buffer_id, buffer_id);
+    assert_eq!(event.start_byte, 5);
+    assert_eq!(event.old_end_byte, 5);
+    assert_eq!(event.new_end_byte, 11);
+    match &event.edit {
+        reovim_domain_text_events::TextEdit::Insert { text, .. } => {
+            assert_eq!(text, " world");
+        }
+        reovim_domain_text_events::TextEdit::Delete { .. } => {
+            panic!("expected TextEdit::Insert")
+        }
+    }
+}
+
+/// Verify that `delete_range` populates `text_buffer_edits` in `StateChanges`.
+#[test]
+fn test_delete_range_populates_text_buffer_edits() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello world");
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+    });
+
+    let changes = harness.take_changes();
+    assert_eq!(changes.text_buffer_edits.len(), 1);
+    let event = &changes.text_buffer_edits[0];
+    assert_eq!(event.buffer_id, buffer_id);
+    assert_eq!(event.start_byte, 5);
+    assert_eq!(event.old_end_byte, 11);
+    assert_eq!(event.new_end_byte, 5);
+    match &event.edit {
+        reovim_domain_text_events::TextEdit::Delete { text, .. } => {
+            assert_eq!(text, " world");
+        }
+        reovim_domain_text_events::TextEdit::Insert { .. } => {
+            panic!("expected TextEdit::Delete")
+        }
+    }
+}
+
+/// Verify that `replace_content` does NOT populate `text_buffer_edits`
+/// (`FullReplace` has no `TextEdit` equivalent).
+#[test]
+fn test_fullreplace_no_text_buffer_edits() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.replace_content(buffer_id, "completely new content");
+    });
+
+    let changes = harness.take_changes();
+    assert!(
+        changes.text_buffer_edits.is_empty(),
+        "FullReplace should not populate text_buffer_edits"
+    );
+    // But modified_buffer_edits should have the FullReplace entry
+    assert_eq!(changes.modified_buffer_edits.len(), 1);
 }
 
 // Note: byte-level undo-log cleanup is tracked outside session runtime.

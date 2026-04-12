@@ -42,6 +42,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
 - **protocol**: `capabilities` field (u32 bitflags) on `BufferInfo` proto message (#739)
 - **kernel**: `TextGeometry` trait — polymorphic line-based read access for both `Buffer` (zero-copy `Cow::Borrowed`) and `VirtualBuffer` (`Cow::Owned`) (#739)
+- **session**: `text_buffer_edits` field on `StateChanges` — parallel transport for text-domain edits (`TextBufferModified` events) alongside the legacy `modified_buffer_edits` (#740)
+- **server**: `text_event_to_syntax_edit` — text-domain equivalent of `modification_to_syntax_edit` for incremental tree-sitter parsing from `TextBufferModified` events (#740)
+- **modules**: `buffer-ops` migrated from kernel `BufferModified` to `TextBufferModified`, `window-ops` migrated from kernel `ViewportScrolled` to text-domain `ViewportScrolled` (#740)
+- **session**: consumer migration Phase 7 — `CursorMoved` tests migrated from kernel to text-domain events, `FullReplace` sanity test, codec index and syntax parsing consumers migrated to `text_buffer_edits` (#740)
 
 ### Changed
 

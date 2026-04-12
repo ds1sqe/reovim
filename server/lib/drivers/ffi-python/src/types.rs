@@ -661,7 +661,7 @@ impl PyKeybindingRegistration {
 /// ```python
 /// from reovim import EventHandlerRegistration
 ///
-/// reg = EventHandlerRegistration("BufferChanged")
+/// reg = EventHandlerRegistration("TextBufferModified")
 /// reg = reg.with_priority(50)
 /// reg = reg.with_description("Update syntax highlighting")
 /// reg = reg.with_once()  # One-shot handler
@@ -682,7 +682,7 @@ impl PyEventHandlerRegistration {
     ///
     /// # Arguments
     ///
-    /// * `event_type` - Event type name (e.g., `BufferChanged`, `CursorMoved`)
+    /// * `event_type` - Event type name (e.g., `TextBufferModified`, `CursorMoved`)
     #[new]
     #[must_use]
     pub fn new(event_type: &str) -> Self {

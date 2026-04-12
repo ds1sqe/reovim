@@ -22,6 +22,9 @@ reovim-provider-text = { workspace = true }
 reovim-protocol = { workspace = true }
 reovim-arch = { workspace = true }
 
+# Domain events (#740 Plan 09 Phase 7d)
+reovim-domain-text-events = { workspace = true }
+
 # Drivers
 reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }

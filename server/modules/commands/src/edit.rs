@@ -127,8 +127,8 @@ impl CommandHandler for EditCommand {
         }
 
         // Record buffer modification so the notification pipeline emits
-        // BufferModified to TUI clients, triggering a buffer cache refresh
-        // and viewport redraw.
+        // `TextBufferModified` to TUI clients, triggering a buffer cache
+        // refresh and viewport redraw.
         runtime.record_buffer_modified(buffer_id);
 
         CommandResult::Success

@@ -304,8 +304,8 @@ fn test_py_keybinding_registration_to_kernel() {
 
 #[test]
 fn test_py_event_handler_registration_creation() {
-    let reg = PyEventHandlerRegistration::new("BufferChanged");
-    assert_eq!(reg.event_type, "BufferChanged");
+    let reg = PyEventHandlerRegistration::new("TextBufferModified");
+    assert_eq!(reg.event_type, "TextBufferModified");
     assert_eq!(reg.priority, 100);
     assert!(reg.description.is_empty());
     assert!(!reg.once);

@@ -2816,6 +2816,7 @@ dependencies = [
 name = "reovim-module-buffer-ops"
 version = "0.14.5-dev"
 dependencies = [
+ "reovim-domain-text-events",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -3743,6 +3744,7 @@ dependencies = [
 name = "reovim-module-window-ops"
 version = "0.14.5-dev"
 dependencies = [
+ "reovim-domain-text-events",
  "reovim-driver-command",
  "reovim-driver-layout",
  "reovim-driver-session",
@@ -3898,6 +3900,7 @@ dependencies = [
  "rand",
  "reovim-arch",
  "reovim-client-cli",
+ "reovim-domain-text-events",
  "reovim-driver-buffer",
  "reovim-driver-codec",
  "reovim-driver-command",

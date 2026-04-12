@@ -82,7 +82,7 @@ fn test_init_creates_subscriptions() {
     let result = module.init(&ctx);
 
     assert_eq!(result, ProbeResult::Success);
-    // Should have 4 subscriptions: BufferCreated, BufferModified, BufferClosed, BufferSwitched
+    // Should have 4 subscriptions: BufferCreated, TextBufferModified (text-domain), BufferClosed, BufferSwitched
     assert_eq!(module.subscriptions.len(), 4);
 }
 
@@ -134,20 +134,22 @@ fn test_event_bus_receives_buffer_created() {
 }
 
 #[test]
-fn test_event_bus_receives_buffer_modified() {
-    use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+fn test_event_bus_receives_text_buffer_modified() {
+    use reovim_kernel::api::v1::BufferId;
 
     let ctx = make_test_module_context();
     let mut module = BufferOps::new();
     module.init(&ctx);
 
-    let event = BufferModified {
-        buffer_id: 1,
-        modification: Modification::Insert {
-            start: (0, 0),
-            text: "hello".to_string(),
-            start_byte: 0,
-        },
+    let event = reovim_domain_text_events::TextBufferModified {
+        buffer_id: BufferId::from_raw(1),
+        edit: reovim_domain_text_events::TextEdit::insert(
+            reovim_domain_text_events::TextPosition::new(0, 0),
+            "hello".to_string(),
+        ),
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 5,
     };
     ctx.kernel.event_bus.emit(event);
 }

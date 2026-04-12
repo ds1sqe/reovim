@@ -125,7 +125,7 @@ fn test_init_creates_subscriptions() {
     let result = module.init(&ctx);
 
     assert_eq!(result, ProbeResult::Success);
-    // Should have 4 subscriptions: WindowCreated, WindowClosed, WindowFocused, ViewportScrolled
+    // Should have 4 subscriptions: WindowCreated, WindowClosed, WindowFocused, ViewportScrolled (text-domain)
     assert_eq!(module.subscriptions.len(), 4);
 }
 
@@ -216,18 +216,20 @@ fn test_event_handler_window_focused() {
 
 #[test]
 fn test_event_handler_viewport_scrolled() {
-    use reovim_kernel::api::v1::events::kernel::ViewportScrolled;
+    use reovim_kernel::api::v1::{BufferId, WindowId};
 
     let ctx = make_test_module_context();
     let mut module = WindowOps::new();
     module.init(&ctx);
 
-    ctx.kernel.event_bus.emit(ViewportScrolled {
-        window_id: 1,
-        buffer_id: 1,
-        top_line: 0,
-        bottom_line: 50,
-    });
+    ctx.kernel
+        .event_bus
+        .emit(reovim_domain_text_events::ViewportScrolled {
+            window_id: WindowId::from_raw(1),
+            buffer_id: BufferId::from_raw(1),
+            top_line: 0,
+            bottom_line: 50,
+        });
 
     module.exit().unwrap();
 }

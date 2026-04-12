@@ -782,7 +782,7 @@ impl BufferApi for SessionRuntime<'_> {
             // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
             {
                 use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
-                self.kernel.event_bus.emit(TextBufferModified {
+                let text_event = TextBufferModified {
                     buffer_id: buffer,
                     edit: TextEdit::insert(
                         TextPosition::new(pos.line, pos.column),
@@ -791,7 +791,10 @@ impl BufferApi for SessionRuntime<'_> {
                     start_byte: byte_offset,
                     old_end_byte: byte_offset,
                     new_end_byte: byte_offset + text.len(),
-                });
+                };
+                self.kernel.event_bus.emit(text_event.clone());
+                self.changes
+                    .record_buffer_modified_with_text_edit(buffer, text_event);
             }
         }
     }
@@ -835,7 +838,7 @@ impl BufferApi for SessionRuntime<'_> {
                 {
                     use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
                     let deleted_byte_len = deleted_text.len();
-                    self.kernel.event_bus.emit(TextBufferModified {
+                    let text_event = TextBufferModified {
                         buffer_id: buffer,
                         edit: TextEdit::delete(
                             TextPosition::new(start.line, start.column),
@@ -844,7 +847,10 @@ impl BufferApi for SessionRuntime<'_> {
                         start_byte: byte_offset,
                         old_end_byte: byte_offset + deleted_byte_len,
                         new_end_byte: byte_offset,
-                    });
+                    };
+                    self.kernel.event_bus.emit(text_event.clone());
+                    self.changes
+                        .record_buffer_modified_with_text_edit(buffer, text_event);
                 }
 
                 // Emit BufferModified event for subscribers (#440)
