@@ -106,7 +106,7 @@ use {
 ///
 /// The module type must:
 /// - Implement `Module` trait
-/// - Have a `new() -> Self` constructor
+/// - Have a `new() -> Self` constructor (must be cheap — called during probe)
 /// - Be `Send + Sync + 'static`
 ///
 /// # Return Codes
@@ -177,7 +177,11 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
             );
 
             // Add rustc version for ABI compatibility checking
-            // RUSTC_VERSION is set by build.rs or defaults to rustc_version crate
+            // CARGO_PKG_RUST_VERSION resolves at the MODULE crate's compile time
+            // (not the macro crate's), because proc-macro expansion happens in
+            // the downstream crate's compilation unit. This gives us the module
+            // author's declared rust-version, which is what we want for ABI
+            // compatibility checking.
             const RUSTC_VERSION: &str = env!("CARGO_PKG_RUST_VERSION");
             probe = probe.with_rustc_version(RUSTC_VERSION);
 

@@ -49,6 +49,23 @@ use reovim_arch::sync::RwLock;
 ///
 /// Implement this trait for types that should be discoverable via the
 /// service registry. The trait bounds ensure thread-safety.
+///
+/// # Cross-cdylib Safety Contract
+///
+/// `ServiceRegistry` uses [`std::any::type_name`] (not `TypeId`) for lookup,
+/// enabling stable service discovery across cdylib boundaries. This imposes
+/// two constraints on implementing types:
+///
+/// 1. **Same crate version**: All compilation units (host binary and dynamic
+///    `.so` modules) must link against the **same version** of the crate that
+///    defines the service type. Different versions produce the same type_name
+///    but potentially different layouts, causing unsound pointer casts.
+///
+/// 2. **Stable type path**: The type must have a unique, fully-qualified path.
+///    Named type aliases (e.g., `CommandHandlerStore`) are safe. Generic
+///    monomorphizations (e.g., `MultiServiceRegistry<K, T>`) are safe when
+///    all cdylibs share the same crate version, but carry higher risk under
+///    version skew since the expanded type_name would still match.
 pub trait Service: Send + Sync + 'static {}
 
 // ============================================================================
