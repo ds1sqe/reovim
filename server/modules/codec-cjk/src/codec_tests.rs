@@ -256,6 +256,24 @@ fn translate_edit_start_out_of_range() {
 }
 
 #[test]
+fn translate_edit_decode_failure_returns_internal_error() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = euc_kr_codec();
+    // 0x80 is an invalid lead byte in EUC-KR (valid leads are 0xA1..=0xFE)
+    let bytes = HeapByteSource::new([0x80]);
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
 fn translate_edit_end_out_of_range() {
     use reovim_driver_codec::TranslateEditError;
     let codec = euc_kr_codec();

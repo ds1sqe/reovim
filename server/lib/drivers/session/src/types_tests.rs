@@ -1131,3 +1131,24 @@ fn b1_repro_proper_remove_keeps_correct_active() {
     let active = layout.active().unwrap();
     assert_eq!(active.id, id2, "proper remove() keeps W2 active");
 }
+
+// =========================================================================
+// SessionShared::clear_stale_check coverage
+// =========================================================================
+
+#[test]
+fn test_session_shared_clear_stale_check() {
+    use std::sync::Arc;
+
+    struct NoopStaleCheck;
+    impl crate::StaleCheck for NoopStaleCheck {
+        fn refresh_if_stale(&self, _buffer: BufferId) {}
+    }
+
+    let mode = test_mode();
+    let mut shared = SessionShared::new(mode);
+    shared.install_stale_check(Arc::new(NoopStaleCheck));
+    assert!(shared.stale_check().is_some());
+    shared.clear_stale_check();
+    assert!(shared.stale_check().is_none());
+}

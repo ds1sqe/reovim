@@ -713,16 +713,10 @@ async fn test_remote_cursor_at_eol() {
     // TUI 1 moves to end of line
     tui1.send_keys("$").await.expect("TUI 1 move to EOL failed");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // TUI 2 should render without panic
-    let frame = tui2
-        .capture("plain_text")
+    // TUI 2 should render without panic — poll until content visible
+    tui2.wait_for(Duration::from_secs(2), |f| f.contains("Short"))
         .await
-        .expect("TUI 2 capture failed - possible panic at EOL cursor");
-
-    assert!(!frame.is_empty(), "Frame should have content");
-    assert!(frame.contains("Short"), "Content should be visible");
+        .expect("Content should be visible");
 
     tui1.stop().await;
     tui2.stop().await;

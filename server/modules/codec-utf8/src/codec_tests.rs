@@ -300,6 +300,24 @@ fn translate_edit_start_position_out_of_range() {
 }
 
 #[test]
+fn translate_edit_decode_failure_returns_internal_error() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = Utf8Codec::new();
+    // Invalid UTF-8 causes decode to fail.
+    let bytes = HeapByteSource::new([0xFF, 0xFE]);
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
 fn translate_edit_end_position_out_of_range() {
     use reovim_driver_codec::TranslateEditError;
     let codec = Utf8Codec::new();

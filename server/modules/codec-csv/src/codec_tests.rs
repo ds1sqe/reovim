@@ -355,6 +355,24 @@ fn translate_edit_start_out_of_range() {
 }
 
 #[test]
+fn translate_edit_decode_failure_returns_internal_error() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = CsvCodec::new(b',', CSV);
+    // Invalid UTF-8 causes csv decode to fail.
+    let bytes = HeapByteSource::new([0xFF, 0xFE, 0x00]);
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
 fn translate_edit_end_out_of_range() {
     use reovim_driver_codec::TranslateEditError;
     let codec = CsvCodec::new(b',', CSV);

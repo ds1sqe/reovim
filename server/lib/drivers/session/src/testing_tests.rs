@@ -367,6 +367,16 @@ fn test_buffer_manager_list() {
 }
 
 #[test]
+fn dual_register_buffer_works_without_text_buffer_registry() {
+    // MC/DC: ctx.services.get::<TextBufferRegistry>() returns None
+    let ctx = reovim_kernel::testing::create_test_context();
+    // Do NOT register TextBufferRegistry — exercises the None branch.
+    let bid = dual_register_buffer(&ctx, "hello");
+    // Buffer should still be registered in kernel's BufferManager.
+    assert!(ctx.buffers.get(bid).is_some());
+}
+
+#[test]
 fn test_with_home_mode_custom() {
     let custom = ModeId::new(ModuleId::new("custom"), "special-mode");
     let test = TestSessionRuntime::with_home_mode(custom.clone());
