@@ -201,13 +201,6 @@ pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
 ///
 /// This keeps bootstrap decoupled from individual modules: zero module-specific
 /// imports needed. Modules self-register their bridges during `init()`.
-#[must_use]
-#[allow(dead_code)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
-    bootstrap_runtime().bridges
-}
-
 /// Perform one authoritative bootstrap pass for the runner.
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -380,7 +373,6 @@ pub fn bootstrap_runtime() -> BootstrapResult {
 /// ```
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[allow(dead_code)]
 pub fn create_session_state() -> SessionState {
     bootstrap_runtime().session_state
 }
@@ -590,9 +582,8 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 // builtin + external + registry module loading and dependency resolution.
 // Splitting it further would obscure the 1:1 correspondence between phases
 // (#582 depgraph, #587 externals, #725 registry + unified init).
+#[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[allow(clippy::too_many_lines)]
-#[allow(dead_code)]
 fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<TrackedModule> {
     initialize_modules_with_dependents(config, ctx).tracked
 }

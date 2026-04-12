@@ -32,7 +32,7 @@
 //! ```
 
 use std::{
-    any::{Any, TypeId},
+    any::Any,
     collections::HashMap,
     fmt,
     hash::Hash,
@@ -116,9 +116,21 @@ pub trait ServiceKey: Hash + Eq + Clone + Send + Sync + 'static {
 
 /// Registry for unique services - one provider wins per service type.
 ///
-/// Uses `TypeId` internally for type-safe lookup. Each service type can have
-/// at most one registered provider; registering a new provider replaces the
-/// existing one.
+/// Uses `type_name` as the primary lookup key for cross-cdylib stability.
+/// Rust's `TypeId` is not guaranteed stable across separate compilation units
+/// (cdylib modules), so dynamic `.so` modules would silently create duplicate
+/// service instances if `TypeId` were the only key. By keying on `type_name`
+/// (the fully-qualified type path, stable for the same crate version), both
+/// the host binary and dynamically loaded modules resolve to the same entry.
+///
+/// # Safety
+///
+/// The `get` method uses an unsafe `Arc` pointer cast (identical to the
+/// implementation inside `Arc::downcast`) instead of `Any::downcast`, because
+/// `downcast` relies on `TypeId` which may differ across cdylib boundaries.
+/// Correctness depends on `type_name` being unique per concrete type within
+/// a single crate version — a property that holds in practice for all
+/// non-generic, non-closure types.
 ///
 /// # Thread Safety
 ///
@@ -141,7 +153,7 @@ pub trait ServiceKey: Hash + Eq + Clone + Send + Sync + 'static {
 /// assert!(compositor.is_some());
 /// ```
 pub struct ServiceRegistry {
-    services: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
+    services: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
 }
 
 impl ServiceRegistry {
@@ -159,20 +171,36 @@ impl ServiceRegistry {
     ///
     /// * `service` - The service instance wrapped in `Arc`
     pub fn register<T: Service>(&self, service: Arc<T>) {
-        let type_id = TypeId::of::<T>();
-        self.services.write().insert(type_id, service);
+        let key = std::any::type_name::<T>().to_string();
+        self.services.write().insert(key, service);
     }
 
     /// Get a unique service by type.
     ///
+    /// Uses `type_name` for lookup (stable across cdylib boundaries) and an
+    /// unsafe `Arc` pointer cast instead of `Any::downcast` (which relies on
+    /// `TypeId`, unstable across cdylib boundaries).
+    ///
     /// Returns `None` if no service of type `T` is registered.
+    ///
+    /// # Safety (internal)
+    ///
+    /// The pointer cast is sound because `type_name` uniquely identifies the
+    /// concrete type within a crate version. This is the same cast that
+    /// `Arc::downcast` performs internally, minus the `TypeId` check.
     #[must_use]
+    #[allow(unsafe_code)]
     pub fn get<T: Service>(&self) -> Option<Arc<T>> {
-        let type_id = TypeId::of::<T>();
-        self.services
-            .read()
-            .get(&type_id)
-            .and_then(|any| any.clone().downcast::<T>().ok())
+        let key = std::any::type_name::<T>();
+        self.services.read().get(key).map(|any| {
+            // SAFETY: The entry was inserted by `register::<T>()` which stored
+            // an `Arc<T>` erased to `Arc<dyn Any>`. We look up by type_name
+            // which is stable across cdylib boundaries (unlike TypeId).
+            // This cast is identical to what `Arc::downcast` does internally:
+            // extract the data pointer from the fat pointer and reconstruct Arc<T>.
+            let raw: *const (dyn Any + Send + Sync) = Arc::into_raw(Arc::clone(any));
+            unsafe { Arc::from_raw(raw.cast::<T>()) }
+        })
     }
 
     /// Get required service or panic.
