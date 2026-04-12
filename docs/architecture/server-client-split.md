@@ -1599,7 +1599,7 @@ Platform Implementations (TUI adapters, Web WASM)
 ```
 
 **Event subscriptions:**
-- `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`
+- `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled` (text-domain)
 
 ### Future Phases
 

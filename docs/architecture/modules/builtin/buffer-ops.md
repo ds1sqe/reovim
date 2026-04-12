@@ -9,8 +9,8 @@ Buffer lifecycle event subscriber for the kernel EventBus.
 ## Purpose
 
 Handles buffer lifecycle events from the kernel `EventBus`. Subscribes to
-`BufferCreated`, `BufferModified`, `BufferClosed`, and `BufferSwitched` events
-and provides coordinated buffer state management.
+`BufferCreated`, `TextBufferModified` (text-domain), `BufferClosed`, and `BufferSwitched`
+events and provides coordinated buffer state management.
 
 Following the kernel's "mechanism vs policy" principle:
 - Kernel provides the buffer events (mechanism)
@@ -36,7 +36,7 @@ impl Module for BufferOps {
 | Event | Priority | Purpose |
 |-------|----------|---------|
 | `BufferCreated` | CORE (10) | Initialize buffer-specific state |
-| `BufferModified` | NORMAL (50) | Track dirty state, schedule reparse |
+| `TextBufferModified` (text-domain) | NORMAL (50) | Track dirty state, schedule reparse |
 | `BufferClosed` | LOW (200) | Cleanup buffer-specific resources |
 | `BufferSwitched` | CORE (10) | Update active buffer tracking |
 

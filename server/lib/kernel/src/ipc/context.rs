@@ -148,7 +148,7 @@ impl<'a> HandlerContext<'a> {
     /// # Example
     ///
     /// ```ignore
-    /// ctx.emit(BufferModified { buffer_id: 1 });
+    /// ctx.emit(BufferCreated { buffer_id: 1 });
     /// ```
     pub fn emit<E: Event>(&mut self, event: E) {
         let dyn_event = if let Some(ref scope) = self.scope {
