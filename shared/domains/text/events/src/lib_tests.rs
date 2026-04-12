@@ -44,7 +44,6 @@ fn text_buffer_modified_clone() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn text_buffer_modified_debug() {
     let event = TextBufferModified {
         buffer_id: BufferId::from_raw(1),
@@ -97,7 +96,6 @@ fn cursor_moved_is_copy() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn cursor_moved_debug() {
     let event = CursorMoved {
         window_id: WindowId::from_raw(1),
@@ -147,7 +145,6 @@ fn viewport_scrolled_is_copy() {
 }
 
 #[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn viewport_scrolled_debug() {
     let event = ViewportScrolled {
         window_id: WindowId::from_raw(1),
