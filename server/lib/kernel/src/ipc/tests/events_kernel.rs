@@ -1,9 +1,11 @@
 use crate::{
+    block::ByteEdit,
     core::ModeId,
     ipc::events::kernel::{
-        BufferCreated, BufferModified, CursorMoved, LayoutChangeKind, LayoutChanged, ModeChanged,
-        Modification, Shutdown, SplitDirection, priority,
+        BufferBytesEdited, BufferCreated, BufferModified, CursorMoved, LayoutChangeKind,
+        LayoutChanged, ModeChanged, Modification, Shutdown, SplitDirection, priority,
     },
+    mm::BufferId,
 };
 
 #[test]
@@ -197,4 +199,72 @@ fn test_layout_changed_no_focus() {
     };
     assert_eq!(event.window_count, 0);
     assert!(event.focused_window.is_none());
+}
+
+// ── BufferBytesEdited ───────────────────────────────────────────────
+
+#[test]
+fn buffer_bytes_edited_insert() {
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(1),
+        edit: ByteEdit::insert(10, b"hello"),
+    };
+    assert_eq!(event.buffer_id, BufferId::from_raw(1));
+    assert_eq!(event.edit.offset, 10);
+    assert!(event.edit.old_bytes.is_empty());
+    assert_eq!(event.edit.new_bytes, b"hello");
+}
+
+#[test]
+fn buffer_bytes_edited_delete() {
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(2),
+        edit: ByteEdit::delete(5, b"abc"),
+    };
+    assert_eq!(event.edit.offset, 5);
+    assert_eq!(event.edit.old_bytes, b"abc");
+    assert!(event.edit.new_bytes.is_empty());
+}
+
+#[test]
+fn buffer_bytes_edited_replace() {
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(3),
+        edit: ByteEdit::replace(0, b"foo", b"bar"),
+    };
+    assert_eq!(event.edit.old_bytes, b"foo");
+    assert_eq!(event.edit.new_bytes, b"bar");
+}
+
+#[test]
+fn buffer_bytes_edited_priority() {
+    use crate::ipc::Event;
+
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(1),
+        edit: ByteEdit::insert(0, b"x"),
+    };
+    assert_eq!(event.priority(), priority::CORE);
+}
+
+#[test]
+fn buffer_bytes_edited_clone() {
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(1),
+        edit: ByteEdit::insert(0, b"x"),
+    };
+    let cloned = event.clone();
+    assert_eq!(cloned.buffer_id, event.buffer_id);
+    assert_eq!(cloned.edit, event.edit);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn buffer_bytes_edited_debug() {
+    let event = BufferBytesEdited {
+        buffer_id: BufferId::from_raw(1),
+        edit: ByteEdit::insert(0, b"x"),
+    };
+    let debug = format!("{event:?}");
+    assert!(debug.contains("BufferBytesEdited"));
 }

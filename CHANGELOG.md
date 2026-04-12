@@ -10,6 +10,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **bench**: large-file performance gate benchmarks (G1–G6) — Criterion benchmarks for all #739 gates: 2 GB UTF-8 open/scroll/edit/write/search and 500 MB ELF open, with RSS measurement (#739)
 - **text**: `LineIndex::apply_insert()` and `apply_delete()` for incremental newline-offset updates without full content rebuild — O(lines) instead of O(bytes) (#739)
 - **events**: `reovim-domain-text-events` crate with `TextBufferModified`, `CursorMoved`, and `ViewportScrolled` — text-domain events decoupled from kernel, re-exporting `BufferId`/`WindowId`/`TextEdit`/`TextPosition` for consumer convenience (#740)
+- **kernel**: `BufferBytesEdited` event — universal byte-layer mutation notification with `CORE` priority, carrying `BufferId` + `ByteEdit`. Subscribers that only need byte changes use this instead of domain-specific events (#740)
 - **text**: `VirtualBuffer::for_each_chunk()` yields raw `&[u8]` slices from pieces for zero-allocation byte-level iteration (#739)
 - **vfs**: `TreeFixture` VFS fixture factories relocated from `shared/bench` to `reovim-driver-vfs::fixtures` — corrects shared→driver layer violation (#739)
 - **kernel**: virtual buffer architecture — mmap + piece table for multi-GB file editing with constant memory overhead. Files > 64 MB use `VirtualBuffer` backed by zero-copy mmap instead of Rope (#739)

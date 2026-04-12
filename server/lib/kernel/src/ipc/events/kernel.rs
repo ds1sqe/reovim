@@ -40,8 +40,10 @@
 //! ```
 
 use crate::{
+    block::ByteEdit,
     core::{ModeId, OptionScopeId},
     ipc::Event,
+    mm::BufferId,
 };
 
 /// Priority constants for event handlers.
@@ -142,6 +144,30 @@ pub enum Modification {
     },
     /// Entire buffer content was replaced (e.g., file reload).
     FullReplace,
+}
+
+/// Byte-layer mutation notification.
+///
+/// Emitted once per [`ByteEdit`] applied to storage, regardless of origin
+/// (local edit, file reload, codec reverse translation, byte undo replay).
+///
+/// Subscribers that only care about byte changes (byte undo log, network
+/// sync, file watcher debouncer) use this.  Tree-sitter and other
+/// incremental parsers that need atomic byte-range + point-range
+/// correlation should subscribe to `TextBufferModified` (in
+/// `reovim-domain-text-events`) instead.
+#[derive(Debug, Clone)]
+pub struct BufferBytesEdited {
+    /// Buffer that was edited.
+    pub buffer_id: BufferId,
+    /// The byte-level edit that was applied.
+    pub edit: ByteEdit,
+}
+
+impl Event for BufferBytesEdited {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
 }
 
 /// Active buffer changed.

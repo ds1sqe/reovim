@@ -2397,6 +2397,14 @@ name = "reovim-domain"
 version = "0.14.5-dev"
 
 [[package]]
+name = "reovim-domain-text-events"
+version = "0.14.5-dev"
+dependencies = [
+ "reovim-kernel",
+ "reovim-types-text",
+]
+
+[[package]]
 name = "reovim-driver-annotation"
 version = "0.14.5-dev"
 dependencies = [
