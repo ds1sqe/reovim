@@ -630,3 +630,65 @@ fn resolve_path_case_sensitive() {
         Err(TranslateEditError::UnsupportedEdit { .. })
     ));
 }
+
+// ===========================================================================
+// Phase 6: MC/DC coverage — Info-not-a-reference and Info-not-a-dictionary
+// ===========================================================================
+
+/// Build a PDF whose Info trailer entry is a direct integer (not a reference).
+///
+/// This exercises the `as_reference()` failure path (line 218 in codec.rs):
+/// the Info key is present but contains an `lopdf::Object::Integer` instead of
+/// `lopdf::Object::Reference`.  lopdf's `as_reference` returns an error for
+/// any non-reference object, producing `TranslateEditError::Internal`.
+fn build_test_pdf_info_not_reference() -> Vec<u8> {
+    let mut doc = lopdf::Document::with_version("1.7");
+    // Set Info to a plain integer — present but not a reference.
+    doc.trailer.set("Info", lopdf::Object::Integer(42));
+    let mut output = Vec::new();
+    doc.save_to(&mut output).unwrap();
+    output
+}
+
+/// Build a PDF whose Info trailer entry is a reference to an integer object
+/// (not a dictionary).
+///
+/// This exercises the `get_dictionary_mut` failure path (line 224 in
+/// codec.rs): the Info entry is a valid reference, but it points to a
+/// non-dictionary object.  lopdf's `get_dictionary_mut` returns an error,
+/// producing `TranslateEditError::Internal`.
+fn build_test_pdf_info_reference_to_non_dict() -> Vec<u8> {
+    let mut doc = lopdf::Document::with_version("1.7");
+    // Add a plain integer object and point Info at it.
+    let obj_id = doc.add_object(lopdf::Object::Integer(99));
+    doc.trailer.set("Info", lopdf::Object::Reference(obj_id));
+    let mut output = Vec::new();
+    doc.save_to(&mut output).unwrap();
+    output
+}
+
+#[test]
+fn translate_edit_info_entry_not_a_reference_returns_internal_error() {
+    let codec = PdfCodec::new();
+    let pdf = build_test_pdf_info_not_reference();
+    let bytes = HeapByteSource::new(pdf);
+    let edit = metadata_edit("Title", "New Title");
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_info_reference_points_to_non_dict_returns_internal_error() {
+    let codec = PdfCodec::new();
+    let pdf = build_test_pdf_info_reference_to_non_dict();
+    let bytes = HeapByteSource::new(pdf);
+    let edit = metadata_edit("Title", "New Title");
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}

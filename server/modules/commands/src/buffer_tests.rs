@@ -241,3 +241,19 @@ fn bprevious_not_at_first_decrements() {
 
     assert_eq!(harness.active_buffer(), Some(first));
 }
+
+// ============================================================================
+// QuitAllCommand coverage (lines 143-146 in buffer.rs)
+// ============================================================================
+
+#[test]
+fn qall_sends_quit_signal() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("test");
+    harness.with_runtime(|runtime| {
+        let cmd = QuitAllCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+}

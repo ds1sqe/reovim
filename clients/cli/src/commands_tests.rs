@@ -388,3 +388,57 @@ async fn test_module_with_paths_update_missing_maps_to_operation_failed() {
 
     assert!(matches!(result, Err(GrpcClientError::OperationFailed(_))));
 }
+
+// ============================================================================
+// Missing branch coverage: Plain branches and Json branches (MC/DC)
+// ============================================================================
+
+/// Line 428: `format_install_result` Plain branch.
+#[test]
+fn test_format_install_result_plain() {
+    let module = sample_installed_module();
+    let result = format_install_result(&module, OutputFormat::Plain);
+    assert!(result.contains("sample"));
+    assert!(result.contains("1.0.0"));
+}
+
+/// Line 452: `format_update_result` Plain branch.
+#[test]
+fn test_format_update_result_plain() {
+    let module = sample_installed_module();
+    let result = format_update_result(&module, OutputFormat::Plain);
+    assert!(result.contains("sample"));
+    assert!(result.contains("1.0.0"));
+}
+
+/// Lines 484-500: `format_update_all_results` Json branch.
+#[test]
+fn test_format_update_all_results_json() {
+    let results: Vec<Result<InstalledModule, (String, String)>> = vec![
+        Ok(sample_installed_module()),
+        Err(("mod-b".to_string(), "network error".to_string())),
+    ];
+    let output = format_update_all_results(&results, OutputFormat::Json);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("json should parse");
+    assert!(value["results"].is_array());
+    assert_eq!(value["results"][0]["id"], "sample");
+    assert_eq!(value["results"][0]["ok"], true);
+    assert_eq!(value["results"][1]["id"], "mod-b");
+    assert_eq!(value["results"][1]["ok"], false);
+    assert_eq!(value["results"][1]["error"], "network error");
+}
+
+/// Lines 565-575: `format_module_info` Json branch.
+#[test]
+fn test_format_module_info_json() {
+    let info = sample_registry_info();
+    let output = format_module_info(&info, OutputFormat::Json);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("json should parse");
+    assert_eq!(value["id"], "sample");
+    assert_eq!(value["version"], "1.0.0");
+    assert_eq!(value["library_exists"], true);
+    assert!(value["provides"].is_array());
+    assert_eq!(value["provides"][0], "cap-a");
+    assert!(value["requires"].is_array());
+    assert_eq!(value["requires"][0], "cap-b");
+}

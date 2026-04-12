@@ -7,7 +7,7 @@ use std::{borrow::Cow, sync::Arc};
 use {
     reovim_domain_text::{LineIndex, Position, TextGeometry},
     reovim_driver_vfs::FileMapping,
-    reovim_kernel::api::v1::BufferId,
+    reovim_kernel::api::v1::{BufferId, BufferMeta, StorageCapabilities},
 };
 
 use crate::Buffer;
@@ -1103,4 +1103,172 @@ fn storage_vbuf_read_chunk_within_bounds() {
     let so: &dyn StorageOps = &vbuf;
     let chunk = so.read_chunk(6, 5);
     assert_eq!(chunk, b"world");
+}
+
+// ── StorageOps delegation (lines 703-705, 735-749) ──────────────────
+
+#[test]
+fn vbuf_storage_capabilities_returns_mmap() {
+    let vbuf = vbuf_from_str("hello");
+    assert_eq!(StorageOps::capabilities(&vbuf), StorageCapabilities::MMAP,);
+}
+
+#[test]
+fn vbuf_storage_append_bytes() {
+    let mut vbuf = vbuf_from_str("hello");
+    StorageOps::append_bytes(&mut vbuf, b" world").unwrap();
+    assert_eq!(vbuf.content(), "hello world");
+}
+
+#[test]
+fn vbuf_storage_read_chunk_valid() {
+    let vbuf = vbuf_from_str("hello world");
+    let chunk = StorageOps::read_chunk(&vbuf, 0, 5);
+    assert_eq!(&chunk, b"hello");
+}
+
+#[test]
+fn vbuf_storage_read_chunk_past_end() {
+    let vbuf = vbuf_from_str("hello");
+    let chunk = StorageOps::read_chunk(&vbuf, 100, 5);
+    assert!(chunk.is_empty());
+}
+
+// ── BufferMeta delegation (lines 752-772) ───────────────────────────
+
+#[test]
+fn vbuf_buffer_meta_set_file_path() {
+    let mut vbuf = vbuf_from_str("hello");
+    BufferMeta::set_file_path(&mut vbuf, Some("/tmp/test.txt".to_string()));
+    assert_eq!(BufferMeta::file_path(&vbuf), Some("/tmp/test.txt"));
+    assert!(!BufferMeta::is_modified(&vbuf));
+}
+
+#[test]
+fn vbuf_buffer_meta_set_modified() {
+    let mut vbuf = vbuf_from_str("hello");
+    assert!(!BufferMeta::is_modified(&vbuf));
+    BufferMeta::set_modified(&mut vbuf, true);
+    assert!(BufferMeta::is_modified(&vbuf));
+}
+
+// ── BufferOps delegation (lines 776-828) ────────────────────────────
+
+#[test]
+fn vbuf_buffer_ops_content_bytes() {
+    let vbuf = vbuf_from_str("hello");
+    assert_eq!(BufferOps::content_bytes(&vbuf), b"hello");
+}
+
+#[test]
+fn vbuf_buffer_ops_line_count() {
+    let vbuf = vbuf_from_str("a\nb\nc");
+    assert_eq!(BufferOps::line_count(&vbuf), 3);
+}
+
+#[test]
+fn vbuf_buffer_ops_line() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    assert_eq!(BufferOps::line(&vbuf, 0).as_deref(), Some("hello"));
+    assert_eq!(BufferOps::line(&vbuf, 1).as_deref(), Some("world"));
+}
+
+#[test]
+fn vbuf_buffer_ops_line_len() {
+    let vbuf = vbuf_from_str("abc\nde");
+    assert_eq!(BufferOps::line_len(&vbuf, 0), Some(3));
+    assert_eq!(BufferOps::line_len(&vbuf, 1), Some(2));
+}
+
+#[test]
+fn vbuf_buffer_ops_position_conversion() {
+    let vbuf = vbuf_from_str("abc\ndef");
+    let byte = BufferOps::position_to_byte(&vbuf, Position::new(1, 1));
+    let pos = BufferOps::byte_to_position(&vbuf, byte);
+    assert_eq!(pos, Position::new(1, 1));
+}
+
+#[test]
+fn vbuf_buffer_ops_insert_at() {
+    let mut vbuf = vbuf_from_str("hello world");
+    BufferOps::insert_at(&mut vbuf, Position::new(0, 5), " beautiful");
+    assert_eq!(BufferOps::content(&vbuf), "hello beautiful world");
+}
+
+#[test]
+fn vbuf_buffer_ops_delete_range() {
+    let mut vbuf = vbuf_from_str("hello world");
+    let deleted = BufferOps::delete_range(&mut vbuf, Position::new(0, 5), Position::new(0, 11));
+    assert_eq!(deleted, " world");
+    assert_eq!(BufferOps::content(&vbuf), "hello");
+}
+
+#[test]
+fn vbuf_buffer_ops_set_content() {
+    let mut vbuf = vbuf_from_str("old");
+    BufferOps::set_content(&mut vbuf, "new content");
+    assert_eq!(BufferOps::content(&vbuf), "new content");
+}
+
+#[test]
+fn vbuf_buffer_ops_write_to() {
+    let vbuf = vbuf_from_str("hello world");
+    let mut output = Vec::new();
+    BufferOps::write_to(&vbuf, &mut output).unwrap();
+    assert_eq!(&output, b"hello world");
+}
+
+#[test]
+fn vbuf_buffer_ops_write_to_with_add_buffer() {
+    let mut vbuf = vbuf_from_str("hello");
+    // Insert text to populate the add buffer (PieceSource::Add path)
+    BufferOps::insert_at(&mut vbuf, Position::new(0, 5), " world");
+    let mut output = Vec::new();
+    BufferOps::write_to(&vbuf, &mut output).unwrap();
+    assert_eq!(&output, b"hello world");
+}
+
+#[test]
+fn vbuf_buffer_ops_as_text_geometry() {
+    let vbuf = vbuf_from_str("a\nb");
+    let geom = BufferOps::as_text_geometry(&vbuf);
+    assert_eq!(geom.line_count(), 2);
+}
+
+// ── TextGeometry delegation (line 601) ──────────────────────────────
+
+#[test]
+fn vbuf_text_geometry_line_count_direct() {
+    let vbuf = vbuf_from_str("a\nb\nc");
+    assert_eq!(TextGeometry::line_count(&vbuf), 3);
+}
+
+// ── VirtualSnapshot accessors (lines 54-74) ─────────────────────────
+
+#[test]
+fn snapshot_pieces_accessor() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    let snap = vbuf.capture_snapshot();
+    assert_eq!(snap.pieces().byte_len(), 11);
+}
+
+#[test]
+fn snapshot_original_accessor() {
+    let vbuf = vbuf_from_str("hello");
+    let snap = vbuf.capture_snapshot();
+    assert_eq!(snap.original().len(), 5);
+}
+
+#[test]
+fn snapshot_line_index_accessor() {
+    let vbuf = vbuf_from_str("a\nb\nc");
+    let snap = vbuf.capture_snapshot();
+    assert_eq!(snap.line_index().line_count(), 3);
+}
+
+#[test]
+fn snapshot_crlf_accessor() {
+    let vbuf = vbuf_from_str("hello\nworld");
+    let snap = vbuf.capture_snapshot();
+    assert!(!snap.crlf());
 }

@@ -7,7 +7,10 @@ use {
     reovim_provider_text::{Buffer, HeapMapping, VirtualBuffer},
 };
 
-use super::{BufferLineSource, LineSource, TextGeometryLineSource, VirtualBufferLineSource};
+use super::{
+    BufferLineSource, BufferOpsLineSource, LineSource, TextGeometryLineSource,
+    VirtualBufferLineSource,
+};
 
 fn make_vbuf(content: &str) -> VirtualBuffer {
     let original = Arc::new(HeapMapping(content.as_bytes().to_vec()));
@@ -201,4 +204,69 @@ fn text_geometry_byte_to_position_empty_source() {
     let source = TextGeometryLineSource::new(&text);
     // Empty source: byte_to_position should return Position::origin().
     assert_eq!(source.byte_to_position(0), reovim_domain_text::Position::new(0, 0));
+}
+
+// ── TextGeometryLineSource::line_len ────────────────────────────────────────
+
+#[test]
+fn text_geometry_line_len() {
+    let text = SimpleText::new("abc\nde");
+    let source = TextGeometryLineSource::new(&text);
+    assert_eq!(source.line_len(0), Some(3));
+    assert_eq!(source.line_len(1), Some(2));
+    assert_eq!(source.line_len(99), None);
+}
+
+// ── TextGeometryLineSource::byte_to_position past end ───────────────────────
+
+#[test]
+fn text_geometry_byte_to_position_past_end() {
+    let text = SimpleText::new("abc\ndef");
+    let source = TextGeometryLineSource::new(&text);
+    // byte_offset 100 is past all content: falls through to last-line fallback
+    let pos = source.byte_to_position(100);
+    assert_eq!(pos, Position::new(1, 3));
+}
+
+// ── BufferOpsLineSource ──────────────────────────────────────────────────────
+
+#[test]
+fn buffer_ops_line_source_line_count() {
+    let buffer = Buffer::from_string("a\nb\nc");
+    let source = BufferOpsLineSource(&buffer as &dyn reovim_provider_text::BufferOps);
+    assert_eq!(source.line_count(), 3);
+}
+
+#[test]
+fn buffer_ops_line_source_line() {
+    let buffer = Buffer::from_string("hello\nworld");
+    let source = BufferOpsLineSource(&buffer as &dyn reovim_provider_text::BufferOps);
+    assert_eq!(source.line(0).as_deref(), Some("hello"));
+    assert_eq!(source.line(1).as_deref(), Some("world"));
+    assert!(source.line(2).is_none());
+}
+
+#[test]
+fn buffer_ops_line_source_line_len() {
+    let buffer = Buffer::from_string("abc\nde");
+    let source = BufferOpsLineSource(&buffer as &dyn reovim_provider_text::BufferOps);
+    assert_eq!(source.line_len(0), Some(3));
+    assert_eq!(source.line_len(1), Some(2));
+    assert!(source.line_len(99).is_none());
+}
+
+#[test]
+fn buffer_ops_line_source_position_conversion() {
+    let buffer = Buffer::from_string("abc\ndef");
+    let source = BufferOpsLineSource(&buffer as &dyn reovim_provider_text::BufferOps);
+    let byte = source.position_to_byte(Position::new(1, 1));
+    let pos = source.byte_to_position(byte);
+    assert_eq!(pos, Position::new(1, 1));
+}
+
+#[test]
+fn buffer_ops_line_source_content() {
+    let buffer = Buffer::from_string("hello\nworld");
+    let source = BufferOpsLineSource(&buffer as &dyn reovim_provider_text::BufferOps);
+    assert_eq!(source.content(), "hello\nworld");
 }

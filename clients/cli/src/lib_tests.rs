@@ -501,3 +501,28 @@ async fn test_execute_module_list_loaded_returns_connection_error_when_unreachab
 
     assert!(matches!(err, GrpcClientError::ConnectionFailed(_)));
 }
+
+// ============================================================================
+// connected_client error path (lines 338-347 in lib.rs)
+// ============================================================================
+
+/// Lines 338-347: `connected_client` returns `ConnectionFailed` when the
+/// `Option<GrpcClient>` is `None`.
+#[test]
+fn connected_client_none_returns_connection_failed_error() {
+    let mut client: Option<GrpcClient> = None;
+    assert!(matches!(
+        connected_client(&mut client, "test-command"),
+        Err(GrpcClientError::ConnectionFailed(_))
+    ));
+}
+
+// ============================================================================
+// requires_grpc coverage (line 235 in lib.rs)
+// ============================================================================
+
+#[test]
+fn requires_grpc_non_module_command_returns_true() {
+    // `_ => true` arm covers all non-Module commands.
+    assert!(CliCommand::Ping.requires_grpc());
+}

@@ -1647,3 +1647,61 @@ fn zip_entry_replace_actual_len_mismatch_rejected() {
     let result = codec.translate_edit(&bytes, &edit);
     assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
 }
+
+// ============================================================================
+// ELF MC/DC coverage gap tests — parse failure and symbol path component count
+// ============================================================================
+
+#[test]
+fn elf_translate_edit_parse_failure_returns_internal_error() {
+    // Line 235-237 — goblin::elf::Elf::parse fails on garbage bytes, causing
+    // translate_elf_edit to return TranslateEditError::Internal.
+    //
+    // The text/bytes unsupported-edit guards execute before parse, so we must
+    // use a Tree edit to reach the parse call.
+    let codec = ElfCodec::new();
+    let bytes = HeapByteSource::new(b"not an elf at all".to_vec());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            ".text".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: vec![0x90],
+            new_bytes: vec![0xCC],
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
+fn elf_symbol_path_wrong_component_count_rejected() {
+    // Lines 485-488 — the slice pattern `[kind, symbol_name, field]` in
+    // resolve_symbol_path rejects any path that does not have exactly 3
+    // components. The 2-component case is exercised by
+    // elf_translate_edit_malformed_section_path_is_rejected for section paths;
+    // here we exercise the same `else` branch for the symbol path with a
+    // 4-component path.
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            fixture.symbol_name.clone(),
+            "name".to_string(),
+            "extra".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
+            new_name: fixture.symbol_new_name.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}

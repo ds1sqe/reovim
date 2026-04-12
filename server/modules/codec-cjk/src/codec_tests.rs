@@ -289,3 +289,29 @@ fn translate_edit_end_out_of_range() {
         Err(TranslateEditError::ConstraintViolation { .. })
     ));
 }
+
+#[test]
+fn translate_edit_multiline_second_line() {
+    // Exercises line 174: `line_start += next_newline + 1` inside the
+    // `for _ in 0..pos.line` loop.  Without this test the loop body is
+    // never reached because all other tests use line 0.
+    let codec = euc_kr_codec();
+    // "ab\ncd" is pure ASCII, so EUC-KR is a transparent pass-through.
+    let raw = b"ab\ncd";
+    let bytes = HeapByteSource::new(raw.as_slice());
+    let edit = DecodedEdit::Text {
+        start: Position::new(1, 0),
+        end: Position::new(1, 1),
+        replacement: "X".to_string(),
+    };
+
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("multiline edit accepted")
+        .expect("produced a byte edit");
+
+    // "ab\n" occupies 3 bytes → 'c' is at offset 3.
+    assert_eq!(translated.offset, 3);
+    assert_eq!(translated.old_bytes, b"c");
+    assert_eq!(translated.new_bytes, b"X");
+}

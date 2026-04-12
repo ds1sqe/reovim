@@ -520,3 +520,56 @@ fn test_byte_to_position_at_exact_line_boundary() {
     let pos = buffer.byte_to_position(3);
     assert_eq!(pos, Position::new(1, 0));
 }
+
+// ── find_next_source Forward branch ─────────────────────────────────────────
+
+#[test]
+fn test_find_next_source_forward_match() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello world".to_string(), "foo bar".to_string()]);
+    let result = engine
+        .find_next_source(&source, Position::new(0, 0), "world", Direction::Forward, false)
+        .unwrap();
+    assert!(result.is_some());
+    let m = result.unwrap();
+    assert_eq!(m.start, Position::new(0, 6));
+    assert_eq!(m.end, Position::new(0, 11));
+}
+
+#[test]
+fn test_find_next_source_forward_no_match() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello".to_string()]);
+    let result = engine
+        .find_next_source(&source, Position::new(0, 0), "xyz", Direction::Forward, false)
+        .unwrap();
+    assert!(result.is_none());
+}
+
+// ── find_all_source ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_find_all_source_multiple_matches() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["aba".to_string(), "aba".to_string()]);
+    let results = engine.find_all_source(&source, "a").unwrap();
+    // content is "aba\naba"; 'a' appears at offsets 0, 2, 4, 6
+    assert_eq!(results.len(), 4);
+}
+
+#[test]
+fn test_find_all_source_no_matches() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello".to_string()]);
+    let results = engine.find_all_source(&source, "xyz").unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn test_find_all_source_invalid_pattern() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello".to_string()]);
+    let result = engine.find_all_source(&source, "[invalid");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), SearchError::InvalidPattern(_)));
+}

@@ -128,14 +128,13 @@ impl ContentCodec for PdfCodec {
                 }),
                 |pdf_op| translate_pdf_edit(bytes, path, pdf_op),
             ),
-            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+            // Text, raw byte, and any future non_exhaustive variants are not
+            // supported by the structural PDF codec.
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } | _ => {
                 Err(TranslateEditError::UnsupportedEdit {
-                    reason: "pdf codec does not translate text or raw byte edits",
+                    reason: "pdf codec does not translate text, raw byte, or unknown edits",
                 })
             }
-            _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "pdf codec does not support this decoded edit variant",
-            }),
         }
     }
 }
@@ -241,15 +240,27 @@ fn translate_set_metadata(
     // Serialize back.
     let mut output = Vec::new();
     doc.save_to(&mut output)
-        .map_err(|_| TranslateEditError::Internal {
-            reason: "pdf serialization failed",
-        })?;
+        .map_err(|_| pdf_serialize_error())?;
 
     Ok(Some(ByteEdit::replace(0, original, &output)))
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
+
+/// Error factory for PDF serialization failure in `translate_set_metadata`.
+///
+/// `lopdf::Document::save_to` writing into a `Vec<u8>` cannot fail at the I/O
+/// level.  The only lopdf error paths require a writer that returns an I/O
+/// error, which `Vec<u8>` never does.  This path is therefore genuinely
+/// unreachable in production; the helper is extracted so that `coverage(off)`
+/// applies only to the dead code.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn pdf_serialize_error() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "pdf serialization failed",
+    }
+}
 
 fn read_all_bytes(bytes: &dyn ByteSource) -> Option<Vec<u8>> {
     let len = usize::try_from(bytes.len()).ok()?;

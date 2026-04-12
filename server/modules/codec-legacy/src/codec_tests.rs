@@ -227,3 +227,135 @@ fn translate_edit_bytes_variant_is_not_supported() {
         Err(TranslateEditError::UnsupportedEdit { .. })
     ));
 }
+
+#[test]
+fn translate_edit_tree_variant_is_not_supported() {
+    // Exercises codec.rs lines 91-93 (merged `_` arm that covers Tree and
+    // any future #[non_exhaustive] variants).
+    use reovim_driver_codec::{TranslateEditError, TreeOp, TreePath};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOp;
+    reovim_driver_codec::impl_tree_op!(TestOp);
+
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Tree {
+        path: TreePath::root(),
+        op: TreeOp::new(TestOp),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_multiline_second_line() {
+    // Exercises codec.rs lines 198-200: `line_start += next_newline + 1`
+    // inside the `for _ in 0..pos.line` loop.  Without this test the loop
+    // body is never reached because all other tests target line 0.
+    let codec = latin1_codec();
+    // "abc\ndef" is pure ASCII, which is a subset of Latin-1.
+    let bytes = HeapByteSource::new(b"abc\ndef");
+    let edit = DecodedEdit::Text {
+        start: Position::new(1, 0),
+        end: Position::new(1, 1),
+        replacement: "X".to_string(),
+    };
+
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("multiline edit accepted")
+        .expect("produced a byte edit");
+
+    // "abc\n" is 4 bytes → 'd' is at raw offset 4.
+    assert_eq!(translated.offset, 4);
+    assert_eq!(translated.old_bytes, b"d");
+    assert_eq!(translated.new_bytes, b"X");
+}
+
+#[test]
+fn translate_edit_column_at_line_end() {
+    // Exercises codec.rs line 222:
+    //   `(chars_seen == pos.column).then_some(line_end)`
+    //
+    // This branch executes when `pos.column` equals the character count of
+    // the line (position at end-of-line, past the last char).  Existing
+    // tests all target positions strictly inside the line.
+    let codec = latin1_codec();
+    // "abc" has 3 chars; position (0, 3) is past the last char.
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 3),
+        end: Position::new(0, 3),
+        replacement: "X".to_string(),
+    };
+
+    let translated = codec
+        .translate_edit(&bytes, &edit)
+        .expect("end-of-line insert accepted")
+        .expect("produced a byte edit");
+
+    // Inserting at offset 3 (after 'c') appends to the string.
+    assert_eq!(translated.offset, 3);
+    assert_eq!(translated.old_bytes, b"");
+    assert_eq!(translated.new_bytes, b"X");
+}
+
+#[test]
+fn translate_edit_start_position_out_of_range() {
+    // Exercises codec.rs line 115: start position None → ConstraintViolation.
+    use reovim_driver_codec::TranslateEditError;
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(5, 0), // line 5 does not exist in "abc"
+        end: Position::new(5, 1),
+        replacement: "X".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_position_out_of_range() {
+    // Exercises codec.rs line 120: end position None → ConstraintViolation,
+    // while start position is valid so line 115 is NOT triggered.
+    use reovim_driver_codec::TranslateEditError;
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0), // valid
+        end: Position::new(5, 0),   // line 5 does not exist in "abc"
+        replacement: "X".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_unencodable_replacement() {
+    // Exercises codec.rs line 146: encode_fragment error path → ConstraintViolation.
+    // Korean characters are outside the Latin-1 (U+0000..U+00FF) range.
+    use reovim_driver_codec::TranslateEditError;
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 1),
+        replacement: "한".to_string(), // U+D55C — not representable in Latin-1
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}

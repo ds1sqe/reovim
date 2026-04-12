@@ -233,3 +233,100 @@ fn test_selection_mode_clone_copy() {
     let copied = mode;
     assert_eq!(mode, copied);
 }
+
+// ── BufferApi default impls: buffer_capabilities and buffer_write_to ────────
+//
+// `StubBufferApi` above overrides `buffer_capabilities` to return `self.caps`.
+// To cover the DEFAULT implementation (which returns `None`), we need a separate
+// minimal implementor that does NOT override either defaulted method.
+
+struct MinimalBufferApi {
+    content: Option<String>,
+}
+
+impl BufferApi for MinimalBufferApi {
+    fn active_buffer(&self) -> Option<BufferId> {
+        None
+    }
+
+    fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
+
+    fn buffer_line(&self, _buffer: BufferId, _line: usize) -> Option<String> {
+        None
+    }
+
+    fn buffer_line_count(&self, _buffer: BufferId) -> Option<usize> {
+        None
+    }
+
+    fn buffer_line_len(&self, _buffer: BufferId, _line: usize) -> Option<usize> {
+        None
+    }
+
+    fn buffer_text_range(
+        &self,
+        _buffer: BufferId,
+        _start: Position,
+        _end: Position,
+    ) -> Option<String> {
+        None
+    }
+
+    fn buffer_content(&self, _buffer: BufferId) -> Option<String> {
+        self.content.clone()
+    }
+
+    fn buffer_file_path(&self, _buffer: BufferId) -> Option<String> {
+        None
+    }
+
+    fn is_buffer_modified(&self, _buffer: BufferId) -> Option<bool> {
+        None
+    }
+
+    fn set_buffer_modified(&mut self, _buffer: BufferId, _modified: bool) {}
+
+    fn insert_text(&mut self, _buffer: BufferId, _pos: Position, _text: &str) {}
+
+    fn delete_range(&mut self, _buffer: BufferId, _start: Position, _end: Position) {}
+
+    fn replace_content(&mut self, _buffer: BufferId, _content: &str) {}
+
+    fn create_buffer(&mut self, _name: Option<&str>, _content: &str) -> BufferId {
+        BufferId::new()
+    }
+
+    fn delete_buffer(&mut self, _buffer: BufferId) -> Result<(), BufferError> {
+        Ok(())
+    }
+
+    fn rename_buffer(&mut self, _buffer: BufferId, _new_name: &str) {}
+    // NOTE: buffer_capabilities and buffer_write_to are NOT overridden here so
+    // that the DEFAULT implementations in the trait definition are exercised.
+}
+
+#[test]
+fn default_buffer_capabilities_returns_none() {
+    let api = MinimalBufferApi { content: None };
+    // Default impl returns None unconditionally.
+    assert!(api.buffer_capabilities(BufferId::new()).is_none());
+}
+
+#[test]
+fn default_buffer_write_to_success() {
+    let api = MinimalBufferApi {
+        content: Some("hello".to_string()),
+    };
+    let mut output = Vec::new();
+    api.buffer_write_to(BufferId::new(), &mut output).unwrap();
+    assert_eq!(&output, b"hello");
+}
+
+#[test]
+fn default_buffer_write_to_not_found() {
+    let api = MinimalBufferApi { content: None };
+    let mut output = Vec::new();
+    let result = api.buffer_write_to(BufferId::new(), &mut output);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+}

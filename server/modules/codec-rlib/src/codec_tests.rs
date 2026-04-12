@@ -774,3 +774,86 @@ fn extract_dependency_names_hyphen_style_crate() {
     assert!(deps.contains(&"tokio-util".to_string()), "expected tokio-util in {deps:?}");
     assert!(deps.contains(&"other_dep".to_string()));
 }
+
+// ============================================================================
+// RLIB MC/DC coverage gap tests — parse failure, field/op mismatch, component count
+// ============================================================================
+
+#[test]
+fn translate_rlib_edit_parse_failure_returns_internal_error() {
+    // Lines 164-167 — goblin::archive::Archive::parse fails on garbage bytes,
+    // causing translate_rlib_edit to return TranslateEditError::Internal.
+    //
+    // The text/bytes unsupported-edit guards execute before parse, so we must
+    // use a Tree edit to reach the archive parse call.
+    let codec = RlibCodec::new();
+    let bytes = HeapByteSource::new(b"not an archive at all".to_vec());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            "lib.rmeta".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: vec![0x00],
+            new_bytes: vec![0xFF],
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
+fn translate_rlib_name_field_with_replace_bytes_op_is_rejected() {
+    // Lines 188-192 — (MemberField::Name, RlibTreeOp::ReplaceMemberBytes) arm.
+    // Targeting the "name" field while supplying a ReplaceMemberBytes operation
+    // must return UnsupportedEdit.
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_rlib_member_path_too_many_components_rejected() {
+    // Lines 295-302 — the slice pattern `[kind, member_name, field]` in
+    // resolve_member_path rejects any path that does not have exactly 3
+    // components. The 2-component case is exercised by
+    // translate_edit_malformed_member_path_is_rejected; here we cover the
+    // same `else` branch with a 4-component path.
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+            "extra".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}

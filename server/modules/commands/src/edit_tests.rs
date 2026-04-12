@@ -31,6 +31,38 @@ impl ContentClassifier for AlwaysMatchClassifier {
     }
 }
 
+/// A codec that always returns a decode error.
+struct FailingCodec;
+
+impl reovim_driver_codec::ContentCodec for FailingCodec {
+    fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Err(CodecError::Other("forced decode failure".to_string()))
+    }
+}
+
+struct FailingCodecFactory;
+
+impl reovim_driver_codec::ContentCodecFactory for FailingCodecFactory {
+    fn create(
+        &self,
+        content_type: &ContentType,
+    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+        if content_type.as_str() == "text/test" {
+            Some(Arc::new(FailingCodec))
+        } else {
+            None
+        }
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec!["text/test"]
+    }
+
+    fn name(&self) -> &'static str {
+        "failing-codec"
+    }
+}
+
 /// A codec that decodes as UTF-8, optionally setting truncated = true.
 struct SimpleTestCodec {
     truncated: bool,
@@ -449,5 +481,33 @@ fn decode_file_content_codec_not_found_falls_back_to_utf8() {
     harness.with_runtime(|runtime| {
         let result = decode_file_content(b"plain utf8 fallback", "test.txt", runtime);
         assert_eq!(result, Ok("plain utf8 fallback".to_string()));
+    });
+}
+
+/// Lines 407-408: codec decode returns `Err(_)` — the error is logged and
+/// the function falls through to the UTF-8 fallback path.
+///
+/// Branch 376:1 — `codec.decode(bytes)` returns `Err`.
+#[test]
+fn decode_file_content_codec_decode_error_falls_back_to_utf8() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(AlwaysMatchClassifier {
+        content_type: ContentType::new("text/test"),
+    }));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    factory_store.add_factory(Arc::new(FailingCodecFactory));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+
+    harness.with_runtime(|runtime| {
+        // `FailingCodec` returns `Err`; the function should warn and fall back
+        // to UTF-8, returning `Ok` for valid UTF-8 input.
+        let result = decode_file_content(b"valid utf8 after codec fail", "test.txt", runtime);
+        assert_eq!(result, Ok("valid utf8 after codec fail".to_string()));
     });
 }

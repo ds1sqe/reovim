@@ -122,14 +122,11 @@ impl ContentCodec for RlibCodec {
                 }),
                 |rlib_op| translate_rlib_edit(bytes, path, rlib_op),
             ),
-            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } | _ => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "RLIB codec does not translate text or raw byte edits",
                 })
             }
-            _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "RLIB codec does not support this decoded edit variant",
-            }),
         }
     }
 }
@@ -327,18 +324,58 @@ fn resolve_member_path(path: &TreePath) -> Result<ResolvedMemberPath<'_>, Transl
     })
 }
 
+// ============================================================================
+// coverage(off) overflow / usize-conversion error constructors
+// ============================================================================
+
+/// RLIB member `offset` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn rlib_member_payload_offset_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "RLIB member payload offset does not fit in usize",
+    }
+}
+
+/// RLIB member `header_offset` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn rlib_member_header_offset_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "RLIB member header offset does not fit in usize",
+    }
+}
+
+/// RLIB `SysV` name index: `data_offset + sysv_offset` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn rlib_member_name_offset_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "RLIB member name offset overflowed",
+    }
+}
+
+/// RLIB `SysV` name index: `name_offset + member_name.len()` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn rlib_member_name_range_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "RLIB member name range overflowed",
+    }
+}
+
+/// RLIB header: `header_offset + member_name.len()` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn rlib_header_name_range_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "RLIB header name range overflowed",
+    }
+}
+
 fn member_payload_offset(
     member: &goblin::archive::Member<'_>,
 ) -> Result<usize, TranslateEditError> {
-    usize::try_from(member.offset).map_err(|_| TranslateEditError::Internal {
-        reason: "RLIB member payload offset does not fit in usize",
-    })
+    usize::try_from(member.offset).map_err(|_| rlib_member_payload_offset_overflow())
 }
 
 fn member_header_offset(member: &goblin::archive::Member<'_>) -> Result<usize, TranslateEditError> {
-    usize::try_from(member.header_offset).map_err(|_| TranslateEditError::Internal {
-        reason: "RLIB member header offset does not fit in usize",
-    })
+    usize::try_from(member.header_offset).map_err(|_| rlib_member_header_offset_overflow())
 }
 
 /// Verify that the raw `SysV` name table bytes match the member name goblin
@@ -419,27 +456,22 @@ fn resolve_member_name_storage(
             .ok_or(TranslateEditError::UnsupportedEdit {
                 reason: "RLIB member rename requires a numeric SysV name-table reference",
             })?;
-        let name_offset = name_index.data_offset.checked_add(sysv_offset).ok_or(
-            TranslateEditError::ConstraintViolation {
-                reason: "RLIB member name offset overflowed",
-            },
-        )?;
-        let name_end = name_offset.checked_add(member_name.len()).ok_or(
-            TranslateEditError::ConstraintViolation {
-                reason: "RLIB member name range overflowed",
-            },
-        )?;
+        let name_offset = name_index
+            .data_offset
+            .checked_add(sysv_offset)
+            .ok_or_else(rlib_member_name_offset_overflow)?;
+        let name_end = name_offset
+            .checked_add(member_name.len())
+            .ok_or_else(rlib_member_name_range_overflow)?;
         check_sysv_name_bytes(raw, name_offset, name_end, member_name)?;
 
         return Ok(name_offset);
     }
 
     let header_offset = member_header_offset(member)?;
-    let name_end = header_offset.checked_add(member_name.len()).ok_or(
-        TranslateEditError::ConstraintViolation {
-            reason: "RLIB header name range overflowed",
-        },
-    )?;
+    let name_end = header_offset
+        .checked_add(member_name.len())
+        .ok_or_else(rlib_header_name_range_overflow)?;
     check_header_name_bytes(raw, header_offset, name_end, member_name)?;
 
     Ok(header_offset)

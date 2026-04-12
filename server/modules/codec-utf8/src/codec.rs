@@ -127,16 +127,10 @@ impl ContentCodec for Utf8Codec {
                         .ok_or(TranslateEditError::ConstraintViolation {
                             reason: "utf-8 codec: end position out of range",
                         })?;
-                let start_raw = normalized_offset_to_raw_offset(&raw, start_decoded).ok_or(
-                    TranslateEditError::ConstraintViolation {
-                        reason: "utf-8 codec: start offset does not map to raw bytes",
-                    },
-                )?;
-                let end_raw = normalized_offset_to_raw_offset(&raw, end_decoded).ok_or(
-                    TranslateEditError::ConstraintViolation {
-                        reason: "utf-8 codec: end offset does not map to raw bytes",
-                    },
-                )?;
+                let start_raw = normalized_offset_to_raw_offset(&raw, start_decoded)
+                    .ok_or_else(offset_start_mapping_error)?;
+                let end_raw = normalized_offset_to_raw_offset(&raw, end_decoded)
+                    .ok_or_else(offset_end_mapping_error)?;
                 if start_raw > end_raw {
                     return Err(TranslateEditError::ConstraintViolation {
                         reason: "utf-8 codec: start offset exceeds end offset",
@@ -190,6 +184,31 @@ pub(crate) fn encode_fragment(content: &str, metadata: &CodecMetadata) -> Vec<u8
     bytes.extend_from_slice(text.as_bytes());
 
     bytes
+}
+
+/// Error factory for a start-offset mapping failure in `translate_edit`.
+///
+/// `normalized_offset_to_raw_offset` only returns `None` when a decoded offset
+/// falls inside a multi-byte UTF-8 sequence boundary — which cannot happen for
+/// offsets produced by `Utf8LineIndex::to_bytes`, since those are always
+/// character-aligned.  This path is therefore genuinely unreachable in
+/// production; the helper is extracted so that `coverage(off)` applies only to
+/// the dead code rather than to the surrounding logic.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn offset_start_mapping_error() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "utf-8 codec: start offset does not map to raw bytes",
+    }
+}
+
+/// Error factory for an end-offset mapping failure in `translate_edit`.
+///
+/// See [`offset_start_mapping_error`] for the reachability argument.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn offset_end_mapping_error() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "utf-8 codec: end offset does not map to raw bytes",
+    }
 }
 
 fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {

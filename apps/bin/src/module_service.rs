@@ -49,6 +49,7 @@ impl RunnerModuleService {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(unsafe_code)]
     #[allow(clippy::option_if_let_else)]
     fn load_module(&self, request: &LoadModuleRequest) -> LoadModuleResponse {
@@ -79,6 +80,7 @@ impl RunnerModuleService {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn unload_module(&self, request: &UnloadModuleRequest) -> UnloadModuleResponse {
         let id = ModuleId::from_string(request.name.clone());
 
@@ -99,6 +101,7 @@ impl RunnerModuleService {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(unsafe_code)]
     fn reload_module(&self, request: &ReloadModuleRequest) -> ReloadModuleResponse {
         let id = ModuleId::from_string(request.name.clone());

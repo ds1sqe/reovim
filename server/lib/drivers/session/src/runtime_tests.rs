@@ -6736,3 +6736,34 @@ fn test_delete_buffer_without_text_registry() {
     assert!(result.is_ok(), "delete_buffer should succeed without TextBufferRegistry");
     assert_eq!(kernel.buffers.count(), 1);
 }
+
+// =========================================================================
+// BufferApi: buffer_write_to — SessionRuntime override (lines 922-931)
+// =========================================================================
+
+#[test]
+fn test_buffer_write_to_success() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("hello world");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    let mut output: Vec<u8> = Vec::new();
+    harness.with_runtime(|runtime| {
+        runtime.buffer_write_to(buffer_id, &mut output).unwrap();
+    });
+    assert_eq!(String::from_utf8(output).unwrap(), "hello world");
+}
+
+#[test]
+fn test_buffer_write_to_not_found() {
+    use crate::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    let fake_id = BufferId::new();
+
+    let mut output: Vec<u8> = Vec::new();
+    let result = harness.with_runtime(|runtime| runtime.buffer_write_to(fake_id, &mut output));
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+}

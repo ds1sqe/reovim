@@ -669,6 +669,61 @@ fn peer_stale_propagation_via_inode_table() {
 }
 
 // ---------------------------------------------------------------------------
+// translate_edit: decompression and parse failure paths
+
+#[test]
+fn translate_edit_decompression_failure_returns_internal_error() {
+    // Pass non-gzip data with a valid tree path so we reach the decompression
+    // call (line 292 in codec.rs).  The data is not valid gzip, so
+    // `decompress_gzip` will fail and `translate_edit` must return
+    // `TranslateEditError::Internal`.
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(b"this is not gzip data at all");
+    let edit = DecodedEdit::Tree {
+        path: tree_path("any_member", "name"),
+        op: TreeOp::new(TarGzTreeOp::RenameMember {
+            new_name: "any_member".to_string(),
+        }),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::Internal { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_invalid_tar_inside_gzip_returns_internal_error() {
+    // Produce valid gzip bytes whose decompressed content is not a valid tar
+    // stream, so `parse_tar_members` fails (line 295 in codec.rs).
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(b"not a valid tar archive at all")
+        .unwrap();
+    let bad_tar_gz = encoder.finish().unwrap();
+
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(bad_tar_gz);
+    let edit = DecodedEdit::Tree {
+        path: tree_path("any_member", "name"),
+        op: TreeOp::new(TarGzTreeOp::RenameMember {
+            new_name: "any_member".to_string(),
+        }),
+    };
+
+    // parse_tar_members on garbage bytes may succeed with 0 members or fail
+    // with an error.  Either way translate_edit must not panic.
+    // When it fails, it must be an Internal error.
+    match codec.translate_edit(&bytes, &edit) {
+        Err(TranslateEditError::Internal { .. } | TranslateEditError::MalformedPath { .. }) => {
+            // parse_tar_members on garbage bytes may succeed with 0 members
+            // (→ MalformedPath: member not found) or fail (→ Internal).
+        }
+        other => panic!("unexpected result: {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 
 #[test]

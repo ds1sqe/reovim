@@ -389,6 +389,48 @@ fn translate_edit_end_out_of_range() {
     ));
 }
 
+#[test]
+fn translate_edit_column_at_line_end() {
+    // Exercises codec.rs line 191:
+    //   `(chars_seen == pos.column).then_some(line_end)`
+    //
+    // This branch executes when `pos.column` equals the character count
+    // of the line — i.e. the edit position sits exactly at the end of the
+    // line (past the last char, but still on that line).  Existing tests
+    // all target positions strictly inside the line, so this branch was
+    // previously unreachable.
+    let codec = CsvCodec::new(b',', CSV);
+
+    // A single-value CSV.  `format_table` pads to max(len, 3) and appends
+    // '\n', so "hello" decodes to "hello\n".  The line body has 5 chars.
+    let csv_bytes = b"hello\n";
+    let decoded = codec.decode(csv_bytes).unwrap();
+    let line_len = decoded
+        .content
+        .lines()
+        .next()
+        .expect("decoded content has at least one line")
+        .chars()
+        .count();
+
+    // Sanity: `line_len` must be > 0 for the loop to exhaust before
+    // matching, so `then_some` is actually evaluated.
+    assert!(line_len > 0, "expected non-empty line in decoded form");
+
+    let bytes = HeapByteSource::new(csv_bytes.as_slice());
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, line_len),
+        end: Position::new(0, line_len),
+        replacement: String::new(),
+    };
+
+    // The result must be Ok — a no-op insertion at end-of-line is valid.
+    let result = codec
+        .translate_edit(&bytes, &edit)
+        .expect("end-of-line position is valid");
+    assert!(result.is_some(), "expected a byte edit to be produced");
+}
+
 fn position_at_byte_index(text: &str, target: usize) -> Position {
     let mut line = 0usize;
     let mut column = 0usize;

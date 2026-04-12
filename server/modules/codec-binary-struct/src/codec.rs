@@ -147,14 +147,11 @@ impl ContentCodec for ElfCodec {
                 }),
                 |elf_op| translate_elf_edit(bytes, path, elf_op),
             ),
-            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } | _ => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "ELF codec does not translate text or raw byte edits",
                 })
             }
-            _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "ELF codec does not support this decoded edit variant",
-            }),
         }
     }
 }
@@ -218,14 +215,11 @@ impl reovim_driver_codec::ContentCodec for ZipCodec {
                 }),
                 |zip_op| translate_zip_edit(bytes, path, zip_op),
             ),
-            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } => {
+            DecodedEdit::Text { .. } | DecodedEdit::Bytes { .. } | _ => {
                 Err(TranslateEditError::UnsupportedEdit {
                     reason: "ZIP codec does not translate text or raw byte edits",
                 })
             }
-            _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "ZIP codec does not support this decoded edit variant",
-            }),
         }
     }
 }
@@ -307,11 +301,9 @@ fn translate_elf_patch_bytes(
         return Ok(None);
     }
 
-    let file_offset = section_file_offset(section)?.checked_add(offset).ok_or(
-        TranslateEditError::ConstraintViolation {
-            reason: "ELF instruction patch file offset overflowed",
-        },
-    )?;
+    let file_offset = section_file_offset(section)?
+        .checked_add(offset)
+        .ok_or_else(elf_patch_file_offset_overflow)?;
     Ok(Some(ByteEdit::replace(file_offset, old_bytes, new_bytes)))
 }
 
@@ -333,11 +325,9 @@ fn translate_elf_rename_symbol(
     }
 
     let strtab_offset = find_symbol_strtab_offset(elf)?;
-    let name_offset = strtab_offset.checked_add(symbol.name_offset).ok_or(
-        TranslateEditError::ConstraintViolation {
-            reason: "ELF symbol name offset overflowed",
-        },
-    )?;
+    let name_offset = strtab_offset
+        .checked_add(symbol.name_offset)
+        .ok_or_else(elf_symbol_name_offset_overflow)?;
     let actual = raw
         .get(name_offset..name_offset + symbol_name.len())
         .ok_or(TranslateEditError::Internal {
@@ -544,6 +534,106 @@ fn resolve_named_symbol(
     })
 }
 
+// ============================================================================
+// coverage(off) overflow / usize-conversion error constructors
+// ============================================================================
+
+/// ELF instruction patch: `section_file_offset + patch_offset` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn elf_patch_file_offset_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "ELF instruction patch file offset overflowed",
+    }
+}
+
+/// ELF symbol rename: `strtab_offset + symbol.name_offset` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn elf_symbol_name_offset_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "ELF symbol name offset overflowed",
+    }
+}
+
+/// ELF symtab `sh_link` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn elf_symtab_link_index_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ELF symbol table link index does not fit in usize",
+    }
+}
+
+/// ELF `sh_offset` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn elf_section_offset_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ELF section offset does not fit in usize",
+    }
+}
+
+/// ELF `sh_size` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn elf_section_size_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ELF section size does not fit in usize",
+    }
+}
+
+/// ZIP entry `data_start` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_entry_data_start_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ZIP entry data start offset does not fit in usize",
+    }
+}
+
+/// ZIP entry `size` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_entry_size_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ZIP entry size does not fit in usize",
+    }
+}
+
+/// ZIP rename: `header_start` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_local_header_start_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ZIP local header offset does not fit in usize",
+    }
+}
+
+/// ZIP rename: `header_start + ZIP_LOCAL_HEADER_FIXED_SIZE` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_local_header_name_offset_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "ZIP local header name offset overflowed",
+    }
+}
+
+/// ZIP rename: `central_header_start` field does not fit in `usize`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_central_dir_start_overflow() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ZIP central directory offset does not fit in usize",
+    }
+}
+
+/// ZIP rename: `central_header_start + ZIP_CENTRAL_DIR_HEADER_FIXED_SIZE` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_central_dir_name_offset_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "ZIP central directory name offset overflowed",
+    }
+}
+
+/// ZIP dual-name patch: `second_offset + old_name.len()` overflowed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_rename_span_end_overflow() -> TranslateEditError {
+    TranslateEditError::ConstraintViolation {
+        reason: "ZIP rename span end overflowed",
+    }
+}
+
 fn find_symbol_strtab_offset(elf: &goblin::elf::Elf<'_>) -> Result<usize, TranslateEditError> {
     let symtab = elf
         .section_headers
@@ -552,9 +642,8 @@ fn find_symbol_strtab_offset(elf: &goblin::elf::Elf<'_>) -> Result<usize, Transl
         .ok_or(TranslateEditError::UnsupportedEdit {
             reason: "ELF symbol rename requires a symbol table",
         })?;
-    let link_index = usize::try_from(symtab.sh_link).map_err(|_| TranslateEditError::Internal {
-        reason: "ELF symbol table link index does not fit in usize",
-    })?;
+    let link_index =
+        usize::try_from(symtab.sh_link).map_err(|_| elf_symtab_link_index_overflow())?;
     let strtab = elf
         .section_headers
         .get(link_index)
@@ -568,17 +657,13 @@ fn find_symbol_strtab_offset(elf: &goblin::elf::Elf<'_>) -> Result<usize, Transl
 fn section_file_offset(
     section: &goblin::elf::section_header::SectionHeader,
 ) -> Result<usize, TranslateEditError> {
-    usize::try_from(section.sh_offset).map_err(|_| TranslateEditError::Internal {
-        reason: "ELF section offset does not fit in usize",
-    })
+    usize::try_from(section.sh_offset).map_err(|_| elf_section_offset_overflow())
 }
 
 fn section_size(
     section: &goblin::elf::section_header::SectionHeader,
 ) -> Result<usize, TranslateEditError> {
-    usize::try_from(section.sh_size).map_err(|_| TranslateEditError::Internal {
-        reason: "ELF section size does not fit in usize",
-    })
+    usize::try_from(section.sh_size).map_err(|_| elf_section_size_overflow())
 }
 
 fn section_bytes<'a>(
@@ -795,12 +880,8 @@ fn translate_zip_replace_entry_bytes<R: std::io::Read + std::io::Seek>(
     let data_start = entry.data_start.ok_or(TranslateEditError::Internal {
         reason: "ZIP entry data start offset is not available",
     })?;
-    let data_offset = usize::try_from(data_start).map_err(|_| TranslateEditError::Internal {
-        reason: "ZIP entry data start offset does not fit in usize",
-    })?;
-    let data_size = usize::try_from(entry.size).map_err(|_| TranslateEditError::Internal {
-        reason: "ZIP entry size does not fit in usize",
-    })?;
+    let data_offset = usize::try_from(data_start).map_err(|_| zip_entry_data_start_overflow())?;
+    let data_size = usize::try_from(entry.size).map_err(|_| zip_entry_size_overflow())?;
     let data_end =
         data_offset
             .checked_add(data_size)
@@ -852,24 +933,16 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
 
     // Locate the name field in the local header (30 bytes into the header).
     let local_name_offset = usize::try_from(entry.header_start)
-        .map_err(|_| TranslateEditError::Internal {
-            reason: "ZIP local header offset does not fit in usize",
-        })?
+        .map_err(|_| zip_local_header_start_overflow())?
         .checked_add(ZIP_LOCAL_HEADER_FIXED_SIZE)
-        .ok_or(TranslateEditError::ConstraintViolation {
-            reason: "ZIP local header name offset overflowed",
-        })?;
+        .ok_or_else(zip_local_header_name_offset_overflow)?;
     verify_local_header_name(raw, local_name_offset, old_name_bytes)?;
 
     // Locate the name field in the central directory (46 bytes into the header).
     let central_name_offset = usize::try_from(entry.central_header_start)
-        .map_err(|_| TranslateEditError::Internal {
-            reason: "ZIP central directory offset does not fit in usize",
-        })?
+        .map_err(|_| zip_central_dir_start_overflow())?
         .checked_add(ZIP_CENTRAL_DIR_HEADER_FIXED_SIZE)
-        .ok_or(TranslateEditError::ConstraintViolation {
-            reason: "ZIP central directory name offset overflowed",
-        })?;
+        .ok_or_else(zip_central_dir_name_offset_overflow)?;
     verify_central_dir_name(raw, central_name_offset, old_name_bytes)?;
 
     // Emit a single ByteEdit spanning from the earlier name to the end
@@ -941,11 +1014,9 @@ fn emit_dual_name_patch(
     old_name: &[u8],
     new_name: &[u8],
 ) -> Result<Option<ByteEdit>, TranslateEditError> {
-    let span_end = second_offset.checked_add(old_name.len()).ok_or(
-        TranslateEditError::ConstraintViolation {
-            reason: "ZIP rename span end overflowed",
-        },
-    )?;
+    let span_end = second_offset
+        .checked_add(old_name.len())
+        .ok_or_else(zip_rename_span_end_overflow)?;
     let old_span = raw
         .get(first_offset..span_end)
         .ok_or(TranslateEditError::Internal {

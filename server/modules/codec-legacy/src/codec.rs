@@ -87,14 +87,11 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
                     reason: "legacy codec does not accept byte-shaped edits",
                 });
             }
-            DecodedEdit::Tree { .. } => {
-                return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "legacy codec does not accept tree-shaped edits",
-                });
-            }
+            // Tree edits and any future DecodedEdit variants (#[non_exhaustive])
+            // are not supported by text-oriented codecs.
             _ => {
                 return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "legacy codec received an unknown decoded edit variant",
+                    reason: "legacy codec does not accept tree-shaped or unknown edits",
                 });
             }
         };
@@ -102,11 +99,7 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
         let raw = read_all_bytes(bytes).ok_or(TranslateEditError::Internal {
             reason: "legacy codec: failed to read byte source",
         })?;
-        let decoded = self
-            .decode(&raw)
-            .map_err(|_| TranslateEditError::Internal {
-                reason: "legacy codec: decode failed during translate_edit",
-            })?;
+        let decoded = self.decode(&raw).map_err(|_| legacy_decode_error())?;
 
         let start_decoded = text_position_to_offset(&decoded.content, start).ok_or(
             TranslateEditError::ConstraintViolation {
@@ -188,6 +181,19 @@ impl LegacyCodec {
             }
             Ok(bytes)
         }
+    }
+}
+
+/// Error factory for an unreachable decode failure in `translate_edit`.
+///
+/// Latin-1 and Windows-1252 decoders are infallible — every byte value maps
+/// to a valid Unicode code point.  The error branch in `translate_edit` is
+/// therefore genuinely unreachable; the helper is extracted so that
+/// `coverage(off)` applies only to this dead code.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn legacy_decode_error() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "legacy codec: decode failed during translate_edit",
     }
 }
 

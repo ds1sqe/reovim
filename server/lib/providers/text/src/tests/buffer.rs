@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use {
     super::*,
     reovim_domain_text::{Position, TextGeometry},
-    reovim_kernel::api::v1::BufferId,
+    reovim_kernel::api::v1::{BufferId, StorageCapabilities, StorageOps},
 };
 
 // === Construction ===
@@ -858,4 +858,56 @@ fn storage_read_chunk_within_bounds() {
     let buf = Buffer::from_string("hello world");
     let chunk = buf.read_chunk(6, 5);
     assert_eq!(chunk, b"world");
+}
+
+// === StorageOps trait delegation (lines 464-466, 502-505, 544-546) ===
+
+#[test]
+fn storage_capabilities_returns_heap() {
+    let buf = Buffer::from_string("hello");
+    assert_eq!(StorageOps::capabilities(&buf), StorageCapabilities::HEAP);
+}
+
+#[test]
+fn storage_append_bytes_to_non_empty() {
+    let mut buf = Buffer::from_string("hello");
+    StorageOps::append_bytes(&mut buf, b" world").unwrap();
+    assert_eq!(buf.content(), "hello world");
+}
+
+#[test]
+fn storage_append_bytes_to_empty() {
+    let mut buf = Buffer::new();
+    StorageOps::append_bytes(&mut buf, b"hello").unwrap();
+    assert_eq!(buf.content(), "hello");
+}
+
+#[test]
+fn storage_read_chunk_via_trait_valid_range() {
+    let buf = Buffer::from_string("hello world");
+    let chunk = StorageOps::read_chunk(&buf, 0, 5);
+    assert_eq!(&chunk, b"hello");
+}
+
+#[test]
+fn storage_read_chunk_via_trait_past_end() {
+    let buf = Buffer::from_string("hello");
+    let chunk = StorageOps::read_chunk(&buf, 100, 5);
+    assert!(chunk.is_empty());
+}
+
+#[test]
+fn storage_read_chunk_via_trait_clamped() {
+    let buf = Buffer::from_string("hello");
+    let chunk = StorageOps::read_chunk(&buf, 3, 100);
+    assert_eq!(&chunk, b"lo");
+}
+
+// === BufferOps coverage ===
+
+#[test]
+fn buffer_ops_content_bytes() {
+    use super::BufferOps;
+    let buf = Buffer::from_string("hello\nworld");
+    assert_eq!(BufferOps::content_bytes(&buf), b"hello\nworld");
 }
