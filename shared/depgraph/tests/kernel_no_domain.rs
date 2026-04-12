@@ -3,8 +3,7 @@
 //! compile-time boundary for the three-layer event model: kernel
 //! hosts providers; kernel never reaches up into domain code.
 
-use cargo_metadata::MetadataCommand;
-use std::collections::HashSet;
+use {cargo_metadata::MetadataCommand, std::collections::HashSet};
 
 #[test]
 fn kernel_has_no_transitive_domain_dependency() {

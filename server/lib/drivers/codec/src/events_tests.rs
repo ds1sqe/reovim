@@ -1,7 +1,9 @@
 //! Tests for codec driver events.
 
-use super::*;
-use reovim_kernel::api::v1::{events::kernel::priority, BufferId, Event};
+use {
+    super::*,
+    reovim_kernel::api::v1::{BufferId, Event, events::kernel::priority},
+};
 
 #[test]
 fn file_type_changed_construction() {

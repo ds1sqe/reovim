@@ -49,10 +49,9 @@ pub use {
     },
     kernel::{
         BufferBytesEdited, BufferClosed, BufferCreated, BufferModified, BufferSaved,
-        BufferSwitched, ChangeSource, CursorMoved, FileOpened, FileTypeChanged,
-        LayoutChangeKind, LayoutChanged, ModeChanged, Modification, OptionChanged, OptionReset,
-        Shutdown, SplitDirection, ViewportScrolled, WindowClosed, WindowCreated, WindowFocused,
-        priority,
+        BufferSwitched, ChangeSource, CursorMoved, FileOpened, FileTypeChanged, LayoutChangeKind,
+        LayoutChanged, ModeChanged, Modification, OptionChanged, OptionReset, Shutdown,
+        SplitDirection, ViewportScrolled, WindowClosed, WindowCreated, WindowFocused, priority,
     },
     key::{ClientId, KeyPressEvent, SessionId},
 };

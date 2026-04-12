@@ -1,7 +1,6 @@
 //! Tests for text domain events.
 
-use super::*;
-use reovim_kernel::api::v1::events::kernel::priority;
+use {super::*, reovim_kernel::api::v1::events::kernel::priority};
 
 // ── TextBufferModified ──────────────────────────────────────────────
 

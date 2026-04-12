@@ -4,7 +4,7 @@
 //! content-type lifecycle.  These are NOT domain events — they belong
 //! to the codec driver because file type is a codec-factory concern.
 
-use reovim_kernel::api::v1::{events::kernel::priority, BufferId, Event};
+use reovim_kernel::api::v1::{BufferId, Event, events::kernel::priority};
 
 /// A buffer's detected content type changed.
 ///

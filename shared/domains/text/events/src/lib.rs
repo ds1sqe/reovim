@@ -14,7 +14,7 @@
 //! tree-sitter can correlate byte ranges with point ranges atomically
 //! in one handler callback.
 
-use reovim_kernel::api::v1::{events::kernel::priority, Event};
+use reovim_kernel::api::v1::{Event, events::kernel::priority};
 
 /// Re-export kernel identifiers so consumers don't need a direct kernel dep
 /// just for `BufferId` / `WindowId`.
