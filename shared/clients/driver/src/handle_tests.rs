@@ -473,7 +473,7 @@ fn handle_chrome_position_static() {
 fn handle_chrome_requested_size_static() {
     let module = Box::new(HandleTestModule::new());
     let handle = ClientModuleHandle::from_static(module);
-    assert_eq!(handle.chrome_requested_size(), 3);
+    assert_eq!(handle.chrome_requested_size(&MockCaps), 3);
 }
 
 #[test]

@@ -205,10 +205,8 @@ impl ClientModule for DynamicClientModule {
         self.handle.chrome_position()
     }
 
-    fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
-        // Handle's chrome_requested_size does not currently forward caps
-        // through FFI (the sized integer return avoids a complex FFI type).
-        self.handle.chrome_requested_size()
+    fn chrome_requested_size(&self, caps: &dyn PlatformCapabilities) -> u16 {
+        self.handle.chrome_requested_size(caps)
     }
 
     fn chrome_priority(&self) -> u16 {

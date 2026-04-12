@@ -905,36 +905,15 @@ pub fn declare_client_module(input: TokenStream) -> TokenStream {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn reovim_client_module_chrome_requested_size(
             module: *mut ::std::ffi::c_void,
+            caps: *const ::reovim_client_driver::ffi::FfiPlatformCaps,
         ) -> u16 {
             let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                 let module = &*(module as *const #module_type);
                 use ::reovim_client_driver::ClientModule;
-                // Use a minimal NullCaps for the caps parameter. Dynamic modules
-                // should use capabilities cached from init().
-                struct NullCaps;
-                impl ::reovim_client_driver::PlatformCapabilities for NullCaps {
-                    fn rendering_model(&self) -> ::reovim_client_driver::RenderingModel {
-                        ::reovim_client_driver::RenderingModel::CellGrid
-                    }
-                    fn grid_size(&self) -> Option<(u16, u16)> { None }
-                    fn color_depth(&self) -> ::reovim_client_driver::ColorDepth {
-                        ::reovim_client_driver::ColorDepth::TrueColor
-                    }
-                    fn pixel_size(&self) -> Option<(u32, u32)> { None }
-                    fn reliable_unicode_width(&self) -> bool { true }
-                    fn dark_mode(&self) -> bool { false }
-                    fn smooth_scroll(&self) -> bool { false }
-                    fn pointer_events(&self) -> bool { false }
-                    fn touch_input(&self) -> bool { false }
-                    fn haptic(&self) -> bool { false }
-                    fn safe_area(&self) -> ::reovim_client_driver::Insets {
-                        ::reovim_client_driver::Insets::ZERO
-                    }
-                    fn has_focus(&self) -> bool { true }
-                    fn clipboard_available(&self) -> bool { false }
-                    fn screen_reader_active(&self) -> bool { false }
-                }
-                module.chrome_requested_size(&NullCaps)
+                let caps_impl = ::reovim_client_driver::ffi::FfiCapsImpl::new(
+                    unsafe { &*caps }
+                );
+                module.chrome_requested_size(&caps_impl)
             }));
             result.unwrap_or(1)
         }

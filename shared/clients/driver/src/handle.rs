@@ -222,7 +222,8 @@ pub type ClientHasAnnotationsFn = unsafe extern "C" fn(*mut c_void) -> i32;
 pub type ClientChromePositionFn = unsafe extern "C" fn(*mut c_void) -> i32;
 
 /// FFI function: `chrome_requested_size` trampoline.
-pub type ClientChromeRequestedSizeFn = unsafe extern "C" fn(*mut c_void) -> u16;
+pub type ClientChromeRequestedSizeFn =
+    unsafe extern "C" fn(*mut c_void, *const FfiPlatformCaps) -> u16;
 
 /// FFI function: `chrome_priority` trampoline.
 pub type ClientChromePriorityFn = unsafe extern "C" fn(*mut c_void) -> u16;
@@ -1134,21 +1135,17 @@ impl ClientModuleHandle {
     }
 
     /// Requested size (height for Top/Bottom, width for Left/Right).
-    ///
-    /// For dynamic modules, the `caps` parameter is not passed through FFI.
-    /// Dynamic modules should use capabilities cached from `init()`.
     #[must_use]
-    pub fn chrome_requested_size(&self) -> u16 {
+    pub fn chrome_requested_size(&self, caps: &dyn PlatformCapabilities) -> u16 {
         if let Some(module) = &self.static_module {
-            // Static modules get no caps here either -- consistent interface.
-            // TUI compositor passes caps separately when needed.
-            return module.chrome_requested_size(&NullCaps);
+            return module.chrome_requested_size(caps);
         }
         if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi)
             && let Some(f) = ffi.chrome_requested_size
         {
-            // SAFETY: ptr is from entry()
-            return unsafe { (f)(ptr) };
+            let ffi_caps = FfiPlatformCaps::snapshot(caps);
+            // SAFETY: ptr is from entry(); ffi_caps outlives the call.
+            return unsafe { (f)(ptr, &raw const ffi_caps) };
         }
         1
     }
@@ -1495,65 +1492,6 @@ impl ClientModuleHandle {
     }
 }
 
-// =============================================================================
-// NullCaps (minimal PlatformCapabilities for chrome_requested_size dispatch)
-// =============================================================================
-
-/// Minimal `PlatformCapabilities` stub used when dispatching
-/// `chrome_requested_size` through the handle (where no caps are available).
-///
-/// The TUI compositor provides real capabilities when calling `chrome_render`.
-/// This stub only appears in the `chrome_requested_size()` path where the
-/// handle does not carry a caps reference.
-struct NullCaps;
-
-// NullCaps is only constructed inside `chrome_requested_size()`. Its methods
-// are never called in tests because mocks ignore the caps argument.
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl crate::traits::PlatformCapabilities for NullCaps {
-    fn rendering_model(&self) -> crate::RenderingModel {
-        crate::RenderingModel::CellGrid
-    }
-    fn grid_size(&self) -> Option<(u16, u16)> {
-        None
-    }
-    fn color_depth(&self) -> crate::ColorDepth {
-        crate::ColorDepth::TrueColor
-    }
-    fn pixel_size(&self) -> Option<(u32, u32)> {
-        None
-    }
-    fn reliable_unicode_width(&self) -> bool {
-        true
-    }
-    fn dark_mode(&self) -> bool {
-        false
-    }
-    fn smooth_scroll(&self) -> bool {
-        false
-    }
-    fn pointer_events(&self) -> bool {
-        false
-    }
-    fn touch_input(&self) -> bool {
-        false
-    }
-    fn haptic(&self) -> bool {
-        false
-    }
-    fn safe_area(&self) -> crate::Insets {
-        crate::Insets::ZERO
-    }
-    fn has_focus(&self) -> bool {
-        true
-    }
-    fn clipboard_available(&self) -> bool {
-        false
-    }
-    fn screen_reader_active(&self) -> bool {
-        false
-    }
-}
 
 // Dynamic cleanup path requires a real .so module.
 #[cfg_attr(coverage_nightly, coverage(off))]
