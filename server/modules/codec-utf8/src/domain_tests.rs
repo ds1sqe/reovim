@@ -557,6 +557,41 @@ fn large_replace_preserves_consistency() {
 }
 
 #[test]
+fn decode_bom_plus_invalid_utf8_reports_bom_adjusted_offset() {
+    use reovim_driver_codec::Decode;
+
+    let codec = Utf8Codec::new();
+    // BOM (3 bytes) followed by valid ASCII, then invalid byte.
+    let mut raw = Vec::from(b"\xEF\xBB\xBFhi" as &[u8]);
+    raw.push(0xFF); // invalid UTF-8
+
+    let result = <Utf8Codec as Decode<Text>>::decode(&codec, &raw);
+    assert!(result.is_err(), "BOM + invalid UTF-8 should fail");
+    let err = result.err().unwrap();
+    // The error offset must include the BOM length (3), so it should be 5
+    // (the position of 0xFF in the original byte stream).
+    let msg = format!("{err:?}");
+    assert!(msg.contains('5'), "offset should include BOM: {msg}");
+}
+
+#[test]
+fn notify_same_length_replacement_preserves_line_starts() {
+    // MC/DC: new_len == old_len → skip offset adjustment entirely
+    let mut idx = Utf8LineIndex::new();
+    idx.build(b"aaa\nbbb\nccc");
+
+    // Replace "bbb" with "zzz" (same length, no offset change)
+    let offset = idx.to_bytes(&TextPosition::new(1, 0)).unwrap();
+    assert_eq!(offset, 4);
+    idx.notify(&ByteEdit::replace(offset, b"bbb", b"zzz"));
+
+    // Line starts should be unchanged
+    assert_eq!(idx.to_bytes(&TextPosition::new(0, 0)), Some(0));
+    assert_eq!(idx.to_bytes(&TextPosition::new(1, 0)), Some(4));
+    assert_eq!(idx.to_bytes(&TextPosition::new(2, 0)), Some(8));
+}
+
+#[test]
 fn large_sequential_edits_stay_consistent() {
     let mut idx = Utf8LineIndex::new();
     idx.build(b"aaa\nbbb\nccc\nddd\neee");

@@ -127,6 +127,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **commands**: `:bd` / `:bdelete` now releases per-buffer state on close — previously `BdeleteCommand` bypassed `BufferApi::delete_buffer` and called `kernel.buffers.unregister()` directly, leaking `TextBufferRegistry` and `CodecSessionState` entries on every buffer close. Routing through `delete_buffer` also restores last-buffer protection (#740)
 - **commands**: `decode_file_content` returns an error when no buffer is active instead of silently dropping codec metadata — a later `:w` then fell back to a UTF-8 encode that corrupted binary files (#740)
 - **coverage**: MC/DC coverage pass — domain-text (line_index, motion engine), bench (large_file template expansion), kernel (byte_undo_log), VFS (mapped_file is_stale restructure), codec harness error paths, rlib classifier (#710)
+- **coverage**: MC/DC coverage pass — codec driver core (decode_streaming default, is_insertion/is_deletion MC/DC, MountId::from_raw, store partition_point restructure, state unmount_codec/list_mounts restructure), codec modules (cjk/csv/hex/utf8 translate_edit Tree/wildcard arm merge and error path tests), syntax driver (set_default_injection_language), format hook (TextBufferRegistry None path), module-loader registry (unload restructure) (#710)
 
 ## [0.14.4] - 2026-04-01
 

@@ -77,14 +77,11 @@ impl reovim_driver_codec::ContentCodec for CjkCodec {
                     reason: "cjk codec does not accept byte-shaped edits",
                 });
             }
-            DecodedEdit::Tree { .. } => {
-                return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "cjk codec does not accept tree-shaped edits",
-                });
-            }
+            // Tree edits and any future DecodedEdit variants (#[non_exhaustive])
+            // are not supported by text-oriented codecs.
             _ => {
                 return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "cjk codec received an unknown decoded edit variant",
+                    reason: "cjk codec only accepts text-shaped edits",
                 });
             }
         };

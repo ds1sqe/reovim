@@ -220,3 +220,39 @@ fn trait_object_works() {
     let result = codec.decode(b"test").unwrap();
     assert_eq!(result.content, "test");
 }
+
+#[test]
+fn decode_streaming_default_returns_none() {
+    use std::path::Path;
+
+    use reovim_driver_vfs::{FileMetadata, SeekFrom, VfsError};
+
+    struct DummyHandle;
+    impl reovim_driver_vfs::FileHandle for DummyHandle {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, VfsError> {
+            Ok(0)
+        }
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, VfsError> {
+            Ok(0)
+        }
+        fn seek(&mut self, _pos: SeekFrom) -> Result<u64, VfsError> {
+            Ok(0)
+        }
+        fn flush(&mut self) -> Result<(), VfsError> {
+            Ok(())
+        }
+        fn metadata(&self) -> Result<FileMetadata, VfsError> {
+            Err(VfsError::NotFound("dummy".into()))
+        }
+        fn path(&self) -> &Path {
+            Path::new("/dev/null")
+        }
+        fn position(&self) -> u64 {
+            0
+        }
+    }
+
+    let codec = MockCodec;
+    let mut handle = DummyHandle;
+    assert!(codec.decode_streaming(&mut handle, 1024).is_none());
+}

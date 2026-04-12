@@ -182,3 +182,92 @@ fn translate_edit_bytes_variant_is_not_supported() {
         Err(TranslateEditError::UnsupportedEdit { .. })
     ));
 }
+
+#[test]
+fn translate_edit_tree_variant_is_not_supported() {
+    use reovim_driver_codec::{TranslateEditError, TreeOp, TreePath};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOp;
+    reovim_driver_codec::impl_tree_op!(TestOp);
+
+    let codec = euc_kr_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Tree {
+        path: TreePath::root(),
+        op: TreeOp::new(TestOp),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_before_start_rejected() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = euc_kr_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 2),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_unencodable_replacement() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = euc_kr_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(0, 1),
+        replacement: "\u{1F389}".to_string(), // emoji
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_start_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = euc_kr_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(99, 0),
+        end: Position::new(99, 1),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = euc_kr_codec();
+    let bytes = HeapByteSource::new(b"abc");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(99, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}

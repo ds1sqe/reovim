@@ -299,6 +299,78 @@ fn translate_edit_bytes_variant_is_not_supported() {
     ));
 }
 
+#[test]
+fn translate_edit_tree_variant_is_not_supported() {
+    use reovim_driver_codec::{TranslateEditError, TreeOp, TreePath};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOp;
+    reovim_driver_codec::impl_tree_op!(TestOp);
+
+    let codec = CsvCodec::new(b',', CSV);
+    let bytes = HeapByteSource::new(b"name,age\n");
+    let edit = DecodedEdit::Tree {
+        path: TreePath::root(),
+        op: TreeOp::new(TestOp),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_before_start_rejected() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = CsvCodec::new(b',', CSV);
+    let bytes = HeapByteSource::new(b"name,age\nBob,30\n");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 4),
+        end: Position::new(0, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_start_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = CsvCodec::new(b',', CSV);
+    let bytes = HeapByteSource::new(b"name,age\nBob,30\n");
+    let edit = DecodedEdit::Text {
+        start: Position::new(99, 0),
+        end: Position::new(99, 1),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = CsvCodec::new(b',', CSV);
+    let bytes = HeapByteSource::new(b"name,age\nBob,30\n");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(99, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
 fn position_at_byte_index(text: &str, target: usize) -> Position {
     let mut line = 0usize;
     let mut column = 0usize;

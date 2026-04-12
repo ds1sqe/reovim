@@ -183,6 +183,21 @@ fn test_format_on_save_no_change_needed() {
 }
 
 #[test]
+fn test_format_on_save_no_text_buffer_registry() {
+    // MC/DC: services.get::<TextBufferRegistry>() returns None
+    let options = setup_options(true);
+    let services = Arc::new(ServiceRegistry::new());
+
+    let event = BufferWillSave {
+        buffer_id: 1,
+        path: "test.rs".to_string(),
+    };
+
+    // Should not panic — logs warning and returns early.
+    format_on_save(&event, &services, &options);
+}
+
+#[test]
 fn test_format_on_save_default_autoformat_enabled() {
     let (text_buffers, bid, eid) = setup_buffer("hello");
     let options = setup_options(true);

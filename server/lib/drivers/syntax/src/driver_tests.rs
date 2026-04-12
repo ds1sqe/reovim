@@ -128,3 +128,11 @@ fn test_syntax_driver_set_injection_depth_default() {
     driver.set_injection_depth(3);
     assert!(!driver.is_parsed());
 }
+
+#[test]
+fn test_syntax_driver_set_default_injection_language_default() {
+    let mut driver = TestDriver::new("test");
+    // Default is a no-op — should not panic
+    driver.set_default_injection_language("rust");
+    assert!(!driver.is_parsed());
+}

@@ -970,3 +970,52 @@ fn mount_decoded_defaults_to_summary_mode() {
     // mount_decoded uses Mount::new which defaults to Summary
     assert_eq!(mounts[0].mode, MountMode::Summary);
 }
+
+// ============================================================================
+// MC/DC coverage — inode_table_mut, apply_byte_edit None path, unmount paths
+// ============================================================================
+
+#[test]
+fn inode_table_mut_returns_mutable_reference() {
+    let mut state = CodecSessionState::new();
+    state.set_source(buf(1), b"hello".to_vec());
+    let table = state.inode_table_mut();
+    // Confirm it returns a live table referencing the source we just set.
+    assert!(table.file_inode(buf(1)).is_some());
+}
+
+#[test]
+fn apply_byte_edit_no_op_on_unknown_buffer() {
+    // MC/DC: file_inode returns None → skip edit silently
+    let mut state = CodecSessionState::new();
+    state.apply_byte_edit(buf(99), &ByteEdit::insert(0, b"x"));
+    // Should not panic — no-op when buffer has no source.
+}
+
+#[test]
+fn unmount_codec_skips_buffers_without_inode() {
+    // MC/DC: exercise the compound condition where file_inode returns None
+    // for a buffer that has an active_view entry but no source.
+    let mut state = CodecSessionState::new();
+    // Set an active view without setting source — creates active_view entry
+    // with no backing inode.
+    state.set_active_view(buf(5), "default".to_string());
+    // Also set up a real buffer with a mount so there's something to find.
+    // Both set_source and set_active_view needed so unmount_codec can find it.
+    state.set_source(buf(1), b"hi".to_vec());
+    state.set_active_view(buf(1), "default".to_string());
+    let store = multi_view_store();
+    let handle = state
+        .mount_codec(
+            &store,
+            buf(1),
+            &ContentType::new("text/multi"),
+            "default".to_string(),
+            MountMode::Summary,
+        )
+        .unwrap();
+    // Unmount the real mount — the loop must skip buf(5) (no inode)
+    // and find the mount on buf(1).
+    state.unmount_codec(handle.mount_id_for_tests()).unwrap();
+    assert!(state.list_mounts(buf(1)).is_empty());
+}

@@ -783,3 +783,20 @@ fn mount_with_mode_sets_structural() {
 fn mount_mode_default_is_summary() {
     assert_eq!(MountMode::default(), MountMode::Summary);
 }
+
+// ============================================================================
+// MountId::from_raw coverage
+// ============================================================================
+
+#[test]
+fn mount_id_from_raw_valid() {
+    let id = MountId::from_raw(42);
+    assert_eq!(id.as_u64(), 42);
+    assert_eq!(id.as_usize(), 42);
+}
+
+#[test]
+#[should_panic(expected = "mount id must be non-zero")]
+fn mount_id_from_raw_zero_panics() {
+    let _ = MountId::from_raw(0);
+}

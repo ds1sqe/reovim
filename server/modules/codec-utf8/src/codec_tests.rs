@@ -1,6 +1,7 @@
 //! Tests for UTF-8 codec.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
     reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::ByteEdit,
@@ -240,5 +241,77 @@ fn translate_edit_bytes_edit_is_not_supported() {
     assert!(matches!(
         codec.translate_edit(&bytes, &edit),
         Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_tree_variant_is_not_supported() {
+    use reovim_driver_codec::{TranslateEditError, TreeOp, TreePath};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOp;
+    reovim_driver_codec::impl_tree_op!(TestOp);
+
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello");
+    let edit = DecodedEdit::Tree {
+        path: TreePath::root(),
+        op: TreeOp::new(TestOp),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_start_exceeds_end_rejected() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 3),
+        end: Position::new(0, 1),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_start_position_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello");
+    let edit = DecodedEdit::Text {
+        start: Position::new(99, 0),
+        end: Position::new(99, 1),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_end_position_out_of_range() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = Utf8Codec::new();
+    let bytes = HeapByteSource::new("hello");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 0),
+        end: Position::new(99, 0),
+        replacement: "x".to_string(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
     ));
 }

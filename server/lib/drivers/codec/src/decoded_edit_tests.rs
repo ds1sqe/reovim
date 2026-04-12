@@ -274,6 +274,72 @@ fn deletion_detection() {
     assert!(edit.is_deletion());
 }
 
+// ============================================================================
+// MC/DC tests for is_insertion / is_deletion compound conditions
+// ============================================================================
+
+#[test]
+fn text_insertion_start_eq_end() {
+    // MC/DC: Text with start==end → is_insertion=true
+    let edit = DecodedEdit::Text {
+        start: reovim_domain_text::Position::new(1, 5),
+        end: reovim_domain_text::Position::new(1, 5),
+        replacement: "x".to_string(),
+    };
+    assert!(edit.is_insertion());
+    assert!(!edit.is_deletion());
+}
+
+#[test]
+fn text_replacement_is_not_deletion() {
+    // MC/DC: Text with start!=end and non-empty replacement → is_deletion=false
+    // (replacement.is_empty() is false, independently flipping the result)
+    let edit = DecodedEdit::Text {
+        start: reovim_domain_text::Position::new(0, 0),
+        end: reovim_domain_text::Position::new(0, 3),
+        replacement: "xyz".to_string(),
+    };
+    assert!(!edit.is_insertion());
+    assert!(!edit.is_deletion());
+}
+
+#[test]
+fn bytes_replacement_is_not_insertion() {
+    // MC/DC: Bytes with old_len>0 → is_insertion=false
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 2,
+        new_bytes: b"xy".to_vec(),
+    };
+    assert!(!edit.is_insertion());
+    assert!(!edit.is_deletion());
+}
+
+#[test]
+fn bytes_deletion() {
+    // MC/DC: Bytes with old_len>0 and empty new_bytes → is_deletion=true
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 3,
+        new_bytes: Vec::new(),
+    };
+    assert!(!edit.is_insertion());
+    assert!(edit.is_deletion());
+}
+
+#[test]
+fn bytes_empty_noop_is_not_deletion() {
+    // MC/DC: Bytes with old_len==0 and empty new_bytes
+    // is_deletion=false (old_len>0 is false, independently flipping result)
+    let edit = DecodedEdit::Bytes {
+        offset: 0,
+        old_len: 0,
+        new_bytes: Vec::new(),
+    };
+    assert!(edit.is_insertion());
+    assert!(!edit.is_deletion());
+}
+
 #[test]
 fn text_edit_variant_fields_used() {
     let edit = DecodedEdit::Text {

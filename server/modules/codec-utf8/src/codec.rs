@@ -157,11 +157,10 @@ impl ContentCodec for Utf8Codec {
             DecodedEdit::Bytes { .. } => Err(TranslateEditError::UnsupportedEdit {
                 reason: "utf-8 codec does not accept byte-shaped edits",
             }),
-            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
-                reason: "utf-8 codec does not accept tree-shaped edits",
-            }),
+            // Tree edits and any future DecodedEdit variants (#[non_exhaustive])
+            // are not supported by text-oriented codecs.
             _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "utf-8 codec received an unknown decoded edit variant",
+                reason: "utf-8 codec only accepts text-shaped edits",
             }),
         }
     }

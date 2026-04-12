@@ -434,10 +434,14 @@ impl CodecSessionState {
             .map(|&k| BufferId::from_raw(k))
             .collect();
         for buffer_id in bindings {
-            if let Some(inode_id) = self.inodes.file_inode(buffer_id)
-                && let Some(inode) = self.inodes.lookup_inode(inode_id)
-                && inode.mounts.contains_key(&mount_id)
-            {
+            let Some(inode_id) = self.inodes.file_inode(buffer_id) else {
+                continue;
+            };
+            let has_mount = self
+                .inodes
+                .lookup_inode(inode_id)
+                .is_some_and(|inode| inode.mounts.contains_key(&mount_id));
+            if has_mount {
                 let handle = MountHandle::new(inode_id, buffer_id, mount_id);
                 self.inodes.unmount(handle)?;
                 return Ok(());
@@ -462,22 +466,22 @@ impl CodecSessionState {
     /// Returns an empty vec if the buffer has no inode bound.
     #[must_use]
     pub fn list_mounts(&self, buffer_id: BufferId) -> Vec<MountInfo> {
-        let Some(inode_id) = self.inodes.file_inode(buffer_id) else {
-            return Vec::new();
-        };
-        let Some(inode) = self.inodes.lookup_inode(inode_id) else {
-            return Vec::new();
-        };
-        inode
-            .mounts
-            .iter()
-            .map(|(mount_id, mount)| MountInfo {
-                mount_id: *mount_id,
-                view_name: mount.name.clone(),
-                content_valid: mount.content_valid,
-                mode: mount.mode,
+        self.inodes
+            .file_inode(buffer_id)
+            .and_then(|inode_id| self.inodes.lookup_inode(inode_id))
+            .map(|inode| {
+                inode
+                    .mounts
+                    .iter()
+                    .map(|(mount_id, mount)| MountInfo {
+                        mount_id: *mount_id,
+                        view_name: mount.name.clone(),
+                        content_valid: mount.content_valid,
+                        mode: mount.mode,
+                    })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     // ── Index management (#740 D.2) ───────────────────────────────────────

@@ -120,9 +120,10 @@ impl ContentCodecFactoryStore {
         // (priority desc, sequence asc). Partition_point finds the
         // first entry that compares "after" the new one, which is
         // exactly where we want to insert.
-        let pos = guard.partition_point(|existing| {
-            existing.priority > entry.priority
-                || (existing.priority == entry.priority && existing.sequence < entry.sequence)
+        let pos = guard.partition_point(|existing| match existing.priority.cmp(&entry.priority) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Equal => existing.sequence < entry.sequence,
+            std::cmp::Ordering::Less => false,
         });
         guard.insert(pos, entry);
     }

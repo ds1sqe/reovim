@@ -338,13 +338,12 @@ impl ModuleRegistry {
             });
         }
 
-        // Call exit on module
-        if let Some(handle) = inner.loader.modules.get_mut(id) {
+        // Call exit on module (contains_key above guarantees presence, but
+        // remove returns Option for API safety — chain to avoid an untestable
+        // None branch).
+        if let Some(mut handle) = inner.loader.modules.remove(id) {
             handle.exit()?;
         }
-
-        // Remove from registry
-        inner.loader.modules.remove(id);
         inner.states.remove(id);
 
         // Remove from dependents map

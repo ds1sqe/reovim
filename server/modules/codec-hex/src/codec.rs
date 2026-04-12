@@ -91,11 +91,10 @@ impl ContentCodec for HexCodec {
             DecodedEdit::Text { .. } => Err(TranslateEditError::UnsupportedEdit {
                 reason: "hex codec does not accept text edits",
             }),
-            DecodedEdit::Tree { .. } => Err(TranslateEditError::UnsupportedEdit {
-                reason: "hex codec does not accept tree edits",
-            }),
+            // Tree edits and any future DecodedEdit variants (#[non_exhaustive])
+            // are not supported by byte-oriented codecs.
             _ => Err(TranslateEditError::UnsupportedEdit {
-                reason: "hex codec received an unknown decoded edit variant",
+                reason: "hex codec only accepts byte-shaped edits",
             }),
         }
     }

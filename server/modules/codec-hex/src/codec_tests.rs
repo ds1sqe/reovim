@@ -271,6 +271,44 @@ fn one_over_max_truncated() {
 }
 
 #[test]
+fn translate_edit_tree_variant_is_not_supported() {
+    use reovim_driver_codec::{TranslateEditError, TreeOp, TreePath};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOp;
+    reovim_driver_codec::impl_tree_op!(TestOp);
+
+    let codec = HexCodec::new();
+    let bytes = HeapByteSource::new(b"\x00\x01\x02");
+    let edit = DecodedEdit::Tree {
+        path: TreePath::root(),
+        op: TreeOp::new(TestOp),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_overflow_range_rejected() {
+    use reovim_driver_codec::TranslateEditError;
+    let codec = HexCodec::new();
+    let bytes = HeapByteSource::new(b"\x00\x01");
+    let edit = DecodedEdit::Bytes {
+        offset: usize::MAX,
+        old_len: 1,
+        new_bytes: b"\xFF".to_vec(),
+    };
+
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
 fn truncated_footer_format() {
     let codec = HexCodec::new();
     let total = MAX_HEX_INPUT_BYTES + 500_000;

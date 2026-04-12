@@ -91,14 +91,11 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
                     reason: "csv codec does not accept byte-shaped edits",
                 });
             }
-            DecodedEdit::Tree { .. } => {
-                return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "csv codec does not accept tree-shaped edits",
-                });
-            }
+            // Tree edits and any future DecodedEdit variants (#[non_exhaustive])
+            // are not supported by text-oriented codecs.
             _ => {
                 return Err(TranslateEditError::UnsupportedEdit {
-                    reason: "csv codec received an unknown decoded edit variant",
+                    reason: "csv codec only accepts text-shaped edits",
                 });
             }
         };
