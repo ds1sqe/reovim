@@ -105,6 +105,7 @@ pub enum HarnessError {
 
 /// Map an `EditError` surfaced by `InodeTable::apply_edit` back onto a
 /// `HarnessError` carrying the fixture identity.
+#[cfg_attr(coverage_nightly, coverage(off))]
 const fn classify_apply_error(
     fixture_name: &'static str,
     edit_index: usize,
@@ -135,6 +136,7 @@ const fn classify_apply_error(
 }
 
 /// Run the no-op + edit sequence against an already-mounted inode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn run_edit_sequence(
     fixture: &HarnessFixture,
     codec: &dyn ContentCodec,
@@ -185,6 +187,7 @@ fn run_edit_sequence(
 /// should surface the specific variant in test assertions so regressions
 /// in any of the four gates are visible.
 #[allow(clippy::missing_panics_doc)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn verify_codec(
     codec: &Arc<dyn ContentCodec>,
     fixture: &HarnessFixture,

@@ -63,13 +63,12 @@ impl ContentClassifier for RlibClassifier {
 
 /// Check if the file path has `.rlib` extension.
 fn has_rlib_extension(path: &str) -> bool {
-    let Some(ext) = std::path::Path::new(path).extension() else {
-        return false;
-    };
-    let Some(ext_str) = ext.to_str() else {
-        return false;
-    };
-    ext_str.eq_ignore_ascii_case("rlib")
+    // Input is `&str` (valid UTF-8), so `extension().to_str()` always
+    // succeeds.  Chain with `and_then` to avoid an untestable branch.
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("rlib"))
 }
 
 #[cfg(test)]

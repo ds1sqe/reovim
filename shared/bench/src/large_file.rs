@@ -23,6 +23,28 @@
 
 use std::io::{self, Write};
 
+/// Expand a single template tag into the output buffer.
+///
+/// Known tags: `id`, `octet`, `ms`, `pct`.  Unknown tags are silently
+/// ignored (defensive — all hardcoded templates use only known tags).
+fn expand_tag(buf: &mut String, tag: &str, seq: u64, octet: u64, ms: u64, pct: u64) {
+    match tag.split_once(':').map_or(tag, |(name, _)| name) {
+        "id" => {
+            let _ = std::fmt::Write::write_fmt(buf, format_args!("{seq:08}"));
+        }
+        "octet" => {
+            let _ = std::fmt::Write::write_fmt(buf, format_args!("{octet}"));
+        }
+        "ms" => {
+            let _ = std::fmt::Write::write_fmt(buf, format_args!("{ms:03}"));
+        }
+        "pct" => {
+            let _ = std::fmt::Write::write_fmt(buf, format_args!("{pct:02}"));
+        }
+        _ => {}
+    }
+}
+
 /// Write a repeating UTF-8 log file of approximately `target_bytes` bytes.
 ///
 /// Each line looks like:
@@ -68,22 +90,7 @@ pub fn write_utf8_log(w: &mut dyn Write, target_bytes: u64) -> io::Result<u64> {
 
         for segment in template.split('{') {
             if let Some((tag, rest)) = segment.split_once('}') {
-                match tag.split_once(':').map_or(tag, |(name, _)| name) {
-                    "id" => {
-                        // Zero-pad to 8 digits.
-                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{seq:08}"));
-                    }
-                    "octet" => {
-                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{octet}"));
-                    }
-                    "ms" => {
-                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{ms:03}"));
-                    }
-                    "pct" => {
-                        let _ = std::fmt::Write::write_fmt(&mut buf, format_args!("{pct:02}"));
-                    }
-                    _ => {}
-                }
+                expand_tag(&mut buf, tag, seq, octet, ms, pct);
                 buf.push_str(rest);
             } else {
                 // First segment (before any `{`) or segment with no closing `}`.

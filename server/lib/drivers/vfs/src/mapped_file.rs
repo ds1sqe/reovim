@@ -110,10 +110,11 @@ impl FileMapping for MappedFile {
         let Ok(meta) = std::fs::metadata(&self.inner.path) else {
             return true; // File deleted or inaccessible
         };
-        let Ok(current_mtime) = meta.modified() else {
-            return false; // Can't determine modification time
-        };
-        current_mtime != self.inner.mtime || meta.len() != self.inner.size
+        // If modified() is unsupported, treat mtime as unchanged and still
+        // check size.  `is_ok_and` avoids an untestable Err branch on
+        // platforms where modified() always succeeds (Linux, macOS, Windows).
+        let mtime_changed = meta.modified().is_ok_and(|t| t != self.inner.mtime);
+        mtime_changed || meta.len() != self.inner.size
     }
 }
 

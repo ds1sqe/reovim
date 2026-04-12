@@ -14,6 +14,14 @@ fn new_log_is_empty() {
 fn default_log_is_empty() {
     let log = ByteUndoLog::default();
     assert_eq!(log.len(), 0);
+    assert!(log.is_empty());
+}
+
+#[test]
+fn non_empty_log_is_not_empty() {
+    let mut log = ByteUndoLog::new();
+    log.push(vec![ByteEdit::insert(0, b"a")]);
+    assert!(!log.is_empty());
 }
 
 // -- Push --

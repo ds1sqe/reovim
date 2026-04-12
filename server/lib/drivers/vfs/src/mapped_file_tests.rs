@@ -106,3 +106,45 @@ fn default_mmap_read_fallback() {
     let mf = vfs.mmap_read(std::path::Path::new("/test.txt")).unwrap();
     assert_eq!(mf.as_bytes(), b"fallback content");
 }
+
+#[test]
+fn is_stale_mtime_changed_only() {
+    use {
+        crate::{StandardVfs, VfsDriver},
+        std::env,
+    };
+
+    let vfs = StandardVfs::new();
+    let path = env::temp_dir().join("reovim_stale_mtime_only.txt");
+    vfs.write(&path, b"hello").unwrap();
+
+    let mf = vfs.mmap_read(&path).unwrap();
+    assert!(!mf.is_stale());
+
+    // Rewrite same-size content to change mtime but keep size at 5.
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    vfs.write(&path, b"world").unwrap();
+
+    assert!(mf.is_stale(), "stale: mtime changed, size same");
+    vfs.delete(&path).unwrap();
+}
+
+#[test]
+#[allow(unsafe_code)]
+fn is_stale_size_changed_only() {
+    use std::{env, fs};
+
+    let path = env::temp_dir().join("reovim_stale_size_only.txt");
+    fs::write(&path, b"hello").unwrap();
+    let original_mtime = fs::metadata(&path).unwrap().modified().unwrap();
+
+    // Construct a MappedFile with the file's real mtime but a wrong size.
+    let file = fs::File::open(&path).unwrap();
+    // SAFETY: read-only mmap of a test file we control.
+    let mmap = unsafe { memmap2::Mmap::map(&file) }.unwrap();
+    let mf = MappedFile::new(mmap, &path, original_mtime, 999);
+    drop(file);
+
+    assert!(mf.is_stale(), "stale: mtime same, size differs");
+    fs::remove_file(&path).ok();
+}

@@ -321,6 +321,16 @@ fn apply_insert_crlf_sets_flag() {
 }
 
 #[test]
+fn apply_insert_skips_crlf_check_when_already_set() {
+    // When has_crlf is already true, the CRLF detection branch is skipped.
+    let mut idx = LineIndex::from_bytes(b"a\r\nb").unwrap();
+    assert!(idx.has_crlf());
+    idx.apply_insert(4, b"XY");
+    assert!(idx.has_crlf());
+    assert_eq!(idx.total_bytes(), 6);
+}
+
+#[test]
 fn apply_insert_sequential() {
     // Simulate multiple edits and compare with rebuild each time.
     let mut idx = LineIndex::build_from_str("a\nb\nc");

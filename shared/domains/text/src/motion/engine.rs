@@ -426,6 +426,7 @@ impl MotionEngine {
         Some(pos)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn word_end_backward(
         buffer: &dyn TextGeometry,
         mut pos: TextPosition,

@@ -173,3 +173,29 @@ fn test_write_zeros_zero() {
     write_zeros(&mut buf, 0).unwrap();
     assert!(buf.is_empty());
 }
+
+#[test]
+fn expand_tag_unknown_is_noop() {
+    let mut buf = String::new();
+    expand_tag(&mut buf, "unknown", 0, 0, 0, 0);
+    assert!(buf.is_empty(), "unknown tag should produce no output");
+}
+
+#[test]
+fn expand_tag_known_tags() {
+    let mut buf = String::new();
+    expand_tag(&mut buf, "id:08", 42, 0, 0, 0);
+    assert_eq!(buf, "00000042");
+
+    buf.clear();
+    expand_tag(&mut buf, "octet", 0, 127, 0, 0);
+    assert_eq!(buf, "127");
+
+    buf.clear();
+    expand_tag(&mut buf, "ms:03", 0, 0, 5, 0);
+    assert_eq!(buf, "005");
+
+    buf.clear();
+    expand_tag(&mut buf, "pct:02", 0, 0, 0, 7);
+    assert_eq!(buf, "07");
+}
