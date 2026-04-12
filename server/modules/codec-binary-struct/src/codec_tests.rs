@@ -1265,3 +1265,385 @@ fn zip_rename_preserves_archive_length() {
     let result = codec.translate_edit(&bytes, &edit).unwrap().unwrap();
     assert_eq!(result.old_bytes.len(), result.new_bytes.len());
 }
+
+// ============================================================================
+// ELF MC/DC coverage gap tests (Category A: testable paths)
+// ============================================================================
+
+#[test]
+fn elf_translate_edit_patch_length_mismatch_rejected() {
+    // 279:0 — old_bytes.len() != new_bytes.len() in translate_elf_patch_bytes
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.text_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
+            offset: fixture.text_patch_offset,
+            old_bytes: fixture.text_old_bytes.clone(),
+            // One byte shorter — length mismatch
+            new_bytes: fixture.text_new_bytes[..fixture.text_new_bytes.len() - 1].to_vec(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_patch_old_bytes_content_mismatch_rejected() {
+    // 297:0 — actual != old_bytes in translate_elf_patch_bytes
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    // Build wrong old_bytes: same length but different content
+    let wrong_old: Vec<u8> = fixture.text_old_bytes.iter().map(|b| b ^ 0xFF).collect();
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.text_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
+            offset: fixture.text_patch_offset,
+            old_bytes: wrong_old.clone(),
+            new_bytes: wrong_old, // same length
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_same_patch_bytes_is_noop() {
+    // 302:0 — old_bytes == new_bytes in translate_elf_patch_bytes
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.text_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
+            offset: fixture.text_patch_offset,
+            old_bytes: fixture.text_old_bytes.clone(),
+            new_bytes: fixture.text_old_bytes.clone(), // identical
+        }),
+    };
+    assert_eq!(codec.translate_edit(&bytes, &edit), Ok(None));
+}
+
+#[test]
+fn elf_translate_edit_section_replace_length_mismatch_rejected() {
+    // 368:0 — old_bytes.len() != new_bytes.len() in translate_elf_replace_section
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes[..fixture.section_new_bytes.len() - 1].to_vec(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_section_replace_content_mismatch_rejected() {
+    // 380:0 — actual != old_bytes in translate_elf_replace_section
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let wrong_old: Vec<u8> = fixture.section_old_bytes.iter().map(|b| b ^ 0xFF).collect();
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: wrong_old.clone(),
+            new_bytes: wrong_old,
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn elf_translate_edit_same_section_bytes_is_noop() {
+    // 385:0 — old_bytes == new_bytes in translate_elf_replace_section
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_old_bytes.clone(), // identical
+        }),
+    };
+    assert_eq!(codec.translate_edit(&bytes, &edit), Ok(None));
+}
+
+#[test]
+fn elf_section_path_wrong_kind_rejected() {
+    // 409:0 — kind != "sections" in resolve_section_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "segments".to_string(), // wrong kind
+            fixture.data_section_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_section_path_wrong_field_rejected() {
+    // 409:2 — field != "bytes" in resolve_section_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            fixture.data_section_name.clone(),
+            "content".to_string(), // wrong field
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_section_path_empty_name_rejected() {
+    // 409:4 — section_name.is_empty() in resolve_section_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            String::new(), // empty name
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_section_path_nonexistent_name_rejected() {
+    // 465:0 — section not found in resolve_section_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            ".nosuchsection".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: fixture.section_old_bytes.clone(),
+            new_bytes: fixture.section_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_symbol_path_wrong_kind_rejected() {
+    // 434:1 — kind != "symbols" in resolve_symbol_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "functions".to_string(), // wrong kind
+            fixture.symbol_name.clone(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
+            new_name: fixture.symbol_new_name.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_symbol_path_wrong_field_rejected() {
+    // 439:0 — field != "name" in resolve_symbol_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            fixture.symbol_name.clone(),
+            "bytes".to_string(), // wrong field
+        ]),
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
+            new_name: fixture.symbol_new_name.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_symbol_path_empty_name_rejected() {
+    // 439:4 — symbol_name.is_empty() in resolve_symbol_path
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            String::new(), // empty name
+            "name".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
+            new_name: fixture.symbol_new_name.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn elf_section_path_with_text_prefix_but_no_execinstr_is_allowed() {
+    // 271:1 — section has SHF_EXECINSTR cleared but name starts with ".text"
+    // The nested-if restructuring makes this testable: the outer if is taken
+    // (EXECINSTR == 0) but the inner if is NOT taken (name starts with .text).
+    // We need an ELF section named ".text*" with the executable flag cleared.
+    // We reuse the fixture .text.phase2 section but corrupt the sh_flags in
+    // the raw bytes so EXECINSTR is cleared while the section name is kept.
+    let codec = ElfCodec::new();
+    let fixture = elf_fixture();
+    let raw = &fixture.bytes;
+    let elf = goblin::elf::Elf::parse(raw).unwrap();
+
+    // Find the .text.phase2 section header and locate its sh_flags field.
+    // ELF section header layout (64-bit): sh_name(4) sh_type(4) sh_flags(8)…
+    // section_header.sh_offset gives the offset of sh_offset within the header,
+    // not the header itself.  We iterate to find the right header.
+    let text_section = elf
+        .section_headers
+        .iter()
+        .find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".text.phase2"))
+        .unwrap();
+
+    // Find byte offset of this section header in the raw ELF.
+    // ELF64 section header table starts at e_shoff; each entry is e_shentsize.
+    let shoff = usize::try_from(elf.header.e_shoff).unwrap();
+    let shentsize = usize::from(elf.header.e_shentsize);
+
+    let header_idx = elf
+        .section_headers
+        .iter()
+        .position(|sh| std::ptr::eq(sh, text_section))
+        .unwrap();
+
+    let header_start = shoff + header_idx * shentsize;
+    // sh_flags at offset 8 within the 64-bit section header (sh_name=4, sh_type=4)
+    let flags_offset = header_start + 8;
+
+    let mut corrupted = raw.clone();
+    // Clear all flag bits (write zero to the sh_flags u64 field, little-endian)
+    corrupted[flags_offset..flags_offset + 8].copy_from_slice(&0u64.to_le_bytes());
+
+    let bytes = HeapByteSource::new(corrupted);
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            ".text.phase2".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::PatchBytes {
+            offset: 0,
+            old_bytes: fixture.text_old_bytes.clone(),
+            new_bytes: fixture.text_new_bytes.clone(),
+        }),
+    };
+    // With EXECINSTR cleared but name starting with ".text", the patch is
+    // still allowed (the inner-if guard is not triggered).
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+// ============================================================================
+// ZIP MC/DC coverage gap tests (Category A: testable paths)
+// ============================================================================
+
+#[test]
+fn zip_entry_replace_actual_len_mismatch_rejected() {
+    // 745:0 (original) — actual.len() != old_bytes.len() in translate_zip_replace_entry_bytes
+    //
+    // Pass old_bytes whose length is different from the entry's on-disk
+    // payload size. The size-preservation check (old == new in length) is
+    // satisfied, but the actual-payload coverage check catches the mismatch.
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    // "hello.txt" payload is b"Hello World!" (12 bytes). Supply 11 bytes as old.
+    let edit = zip_entry_bytes_edit("hello.txt", b"Hello World", b"Patched Dat");
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}

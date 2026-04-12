@@ -131,6 +131,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **tui**: stabilize flaky `test_remote_cursor_at_eol` with `wait_for` polling (same pattern as Flight 1b presence render fixes)
 - **coverage**: MC/DC coverage pass — module-loader registry let-chain→is_some_and + expect restructure, codec-pdf let-chain→and_then chain, codec-tar-gz compound || split, commands buffer/edit if-let→.map() restructure; new tests for codec state unmount (all-inodeless), domain-text newline-at-end drain skip, codec-legacy end-before-start, search backward-source via VecLineSource, CLI format module-list/module-info/check-report branches, runtime extract_text_range None-line paths + stale_check hook + registry-absent create/delete, commands cycle_buffer + codec-pipeline mock tests, module_service format_reload_error extraction (#710)
 - **tui**: stabilize flaky `test_fix_cursor_label_preserves_content` and `test_fix_resize_then_cursor_label_rendering` with `wait_for` polling
+- **coverage**: MC/DC coverage pass — provider-text buffer.rs (17 StorageOps edge-case tests: read_bytes/insert_bytes/delete_bytes/read_chunk boundary conditions), virtual_buffer.rs (21 tests: delete_at estimate, empty buffer, StorageOps edge cases); codec-binary-struct (14 ELF tests + compound || split + nested if for MC/DC + coverage(off) on unreachable guards), codec-rlib (9 tests + let-chain restructure with .ok().filter() + coverage(off) on archive consistency guards) (#710)
 
 ## [0.14.4] - 2026-04-01
 

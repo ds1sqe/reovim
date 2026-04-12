@@ -691,3 +691,171 @@ fn text_geometry_auto_coercion() {
     let buf = Buffer::from_string("a\nb\nc");
     assert_eq!(accepts_geometry(&buf), 3);
 }
+
+// === StorageOps ===
+
+#[test]
+fn storage_read_bytes_offset_past_eof() {
+    // offset >= byte_len → returns 0 (line 439:0 true branch)
+    let buf = Buffer::from_string("hello");
+    let mut out = [0u8; 4];
+    let n = buf.read_bytes(10, &mut out);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn storage_read_bytes_offset_at_exact_eof() {
+    // offset == byte_len (== total) → returns 0
+    let buf = Buffer::from_string("hi");
+    let mut out = [0u8; 4];
+    let n = buf.read_bytes(2, &mut out);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn storage_read_bytes_multi_chunk_skip() {
+    // Build a buffer large enough to have multiple rope chunks,
+    // then read from a later offset to exercise the chunk_end <= offset
+    // continue branch (line 448:0 true branch).
+    let line = "abcdefghijklmnopqrstuvwxyz"; // 26 chars
+    // 80 lines * 26 chars + 79 newlines = 2159 bytes — well over 1024 (MAX_CHUNK)
+    let content: String = (0..80).map(|_| line).collect::<Vec<_>>().join("\n");
+    let buf = Buffer::from_string(&content);
+
+    // Read 5 bytes starting at byte 1500 — forces early chunks to be skipped
+    let mut out = [0u8; 5];
+    let n = buf.read_bytes(1500, &mut out);
+    assert_eq!(n, 5);
+    // Verify against expected content
+    let expected = content.as_bytes()[1500..1505].to_vec();
+    assert_eq!(&out[..n], expected.as_slice());
+}
+
+#[test]
+fn storage_read_bytes_small_count() {
+    // Request fewer bytes than buffer has → written >= count break (line 452:0 true branch)
+    let buf = Buffer::from_string("hello world");
+    // Only allocate a 3-byte output buffer
+    let mut out = [0u8; 3];
+    let n = buf.read_bytes(0, &mut out);
+    assert_eq!(n, 3);
+    assert_eq!(&out[..n], b"hel");
+}
+
+#[test]
+fn storage_insert_bytes_empty() {
+    // insert empty byte slice → early return Ok(()) (line 471:0 true branch)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.insert_bytes(0, b"");
+    assert!(result.is_ok());
+    assert_eq!(buf.content(), "hello");
+    assert!(!buf.is_modified());
+}
+
+#[test]
+fn storage_insert_bytes_nonempty() {
+    // insert non-empty bytes (line 471:0 false branch — normal insert path)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.insert_bytes(5, b" world");
+    assert!(result.is_ok());
+    assert_eq!(buf.content(), "hello world");
+}
+
+#[test]
+fn storage_insert_bytes_offset_past_end() {
+    // offset > total → Err(OffsetOutOfRange) (line 475:0 true branch)
+    let mut buf = Buffer::from_string("hi");
+    let result = buf.insert_bytes(10, b"x");
+    assert!(result.is_err());
+}
+
+#[test]
+fn storage_insert_bytes_offset_within_bounds() {
+    // offset <= total (line 475:0 false branch — proceeds to insert)
+    let mut buf = Buffer::from_string("hi");
+    let result = buf.insert_bytes(1, b"a");
+    assert!(result.is_ok());
+    assert_eq!(buf.content(), "hai");
+}
+
+#[test]
+fn storage_insert_bytes_into_empty_buffer() {
+    // self.text.is_empty() true branch (line 478:0 true branch)
+    let mut buf = Buffer::new();
+    let result = buf.insert_bytes(0, b"hello");
+    assert!(result.is_ok());
+    assert_eq!(buf.content(), "hello");
+    assert!(buf.is_modified());
+}
+
+#[test]
+fn storage_insert_bytes_into_nonempty_buffer() {
+    // self.text.is_empty() false branch (line 478:0 false branch — uses insert())
+    let mut buf = Buffer::from_string("world");
+    let result = buf.insert_bytes(0, b"hello ");
+    assert!(result.is_ok());
+    assert_eq!(buf.content(), "hello world");
+}
+
+#[test]
+fn storage_delete_bytes_range_overflow() {
+    // offset + len > total → Err (line 489:0 true branch)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.delete_bytes(3, 10);
+    assert!(result.is_err());
+}
+
+#[test]
+fn storage_delete_bytes_within_bounds() {
+    // offset + len <= total (line 489:0 false branch — proceeds)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.delete_bytes(1, 3);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), b"ell");
+    assert_eq!(buf.content(), "ho");
+}
+
+#[test]
+fn storage_delete_bytes_zero_length() {
+    // len == 0 → Ok(Vec::new()) no-op (line 492:0 true branch)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.delete_bytes(2, 0);
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_empty());
+    assert_eq!(buf.content(), "hello");
+    assert!(!buf.is_modified());
+}
+
+#[test]
+fn storage_delete_bytes_nonzero_length() {
+    // len != 0 (line 492:0 false branch — performs deletion)
+    let mut buf = Buffer::from_string("hello");
+    let result = buf.delete_bytes(0, 2);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), b"he");
+    assert_eq!(buf.content(), "llo");
+}
+
+#[test]
+fn storage_read_chunk_past_eof() {
+    // offset >= total → Vec::new() (line 509:0 true branch)
+    let buf = Buffer::from_string("hello");
+    let chunk = buf.read_chunk(10, 4);
+    assert!(chunk.is_empty());
+}
+
+#[test]
+fn storage_read_chunk_at_exact_eof() {
+    // offset == byte_len (== total) → Vec::new()
+    let buf = Buffer::from_string("hello");
+    let chunk = buf.read_chunk(5, 4);
+    assert!(chunk.is_empty());
+}
+
+#[test]
+fn storage_read_chunk_within_bounds() {
+    // offset < total (line 509:0 false branch — returns data)
+    let buf = Buffer::from_string("hello world");
+    let chunk = buf.read_chunk(6, 5);
+    assert_eq!(chunk, b"world");
+}

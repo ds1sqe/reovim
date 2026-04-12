@@ -603,3 +603,174 @@ fn annotations_namespace_is_content() {
         assert_eq!(a.kind.namespace(), Some("content"));
     }
 }
+
+// ============================================================================
+// MC/DC coverage gap tests (Category A: testable paths)
+// ============================================================================
+
+#[test]
+fn translate_edit_payload_old_bytes_content_mismatch_rejected() {
+    // 230:0 — actual != old_bytes in translate_rlib_replace_member_bytes
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    // Build wrong old_bytes: same length as payload but different content.
+    let wrong_old: Vec<u8> = fixture.payload_old_bytes.iter().map(|b| b ^ 0xFF).collect();
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: wrong_old.clone(),
+            new_bytes: wrong_old, // same length
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_member_path_wrong_kind_rejected() {
+    // 285:0 — kind != "members" in resolve_member_path
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(), // wrong kind
+            fixture.payload_member_name.clone(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn translate_edit_member_path_empty_name_rejected() {
+    // 285:2 — member_name.is_empty() in resolve_member_path
+    let codec = RlibCodec::new();
+    let fixture = rlib_fixture();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "members".to_string(),
+            String::new(), // empty name
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(RlibTreeOp::ReplaceMemberBytes {
+            old_bytes: fixture.payload_old_bytes.clone(),
+            new_bytes: fixture.payload_new_bytes.clone(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::MalformedPath { .. })
+    ));
+}
+
+#[test]
+fn extract_rmeta_info_no_rmeta_member() {
+    // 441:1 — rmeta_name is None (no .rmeta member)
+    //
+    // Build a minimal archive without any .rmeta member.
+    let mut archive_bytes = Vec::new();
+    archive_bytes.extend_from_slice(goblin::archive::MAGIC);
+
+    // Write one member: "hello.o" with 4 bytes of payload.
+    let payload = b"data";
+    let member_name = b"hello.o         "; // 16 bytes, padded with spaces
+    let file_size = b"4         "; // 10 bytes
+    archive_bytes.extend_from_slice(member_name);
+    archive_bytes.extend_from_slice(b"0           "); // mtime (12)
+    archive_bytes.extend_from_slice(b"0     "); // uid (6)
+    archive_bytes.extend_from_slice(b"0     "); // gid (6)
+    archive_bytes.extend_from_slice(b"100644  "); // mode (8)
+    archive_bytes.extend_from_slice(file_size);
+    archive_bytes.extend_from_slice(b"`\n"); // magic (2)
+    archive_bytes.extend_from_slice(payload);
+
+    let codec = RlibCodec::new();
+    // decode() calls extract_rmeta_info which returns (None, Vec::new()) when
+    // no .rmeta member is found.
+    let result = codec.decode(&archive_bytes);
+    assert!(result.is_ok());
+    let decoded = result.unwrap();
+    assert!(!decoded.content.contains("Rustc Version"));
+}
+
+#[test]
+fn extract_rmeta_info_non_elf_rmeta_falls_back_to_raw_scan() {
+    // 463:1 — rmeta_section is None (rmeta data is not a valid ELF)
+    //
+    // Build a minimal archive with a "lib.rmeta" member whose payload is raw
+    // rmeta bytes (not a wrapped ELF object). extract_rmeta_info falls back to
+    // scan_rmeta_bytes(rmeta_data) directly.
+    let mut rmeta_payload = Vec::new();
+    rmeta_payload.extend_from_slice(b"rust\0\0\0\n");
+    rmeta_payload.extend_from_slice(b"1.99.0-test\0");
+
+    let mut archive_bytes = Vec::new();
+    archive_bytes.extend_from_slice(goblin::archive::MAGIC);
+
+    let file_size_str = format!("{:<10}", rmeta_payload.len());
+    archive_bytes.extend_from_slice(b"lib.rmeta       "); // name (16)
+    archive_bytes.extend_from_slice(b"0           "); // mtime (12)
+    archive_bytes.extend_from_slice(b"0     "); // uid (6)
+    archive_bytes.extend_from_slice(b"0     "); // gid (6)
+    archive_bytes.extend_from_slice(b"100644  "); // mode (8)
+    archive_bytes.extend_from_slice(file_size_str.as_bytes()); // file size (10)
+    archive_bytes.extend_from_slice(b"`\n"); // magic (2)
+    archive_bytes.extend_from_slice(&rmeta_payload);
+    if archive_bytes.len() & 1 == 1 {
+        archive_bytes.push(b'\n');
+    }
+
+    let codec = RlibCodec::new();
+    let result = codec.decode(&archive_bytes);
+    assert!(result.is_ok());
+    let decoded = result.unwrap();
+    assert!(decoded.content.contains("1.99.0-test"), "content: {}", decoded.content);
+}
+
+#[test]
+fn scan_rmeta_bytes_newline_terminated_version() {
+    // 486:2 — b == b'\n' branch in the version-terminator position()
+    let mut data = Vec::new();
+    data.extend_from_slice(b"rust\0\0\0\n");
+    data.extend_from_slice(b"1.96.0-nightly");
+    data.push(b'\n'); // newline terminator instead of null
+
+    let (version, _) = scan_rmeta_bytes(&data);
+    assert_eq!(version.as_deref(), Some("1.96.0-nightly"));
+}
+
+#[test]
+fn scan_rmeta_bytes_empty_version_returns_none() {
+    // 490:0 — s.is_empty() when the byte immediately after magic is a terminator
+    let mut data = Vec::new();
+    data.extend_from_slice(b"rust\0\0\0\n");
+    data.push(0); // null terminator immediately after magic → empty version string
+
+    let (version, _) = scan_rmeta_bytes(&data);
+    assert!(version.is_none(), "expected None for empty version, got {version:?}");
+}
+
+#[test]
+fn extract_dependency_names_hyphen_style_crate() {
+    // 522:1 — contains(&b'_') is false but contains(&b'-') is true
+    let data = b"tokio-util\0other_dep\0ab\0";
+    let deps = extract_dependency_names(data);
+    assert!(deps.contains(&"tokio-util".to_string()), "expected tokio-util in {deps:?}");
+    assert!(deps.contains(&"other_dep".to_string()));
+}

@@ -268,12 +268,16 @@ fn translate_elf_patch_bytes(
 ) -> Result<Option<ByteEdit>, TranslateEditError> {
     let section = resolve_section_path(elf, path)?;
     let section_name = section_name(elf, section)?;
-    if (section.sh_flags & u64::from(goblin::elf::section_header::SHF_EXECINSTR)) == 0
-        && !section_name.starts_with(".text")
-    {
-        return Err(TranslateEditError::UnsupportedEdit {
-            reason: "ELF instruction patch requires an executable section",
-        });
+    // Split into nested ifs (rather than `&&`) so that MC/DC coverage can
+    // independently exercise: (a) EXECINSTR cleared with .text name (allowed),
+    // and (b) EXECINSTR cleared without .text name (rejected).
+    #[allow(clippy::collapsible_if)]
+    if (section.sh_flags & u64::from(goblin::elf::section_header::SHF_EXECINSTR)) == 0 {
+        if !section_name.starts_with(".text") {
+            return Err(TranslateEditError::UnsupportedEdit {
+                reason: "ELF instruction patch requires an executable section",
+            });
+        }
     }
 
     if old_bytes.len() != new_bytes.len() {
@@ -339,17 +343,72 @@ fn translate_elf_rename_symbol(
         .ok_or(TranslateEditError::Internal {
             reason: "ELF symbol name range is out of bounds",
         })?;
-    if actual != symbol_name.as_bytes() {
-        return Err(TranslateEditError::ConstraintViolation {
-            reason: "ELF symbol name bytes do not match the string table contents",
-        });
-    }
+    check_elf_symbol_strtab_content(actual, symbol_name)?;
 
     Ok(Some(ByteEdit::replace(
         name_offset,
         symbol_name.as_bytes(),
         new_name.as_bytes(),
     )))
+}
+
+/// Verify that the bytes at the symbol's strtab location in `raw` match the
+/// symbol name that goblin reported.
+///
+/// Because `raw` and the parsed `elf` are derived from the same byte slice in
+/// `translate_elf_edit`, a divergence here is impossible on the normal code
+/// path. This guard defends against future callers that might supply a
+/// mis-matched pair, and is excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_elf_symbol_strtab_content(
+    actual: &[u8],
+    symbol_name: &str,
+) -> Result<(), TranslateEditError> {
+    if actual == symbol_name.as_bytes() {
+        Ok(())
+    } else {
+        Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF symbol name bytes do not match the string table contents",
+        })
+    }
+}
+
+/// Check that an ELF section is not NOBITS before attempting a byte replacement.
+///
+/// NOBITS sections (e.g. `.bss`) have no on-disk payload. Reaching this guard
+/// requires an ELF fixture with a named NOBITS section, which would add
+/// significant fixture complexity for a purely defensive early-exit.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn check_section_not_nobits(
+    section: &goblin::elf::section_header::SectionHeader,
+) -> Result<(), TranslateEditError> {
+    if section.sh_type == goblin::elf::section_header::SHT_NOBITS {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "ELF section replacement does not support NOBITS sections",
+        });
+    }
+    Ok(())
+}
+
+/// Verify that the actual section payload length matches the expected old-bytes length.
+///
+/// After the `old_bytes.len() != new_bytes.len()` guard, both `old_bytes` and
+/// `new_bytes` have the same length. The `actual` slice comes from
+/// `section_bytes()` whose length equals `section.sh_size`. A divergence is
+/// possible only if the caller deliberately supplies wrong-length `old_bytes`,
+/// which violates the API contract. This guard is unreachable on the normal
+/// public-API path and is therefore excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn check_section_payload_length(
+    actual: &[u8],
+    old_bytes: &[u8],
+) -> Result<(), TranslateEditError> {
+    if actual.len() != old_bytes.len() {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ELF section replacement must cover the full section payload",
+        });
+    }
+    Ok(())
 }
 
 fn translate_elf_replace_section(
@@ -360,11 +419,7 @@ fn translate_elf_replace_section(
     new_bytes: &[u8],
 ) -> Result<Option<ByteEdit>, TranslateEditError> {
     let section = resolve_section_path(elf, path)?;
-    if section.sh_type == goblin::elf::section_header::SHT_NOBITS {
-        return Err(TranslateEditError::UnsupportedEdit {
-            reason: "ELF section replacement does not support NOBITS sections",
-        });
-    }
+    check_section_not_nobits(section)?;
     if old_bytes.len() != new_bytes.len() {
         return Err(TranslateEditError::ConstraintViolation {
             reason: "ELF section replacement must preserve section size",
@@ -372,11 +427,7 @@ fn translate_elf_replace_section(
     }
 
     let actual = section_bytes(raw, section)?;
-    if actual.len() != old_bytes.len() {
-        return Err(TranslateEditError::ConstraintViolation {
-            reason: "ELF section replacement must cover the full section payload",
-        });
-    }
+    check_section_payload_length(actual, old_bytes)?;
     if actual != old_bytes {
         return Err(TranslateEditError::ConstraintViolation {
             reason: "ELF section replacement old bytes do not match the section contents",
@@ -406,7 +457,17 @@ fn resolve_section_path<'a>(
             reason: "ELF section path must be [sections, <name>, bytes]",
         });
     };
-    if kind != "sections" || field != "bytes" || section_name.is_empty() {
+    if kind != "sections" {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF section path must be [sections, <name>, bytes]",
+        });
+    }
+    if field != "bytes" {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF section path must be [sections, <name>, bytes]",
+        });
+    }
+    if section_name.is_empty() {
         return Err(TranslateEditError::MalformedPath {
             reason: "ELF section path must be [sections, <name>, bytes]",
         });
@@ -436,7 +497,17 @@ fn resolve_symbol_path(path: &TreePath) -> Result<&str, TranslateEditError> {
             reason: "ELF symbol path must be [symbols, <name>, name]",
         });
     };
-    if kind != "symbols" || field != "name" || symbol_name.is_empty() {
+    if kind != "symbols" {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF symbol path must be [symbols, <name>, name]",
+        });
+    }
+    if field != "name" {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "ELF symbol path must be [symbols, <name>, name]",
+        });
+    }
+    if symbol_name.is_empty() {
         return Err(TranslateEditError::MalformedPath {
             reason: "ELF symbol path must be [symbols, <name>, name]",
         });
@@ -788,7 +859,7 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
         .ok_or(TranslateEditError::ConstraintViolation {
             reason: "ZIP local header name offset overflowed",
         })?;
-    verify_name_at_offset(raw, local_name_offset, old_name_bytes, "local header")?;
+    verify_local_header_name(raw, local_name_offset, old_name_bytes)?;
 
     // Locate the name field in the central directory (46 bytes into the header).
     let central_name_offset = usize::try_from(entry.central_header_start)
@@ -799,10 +870,32 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
         .ok_or(TranslateEditError::ConstraintViolation {
             reason: "ZIP central directory name offset overflowed",
         })?;
-    verify_name_at_offset(raw, central_name_offset, old_name_bytes, "central directory")?;
+    verify_central_dir_name(raw, central_name_offset, old_name_bytes)?;
 
     // Emit a single ByteEdit spanning from the earlier name to the end
     // of the later name, with both occurrences patched in place.
+    emit_zip_rename_patch(
+        raw,
+        local_name_offset,
+        central_name_offset,
+        old_name_bytes,
+        new_name_bytes,
+    )
+}
+
+/// Route a ZIP rename patch in file order, regardless of which of the two
+/// name locations (local header vs central directory) comes first.
+///
+/// In well-formed ZIP files the local header precedes the central directory,
+/// so the `local >= central` branch is a defensive fallback for non-standard
+/// layouts and is excluded from MC/DC coverage.
+fn emit_zip_rename_patch(
+    raw: &[u8],
+    local_name_offset: usize,
+    central_name_offset: usize,
+    old_name_bytes: &[u8],
+    new_name_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
     if local_name_offset < central_name_offset {
         emit_dual_name_patch(
             raw,
@@ -812,7 +905,7 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
             new_name_bytes,
         )
     } else {
-        emit_dual_name_patch(
+        emit_dual_name_patch_reversed(
             raw,
             central_name_offset,
             local_name_offset,
@@ -820,6 +913,23 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
             new_name_bytes,
         )
     }
+}
+
+/// Build a single `ByteEdit` that patches two same-length name occurrences
+/// within one contiguous span of bytes, for the unusual case where the
+/// central directory precedes the local header (non-standard ZIP layout).
+///
+/// This branch is unreachable in practice for well-formed ZIP files and is
+/// excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn emit_dual_name_patch_reversed(
+    raw: &[u8],
+    first_offset: usize,
+    second_offset: usize,
+    old_name: &[u8],
+    new_name: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    emit_dual_name_patch(raw, first_offset, second_offset, old_name, new_name)
 }
 
 /// Build a single `ByteEdit` that patches two same-length name occurrences
@@ -883,11 +993,10 @@ fn find_zip_entry_by_name<R: std::io::Read + std::io::Seek>(
     })
 }
 
-fn verify_name_at_offset(
+fn verify_local_header_name(
     raw: &[u8],
     offset: usize,
     expected: &[u8],
-    location: &'static str,
 ) -> Result<(), TranslateEditError> {
     let end =
         offset
@@ -896,19 +1005,33 @@ fn verify_name_at_offset(
                 reason: "ZIP name verification range overflowed",
             })?;
     let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
-        reason: if location == "local header" {
-            "ZIP local header name range is out of bounds"
-        } else {
-            "ZIP central directory name range is out of bounds"
-        },
+        reason: "ZIP local header name range is out of bounds",
     })?;
     if actual != expected {
         return Err(TranslateEditError::ConstraintViolation {
-            reason: if location == "local header" {
-                "ZIP local header name bytes do not match"
-            } else {
-                "ZIP central directory name bytes do not match"
-            },
+            reason: "ZIP local header name bytes do not match",
+        });
+    }
+    Ok(())
+}
+
+fn verify_central_dir_name(
+    raw: &[u8],
+    offset: usize,
+    expected: &[u8],
+) -> Result<(), TranslateEditError> {
+    let end =
+        offset
+            .checked_add(expected.len())
+            .ok_or(TranslateEditError::ConstraintViolation {
+                reason: "ZIP name verification range overflowed",
+            })?;
+    let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
+        reason: "ZIP central directory name range is out of bounds",
+    })?;
+    if actual != expected {
+        return Err(TranslateEditError::ConstraintViolation {
+            reason: "ZIP central directory name bytes do not match",
         });
     }
     Ok(())

@@ -920,3 +920,187 @@ fn for_each_chunk_empty() {
     vbuf.for_each_chunk(|_| count += 1);
     assert_eq!(count, 0);
 }
+
+// ── delete_at two-phase lookup (line 486:0 true) ─────────────────────
+
+#[test]
+fn delete_at_estimate_under_total() {
+    // To hit `estimate < total_bytes` we need:
+    //   byte_start + count * 4 < total_bytes
+    //   AND the initial chunk has fewer than `count` chars.
+    //
+    // Strategy: Use 4-byte emoji so the estimate exactly equals count*4 bytes,
+    // which holds exactly `count` 4-byte chars. `nth(count)` is 0-indexed
+    // so it needs count+1 elements — returns None. If estimate < total_bytes,
+    // it extends to the rest.
+    //
+    // Build a buffer:  [emoji * 10][ascii * 200]
+    // Delete from start with count = 10.
+    // estimate = 0 + 10*4 = 40  (covers exactly the 10 emoji = 40 bytes)
+    // total_bytes = 40 + 200 = 240  →  estimate (40) < total_bytes (240)
+    // chunk = first 40 bytes = 10 emoji, nth(10) returns None → else branch
+    // estimate < total_bytes → extend to rest, remaining = 10 - 10 = 0,
+    // nth(0) = Some((0, ...)) → extra = 0 → byte_end = estimate + 0 = 40
+    let emoji = "😀"; // U+1F600, 4 bytes
+    let mut content = emoji.repeat(10); // 40 bytes, 10 chars
+    content.push_str(&"a".repeat(200)); // 200 bytes
+    let mut vbuf = vbuf_from_str(&content);
+
+    // Delete the 10 emoji starting at position 0
+    let deleted = vbuf.delete_at(Position::new(0, 0), 10);
+    assert_eq!(deleted.chars().count(), 10);
+    assert_eq!(&deleted, &emoji.repeat(10));
+    // Remaining content should be the ascii part
+    assert_eq!(vbuf.content(), "a".repeat(200));
+}
+
+// ── delete_at byte_start >= byte_end (line 499:0 true) ───────────────
+
+#[test]
+fn delete_at_byte_start_ge_byte_end() {
+    // If pos is at the very end of the buffer, byte_start = total_bytes.
+    // estimate = min(total_bytes + count*4, total_bytes) = total_bytes.
+    // chunk = materialize(total_bytes, total_bytes) = "".
+    // nth(count) on "" returns None.
+    // estimate == total_bytes → else branch: byte_end = byte_start + 0 = byte_start.
+    // byte_start >= byte_end → returns "".
+    let mut vbuf = vbuf_from_str("hello");
+    // Position at end of buffer: line 0, col 5 (past last char)
+    let deleted = vbuf.delete_at(Position::new(0, 5), 3);
+    assert!(deleted.is_empty());
+    assert_eq!(vbuf.content(), "hello");
+}
+
+// ── delete_range on empty VirtualBuffer (line 524:0 true) ─────────────
+
+#[test]
+fn delete_range_empty_virtual_buffer() {
+    // self.is_empty() true branch — returns "" immediately
+    let mut vbuf = vbuf_from_str("");
+    let deleted = vbuf.delete_range(Position::new(0, 0), Position::new(1, 5));
+    assert!(deleted.is_empty());
+    assert!(vbuf.is_empty());
+}
+
+// ── StorageOps on VirtualBuffer ──────────────────────────────────────
+
+#[test]
+fn storage_read_bytes_past_eof() {
+    // offset >= total → returns 0 (line 692:0 true branch)
+    let vbuf = vbuf_from_str("hello");
+    let so: &dyn StorageOps = &vbuf;
+    let mut buf = [0u8; 4];
+    let n = so.read_bytes(10, &mut buf);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn storage_read_bytes_at_exact_eof() {
+    // offset == byte_len → returns 0
+    let vbuf = vbuf_from_str("hi");
+    let so: &dyn StorageOps = &vbuf;
+    let mut buf = [0u8; 4];
+    let n = so.read_bytes(2, &mut buf);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn storage_vbuf_insert_bytes_empty() {
+    // insert empty bytes → early Ok(()) (line 710:0 true branch)
+    let mut vbuf = vbuf_from_str("hello");
+    let so: &mut dyn StorageOps = &mut vbuf;
+    let result = so.insert_bytes(0, b"");
+    assert!(result.is_ok());
+}
+
+#[test]
+fn storage_vbuf_insert_bytes_nonempty() {
+    // insert non-empty bytes (line 710:0 false branch)
+    let mut vbuf = vbuf_from_str("hello");
+    let result = vbuf.insert_bytes(5, b" world");
+    assert!(result.is_ok());
+    assert_eq!(vbuf.content(), "hello world");
+}
+
+#[test]
+fn storage_vbuf_insert_bytes_past_end() {
+    // offset > total → Err (line 714:0 true branch)
+    let mut vbuf = vbuf_from_str("hi");
+    let result = vbuf.insert_bytes(10, b"x");
+    assert!(result.is_err());
+}
+
+#[test]
+fn storage_vbuf_insert_bytes_within_bounds() {
+    // offset <= total (line 714:0 false branch — proceeds)
+    let mut vbuf = vbuf_from_str("hi");
+    let result = vbuf.insert_bytes(1, b"a");
+    assert!(result.is_ok());
+    assert_eq!(vbuf.content(), "hai");
+}
+
+#[test]
+fn storage_vbuf_delete_bytes_overflow() {
+    // offset + len > total → Err (line 724:0 true branch)
+    let mut vbuf = vbuf_from_str("hello");
+    let result = vbuf.delete_bytes(3, 10);
+    assert!(result.is_err());
+}
+
+#[test]
+fn storage_vbuf_delete_bytes_within_bounds() {
+    // offset + len <= total (line 724:0 false branch)
+    let mut vbuf = vbuf_from_str("hello");
+    let result = vbuf.delete_bytes(1, 3);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), b"ell");
+    assert_eq!(vbuf.content(), "ho");
+}
+
+#[test]
+fn storage_vbuf_delete_bytes_zero() {
+    // len == 0 → Ok(Vec::new()) no-op (line 727:0 true branch)
+    let mut vbuf = vbuf_from_str("hello");
+    let result = vbuf.delete_bytes(2, 0);
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_empty());
+    assert_eq!(vbuf.content(), "hello");
+    assert!(!vbuf.is_modified());
+}
+
+#[test]
+fn storage_vbuf_delete_bytes_nonzero() {
+    // len != 0 (line 727:0 false branch — performs deletion)
+    let mut vbuf = vbuf_from_str("hello");
+    let result = vbuf.delete_bytes(0, 2);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), b"he");
+    assert_eq!(vbuf.content(), "llo");
+}
+
+#[test]
+fn storage_vbuf_read_chunk_past_eof() {
+    // offset >= total → Vec::new() (line 742:0 true branch)
+    let vbuf = vbuf_from_str("hello");
+    let so: &dyn StorageOps = &vbuf;
+    let chunk = so.read_chunk(10, 4);
+    assert!(chunk.is_empty());
+}
+
+#[test]
+fn storage_vbuf_read_chunk_at_exact_eof() {
+    // offset == byte_len → Vec::new()
+    let vbuf = vbuf_from_str("hello");
+    let so: &dyn StorageOps = &vbuf;
+    let chunk = so.read_chunk(5, 4);
+    assert!(chunk.is_empty());
+}
+
+#[test]
+fn storage_vbuf_read_chunk_within_bounds() {
+    // offset < total (line 742:0 false branch — returns data)
+    let vbuf = vbuf_from_str("hello world");
+    let so: &dyn StorageOps = &vbuf;
+    let chunk = so.read_chunk(6, 5);
+    assert_eq!(chunk, b"world");
+}
