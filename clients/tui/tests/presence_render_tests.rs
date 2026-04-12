@@ -794,7 +794,10 @@ async fn test_remote_visual_selection() {
         .await
         .expect("TUI 1 visual select failed");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Verify content is still readable through the selection overlay
+    tui2.wait_for(Duration::from_secs(2), |f| f.contains("Hello World"))
+        .await
+        .expect("Content should be visible through selection");
 
     // TUI 2 should capture without panic (selection rendering)
     let frame2 = tui2
@@ -804,13 +807,6 @@ async fn test_remote_visual_selection() {
 
     // Should contain ANSI escape codes (48;2; = RGB background)
     assert!(frame2.contains('\x1b'), "Frame should contain ANSI escape codes");
-
-    // Verify content is still readable through the selection overlay
-    let plain = tui2
-        .capture("plain_text")
-        .await
-        .expect("TUI 2 plain capture failed");
-    assert!(plain.contains("Hello World"), "Content should be visible through selection");
 
     // Exit visual mode
     tui1.send_keys("<Esc>").await.ok();
@@ -849,20 +845,14 @@ async fn test_remote_multiline_selection() {
         .await
         .expect("TUI 1 visual line select failed");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // TUI 2 should render the multiline selection with content visible
-    let frame2 = tui2
-        .capture("plain_text")
-        .await
-        .expect("TUI 2 capture failed during multiline selection");
-
-    // Verify content is visible through selection overlay.
+    // TUI 2 should render the multiline selection with content visible.
     // Cursor labels use apply_style (bg overlay) and never replace characters,
     // so all lines remain fully visible.
-    assert!(frame2.contains("Line A"), "Line A should be visible");
-    assert!(frame2.contains("Line B"), "Line B should be visible");
-    assert!(frame2.contains("Line C"), "Line C should be visible");
+    tui2.wait_for(Duration::from_secs(2), |f| {
+        f.contains("Line A") && f.contains("Line B") && f.contains("Line C")
+    })
+    .await
+    .expect("All lines should be visible through selection");
 
     // ANSI capture should contain escape codes for selection background
     let ansi_frame = tui2
@@ -1861,25 +1851,17 @@ async fn test_insert_mode_cursor_at_moved_position() {
     // Now enter insert mode
     tui1.send_keys("i").await.expect("Enter insert mode failed");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Capture frame in insert mode
+    // Capture frame in insert mode, polling until INSERT appears in the frame
     let frame_insert = tui1
-        .capture("plain_text")
+        .wait_for(Duration::from_secs(2), |f| f.to_lowercase().contains("insert"))
         .await
-        .expect("Capture failed in insert mode");
+        .expect("Statusline should show INSERT mode");
 
     eprintln!("=== Insert mode frame ===\n{frame_insert}");
 
     let insert_lines: Vec<&str> = frame_insert.lines().collect();
     let statusline_insert = insert_lines.last().unwrap_or(&"");
     eprintln!("Insert mode statusline: {statusline_insert}");
-
-    // The statusline should show INSERT mode
-    assert!(
-        statusline_insert.contains("INSERT") || statusline_insert.contains("insert"),
-        "Statusline should show INSERT mode"
-    );
 
     // Extract cursor position from insert mode
     fn extract_cursor(line: &str) -> Option<(u32, u32)> {
