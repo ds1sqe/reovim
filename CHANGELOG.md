@@ -129,6 +129,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **coverage**: MC/DC coverage pass — domain-text (line_index, motion engine), bench (large_file template expansion), kernel (byte_undo_log), VFS (mapped_file is_stale restructure), codec harness error paths, rlib classifier (#710)
 - **coverage**: MC/DC coverage pass — codec driver core (decode_streaming default, is_insertion/is_deletion MC/DC, MountId::from_raw, store partition_point restructure, state unmount_codec/list_mounts restructure), codec modules (cjk/csv/hex/utf8 translate_edit Tree/wildcard arm merge, decode-failure and error path tests), syntax driver (set_default_injection_language), format hook (TextBufferRegistry None path), module-loader registry (unload restructure), session driver (clear_stale_check, dual_register_buffer None path) (#710)
 - **tui**: stabilize flaky `test_remote_cursor_at_eol` with `wait_for` polling (same pattern as Flight 1b presence render fixes)
+- **coverage**: MC/DC coverage pass — module-loader registry let-chain→is_some_and + expect restructure, codec-pdf let-chain→and_then chain, codec-tar-gz compound || split, commands buffer/edit if-let→.map() restructure; new tests for codec state unmount (all-inodeless), domain-text newline-at-end drain skip, codec-legacy end-before-start, search backward-source via VecLineSource, CLI format module-list/module-info/check-report branches, runtime extract_text_range None-line paths + stale_check hook + registry-absent create/delete, commands cycle_buffer + codec-pipeline mock tests, module_service format_reload_error extraction (#710)
+- **tui**: stabilize flaky `test_fix_cursor_label_preserves_content` and `test_fix_resize_then_cursor_label_rendering` with `wait_for` polling
 
 ## [0.14.4] - 2026-04-01
 

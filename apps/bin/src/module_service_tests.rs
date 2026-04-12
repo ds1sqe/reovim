@@ -587,3 +587,56 @@ async fn real_dynamic_module_flow_loads_lists_reloads_and_unloads() {
         .expect("server task should join")
         .expect("server should shut down cleanly");
 }
+
+// ============================================================================
+// format_reload_error unit tests (MC/DC branch 117:1 and 117:0 coverage)
+// ============================================================================
+
+/// Branch 117:0 — `LoadFailed` with the static-module sentinel string.
+/// (guard true → static-builtin error message)
+#[test]
+fn format_reload_error_load_failed_static_sentinel() {
+    let error = ModuleError::LoadFailed("cannot reload static module or missing path".into());
+    let response = format_reload_error("my-module", &error);
+    assert!(!response.ok);
+    let msg = response.error.expect("error should be present");
+    assert!(msg.contains("static builtin"));
+    assert!(msg.contains("my-module"));
+}
+
+/// Branch 117:1 — `LoadFailed` with a different message (guard false → falls
+/// through to `reload_unexpected` which is `coverage(off)`).
+#[test]
+fn format_reload_error_load_failed_other_message() {
+    let error = ModuleError::LoadFailed("dlopen: symbol not found".into());
+    let response = format_reload_error("my-module", &error);
+    assert!(!response.ok);
+}
+
+/// Ensure `format_reload_error` produces the correct `InUse` response.
+#[test]
+fn format_reload_error_in_use() {
+    let error = ModuleError::InUse {
+        module: ModuleId::new("provider"),
+        by: ModuleId::new("consumer"),
+    };
+    let response = format_reload_error("provider", &error);
+    assert!(!response.ok);
+    let msg = response.error.expect("error should be present");
+    assert!(msg.contains("in use by"));
+    assert!(msg.contains("consumer"));
+}
+
+// ============================================================================
+// format_load_error unit test for MC/DC branch 220:0
+// (LoadFailed message contains "already loaded" — guard true)
+// ============================================================================
+
+/// Branch 220:0 — `LoadFailed` where message contains "already loaded".
+#[test]
+fn format_load_error_already_loaded() {
+    let error = ModuleError::LoadFailed("already loaded".into());
+    let msg = format_load_error("test-mod", None, &error);
+    assert!(msg.contains("already loaded"));
+    assert!(msg.contains("test-mod"));
+}

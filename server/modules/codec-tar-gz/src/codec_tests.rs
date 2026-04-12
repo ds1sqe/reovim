@@ -548,6 +548,77 @@ fn re_parse_after_rename_is_valid() {
 }
 
 // ---------------------------------------------------------------------------
+// MC/DC coverage gaps
+
+#[test]
+fn translate_edit_valid_path_reaches_dispatch() {
+    // MC/DC 250:2: kind == "members" && !member_name.is_empty() — the both-false
+    // branch that proceeds past the guard.  This exercises resolve_member_path
+    // with a valid ["members", name, "bytes"] path all the way through.
+    let fixture = build_fixture();
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let edit = replace_bytes_edit(
+        &fixture.first_name,
+        fixture.first_payload.clone(),
+        fixture.first_payload.clone(),
+    );
+    // Same bytes → None (no-op), but the path was resolved successfully.
+    let result = codec.translate_edit(&bytes, &edit).unwrap();
+    assert_eq!(result, None);
+}
+
+#[test]
+fn translate_edit_rename_name_over_100_bytes_rejected() {
+    // MC/DC 345:0: new_name.len() > 100 → ConstraintViolation.
+    // old_name and new_name must have equal length and differ in content.
+    let long_name: String = "a".repeat(101);
+    let mut other_name = "b".repeat(101);
+    // Make them differ so the early no-op (same name) doesn't trigger.
+    other_name.push('x');
+    let other_name = &other_name[1..]; // still 101 bytes, different content
+
+    let fixture = build_tar_gz(&[(long_name.as_str(), b"payload")]);
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(fixture);
+    let edit = rename_edit(&long_name, other_name);
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn translate_edit_replace_bytes_payload_size_mismatch_rejected() {
+    // MC/DC 430:0: actual.len() != old_bytes.len().
+    // The fixture member payload is 10 bytes.  Pass old_bytes and new_bytes
+    // both of length 5 (same length → passes the len!=len guard at line 407),
+    // but 5 != 10 → triggers line 430.
+    let fixture = build_fixture();
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+    let wrong_old = b"WRONG".to_vec(); // 5 bytes, != 10
+    let wrong_new = b"OTHER".to_vec(); // 5 bytes
+    let result = codec
+        .translate_edit(&bytes, &replace_bytes_edit(&fixture.first_name, wrong_old, wrong_new));
+    assert!(matches!(result, Err(TranslateEditError::ConstraintViolation { .. })));
+}
+
+#[test]
+fn translate_edit_empty_member_name_rejected() {
+    let fixture = build_fixture();
+    let codec = TarGzCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes);
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["members".to_string(), String::new(), "bytes".to_string()]),
+        op: TreeOp::new(TarGzTreeOp::ReplaceMemberBytes {
+            old_bytes: vec![],
+            new_bytes: vec![],
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(matches!(result, Err(TranslateEditError::MalformedPath { .. })));
+}
+
+// ---------------------------------------------------------------------------
 // InodeTable / peer-stale propagation
 
 #[test]

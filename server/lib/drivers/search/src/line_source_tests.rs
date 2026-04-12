@@ -136,3 +136,69 @@ fn default_content_empty() {
     let line_count = source.line_count();
     assert_eq!(line_count, 0);
 }
+
+// ── MC/DC 47:1 — default content() with a LineSource that returns None ─
+
+struct PartialLineSource {
+    count: usize,
+}
+
+impl LineSource for PartialLineSource {
+    fn line_count(&self) -> usize {
+        self.count
+    }
+
+    fn line(&self, idx: usize) -> Option<std::borrow::Cow<'_, str>> {
+        // Return None for odd indices to exercise the else path of
+        // `if let Some(line) = self.line(i)` in content().
+        if idx.is_multiple_of(2) {
+            Some(std::borrow::Cow::Borrowed("line"))
+        } else {
+            None
+        }
+    }
+
+    fn line_len(&self, _idx: usize) -> Option<usize> {
+        None
+    }
+
+    fn position_to_byte(&self, _pos: reovim_domain_text::Position) -> usize {
+        0
+    }
+
+    fn byte_to_position(&self, _byte_offset: usize) -> reovim_domain_text::Position {
+        reovim_domain_text::Position::new(0, 0)
+    }
+}
+
+#[test]
+fn default_content_skips_none_lines() {
+    // MC/DC 47:1: line() returns None for odd indices; the default content()
+    // implementation skips them (the None arm of the if-let).
+    let source = PartialLineSource { count: 4 };
+    // Lines: 0=Some("line"), 1=None, 2=Some("line"), 3=None
+    let content = source.content();
+    // The default impl pushes '\n' before each non-first iteration and skips
+    // the push_str when line() returns None.
+    assert_eq!(content, "line\n\nline\n");
+}
+
+// ── MC/DC 141:0 and 156:0 — TextGeometryLineSource with empty content ──
+
+#[test]
+fn text_geometry_position_to_byte_empty_source() {
+    // MC/DC 141:0: line_count == 0 in TextGeometryLineSource::position_to_byte.
+    let text = reovim_domain_text::SimpleText::new("");
+    let source = TextGeometryLineSource::new(&text);
+    // Empty source: position_to_byte should return 0 immediately.
+    assert_eq!(source.position_to_byte(reovim_domain_text::Position::new(0, 0)), 0);
+}
+
+#[test]
+fn text_geometry_byte_to_position_empty_source() {
+    // MC/DC 156:0: line_count == 0 in TextGeometryLineSource::byte_to_position.
+    let text = reovim_domain_text::SimpleText::new("");
+    let source = TextGeometryLineSource::new(&text);
+    // Empty source: byte_to_position should return Position::origin().
+    assert_eq!(source.byte_to_position(0), reovim_domain_text::Position::new(0, 0));
+}

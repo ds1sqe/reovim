@@ -109,22 +109,7 @@ impl RunnerModuleService {
                 ok: true,
                 error: None,
             },
-            Err(ModuleError::InUse { module, by }) => ReloadModuleResponse {
-                ok: false,
-                error: Some(format!("cannot reload '{module}': in use by '{by}'")),
-            },
-            Err(ModuleError::LoadFailed(message))
-                if message.contains("cannot reload static module or missing path") =>
-            {
-                ReloadModuleResponse {
-                    ok: false,
-                    error: Some(format!(
-                        "module '{}' is a static builtin and cannot be hot-reloaded",
-                        request.name
-                    )),
-                }
-            }
-            Err(error) => reload_unexpected(&error),
+            Err(error) => format_reload_error(&request.name, &error),
         }
     }
 }
@@ -154,6 +139,26 @@ fn reload_unexpected(error: &ModuleError) -> ReloadModuleResponse {
     ReloadModuleResponse {
         ok: false,
         error: Some(error.to_string()),
+    }
+}
+
+fn format_reload_error(module_name: &str, error: &ModuleError) -> ReloadModuleResponse {
+    match error {
+        ModuleError::InUse { module, by } => ReloadModuleResponse {
+            ok: false,
+            error: Some(format!("cannot reload '{module}': in use by '{by}'")),
+        },
+        ModuleError::LoadFailed(message)
+            if message.contains("cannot reload static module or missing path") =>
+        {
+            ReloadModuleResponse {
+                ok: false,
+                error: Some(format!(
+                    "module '{module_name}' is a static builtin and cannot be hot-reloaded"
+                )),
+            }
+        }
+        _ => reload_unexpected(error),
     }
 }
 

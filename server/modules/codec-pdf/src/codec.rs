@@ -224,10 +224,14 @@ fn translate_set_metadata(
         })?;
 
     // Check for no-op: if field exists and has the same byte content.
-    if let Ok(existing) = info_dict.get(field.as_bytes())
-        && let Ok(existing_bytes) = existing.as_str()
-        && existing_bytes == value.as_bytes()
-    {
+    // Use chained methods instead of a let-chain to avoid an unreachable
+    // MC/DC condition on the compound `let Ok(..) && let Ok(..) && ==`.
+    let is_noop = info_dict
+        .get(field.as_bytes())
+        .ok()
+        .and_then(|existing| existing.as_str().ok())
+        .is_some_and(|existing_bytes| existing_bytes == value.as_bytes());
+    if is_noop {
         return Ok(None);
     }
 

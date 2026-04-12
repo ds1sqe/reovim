@@ -247,7 +247,14 @@ fn resolve_member_path(path: &TreePath) -> Result<ResolvedMemberPath, TranslateE
             reason: "tar-gz member path must be [members, <name>, bytes|name]",
         });
     };
-    if kind != "members" || member_name.is_empty() {
+    // Split the compound `||` into separate checks to satisfy MC/DC
+    // (compound conditions generate unreachable branch artifacts).
+    if kind != "members" {
+        return Err(TranslateEditError::MalformedPath {
+            reason: "tar-gz member path must be [members, <name>, bytes|name]",
+        });
+    }
+    if member_name.is_empty() {
         return Err(TranslateEditError::MalformedPath {
             reason: "tar-gz member path must be [members, <name>, bytes|name]",
         });

@@ -1,4 +1,100 @@
+use {
+    reovim_driver_codec::{
+        CodecError, CodecMetadata, ContentClassifier, ContentClassifierStore,
+        ContentCodecFactoryStore, ContentType, DecodeResult,
+    },
+    std::sync::Arc,
+};
+
 use super::*;
+
+// ============================================================================
+// Codec pipeline branch coverage helpers
+// ============================================================================
+
+/// A classifier that always identifies bytes as the given content type.
+struct AlwaysMatchClassifier {
+    content_type: ContentType,
+}
+
+impl ContentClassifier for AlwaysMatchClassifier {
+    fn classify(&self, _raw: &[u8], _path: &str) -> Option<ContentType> {
+        Some(self.content_type.clone())
+    }
+
+    fn priority(&self) -> u8 {
+        100
+    }
+
+    fn name(&self) -> &'static str {
+        "always-match"
+    }
+}
+
+/// A codec that decodes as UTF-8, optionally setting truncated = true.
+struct SimpleTestCodec {
+    truncated: bool,
+}
+
+impl reovim_driver_codec::ContentCodec for SimpleTestCodec {
+    fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
+        Ok(DecodeResult {
+            content: String::from_utf8_lossy(raw).into_owned(),
+            annotations: vec![],
+            metadata: CodecMetadata::new(ContentType::new("text/test")),
+            lossy: false,
+            readonly: false,
+            truncated: self.truncated,
+        })
+    }
+}
+
+struct SimpleTestFactory {
+    truncated: bool,
+}
+
+impl reovim_driver_codec::ContentCodecFactory for SimpleTestFactory {
+    fn create(
+        &self,
+        content_type: &ContentType,
+    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+        if content_type.as_str() == "text/test" {
+            Some(Arc::new(SimpleTestCodec {
+                truncated: self.truncated,
+            }))
+        } else {
+            None
+        }
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec!["text/test"]
+    }
+
+    fn name(&self) -> &'static str {
+        "simple-test"
+    }
+}
+
+/// Factory that recognises no content type (simulates missing codec).
+struct NoMatchFactory;
+
+impl reovim_driver_codec::ContentCodecFactory for NoMatchFactory {
+    fn create(
+        &self,
+        _content_type: &ContentType,
+    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+        None
+    }
+
+    fn supported_content_types(&self) -> Vec<&str> {
+        vec![]
+    }
+
+    fn name(&self) -> &'static str {
+        "no-match"
+    }
+}
 
 #[test]
 fn test_edit_command_id() {
@@ -234,5 +330,124 @@ fn decode_file_content_invalid_utf8_errors() {
             err.contains("not valid UTF-8"),
             "expected 'not valid UTF-8' in error, got {err:?}"
         );
+    });
+}
+
+// ============================================================================
+// Codec pipeline branch coverage (#740 Phase 0)
+// Branch 368:0 — both classifier + factory stores present (enters codec path)
+// Branch 375:0 — factory.find returns Some (codec found)
+// Branch 375:1 — factory.find returns None (no matching codec, UTF-8 fallback)
+// Branch 378:0 — result.truncated == true
+// Branch 378:1 — result.truncated == false
+// Branch 389:0 — CodecSessionState is Some (stores metadata)
+// Branch 389:1 — CodecSessionState is None (skips metadata storage)
+// ============================================================================
+
+/// Branches 368:0, 375:0, 378:1, 389:1 — codec pipeline engaged, codec found,
+/// not truncated, no `CodecSessionState` registered.
+#[test]
+fn decode_file_content_codec_found_not_truncated_no_codec_state() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(AlwaysMatchClassifier {
+        content_type: ContentType::new("text/test"),
+    }));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    factory_store.add_factory(Arc::new(SimpleTestFactory { truncated: false }));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"hello codec", "test.txt", runtime);
+        assert_eq!(result, Ok("hello codec".to_string()));
+    });
+}
+
+/// Branches 368:0, 375:0, 378:0, 389:1 — codec found, truncated=true,
+/// no `CodecSessionState` registered.
+#[test]
+fn decode_file_content_codec_found_truncated_no_codec_state() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(AlwaysMatchClassifier {
+        content_type: ContentType::new("text/test"),
+    }));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    factory_store.add_factory(Arc::new(SimpleTestFactory { truncated: true }));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"truncated content", "test.txt", runtime);
+        assert_eq!(result, Ok("truncated content".to_string()));
+    });
+}
+
+/// Branches 368:0, 375:0, 378:1, 389:0 — codec found, not truncated,
+/// `CodecSessionState` IS registered.
+#[test]
+fn decode_file_content_codec_found_stores_codec_state() {
+    use {
+        reovim_driver_codec::CodecSessionState, reovim_driver_session::testing::TestSessionRuntime,
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(AlwaysMatchClassifier {
+        content_type: ContentType::new("text/test"),
+    }));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    factory_store.add_factory(Arc::new(SimpleTestFactory { truncated: false }));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+    harness
+        .shared_extensions
+        .get_or_insert::<CodecSessionState>();
+
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"data for codec", "test.txt", runtime);
+        assert_eq!(result, Ok("data for codec".to_string()));
+    });
+
+    let buf_id = harness.active_buffer().unwrap();
+    let codec_state = harness
+        .shared_extensions
+        .get::<CodecSessionState>()
+        .expect("codec state should exist");
+    assert!(codec_state.contains(buf_id), "codec state should be populated after decode");
+}
+
+/// Branches 368:0, 375:1 — both stores present but no codec matches the
+/// content type; falls back to UTF-8.
+#[test]
+fn decode_file_content_codec_not_found_falls_back_to_utf8() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(AlwaysMatchClassifier {
+        content_type: ContentType::new("text/test"),
+    }));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    factory_store.add_factory(Arc::new(NoMatchFactory));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"plain utf8 fallback", "test.txt", runtime);
+        assert_eq!(result, Ok("plain utf8 fallback".to_string()));
     });
 }

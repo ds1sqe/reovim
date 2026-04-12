@@ -2259,21 +2259,26 @@ async fn test_fix_cursor_label_preserves_content() {
         .await
         .expect("TUI 2 failed to connect");
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
     // Add content where lines have recognizable text
     tui1.send_keys("iApple Banana<CR>Cherry Date<CR>Elderberry Fig<CR>Grape Honey<Esc>")
         .await
         .expect("Failed to add content");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Wait for content to propagate to TUI 2
+    tui2.wait_for(Duration::from_secs(2), |f| f.contains("Apple Banana"))
+        .await
+        .expect("Content should propagate to TUI 2");
 
     // Move TUI 1's cursor to line 3 (0-indexed: 2) -- label renders on line 2 (above)
     tui1.send_keys("gg2j").await.expect("TUI 1 move failed");
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Wait for TUI 2 to see all content with cursor label overlay
+    tui2.wait_for(Duration::from_secs(2), |f| {
+        f.contains("Apple Banana") && f.contains("Elderberry Fig")
+    })
+    .await
+    .expect("TUI 2 should see content after cursor move");
 
-    // TUI 2 captures -- should see TUI 1's cursor label but content preserved
     let frame2 = tui2
         .capture("plain_text")
         .await
@@ -2490,44 +2495,32 @@ async fn test_fix_resize_then_cursor_label_rendering() {
         .await
         .expect("TUI 2 failed to connect");
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
     // Add content
     tui1.send_keys("iResize Test Line 1<CR>Resize Test Line 2<CR>Resize Test Line 3<Esc>")
         .await
         .expect("Failed to add content");
 
+    // Wait for content to propagate
+    tui2.wait_for(Duration::from_secs(2), |f| f.contains("Resize Test Line 1"))
+        .await
+        .expect("Content should propagate to TUI 2");
+
     // Move cursors to different lines
     tui1.send_keys("gg1j").await.ok(); // Line 2
     tui2.send_keys("gg2j").await.ok(); // Line 3
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
     // Resize TUI 1 to a smaller terminal
     tui1.resize(40, 12).await.expect("Resize failed");
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
     // After resize, TUI 1 should still render correctly
-    let frame1 = tui1
-        .capture("plain_text")
+    tui1.wait_for(Duration::from_secs(2), |f| f.contains("Resize Test"))
         .await
-        .expect("TUI 1 capture after resize failed");
+        .expect("Content should be visible after resize");
 
-    // Content should be visible (possibly truncated due to 40-col width)
-    assert!(frame1.contains("Resize Test"), "Content should be visible after resize");
-
-    // TUI 2 should NOT have been resized (isolation)
-    let frame2 = tui2
-        .capture("plain_text")
+    // TUI 2 should NOT have been resized (isolation) — wait for content
+    tui2.wait_for(Duration::from_secs(2), |f| f.contains("Resize Test Line 1"))
         .await
-        .expect("TUI 2 capture failed");
-
-    // TUI 2's full-width content should be intact (80 cols, not truncated to 40)
-    assert!(
-        frame2.contains("Resize Test Line 1"),
-        "TUI 2 content should be fully visible (not truncated by TUI 1's resize)"
-    );
+        .expect("TUI 2 content should be fully visible (not truncated by TUI 1's resize)");
 
     // TUI 2 should see TUI 1's cursor label without corruption
     let frame2_ansi = tui2

@@ -416,6 +416,104 @@ fn test_find_backward_wrap_no_matches_anywhere() {
 }
 
 #[test]
+fn test_word_at_cursor_underscore_extends_backward() {
+    // MC/DC 120:4: chars[start-1] == '_' is the true branch when
+    // chars[start-1].is_alphanumeric() is false.
+    // Cursor at col 4 on "foo_bar" — backward scan hits '_' at index 3,
+    // where is_alphanumeric()=false and == '_'=true.
+    let engine = SearchEngine;
+    let buffer = create_test_buffer("foo_bar baz");
+    let word = engine.word_at_cursor(&buffer, Position::new(0, 4));
+    assert!(word.is_some());
+    assert_eq!(word.unwrap(), r"\bfoo_bar\b");
+}
+
+// MC/DC coverage for find_backward_source (lines 262-275).
+// The existing backward tests use find_next(&Buffer) which routes through
+// find_backward, not find_backward_source. These tests exercise
+// find_next_source(&dyn LineSource).
+
+struct VecSource(Vec<String>);
+
+impl LineSource for VecSource {
+    fn line_count(&self) -> usize {
+        self.0.len()
+    }
+    fn line(&self, idx: usize) -> Option<std::borrow::Cow<'_, str>> {
+        self.0
+            .get(idx)
+            .map(|s| std::borrow::Cow::Borrowed(s.as_str()))
+    }
+    fn line_len(&self, idx: usize) -> Option<usize> {
+        self.0.get(idx).map(|s| s.chars().count())
+    }
+    fn position_to_byte(&self, pos: Position) -> usize {
+        let mut offset = 0;
+        for i in 0..pos.line.min(self.0.len()) {
+            offset += self.0[i].len() + 1;
+        }
+        if pos.line < self.0.len() {
+            offset + pos.column.min(self.0[pos.line].len())
+        } else {
+            offset
+        }
+    }
+    fn byte_to_position(&self, byte_offset: usize) -> Position {
+        let mut offset = 0;
+        for (idx, line) in self.0.iter().enumerate() {
+            let end = offset + line.len();
+            if byte_offset <= end {
+                return Position::new(idx, byte_offset - offset);
+            }
+            offset = end + 1;
+        }
+        Position::new(self.0.len().saturating_sub(1), 0)
+    }
+}
+
+#[test]
+fn test_find_backward_source_match_before_cursor() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello world hello".to_string()]);
+    let result =
+        engine.find_next_source(&source, Position::new(0, 17), "hello", Direction::Backward, false);
+    assert!(result.is_ok());
+    let m = result.unwrap().unwrap();
+    assert_eq!(m.start.column, 12);
+}
+
+#[test]
+fn test_find_backward_source_no_match_no_wrap() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["xyz abc".to_string()]);
+    let result =
+        engine.find_next_source(&source, Position::new(0, 0), "abc", Direction::Backward, false);
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
+fn test_find_backward_source_wrap_finds_last() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["abc abc abc".to_string()]);
+    let result =
+        engine.find_next_source(&source, Position::new(0, 0), "abc", Direction::Backward, true);
+    assert!(result.is_ok());
+    let m = result.unwrap().unwrap();
+    assert_eq!(m.start.column, 8);
+}
+
+#[test]
+fn test_find_backward_source_wrap_no_match() {
+    let engine = SearchEngine;
+    let source = VecSource(vec!["hello world".to_string()]);
+    let result =
+        engine.find_next_source(&source, Position::new(0, 5), "zzz", Direction::Backward, true);
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
 fn test_byte_to_position_at_exact_line_boundary() {
     let buffer = create_test_buffer("ab\ncd");
     // byte 2 is the newline, byte 3 is 'c' on line 1

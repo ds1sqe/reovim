@@ -6530,3 +6530,209 @@ fn test_fullreplace_no_text_buffer_edits() {
 }
 
 // Note: byte-level undo-log cleanup is tracked outside session runtime.
+
+// =========================================================================
+// extract_text_range: None paths (MC/DC 2020:1, 2031:1, 2039:1, 2044:1)
+// =========================================================================
+
+#[test]
+fn test_extract_text_range_single_line_none_returns_empty() {
+    // MC/DC 2020:1: line_fn returns None for the single-line path.
+    let result = extract_text_range(Position::new(5, 0), Position::new(5, 3), 10, |_| None);
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_extract_text_range_multi_line_start_none() {
+    // MC/DC 2031:1: line_fn returns None for start.line in multi-line path.
+    let result = extract_text_range(Position::new(0, 0), Position::new(2, 3), 3, |idx| {
+        if idx == 0 {
+            None
+        } else {
+            Some(format!("line{idx}"))
+        }
+    });
+    // start line is None → skipped; middle line (1) is included; end line (2) included
+    assert_eq!(result, "line1\nlin");
+}
+
+#[test]
+fn test_extract_text_range_multi_line_middle_none() {
+    // MC/DC 2039:1: line_fn returns None for a middle line index.
+    let result = extract_text_range(Position::new(0, 0), Position::new(3, 3), 4, |idx| {
+        if idx == 2 {
+            None
+        } else {
+            Some(format!("line{idx}"))
+        }
+    });
+    // line 0 → "line0\n", line 1 → "line1\n", line 2 → None (skipped), line 3 end → "lin"
+    assert_eq!(result, "line0\nline1\nlin");
+}
+
+#[test]
+fn test_extract_text_range_multi_line_end_none() {
+    // MC/DC 2044:1: line_fn returns None for end.line in multi-line path.
+    let result = extract_text_range(Position::new(0, 0), Position::new(2, 3), 3, |idx| {
+        if idx == 2 {
+            None
+        } else {
+            Some(format!("line{idx}"))
+        }
+    });
+    // start line 0 → "line0\n", middle line 1 → "line1\n", end line 2 → None (skipped)
+    assert_eq!(result, "line0\nline1\n");
+}
+
+// =========================================================================
+// MC/DC branch 714:0 — buffer_content calls stale_check hook when installed
+// =========================================================================
+
+struct CountingStaleCheck {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl crate::StaleCheck for CountingStaleCheck {
+    fn refresh_if_stale(&self, _buffer: BufferId) {
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Branch 714:0 — `SessionRuntime::buffer_content` calls the installed
+/// `StaleCheck` hook when one is present.
+#[test]
+fn test_buffer_content_calls_stale_check_hook() {
+    use crate::testing::TestSessionRuntime;
+
+    let check = std::sync::Arc::new(CountingStaleCheck {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+
+    let mut harness = TestSessionRuntime::with_buffer("stale check test");
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+    harness.with_runtime(|runtime| {
+        runtime.session_mut().shared.install_stale_check(
+            std::sync::Arc::clone(&check) as std::sync::Arc<dyn crate::StaleCheck>
+        );
+        let _ = runtime.buffer_content(buffer_id);
+    });
+
+    assert_eq!(
+        check.calls.load(std::sync::atomic::Ordering::Relaxed),
+        1,
+        "stale_check hook should be called once per buffer_content call"
+    );
+}
+
+// =========================================================================
+// MC/DC branches 883:1 and 899:1 — create_buffer / delete_buffer without
+// TextBufferRegistry registered in the kernel.
+// =========================================================================
+
+fn make_kernel_without_text_registry() -> reovim_kernel::api::v1::KernelContext {
+    reovim_kernel::testing::create_test_context()
+}
+
+/// Branch 883:1 — `create_buffer` skips `TextBufferRegistry::register`
+/// when the service is not present.
+#[test]
+fn test_create_buffer_without_text_registry() {
+    let home_mode = test_mode();
+    let mut session = Session::new(ClientId::new(1), home_mode.clone());
+    let kernel = make_kernel_without_text_registry();
+    let executor = StubExecutor;
+
+    let mut mode_stack = reovim_kernel::api::v1::ModeStack::new(home_mode);
+    let mut windows = crate::WindowLayout::empty();
+    let mut extensions = crate::ExtensionMap::new();
+    let mut shared_extensions = crate::ExtensionMap::new();
+    let mut compositor = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut registers = RegisterBank::new();
+    let mut clipboard_history = reovim_domain_text::HistoryRing::new();
+    let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let mut runtime = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut mode_stack,
+            windows: &mut windows,
+            extensions: &mut extensions,
+            compositor: &mut compositor,
+            tabs: &mut tabs,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    )
+    .with_shared_extensions(&mut shared_extensions);
+
+    let buf_id = runtime.create_buffer(None, "hello");
+    assert_eq!(kernel.buffers.count(), 1, "buffer should be registered in kernel");
+    let content = runtime.buffer_content(buf_id);
+    assert!(
+        content.is_none(),
+        "TextBufferRegistry absent — content not resolvable via registry"
+    );
+}
+
+/// Branch 899:1 — `delete_buffer` skips `TextBufferRegistry::unregister`
+/// when the service is not present.
+#[test]
+fn test_delete_buffer_without_text_registry() {
+    let home_mode = test_mode();
+    let mut session = Session::new(ClientId::new(1), home_mode.clone());
+    let kernel = make_kernel_without_text_registry();
+    let executor = StubExecutor;
+
+    let mut mode_stack = reovim_kernel::api::v1::ModeStack::new(home_mode);
+    let mut windows = crate::WindowLayout::empty();
+    let mut extensions = crate::ExtensionMap::new();
+    let mut shared_extensions = crate::ExtensionMap::new();
+    let mut compositor = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut registers = RegisterBank::new();
+    let mut clipboard_history = reovim_domain_text::HistoryRing::new();
+    let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let mut runtime = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut mode_stack,
+            windows: &mut windows,
+            extensions: &mut extensions,
+            compositor: &mut compositor,
+            tabs: &mut tabs,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    )
+    .with_shared_extensions(&mut shared_extensions);
+
+    let buf_a = runtime.create_buffer(None, "first");
+    let _buf_b = runtime.create_buffer(None, "second");
+    assert_eq!(kernel.buffers.count(), 2);
+
+    let result = runtime.delete_buffer(buf_a);
+    assert!(result.is_ok(), "delete_buffer should succeed without TextBufferRegistry");
+    assert_eq!(kernel.buffers.count(), 1);
+}

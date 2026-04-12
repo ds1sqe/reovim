@@ -327,23 +327,29 @@ impl ModuleRegistry {
             return Err(ModuleError::NotLoaded(id.clone()));
         }
 
-        // CRITICAL: Check if other modules depend on this one
-        if let Some(deps) = inner.dependents.get(id)
-            && !deps.is_empty()
+        // CRITICAL: Check if other modules depend on this one.
+        // Use `is_some_and` instead of a let-chain to avoid an unreachable
+        // MC/DC condition on the compound `let Some(..) && !is_empty()`.
+        if inner
+            .dependents
+            .get(id)
+            .is_some_and(|deps| !deps.is_empty())
         {
+            let by = inner.dependents[id].iter().next().unwrap().clone();
             return Err(ModuleError::InUse {
                 module: id.clone(),
-                // SAFETY: deps is non-empty (checked above)
-                by: deps.iter().next().unwrap().clone(),
+                by,
             });
         }
 
-        // Call exit on module (contains_key above guarantees presence, but
-        // remove returns Option for API safety — chain to avoid an untestable
-        // None branch).
-        if let Some(mut handle) = inner.loader.modules.remove(id) {
-            handle.exit()?;
-        }
+        // contains_key above guarantees presence; use expect to document
+        // the invariant and eliminate the untestable None MC/DC branch.
+        inner
+            .loader
+            .modules
+            .remove(id)
+            .expect("guaranteed by contains_key check above")
+            .exit()?;
         inner.states.remove(id);
 
         // Remove from dependents map

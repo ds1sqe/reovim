@@ -295,6 +295,84 @@ async fn test_module_with_paths_check_reports_broken_library() {
     assert!(output.contains("BROKEN: sample"));
 }
 
+#[test]
+fn test_parse_module_source_git_http() {
+    let source = parse_module_source("http://example.com/mod.git", None);
+    assert!(source.is_git());
+    assert!(!source.is_path());
+}
+
+#[test]
+fn test_format_update_all_results_empty() {
+    let results: Vec<Result<InstalledModule, (String, String)>> = vec![];
+    let output = format_update_all_results(&results, OutputFormat::Plain);
+    assert!(output.contains("No modules installed"));
+}
+
+#[test]
+fn test_format_list_installed_module_not_loaded() {
+    let module = sample_installed_module();
+    let loaded_ids: HashSet<String> = HashSet::new();
+
+    let output = format_module_list(&[module], &loaded_ids, OutputFormat::Plain);
+    assert!(output.contains("sample"));
+    assert!(!output.contains("[loaded]"));
+}
+
+#[test]
+fn test_format_module_info_no_provides() {
+    let info = RegistryModuleInfo {
+        id: "no-provides".to_string(),
+        version: "1.0.0".to_string(),
+        source: ModuleSource::path("/tmp/no-provides"),
+        install_path: std::path::PathBuf::from("/tmp/no-provides"),
+        library_exists: true,
+        provides: vec![],
+        requires: vec!["dep-a".to_string()],
+    };
+    let output = format_module_info(&info, OutputFormat::Plain);
+    assert!(!output.contains("Provides:"));
+    assert!(output.contains("Requires:  dep-a"));
+}
+
+#[test]
+fn test_format_list_installed_module_loaded() {
+    let module = sample_installed_module();
+    let mut loaded_ids: HashSet<String> = HashSet::new();
+    loaded_ids.insert("sample".to_string());
+
+    let output = format_module_list(&[module], &loaded_ids, OutputFormat::Plain);
+    assert!(output.contains("[loaded]"));
+}
+
+#[test]
+fn test_format_module_info_library_missing() {
+    let info = RegistryModuleInfo {
+        id: "broken".to_string(),
+        version: "1.0.0".to_string(),
+        source: ModuleSource::path("/tmp/broken"),
+        install_path: std::path::PathBuf::from("/tmp/broken"),
+        library_exists: false,
+        provides: vec!["cap-a".to_string()],
+        requires: vec![],
+    };
+    let output = format_module_info(&info, OutputFormat::Plain);
+    assert!(output.contains("MISSING"));
+    assert!(output.contains("Provides:  cap-a"));
+}
+
+#[test]
+fn test_format_check_report_broken_only_no_constraint_violations() {
+    let mut report = CheckReport::default();
+    report
+        .broken
+        .push(("sample".to_string(), "missing library".to_string()));
+
+    let output = format_check_report(&report, OutputFormat::Plain);
+    assert!(output.contains("BROKEN: sample"));
+    assert!(!output.contains("Constraint violations:"));
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn test_module_with_paths_update_missing_maps_to_operation_failed() {
     let (_temp, paths) = temp_registry_paths();

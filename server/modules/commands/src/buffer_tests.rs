@@ -137,3 +137,107 @@ fn bdelete_no_active_buffer_is_noop() {
         assert!(matches!(result, CommandResult::Success));
     });
 }
+
+// ============================================================================
+// cycle_buffer branch coverage
+// Branch 157:0 — active buffer exists (continues to body)
+// Branch 157:1 — no active buffer (returns early)
+// Branch 162:0 — only one buffer (returns early)
+// Branch 162:1 — two or more buffers (continues to cycle)
+// Branch 172:0 — current_idx == 0, prev wraps to end
+// Branch 172:1 — current_idx > 0, prev decrements
+// ============================================================================
+
+/// Branch 157:1 — no active buffer → `:bn` is a no-op.
+#[test]
+fn bnext_no_active_buffer_is_noop() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::new();
+    harness.with_runtime(|runtime| {
+        let cmd = BnextCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+}
+
+/// Branch 162:0 — only one buffer → `:bn` is a no-op.
+#[test]
+fn bnext_single_buffer_is_noop() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("only");
+    let buf = harness.active_buffer().unwrap();
+    harness.with_runtime(|runtime| {
+        let cmd = BnextCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+    assert_eq!(harness.active_buffer(), Some(buf));
+}
+
+/// Branches 157:0, 162:1 — active buffer, two buffers → `:bn` advances.
+#[test]
+fn bnext_cycles_to_next_buffer() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("first");
+    let buf_a = harness.active_buffer().unwrap();
+    let buf_b = harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+
+    harness.with_runtime(|runtime| {
+        runtime.set_active_buffer(Some(buf_a));
+        let cmd = BnextCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+
+    assert_eq!(harness.active_buffer(), Some(buf_b));
+}
+
+/// Branch 172:0 — `current_idx` == 0 → `:bp` wraps to last buffer.
+#[test]
+fn bprevious_at_first_buffer_wraps_to_last() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("first");
+    let buf_a = harness.active_buffer().unwrap();
+    let buf_b = harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+
+    // Determine which ID sorts first so we can set the smallest as "current"
+    // and verify that `:bp` wraps to the other.
+    let first = buf_a.min(buf_b);
+
+    harness.with_runtime(|runtime| {
+        runtime.set_active_buffer(Some(first));
+        let cmd = BpreviousCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+
+    let active = harness.active_buffer().unwrap();
+    assert_ne!(active, first, "should have cycled away from first buffer");
+}
+
+/// Branch 172:1 — `current_idx` > 0 → `:bp` decrements.
+#[test]
+fn bprevious_not_at_first_decrements() {
+    use reovim_driver_session::testing::TestSessionRuntime;
+
+    let mut harness = TestSessionRuntime::with_buffer("first");
+    let buf_a = harness.active_buffer().unwrap();
+    let buf_b = harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+
+    // Set the larger ID as active so current_idx > 0 and `:bp` decrements.
+    let first = buf_a.min(buf_b);
+    let last = buf_a.max(buf_b);
+
+    harness.with_runtime(|runtime| {
+        runtime.set_active_buffer(Some(last));
+        let cmd = BpreviousCommand;
+        let result = cmd.execute(runtime, &CommandContext::new());
+        assert!(matches!(result, CommandResult::Success));
+    });
+
+    assert_eq!(harness.active_buffer(), Some(first));
+}

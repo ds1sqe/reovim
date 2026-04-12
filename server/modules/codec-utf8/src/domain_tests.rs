@@ -225,6 +225,21 @@ fn translate_edit_out_of_bounds() {
     assert!(idx.translate_edit(&edit).is_none());
 }
 
+// ─── MC/DC branch 171:1 — remove_start >= remove_end ───────────────────────
+
+#[test]
+fn notify_delete_newline_at_last_line_start_skips_drain() {
+    // MC/DC 171:1: old_newlines > 0 but remove_start >= remove_end.
+    // With a single-line index (line_starts=[0]), line_idx=0 so
+    // remove_start=1 and remove_end=(1+1).min(1)=1 → 1 < 1 is false.
+    let mut idx = Utf8LineIndex::new();
+    idx.build(b"hello");
+    // old_bytes contains a newline, but line_starts has only one entry.
+    idx.notify(&ByteEdit::delete(0, b"\n"));
+    // Index should not panic and should remain consistent.
+    assert_eq!(idx.offset_to_position(0), Some(TextPosition::new(0, 0)));
+}
+
 // ─── Default impl ───────────────────────────────────────────────────────────
 
 #[test]

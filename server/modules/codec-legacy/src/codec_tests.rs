@@ -195,6 +195,23 @@ fn translate_edit_cp1252_replacement() {
 }
 
 #[test]
+fn translate_edit_end_before_start_rejected() {
+    // MC/DC 121:0: end_decoded < start_decoded → ConstraintViolation.
+    use reovim_driver_codec::TranslateEditError;
+    let codec = latin1_codec();
+    let bytes = HeapByteSource::new(b"abcdef");
+    let edit = DecodedEdit::Text {
+        start: Position::new(0, 4),
+        end: Position::new(0, 1),
+        replacement: String::new(),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::ConstraintViolation { .. })
+    ));
+}
+
+#[test]
 fn translate_edit_bytes_variant_is_not_supported() {
     use reovim_driver_codec::TranslateEditError;
     let codec = latin1_codec();

@@ -1019,3 +1019,16 @@ fn unmount_codec_skips_buffers_without_inode() {
     state.unmount_codec(handle.mount_id_for_tests()).unwrap();
     assert!(state.list_mounts(buf(1)).is_empty());
 }
+
+#[test]
+fn unmount_codec_all_buffers_without_inode() {
+    // MC/DC 437:1 — every active_view entry lacks an inode, so the
+    // `let Some(inode_id) = ...` branch always takes the `else { continue }` path
+    // and the function reaches the end without finding the mount.
+    let mut state = CodecSessionState::new();
+    state.set_active_view(buf(1), "default".to_string());
+    state.set_active_view(buf(2), "default".to_string());
+    let bogus = crate::MountId::from_u64(999);
+    let err = state.unmount_codec(bogus).unwrap_err();
+    assert_eq!(err, UmountCodecError::MountNotFound);
+}
