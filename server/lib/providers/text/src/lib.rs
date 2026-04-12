@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Text content provider for reovim.
 //!
 //! This crate provides text-specific buffer types, algorithms, and navigation

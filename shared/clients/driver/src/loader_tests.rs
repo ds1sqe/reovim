@@ -809,3 +809,33 @@ fn loader_exit_failure_continues() {
     assert!(matches!(loader.state("ef_b"), Some(ClientModuleState::Failed(_))));
     assert_eq!(loader.state("ef_c"), Some(&ClientModuleState::Loaded));
 }
+
+#[test]
+fn loader_modules_mut_slice_returns_mutable_slice() {
+    let modules: Vec<Box<dyn ClientModule>> =
+        vec![Box::new(SimpleModule("slice_a")), Box::new(SimpleModule("slice_b"))];
+    let mut loader = ClientModuleLoader::from_modules_for_test(modules).unwrap();
+
+    let slice = loader.modules_mut_slice();
+    assert_eq!(slice.len(), 2);
+    // Verify the slice contains the expected modules by kind.
+    let kinds: Vec<&str> = slice.iter().map(|m| m.kind()).collect();
+    assert!(kinds.contains(&"slice_a"));
+    assert!(kinds.contains(&"slice_b"));
+}
+
+#[test]
+fn loader_modules_mut_iterator_yields_all_modules() {
+    let modules: Vec<Box<dyn ClientModule>> = vec![
+        Box::new(SimpleModule("iter_a")),
+        Box::new(SimpleModule("iter_b")),
+        Box::new(SimpleModule("iter_c")),
+    ];
+    let mut loader = ClientModuleLoader::from_modules_for_test(modules).unwrap();
+
+    let kinds: Vec<&str> = loader.modules_mut().map(|m| m.kind()).collect();
+    assert_eq!(kinds.len(), 3);
+    assert!(kinds.contains(&"iter_a"));
+    assert!(kinds.contains(&"iter_b"));
+    assert!(kinds.contains(&"iter_c"));
+}

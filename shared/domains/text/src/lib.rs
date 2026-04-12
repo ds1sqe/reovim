@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Pure text types and algorithms for reovim.
 //!
 //! This crate provides fundamental text types, traits, and algorithms.

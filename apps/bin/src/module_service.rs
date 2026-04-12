@@ -70,10 +70,7 @@ impl RunnerModuleService {
                     ok: true,
                     error: None,
                 },
-                Err(error) => LoadModuleResponse {
-                    ok: false,
-                    error: Some(format_init_error(&error)),
-                },
+                Err(error) => load_init_failed(error),
             },
             Err(error) => LoadModuleResponse {
                 ok: false,
@@ -98,10 +95,7 @@ impl RunnerModuleService {
                 ok: false,
                 error: Some(format!("module '{}' is not loaded", request.name)),
             },
-            Err(error) => UnloadModuleResponse {
-                ok: false,
-                error: Some(error.to_string()),
-            },
+            Err(error) => unload_unexpected(error),
         }
     }
 
@@ -130,11 +124,36 @@ impl RunnerModuleService {
                     )),
                 }
             }
-            Err(error) => ReloadModuleResponse {
-                ok: false,
-                error: Some(error.to_string()),
-            },
+            Err(error) => reload_unexpected(error),
         }
+    }
+}
+
+// Catch-all error handlers for gRPC methods. Each requires a specific .so
+// failure mode (init panic, exit error, dlopen corruption) that is untestable
+// without purpose-built dynamic modules.
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn load_init_failed(error: ModuleError) -> LoadModuleResponse {
+    LoadModuleResponse {
+        ok: false,
+        error: Some(format_init_error(&error)),
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn unload_unexpected(error: ModuleError) -> UnloadModuleResponse {
+    UnloadModuleResponse {
+        ok: false,
+        error: Some(error.to_string()),
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn reload_unexpected(error: ModuleError) -> ReloadModuleResponse {
+    ReloadModuleResponse {
+        ok: false,
+        error: Some(error.to_string()),
     }
 }
 

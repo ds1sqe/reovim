@@ -350,6 +350,149 @@ async fn injected_server_uses_runner_module_service() {
         .expect("server should shut down cleanly");
 }
 
+// ============================================================================
+// format helper unit tests (MC/DC coverage)
+// ============================================================================
+
+#[test]
+fn format_load_error_incompatible_version() {
+    let error = ModuleError::IncompatibleVersion {
+        module: (2, 0),
+        kernel: (1, 0),
+    };
+    let msg = format_load_error("test", None, &error);
+    assert!(msg.contains("API version mismatch"));
+    assert!(msg.contains("2.0"));
+    assert!(msg.contains("1.0"));
+}
+
+#[test]
+fn format_load_error_load_failed_with_path() {
+    let error = ModuleError::LoadFailed("dlopen failed".into());
+    let msg = format_load_error("test", Some("/path/to/module.so"), &error);
+    assert!(msg.contains("/path/to/module.so"));
+    assert!(msg.contains("dlopen failed"));
+}
+
+#[test]
+fn format_load_error_load_failed_without_path() {
+    let error = ModuleError::LoadFailed("dlopen failed".into());
+    let msg = format_load_error("test", None, &error);
+    assert_eq!(msg, "dlopen failed");
+}
+
+#[test]
+fn format_load_error_not_found() {
+    let error = ModuleError::NotFound("treesitter".into());
+    let msg = format_load_error("treesitter", None, &error);
+    assert!(msg.contains("treesitter"));
+    assert!(msg.contains("not found"));
+}
+
+#[test]
+fn format_load_error_no_entry_point() {
+    let error = ModuleError::NoEntryPoint("reovim_module_probe".into());
+    let msg = format_load_error("test", None, &error);
+    assert!(msg.contains("missing required symbol"));
+}
+
+#[test]
+fn format_load_error_init_failed() {
+    let error = ModuleError::InitFailed("init panic".into());
+    let msg = format_load_error("test", None, &error);
+    assert!(msg.contains("module init failed"));
+    assert!(msg.contains("init panic"));
+}
+
+#[test]
+fn format_load_error_other_falls_through_to_string() {
+    let error = ModuleError::NotLoaded(ModuleId::new("orphan"));
+    let msg = format_load_error("test", None, &error);
+    // Hits the catch-all `other => other.to_string()` arm
+    assert!(msg.contains("orphan"));
+}
+
+#[test]
+fn format_init_error_init_failed() {
+    let error = ModuleError::InitFailed("module panicked".into());
+    let msg = format_init_error(&error);
+    assert!(msg.contains("module init failed"));
+    assert!(msg.contains("module panicked"));
+}
+
+#[test]
+fn format_init_error_other_falls_through_to_string() {
+    let error = ModuleError::NotLoaded(ModuleId::new("test"));
+    let msg = format_init_error(&error);
+    // Hits the catch-all `other => other.to_string()` arm
+    assert!(msg.contains("test"));
+}
+
+// ============================================================================
+// Service method path tests (MC/DC coverage for lines 63, 118-121, 133-136)
+// ============================================================================
+
+#[tokio::test]
+async fn load_by_name_without_path_returns_not_found() {
+    let registry = ModuleRegistry::new().into_arc();
+    let service =
+        RunnerGrpcModuleService::new(Arc::clone(&registry), Arc::new(ModuleContext::default()));
+
+    let response = service
+        .load(Request::new(LoadModuleRequest {
+            name: "nonexistent".into(),
+            path: None,
+        }))
+        .await
+        .expect("load should return response")
+        .into_inner();
+
+    assert!(!response.ok);
+    let error = response.error.expect("error should be present");
+    assert!(error.contains("nonexistent"));
+    assert!(error.contains("not found"));
+}
+
+#[tokio::test]
+async fn reload_nonexistent_module_returns_error() {
+    let registry = ModuleRegistry::new().into_arc();
+    let service =
+        RunnerGrpcModuleService::new(Arc::clone(&registry), Arc::new(ModuleContext::default()));
+
+    let response = service
+        .reload(Request::new(ReloadModuleRequest {
+            name: "nonexistent".into(),
+        }))
+        .await
+        .expect("reload should return response")
+        .into_inner();
+
+    assert!(!response.ok);
+    assert!(response.error.is_some());
+}
+
+#[tokio::test]
+async fn reload_in_use_dependency_returns_blocker_name() {
+    let registry = ModuleRegistry::new().into_arc();
+    registry.register(ProviderTestModule).expect("register provider");
+    registry.register(ConsumerTestModule).expect("register consumer");
+    registry.init_all(&ModuleContext::default()).expect("init_all");
+    let service =
+        RunnerGrpcModuleService::new(Arc::clone(&registry), Arc::new(ModuleContext::default()));
+
+    let response = service
+        .reload(Request::new(ReloadModuleRequest {
+            name: "provider".into(),
+        }))
+        .await
+        .expect("reload should return response")
+        .into_inner();
+
+    assert!(!response.ok);
+    let error = response.error.expect("error should be present");
+    assert!(error.contains("in use by"));
+}
+
 #[tokio::test]
 async fn real_dynamic_module_flow_loads_lists_reloads_and_unloads() {
     let so_path = require_so!();

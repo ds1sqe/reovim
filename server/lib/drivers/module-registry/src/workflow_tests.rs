@@ -92,6 +92,10 @@ fn test_error_display() {
 
     let err = RegistryError::Metadata("bad json".into());
     assert!(err.to_string().contains("metadata error"));
+
+    let err = RegistryError::ConstraintViolation("dep mismatch".into());
+    assert!(err.to_string().contains("version constraint violation"));
+    assert!(err.to_string().contains("dep mismatch"));
 }
 
 #[test]
@@ -132,6 +136,13 @@ fn test_check_report_with_broken_not_clean() {
 fn test_check_report_with_orphaned_not_clean() {
     let mut report = CheckReport::default();
     report.orphaned.push(PathBuf::from("/tmp/orphan.so"));
+    assert!(!report.is_clean());
+}
+
+#[test]
+fn test_check_report_with_constraint_violations_not_clean() {
+    let mut report = CheckReport::default();
+    report.constraint_violations.push("vim requires ^0.9.0".into());
     assert!(!report.is_clean());
 }
 
@@ -672,6 +683,8 @@ fn test_check_reports_constraint_violations() {
     let report = check(&paths).unwrap();
     assert_eq!(report.constraint_violations.len(), 1);
     assert!(report.constraint_violations[0].contains("consumer"));
+    // MC/DC: is_clean() where broken=[], orphaned=[], constraint_violations=[1]
+    assert!(!report.is_clean());
 }
 
 #[test]
@@ -864,4 +877,158 @@ fn test_info_manifest_fallback() {
     assert!(module_info.provides.is_empty());
     assert!(module_info.requires.is_empty());
     assert!(!module_info.library_exists);
+}
+
+// ============================================================================
+// parse_semver_str — 4+ component version returns None (line 567)
+// ============================================================================
+
+#[test]
+fn test_parse_semver_str_four_parts_returns_none() {
+    assert_eq!(parse_semver_str("1.2.3.4"), None);
+    assert_eq!(parse_semver_str("1.2.3.4.5"), None);
+}
+
+// ============================================================================
+// check_install_constraints — reverse check skips non-matching deps (line 522)
+// ============================================================================
+
+#[test]
+fn test_check_install_constraints_installed_module_with_unrelated_dep_is_skipped() {
+    // "existing-mod" depends on "other-mod", not "new-mod".
+    // The reverse constraint loop should hit the `continue` at line 522
+    // and produce no violation.
+    let dir = tempfile::tempdir().unwrap();
+    let existing_dir = dir.path().join("existing-mod");
+    // depends on "other-mod", NOT on "new-mod"
+    create_module_crate(&existing_dir, "existing-mod", "1.0.0", &[("other-mod", "^1.0.0")]);
+
+    let new_manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "2.0.0"
+        "#,
+    )
+    .unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "existing-mod".into(),
+        version: "1.0.0".into(),
+        source: ModuleSource::path(existing_dir.to_string_lossy().into_owned()),
+        install_path: existing_dir,
+        library_path: None,
+    });
+
+    // "existing-mod" has a dep on "other-mod", not "new-mod", so no reverse
+    // violation — this should succeed.
+    assert!(check_install_constraints(&new_manifest, &installed).is_ok());
+}
+
+// ============================================================================
+// check_install_constraints — installed module has unreadable manifest (lines 512-517)
+// ============================================================================
+
+#[test]
+fn test_check_install_constraints_unreadable_installed_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Create "existing-mod" directory but write a corrupt module.toml so
+    // ModuleManifest::load fails during the reverse constraint scan.
+    let existing_dir = dir.path().join("existing-mod");
+    std::fs::create_dir_all(&existing_dir).unwrap();
+    std::fs::write(existing_dir.join("module.toml"), b"not valid toml [[[").unwrap();
+
+    let new_manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+        "#,
+    )
+    .unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "existing-mod".into(),
+        version: "1.0.0".into(),
+        source: ModuleSource::path(existing_dir.to_string_lossy().into_owned()),
+        install_path: existing_dir,
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&new_manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("unreadable manifest"));
+}
+
+// ============================================================================
+// check_install_constraints — reverse constraint (MC/DC)
+// ============================================================================
+
+#[test]
+fn test_check_install_constraints_reverse_constraint_not_satisfied() {
+    // "consumer" requires "new-mod ^2.0.0", but we are installing "new-mod" 1.0.0.
+    // That is a reverse violation — the already-installed consumer's constraint
+    // is violated by the version we are about to install.
+    let dir = tempfile::tempdir().unwrap();
+    let consumer_dir = dir.path().join("consumer");
+    create_module_crate(&consumer_dir, "consumer", "1.0.0", &[("new-mod", "^2.0.0")]);
+
+    let new_manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "1.0.0"
+        "#,
+    )
+    .unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "consumer".into(),
+        version: "1.0.0".into(),
+        source: ModuleSource::path(consumer_dir.to_string_lossy().into_owned()),
+        install_path: consumer_dir,
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&new_manifest, &installed);
+    assert!(matches!(result, Err(RegistryError::ConstraintViolation(_))));
+}
+
+#[test]
+fn test_check_install_constraints_reverse_constraint_satisfied() {
+    // "consumer" requires "new-mod ^2.0.0" and we install "new-mod" 2.5.0.
+    // Reverse constraint is satisfied — violations list is empty.
+    let dir = tempfile::tempdir().unwrap();
+    let consumer_dir = dir.path().join("consumer");
+    create_module_crate(&consumer_dir, "consumer", "1.0.0", &[("new-mod", "^2.0.0")]);
+
+    let new_manifest = ModuleManifest::parse(
+        r#"
+        [module]
+        id = "new-mod"
+        name = "New"
+        version = "2.5.0"
+        "#,
+    )
+    .unwrap();
+
+    let mut installed = InstalledModules::new();
+    installed.insert(InstalledModule {
+        id: "consumer".into(),
+        version: "1.0.0".into(),
+        source: ModuleSource::path(consumer_dir.to_string_lossy().into_owned()),
+        install_path: consumer_dir,
+        library_path: None,
+    });
+
+    let result = check_install_constraints(&new_manifest, &installed);
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
 }

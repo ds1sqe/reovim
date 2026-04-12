@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
+use super::handle::ModuleHandle;
 use super::loader::ModuleLoader;
 
 // ============================================================================
@@ -247,4 +248,24 @@ fn discover_returns_vec() {
     let loader = ModuleLoader::new();
     // May be empty if no modules installed, but should not panic
     let _ = loader.discover();
+}
+
+// ============================================================================
+// insert_handle
+// ============================================================================
+
+#[test]
+fn insert_handle_duplicate_id_returns_load_failed() {
+    let mut loader = ModuleLoader::new();
+
+    let handle1 = ModuleHandle::from_static(TestModule { initialized: false });
+    loader.insert_handle(handle1).unwrap();
+
+    // Second handle with the same module ID must fail.
+    let handle2 = ModuleHandle::from_static(TestModule { initialized: false });
+    let result = loader.insert_handle(handle2);
+    assert!(
+        matches!(result, Err(ModuleError::LoadFailed(_))),
+        "expected LoadFailed for duplicate id, got {result:?}"
+    );
 }

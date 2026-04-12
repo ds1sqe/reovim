@@ -126,3 +126,15 @@ fn test_module_probe_no_deps_by_default() {
     assert!(probe.required_deps().is_empty());
     assert!(probe.optional_deps().is_empty());
 }
+
+#[test]
+fn test_module_probe_rustc_version_truncation() {
+    // rustc_version buffer is 64 bytes (63 usable + nul).
+    // Passing a string longer than 63 bytes exercises the `else { 63 }` branch
+    // at line 229 and must store exactly 63 bytes.
+    let long_version = "1".repeat(100); // 100 chars > 63
+    let probe = ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(0, 2, 0))
+        .with_rustc_version(&long_version);
+    assert_eq!(probe.rustc_version_str().len(), 63);
+    assert!(probe.rustc_version_str().chars().all(|c| c == '1'));
+}

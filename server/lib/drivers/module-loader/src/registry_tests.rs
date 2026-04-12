@@ -649,3 +649,80 @@ fn unload_nonexistent_module() {
     let result = registry.unload(&unknown);
     assert!(matches!(result, Err(ModuleError::NotLoaded(id)) if id == unknown));
 }
+
+// ============================================================================
+// unload — MC/DC branch coverage
+// ============================================================================
+
+/// Branch 332:1 — dependents map has an entry for the module but the set is
+/// empty (a former dependent was already unloaded).  The guard
+/// `if let Some(deps) && !deps.is_empty()` must NOT return InUse, allowing
+/// execution to fall through to the exit call on line 342-344.
+#[test]
+fn unload_with_empty_dependents_set_succeeds() {
+    let registry = ModuleRegistry::new();
+    registry.register(TestModule::new("a")).unwrap();
+    registry
+        .register(TestModule::with_deps("b", &["a"]))
+        .unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_all(&ctx).unwrap();
+
+    // Unload the leaf first: this removes "b" from "a"'s dependents set,
+    // leaving dependents["a"] = {} (Some but empty).
+    registry.unload(&ModuleId::new("b")).unwrap();
+
+    // Now "a"'s dependents entry exists but is empty — branch 332:1 is taken
+    // (Some matches) and the !is_empty() guard is false, so we fall through.
+    // Lines 342-344 are also exercised: handle exists and exit() is called.
+    let result = registry.unload(&ModuleId::new("a"));
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+    assert!(registry.state(&ModuleId::new("a")).is_none());
+}
+
+/// Branch 342:1 and line 344 — the module is present in the modules map so
+/// `get_mut` returns Some, and `handle.exit()` is called successfully.
+/// Uses a module with a custom exit to confirm the call is actually reached.
+#[test]
+fn unload_calls_exit_on_module() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static EXIT_CALLED: AtomicBool = AtomicBool::new(false);
+
+    struct ExitTracker;
+
+    impl Module for ExitTracker {
+        fn id(&self) -> ModuleId {
+            ModuleId::new("exit-tracker")
+        }
+        fn name(&self) -> &'static str {
+            "ExitTracker"
+        }
+        fn version(&self) -> Version {
+            Version::new(1, 0, 0)
+        }
+        fn init(&mut self, _: &ModuleContext) -> ProbeResult {
+            ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), ModuleError> {
+            EXIT_CALLED.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    EXIT_CALLED.store(false, Ordering::SeqCst);
+
+    let registry = ModuleRegistry::new();
+    registry.register(ExitTracker).unwrap();
+
+    let ctx = ModuleContext::default();
+    registry.init_all(&ctx).unwrap();
+
+    registry.unload(&ModuleId::new("exit-tracker")).unwrap();
+
+    assert!(
+        EXIT_CALLED.load(Ordering::SeqCst),
+        "exit() was not called during unload"
+    );
+}

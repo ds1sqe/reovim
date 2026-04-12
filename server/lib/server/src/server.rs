@@ -325,8 +325,6 @@ impl<M: Send + Sync> Server<M> {
     ///
     /// When `shutdown` is `Some`, the server will stop when the future resolves.
     /// When `port_tx` is `Some`, the bound port is sent before serving starts.
-    #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
-    #[cfg_attr(coverage_nightly, coverage(off))]
     /// Maximum gRPC message size (encoding and decoding) in bytes.
     ///
     /// Tonic defaults to 4 MB, which is too small for large buffer content
@@ -334,7 +332,8 @@ impl<M: Send + Sync> Server<M> {
     /// with room for normal large text files.
     const GRPC_MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn run_grpc(
         &self,
         port: u16,
