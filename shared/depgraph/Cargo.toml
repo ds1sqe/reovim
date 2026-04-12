@@ -15,3 +15,6 @@ workspace = true
 [dependencies]
 # None — this crate uses only std collections (HashMap, HashSet, VecDeque).
 # Generic over any key type K: Eq + Hash + Clone + Debug.
+
+[dev-dependencies]
+cargo_metadata = "0.23"
