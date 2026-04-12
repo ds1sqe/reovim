@@ -6341,4 +6341,247 @@ fn test_delete_range_empty_no_byte_edit() {
     assert!(changes.byte_edits.is_empty());
 }
 
+// =========================================================================
+// Dual-emission tests (#740 Plan 09 Phase 6)
+// =========================================================================
+
+/// Verify that `insert_text` emits BOTH old kernel `BufferModified` and new
+/// `TextBufferModified` on the `EventBus` during the dual-emission transition.
+#[test]
+fn test_insert_text_dual_emission() {
+    use {
+        crate::testing::TestSessionRuntime,
+        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+
+    let old_fired = Arc::new(AtomicBool::new(false));
+    let new_fired = Arc::new(AtomicBool::new(false));
+
+    // Subscribe to old kernel event
+    let old_flag = Arc::clone(&old_fired);
+    let _sub_old = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferModified, _>(50, move |_event| {
+            old_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    // Subscribe to new text-domain event
+    let new_flag = Arc::clone(&new_fired);
+    let _sub_new = harness
+        .kernel()
+        .event_bus
+        .subscribe::<reovim_domain_text_events::TextBufferModified, _>(50, move |_event| {
+            new_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
+    });
+
+    assert!(old_fired.load(Ordering::SeqCst), "old kernel BufferModified should fire");
+    assert!(new_fired.load(Ordering::SeqCst), "new TextBufferModified should fire");
+}
+
+/// Verify that `delete_range` emits BOTH old kernel `BufferModified` and new
+/// `TextBufferModified` during dual-emission transition.
+#[test]
+fn test_delete_range_dual_emission() {
+    use {
+        crate::testing::TestSessionRuntime,
+        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("hello world");
+
+    let old_fired = Arc::new(AtomicBool::new(false));
+    let new_fired = Arc::new(AtomicBool::new(false));
+
+    let old_flag = Arc::clone(&old_fired);
+    let _sub_old = harness
+        .kernel()
+        .event_bus
+        .subscribe::<BufferModified, _>(50, move |_event| {
+            old_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let new_flag = Arc::clone(&new_fired);
+    let _sub_new = harness
+        .kernel()
+        .event_bus
+        .subscribe::<reovim_domain_text_events::TextBufferModified, _>(50, move |_event| {
+            new_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+    });
+
+    assert!(old_fired.load(Ordering::SeqCst), "old kernel BufferModified should fire");
+    assert!(new_fired.load(Ordering::SeqCst), "new TextBufferModified should fire");
+}
+
+/// Verify that `insert_text` emits `TextBufferModified` with correct byte
+/// offsets and `TextEdit` payload.
+#[test]
+fn test_insert_text_text_buffer_modified_fields() {
+    use {
+        crate::testing::TestSessionRuntime,
+        reovim_domain_text_events::TextBufferModified,
+        reovim_kernel::api::v1::EventResult,
+        std::sync::{Arc, Mutex},
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("hello");
+
+    let captured = Arc::new(Mutex::new(None::<(usize, usize, usize)>));
+    let cap = Arc::clone(&captured);
+    let _sub = harness
+        .kernel()
+        .event_bus
+        .subscribe::<TextBufferModified, _>(50, move |event| {
+            *cap.lock().unwrap() = Some((event.start_byte, event.old_end_byte, event.new_end_byte));
+            EventResult::Handled
+        });
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        // "hello" is 5 bytes; insert " world" (6 bytes) at byte offset 5
+        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
+    });
+
+    let (start, old_end, new_end) = captured.lock().unwrap().expect("event should have fired");
+    assert_eq!(start, 5, "start_byte");
+    assert_eq!(old_end, 5, "old_end_byte (insert does not consume bytes)");
+    assert_eq!(new_end, 11, "new_end_byte = start + text.len()");
+}
+
+/// Verify that `delete_range` emits `TextBufferModified` with correct byte
+/// offsets.
+#[test]
+fn test_delete_range_text_buffer_modified_fields() {
+    use {
+        crate::testing::TestSessionRuntime,
+        reovim_domain_text_events::TextBufferModified,
+        reovim_kernel::api::v1::EventResult,
+        std::sync::{Arc, Mutex},
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("hello world");
+
+    let captured = Arc::new(Mutex::new(None::<(usize, usize, usize)>));
+    let cap = Arc::clone(&captured);
+    let _sub = harness
+        .kernel()
+        .event_bus
+        .subscribe::<TextBufferModified, _>(50, move |event| {
+            *cap.lock().unwrap() = Some((event.start_byte, event.old_end_byte, event.new_end_byte));
+            EventResult::Handled
+        });
+
+    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+    harness.with_runtime(|runtime| {
+        // Delete " world" (6 bytes) starting at byte offset 5
+        runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+    });
+
+    let (start, old_end, new_end) = captured.lock().unwrap().expect("event should have fired");
+    assert_eq!(start, 5, "start_byte");
+    assert_eq!(old_end, 11, "old_end_byte = start + deleted.len()");
+    assert_eq!(new_end, 5, "new_end_byte = start (bytes removed)");
+}
+
+/// Verify that `record_cursor_move` emits BOTH old kernel `CursorMoved` and
+/// new text-domain `CursorMoved` with `WindowId` enrichment.
+#[test]
+fn test_record_cursor_move_dual_emission() {
+    use {
+        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
+        std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    let mut session = Session::new(ClientId::new(1), test_mode());
+    let kernel = KernelContext::default();
+    let executor = StubExecutor;
+    let mut ms = ModeStack::new(test_mode());
+    let mut w = crate::WindowLayout::empty();
+    let mut e = crate::ExtensionMap::new();
+    let mut c = None;
+    let mut tabs = crate::TabPageSet::new();
+    let mut r = RegisterBank::new();
+    let mut ch = HistoryRing::new();
+    let mut lm = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let mut window = crate::Window::new();
+    window.cursor = Position::new(3, 7).into();
+    w.add(window);
+
+    // Subscribe to old kernel CursorMoved
+    let old_fired = Arc::new(AtomicBool::new(false));
+    let old_flag = Arc::clone(&old_fired);
+    let _sub_old = kernel
+        .event_bus
+        .subscribe::<CursorMoved, _>(50, move |_event| {
+            old_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    // Subscribe to new text-domain CursorMoved
+    let new_fired = Arc::new(AtomicBool::new(false));
+    let new_flag = Arc::clone(&new_fired);
+    let _sub_new = kernel
+        .event_bus
+        .subscribe::<reovim_domain_text_events::CursorMoved, _>(50, move |_event| {
+            new_flag.store(true, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+    let buf = BufferId::new();
+    let mut rt = SessionRuntime::new(
+        &mut session,
+        crate::ClientContext {
+            mode_stack: &mut ms,
+            windows: &mut w,
+            extensions: &mut e,
+            compositor: &mut c,
+            tabs: &mut tabs,
+            registers: &mut r,
+            clipboard_history: &mut ch,
+            local_marks: &mut lm,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &executor,
+    );
+
+    rt.record_cursor_move(buf);
+
+    assert!(old_fired.load(Ordering::SeqCst), "old kernel CursorMoved should fire");
+    assert!(new_fired.load(Ordering::SeqCst), "new text-domain CursorMoved should fire");
+}
+
 // Note: byte-level undo-log cleanup is tracked outside session runtime.

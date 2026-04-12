@@ -778,6 +778,21 @@ impl BufferApi for SessionRuntime<'_> {
                 self.changes
                     .record_buffer_modified_with_edit(buffer, modification);
             }
+
+            // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
+            {
+                use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+                self.kernel.event_bus.emit(TextBufferModified {
+                    buffer_id: buffer,
+                    edit: TextEdit::insert(
+                        TextPosition::new(pos.line, pos.column),
+                        text.to_string(),
+                    ),
+                    start_byte: byte_offset,
+                    old_end_byte: byte_offset,
+                    new_end_byte: byte_offset + text.len(),
+                });
+            }
         }
     }
 
@@ -815,6 +830,22 @@ impl BufferApi for SessionRuntime<'_> {
                     text: deleted_text.clone(),
                 };
                 self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
+
+                // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
+                {
+                    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+                    let deleted_byte_len = deleted_text.len();
+                    self.kernel.event_bus.emit(TextBufferModified {
+                        buffer_id: buffer,
+                        edit: TextEdit::delete(
+                            TextPosition::new(start.line, start.column),
+                            deleted_text.clone(),
+                        ),
+                        start_byte: byte_offset,
+                        old_end_byte: byte_offset + deleted_byte_len,
+                        new_end_byte: byte_offset,
+                    });
+                }
 
                 // Emit BufferModified event for subscribers (#440)
                 #[allow(clippy::cast_possible_truncation)]
@@ -877,6 +908,14 @@ impl BufferApi for SessionRuntime<'_> {
                 self.changes
                     .record_buffer_modified_with_edit(buffer, modification);
             }
+
+            // Dual emission note (#740 Plan 09 Phase 6):
+            // TextBufferModified is NOT emitted for FullReplace because
+            // TextEdit only carries Insert/Delete variants with full text
+            // payloads — for a large file this would be a multi-GB allocation.
+            // Modification::FullReplace is a sentinel ("reparse everything").
+            // Phase 7 consumers that handle FullReplace will use
+            // BufferBytesEdited at the byte layer or buffer-reload patterns.
         }
     }
 
@@ -1413,6 +1452,20 @@ impl ChangeTracker for SessionRuntime<'_> {
                 from,
                 to,
             });
+
+            // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
+            {
+                use reovim_domain_text_events::TextPosition;
+                self.kernel
+                    .event_bus
+                    .emit(reovim_domain_text_events::CursorMoved {
+                        window_id: window.id,
+                        buffer_id: buffer,
+                        from: TextPosition::new(from.0 as usize, from.1 as usize),
+                        to: TextPosition::new(to.0 as usize, to.1 as usize),
+                    });
+            }
+
             self.cursor_snapshot = Some(to);
         }
 

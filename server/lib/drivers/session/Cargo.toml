@@ -19,6 +19,8 @@ reovim-kernel = { workspace = true }
 reovim-provider-text = { workspace = true }
 # Text types (Position, Edit, RegisterContent, etc.)
 reovim-types-text = { workspace = true }
+# Text-domain events for dual-emission transition (#740 Plan 09 Phase 6)
+reovim-domain-text-events = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
 reovim-driver-command-types = { workspace = true }
 # Layout driver for compositor traits (Rect, WindowPlacement, etc.)
