@@ -88,25 +88,17 @@ pub struct StateChanges {
     pub buffer_modified: bool,
     /// Buffers whose content was modified.
     pub modified_buffers: Vec<BufferId>,
-    /// Edit details for modified buffers (for incremental syntax parsing, #655).
+    /// Text-domain edit details for modified buffers (#740 Plan 09).
     ///
-    /// Parallel to `modified_buffers`. Contains `(BufferId, Modification)` pairs
-    /// for edits that have structured edit info. Empty when edits come from paths
-    /// that don't provide `Modification` (e.g., undo/redo).
-    pub modified_buffer_edits:
-        Vec<(BufferId, reovim_kernel::api::v1::events::kernel::Modification)>,
-    /// Text-domain edit details for modified buffers (#740 Plan 09 Phase 7).
-    ///
-    /// Parallel to `modified_buffer_edits`. Contains `TextBufferModified` events
-    /// with full byte-offset info for incremental syntax parsing and codec index
-    /// updates. Empty for `FullReplace` edits (no `TextEdit` equivalent —
-    /// consumers use `byte_edits` or buffer-reload). Server layer migrates to
-    /// this field in Phase 7d; `modified_buffer_edits` is removed in Phase 8.
+    /// Contains `TextBufferModified` events with full byte-offset info for
+    /// incremental syntax parsing and codec index updates. Empty for
+    /// `FullReplace` edits (no `TextEdit` equivalent — consumers use
+    /// `byte_edits` or buffer-reload patterns).
     pub text_buffer_edits: Vec<TextBufferModified>,
     /// Byte-level edits for codec index notification (#740 D.5).
     ///
-    /// Recorded alongside `modified_buffer_edits`. The server layer routes
-    /// these to `CodecSessionState::notify_index()` for incremental index updates.
+    /// The server layer routes these to `CodecSessionState::notify_index()`
+    /// for incremental index updates.
     pub byte_edits: Vec<(BufferId, reovim_kernel::api::v1::ByteEdit)>,
     /// All buffers affected (for cursor, selection, etc.).
     pub affected_buffers: Vec<BufferId>,
@@ -200,8 +192,6 @@ impl StateChanges {
         self.selection_changed |= other.selection_changed;
         self.buffer_modified |= other.buffer_modified;
         self.modified_buffers.extend(other.modified_buffers);
-        self.modified_buffer_edits
-            .extend(other.modified_buffer_edits);
         self.text_buffer_edits.extend(other.text_buffer_edits);
         self.byte_edits.extend(other.byte_edits);
         self.affected_buffers.extend(other.affected_buffers);
@@ -260,25 +250,10 @@ impl StateChanges {
         }
     }
 
-    /// Record buffer modification with structured edit info (#655).
+    /// Record buffer modification with text-domain edit info (#740 Plan 09).
     ///
-    /// Like `record_buffer_modified` but also stores the `Modification` data
-    /// for incremental syntax parsing. The server layer uses this to call
-    /// `driver.update()` instead of `driver.parse()`.
-    pub fn record_buffer_modified_with_edit(
-        &mut self,
-        buffer: BufferId,
-        modification: reovim_kernel::api::v1::events::kernel::Modification,
-    ) {
-        self.record_buffer_modified(buffer);
-        self.modified_buffer_edits.push((buffer, modification));
-    }
-
-    /// Record buffer modification with text-domain edit info (#740 Plan 09 Phase 7).
-    ///
-    /// Like `record_buffer_modified_with_edit` but stores a `TextBufferModified`
-    /// event for the text-domain layer. Server layer migrates to consume this
-    /// field in Phase 7d; `modified_buffer_edits` is removed in Phase 8.
+    /// Like `record_buffer_modified` but also stores a `TextBufferModified`
+    /// event for incremental syntax parsing and codec index updates.
     pub fn record_buffer_modified_with_text_edit(
         &mut self,
         buffer: BufferId,

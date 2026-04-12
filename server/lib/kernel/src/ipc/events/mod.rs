@@ -4,26 +4,27 @@
 //!
 //! This module organizes events by layer:
 //!
-//! - **Kernel events**: Pure mechanism-level notifications (buffer/window/cursor changes)
+//! - **Kernel events**: Domain-free substrate notifications (buffer/window lifecycle,
+//!   mode changes, byte-level edits)
 //! - **Driver events**: Hardware abstraction layer events (display/input)
+//! - **Domain events**: Per-domain semantic events (in separate crates, e.g.,
+//!   `reovim-domain-text-events`)
 //!
 //! # Design Philosophy
 //!
-//! Events are categorized by the "mechanism vs policy" principle:
+//! Events are categorized by the three-layer event model:
 //!
 //! | Layer | Event Type | Examples |
 //! |-------|-----------|----------|
-//! | Kernel | Notification | `BufferCreated`, `CursorMoved`, `ModeChanged` |
+//! | Kernel | Substrate | `BufferCreated`, `BufferBytesEdited`, `ModeChanged` |
+//! | Domain | Semantic | `TextBufferModified`, `CursorMoved` (text-domain) |
 //! | Driver | Hardware | `DisplayResized`, `KeyInput`, `MouseInput` |
-//! | Module | Request/Policy | `RequestOpenFile`, `RequestSetTheme` |
-//!
-//! Request events (policy) stay in modules, not in the kernel.
 //!
 //! # Example
 //!
 //! ```
 //! use reovim_kernel::api::v1::events::{
-//!     kernel::{BufferCreated, BufferModified, Modification},
+//!     kernel::BufferCreated,
 //!     driver::{DisplayResized, KeyInput, KeyCode, Modifiers},
 //! };
 //!
@@ -48,10 +49,10 @@ pub use {
         MouseInput,
     },
     kernel::{
-        BufferBytesEdited, BufferClosed, BufferCreated, BufferModified, BufferSaved,
-        BufferSwitched, ChangeSource, CursorMoved, FileOpened, FileTypeChanged, LayoutChangeKind,
-        LayoutChanged, ModeChanged, Modification, OptionChanged, OptionReset, Shutdown,
-        SplitDirection, ViewportScrolled, WindowClosed, WindowCreated, WindowFocused, priority,
+        BufferBytesEdited, BufferClosed, BufferCreated, BufferSaved, BufferSwitched,
+        BufferWillSave, ChangeSource, FileOpened, LayoutChangeKind, LayoutChanged, ModeChanged,
+        OptionChanged, OptionReset, Shutdown, SplitDirection, WindowClosed, WindowCreated,
+        WindowFocused, priority,
     },
     key::{ClientId, KeyPressEvent, SessionId},
 };

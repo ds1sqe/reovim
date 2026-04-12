@@ -274,86 +274,137 @@ fn test_send_full_refresh_no_subscribers_returns_early() {
 }
 
 // =============================================================================
-// modification_to_syntax_edit tests (#655)
+// text_event_to_syntax_edit tests (#740 Plan 09)
 // =============================================================================
 
 #[test]
-fn test_modification_to_syntax_edit_insert() {
-    use reovim_kernel::api::v1::events::kernel::Modification;
+fn test_text_event_to_syntax_edit_insert_single_line() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
 
-    let modification = Modification::Insert {
-        start: (0, 5),
-        text: "hello".to_string(),
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::insert(TextPosition::new(0, 5), "hello".to_string()),
         start_byte: 5,
+        old_end_byte: 5,
+        new_end_byte: 10,
     };
-    let edit = modification_to_syntax_edit(&modification).unwrap();
+
+    let edit = text_event_to_syntax_edit(&event);
     assert_eq!(edit.start_byte, 5);
     assert_eq!(edit.old_end_byte, 5); // Insert: old_end = start
-    assert_eq!(edit.new_end_byte, 10); // 5 + "hello".len()
+    assert_eq!(edit.new_end_byte, 10);
     assert_eq!(edit.start_row, 0);
     assert_eq!(edit.start_col, 5);
     assert_eq!(edit.new_end_row, 0);
-    assert_eq!(edit.new_end_col, 10);
+    assert_eq!(edit.new_end_col, 10); // 5 + "hello".len()
 }
 
 #[test]
-fn test_modification_to_syntax_edit_insert_multiline() {
-    use reovim_kernel::api::v1::events::kernel::Modification;
+fn test_text_event_to_syntax_edit_insert_multiline() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
 
-    let modification = Modification::Insert {
-        start: (1, 3),
-        text: "ab\ncd".to_string(),
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::insert(TextPosition::new(1, 3), "ab\ncd".to_string()),
         start_byte: 10,
+        old_end_byte: 10,
+        new_end_byte: 15,
     };
-    let edit = modification_to_syntax_edit(&modification).unwrap();
+
+    let edit = text_event_to_syntax_edit(&event);
     assert_eq!(edit.start_byte, 10);
-    assert_eq!(edit.new_end_byte, 15); // 10 + 5
+    assert_eq!(edit.old_end_byte, 10);
+    assert_eq!(edit.new_end_byte, 15);
+    assert_eq!(edit.start_row, 1);
+    assert_eq!(edit.start_col, 3);
     assert_eq!(edit.new_end_row, 2); // 1 + 1 newline
-    assert_eq!(edit.new_end_col, 2); // "cd" after newline
+    assert_eq!(edit.new_end_col, 2); // len("cd")
 }
 
 #[test]
-fn test_modification_to_syntax_edit_delete() {
-    use reovim_kernel::api::v1::events::kernel::Modification;
+fn test_text_event_to_syntax_edit_delete_single_line() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
 
-    let modification = Modification::Delete {
-        start: (0, 0),
-        end: (0, 5),
-        text: "hello".to_string(),
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::delete(TextPosition::new(0, 0), "hello".to_string()),
         start_byte: 0,
+        old_end_byte: 5,
+        new_end_byte: 0,
     };
-    let edit = modification_to_syntax_edit(&modification).unwrap();
+
+    let edit = text_event_to_syntax_edit(&event);
     assert_eq!(edit.start_byte, 0);
-    assert_eq!(edit.old_end_byte, 5); // 0 + "hello".len()
+    assert_eq!(edit.old_end_byte, 5);
     assert_eq!(edit.new_end_byte, 0); // Delete: new_end = start
+    assert_eq!(edit.start_row, 0);
+    assert_eq!(edit.start_col, 0);
     assert_eq!(edit.old_end_row, 0);
     assert_eq!(edit.old_end_col, 5);
 }
 
 #[test]
-fn test_modification_to_syntax_edit_replace() {
-    use reovim_kernel::api::v1::events::kernel::Modification;
+fn test_text_event_to_syntax_edit_delete_multiline() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
 
-    let modification = Modification::Replace {
-        start: (0, 0),
-        end: (0, 5),
-        old_text: "hello".to_string(),
-        new_text: "world!".to_string(),
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::delete(TextPosition::new(0, 0), "abc\ndef\n".to_string()),
         start_byte: 0,
+        old_end_byte: 8,
+        new_end_byte: 0,
     };
-    let edit = modification_to_syntax_edit(&modification).unwrap();
+
+    let edit = text_event_to_syntax_edit(&event);
     assert_eq!(edit.start_byte, 0);
-    assert_eq!(edit.old_end_byte, 5); // "hello".len()
-    assert_eq!(edit.new_end_byte, 6); // "world!".len()
-    assert_eq!(edit.new_end_row, 0);
-    assert_eq!(edit.new_end_col, 6);
+    assert_eq!(edit.old_end_byte, 8);
+    assert_eq!(edit.new_end_byte, 0);
+    assert_eq!(edit.old_end_row, 2); // 0 + 2 newlines
+    assert_eq!(edit.old_end_col, 0); // After final newline
 }
 
 #[test]
-fn test_modification_to_syntax_edit_full_replace() {
-    use reovim_kernel::api::v1::events::kernel::Modification;
+fn test_text_event_to_syntax_edit_zero_insert() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
 
-    assert!(modification_to_syntax_edit(&Modification::FullReplace).is_none());
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::insert(TextPosition::new(5, 10), String::new()),
+        start_byte: 50,
+        old_end_byte: 50,
+        new_end_byte: 50,
+    };
+
+    let edit = text_event_to_syntax_edit(&event);
+    assert_eq!(edit.start_byte, 50);
+    assert_eq!(edit.old_end_byte, 50);
+    assert_eq!(edit.new_end_byte, 50);
+    assert_eq!(edit.start_row, 5);
+    assert_eq!(edit.start_col, 10);
+    assert_eq!(edit.new_end_row, 5);
+    assert_eq!(edit.new_end_col, 10); // Empty insert: end = start
+}
+
+#[test]
+fn test_text_event_to_syntax_edit_large_offsets() {
+    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+
+    let event = TextBufferModified {
+        buffer_id: buffer_id(1),
+        edit: TextEdit::insert(TextPosition::new(1000, 500), "test".to_string()),
+        start_byte: 50000,
+        old_end_byte: 50000,
+        new_end_byte: 50004,
+    };
+
+    let edit = text_event_to_syntax_edit(&event);
+    assert_eq!(edit.start_byte, 50000);
+    assert_eq!(edit.old_end_byte, 50000);
+    assert_eq!(edit.new_end_byte, 50004);
+    assert_eq!(edit.start_row, 1000);
+    assert_eq!(edit.start_col, 500);
+    assert_eq!(edit.new_end_row, 1000);
+    assert_eq!(edit.new_end_col, 504); // 500 + "test".len()
 }
 
 // =============================================================================

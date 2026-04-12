@@ -317,7 +317,7 @@ fn test_dynamic_module_exports_on_all_loaded_symbol() {
         libloading::Symbol<unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void)>,
         _,
     > = unsafe { library.get(b"reovim_module_on_all_loaded") };
-    assert!(sym.is_ok(), "declare_module! must emit reovim_module_on_all_loaded symbol",);
+    assert!(sym.is_ok(), "declare_module! must emit reovim_module_on_all_loaded symbol");
 }
 
 /// P1-T2: verify `ModuleHandle::on_all_loaded` actually dispatches through
@@ -363,7 +363,7 @@ fn test_dynamic_on_all_loaded_fires_via_ffi() {
 
     #[allow(unsafe_code)]
     let flag = unsafe { flag_fn() };
-    assert!(flag, "on_all_loaded trampoline should have set the observable flag",);
+    assert!(flag, "on_all_loaded trampoline should have set the observable flag");
 }
 
 // ============================================================================
@@ -409,5 +409,5 @@ fn test_loader_take_removes_and_returns_handle() {
     assert!(loader.get(&id).is_none());
     assert_eq!(loader.len(), 0);
 
-    assert!(loader.take(&id).is_none(), "second take should return None",);
+    assert!(loader.take(&id).is_none(), "second take should return None");
 }

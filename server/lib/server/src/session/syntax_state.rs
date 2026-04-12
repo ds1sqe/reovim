@@ -236,77 +236,12 @@ pub fn compute_end_position(start_row: u32, start_col: u32, text: &str) -> (u32,
     (row, col)
 }
 
-/// Convert a kernel `Modification` to a syntax driver `SyntaxEdit`.
-///
-/// Returns `None` for `FullReplace` (requires full reparse, not incremental edit).
-///
-/// This function lives in the server layer because it bridges two crate boundaries:
-/// `Modification` from `reovim-kernel` and `SyntaxEdit` from `reovim-driver-syntax`.
-/// Placing it on `Modification` directly would violate kernel purity.
-#[must_use]
-pub fn modification_to_syntax_edit(
-    modification: &reovim_kernel::api::v1::events::kernel::Modification,
-) -> Option<SyntaxEdit> {
-    use reovim_kernel::api::v1::events::kernel::Modification;
-
-    match modification {
-        Modification::Insert {
-            start,
-            text,
-            start_byte,
-        } => {
-            let new_end_byte = start_byte + text.len();
-            let (new_end_row, new_end_col) = compute_end_position(start.0, start.1, text);
-            Some(SyntaxEdit::insert(
-                *start_byte,
-                start.0,
-                start.1,
-                new_end_byte,
-                new_end_row,
-                new_end_col,
-            ))
-        }
-        Modification::Delete {
-            start,
-            end,
-            text,
-            start_byte,
-        } => {
-            let old_end_byte = start_byte + text.len();
-            Some(SyntaxEdit::delete(*start_byte, start.0, start.1, old_end_byte, end.0, end.1))
-        }
-        Modification::Replace {
-            start,
-            end,
-            old_text,
-            new_text,
-            start_byte,
-        } => {
-            let old_end_byte = start_byte + old_text.len();
-            let new_end_byte = start_byte + new_text.len();
-            let (new_end_row, new_end_col) = compute_end_position(start.0, start.1, new_text);
-            Some(SyntaxEdit::new(
-                *start_byte,
-                old_end_byte,
-                new_end_byte,
-                start.0,
-                start.1,
-                end.0,
-                end.1,
-                new_end_row,
-                new_end_col,
-            ))
-        }
-        Modification::FullReplace => None,
-    }
-}
-
 /// Convert a `TextBufferModified` event into a `SyntaxEdit` for incremental
-/// tree-sitter parsing (#740 Plan 09 Phase 7d).
+/// tree-sitter parsing (#740 Plan 09).
 ///
-/// This is the text-domain equivalent of `modification_to_syntax_edit`.
-/// Uses `TextEdit` position and byte offsets from the event directly,
-/// avoiding the `u32` → `usize` casts in the kernel path.
+/// Bridges the text-domain event crate (`reovim-domain-text-events`) and the
+/// syntax driver crate (`reovim-driver-syntax`). Uses `TextEdit` position and
+/// byte offsets from the event directly.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)] // TextPosition uses usize; SyntaxEdit uses u32
 pub fn text_event_to_syntax_edit(

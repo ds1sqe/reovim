@@ -2,8 +2,8 @@ use crate::{
     block::ByteEdit,
     core::ModeId,
     ipc::events::kernel::{
-        BufferBytesEdited, BufferCreated, BufferModified, CursorMoved, LayoutChangeKind,
-        LayoutChanged, ModeChanged, Modification, Shutdown, SplitDirection, priority,
+        BufferBytesEdited, BufferCreated, LayoutChangeKind, LayoutChanged, ModeChanged, Shutdown,
+        SplitDirection, priority,
     },
     mm::BufferId,
 };
@@ -12,26 +12,6 @@ use crate::{
 fn test_buffer_created() {
     let event = BufferCreated { buffer_id: 42 };
     assert_eq!(event.buffer_id, 42);
-}
-
-#[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn test_buffer_modified_insert() {
-    let event = BufferModified {
-        buffer_id: 1,
-        modification: Modification::Insert {
-            start: (0, 0),
-            text: "hello".to_string(),
-            start_byte: 0,
-        },
-    };
-    assert_eq!(event.buffer_id, 1);
-    if let Modification::Insert { start, text, .. } = event.modification {
-        assert_eq!(start, (0, 0));
-        assert_eq!(text, "hello");
-    } else {
-        panic!("Expected Insert modification");
-    }
 }
 
 #[test]
@@ -63,17 +43,6 @@ fn test_mode_changed_backward_compat() {
     let event = ModeChanged::new("Normal", "Insert");
     assert_eq!(event.from, "Normal");
     assert_eq!(event.to, "Insert");
-}
-
-#[test]
-fn test_cursor_moved() {
-    let event = CursorMoved {
-        buffer_id: 1,
-        from: (0, 0),
-        to: (10, 5),
-    };
-    assert_eq!(event.from, (0, 0));
-    assert_eq!(event.to, (10, 5));
 }
 
 #[test]

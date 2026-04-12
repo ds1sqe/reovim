@@ -571,7 +571,7 @@ impl Session {
     ///
     /// # Returns
     ///
-    /// - `Some((BufferId, Some(Modification)))` if character was inserted into a buffer
+    /// - `Some((BufferId, Some(TextBufferModified)))` if character was inserted into a buffer
     /// - `None` if inserted into extension or failed
     #[allow(clippy::significant_drop_tightening)]
     pub fn insert_char_for_client(
@@ -581,12 +581,11 @@ impl Session {
         target: reovim_driver_input::InputTarget,
     ) -> Option<(
         reovim_kernel::api::v1::BufferId,
-        Option<reovim_kernel::api::v1::events::kernel::Modification>,
+        Option<reovim_domain_text_events::TextBufferModified>,
     )> {
         use {
             reovim_driver_input::InputTarget,
             reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-            reovim_kernel::api::v1::events::kernel::Modification,
             reovim_types_text::{Edit, Position},
         };
 
@@ -635,12 +634,19 @@ impl Session {
 
                 drop(clients);
 
-                // Build Modification for incremental syntax parsing
-                #[allow(clippy::cast_possible_truncation)] // cursor positions fit in u32
-                let modification = Modification::Insert {
-                    start: (cursor_before.line as u32, cursor_before.column as u32),
-                    text: ch_str.clone(),
+                // Build TextBufferModified for incremental syntax parsing
+                let text_event = reovim_domain_text_events::TextBufferModified {
+                    buffer_id,
+                    edit: reovim_domain_text_events::TextEdit::insert(
+                        reovim_domain_text_events::TextPosition::new(
+                            cursor_before.line,
+                            cursor_before.column,
+                        ),
+                        ch_str.clone(),
+                    ),
                     start_byte,
+                    old_end_byte: start_byte,
+                    new_end_byte: start_byte + ch_str.len(),
                 };
 
                 // Record edit for undo with client origin (#471)
@@ -660,7 +666,7 @@ impl Session {
                     );
                 }
 
-                Some((buffer_id, Some(modification)))
+                Some((buffer_id, Some(text_event)))
             }
             InputTarget::Extension(type_id) => {
                 // Phase #477: Check per-client extensions FIRST, then shared

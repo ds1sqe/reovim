@@ -46,9 +46,7 @@ use {
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         BufferId, ByteEdit, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
-        events::kernel::{
-            CursorMoved, LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection,
-        },
+        events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
     reovim_provider_text::TextBufferRegistry,
     reovim_types_text::{Edit, Position, UndoResult},
@@ -762,24 +760,7 @@ impl BufferApi for SessionRuntime<'_> {
             };
             self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
-            // Emit BufferModified event for subscribers (#655)
-            #[allow(clippy::cast_possible_truncation)]
-            {
-                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                let modification = Modification::Insert {
-                    start: (pos.line as u32, pos.column as u32),
-                    text: text.to_string(),
-                    start_byte: byte_offset,
-                };
-                self.kernel.event_bus.emit(BufferModified {
-                    buffer_id: buffer.as_usize() as u64,
-                    modification: modification.clone(),
-                });
-                self.changes
-                    .record_buffer_modified_with_edit(buffer, modification);
-            }
-
-            // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
+            // Emit text-domain event for subscribers (#740 Plan 09)
             {
                 use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
                 let text_event = TextBufferModified {
@@ -834,7 +815,7 @@ impl BufferApi for SessionRuntime<'_> {
                 };
                 self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
-                // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
+                // Emit text-domain event for subscribers (#740 Plan 09)
                 {
                     use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
                     let deleted_byte_len = deleted_text.len();
@@ -842,7 +823,7 @@ impl BufferApi for SessionRuntime<'_> {
                         buffer_id: buffer,
                         edit: TextEdit::delete(
                             TextPosition::new(start.line, start.column),
-                            deleted_text.clone(),
+                            deleted_text,
                         ),
                         start_byte: byte_offset,
                         old_end_byte: byte_offset + deleted_byte_len,
@@ -851,24 +832,6 @@ impl BufferApi for SessionRuntime<'_> {
                     self.kernel.event_bus.emit(text_event.clone());
                     self.changes
                         .record_buffer_modified_with_text_edit(buffer, text_event);
-                }
-
-                // Emit BufferModified event for subscribers (#440)
-                #[allow(clippy::cast_possible_truncation)]
-                {
-                    use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                    let modification = Modification::Delete {
-                        start: (start.line as u32, start.column as u32),
-                        end: (end.line as u32, end.column as u32),
-                        text: deleted_text,
-                        start_byte: byte_offset,
-                    };
-                    self.kernel.event_bus.emit(BufferModified {
-                        buffer_id: buffer.as_usize() as u64,
-                        modification: modification.clone(),
-                    });
-                    self.changes
-                        .record_buffer_modified_with_edit(buffer, modification);
                 }
             }
         }
@@ -902,26 +865,11 @@ impl BufferApi for SessionRuntime<'_> {
             ];
             self.record_edit_mine(buffer, edits, cursor_before, cursor_before);
 
-            // Emit BufferModified for subscribers
-            #[allow(clippy::cast_possible_truncation)]
-            {
-                use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
-                let modification = Modification::FullReplace;
-                self.kernel.event_bus.emit(BufferModified {
-                    buffer_id: buffer.as_usize() as u64,
-                    modification: modification.clone(),
-                });
-                self.changes
-                    .record_buffer_modified_with_edit(buffer, modification);
-            }
-
-            // Dual emission note (#740 Plan 09 Phase 6):
-            // TextBufferModified is NOT emitted for FullReplace because
-            // TextEdit only carries Insert/Delete variants with full text
-            // payloads — for a large file this would be a multi-GB allocation.
-            // Modification::FullReplace is a sentinel ("reparse everything").
-            // Phase 7 consumers that handle FullReplace will use
-            // BufferBytesEdited at the byte layer or buffer-reload patterns.
+            // `FullReplace` has no `TextBufferModified` equivalent — `TextEdit`
+            // only carries Insert/Delete with full text payloads, which would be
+            // multi-GB for large files. Consumers use `modified_buffers` for
+            // full-reparse triggers and `byte_edits` for codec index updates.
+            self.changes.record_buffer_modified(buffer);
         }
     }
 
@@ -1446,20 +1394,14 @@ impl ChangeTracker for SessionRuntime<'_> {
     }
 
     fn record_cursor_move(&mut self, buffer: BufferId) {
-        // #664: Emit CursorMoved event for subscribers (illuminate, etc.).
+        // Emit text-domain CursorMoved for subscribers (#740 Plan 09).
         // `cursor_snapshot` holds the pre-command position (captured at construction)
         // or the post-previous-move position (updated after each emission).
         #[allow(clippy::cast_possible_truncation)]
         if let Some(window) = self.windows.active() {
             let to = (window.cursor.line as u32, window.cursor.column as u32);
             let from = self.cursor_snapshot.unwrap_or(to);
-            self.kernel.event_bus.emit(CursorMoved {
-                buffer_id: buffer.as_usize() as u64,
-                from,
-                to,
-            });
 
-            // Dual emission: new text-domain event (#740 Plan 09 Phase 6)
             {
                 use reovim_domain_text_events::TextPosition;
                 self.kernel

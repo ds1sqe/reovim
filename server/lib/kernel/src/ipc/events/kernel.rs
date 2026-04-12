@@ -8,15 +8,16 @@
 //! # Design Philosophy
 //!
 //! Following "mechanism, not policy":
-//! - Kernel events = notifications (something happened)
+//! - Kernel events = domain-free substrate notifications (something happened)
+//! - Text-domain events = semantic notifications (in `reovim-domain-text-events`)
 //! - Request events = policy (stay in modules)
 //!
 //! # Priority Constants
 //!
 //! ```ignore
 //! CRITICAL (0): Lifecycle events (Shutdown)
-//! CORE (10): System state changes (Buffer/Window lifecycle)
-//! NORMAL (50): Content changes (BufferModified, CursorMoved)
+//! CORE (10): System state changes (Buffer/Window lifecycle, BufferBytesEdited)
+//! NORMAL (50): Content changes
 //! PLUGIN (100): Default for plugin handlers
 //! LOW (200): Cleanup/finalization handlers
 //! ```
@@ -25,7 +26,7 @@
 //!
 //! ```
 //! use reovim_kernel::api::v1::{Event, EventBus, EventResult};
-//! use reovim_kernel::api::v1::events::kernel::{BufferCreated, BufferModified, Modification};
+//! use reovim_kernel::api::v1::events::kernel::BufferCreated;
 //!
 //! let bus = EventBus::new();
 //!
@@ -89,62 +90,6 @@ pub struct BufferClosed {
 }
 
 impl Event for BufferClosed {}
-
-/// A buffer's content was modified.
-///
-/// Emitted after any change to buffer content (insert, delete, replace).
-/// Handlers can use this to trigger re-parsing, update highlights, etc.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BufferModified {
-    /// ID of the modified buffer
-    pub buffer_id: u64,
-    /// Type of modification that occurred
-    pub modification: Modification,
-}
-
-impl Event for BufferModified {}
-
-/// Type of buffer modification.
-///
-/// Describes what kind of change was made to the buffer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Modification {
-    /// Text was inserted at a position.
-    Insert {
-        /// Start position (line, column) - 0-indexed
-        start: (u32, u32),
-        /// The inserted text
-        text: String,
-        /// Byte offset where the insertion begins (for incremental parsing).
-        start_byte: usize,
-    },
-    /// Text was deleted from a range.
-    Delete {
-        /// Start position (line, column) - 0-indexed
-        start: (u32, u32),
-        /// End position (line, column) - 0-indexed
-        end: (u32, u32),
-        /// The deleted text
-        text: String,
-        /// Byte offset where the deletion begins (for incremental parsing).
-        start_byte: usize,
-    },
-    /// Text was replaced (delete + insert combined).
-    Replace {
-        /// Start position (line, column) - 0-indexed
-        start: (u32, u32),
-        /// End position (line, column) - 0-indexed
-        end: (u32, u32),
-        /// Old text that was replaced
-        old_text: String,
-        /// New text
-        new_text: String,
-        /// Byte offset where the replacement begins (for incremental parsing).
-        start_byte: usize,
-    },
-    /// Entire buffer content was replaced (e.g., file reload).
-    FullReplace,
-}
 
 /// Byte-layer mutation notification.
 ///
@@ -210,26 +155,6 @@ pub struct BufferSaved {
 }
 
 impl Event for BufferSaved {}
-
-// =============================================================================
-// Cursor Events
-// =============================================================================
-
-/// Cursor position changed in a buffer.
-///
-/// Emitted after the cursor moves to a new position.
-/// Note: This is a notification only - it doesn't request movement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CursorMoved {
-    /// Buffer ID where cursor moved
-    pub buffer_id: u64,
-    /// Previous position (line, column) - 0-indexed
-    pub from: (u32, u32),
-    /// New position (line, column) - 0-indexed
-    pub to: (u32, u32),
-}
-
-impl Event for CursorMoved {}
 
 // =============================================================================
 // Mode Events
@@ -360,23 +285,6 @@ pub struct WindowFocused {
 
 impl Event for WindowFocused {}
 
-/// Viewport scrolled within a window.
-///
-/// Emitted when the visible portion of a buffer changes due to scrolling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ViewportScrolled {
-    /// ID of the window that scrolled
-    pub window_id: u64,
-    /// ID of the buffer being viewed
-    pub buffer_id: u64,
-    /// First visible line (0-indexed)
-    pub top_line: u32,
-    /// Last visible line (0-indexed)
-    pub bottom_line: u32,
-}
-
-impl Event for ViewportScrolled {}
-
 // =============================================================================
 // Layout Events
 // =============================================================================
@@ -470,19 +378,6 @@ pub struct FileOpened {
 }
 
 impl Event for FileOpened {}
-
-/// File type was detected or changed.
-///
-/// Emitted when the file type (language) is determined or updated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileTypeChanged {
-    /// Buffer ID
-    pub buffer_id: u64,
-    /// Detected file type (e.g., "rust", "python", "markdown")
-    pub file_type: String,
-}
-
-impl Event for FileTypeChanged {}
 
 // =============================================================================
 // Option Events

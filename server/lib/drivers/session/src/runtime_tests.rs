@@ -6330,100 +6330,8 @@ fn test_delete_range_empty_no_byte_edit() {
 }
 
 // =========================================================================
-// Dual-emission tests (#740 Plan 09 Phase 6)
+// TextBufferModified emission tests (#740 Plan 09)
 // =========================================================================
-
-/// Verify that `insert_text` emits BOTH old kernel `BufferModified` and new
-/// `TextBufferModified` on the `EventBus` during the dual-emission transition.
-#[test]
-fn test_insert_text_dual_emission() {
-    use {
-        crate::testing::TestSessionRuntime,
-        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
-        std::sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-    };
-
-    let mut harness = TestSessionRuntime::with_buffer("hello");
-
-    let old_fired = Arc::new(AtomicBool::new(false));
-    let new_fired = Arc::new(AtomicBool::new(false));
-
-    // Subscribe to old kernel event
-    let old_flag = Arc::clone(&old_fired);
-    let _sub_old = harness
-        .kernel()
-        .event_bus
-        .subscribe::<BufferModified, _>(50, move |_event| {
-            old_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    // Subscribe to new text-domain event
-    let new_flag = Arc::clone(&new_fired);
-    let _sub_new = harness
-        .kernel()
-        .event_bus
-        .subscribe::<reovim_domain_text_events::TextBufferModified, _>(50, move |_event| {
-            new_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
-    harness.with_runtime(|runtime| {
-        runtime.insert_text(buffer_id, Position::new(0, 5), " world");
-    });
-
-    assert!(old_fired.load(Ordering::SeqCst), "old kernel BufferModified should fire");
-    assert!(new_fired.load(Ordering::SeqCst), "new TextBufferModified should fire");
-}
-
-/// Verify that `delete_range` emits BOTH old kernel `BufferModified` and new
-/// `TextBufferModified` during dual-emission transition.
-#[test]
-fn test_delete_range_dual_emission() {
-    use {
-        crate::testing::TestSessionRuntime,
-        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
-        std::sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-    };
-
-    let mut harness = TestSessionRuntime::with_buffer("hello world");
-
-    let old_fired = Arc::new(AtomicBool::new(false));
-    let new_fired = Arc::new(AtomicBool::new(false));
-
-    let old_flag = Arc::clone(&old_fired);
-    let _sub_old = harness
-        .kernel()
-        .event_bus
-        .subscribe::<BufferModified, _>(50, move |_event| {
-            old_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    let new_flag = Arc::clone(&new_fired);
-    let _sub_new = harness
-        .kernel()
-        .event_bus
-        .subscribe::<reovim_domain_text_events::TextBufferModified, _>(50, move |_event| {
-            new_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
-    harness.with_runtime(|runtime| {
-        runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
-    });
-
-    assert!(old_fired.load(Ordering::SeqCst), "old kernel BufferModified should fire");
-    assert!(new_fired.load(Ordering::SeqCst), "new TextBufferModified should fire");
-}
 
 /// Verify that `insert_text` emits `TextBufferModified` with correct byte
 /// offsets and `TextEdit` payload.
@@ -6495,94 +6403,17 @@ fn test_delete_range_text_buffer_modified_fields() {
     assert_eq!(new_end, 5, "new_end_byte = start (bytes removed)");
 }
 
-/// Verify that `record_cursor_move` emits BOTH old kernel `CursorMoved` and
-/// new text-domain `CursorMoved` with `WindowId` enrichment.
-#[test]
-fn test_record_cursor_move_dual_emission() {
-    use {
-        reovim_kernel::api::v1::{EventResult, ModeStack, events::kernel::CursorMoved},
-        std::sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-    };
-
-    let mut session = Session::new(ClientId::new(1), test_mode());
-    let kernel = KernelContext::default();
-    let executor = StubExecutor;
-    let mut ms = ModeStack::new(test_mode());
-    let mut w = crate::WindowLayout::empty();
-    let mut e = crate::ExtensionMap::new();
-    let mut c = None;
-    let mut tabs = crate::TabPageSet::new();
-    let mut r = RegisterBank::new();
-    let mut ch = HistoryRing::new();
-    let mut lm = MarkBank::new();
-    let mut jumplist = Jumplist::new();
-    let mut active_buffer = None;
-    let mut terminal_size = (80u16, 24u16);
-
-    let mut window = crate::Window::new();
-    window.cursor = Position::new(3, 7).into();
-    w.add(window);
-
-    // Subscribe to old kernel CursorMoved
-    let old_fired = Arc::new(AtomicBool::new(false));
-    let old_flag = Arc::clone(&old_fired);
-    let _sub_old = kernel
-        .event_bus
-        .subscribe::<CursorMoved, _>(50, move |_event| {
-            old_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    // Subscribe to new text-domain CursorMoved
-    let new_fired = Arc::new(AtomicBool::new(false));
-    let new_flag = Arc::clone(&new_fired);
-    let _sub_new = kernel
-        .event_bus
-        .subscribe::<reovim_domain_text_events::CursorMoved, _>(50, move |_event| {
-            new_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
-
-    let buf = BufferId::new();
-    let mut rt = SessionRuntime::new(
-        &mut session,
-        crate::ClientContext {
-            mode_stack: &mut ms,
-            windows: &mut w,
-            extensions: &mut e,
-            compositor: &mut c,
-            tabs: &mut tabs,
-            registers: &mut r,
-            clipboard_history: &mut ch,
-            local_marks: &mut lm,
-            jumplist: &mut jumplist,
-            active_buffer: &mut active_buffer,
-            terminal_size: &mut terminal_size,
-        },
-        &kernel,
-        &executor,
-    );
-
-    rt.record_cursor_move(buf);
-
-    assert!(old_fired.load(Ordering::SeqCst), "old kernel CursorMoved should fire");
-    assert!(new_fired.load(Ordering::SeqCst), "new text-domain CursorMoved should fire");
-}
-
 // =========================================================================
-// FullReplace sanity: old event only, no TextBufferModified (#740 Phase 7)
+// FullReplace sanity: no TextBufferModified (#740 Plan 09)
 // =========================================================================
 
-/// Verify that `replace_content` (`FullReplace`) emits old kernel `BufferModified`
-/// but does NOT emit `TextBufferModified` — there is no `TextEdit::FullReplace`.
+/// Verify that `replace_content` (`FullReplace`) does NOT emit
+/// `TextBufferModified` — there is no `TextEdit::FullReplace`.
 #[test]
-fn test_fullreplace_emits_old_event_only() {
+fn test_fullreplace_no_text_buffer_modified_event() {
     use {
         crate::testing::TestSessionRuntime,
-        reovim_kernel::api::v1::{EventResult, events::kernel::BufferModified},
+        reovim_kernel::api::v1::EventResult,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -6591,17 +6422,7 @@ fn test_fullreplace_emits_old_event_only() {
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
-    let old_fired = Arc::new(AtomicBool::new(false));
     let new_fired = Arc::new(AtomicBool::new(false));
-
-    let old_flag = Arc::clone(&old_fired);
-    let _sub_old = harness
-        .kernel()
-        .event_bus
-        .subscribe::<BufferModified, _>(50, move |_event| {
-            old_flag.store(true, Ordering::SeqCst);
-            EventResult::Handled
-        });
 
     let new_flag = Arc::clone(&new_fired);
     let _sub_new = harness
@@ -6618,17 +6439,13 @@ fn test_fullreplace_emits_old_event_only() {
     });
 
     assert!(
-        old_fired.load(Ordering::SeqCst),
-        "old kernel BufferModified should fire for FullReplace"
-    );
-    assert!(
         !new_fired.load(Ordering::SeqCst),
         "TextBufferModified should NOT fire for FullReplace (no TextEdit equivalent)"
     );
 }
 
 // =========================================================================
-// StateChanges text_buffer_edits field (#740 Plan 09 Phase 7)
+// StateChanges text_buffer_edits field (#740 Plan 09)
 // =========================================================================
 
 /// Verify that `insert_text` populates `text_buffer_edits` in `StateChanges`.
@@ -6707,8 +6524,9 @@ fn test_fullreplace_no_text_buffer_edits() {
         changes.text_buffer_edits.is_empty(),
         "FullReplace should not populate text_buffer_edits"
     );
-    // But modified_buffer_edits should have the FullReplace entry
-    assert_eq!(changes.modified_buffer_edits.len(), 1);
+    // FullReplace still records the buffer as modified (for full-reparse triggers)
+    assert!(changes.buffer_modified);
+    assert_eq!(changes.modified_buffers.len(), 1);
 }
 
 // Note: byte-level undo-log cleanup is tracked outside session runtime.

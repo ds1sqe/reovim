@@ -699,55 +699,6 @@ impl InputServiceImpl {
         }
     }
 
-    /// Convert a kernel `Modification` to a `TextBufferModified` event (#740 Phase 7d).
-    ///
-    /// Transitional bridge: produces text-domain events from kernel types until
-    /// `session.rs::insert_char_for_client` returns text-domain types directly
-    /// (Phase 8).
-    #[allow(clippy::cast_possible_truncation)]
-    fn modification_to_text_buffer_modified(
-        buffer_id: reovim_kernel::api::v1::BufferId,
-        modification: &reovim_kernel::api::v1::events::kernel::Modification,
-    ) -> Option<reovim_domain_text_events::TextBufferModified> {
-        use {
-            reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition},
-            reovim_kernel::api::v1::events::kernel::Modification,
-        };
-
-        match modification {
-            Modification::Insert {
-                start,
-                text,
-                start_byte,
-            } => Some(TextBufferModified {
-                buffer_id,
-                edit: TextEdit::insert(
-                    TextPosition::new(start.0 as usize, start.1 as usize),
-                    text.clone(),
-                ),
-                start_byte: *start_byte,
-                old_end_byte: *start_byte,
-                new_end_byte: start_byte + text.len(),
-            }),
-            Modification::Delete {
-                start,
-                text,
-                start_byte,
-                ..
-            } => Some(TextBufferModified {
-                buffer_id,
-                edit: TextEdit::delete(
-                    TextPosition::new(start.0 as usize, start.1 as usize),
-                    text.clone(),
-                ),
-                start_byte: *start_byte,
-                old_end_byte: start_byte + text.len(),
-                new_end_byte: *start_byte,
-            }),
-            Modification::Replace { .. } | Modification::FullReplace => None,
-        }
-    }
-
     /// Convert `ResolveContext` to `CommandContext`.
     fn resolve_to_command_context(ctx: &ResolveContext) -> CommandContext {
         let mut cmd_ctx = CommandContext::new();
@@ -873,17 +824,9 @@ impl InputServiceImpl {
                     let modified_buffer = session.insert_char_for_client(client_id, ch, target);
 
                     // Record buffer modification and cursor movement for notification
-                    if let Some((buffer_id, modification)) = modified_buffer {
-                        if let Some(ref edit) = modification {
-                            // Use incremental syntax path (edit info available)
-                            changes.record_buffer_modified_with_edit(buffer_id, edit.clone());
-                            // Also record text-domain edit for Phase 7d migration (#740)
-                            if let Some(text_event) =
-                                Self::modification_to_text_buffer_modified(buffer_id, edit)
-                            {
-                                changes
-                                    .record_buffer_modified_with_text_edit(buffer_id, text_event);
-                            }
+                    if let Some((buffer_id, text_event)) = modified_buffer {
+                        if let Some(event) = text_event {
+                            changes.record_buffer_modified_with_text_edit(buffer_id, event);
                         } else {
                             changes.record_buffer_modified(buffer_id);
                         }

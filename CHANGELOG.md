@@ -42,10 +42,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **server**: `BufferHandle` enum unifying Rope and virtual buffer access at the server layer — gRPC handlers now see both buffer types (#739)
 - **protocol**: `capabilities` field (u32 bitflags) on `BufferInfo` proto message (#739)
 - **kernel**: `TextGeometry` trait — polymorphic line-based read access for both `Buffer` (zero-copy `Cow::Borrowed`) and `VirtualBuffer` (`Cow::Owned`) (#739)
-- **session**: `text_buffer_edits` field on `StateChanges` — parallel transport for text-domain edits (`TextBufferModified` events) alongside the legacy `modified_buffer_edits` (#740)
-- **server**: `text_event_to_syntax_edit` — text-domain equivalent of `modification_to_syntax_edit` for incremental tree-sitter parsing from `TextBufferModified` events (#740)
-- **modules**: `buffer-ops` migrated from kernel `BufferModified` to `TextBufferModified`, `window-ops` migrated from kernel `ViewportScrolled` to text-domain `ViewportScrolled` (#740)
-- **session**: consumer migration Phase 7 — `CursorMoved` tests migrated from kernel to text-domain events, `FullReplace` sanity test, codec index and syntax parsing consumers migrated to `text_buffer_edits` (#740)
+- **session**: `text_buffer_edits` field on `StateChanges` — transport for text-domain edits (`TextBufferModified` events) for incremental syntax parsing and codec index updates (#740)
+- **server**: `text_event_to_syntax_edit` — converts `TextBufferModified` events to `SyntaxEdit` for incremental tree-sitter parsing (#740)
+- **modules**: `buffer-ops` subscribes to `TextBufferModified`, `window-ops` subscribes to text-domain `ViewportScrolled` (#740)
 
 ### Changed
 
@@ -73,6 +72,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **codec**: new `InodeStaleCheck` adapter in `reovim-driver-codec` implementing `StaleCheck`. The server-side `SessionState::new` / `with_registries` constructors install the adapter at session creation so the codec → session crate boundary stays one-way. Current adapter body is a counter + `tracing::trace!` event emitter — the full re-decode-on-read path is blocked by the `&self` hook signature vs. `ExtensionMap` interior-mutability constraint and is deferred to a follow-up (#740)
 - **codec**: Plan 07 Phase 1 shared substrate — `ContentCodec::translate_edit` trait signature widens from `Option<ByteEdit>` to `Result<Option<ByteEdit>, TranslateEditError>`. Default implementation now returns `Err(TranslateEditError::ReadOnly)` so codecs that do not override the seam inherit read-only behavior by construction. All eight in-tree codec modules migrated: `codec-utf8`, `codec-hex`, `codec-cjk`, `codec-csv`, `codec-legacy` return `Ok(Some(edit))` / `Err(UnsupportedEdit)` / `Err(Internal)` on their existing paths; `codec-rlib`, `codec-pdf`, and `codec-binary-struct` (ELF + ZIP) inherit the `Err(ReadOnly)` default — the old explicit `None` stubs are deleted. Workspace-wide test mock migration matches the new return shape (#740)
 - **codec**: Plan 07 Phase 1 shared substrate — `InodeTable::apply_edit` return type widens from `Result<ByteEdit, EditError>` to `Result<Option<ByteEdit>, EditError>`. `Ok(Some(_))` is the existing applied-edit path. `Ok(None)` is the new pinned "clean no-op" path: when a codec returns `Ok(None)`, `apply_edit` early-returns without mutating `inode.bytes`, without marking peer mounts stale, and without appending to the undo log. This guarantees structural codecs that emit `Ok(None)` on a syntactic no-op cannot accidentally invalidate peer mounts or lose user edit intent. All `TranslateEditError` variants map to typed `EditError` variants: `ReadOnly → EditError::ReadOnly`, `UnsupportedEdit → EditError::Unsupported`, `ConstraintViolation`/`MalformedPath → EditError::InvalidEdit`, `Internal → EditError::ApplyFailed` (#740)
+
+### Removed
+
+- **kernel**: `BufferModified`, `Modification`, `CursorMoved`, `ViewportScrolled`, and `FileTypeChanged` from kernel events — text-specific events now live in `reovim-domain-text-events` (text-domain) and `reovim-driver-codec` (codec events). Kernel retains only domain-free substrate events (#740)
+- **session**: `modified_buffer_edits` field and `record_buffer_modified_with_edit` method from `StateChanges` — replaced by `text_buffer_edits` carrying `TextBufferModified` events (#740)
+- **server**: `modification_to_syntax_edit` bridge function and `modification_to_text_buffer_modified` transitional bridge — replaced by `text_event_to_syntax_edit` operating on text-domain events directly (#740)
 
 ### Refactored
 
