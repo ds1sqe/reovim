@@ -58,9 +58,9 @@ fn lowercase_operator_id() {
 }
 
 #[test]
-fn lowercase_operator_is_text_modifying() {
+fn lowercase_operator_is_content_modifying() {
     let op = LowercaseOperator;
-    assert!(op.is_text_modifying());
+    assert!(op.is_content_modifying());
 }
 
 #[test]
@@ -70,9 +70,9 @@ fn uppercase_operator_id() {
 }
 
 #[test]
-fn uppercase_operator_is_text_modifying() {
+fn uppercase_operator_is_content_modifying() {
     let op = UppercaseOperator;
-    assert!(op.is_text_modifying());
+    assert!(op.is_content_modifying());
 }
 
 #[test]
@@ -82,9 +82,9 @@ fn toggle_case_operator_id() {
 }
 
 #[test]
-fn toggle_case_operator_is_text_modifying() {
+fn toggle_case_operator_is_content_modifying() {
     let op = ToggleCaseOperator;
-    assert!(op.is_text_modifying());
+    assert!(op.is_content_modifying());
 }
 
 // ============================================================================

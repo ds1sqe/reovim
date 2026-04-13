@@ -243,7 +243,7 @@ impl Operator for DeleteOperator {
         false // Default; actual linewise-ness is determined by motion
     }
 
-    fn is_text_modifying(&self) -> bool {
+    fn is_content_modifying(&self) -> bool {
         true
     }
 }

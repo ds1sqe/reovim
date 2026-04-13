@@ -24,8 +24,8 @@ pub struct UnsavedBuffer {
     pub path: Option<PathBuf>,
     /// Hash of content for deduplication.
     pub content_hash: u64,
-    /// Number of lines.
-    pub line_count: usize,
+    /// Size of content in bytes.
+    pub content_size: u64,
 }
 
 /// Get the recovery data directory.
@@ -89,7 +89,7 @@ pub fn save_buffer_for_recovery(
     if let Some(orig) = original_path {
         writeln!(output, "# Original path: {}", orig.display()).ok();
     }
-    writeln!(output, "# Lines: {}", content.lines().count()).ok();
+    writeln!(output, "# Bytes: {}", content.len()).ok();
     output.push_str("# ---\n");
     output.push_str(content);
 

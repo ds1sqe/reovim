@@ -136,3 +136,7 @@ impl Default for HistoryRing {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "history_tests.rs"]
+mod tests;

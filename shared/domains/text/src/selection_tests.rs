@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, crate::Position};
 
 #[test]
 fn test_selection_mode_default() {

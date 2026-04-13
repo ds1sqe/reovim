@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::{Direction, LinePosition, WordBoundary};
+
 #[test]
 fn test_motion_is_linewise() {
     assert!(Motion::Line(Direction::Forward).is_linewise());

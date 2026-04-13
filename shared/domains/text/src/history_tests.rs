@@ -1,4 +1,4 @@
-use {super::*, reovim_domain_text::RegisterContent};
+use {super::*, crate::RegisterContent};
 
 fn content(text: &str) -> RegisterContent {
     RegisterContent::characterwise(text.to_string())

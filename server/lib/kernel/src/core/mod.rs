@@ -8,33 +8,9 @@
 //! - **Option**: Editor option registry
 //! - **Config**: Configuration system
 //!
-//! Text-specific algorithms (`Motion`, `TextObject`, `Register`) have been
-//! extracted to `reovim-domain-text` as part of #740.
-//! Mark types (`Mark`, `MarkBank`, `SpecialMark`) have been moved to
-//! `reovim-driver-session` as part of #740.
-//!
-//! # Example
-//!
-//! ```
-//! use reovim_provider_text::Buffer;
-//! use reovim_domain_text::{Cursor, Position, Direction, Motion, MotionEngine, WordBoundary};
-//!
-//! let buffer = Buffer::from_string("hello world");
-//! let cursor = Cursor::new(Position::new(0, 0));
-//!
-//! let new_pos = MotionEngine::calculate(
-//!     &buffer,
-//!     &cursor,
-//!     Motion::Word {
-//!         direction: Direction::Forward,
-//!         boundary: WordBoundary::Word,
-//!         end: false,
-//!     },
-//!     1,
-//! );
-//!
-//! assert_eq!(new_pos, Some(Position::new(0, 6)));
-//! ```
+//! Text-specific algorithms (`Motion`, `TextObject`, `Register`) live in
+//! `reovim-domain-text`. Mark types (`Mark`, `MarkBank`, `SpecialMark`) live
+//! in `reovim-driver-session`. The kernel has zero domain dependencies.
 
 mod config;
 mod mode;

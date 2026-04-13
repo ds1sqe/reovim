@@ -2820,8 +2820,6 @@ version = "0.14.5-dev"
 dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
- "reovim-domain-text",
- "reovim-provider-text",
 ]
 
 [[package]]

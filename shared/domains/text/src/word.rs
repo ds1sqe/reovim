@@ -321,3 +321,7 @@ pub fn next_word_end(chars: &[char], pos: usize, word_type: WordType) -> usize {
 
     word_end(chars, idx, word_type)
 }
+
+#[cfg(test)]
+#[path = "word_tests.rs"]
+mod tests;

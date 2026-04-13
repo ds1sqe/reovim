@@ -97,7 +97,7 @@ fn test_change_operator_id() {
 #[test]
 fn test_change_is_text_modifying() {
     let change = ChangeOperator;
-    assert!(change.is_text_modifying());
+    assert!(change.is_content_modifying());
 }
 
 #[test]

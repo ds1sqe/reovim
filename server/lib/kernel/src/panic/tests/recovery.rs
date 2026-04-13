@@ -22,7 +22,7 @@ fn test_save_buffer_for_recovery() {
     let saved = std::fs::read_to_string(&path).unwrap();
     assert!(saved.contains("buffer 999"));
     assert!(saved.contains("/tmp/test.txt"));
-    assert!(saved.contains("Lines: 3"));
+    assert!(saved.contains("Bytes: "));
     assert!(saved.contains(content));
 
     // Cleanup
@@ -114,7 +114,7 @@ fn test_recovery_snapshot_debug() {
             id: 1,
             path: Some(PathBuf::from("/test.rs")),
             content_hash: 12345,
-            line_count: 42,
+            content_size: 42,
         }],
         timestamp: std::time::SystemTime::now(),
     };

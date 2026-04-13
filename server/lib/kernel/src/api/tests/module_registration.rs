@@ -14,9 +14,9 @@ fn test_command_registration_new() {
     assert_eq!(reg.description, "");
     assert!(reg.category.is_none());
     assert!(!reg.accepts_count());
-    assert!(!reg.accepts_motion());
-    assert!(!reg.is_jump());
-    assert!(!reg.is_text_modifying());
+    assert!(!reg.accepts_operand());
+    assert!(!reg.is_navigation());
+    assert!(!reg.is_content_modifying());
     assert!(reg.depends_on.is_empty());
 }
 
@@ -27,8 +27,8 @@ fn test_command_registration_builder() {
         .with_description("Delete text")
         .with_category("operator")
         .with_count()
-        .with_motion()
-        .with_text_modifying()
+        .with_operand()
+        .with_content_modifying()
         .with_depends_on(&["yank"])
         .with_flags(RegistrationFlags::required());
 
@@ -37,17 +37,17 @@ fn test_command_registration_builder() {
     assert_eq!(reg.description, "Delete text");
     assert_eq!(reg.category, Some("operator"));
     assert!(reg.accepts_count());
-    assert!(reg.accepts_motion());
-    assert!(!reg.is_jump());
-    assert!(reg.is_text_modifying());
+    assert!(reg.accepts_operand());
+    assert!(!reg.is_navigation());
+    assert!(reg.is_content_modifying());
     assert_eq!(reg.depends_on, &["yank"]);
     assert!(reg.flags.is_required());
 }
 
 #[test]
 fn test_command_registration_jump() {
-    let reg = CommandRegistration::new("goto-definition").with_jump();
-    assert!(reg.is_jump());
+    let reg = CommandRegistration::new("goto-definition").with_navigation();
+    assert!(reg.is_navigation());
 }
 
 #[test]
@@ -103,16 +103,16 @@ fn test_event_handler_registration_new() {
 
 #[test]
 fn test_event_handler_registration_builder() {
-    let reg = EventHandlerRegistration::new("CursorMoved")
+    let reg = EventHandlerRegistration::new("ContentModified")
         .with_priority(50)
-        .with_description("Update cursor highlight")
+        .with_description("Update content highlight")
         .with_target("treesitter")
         .with_depends_on(&["syntax-highlight"])
         .with_flags(RegistrationFlags::deferrable());
 
-    assert_eq!(reg.event_type, "CursorMoved");
+    assert_eq!(reg.event_type, "ContentModified");
     assert_eq!(reg.priority, 50);
-    assert_eq!(reg.description, "Update cursor highlight");
+    assert_eq!(reg.description, "Update content highlight");
     assert!(!reg.once);
     assert_eq!(reg.target_component, Some("treesitter"));
     assert_eq!(reg.depends_on, &["syntax-highlight"]);

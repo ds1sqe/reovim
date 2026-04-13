@@ -199,9 +199,9 @@ fn test_py_command_registration_builder() {
         .with_description("Delete text")
         .with_category("edit")
         .with_count()
-        .with_motion()
-        .with_jump()
-        .with_text_modifying();
+        .with_operand()
+        .with_navigation()
+        .with_content_modifying();
 
     assert_eq!(reg.id, "delete");
     assert_eq!(reg.name, "Delete");
@@ -226,7 +226,7 @@ fn test_py_command_registration_to_kernel() {
         .with_description("Copy text")
         .with_category("edit")
         .with_count()
-        .with_motion();
+        .with_operand();
 
     let kernel_reg = reg.to_kernel();
     assert_eq!(kernel_reg.id, "yank");
@@ -234,9 +234,9 @@ fn test_py_command_registration_to_kernel() {
     assert_eq!(kernel_reg.description, "Copy text");
     assert_eq!(kernel_reg.category, Some("edit"));
     assert!(kernel_reg.accepts_count());
-    assert!(kernel_reg.accepts_motion());
-    assert!(!kernel_reg.is_jump());
-    assert!(!kernel_reg.is_text_modifying());
+    assert!(kernel_reg.accepts_operand());
+    assert!(!kernel_reg.is_navigation());
+    assert!(!kernel_reg.is_content_modifying());
 }
 
 // ========================================================================

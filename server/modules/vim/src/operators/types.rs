@@ -164,7 +164,7 @@ pub trait Operator: Send + Sync {
     ///
     /// Used for undo grouping - modifying operators create checkpoints.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn is_text_modifying(&self) -> bool {
+    fn is_content_modifying(&self) -> bool {
         true
     }
 }

@@ -162,7 +162,7 @@ impl Event for BufferSaved {}
 
 /// Editor mode changed.
 ///
-/// Emitted after a mode transition occurs (e.g., Normal → Insert).
+/// Emitted after a mode transition occurs (e.g., mode-A to mode-B).
 /// The mode strings are intentionally generic - policy (specific modes)
 /// is defined by the runtime and modules.
 ///

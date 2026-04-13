@@ -447,3 +447,7 @@ impl Default for RegisterBank {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "register_tests.rs"]
+mod tests;

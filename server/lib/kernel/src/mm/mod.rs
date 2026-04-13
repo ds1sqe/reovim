@@ -37,6 +37,3 @@ pub use {
 
 // Position re-export removed (#740) — no longer used by kernel internals.
 // Consumers should import directly from reovim_domain_text.
-
-#[cfg(test)]
-pub use reovim_domain_text::Cursor;

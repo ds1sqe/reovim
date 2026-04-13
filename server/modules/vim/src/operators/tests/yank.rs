@@ -97,7 +97,7 @@ fn test_yank_operator_id() {
 #[test]
 fn test_yank_is_not_text_modifying() {
     let yank = YankOperator;
-    assert!(!yank.is_text_modifying());
+    assert!(!yank.is_content_modifying());
 }
 
 #[test]

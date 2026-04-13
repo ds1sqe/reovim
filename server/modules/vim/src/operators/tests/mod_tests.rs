@@ -13,9 +13,9 @@ fn test_operators_list() {
 }
 
 #[test]
-fn test_delete_is_text_modifying() {
+fn test_delete_is_content_modifying() {
     let delete = DeleteOperator;
-    assert!(delete.is_text_modifying());
+    assert!(delete.is_content_modifying());
     assert!(!delete.is_linewise());
 }
 
@@ -73,7 +73,7 @@ fn test_operators_text_modifying_flags() {
     let ops = operators();
     let text_modifying: Vec<_> = ops
         .iter()
-        .filter(|o| o.is_text_modifying())
+        .filter(|o| o.is_content_modifying())
         .map(|o| o.id())
         .collect();
     assert!(text_modifying.contains(&"delete"));

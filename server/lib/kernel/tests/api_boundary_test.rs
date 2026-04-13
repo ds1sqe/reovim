@@ -30,8 +30,6 @@
 
 // This SHOULD compile - accessing the public API
 use reovim_kernel::api::v1::*;
-// Text types are in reovim_domain_text, not kernel API (Phase 5.5 cleanup)
-use reovim_domain_text::{MotionEngine, RegisterBank, TextObjectEngine, UndoTree};
 
 // These should NOT compile (uncomment to verify):
 // use reovim_kernel::mm::*;       // ERROR: module `mm` is private
@@ -83,36 +81,9 @@ fn mode_stack_accessible() {
     assert_eq!(stack.current(), &normal);
 }
 
-#[test]
-fn register_bank_accessible() {
-    // RegisterBank should be accessible via api::v1
-    let bank = RegisterBank::new();
-    // With RwLock wrapping, use directly or via kernel context
-    assert!(bank.get().text.is_empty());
-}
-
-// MarkBank moved to reovim-driver-session (#740)
-
-#[test]
-fn motion_engine_accessible() {
-    // MotionEngine should be accessible via api::v1
-    let engine = MotionEngine;
-    _ = engine; // Verify type compiles
-}
-
-#[test]
-fn text_object_engine_accessible() {
-    // TextObjectEngine should be accessible via api::v1
-    let engine = TextObjectEngine;
-    _ = engine; // Verify type compiles
-}
-
-#[test]
-fn undo_tree_accessible() {
-    // UndoTree should be accessible via api::v1
-    let tree = UndoTree::new();
-    assert!(!tree.can_undo());
-}
+// Domain-text type accessibility tests removed: RegisterBank, MotionEngine,
+// TextObjectEngine, and UndoTree are reovim-domain-text types, not kernel API.
+// Their accessibility is verified in reovim-domain-text's own test suite.
 
 #[test]
 fn window_id_accessible() {

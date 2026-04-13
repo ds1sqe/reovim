@@ -323,3 +323,7 @@ fn transform_position_against_delete(
         TextPosition::new(pos.line - dims.line_count, pos.column)
     }
 }
+
+#[cfg(test)]
+#[path = "edit_tests.rs"]
+mod tests;

@@ -4,12 +4,12 @@ use {super::RegistrationFlags, crate::core::CommandId};
 
 /// Bit position for "accepts count" capability.
 const CAP_ACCEPTS_COUNT: u8 = 1 << 0;
-/// Bit position for "accepts motion" capability.
-const CAP_ACCEPTS_MOTION: u8 = 1 << 1;
-/// Bit position for "is jump" capability.
-const CAP_IS_JUMP: u8 = 1 << 2;
-/// Bit position for "is text-modifying" capability.
-const CAP_IS_TEXT_MODIFYING: u8 = 1 << 3;
+/// Bit position for "accepts operand" capability.
+const CAP_ACCEPTS_OPERAND: u8 = 1 << 1;
+/// Bit position for "is navigation" capability.
+const CAP_IS_NAVIGATION: u8 = 1 << 2;
+/// Bit position for "is content-modifying" capability.
+const CAP_IS_CONTENT_MODIFYING: u8 = 1 << 3;
 
 /// Command registration descriptor.
 ///
@@ -29,7 +29,7 @@ pub struct CommandRegistration {
     pub description: &'static str,
     /// Category for help grouping (e.g., "motion", "operator", "edit").
     pub category: Option<&'static str>,
-    /// Command capability flags (`accepts_count`, `accepts_motion`, `is_jump`, `is_text_modifying`).
+    /// Command capability flags (`accepts_count`, `accepts_operand`, `is_navigation`, `is_content_modifying`).
     capabilities: u8,
     /// Dependencies on other commands (Linux: module dependencies).
     pub depends_on: &'static [&'static str],
@@ -80,24 +80,24 @@ impl CommandRegistration {
         self
     }
 
-    /// Mark command as accepting a motion.
+    /// Mark command as accepting an operand (e.g., a motion or text object).
     #[must_use]
-    pub const fn with_motion(mut self) -> Self {
-        self.capabilities |= CAP_ACCEPTS_MOTION;
+    pub const fn with_operand(mut self) -> Self {
+        self.capabilities |= CAP_ACCEPTS_OPERAND;
         self
     }
 
-    /// Mark command as a jump.
+    /// Mark command as a navigation command (recorded in navigation history).
     #[must_use]
-    pub const fn with_jump(mut self) -> Self {
-        self.capabilities |= CAP_IS_JUMP;
+    pub const fn with_navigation(mut self) -> Self {
+        self.capabilities |= CAP_IS_NAVIGATION;
         self
     }
 
-    /// Mark command as text-modifying.
+    /// Mark command as content-modifying (for undo grouping).
     #[must_use]
-    pub const fn with_text_modifying(mut self) -> Self {
-        self.capabilities |= CAP_IS_TEXT_MODIFYING;
+    pub const fn with_content_modifying(mut self) -> Self {
+        self.capabilities |= CAP_IS_CONTENT_MODIFYING;
         self
     }
 
@@ -125,22 +125,22 @@ impl CommandRegistration {
         self.capabilities & CAP_ACCEPTS_COUNT != 0
     }
 
-    /// Check if this command accepts a motion (e.g., dw, c$).
+    /// Check if this command accepts an operand (e.g., a motion or text object).
     #[must_use]
-    pub const fn accepts_motion(&self) -> bool {
-        self.capabilities & CAP_ACCEPTS_MOTION != 0
+    pub const fn accepts_operand(&self) -> bool {
+        self.capabilities & CAP_ACCEPTS_OPERAND != 0
     }
 
-    /// Check if this command is a "jump" (recorded in jump list).
+    /// Check if this command is a navigation command (recorded in navigation history).
     #[must_use]
-    pub const fn is_jump(&self) -> bool {
-        self.capabilities & CAP_IS_JUMP != 0
+    pub const fn is_navigation(&self) -> bool {
+        self.capabilities & CAP_IS_NAVIGATION != 0
     }
 
-    /// Check if this command modifies buffer text (for undo grouping).
+    /// Check if this command modifies buffer content (for undo grouping).
     #[must_use]
-    pub const fn is_text_modifying(&self) -> bool {
-        self.capabilities & CAP_IS_TEXT_MODIFYING != 0
+    pub const fn is_content_modifying(&self) -> bool {
+        self.capabilities & CAP_IS_CONTENT_MODIFYING != 0
     }
 }
 
@@ -252,7 +252,7 @@ impl KeybindingRegistration {
 /// - 200+: Cleanup/late handlers
 #[derive(Debug, Clone)]
 pub struct EventHandlerRegistration {
-    /// Event type name (e.g., `BufferChanged`, `CursorMoved`).
+    /// Event type name (e.g., `BufferChanged`, `ContentModified`).
     pub event_type: &'static str,
     /// Handler priority (lower = called earlier).
     pub priority: u32,

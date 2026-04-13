@@ -1,6 +1,6 @@
-use super::*;
+use {super::*, crate::Position};
 
-// === Position Tests ===
+// === Position Tests (from mm/tests/position.rs) ===
 
 #[test]
 fn position_new() {
@@ -95,7 +95,7 @@ fn position_clone_and_copy() {
     assert_eq!(a, b);
 }
 
-// === Cursor Tests ===
+// === Cursor Tests (from mm/tests/position.rs) ===
 
 #[test]
 fn cursor_new() {
@@ -219,4 +219,143 @@ fn cursor_clone() {
     assert_eq!(cursor.position, cloned.position);
     assert_eq!(cursor.anchor, cloned.anchor);
     assert_eq!(cursor.preferred_column, cloned.preferred_column);
+}
+
+// === Position Tests (from mm/tests/mod.rs inline position_tests) ===
+
+mod position_tests_inline {
+    use super::*;
+
+    #[test]
+    fn test_origin() {
+        let pos = Position::origin();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_new() {
+        let pos = Position::new(5, 10);
+        assert_eq!(pos.line, 5);
+        assert_eq!(pos.column, 10);
+    }
+
+    #[test]
+    fn test_line_start() {
+        let pos = Position::line_start(3);
+        assert_eq!(pos.line, 3);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_ordering() {
+        assert!(Position::new(0, 0) < Position::new(0, 1));
+        assert!(Position::new(0, 1) < Position::new(1, 0));
+        assert!(Position::new(1, 5) < Position::new(2, 0));
+        assert_eq!(Position::new(1, 1), Position::new(1, 1));
+    }
+
+    #[test]
+    fn test_ordering_same_line() {
+        assert!(Position::new(5, 0) < Position::new(5, 1));
+        assert!(Position::new(5, 1) < Position::new(5, 10));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_display() {
+        let pos = Position::new(0, 5);
+        // Display uses 1-indexed for human readability
+        assert_eq!(format!("{pos}"), "1:6");
+    }
+
+    #[test]
+    fn test_default() {
+        let pos = Position::default();
+        assert_eq!(pos, Position::origin());
+    }
+}
+
+// === Cursor Tests (from mm/tests/mod.rs inline cursor_tests) ===
+
+mod cursor_tests_inline {
+    use super::*;
+
+    #[test]
+    fn test_origin() {
+        let cursor = Cursor::origin();
+        assert_eq!(cursor.position, Position::origin());
+        assert!(cursor.anchor.is_none());
+        assert!(cursor.preferred_column.is_none());
+    }
+
+    #[test]
+    fn test_new() {
+        let cursor = Cursor::new(Position::new(5, 10));
+        assert_eq!(cursor.position, Position::new(5, 10));
+        assert!(!cursor.has_selection());
+    }
+
+    #[test]
+    fn test_selection() {
+        let mut cursor = Cursor::new(Position::new(0, 5));
+        assert!(!cursor.has_selection());
+
+        cursor.start_selection();
+        assert!(cursor.has_selection());
+        assert_eq!(cursor.anchor, Some(Position::new(0, 5)));
+
+        cursor.clear_selection();
+        assert!(!cursor.has_selection());
+    }
+
+    #[test]
+    fn test_selection_bounds() {
+        let mut cursor = Cursor::new(Position::new(0, 0));
+        cursor.start_selection();
+        cursor.position = Position::new(0, 5);
+
+        let bounds = cursor.selection_bounds();
+        assert_eq!(bounds, Some((Position::new(0, 0), Position::new(0, 5))));
+    }
+
+    #[test]
+    fn test_selection_bounds_backward() {
+        let mut cursor = Cursor::new(Position::new(0, 5));
+        cursor.start_selection();
+        cursor.position = Position::new(0, 0);
+
+        let bounds = cursor.selection_bounds();
+        // Should normalize to (start, end)
+        assert_eq!(bounds, Some((Position::new(0, 0), Position::new(0, 5))));
+    }
+
+    #[test]
+    fn test_selection_bounds_multiline() {
+        let mut cursor = Cursor::new(Position::new(0, 5));
+        cursor.start_selection();
+        cursor.position = Position::new(2, 3);
+
+        let bounds = cursor.selection_bounds();
+        assert_eq!(bounds, Some((Position::new(0, 5), Position::new(2, 3))));
+    }
+
+    #[test]
+    fn test_preferred_column() {
+        let mut cursor = Cursor::new(Position::new(0, 10));
+        assert!(cursor.preferred_column.is_none());
+        assert_eq!(cursor.effective_column(), 10);
+
+        cursor.update_preferred_column();
+        assert_eq!(cursor.preferred_column, Some(10));
+        assert_eq!(cursor.effective_column(), 10);
+
+        // Change position but preferred_column stays
+        cursor.position = Position::new(1, 5);
+        assert_eq!(cursor.effective_column(), 10); // Still uses preferred
+
+        cursor.clear_preferred_column();
+        assert!(cursor.preferred_column.is_none());
+        assert_eq!(cursor.effective_column(), 5); // Now uses actual
+    }
 }

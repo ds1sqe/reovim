@@ -1,4 +1,7 @@
-use super::*;
+use {
+    super::*,
+    crate::{Position, SimpleText, direction::WordBoundary},
+};
 
 fn make_buffer(content: &str) -> SimpleText {
     SimpleText::new(content)

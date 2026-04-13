@@ -335,7 +335,7 @@ fn execute_operator(
             let cursor_after = op_ctx.cursor_after;
 
             // Update cursor for text-modifying operators (#471, #552)
-            if operator.is_text_modifying() {
+            if operator.is_content_modifying() {
                 // Use operator's computed cursor if available,
                 // otherwise clamp range start to valid bounds (#552)
                 let new_cursor = cursor_after.unwrap_or_else(|| {
@@ -367,7 +367,7 @@ fn execute_operator(
             // bypassing SessionRuntime::delete_range() which normally calls
             // record_buffer_modified(). We must record it explicitly so that
             // StateChanges propagates to TUI for display refresh.
-            if operator.is_text_modifying() {
+            if operator.is_content_modifying() {
                 runtime.record_buffer_modified(buffer_id);
             }
 

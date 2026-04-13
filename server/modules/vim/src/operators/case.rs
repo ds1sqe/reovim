@@ -168,7 +168,7 @@ impl Operator for LowercaseOperator {
         apply_case_transform(ctx, range, str::to_lowercase)
     }
 
-    fn is_text_modifying(&self) -> bool {
+    fn is_content_modifying(&self) -> bool {
         true
     }
 }
@@ -190,7 +190,7 @@ impl Operator for UppercaseOperator {
         apply_case_transform(ctx, range, str::to_uppercase)
     }
 
-    fn is_text_modifying(&self) -> bool {
+    fn is_content_modifying(&self) -> bool {
         true
     }
 }
@@ -212,7 +212,7 @@ impl Operator for ToggleCaseOperator {
         apply_case_transform(ctx, range, toggle_case)
     }
 
-    fn is_text_modifying(&self) -> bool {
+    fn is_content_modifying(&self) -> bool {
         true
     }
 }

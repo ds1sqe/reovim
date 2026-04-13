@@ -379,8 +379,8 @@ impl PyProbeResult {
 /// reg = reg.with_description("Does something useful")
 /// reg = reg.with_category("edit")
 /// reg = reg.with_count()  # Accepts count prefix like 5j
-/// reg = reg.with_motion()  # Accepts motion like dw
-/// reg = reg.with_text_modifying()  # Modifies buffer text
+/// reg = reg.with_operand()  # Accepts operand like dw
+/// reg = reg.with_content_modifying()  # Modifies buffer text
 /// ```
 // Allow excessive bools - this mirrors the kernel's CommandRegistration struct
 // which has the same boolean flags for command capabilities.
@@ -452,25 +452,25 @@ impl PyCommandRegistration {
         new
     }
 
-    /// Mark command as accepting a motion (chainable).
+    /// Mark command as accepting an operand (chainable).
     #[must_use]
-    pub fn with_motion(&self) -> Self {
+    pub fn with_operand(&self) -> Self {
         let mut new = self.clone();
         new.accepts_motion = true;
         new
     }
 
-    /// Mark command as a jump (recorded in jump list) (chainable).
+    /// Mark command as a navigation (recorded in navigation history) (chainable).
     #[must_use]
-    pub fn with_jump(&self) -> Self {
+    pub fn with_navigation(&self) -> Self {
         let mut new = self.clone();
         new.is_jump = true;
         new
     }
 
-    /// Mark command as text-modifying (chainable).
+    /// Mark command as content-modifying (chainable).
     #[must_use]
-    pub fn with_text_modifying(&self) -> Self {
+    pub fn with_content_modifying(&self) -> Self {
         let mut new = self.clone();
         new.is_text_modifying = true;
         new
@@ -499,13 +499,13 @@ impl PyCommandRegistration {
             reg = reg.with_count();
         }
         if self.accepts_motion {
-            reg = reg.with_motion();
+            reg = reg.with_operand();
         }
         if self.is_jump {
-            reg = reg.with_jump();
+            reg = reg.with_navigation();
         }
         if self.is_text_modifying {
-            reg = reg.with_text_modifying();
+            reg = reg.with_content_modifying();
         }
         reg
     }

@@ -97,7 +97,7 @@ fn test_delete_operator_id() {
 #[test]
 fn test_delete_is_text_modifying() {
     let delete = DeleteOperator;
-    assert!(delete.is_text_modifying());
+    assert!(delete.is_content_modifying());
 }
 
 #[test]

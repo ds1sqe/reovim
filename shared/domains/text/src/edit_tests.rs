@@ -1,6 +1,9 @@
-use super::*;
+use {
+    super::*,
+    crate::{Edit, Position},
+};
 
-// === Edit construction ===
+// === Edit construction (from mm/tests/edit.rs) ===
 
 #[test]
 fn insert_edit_fields() {
@@ -394,4 +397,287 @@ fn transform_delete_edit_against_delete() {
 
     // 10 - 3 = 7
     assert_eq!(transformed.position(), Position::new(0, 7));
+}
+
+// === Edit Tests (from mm/tests/mod.rs inline edit_tests) ===
+
+mod edit_tests_inline {
+    use super::*;
+
+    #[test]
+    fn test_insert_edit() {
+        let edit = Edit::insert(Position::new(0, 0), "Hello");
+        assert!(edit.is_insert());
+        assert!(!edit.is_delete());
+        assert_eq!(edit.position(), Position::new(0, 0));
+        assert_eq!(edit.text(), "Hello");
+    }
+
+    #[test]
+    fn test_delete_edit() {
+        let edit = Edit::delete(Position::new(1, 5), "World");
+        assert!(!edit.is_insert());
+        assert!(edit.is_delete());
+        assert_eq!(edit.position(), Position::new(1, 5));
+        assert_eq!(edit.text(), "World");
+    }
+
+    #[test]
+    fn test_inverse() {
+        let insert = Edit::insert(Position::new(0, 0), "Test");
+        let inverse = insert.inverse();
+
+        assert!(inverse.is_delete());
+        assert_eq!(inverse.position(), Position::new(0, 0));
+        assert_eq!(inverse.text(), "Test");
+
+        // Double inverse returns to original
+        let double = inverse.inverse();
+        assert_eq!(double, insert);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let empty_insert = Edit::insert(Position::origin(), "");
+        assert!(empty_insert.is_empty());
+
+        let non_empty = Edit::insert(Position::origin(), "x");
+        assert!(!non_empty.is_empty());
+    }
+}
+
+// === OT-Lite Position Transformation Tests (from mm/tests/mod.rs inline transform_tests) ===
+
+mod transform_tests_inline {
+    use super::*;
+
+    // --- text_dimensions ---
+
+    #[test]
+    fn test_text_dimensions_single_line() {
+        let dims = text_dimensions("hello");
+        assert_eq!(dims.line_count, 0);
+        assert_eq!(dims.last_line_len, 5);
+    }
+
+    #[test]
+    fn test_text_dimensions_multi_line() {
+        let dims = text_dimensions("ab\ncd\ne");
+        assert_eq!(dims.line_count, 2);
+        assert_eq!(dims.last_line_len, 1);
+    }
+
+    #[test]
+    fn test_text_dimensions_trailing_newline() {
+        let dims = text_dimensions("hello\n");
+        assert_eq!(dims.line_count, 1);
+        assert_eq!(dims.last_line_len, 0);
+    }
+
+    #[test]
+    fn test_text_dimensions_empty() {
+        let dims = text_dimensions("");
+        assert_eq!(dims.line_count, 0);
+        assert_eq!(dims.last_line_len, 0);
+    }
+
+    // --- transform_position against Insert ---
+
+    #[test]
+    fn test_transform_position_insert_before() {
+        // Position is before the insert: unchanged.
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 10), "abc")),
+            Position::new(0, 5)
+        );
+        // Different line, before.
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(1, 0), "abc")),
+            Position::new(0, 5)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_insert_after_same_line() {
+        // Insert "abc" at (0,2), position (0,5) shifts to (0,8).
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 2), "abc")),
+            Position::new(0, 8)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_insert_after_different_line() {
+        // Insert two lines at (1,0), position (3,5) shifts to (5,5).
+        assert_eq!(
+            transform_position(Position::new(3, 5), &Edit::insert(Position::new(1, 0), "aa\nbb\n")),
+            Position::new(5, 5) // 3 + 2 newlines = 5
+        );
+    }
+
+    #[test]
+    fn test_transform_position_insert_multiline() {
+        // Insert "ab\nc" at (0,2), position (0,5) moves to (1, 5-2+1 = 4).
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 2), "ab\nc")),
+            Position::new(1, 4)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_same_position_insert() {
+        // Tie-breaking: insert at same position shifts right (left-bias).
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 5), "abc")),
+            Position::new(0, 8) // 5 + 3
+        );
+    }
+
+    // --- transform_position against Delete ---
+
+    #[test]
+    fn test_transform_position_delete_before() {
+        // Position is before the delete: unchanged.
+        assert_eq!(
+            transform_position(Position::new(0, 1), &Edit::delete(Position::new(0, 5), "abc")),
+            Position::new(0, 1)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_delete_within() {
+        // Position is within deleted range: collapses to delete start.
+        assert_eq!(
+            transform_position(Position::new(0, 3), &Edit::delete(Position::new(0, 2), "abcde")),
+            Position::new(0, 2)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_delete_after_same_line() {
+        // Delete "abc" at (0,2), position (0,5) shifts to (0,2).
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::delete(Position::new(0, 2), "abc")),
+            Position::new(0, 2)
+        );
+        // Position further after the deleted range.
+        assert_eq!(
+            transform_position(Position::new(0, 8), &Edit::delete(Position::new(0, 2), "abc")),
+            Position::new(0, 5) // 8 - 3 = 5
+        );
+    }
+
+    #[test]
+    fn test_transform_position_delete_after_different_line() {
+        // Delete two lines starting at (1,0), position (5,3) shifts to (3,3).
+        assert_eq!(
+            transform_position(
+                Position::new(5, 3),
+                &Edit::delete(Position::new(1, 0), "hello\nworld\n")
+            ),
+            Position::new(3, 3) // 5 - 2 newlines = 3
+        );
+    }
+
+    #[test]
+    fn test_transform_position_delete_multiline() {
+        // Multiline delete: position on last line of deletion but after it.
+        // Delete "hello\nworld" at (0,3), del_end=(1,5).
+        // Position (1,8) is on the last line, after del_end.
+        assert_eq!(
+            transform_position(
+                Position::new(1, 8),
+                &Edit::delete(Position::new(0, 3), "hello\nworld")
+            ),
+            Position::new(0, 3 + 8 - 5) // del_pos.col + pos.col - del_end.col = 3+8-5 = 6
+        );
+    }
+
+    #[test]
+    fn test_transform_position_delete_multiline_within() {
+        // Position within multiline delete: collapses to delete start.
+        assert_eq!(
+            transform_position(
+                Position::new(1, 5),
+                &Edit::delete(Position::new(0, 3), "hello\nworld")
+            ),
+            Position::new(0, 3)
+        );
+    }
+
+    #[test]
+    fn test_transform_position_same_position_delete() {
+        // Tie-breaking: delete at same position leaves pos unchanged.
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::delete(Position::new(0, 5), "abc")),
+            Position::new(0, 5) // pos <= del_pos, unchanged
+        );
+    }
+
+    // --- Empty edit ---
+
+    #[test]
+    fn test_transform_position_empty_edit() {
+        // Empty insert and delete are no-ops.
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 2), "")),
+            Position::new(0, 5)
+        );
+        assert_eq!(
+            transform_position(Position::new(0, 5), &Edit::delete(Position::new(0, 2), "")),
+            Position::new(0, 5)
+        );
+    }
+
+    // --- Edit::transform ---
+
+    #[test]
+    fn test_transform_edit_preserves_text() {
+        let edit = Edit::insert(Position::new(0, 5), "hello");
+        let against = Edit::insert(Position::new(0, 2), "abc");
+        let transformed = edit.transform(&against);
+
+        assert_eq!(transformed.position(), Position::new(0, 8));
+        assert_eq!(transformed.text(), "hello"); // text unchanged
+        assert!(transformed.is_insert());
+    }
+
+    #[test]
+    fn test_transform_edit_delete() {
+        let edit = Edit::delete(Position::new(0, 5), "xyz");
+        let against = Edit::insert(Position::new(0, 0), "abc");
+        let transformed = edit.transform(&against);
+
+        assert_eq!(transformed.position(), Position::new(0, 8)); // 5 + 3
+        assert_eq!(transformed.text(), "xyz"); // text unchanged
+        assert!(transformed.is_delete());
+    }
+
+    #[test]
+    fn test_transform_identity_no_shift() {
+        // Position before the intervening edit: no shift.
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        let against = Edit::insert(Position::new(0, 10), "abc");
+        let transformed = edit.transform(&against);
+
+        assert_eq!(transformed.position(), Position::new(0, 0));
+        assert_eq!(transformed.text(), "hello");
+    }
+
+    // --- delete_end ---
+
+    #[test]
+    fn test_delete_end_single_line() {
+        assert_eq!(delete_end(Position::new(0, 3), "abc"), Position::new(0, 6));
+    }
+
+    #[test]
+    fn test_delete_end_multi_line() {
+        assert_eq!(delete_end(Position::new(0, 3), "hello\nworld"), Position::new(1, 5));
+    }
+
+    #[test]
+    fn test_delete_end_trailing_newline() {
+        assert_eq!(delete_end(Position::new(2, 0), "hello\n"), Position::new(3, 0));
+    }
 }

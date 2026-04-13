@@ -631,3 +631,7 @@ impl TextObjectEngine {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "textobj_tests.rs"]
+mod tests;

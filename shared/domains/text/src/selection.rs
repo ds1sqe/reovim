@@ -280,3 +280,7 @@ impl Selection {
         end_line - start_line + 1
     }
 }
+
+#[cfg(test)]
+#[path = "selection_tests.rs"]
+mod tests;

@@ -255,8 +255,8 @@ fn commands(&self) -> Vec<CommandRegistration> {
             .with_description("Delete text")
             .with_category("operator")
             .with_count()
-            .with_motion()
-            .with_text_modifying()
+            .with_operand()
+            .with_content_modifying()
             .with_depends_on(&["yank"])
             .with_flags(RegistrationFlags::required()),
     ]

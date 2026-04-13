@@ -1,18 +1,17 @@
 //! Enforces that `reovim-kernel` has no dependency — direct OR
-//! TRANSITIVE — on any domain *event* crate.  This is the
-//! compile-time boundary for the three-layer event model: kernel
-//! hosts providers; kernel never reaches up into domain event code.
+//! TRANSITIVE — on any domain crate beyond the base `reovim-domain`
+//! trait crate. This is the compile-time boundary for the three-layer
+//! model: kernel provides mechanisms, domains provide policy types.
 //!
-//! `reovim-domain-text` (pure data types: `Position`, `Edit`, `TextGeometry`)
-//! is explicitly allowed — it is a leaf crate with no event bus coupling.
-//! Only domain crates that carry events or subscribers are prohibited.
+//! `reovim-domain-text` was removed from the kernel dependency graph
+//! as part of the kernel purity audit. All text-domain tests now live
+//! in `reovim-domain-text` itself.
 
 use {cargo_metadata::MetadataCommand, std::collections::HashSet};
 
-/// Allowed domain crates: pure data types with no event bus coupling.
+/// Allowed domain crates: only the base domain trait.
 const ALLOWED_DOMAIN_CRATES: &[&str] = &[
-    "reovim-domain",      // base domain trait
-    "reovim-domain-text", // Position, Edit, TextGeometry — leaf types
+    "reovim-domain", // base Domain trait (opaque associated types)
 ];
 
 #[test]

@@ -57,6 +57,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **BREAKING (internal)**: `reovim-domain-text` removed from kernel dependency graph entirely. ~5,190 lines of text-domain tests relocated from `server/lib/kernel/` to `shared/domains/text/`. Depgraph guard now rejects `reovim-domain-text` in kernel deps. Kernel has zero domain dependencies in both production and test builds
+- **BREAKING (internal)**: `CommandRegistration` capability flags renamed to domain-neutral vocabulary: `with_motion()` to `with_operand()`, `with_jump()` to `with_navigation()`, `with_text_modifying()` to `with_content_modifying()`. All callers updated (kernel, vim module, FFI Python driver)
+- **kernel**: `UnsavedBuffer.line_count: usize` replaced with `content_size: u64` in panic recovery — byte-generic instead of text-specific. Recovery file header changed from `# Lines:` to `# Bytes:`
+- **kernel**: doc comments in events and registration modules updated to use domain-neutral examples instead of vim-specific references (`CursorMoved`, `Normal -> Insert`)
 - **BREAKING (internal)**: Renamed `reovim-types-text` crate to `reovim-domain-text` and relocated from `shared/types/text/` to `shared/domains/text/` alongside its sibling `reovim-domain-text-events`. All workspace imports updated from `reovim_types_text` to `reovim_domain_text` (#740)
 - **text**: `VirtualBuffer` line access, edit, and search paths rewritten for O(requested_range) instead of O(file_size) — eliminates per-piece String allocation in `materialize_byte_range()`, replaces full-content `rebuild_line_index()` with incremental `apply_insert`/`apply_delete`, and fixes `delete_at`/`read_bytes`/`read_chunk` to avoid materializing the entire buffer (#739)
 - **kernel**: `MotionEngine::calculate` and `TextObjectEngine::range` accept `&dyn TextGeometry` instead of `&Buffer` — motions and text objects now work on virtual buffers (#739)

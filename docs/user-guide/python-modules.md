@@ -164,8 +164,8 @@ def commands(self) -> list[CommandRegistration]:
         CommandRegistration("my-operator")
             .with_name("My Operator")
             .with_count()      # Accepts count prefix (e.g., 5x)
-            .with_motion()     # Accepts motion (e.g., xw for word)
-            .with_text_modifying(),
+            .with_operand()    # Accepts operand (e.g., xw for word)
+            .with_content_modifying(),
     ]
 ```
 
@@ -429,9 +429,9 @@ Modules are discovered in these directories:
 | `.with_description(str)` | Set description |
 | `.with_category(str)` | Set category |
 | `.with_count()` | Accept count prefix |
-| `.with_motion()` | Accept motion |
-| `.with_jump()` | Record in jump list |
-| `.with_text_modifying()` | Marks buffer as modified |
+| `.with_operand()` | Accept operand |
+| `.with_navigation()` | Record in navigation history |
+| `.with_content_modifying()` | Marks content as modified |
 
 ### KeybindingRegistration Methods
 

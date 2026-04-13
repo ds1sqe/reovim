@@ -113,3 +113,7 @@ pub enum LinePosition {
     /// Last non-blank character (vim: g_)
     LastNonBlank,
 }
+
+#[cfg(test)]
+#[path = "direction_tests.rs"]
+mod tests;

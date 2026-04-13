@@ -188,3 +188,7 @@ impl Cursor {
         self.preferred_column.unwrap_or(self.position.column)
     }
 }
+
+#[cfg(test)]
+#[path = "position_tests.rs"]
+mod tests;

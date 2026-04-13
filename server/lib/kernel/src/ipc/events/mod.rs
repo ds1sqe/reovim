@@ -17,7 +17,7 @@
 //! | Layer | Event Type | Examples |
 //! |-------|-----------|----------|
 //! | Kernel | Substrate | `BufferCreated`, `BufferBytesEdited`, `ModeChanged` |
-//! | Domain | Semantic | `TextBufferModified`, `CursorMoved` (text-domain) |
+//! | Domain | Semantic | Domain-defined events (e.g., content change, navigation) |
 //! | Driver | Hardware | `DisplayResized`, `KeyInput`, `MouseInput` |
 //!
 //! # Example
