@@ -7,9 +7,9 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use {
     lsp_types::{FormattingOptions, TextEdit},
-    reovim_driver_formatter::{FormatError, FormatterProvider},
     reovim_driver_lsp::{LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response},
     reovim_kernel::api::v1::ServiceRegistry,
+    reovim_subsys_formatter::{FormatError, FormatterProvider},
     tracing::warn,
 };
 

@@ -34,16 +34,11 @@ use {
         BindingLayer, EagerLookupPolicy, KeySequence, KeybindingStore, LookupPolicyStore,
         ModeInfoStore, ResolverRegistry,
     },
-    reovim_driver_module_config::{BuiltinManifest, ModulesConfig},
-    reovim_driver_module_loader::{
-        handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,
-    },
     reovim_driver_session::LeaderKeyProvider,
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
-    reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         ConfigPaths, EventBus, KernelContext, ModeId, Module, ModuleContext, ModuleId, ModuleState,
         OptionRegistry, ServiceRegistry,
@@ -52,6 +47,11 @@ use {
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
+    reovim_subsys_module_config::{BuiltinManifest, ModulesConfig},
+    reovim_subsys_module_loader::{
+        handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,
+    },
+    reovim_subsys_vfs::VfsInstance,
 };
 
 // #620: Static module factories — only available when static-modules feature is on.
@@ -267,8 +267,8 @@ pub fn bootstrap_runtime() -> BootstrapResult {
         .and_then(|p| p.get())
         .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
     tracing::info!(mode = %initial_mode, "Selected initial mode from personality module");
-    let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> =
-        Arc::new(reovim_driver_vfs::StandardVfs::new());
+    let vfs: Arc<dyn reovim_subsys_vfs::VfsDriver> =
+        Arc::new(reovim_subsys_vfs::StandardVfs::new());
 
     // Register VFS in ServiceRegistry so ex-commands can access it (#465)
     services.register(Arc::new(VfsInstance::new(Arc::clone(&vfs))));
@@ -324,9 +324,9 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     }
 
     // Extract compositor from CompositorRegistry (populated by layout module)
-    let compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>> = services
-        .get::<reovim_driver_layout::CompositorRegistry>()
-        .and_then(|reg| reg.get(&reovim_driver_layout::CompositorKey::Root))
+    let compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>> = services
+        .get::<reovim_subsys_layout::CompositorRegistry>()
+        .and_then(|reg| reg.get(&reovim_subsys_layout::CompositorKey::Root))
         .map(|arc| arc.boxed_clone());
 
     let mut session_state = SessionState::with_registries(
@@ -614,7 +614,7 @@ fn initialize_modules_with_dependents(
         &mut external,
         config,
         &builtin_ids,
-        &reovim_driver_module_registry::workflow::RegistryPaths::default_paths(),
+        &reovim_subsys_module_registry::workflow::RegistryPaths::default_paths(),
     );
 
     tracing::info!(builtin = all_handles.len(), external = external.len(), "Initializing modules");
@@ -797,11 +797,11 @@ fn init_single_handle(handle: &mut ModuleHandle, ctx: &ModuleContext) -> bool {
     tracing::debug!(%id, name, "Initializing module");
 
     match handle.init(ctx) {
-        Ok(reovim_driver_module_loader::handle::InitResult::Success) => {
+        Ok(reovim_subsys_module_loader::handle::InitResult::Success) => {
             tracing::info!(%id, name, "Module initialized successfully");
             true
         }
-        Ok(reovim_driver_module_loader::handle::InitResult::Defer(msg)) => {
+        Ok(reovim_subsys_module_loader::handle::InitResult::Defer(msg)) => {
             tracing::warn!(%id, name, %msg, "Module deferred initialization");
             false
         }
@@ -908,9 +908,9 @@ fn load_registry_modules(
     loader: &mut ModuleLoader,
     config: &ModulesConfig,
     builtin_ids: &[ModuleId],
-    paths: &reovim_driver_module_registry::workflow::RegistryPaths,
+    paths: &reovim_subsys_module_registry::workflow::RegistryPaths,
 ) {
-    use reovim_driver_module_registry::workflow;
+    use reovim_subsys_module_registry::workflow;
 
     let installed = match workflow::list(paths) {
         Ok(modules) => modules,
@@ -1245,7 +1245,7 @@ fn build_and_register_load_report(
     tracked: &[TrackedModule],
     services: &Arc<ServiceRegistry>,
 ) {
-    use reovim_driver_module_loader::report::ModuleLoadReport;
+    use reovim_subsys_module_loader::report::ModuleLoadReport;
 
     let mut report = ModuleLoadReport::new();
 
@@ -1287,7 +1287,7 @@ fn build_and_register_load_report(
     }
 
     // Record module search paths
-    report.search_paths = reovim_driver_module_loader::discovery::default_search_paths();
+    report.search_paths = reovim_subsys_module_loader::discovery::default_search_paths();
 
     // Record isolation status
     report.isolation_active =
@@ -1303,7 +1303,7 @@ fn build_and_register_load_report(
 /// is silently ignored.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn check_lockfile_staleness() {
-    use reovim_driver_module_loader::lockfile::ModulesLock;
+    use reovim_subsys_module_loader::lockfile::ModulesLock;
 
     // Lock file lives alongside module data: ~/.local/share/reovim/modules.lock
     let lock_path = default_data_dir()

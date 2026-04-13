@@ -6,11 +6,11 @@ use std::{collections::HashSet, fmt::Write};
 
 use {
     crate::{GrpcClient, GrpcClientError, ModuleSubcommand, OutputFormat},
-    reovim_driver_module_registry::{
+    reovim_protocol::v2::ListModulesResponse,
+    reovim_subsys_module_registry::{
         CheckReport, InstalledModule, ModuleInfo as RegistryModuleInfo, ModuleSource,
         RegistryPaths, workflow,
     },
-    reovim_protocol::v2::ListModulesResponse,
 };
 
 /// Send keys to a target client via `DebugService`.

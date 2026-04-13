@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use {
     crate::error::CodecError,
-    reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
+    reovim_subsys_vfs::HeapByteSource,
 };
 
 use crate::{
@@ -65,7 +65,7 @@ impl ContentCodec for CodecReadOnly {
 
     fn translate_edit(
         &self,
-        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _bytes: &dyn reovim_subsys_vfs::ByteSource,
         _edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         Err(TranslateEditError::ReadOnly)
@@ -89,7 +89,7 @@ impl ContentCodec for CodecByteTranslator {
 
     fn translate_edit(
         &self,
-        bytes: &dyn reovim_driver_vfs::ByteSource,
+        bytes: &dyn reovim_subsys_vfs::ByteSource,
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let current = bytes.read(0..bytes.len()).into_owned();
@@ -656,7 +656,7 @@ impl ContentCodec for CodecTreeAcceptor {
 
     fn translate_edit(
         &self,
-        bytes: &dyn reovim_driver_vfs::ByteSource,
+        bytes: &dyn reovim_subsys_vfs::ByteSource,
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {

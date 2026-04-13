@@ -217,7 +217,7 @@ fn all_default_constructable() {
 
 #[test]
 fn cursor_dir_path_on_dir() {
-    use {crate::tree::node::FileNode, reovim_driver_vfs::MockVfs, std::path::Path};
+    use {crate::tree::node::FileNode, reovim_subsys_vfs::MockVfs, std::path::Path};
 
     let vfs = MockVfs::new();
     vfs.add_dir("/root");

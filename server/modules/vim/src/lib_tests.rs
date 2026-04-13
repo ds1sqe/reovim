@@ -1,8 +1,8 @@
 use {
-    reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_driver_command::{CommandHandlerStore, CommandProvider},
     reovim_driver_input::{KeybindingStore, ModeInfoStore, ModeProviderRegistry, ResolverRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, OptionScope, OptionValue, ProbeResult},
+    reovim_subsys_annotation::AnnotationSourceRegistry,
 };
 
 use crate::{VimMode, VimModule, bindings, commands, operators, visual};
@@ -180,7 +180,7 @@ fn test_line_number_option_scope() {
 #[test]
 fn test_vim_manifest_options_count() {
     let manifest =
-        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+        reovim_subsys_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
     // 9 options: number, relativenumber, scrolloff, sidescrolloff,
     // ignorecase, smartcase, hlsearch, incsearch, wrapscan
     assert_eq!(manifest.options.len(), 9);
@@ -423,7 +423,7 @@ fn test_init_registers_mode_bridge_store() {
 
     let bridge_store = ctx
         .services
-        .get::<reovim_driver_manifest::ModeBridgeStore>();
+        .get::<reovim_subsys_manifest::ModeBridgeStore>();
     assert!(bridge_store.is_some(), "ModeBridgeStore should exist after init");
     let bridge_store = bridge_store.unwrap();
     assert_eq!(bridge_store.bridges().len(), 2, "Should have 2 mode bridges");
@@ -434,7 +434,7 @@ fn test_init_registers_mode_bridge_store() {
 #[test]
 fn test_vim_manifest_has_no_key_conflicts() {
     let manifest =
-        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+        reovim_subsys_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
     let conflicts = manifest.detect_conflicts();
     assert!(
         conflicts.is_empty(),
@@ -445,7 +445,7 @@ fn test_vim_manifest_has_no_key_conflicts() {
 #[test]
 fn test_vim_manifest_modes_are_valid() {
     let manifest =
-        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+        reovim_subsys_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
     // Validate against VimModule's registered modes
     let known_modes = &[
         ("vim", "normal"),
@@ -639,7 +639,7 @@ fn test_visual_mode_has_selection_category() {
 fn b7_repro_parse_failure_now_propagates() {
     // Simulate load_personality_manifest() — parse failure now returns Err.
     fn simulate_load(toml: &str) -> Result<bool, String> {
-        match reovim_driver_manifest::PersonalityManifest::parse(toml) {
+        match reovim_subsys_manifest::PersonalityManifest::parse(toml) {
             Ok(_m) => Ok(true),
             Err(e) => Err(format!("Failed to parse: {e}")),
         }
@@ -649,12 +649,12 @@ fn b7_repro_parse_failure_now_propagates() {
     let bad_inputs = ["not valid toml [[[", "", "[[keybinding]]\nkey = \"a\"\n"];
 
     for input in &bad_inputs {
-        let result = reovim_driver_manifest::PersonalityManifest::parse(input);
+        let result = reovim_subsys_manifest::PersonalityManifest::parse(input);
         assert!(result.is_err(), "parse correctly returns Err for: {input:?}");
     }
 
     // Current embedded vim.toml parses fine
-    let valid = reovim_driver_manifest::PersonalityManifest::parse(super::VIM_MANIFEST_TOML);
+    let valid = reovim_subsys_manifest::PersonalityManifest::parse(super::VIM_MANIFEST_TOML);
     assert!(valid.is_ok(), "Current vim.toml parses fine");
 
     // Bad TOML: parse failure propagates as Err (not silently swallowed)

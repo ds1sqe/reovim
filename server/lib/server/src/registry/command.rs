@@ -21,11 +21,11 @@ use {
         Session as DriverSession, SessionRuntime,
         api::{CommandExecutor, CommandHandle},
     },
-    reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
         api::v1::{CommandId, KernelContext, ModuleId, Service},
         profile_scope,
     },
+    reovim_subsys_vfs::VfsDriver,
 };
 
 /// Entry in the command registry with optional ownership tracking.

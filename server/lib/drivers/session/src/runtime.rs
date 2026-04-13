@@ -39,17 +39,17 @@
 
 use {
     reovim_domain_text::{Edit, Position, UndoResult},
-    reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_driver_command_types::{CommandContext, CommandResult, RuntimeSignal},
-    reovim_driver_layout::{
-        LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowPlacement,
-    },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         BufferId, ByteEdit, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
         events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
     reovim_provider_text::TextBufferRegistry,
+    reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry},
+    reovim_subsys_layout::{
+        LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowPlacement,
+    },
 };
 
 use crate::{
@@ -129,7 +129,7 @@ pub struct SessionRuntime<'a> {
     /// Each client owns their own compositor cloned from the shared template.
     /// `CompositorApi` methods use this instead of `session.shared.compositor`.
     /// `None` when compositor is not set (tests, headless mode).
-    compositor: &'a mut Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: &'a mut Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     /// Per-client tab pages (#401).
     tabs: &'a mut crate::TabPageSet,
     /// Per-client register storage (#515).
@@ -1549,7 +1549,7 @@ impl CompositorApi for SessionRuntime<'_> {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_current_window(&mut self) -> Result<WindowId, CompositorError> {
-        use reovim_driver_layout::Zone;
+        use reovim_subsys_layout::Zone;
 
         let compositor = self
             .compositor
@@ -1592,7 +1592,7 @@ impl CompositorApi for SessionRuntime<'_> {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_others(&mut self) -> Result<(), CompositorError> {
-        use reovim_driver_layout::Zone;
+        use reovim_subsys_layout::Zone;
 
         let compositor = self
             .compositor

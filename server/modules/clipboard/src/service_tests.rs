@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_clipboard::MockClipboardProvider};
+use {super::*, reovim_subsys_clipboard::MockClipboardProvider};
 
 // ============================================================================
 // Mock-based tests (run in CI without display)
@@ -38,7 +38,7 @@ fn mock_clipboard_overwrite() {
 
 #[test]
 fn mock_clipboard_register_and_use() {
-    use reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry};
+    use reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry};
 
     let registry = ClipboardProviderRegistry::new();
     let mock = std::sync::Arc::new(MockClipboardProvider::new());

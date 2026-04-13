@@ -22,7 +22,7 @@ reovim-capabilities = { workspace = true }
 
 # Driver layer - implements ContentCodec, ContentClassifier, ContentCodecFactory
 reovim-driver-codec = { workspace = true }
-reovim-driver-annotation = { workspace = true }
+reovim-subsys-annotation = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-session = { workspace = true }
 
@@ -34,7 +34,7 @@ pdf-extract = { workspace = true }
 lopdf = { workspace = true }
 
 # VFS byte source access
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

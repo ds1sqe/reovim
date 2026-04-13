@@ -50,7 +50,7 @@ impl CommandHandler for SnippetCatalog {
         let filetype = runtime
             .buffer_file_path(buffer_id)
             .as_deref()
-            .map(reovim_driver_vfs::filetype_id)
+            .map(reovim_subsys_vfs::filetype_id)
             .filter(|ft| !ft.is_empty())
             .unwrap_or("global");
 

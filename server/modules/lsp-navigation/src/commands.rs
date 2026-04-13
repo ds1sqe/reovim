@@ -673,7 +673,7 @@ fn jump_to_location(runtime: &mut SessionRuntime<'_>, location: &lsp_types::Loca
 
     let is_new = existing.is_none();
     let buf_id = existing.unwrap_or_else(|| {
-        use reovim_driver_vfs::VfsInstance;
+        use reovim_subsys_vfs::VfsInstance;
         let content = runtime
             .kernel()
             .services

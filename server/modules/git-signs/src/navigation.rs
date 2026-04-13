@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use reovim_driver_git::types::DiffHunk;
+use reovim_subsys_git::types::DiffHunk;
 
 /// Find the index of the next hunk after `cursor_line` (0-indexed).
 ///

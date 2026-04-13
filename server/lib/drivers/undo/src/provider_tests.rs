@@ -212,7 +212,7 @@ fn provider_is_object_safe() {
 fn load_graceful_returns_false_on_no_undo_file() {
     let undo = MockUndo::new();
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     // MockUndo::load returns Ok(false), so load_graceful returns false
     let loaded = undo.load_graceful(bid, "/tmp/test.rs", &vfs);
     assert!(!loaded);
@@ -276,7 +276,7 @@ fn load_graceful_returns_false_on_error() {
 
     let undo = FailingUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     let loaded = undo.load_graceful(bid, "/tmp/test.rs", &vfs);
     assert!(!loaded);
 }
@@ -339,7 +339,7 @@ fn load_graceful_returns_true_on_success() {
 
     let undo = SuccessUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     let loaded = undo.load_graceful(bid, "/tmp/test.rs", &vfs);
     assert!(loaded);
 }
@@ -383,7 +383,7 @@ fn record_for_client_with_different_clients() {
 fn persist_success() {
     let undo = MockUndo::new();
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     assert!(undo.persist(bid, "/tmp/test.rs", &vfs).is_ok());
 }
 
@@ -391,7 +391,7 @@ fn persist_success() {
 fn load_returns_false() {
     let undo = MockUndo::new();
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     assert!(!undo.load(bid, "/tmp/test.rs", &vfs).unwrap());
 }
 
@@ -514,7 +514,7 @@ impl UndoProvider for SuccessUndo {
 fn failing_undo_load_graceful() {
     let undo = FailingUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     let loaded = undo.load_graceful(bid, "/tmp/test.rs", &vfs);
     assert!(!loaded);
 }
@@ -587,7 +587,7 @@ fn failing_undo_batch_methods() {
 fn failing_undo_persist_ok() {
     let undo = FailingUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     assert!(undo.persist(bid, "/tmp/test.rs", &vfs).is_ok());
 }
 
@@ -595,7 +595,7 @@ fn failing_undo_persist_ok() {
 fn failing_undo_load_err() {
     let undo = FailingUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     let result = undo.load(bid, "/tmp/test.rs", &vfs);
     assert!(result.is_err());
 }
@@ -617,7 +617,7 @@ fn failing_undo_default_trait_methods() {
 fn success_undo_load_graceful() {
     let undo = SuccessUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     let loaded = undo.load_graceful(bid, "/tmp/test.rs", &vfs);
     assert!(loaded);
 }
@@ -690,7 +690,7 @@ fn success_undo_batch_methods() {
 fn success_undo_persist_ok() {
     let undo = SuccessUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     assert!(undo.persist(bid, "/tmp/test.rs", &vfs).is_ok());
 }
 
@@ -698,7 +698,7 @@ fn success_undo_persist_ok() {
 fn success_undo_load_ok_true() {
     let undo = SuccessUndo;
     let bid = BufferId::from_raw(1);
-    let vfs = reovim_driver_vfs::MockVfs::new();
+    let vfs = reovim_subsys_vfs::MockVfs::new();
     assert!(undo.load(bid, "/tmp/test.rs", &vfs).unwrap());
 }
 

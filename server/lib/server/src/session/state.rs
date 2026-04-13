@@ -22,10 +22,10 @@ use {
     reovim_driver_buffer::{Buffer, BufferOps},
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_input::{PendingBindings, ResolverRegistry},
-    reovim_driver_layout::RootCompositor,
     reovim_driver_session::{ClientId, RegisterContent, Session as DriverSession},
-    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
+    reovim_subsys_layout::RootCompositor,
+    reovim_subsys_vfs::VfsDriver,
 };
 
 use crate::{
@@ -196,7 +196,7 @@ impl SessionState {
             && let Some(active_layer) = compositor.active_layer()
             && let Some(layer) = compositor.layer_compositor_mut(active_layer)
             && layer
-                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
                 .is_empty()
         {
             let _window_id = layer.add_tiled();
@@ -229,7 +229,7 @@ impl SessionState {
         if let Some(active) = compositor.active_layer()
             && let Some(layer) = compositor.layer_compositor_mut(active)
             && layer
-                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
                 .is_empty()
         {
             layer.add_tiled();
@@ -629,7 +629,7 @@ impl Default for SessionState {
     fn default() -> Self {
         // Create with default mode (will be overwritten by modules)
         let mode = ModeId::new(reovim_kernel::api::v1::ModuleId::new("default"), "normal");
-        let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_driver_vfs::MockVfs::new());
+        let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_subsys_vfs::MockVfs::new());
         Self::new(KernelContext::default(), mode, vfs)
     }
 }
@@ -641,7 +641,7 @@ impl SessionState {
     #[must_use]
     pub fn with_kernel(kernel: KernelContext) -> Self {
         let mode = ModeId::new(reovim_kernel::api::v1::ModuleId::new("default"), "normal");
-        let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_driver_vfs::MockVfs::new());
+        let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_subsys_vfs::MockVfs::new());
         Self::new(kernel, mode, vfs)
     }
 }

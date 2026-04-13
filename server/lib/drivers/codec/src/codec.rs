@@ -5,7 +5,7 @@
 //! between on-disk byte representation and the internal UTF-8 text
 //! representation used by the kernel's buffer.
 
-use reovim_driver_annotation::Annotation;
+use reovim_subsys_annotation::Annotation;
 
 use crate::{CodecError, CodecMetadata, DecodedEdit, TranslateEditError};
 
@@ -169,7 +169,7 @@ pub trait ContentCodec: Send + Sync {
     /// See the `Err` variants above.
     fn translate_edit(
         &self,
-        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _bytes: &dyn reovim_subsys_vfs::ByteSource,
         _edit: &DecodedEdit,
     ) -> Result<Option<reovim_kernel::api::v1::ByteEdit>, TranslateEditError> {
         Err(TranslateEditError::ReadOnly)
@@ -213,7 +213,7 @@ pub trait ContentCodec: Send + Sync {
     /// * `file_size` - Total file size in bytes
     fn decode_streaming(
         &self,
-        _handle: &mut dyn reovim_driver_vfs::FileHandle,
+        _handle: &mut dyn reovim_subsys_vfs::FileHandle,
         _file_size: u64,
     ) -> Option<Result<DecodeResult, CodecError>> {
         None

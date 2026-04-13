@@ -2,7 +2,7 @@
 //!
 //! Produces scope context as a breadcrumb string for the statusline.
 
-use reovim_driver_statusline::{ComponentData, ComponentDataContext, ComponentDataProvider};
+use reovim_subsys_statusline::{ComponentData, ComponentDataContext, ComponentDataProvider};
 
 /// Statusline data provider that produces scope breadcrumbs.
 ///

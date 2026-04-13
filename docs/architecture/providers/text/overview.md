@@ -19,7 +19,7 @@ BufferOps (dyn trait)
     |
 Buffer (Rope, small files)   |   VirtualBuffer (mmap + PieceTree, large files)
     |                                |
-reovim-domain-text                  reovim-driver-vfs
+reovim-domain-text                  reovim-subsys-vfs
     |
 reovim-kernel (StorageOps, BufferMeta, BufferId)
 ```

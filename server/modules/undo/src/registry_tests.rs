@@ -1034,7 +1034,7 @@ fn test_record_for_client_during_batch_sets_origin() {
 
 #[test]
 fn test_persist_and_load_roundtrip() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1065,7 +1065,7 @@ fn test_persist_and_load_roundtrip() {
 
 #[test]
 fn test_persist_no_history_is_noop() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(99);
@@ -1079,7 +1079,7 @@ fn test_persist_no_history_is_noop() {
 
 #[test]
 fn test_load_nonexistent_file_returns_false() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1092,7 +1092,7 @@ fn test_load_nonexistent_file_returns_false() {
 
 #[test]
 fn test_load_invalid_data_returns_error() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1108,7 +1108,7 @@ fn test_load_invalid_data_returns_error() {
 
 #[test]
 fn test_persist_with_io_error() {
-    use reovim_driver_vfs::{MockErrorKind, MockVfs};
+    use reovim_subsys_vfs::{MockErrorKind, MockVfs};
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1128,7 +1128,7 @@ fn test_persist_with_io_error() {
 
 #[test]
 fn test_load_with_io_error() {
-    use reovim_driver_vfs::{MockErrorKind, MockVfs};
+    use reovim_subsys_vfs::{MockErrorKind, MockVfs};
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1257,7 +1257,7 @@ fn test_redo_for_client_finds_recursive_child() {
 
 #[test]
 fn test_persist_load_path_mismatch_still_loads() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1289,7 +1289,7 @@ fn test_persist_load_path_mismatch_still_loads() {
 
 #[test]
 fn test_ensure_dir_already_exists() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1353,7 +1353,7 @@ fn test_redo_branch_with_branches() {
 
 #[test]
 fn test_load_too_short_file() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);
@@ -1369,7 +1369,7 @@ fn test_load_too_short_file() {
 
 #[test]
 fn test_load_valid_magic_corrupt_payload() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
     let buffer_id = BufferId::from_raw(1);

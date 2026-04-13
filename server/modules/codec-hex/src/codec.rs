@@ -58,7 +58,7 @@ impl ContentCodec for HexCodec {
 
     fn translate_edit(
         &self,
-        bytes: &dyn reovim_driver_vfs::ByteSource,
+        bytes: &dyn reovim_subsys_vfs::ByteSource,
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         match edit {
@@ -105,11 +105,11 @@ impl ContentCodec for HexCodec {
 /// Delegates to [`reovim_driver_codec_xxd::format_xxd_dump`] with default
 /// settings (16 bytes/line, 8-byte groups).
 #[must_use]
-pub fn format_hex_dump(raw: &[u8]) -> (String, Vec<reovim_driver_annotation::Annotation>) {
+pub fn format_hex_dump(raw: &[u8]) -> (String, Vec<reovim_subsys_annotation::Annotation>) {
     reovim_driver_codec_xxd::format_xxd_dump(raw, 16, 8)
 }
 
-fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {
+fn read_all_bytes(bytes: &dyn reovim_subsys_vfs::ByteSource) -> Option<Vec<u8>> {
     let len = usize::try_from(bytes.len()).ok()?;
     let data = bytes.read(0..bytes.len()).into_owned();
     (data.len() == len).then_some(data)

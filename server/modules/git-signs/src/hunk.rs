@@ -1,6 +1,6 @@
 //! `DiffHunk` to sign kind conversion.
 
-use reovim_driver_git::types::DiffHunk;
+use reovim_subsys_git::types::DiffHunk;
 
 /// The kind of gutter sign derived from a diff hunk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

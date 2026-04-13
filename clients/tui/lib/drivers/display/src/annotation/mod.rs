@@ -14,7 +14,7 @@
 //! │  LineNumberSource, DiagnosticSource, GitSource, etc.            │
 //! │  LineNumberPresenter, DiagnosticPresenter, etc.                 │
 //! ├─────────────────────────────────────────────────────────────────┤
-//! │  ANNOTATION DRIVER (Data) ← reovim-driver-annotation            │
+//! │  ANNOTATION SUBSYS (Data) ← reovim-subsys-annotation            │
 //! │  Annotation, AnnotationKind, AnnotationTarget, AnnotationPayload│
 //! │  AnnotationSource trait, AnnotationStore                        │
 //! ├─────────────────────────────────────────────────────────────────┤
@@ -75,7 +75,7 @@ mod presenter;
 mod registry;
 
 // Re-export data types from annotation driver (backward compatibility)
-pub use reovim_driver_annotation::{
+pub use reovim_subsys_annotation::{
     Annotation, AnnotationContext, AnnotationKind, AnnotationLayer, AnnotationPayload,
     AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry, AnnotationStore,
     AnnotationTarget, BufferAnnotationStore, LineNumberMode, SourceId,

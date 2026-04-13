@@ -6,7 +6,7 @@
 
 use {
     clap::Subcommand,
-    reovim_driver_module_registry::{ModuleSource, RegistryPaths, workflow},
+    reovim_subsys_module_registry::{ModuleSource, RegistryPaths, workflow},
 };
 
 /// Module management subcommands.

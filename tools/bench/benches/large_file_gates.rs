@@ -31,8 +31,8 @@ use {
     regex::Regex,
     reovim_bench_utils::{large_file, rss},
     reovim_domain_text::Position,
-    reovim_driver_vfs::{FileMapping, MappedFile},
     reovim_provider_text::{HeapMapping, VirtualBuffer},
+    reovim_subsys_vfs::{FileMapping, MappedFile},
 };
 
 // ─── Fixture sizes ────────────────────────────────────────────────────────────

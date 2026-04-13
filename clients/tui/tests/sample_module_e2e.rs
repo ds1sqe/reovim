@@ -8,8 +8,8 @@ use std::{
 use {
     reovim_client_cli::GrpcClient,
     reovim_client_tui::{TuiAppError, TuiHandle, connect_headless},
-    reovim_driver_module_registry::{InstalledModule, InstalledModules, ModuleSource},
     reovim_protocol::v2::{ListModulesRequest, module_service_client::ModuleServiceClient},
+    reovim_subsys_module_registry::{InstalledModule, InstalledModules, ModuleSource},
     reovim_testing::TestServerHarness,
     tempfile::TempDir,
 };

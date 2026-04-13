@@ -8,7 +8,7 @@
 //! # Architecture
 //!
 //! Follows the mechanism/policy separation:
-//! - **Mechanism**: `VfsProvider` trait (in `reovim-driver-vfs`)
+//! - **Mechanism**: `VfsProvider` trait (in `reovim-subsys-vfs`)
 //! - **Policy**: `LocalFsProvider` (this module) provides local filesystem access
 //!
 //! # Future Extensions
@@ -21,11 +21,11 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_vfs::{
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_subsys_vfs::{
         ProviderPriority, StandardVfs, VfsDriver, VfsProvider, VfsProviderModule,
         VfsProviderRegistry, VfsScheme,
     },
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 // ============================================================================

@@ -73,7 +73,7 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
 
     fn translate_edit(
         &self,
-        bytes: &dyn reovim_driver_vfs::ByteSource,
+        bytes: &dyn reovim_subsys_vfs::ByteSource,
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let (start, end, replacement) = match edit {
@@ -241,7 +241,7 @@ fn encode_prefix_len(
         .map(|b| b.len())
 }
 
-fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {
+fn read_all_bytes(bytes: &dyn reovim_subsys_vfs::ByteSource) -> Option<Vec<u8>> {
     let len = usize::try_from(bytes.len()).ok()?;
     let data = bytes.read(0..bytes.len()).into_owned();
     (data.len() == len).then_some(data)

@@ -17,9 +17,9 @@ use {
     reovim_arch::sync::RwLock,
     reovim_domain_text::{Edit, EditOrigin, Position, UndoResult, UndoTree, transform_position},
     reovim_driver_undo::{UndoPersistError, UndoProvider},
-    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v1::undo::{UndoFileError, UndoFileFormat},
+    reovim_subsys_vfs::VfsDriver,
     std::collections::HashMap,
 };
 

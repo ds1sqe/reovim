@@ -136,7 +136,7 @@ fn test_write_no_buffer_returns_error() {
 #[test]
 fn test_write_no_filename_returns_error() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_driver_vfs::MockVfs,
+        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -148,7 +148,7 @@ fn test_write_no_filename_returns_error() {
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
         let mock_vfs = Arc::new(MockVfs::new());
-        ctx.set_vfs(mock_vfs as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(mock_vfs as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_error());
         if let CommandResult::Error(msg) = &result {
@@ -189,7 +189,7 @@ fn test_write_vfs_not_available_returns_error() {
 fn test_write_vfs_error_returns_error() {
     use {
         reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_vfs::{MockErrorKind, MockVfs},
+        reovim_subsys_vfs::{MockErrorKind, MockVfs},
         std::sync::Arc,
     };
 
@@ -210,7 +210,7 @@ fn test_write_vfs_error_returns_error() {
         let cmd = WriteCommand;
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_error());
         if let CommandResult::Error(msg) = &result {
@@ -222,7 +222,7 @@ fn test_write_vfs_error_returns_error() {
 #[test]
 fn test_write_success_with_existing_path() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_driver_vfs::MockVfs,
+        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -250,7 +250,7 @@ fn test_write_success_with_existing_path() {
         let cmd = WriteCommand;
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_success());
 
@@ -276,7 +276,7 @@ fn test_write_success_with_existing_path() {
 fn test_write_with_explicit_file_renames_buffer() {
     use {
         reovim_driver_command_types::ArgValue, reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_vfs::MockVfs, std::sync::Arc,
+        reovim_subsys_vfs::MockVfs, std::sync::Arc,
     };
 
     let mut harness = TestSessionRuntime::with_buffer("save as content");
@@ -289,7 +289,7 @@ fn test_write_with_explicit_file_renames_buffer() {
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
         ctx.set("file", ArgValue::String("/tmp/new_file.txt".to_string()));
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_success());
 
@@ -315,8 +315,8 @@ fn test_write_with_explicit_file_renames_buffer() {
 fn test_write_emits_buffer_saved_event() {
     use {
         reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::events::kernel::BufferSaved,
+        reovim_subsys_vfs::MockVfs,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -350,7 +350,7 @@ fn test_write_emits_buffer_saved_event() {
         let cmd = WriteCommand;
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_success());
     });
@@ -362,8 +362,8 @@ fn test_write_emits_buffer_saved_event() {
 fn test_write_emits_buffer_will_save_event() {
     use {
         reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::events::kernel::BufferWillSave,
+        reovim_subsys_vfs::MockVfs,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -396,7 +396,7 @@ fn test_write_emits_buffer_will_save_event() {
         let cmd = WriteCommand;
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_success());
     });
@@ -411,8 +411,8 @@ fn test_write_emits_buffer_will_save_event() {
 fn test_write_will_save_fires_before_saved() {
     use {
         reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::events::kernel::{BufferSaved, BufferWillSave},
+        reovim_subsys_vfs::MockVfs,
         std::sync::{Arc, Mutex},
     };
 
@@ -453,7 +453,7 @@ fn test_write_will_save_fires_before_saved() {
         let cmd = WriteCommand;
         let mut ctx = CommandContext::new();
         ctx.set_buffer_id(buffer_id);
-        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+        ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
         let result = cmd.execute(runtime, &ctx);
         assert!(result.is_success());
     });

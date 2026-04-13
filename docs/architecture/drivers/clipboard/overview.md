@@ -4,7 +4,7 @@ System clipboard access and yank history interface.
 
 ## Source Location
 
-`server/lib/drivers/clipboard/src/`
+`server/lib/subsys/clipboard/src/`
 
 ## Purpose
 
@@ -77,7 +77,7 @@ pub struct ClipboardProviderRegistry { /* ... */ }
 ## Example Usage
 
 ```rust
-use reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry};
+use reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry};
 
 // In module init():
 let clipboard = Arc::new(MyClipboardService::new());

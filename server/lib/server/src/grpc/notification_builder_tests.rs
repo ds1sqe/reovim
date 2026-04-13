@@ -892,7 +892,7 @@ fn test_build_notifications_scroll_changed_with_client() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_build_layout_notification_with_compositor() {
-    use reovim_driver_layout::{
+    use reovim_subsys_layout::{
         CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
         WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
     };
@@ -1048,11 +1048,11 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     // but active_buffer is set as fallback
     use {
         reovim_driver_buffer::TestBufferManager,
-        reovim_driver_layout::{
+        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
+        reovim_subsys_layout::{
             CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
             WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
         },
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
 

@@ -18,8 +18,8 @@ use {
         PreviewContent, SessionRuntime,
     },
     reovim_driver_session::{BufferApi, WindowApi},
-    reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_subsys_vfs::VfsInstance,
 };
 
 /// Maximum number of preview lines to read from a file.

@@ -4,7 +4,7 @@
 //! as completion items. Words must be at least 2 characters long.
 //! The word at the current cursor position is excluded from results.
 
-use reovim_driver_completion::{
+use reovim_subsys_completion::{
     CompletionContext, CompletionItem, CompletionKind, CompletionSource,
 };
 

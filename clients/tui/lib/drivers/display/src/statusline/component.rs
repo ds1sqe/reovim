@@ -29,7 +29,7 @@ use reovim_kernel::api::v1::{MultiServiceRegistry, ServiceKey};
 use crate::Style;
 
 // Re-export display-agnostic types from the statusline driver.
-pub use reovim_driver_statusline::{
+pub use reovim_subsys_statusline::{
     ComponentData, ComponentDataContext, ComponentDataProvider, ComponentDataProviderKey,
     ComponentDataProviderRegistry,
 };
@@ -90,7 +90,7 @@ pub struct ComponentContext {
 /// Re-export diagnostic counts from the statusline driver.
 ///
 /// Both server modules and the display layer use the same type.
-pub use reovim_driver_statusline::DiagnosticCounts;
+pub use reovim_subsys_statusline::DiagnosticCounts;
 
 /// Output from a component render.
 #[derive(Debug, Clone)]
@@ -335,7 +335,7 @@ impl From<&ComponentContext> for ComponentDataContext {
             git_branch: ctx.git_branch.clone(),
             breadcrumb: ctx.breadcrumb.clone(),
             diagnostics: ctx.diagnostics.as_ref().map(|d| {
-                reovim_driver_statusline::DiagnosticCounts {
+                reovim_subsys_statusline::DiagnosticCounts {
                     errors: d.errors,
                     warnings: d.warnings,
                     info: d.info,

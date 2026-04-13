@@ -3,7 +3,7 @@
 //! Implements `WindowLayerCompositor` by delegating tiled operations to
 //! `TiledZone` and stubbing float/overlay zones for MVP.
 
-use reovim_driver_layout::{
+use reovim_subsys_layout::{
     LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, TiledLayer, WindowId,
     WindowLayerCompositor, WindowPlacement, Zone,
 };

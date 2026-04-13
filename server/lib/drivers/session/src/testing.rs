@@ -92,7 +92,7 @@ pub struct TestSessionRuntime {
     /// Per-client compositor (#474).
     ///
     /// `None` for tests that don't need compositor. Matches `EditingState.compositor`.
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     /// Per-client tab pages (#401).
     tabs: crate::TabPageSet,
     /// Per-client register storage (#515).
@@ -489,7 +489,7 @@ impl TestSessionRuntime {
     ///
     /// Required for testing commands that need window navigation, splitting,
     /// or other compositor operations (e.g., window-ops commands).
-    pub fn set_compositor(&mut self, compositor: Box<dyn reovim_driver_layout::RootCompositor>) {
+    pub fn set_compositor(&mut self, compositor: Box<dyn reovim_subsys_layout::RootCompositor>) {
         self.compositor = Some(compositor);
     }
 }

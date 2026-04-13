@@ -269,7 +269,7 @@ fn resolve_snippet_parent(
     ctx: &ModuleContext,
     modes: &ModeInfoStore,
 ) -> Option<reovim_kernel::api::v1::ModeId> {
-    use reovim_driver_manifest::ModeBridgeStore;
+    use reovim_subsys_manifest::ModeBridgeStore;
 
     let bridge_store = ctx.services.get::<ModeBridgeStore>()?;
     let parent_str = bridge_store.find_parent("snippet:navigating")?;

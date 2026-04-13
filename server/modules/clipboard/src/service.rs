@@ -9,7 +9,7 @@
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_driver_clipboard::{ClipboardError, ClipboardProvider},
+    reovim_subsys_clipboard::{ClipboardError, ClipboardProvider},
 };
 
 /// Clipboard service implementing `ClipboardProvider`.

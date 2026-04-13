@@ -24,7 +24,7 @@ struct TestState {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     tabs: reovim_driver_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,

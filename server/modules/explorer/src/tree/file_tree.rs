@@ -5,7 +5,7 @@
 
 use {
     ignore::gitignore::Gitignore,
-    reovim_driver_vfs::{VfsDriver, VfsError},
+    reovim_subsys_vfs::{VfsDriver, VfsError},
     std::path::{Path, PathBuf},
 };
 

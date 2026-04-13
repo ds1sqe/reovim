@@ -19,7 +19,7 @@ reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 
 # VFS driver for persistence methods
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 
 # Logging for load_graceful default implementation
 tracing = { workspace = true }

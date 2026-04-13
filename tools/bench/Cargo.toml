@@ -31,7 +31,7 @@ regex = { workspace = true }
 
 # Large-file gate benchmarks (#739)
 reovim-bench-utils = { workspace = true }
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 memmap2 = "0.9"
 tempfile = "3"
 

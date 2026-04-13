@@ -27,7 +27,7 @@ reovim-domain-text = { workspace = true }
 reovim-driver-undo = { workspace = true }
 
 # VFS driver for persistence
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 
 # Protocol for serialization - v0.9.3 for gRPC v2 protocol (Epic #465)
 reovim-protocol = { workspace = true }

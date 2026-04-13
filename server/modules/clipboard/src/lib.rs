@@ -7,7 +7,7 @@
 //! # Architecture (#515 Phase 4)
 //!
 //! Following the mechanism/policy separation:
-//! - **Mechanism**: `ClipboardProvider` trait (in `reovim-driver-clipboard`)
+//! - **Mechanism**: `ClipboardProvider` trait (in `reovim-subsys-clipboard`)
 //! - **Policy**: `ClipboardService` (this module) provides OS clipboard implementation
 //!
 //! History (numbered registers 0-9) has been moved to per-client `HistoryRing`
@@ -30,10 +30,10 @@ pub use service::ClipboardService;
 use std::sync::Arc;
 
 use {
-    reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
     },
+    reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry},
 };
 
 /// Clipboard module instance.

@@ -19,10 +19,10 @@ reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-layout = { workspace = true }
+reovim-subsys-layout = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-session = { workspace = true }
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 # Note: operators merged into vim (Epic #385)
 unicode-width = "0.2"
 

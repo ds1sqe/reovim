@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_git::{
+    reovim_subsys_git::{
         GitProvider,
         types::{BranchInfo, DiffHunk, FileStatus, LogEntry, StashEntry, StatusEntry},
     },

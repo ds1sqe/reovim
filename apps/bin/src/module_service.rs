@@ -5,13 +5,13 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_module_loader::registry::ModuleRegistry,
     reovim_kernel::api::v1::{ModuleContext, ModuleError, ModuleId, ModuleState},
     reovim_protocol::v2::{
         ListModulesRequest, ListModulesResponse, LoadModuleRequest, LoadModuleResponse, ModuleInfo,
         ReloadModuleRequest, ReloadModuleResponse, UnloadModuleRequest, UnloadModuleResponse,
         module_service_server::ModuleService,
     },
+    reovim_subsys_module_loader::registry::ModuleRegistry,
     tonic::{Request, Response, Status},
 };
 

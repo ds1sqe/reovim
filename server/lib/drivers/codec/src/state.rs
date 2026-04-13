@@ -181,7 +181,7 @@ impl CodecSessionState {
         } else {
             let inode_id = self
                 .inodes
-                .insert(Arc::new(reovim_driver_vfs::HeapByteSource::new(raw)));
+                .insert(Arc::new(reovim_subsys_vfs::HeapByteSource::new(raw)));
             self.inodes.bind_file(buffer_id, inode_id);
         }
     }
@@ -203,7 +203,7 @@ impl CodecSessionState {
         let Some(inode_id) = self.inodes.file_inode(buffer_id) else {
             let inode_id = self
                 .inodes
-                .insert(Arc::new(reovim_driver_vfs::HeapByteSource::new(raw)));
+                .insert(Arc::new(reovim_subsys_vfs::HeapByteSource::new(raw)));
             self.inodes.bind_file(buffer_id, inode_id);
             self.inodes
                 .mount(inode_id, buffer_id, Mount::new(view, codec))

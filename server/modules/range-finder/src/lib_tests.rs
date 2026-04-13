@@ -42,8 +42,8 @@ fn test_extension_kinds() {
 #[test]
 fn test_module_init_with_bridge_store() {
     use {
-        reovim_driver_manifest::{ManifestModeBridge, ModeBridgeStore},
         reovim_kernel::api::v1::{ModeId, ServiceRegistry},
+        reovim_subsys_manifest::{ManifestModeBridge, ModeBridgeStore},
         std::sync::Arc,
     };
 

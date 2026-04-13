@@ -1,7 +1,7 @@
 use {
     super::*,
     clap::Parser,
-    reovim_driver_module_registry::{InstalledModule, InstalledModules, ModuleSource},
+    reovim_subsys_module_registry::{InstalledModule, InstalledModules, ModuleSource},
     std::{
         ffi::OsString,
         sync::{Mutex, MutexGuard, OnceLock},

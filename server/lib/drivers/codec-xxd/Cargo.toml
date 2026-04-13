@@ -14,4 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-driver-codec = { workspace = true }
-reovim-driver-annotation = { workspace = true }
+reovim-subsys-annotation = { workspace = true }

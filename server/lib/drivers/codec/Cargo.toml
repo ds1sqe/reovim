@@ -39,10 +39,10 @@ reovim-domain-text-events = { workspace = true }
 reovim-driver-session = { workspace = true }
 
 # Annotation types (for DecodeResult annotations)
-reovim-driver-annotation = { workspace = true }
+reovim-subsys-annotation = { workspace = true }
 
 # VFS types (for FileHandle in streaming decode; ByteEdit moved to kernel #740)
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 
 # Sync primitives for stores
 parking_lot = { workspace = true }

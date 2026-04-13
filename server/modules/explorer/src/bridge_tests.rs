@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_vfs::VfsDriver,
+    reovim_subsys_vfs::VfsDriver,
     std::path::{Path, PathBuf},
 };
 
@@ -142,7 +142,7 @@ fn is_active_active_state() {
 
 #[test]
 fn snapshot_with_tree_nodes() {
-    use {crate::tree::FileTree, reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {crate::tree::FileTree, reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/proj")).unwrap();
@@ -226,7 +226,7 @@ fn snapshot_with_symlink_node() {
         std::sync::Arc,
     };
 
-    let mock = Arc::new(reovim_driver_vfs::MockVfs::new());
+    let mock = Arc::new(reovim_subsys_vfs::MockVfs::new());
     mock.create_dir(Path::new("/proj")).unwrap();
     mock.write(Path::new("/proj/file.rs"), b"fn main()")
         .unwrap();

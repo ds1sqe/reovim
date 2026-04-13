@@ -1,0 +1,16 @@
+[package]
+name = "reovim-subsys-statusline"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Display-agnostic statusline data types for reovim"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+
+[lints]
+workspace = true

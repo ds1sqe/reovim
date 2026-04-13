@@ -42,18 +42,18 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_driver_input::{
         KeybindingStore, LookupPolicyStore, ModeInfo, ModeInfoStore, ModeProviderKey,
         ModeProviderRegistry, ResolverRegistry,
     },
-    reovim_driver_manifest::ModeBridgeStore,
     reovim_driver_session::{InitialModeProvider, LeaderKeyProvider, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,
     },
+    reovim_subsys_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
+    reovim_subsys_manifest::ModeBridgeStore,
 };
 
 pub mod annotation;
@@ -335,7 +335,7 @@ fn load_personality_manifest(
     ctx: &ModuleContext,
     keybinding_store: &KeybindingStore,
 ) -> Result<(), ModuleError> {
-    let manifest = match reovim_driver_manifest::PersonalityManifest::parse(VIM_MANIFEST_TOML) {
+    let manifest = match reovim_subsys_manifest::PersonalityManifest::parse(VIM_MANIFEST_TOML) {
         Ok(m) => m,
         Err(e) => {
             return Err(ModuleError::InitFailed(format!(

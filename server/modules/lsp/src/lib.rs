@@ -18,7 +18,6 @@ use {
         LspLifecycleRegistry, LspProviderRegistry, LspRequest, config_for_language,
         find_project_root, language_id_from_path, uri_from_path,
     },
-    reovim_driver_module_config::ModuleConfigStore,
     reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         BufferId, EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
@@ -26,6 +25,7 @@ use {
         events::kernel::{BufferSaved, FileOpened},
         pr_info,
     },
+    reovim_subsys_module_config::ModuleConfigStore,
     tracing::debug,
 };
 

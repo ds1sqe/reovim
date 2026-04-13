@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_vfs::MockVfs, std::path::Path};
+use {super::*, reovim_subsys_vfs::MockVfs, std::path::Path};
 
 fn setup_mock_vfs() -> MockVfs {
     let vfs = MockVfs::new();

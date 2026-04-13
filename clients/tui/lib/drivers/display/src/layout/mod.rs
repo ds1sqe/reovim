@@ -1,10 +1,10 @@
-//! Window layout subsystem - re-exported from `reovim-driver-layout`.
+//! Window layout subsystem - re-exported from `reovim-subsys-layout`.
 //!
 //! All layout types (compositor traits, layer types, view management)
-//! now live in `server/lib/drivers/layout/` as server-side mechanism.
+//! now live in `server/lib/subsys/layout/` as server-side mechanism.
 //! This module re-exports everything for backward compatibility.
 
-pub use reovim_driver_layout::{
+pub use reovim_subsys_layout::{
     // Layer types
     Anchor,
     CLICK_THROUGH_THRESHOLD,

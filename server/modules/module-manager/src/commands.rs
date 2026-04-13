@@ -6,9 +6,9 @@
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
-    reovim_driver_module_loader::report::ModuleLoadReport,
     reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_module_loader::report::ModuleLoadReport,
 };
 
 use crate::{

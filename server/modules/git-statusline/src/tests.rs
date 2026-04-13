@@ -1,7 +1,7 @@
 use {
     super::*,
-    reovim_driver_statusline::ComponentDataProviderKey,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
+    reovim_subsys_statusline::ComponentDataProviderKey,
     std::sync::Arc,
 };
 
@@ -63,17 +63,17 @@ fn test_init_git_provider_store_empty() {
 /// `GitProviderStore` with a provider → registers branch component.
 #[test]
 fn test_init_registers_branch_component() {
-    use {reovim_driver_git::GitProvider, reovim_driver_statusline::ComponentDataProviderRegistry};
+    use {reovim_subsys_git::GitProvider, reovim_subsys_statusline::ComponentDataProviderRegistry};
 
     struct StubGitProvider;
     impl GitProvider for StubGitProvider {
         fn current_branch(&self, _: &std::path::Path) -> Option<String> {
             Some("main".to_string())
         }
-        fn branches(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::BranchInfo> {
+        fn branches(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::BranchInfo> {
             vec![]
         }
-        fn status(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StatusEntry> {
+        fn status(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::StatusEntry> {
             vec![]
         }
         fn log(
@@ -81,13 +81,13 @@ fn test_init_registers_branch_component() {
             _: &std::path::Path,
             _: &str,
             _: usize,
-        ) -> Vec<reovim_driver_git::types::LogEntry> {
+        ) -> Vec<reovim_subsys_git::types::LogEntry> {
             vec![]
         }
-        fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StashEntry> {
+        fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::StashEntry> {
             vec![]
         }
-        fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::DiffHunk> {
+        fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::DiffHunk> {
             vec![]
         }
     }

@@ -24,7 +24,7 @@ struct TestSetup {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,

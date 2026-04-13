@@ -24,11 +24,11 @@ reovim-domain-text-events = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
 reovim-driver-command-types = { workspace = true }
 # Layout driver for compositor traits (Rect, WindowPlacement, etc.)
-reovim-driver-layout = { workspace = true }
+reovim-subsys-layout = { workspace = true }
 # Platform abstraction (RwLock for test buffer manager)
 reovim-arch = { workspace = true }
 # Clipboard driver for system clipboard and history (RegisterApi routing)
-reovim-driver-clipboard = { workspace = true }
+reovim-subsys-clipboard = { workspace = true }
 # Undo driver for UndoApi implementation
 reovim-driver-undo = { workspace = true }
 # Search driver for Direction type (SearchState)
@@ -40,6 +40,6 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 # VFS driver for MockUndoProvider's persist/load methods in tests
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 # Buffer moved to provider-text (#740); tests use it via dev-dep
 reovim-provider-text = { workspace = true }

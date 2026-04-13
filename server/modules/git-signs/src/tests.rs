@@ -1,7 +1,7 @@
 use {
     super::*,
-    reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
+    reovim_subsys_annotation::AnnotationSourceRegistry,
 };
 
 #[test]

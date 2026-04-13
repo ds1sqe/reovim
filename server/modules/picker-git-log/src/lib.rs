@@ -2,19 +2,19 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Git log picker module for reovim.
 //!
-//! Lists commit history via [`GitProvider`](reovim_driver_git::GitProvider).
+//! Lists commit history via [`GitProvider`](reovim_subsys_git::GitProvider).
 //! Supports query-based filtering (dynamic picker).
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_git::GitProviderStore,
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
     },
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, ServiceRegistry, Version,
     },
+    reovim_subsys_git::GitProviderStore,
 };
 
 /// Maximum number of log entries to fetch.

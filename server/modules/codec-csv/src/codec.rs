@@ -7,11 +7,11 @@
 use std::fmt::Write;
 
 use {
-    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_driver_codec::{
         CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit, TranslateEditError,
     },
     reovim_kernel::api::v1::ByteEdit,
+    reovim_subsys_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
 };
 
 /// Annotation kind for the header row.
@@ -77,7 +77,7 @@ impl reovim_driver_codec::ContentCodec for CsvCodec {
 
     fn translate_edit(
         &self,
-        bytes: &dyn reovim_driver_vfs::ByteSource,
+        bytes: &dyn reovim_subsys_vfs::ByteSource,
         edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         let (start, end, replacement) = match edit {
@@ -191,7 +191,7 @@ fn text_position_to_offset(text: &str, pos: &reovim_domain_text::Position) -> Op
     (chars_seen == pos.column).then_some(line_end)
 }
 
-fn read_all_bytes(bytes: &dyn reovim_driver_vfs::ByteSource) -> Option<Vec<u8>> {
+fn read_all_bytes(bytes: &dyn reovim_subsys_vfs::ByteSource) -> Option<Vec<u8>> {
     let len = usize::try_from(bytes.len()).ok()?;
     let data = bytes.read(0..bytes.len()).into_owned();
     (data.len() == len).then_some(data)

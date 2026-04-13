@@ -864,7 +864,7 @@ impl ContentCodec for BufTestCodec {
 
     fn translate_edit(
         &self,
-        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _bytes: &dyn reovim_subsys_vfs::ByteSource,
         _edit: &reovim_driver_codec::DecodedEdit,
     ) -> Result<Option<ByteEdit>, reovim_driver_codec::TranslateEditError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
@@ -1712,7 +1712,7 @@ impl ContentCodec for FailingCodec {
 
     fn translate_edit(
         &self,
-        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _bytes: &dyn reovim_subsys_vfs::ByteSource,
         _edit: &reovim_driver_codec::DecodedEdit,
     ) -> Result<Option<ByteEdit>, reovim_driver_codec::TranslateEditError> {
         Err(reovim_driver_codec::TranslateEditError::ReadOnly)

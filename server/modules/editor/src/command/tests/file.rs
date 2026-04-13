@@ -6,12 +6,12 @@ use {
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::StubExecutor,
     },
-    reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::{
         api::v1::{BufferId, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
     },
     reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry},
+    reovim_subsys_vfs::{MockVfs, VfsDriver},
     std::sync::Arc,
 };
 
@@ -45,7 +45,7 @@ struct TestState {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     tabs: reovim_driver_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
@@ -281,7 +281,7 @@ fn test_write_vfs_error_returns_error() {
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
     let mock_vfs = Arc::new(MockVfs::new());
-    mock_vfs.set_error("/tmp/readonly.txt", reovim_driver_vfs::MockErrorKind::PermissionDenied);
+    mock_vfs.set_error("/tmp/readonly.txt", reovim_subsys_vfs::MockErrorKind::PermissionDenied);
     let vfs: Arc<dyn VfsDriver> = mock_vfs;
     let mut args = CommandContext::new().with_vfs(vfs);
     args.set_buffer_id(buffer_id);
@@ -447,7 +447,7 @@ fn test_write_vfs_error_message_propagated() {
     let executor = StubExecutor;
     let mut runtime = state.runtime(&kernel, &executor);
     let mock_vfs = Arc::new(MockVfs::new());
-    mock_vfs.set_error("/tmp/fail.txt", reovim_driver_vfs::MockErrorKind::PermissionDenied);
+    mock_vfs.set_error("/tmp/fail.txt", reovim_subsys_vfs::MockErrorKind::PermissionDenied);
     let vfs: Arc<dyn VfsDriver> = mock_vfs;
     let mut args = CommandContext::new().with_vfs(vfs);
     args.set_buffer_id(buffer_id);

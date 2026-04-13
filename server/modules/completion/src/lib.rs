@@ -26,14 +26,14 @@ const KIND: &str = "completion";
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_completion::CompletionSourceRegistry,
     reovim_driver_input::KeybindingStore,
-    reovim_driver_module_config::ModuleConfigStore,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
         OptionSpec, OptionValue, ProbeResult, Version,
     },
+    reovim_subsys_completion::CompletionSourceRegistry,
+    reovim_subsys_module_config::ModuleConfigStore,
     std::sync::Arc,
 };
 
@@ -86,7 +86,7 @@ impl Module for CompletionModule {
         // - ServiceRegistry: so fire_lsp_completion() can update_cache() on it
         let lsp_source = Arc::new(lsp_source::LspCompletionSource::new());
         registry.register(
-            Arc::clone(&lsp_source) as Arc<dyn reovim_driver_completion::CompletionSource>
+            Arc::clone(&lsp_source) as Arc<dyn reovim_subsys_completion::CompletionSource>
         );
         ctx.services.register(lsp_source);
 

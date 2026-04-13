@@ -6,33 +6,33 @@ Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each dr
 
 | Driver | Crate | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `annotation/` | `reovim-driver-annotation` | Annotation system | - |
+| `annotation/` | `reovim-subsys-annotation` | Annotation system | - |
 | `buffer/` | `reovim-driver-buffer` | Buffer manager registry | [buffer/overview.md](./buffer/overview.md) |
-| `clipboard/` | `reovim-driver-clipboard` | System clipboard interface | [clipboard/overview.md](./clipboard/overview.md) |
+| `clipboard/` | `reovim-subsys-clipboard` | System clipboard interface | [clipboard/overview.md](./clipboard/overview.md) |
 | `codec/` | `reovim-driver-codec` | Codec framework, file type detection | - |
 | `codec-xxd/` | `reovim-driver-codec-xxd` | XXD hex codec | - |
 | `command/` | `reovim-driver-command` | Command traits and execution | [command/overview.md](./command/overview.md) |
 | `command-types/` | `reovim-driver-command-types` | CommandContext, CommandResult | [command-types/overview.md](./command-types/overview.md) |
-| `completion/` | `reovim-driver-completion` | Completion framework | - |
+| `completion/` | `reovim-subsys-completion` | Completion framework | - |
 | `ffi/` | `reovim-driver-ffi` | C FFI interface + ABI versioning | [ffi/overview.md](./ffi/overview.md) |
 | `ffi-python/` | `reovim-driver-ffi-python` | Python bindings via PyO3 | [ffi-python/overview.md](./ffi-python/overview.md) |
-| `formatter/` | `reovim-driver-formatter` | Code formatting interface | - |
-| `git/` | `reovim-driver-git` | Git integration | - |
+| `formatter/` | `reovim-subsys-formatter` | Code formatting interface | - |
+| `git/` | `reovim-subsys-git` | Git integration | - |
 | `input/` | `reovim-driver-input` | Keyboard, mouse input | [input/overview.md](./input/overview.md) |
-| `layout/` | `reovim-driver-layout` | Layout traits and policies | - |
+| `layout/` | `reovim-subsys-layout` | Layout traits and policies | - |
 | `lsp/` | `reovim-driver-lsp` | LSP client infrastructure | [lsp/overview.md](./lsp/overview.md) |
-| `manifest/` | `reovim-driver-manifest` | Module manifest definitions | - |
-| `module-config/` | `reovim-driver-module-config` | Module configuration | - |
-| `module-loader/` | `reovim-driver-module-loader` | Dynamic module loading | - |
-| `module-registry/` | `reovim-driver-module-registry` | Module registry | - |
+| `manifest/` | `reovim-subsys-manifest` | Module manifest definitions | - |
+| `module-config/` | `reovim-subsys-module-config` | Module configuration | - |
+| `module-loader/` | `reovim-subsys-module-loader` | Dynamic module loading | - |
+| `module-registry/` | `reovim-subsys-module-registry` | Module registry | - |
 | `picker/` | `reovim-driver-picker` | Picker/fuzzy-find framework | - |
 | `search/` | `reovim-driver-search` | Search provider interface | [search/overview.md](./search/overview.md) |
 | `session/` | `reovim-driver-session` | Session management traits | [session/overview.md](./session/overview.md) |
-| `statusline/` | `reovim-driver-statusline` | Statusline traits | - |
+| `statusline/` | `reovim-subsys-statusline` | Statusline traits | - |
 | `syntax/` | `reovim-driver-syntax` | Syntax highlighting abstraction | [syntax/overview.md](./syntax/overview.md) |
 | `syntax-treesitter/` | `reovim-driver-syntax-treesitter` | Tree-sitter implementation | [syntax-treesitter/overview.md](./syntax-treesitter/overview.md) |
 | `undo/` | `reovim-driver-undo` | Undo provider interface | [undo/overview.md](./undo/overview.md) |
-| `vfs/` | `reovim-driver-vfs` | Virtual filesystem | [vfs/overview.md](./vfs/overview.md) |
+| `vfs/` | `reovim-subsys-vfs` | Virtual filesystem | [vfs/overview.md](./vfs/overview.md) |
 
 ### Non-Server Drivers
 

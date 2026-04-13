@@ -230,7 +230,7 @@ impl Session {
         if let Some(compositor) = compositor {
             if let Some(buffer_id) = active_buffer {
                 let (tw, th) = client.state.terminal_size;
-                let screen = reovim_driver_layout::Rect::new(0, 0, tw, th);
+                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
                 let result = compositor.composite(screen);
                 for p in &result.placements {
                     let window = Window::with_id_and_buffer(p.window_id, buffer_id);
@@ -417,7 +417,7 @@ impl Session {
             // #474: If per-client compositor exists, create windows with matching IDs
             if let Some(ref compositor) = editing_state.compositor {
                 let (tw, th) = editing_state.terminal_size;
-                let screen = reovim_driver_layout::Rect::new(0, 0, tw, th);
+                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
                 let result = compositor.composite(screen);
                 for p in &result.placements {
                     let window = Window::with_id_and_buffer(p.window_id, buffer_id);

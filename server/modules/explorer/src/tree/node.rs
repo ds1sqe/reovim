@@ -4,7 +4,7 @@
 //! adapted to use `VfsDriver` instead of `std::fs`.
 
 use {
-    reovim_driver_vfs::{DirEntry, VfsDriver, VfsError},
+    reovim_subsys_vfs::{DirEntry, VfsDriver, VfsError},
     std::path::{Path, PathBuf},
 };
 

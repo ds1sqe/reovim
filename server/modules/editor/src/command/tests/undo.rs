@@ -45,7 +45,7 @@ struct TestState {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     tabs: reovim_driver_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
@@ -540,7 +540,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<(), reovim_driver_undo::UndoPersistError> {
         Ok(())
     }
@@ -549,7 +549,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
         Ok(false)
     }

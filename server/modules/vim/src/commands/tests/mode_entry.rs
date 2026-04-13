@@ -199,7 +199,7 @@ struct TestState {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     tabs: reovim_driver_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
@@ -727,8 +727,8 @@ fn test_enter_insert_first_non_blank_on_second_line() {
 use {
     reovim_domain_text::{Edit, UndoResult, UndoTree},
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
-    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{OptionSpec, OptionValue},
+    reovim_subsys_vfs::VfsDriver,
 };
 
 struct MockUndoProvider {

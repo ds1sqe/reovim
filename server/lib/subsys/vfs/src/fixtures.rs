@@ -1,0 +1,182 @@
+//! VFS tree fixture factories for benchmarking and testing.
+//!
+//! Provides pre-built [`MockVfs`] trees of various shapes and sizes.
+//! Used by module benchmarks and tests to create deterministic test data.
+
+use {crate::MockVfs, std::path::PathBuf};
+
+/// Pre-built VFS tree fixture for benchmarking.
+///
+/// Contains a [`MockVfs`] populated with files and directories,
+/// and the root path where the tree starts.
+pub struct TreeFixture {
+    /// The populated mock VFS.
+    pub vfs: MockVfs,
+    /// Root directory of the fixture tree.
+    pub root: PathBuf,
+}
+
+impl TreeFixture {
+    /// Flat directory with `file_count` files, no subdirectories.
+    ///
+    /// Files are named `000.rs`, `001.rs`, etc.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_subsys_vfs::fixtures::TreeFixture;
+    ///
+    /// let fixture = TreeFixture::flat(100);
+    /// // fixture.vfs has /bench/ with 100 .rs files
+    /// ```
+    #[must_use]
+    pub fn flat(file_count: usize) -> Self {
+        let vfs = MockVfs::new();
+        let root = PathBuf::from("/bench");
+        vfs.add_dir(&root);
+
+        let width = digit_width(file_count);
+        for i in 0..file_count {
+            let name = format!("/bench/{i:0width$}.rs");
+            vfs.add_file_str(&name, "fn main() {}");
+        }
+
+        Self { vfs, root }
+    }
+
+    /// Nested tree with `depth` levels of subdirectories.
+    ///
+    /// Each directory contains `files_per_dir` files and one subdirectory
+    /// (except the deepest level which has only files).
+    ///
+    /// Total files = `depth * files_per_dir`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_subsys_vfs::fixtures::TreeFixture;
+    ///
+    /// let fixture = TreeFixture::nested(3, 5);
+    /// // /bench/
+    /// //   ├── 00.rs, 01.rs, ..., 04.rs
+    /// //   └── src/
+    /// //       ├── 00.rs, ..., 04.rs
+    /// //       └── src/
+    /// //           └── 00.rs, ..., 04.rs
+    /// ```
+    #[must_use]
+    pub fn nested(depth: usize, files_per_dir: usize) -> Self {
+        let vfs = MockVfs::new();
+        let root = PathBuf::from("/bench");
+        vfs.add_dir(&root);
+
+        let width = digit_width(files_per_dir);
+        let mut current = root.clone();
+        for level in 0..depth {
+            for i in 0..files_per_dir {
+                let file_path = current.join(format!("{i:0width$}.rs"));
+                vfs.add_file_str(&file_path, "fn main() {}");
+            }
+            // Add subdirectory for next level (except last)
+            if level < depth - 1 {
+                let subdir = current.join("src");
+                vfs.add_dir(&subdir);
+                current = subdir;
+            }
+        }
+
+        Self { vfs, root }
+    }
+
+    /// Realistic project layout with `src/`, `tests/`, `docs/` structure.
+    ///
+    /// Distributes `total_files` across directories with varied nesting:
+    /// - `src/` gets 60% of files (2 levels deep)
+    /// - `tests/` gets 25% of files (1 level)
+    /// - `docs/` gets 15% of files (1 level)
+    /// - Root also contains `Cargo.toml` and `README.md`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_subsys_vfs::fixtures::TreeFixture;
+    ///
+    /// let fixture = TreeFixture::project(100);
+    /// ```
+    #[must_use]
+    pub fn project(total_files: usize) -> Self {
+        let vfs = MockVfs::new();
+        let root = PathBuf::from("/bench");
+        vfs.add_dir(&root);
+
+        // Root-level config files
+        vfs.add_file_str("/bench/Cargo.toml", "[package]\nname = \"bench\"");
+        vfs.add_file_str("/bench/README.md", "# Bench");
+
+        if total_files == 0 {
+            return Self { vfs, root };
+        }
+
+        // Distribute files across directories
+        let src_count = total_files * 60 / 100;
+        let test_count = total_files * 25 / 100;
+        let doc_count = total_files
+            .saturating_sub(src_count)
+            .saturating_sub(test_count);
+
+        // src/ — split between root and a nested module/
+        let src = PathBuf::from("/bench/src");
+        vfs.add_dir(&src);
+        let src_root_count = src_count / 2;
+        let src_mod_count = src_count - src_root_count;
+        let width = digit_width(src_root_count);
+        for i in 0..src_root_count {
+            vfs.add_file_str(src.join(format!("{i:0width$}.rs")), "fn main() {}");
+        }
+        if src_mod_count > 0 {
+            let module_dir = src.join("module");
+            vfs.add_dir(&module_dir);
+            let width = digit_width(src_mod_count);
+            for i in 0..src_mod_count {
+                vfs.add_file_str(module_dir.join(format!("{i:0width$}.rs")), "fn main() {}");
+            }
+        }
+
+        // tests/
+        let tests = PathBuf::from("/bench/tests");
+        vfs.add_dir(&tests);
+        let width = digit_width(test_count);
+        for i in 0..test_count {
+            vfs.add_file_str(tests.join(format!("test_{i:0width$}.rs")), "#[test] fn t() {}");
+        }
+
+        // docs/
+        let docs = PathBuf::from("/bench/docs");
+        vfs.add_dir(&docs);
+        let width = digit_width(doc_count);
+        for i in 0..doc_count {
+            vfs.add_file_str(docs.join(format!("doc_{i:0width$}.md")), "# Doc");
+        }
+
+        Self { vfs, root }
+    }
+}
+
+/// Calculate the number of digits needed for zero-padded formatting.
+pub(crate) const fn digit_width(count: usize) -> usize {
+    if count <= 1 {
+        return 1;
+    }
+    // Number of digits in (count - 1)
+    let mut max_val = count - 1;
+    let mut digits = 0;
+    while max_val > 0 {
+        digits += 1;
+        max_val /= 10;
+    }
+    digits
+}
+
+#[cfg(test)]
+#[path = "fixtures_tests.rs"]
+mod tests;

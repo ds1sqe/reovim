@@ -2,7 +2,7 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Git provider module for reovim — POLICY layer.
 //!
-//! Registers a subprocess-based [`GitProvider`](reovim_driver_git::GitProvider)
+//! Registers a subprocess-based [`GitProvider`](reovim_subsys_git::GitProvider)
 //! into the `ServiceRegistry` during initialization. Any module that needs
 //! git data (pickers, statusline, gutter, blame) can retrieve the provider
 //! via `GitProviderStore`.
@@ -10,15 +10,15 @@
 //! # Architecture (#530)
 //!
 //! This module owns the HOW (subprocess `git` CLI). The driver crate
-//! (`reovim-driver-git`) owns the WHAT (trait + typed data structs).
+//! (`reovim-subsys-git`) owns the WHAT (trait + typed data structs).
 
 mod cache;
 pub mod subprocess;
 
 use {
     cache::CachedGitProvider,
-    reovim_driver_git::GitProviderStore,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_subsys_git::GitProviderStore,
     std::{sync::Arc, time::Duration},
     subprocess::SubprocessGitProvider,
 };

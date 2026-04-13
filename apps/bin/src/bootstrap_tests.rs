@@ -1,4 +1,4 @@
-use reovim_driver_module_config::ModulesConfig;
+use reovim_subsys_module_config::ModulesConfig;
 
 use super::*;
 
@@ -300,8 +300,8 @@ fn test_static_registry_covers_manifest() {
 #[test]
 fn test_load_registry_modules_missing_registry_noop() {
     use {
-        reovim_driver_module_loader::loader::ModuleLoader,
-        reovim_driver_module_registry::workflow::RegistryPaths,
+        reovim_subsys_module_loader::loader::ModuleLoader,
+        reovim_subsys_module_registry::workflow::RegistryPaths,
     };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t1-missing");
@@ -327,8 +327,8 @@ fn test_load_registry_modules_builtin_conflict_skipped() {
     use std::fs;
 
     use {
-        reovim_driver_module_loader::loader::ModuleLoader,
-        reovim_driver_module_registry::workflow::RegistryPaths, reovim_kernel::api::v1::ModuleId,
+        reovim_kernel::api::v1::ModuleId, reovim_subsys_module_loader::loader::ModuleLoader,
+        reovim_subsys_module_registry::workflow::RegistryPaths,
     };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t3-builtin-conflict");
@@ -371,8 +371,8 @@ fn test_load_registry_modules_missing_library_path_skipped() {
     use std::fs;
 
     use {
-        reovim_driver_module_loader::loader::ModuleLoader,
-        reovim_driver_module_registry::workflow::RegistryPaths,
+        reovim_subsys_module_loader::loader::ModuleLoader,
+        reovim_subsys_module_registry::workflow::RegistryPaths,
     };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t5-no-library");
@@ -411,8 +411,8 @@ fn test_load_registry_modules_corrupt_installed_json() {
     use std::fs;
 
     use {
-        reovim_driver_module_loader::loader::ModuleLoader,
-        reovim_driver_module_registry::workflow::RegistryPaths,
+        reovim_subsys_module_loader::loader::ModuleLoader,
+        reovim_subsys_module_registry::workflow::RegistryPaths,
     };
 
     let tmp = std::env::temp_dir().join("reovim-p2-t6-corrupt-json");

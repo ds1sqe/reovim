@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_layout::{LayerId, Rect, SplitDirection, WindowLayerCompositor, Zone},
+    reovim_subsys_layout::{LayerId, Rect, SplitDirection, WindowLayerCompositor, Zone},
 };
 
 fn layer() -> HybridLayerCompositor {

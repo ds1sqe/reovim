@@ -21,7 +21,7 @@ reovim-kernel = { workspace = true }
 reovim-capabilities = { workspace = true }
 
 # Driver for ClipboardProvider trait
-reovim-driver-clipboard = { workspace = true }
+reovim-subsys-clipboard = { workspace = true }
 
 # Platform abstraction for RwLock
 reovim-arch = { workspace = true }

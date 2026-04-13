@@ -2218,14 +2218,9 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
- "reovim-driver-layout",
  "reovim-driver-log",
- "reovim-driver-module-config",
- "reovim-driver-module-loader",
- "reovim-driver-module-registry",
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-buffer-simple",
  "reovim-module-bufferline",
@@ -2285,6 +2280,11 @@ dependencies = [
  "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
+ "reovim-subsys-layout",
+ "reovim-subsys-module-config",
+ "reovim-subsys-module-loader",
+ "reovim-subsys-module-registry",
+ "reovim-subsys-vfs",
  "tokio",
  "tonic",
  "tracing",
@@ -2320,10 +2320,10 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-syntax",
  "reovim-driver-syntax-treesitter",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-treesitter-rust",
  "reovim-provider-text",
+ "reovim-subsys-vfs",
  "serde_json",
  "tempfile",
 ]
@@ -2345,8 +2345,8 @@ name = "reovim-client-cli"
 version = "0.15.0-dev"
 dependencies = [
  "clap",
- "reovim-driver-module-registry",
  "reovim-protocol",
+ "reovim-subsys-module-registry",
  "serde_json",
  "tempfile",
  "tokio",
@@ -2400,9 +2400,9 @@ dependencies = [
  "reovim-client-driver",
  "reovim-client-model",
  "reovim-driver-display",
- "reovim-driver-module-registry",
  "reovim-driver-tui",
  "reovim-protocol",
+ "reovim-subsys-module-registry",
  "reovim-testing",
  "reovim-tui-mod-bufferline",
  "reovim-tui-mod-cmdline",
@@ -2460,27 +2460,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-driver-annotation"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "smallvec",
-]
-
-[[package]]
 name = "reovim-driver-buffer"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
  "reovim-provider-text",
-]
-
-[[package]]
-name = "reovim-driver-clipboard"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
 ]
 
 [[package]]
@@ -2491,10 +2476,10 @@ dependencies = [
  "reovim-domain",
  "reovim-domain-text",
  "reovim-domain-text-events",
- "reovim-driver-annotation",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -2506,8 +2491,8 @@ dependencies = [
 name = "reovim-driver-codec-xxd"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-annotation",
  "reovim-driver-codec",
+ "reovim-subsys-annotation",
 ]
 
 [[package]]
@@ -2516,8 +2501,8 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-subsys-vfs",
 ]
 
 [[package]]
@@ -2525,16 +2510,8 @@ name = "reovim-driver-command-types"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-domain-text",
- "reovim-driver-vfs",
  "reovim-kernel",
-]
-
-[[package]]
-name = "reovim-driver-completion"
-version = "0.15.0-dev"
-dependencies = [
- "nucleo",
- "reovim-kernel",
+ "reovim-subsys-vfs",
 ]
 
 [[package]]
@@ -2544,10 +2521,10 @@ dependencies = [
  "dirs",
  "reovim-arch",
  "reovim-client-model",
- "reovim-driver-annotation",
- "reovim-driver-layout",
- "reovim-driver-statusline",
  "reovim-kernel",
+ "reovim-subsys-annotation",
+ "reovim-subsys-layout",
+ "reovim-subsys-statusline",
  "serde",
  "smallvec",
  "tempfile",
@@ -2581,21 +2558,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-driver-formatter"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "tracing",
-]
-
-[[package]]
-name = "reovim-driver-git"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
-]
-
-[[package]]
 name = "reovim-driver-input"
 version = "0.15.0-dev"
 dependencies = [
@@ -2607,14 +2569,6 @@ dependencies = [
  "reovim-kernel",
  "reovim-provider-text",
  "tracing",
-]
-
-[[package]]
-name = "reovim-driver-layout"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-client-model",
- "reovim-kernel",
 ]
 
 [[package]]
@@ -2639,55 +2593,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "reovim-driver-manifest"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "serde",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "reovim-driver-module-config"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "serde",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "reovim-driver-module-loader"
-version = "0.15.0-dev"
-dependencies = [
- "chrono",
- "hex",
- "libloading",
- "notify",
- "reovim-arch",
- "reovim-depgraph",
- "reovim-kernel",
- "serde",
- "sha2",
- "tokio",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "reovim-driver-module-registry"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-capabilities",
- "reovim-depgraph",
- "serde",
- "serde_json",
- "tempfile",
- "toml 0.8.23",
  "tracing",
 ]
 
@@ -2728,22 +2633,15 @@ dependencies = [
  "reovim-arch",
  "reovim-domain-text",
  "reovim-domain-text-events",
- "reovim-driver-clipboard",
  "reovim-driver-command-types",
- "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-undo",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-provider-text",
+ "reovim-subsys-clipboard",
+ "reovim-subsys-layout",
+ "reovim-subsys-vfs",
  "serde_json",
-]
-
-[[package]]
-name = "reovim-driver-statusline"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
 ]
 
 [[package]]
@@ -2795,18 +2693,9 @@ name = "reovim-driver-undo"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-domain-text",
- "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-subsys-vfs",
  "tracing",
-]
-
-[[package]]
-name = "reovim-driver-vfs"
-version = "0.15.0-dev"
-dependencies = [
- "bitflags 2.11.0",
- "memmap2",
- "reovim-kernel",
 ]
 
 [[package]]
@@ -2875,9 +2764,9 @@ dependencies = [
  "arboard",
  "reovim-arch",
  "reovim-capabilities",
- "reovim-driver-clipboard",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-clipboard",
  "reovim-testing",
  "tokio",
  "tracing",
@@ -2903,11 +2792,11 @@ dependencies = [
  "goblin",
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
  "zip",
@@ -2921,9 +2810,9 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -2935,11 +2824,11 @@ dependencies = [
  "csv",
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -2950,12 +2839,12 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-driver-codec-xxd",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -2968,9 +2857,9 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -2983,13 +2872,13 @@ dependencies = [
  "pdf-extract",
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -3001,11 +2890,11 @@ dependencies = [
  "goblin",
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -3017,11 +2906,11 @@ dependencies = [
  "flate2",
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tar",
  "tracing",
@@ -3035,9 +2924,9 @@ dependencies = [
  "reovim-domain",
  "reovim-domain-text",
  "reovim-driver-codec",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
 ]
@@ -3054,12 +2943,12 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-display",
- "reovim-driver-layout",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-layout",
+ "reovim-subsys-vfs",
  "tempfile",
  "tracing",
 ]
@@ -3074,15 +2963,15 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-command-types",
- "reovim-driver-completion",
  "reovim-driver-input",
  "reovim-driver-lsp",
- "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
  "reovim-provider-text",
+ "reovim-subsys-completion",
+ "reovim-subsys-module-config",
  "serde_json",
  "tokio",
  "toml 0.8.23",
@@ -3094,10 +2983,10 @@ name = "reovim-module-context"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-driver-session",
- "reovim-driver-statusline",
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-statusline",
  "reovim-testing",
  "serde_json",
  "tracing",
@@ -3126,13 +3015,13 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-input",
- "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-driver-undo",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-layout",
+ "reovim-subsys-vfs",
  "unicode-width",
 ]
 
@@ -3157,11 +3046,11 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-input",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
  "reovim-protocol",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "serde_json",
  "tokio",
@@ -3176,12 +3065,12 @@ dependencies = [
  "reovim-capabilities",
  "reovim-driver-command",
  "reovim-driver-command-types",
- "reovim-driver-formatter",
  "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-formatter",
  "tracing",
 ]
 
@@ -3190,34 +3079,34 @@ name = "reovim-module-git"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
- "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-module-git-blame"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-annotation",
- "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-annotation",
+ "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-module-git-signs"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-annotation",
  "reovim-driver-command",
  "reovim-driver-command-types",
- "reovim-driver-git",
  "reovim-driver-input",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
+ "reovim-subsys-annotation",
+ "reovim-subsys-git",
  "tracing",
 ]
 
@@ -3225,26 +3114,26 @@ dependencies = [
 name = "reovim-module-git-statusline"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-git",
- "reovim-driver-statusline",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
+ "reovim-subsys-statusline",
 ]
 
 [[package]]
 name = "reovim-module-health-check"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-clipboard",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-lsp",
- "reovim-driver-module-config",
- "reovim-driver-module-loader",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-clipboard",
+ "reovim-subsys-module-config",
+ "reovim-subsys-module-loader",
 ]
 
 [[package]]
@@ -3289,8 +3178,8 @@ dependencies = [
 name = "reovim-module-layout"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-layout",
  "reovim-kernel",
+ "reovim-subsys-layout",
 ]
 
 [[package]]
@@ -3301,11 +3190,11 @@ dependencies = [
  "parking_lot",
  "reovim-capabilities",
  "reovim-driver-lsp",
- "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-module-config",
  "serde_json",
  "tokio",
  "toml 0.8.23",
@@ -3325,12 +3214,12 @@ dependencies = [
  "reovim-driver-lsp",
  "reovim-driver-picker",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-notification",
  "reovim-module-vim",
+ "reovim-subsys-vfs",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3379,10 +3268,10 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
- "reovim-driver-module-loader",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-module-loader",
  "serde_json",
 ]
 
@@ -3393,12 +3282,12 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-command",
- "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-layout",
  "tracing",
 ]
 
@@ -3435,9 +3324,9 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "serde",
  "toml 0.8.23",
  "tracing",
@@ -3452,12 +3341,12 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-input",
- "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
+ "reovim-subsys-manifest",
  "reovim-testing",
  "serde",
  "serde_json",
@@ -3520,12 +3409,12 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-input",
- "reovim-driver-manifest",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
+ "reovim-subsys-manifest",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "serde",
  "serde_json",
@@ -3568,12 +3457,12 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
- "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-layout",
 ]
 
 [[package]]
@@ -3712,10 +3601,10 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-undo",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-protocol",
+ "reovim-subsys-vfs",
  "tracing",
 ]
 
@@ -3724,9 +3613,9 @@ name = "reovim-module-vfs-local"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
 ]
 
 [[package]]
@@ -3735,17 +3624,12 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-clipboard",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
- "reovim-driver-layout",
- "reovim-driver-manifest",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-undo",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-cmdline",
  "reovim-module-editor",
@@ -3754,6 +3638,11 @@ dependencies = [
  "reovim-module-textobjects",
  "reovim-module-window-ops",
  "reovim-provider-text",
+ "reovim-subsys-annotation",
+ "reovim-subsys-clipboard",
+ "reovim-subsys-layout",
+ "reovim-subsys-manifest",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "serde_json",
  "tokio",
@@ -3777,10 +3666,10 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-domain-text-events",
  "reovim-driver-command",
- "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-layout",
 ]
 
 [[package]]
@@ -3826,9 +3715,9 @@ dependencies = [
  "ignore",
  "reovim-driver-picker",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "tempfile",
 ]
 
@@ -3836,41 +3725,41 @@ dependencies = [
 name = "reovim-picker-git-branches"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-log"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-stash"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-status"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-git",
 ]
 
 [[package]]
@@ -3879,9 +3768,9 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-driver-picker",
  "reovim-driver-session",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-vfs",
  "tempfile",
 ]
 
@@ -3916,8 +3805,8 @@ dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
  "reovim-domain-text",
- "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-subsys-vfs",
 ]
 
 [[package]]
@@ -3936,14 +3825,14 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
- "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-driver-undo",
- "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-protocol",
+ "reovim-subsys-layout",
+ "reovim-subsys-vfs",
  "reovim-testing",
  "serde",
  "serde_json",
@@ -3955,6 +3844,117 @@ dependencies = [
  "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-subsys-annotation"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "smallvec",
+]
+
+[[package]]
+name = "reovim-subsys-clipboard"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-completion"
+version = "0.15.0-dev"
+dependencies = [
+ "nucleo",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-formatter"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-subsys-git"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-layout"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-model",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-manifest"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-subsys-module-config"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-subsys-module-loader"
+version = "0.15.0-dev"
+dependencies = [
+ "chrono",
+ "hex",
+ "libloading",
+ "notify",
+ "reovim-arch",
+ "reovim-depgraph",
+ "reovim-kernel",
+ "serde",
+ "sha2",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-subsys-module-registry"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-depgraph",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-subsys-statusline"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-vfs"
+version = "0.15.0-dev"
+dependencies = [
+ "bitflags 2.11.0",
+ "memmap2",
+ "reovim-kernel",
 ]
 
 [[package]]

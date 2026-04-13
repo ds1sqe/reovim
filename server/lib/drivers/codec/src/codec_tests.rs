@@ -1,8 +1,8 @@
 //! Tests for codec trait and `DecodeResult`.
 
 use {
-    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
-    reovim_driver_vfs::HeapByteSource,
+    reovim_subsys_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+    reovim_subsys_vfs::HeapByteSource,
 };
 
 use {
@@ -225,10 +225,10 @@ fn trait_object_works() {
 fn decode_streaming_default_returns_none() {
     use std::path::Path;
 
-    use reovim_driver_vfs::{FileMetadata, SeekFrom, VfsError};
+    use reovim_subsys_vfs::{FileMetadata, SeekFrom, VfsError};
 
     struct DummyHandle;
-    impl reovim_driver_vfs::FileHandle for DummyHandle {
+    impl reovim_subsys_vfs::FileHandle for DummyHandle {
         fn read(&mut self, _buf: &mut [u8]) -> Result<usize, VfsError> {
             Ok(0)
         }

@@ -8,8 +8,8 @@ use {
         ContentCodec, DecodedEdit, InodeTable, Mount, MountMode, TranslateEditError, TreeOp,
         TreePath,
     },
-    reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::BufferId,
+    reovim_subsys_vfs::HeapByteSource,
 };
 
 use super::*;

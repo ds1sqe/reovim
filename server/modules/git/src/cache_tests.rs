@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use reovim_driver_git::{
+use reovim_subsys_git::{
     GitProvider,
     types::{BlameEntry, BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},
 };

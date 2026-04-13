@@ -12,8 +12,8 @@ pub mod tiled_zone;
 
 use {
     hybrid_compositor::HybridCompositor,
-    reovim_driver_layout::{CompositorKey, CompositorRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleId, ProbeResult, Version},
+    reovim_subsys_layout::{CompositorKey, CompositorRegistry},
     std::sync::Arc,
 };
 

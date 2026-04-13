@@ -1874,7 +1874,7 @@ fn test_selection_register_without_provider() {
 fn test_compositor_api_no_compositor() {
     use {
         crate::testing::TestSessionRuntime,
-        reovim_driver_layout::{NavigateDirection, Rect, SplitDirection},
+        reovim_subsys_layout::{NavigateDirection, Rect, SplitDirection},
     };
 
     let mut harness = TestSessionRuntime::new();
@@ -1920,7 +1920,7 @@ fn test_compositor_api_no_compositor() {
 
 #[test]
 fn test_set_screen_no_compositor() {
-    use {crate::testing::TestSessionRuntime, reovim_driver_layout::Rect};
+    use {crate::testing::TestSessionRuntime, reovim_subsys_layout::Rect};
 
     let mut harness = TestSessionRuntime::new();
 
@@ -2110,7 +2110,7 @@ fn test_delete_range_empty_range() {
 
 #[test]
 fn test_show_overlay_no_compositor() {
-    use {crate::testing::TestSessionRuntime, reovim_driver_layout::OverlayConstraints};
+    use {crate::testing::TestSessionRuntime, reovim_subsys_layout::OverlayConstraints};
 
     let mut harness = TestSessionRuntime::new();
 
@@ -2159,7 +2159,7 @@ fn test_focus_no_compositor() {
 
 #[test]
 fn test_to_kernel_split_direction() {
-    use reovim_driver_layout::SplitDirection;
+    use reovim_subsys_layout::SplitDirection;
 
     let h = to_kernel_split_direction(SplitDirection::Horizontal);
     assert!(matches!(h, KernelSplitDirection::Horizontal));
@@ -2618,29 +2618,29 @@ impl MockClipboard {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
+impl reovim_subsys_clipboard::ClipboardProvider for MockClipboard {
     fn clipboard_available(&self) -> bool {
         true
     }
-    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         *self.clipboard.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
     fn paste_from_clipboard(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(self.clipboard.lock().unwrap().clone())
     }
     fn selection_available(&self) -> bool {
         true
     }
-    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         *self.selection.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
     fn paste_from_selection(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(self.selection.lock().unwrap().clone())
     }
 }
@@ -3078,7 +3078,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<(), reovim_driver_undo::UndoPersistError> {
         Ok(())
     }
@@ -3087,7 +3087,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
         Ok(false)
     }
@@ -3517,7 +3517,7 @@ impl reovim_driver_undo::UndoProvider for AlternateUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<(), reovim_driver_undo::UndoPersistError> {
         Ok(())
     }
@@ -3526,7 +3526,7 @@ impl reovim_driver_undo::UndoProvider for AlternateUndoProvider {
         &self,
         _buffer_id: BufferId,
         _buffer_path: &str,
-        _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        _vfs: &dyn reovim_subsys_vfs::VfsDriver,
     ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
         Ok(false)
     }
@@ -3862,7 +3862,7 @@ fn test_apply_undo_edits_buffer_not_found() {
 // =========================================================================
 
 struct MockLayerCompositor {
-    id: reovim_driver_layout::LayerId,
+    id: reovim_subsys_layout::LayerId,
     windows: Vec<WindowId>,
     focused: Option<WindowId>,
     next_id: usize,
@@ -3873,7 +3873,7 @@ impl MockLayerCompositor {
         let first = WindowId::from_raw(1);
         let second = WindowId::from_raw(2);
         Self {
-            id: reovim_driver_layout::LayerId::new(0),
+            id: reovim_subsys_layout::LayerId::new(0),
             windows: vec![first, second],
             focused: Some(first),
             next_id: 3,
@@ -3882,12 +3882,12 @@ impl MockLayerCompositor {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_layout::WindowLayerCompositor for MockLayerCompositor {
-    fn id(&self) -> reovim_driver_layout::LayerId {
+impl reovim_subsys_layout::WindowLayerCompositor for MockLayerCompositor {
+    fn id(&self) -> reovim_subsys_layout::LayerId {
         self.id
     }
 
-    fn arrange(&self, _bounds: Rect) -> Vec<reovim_driver_layout::WindowPlacement> {
+    fn arrange(&self, _bounds: Rect) -> Vec<reovim_subsys_layout::WindowPlacement> {
         Vec::new()
     }
 
@@ -3904,7 +3904,7 @@ impl reovim_driver_layout::WindowLayerCompositor for MockLayerCompositor {
     fn split_tiled(
         &mut self,
         _from: WindowId,
-        _direction: reovim_driver_layout::SplitDirection,
+        _direction: reovim_subsys_layout::SplitDirection,
     ) -> Option<WindowId> {
         let id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
@@ -3947,7 +3947,7 @@ impl reovim_driver_layout::WindowLayerCompositor for MockLayerCompositor {
     fn close_float(&mut self, _window: WindowId) {}
     fn toggle_float(&mut self, _window: WindowId) {}
 
-    fn show_overlay(&mut self, _constraints: reovim_driver_layout::OverlayConstraints) -> WindowId {
+    fn show_overlay(&mut self, _constraints: reovim_subsys_layout::OverlayConstraints) -> WindowId {
         let id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
         id
@@ -3965,16 +3965,16 @@ impl reovim_driver_layout::WindowLayerCompositor for MockLayerCompositor {
         self.focused
     }
 
-    fn windows_in_zone(&self, zone: reovim_driver_layout::Zone) -> Vec<WindowId> {
-        if zone == reovim_driver_layout::Zone::Tiled {
+    fn windows_in_zone(&self, zone: reovim_subsys_layout::Zone) -> Vec<WindowId> {
+        if zone == reovim_subsys_layout::Zone::Tiled {
             self.windows.clone()
         } else {
             Vec::new()
         }
     }
 
-    fn zone_of(&self, _window: WindowId) -> Option<reovim_driver_layout::Zone> {
-        Some(reovim_driver_layout::Zone::Tiled)
+    fn zone_of(&self, _window: WindowId) -> Option<reovim_subsys_layout::Zone> {
+        Some(reovim_subsys_layout::Zone::Tiled)
     }
 }
 
@@ -3992,43 +3992,43 @@ impl MockRootCompositor {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_layout::RootCompositor for MockRootCompositor {
-    fn composite(&self, screen: Rect) -> reovim_driver_layout::CompositeResult {
-        reovim_driver_layout::CompositeResult::empty(screen)
+impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
+    fn composite(&self, screen: Rect) -> reovim_subsys_layout::CompositeResult {
+        reovim_subsys_layout::CompositeResult::empty(screen)
     }
 
     fn create_layer(
         &mut self,
-        _config: reovim_driver_layout::LayerConfig,
-    ) -> reovim_driver_layout::LayerId {
-        reovim_driver_layout::LayerId::new(0)
+        _config: reovim_subsys_layout::LayerConfig,
+    ) -> reovim_subsys_layout::LayerId {
+        reovim_subsys_layout::LayerId::new(0)
     }
 
-    fn remove_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
+    fn remove_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
 
-    fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_layout::LayerId> {
+    fn layer_by_label(&self, _label: &str) -> Option<reovim_subsys_layout::LayerId> {
         None
     }
 
-    fn layers(&self) -> Vec<&reovim_driver_layout::Layer> {
+    fn layers(&self) -> Vec<&reovim_subsys_layout::Layer> {
         Vec::new()
     }
 
-    fn set_layer_visible(&mut self, _layer: reovim_driver_layout::LayerId, _visible: bool) {}
+    fn set_layer_visible(&mut self, _layer: reovim_subsys_layout::LayerId, _visible: bool) {}
 
-    fn set_layer_opacity(&mut self, _layer: reovim_driver_layout::LayerId, _opacity: f32) {}
+    fn set_layer_opacity(&mut self, _layer: reovim_subsys_layout::LayerId, _opacity: f32) {}
 
-    fn reorder_layer(&mut self, _layer: reovim_driver_layout::LayerId, _new_z: u16) {}
+    fn reorder_layer(&mut self, _layer: reovim_subsys_layout::LayerId, _new_z: u16) {}
 
-    fn set_active_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
+    fn set_active_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
 
-    fn active_layer(&self) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+    fn active_layer(&self) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
 
     fn set_focus(&mut self, window: WindowId) {
         self.focused = Some(window);
-        reovim_driver_layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
+        reovim_subsys_layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
     }
 
     fn focused(&self) -> Option<WindowId> {
@@ -4041,15 +4041,15 @@ impl reovim_driver_layout::RootCompositor for MockRootCompositor {
 
     fn layer_compositor(
         &self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&dyn reovim_subsys_layout::WindowLayerCompositor> {
         Some(&self.layer)
     }
 
     fn layer_compositor_mut(
         &mut self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&mut dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&mut dyn reovim_subsys_layout::WindowLayerCompositor> {
         Some(&mut self.layer)
     }
 
@@ -4059,11 +4059,11 @@ impl reovim_driver_layout::RootCompositor for MockRootCompositor {
 
     fn set_screen(&mut self, _screen: Rect) {}
 
-    fn layer_of(&self, _window: WindowId) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+    fn layer_of(&self, _window: WindowId) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
 
-    fn boxed_clone(&self) -> Box<dyn reovim_driver_layout::RootCompositor> {
+    fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
         Box::new(Self {
             layer: MockLayerCompositor {
                 id: self.layer.id,
@@ -4163,7 +4163,7 @@ fn test_compositor_split() {
         &kernel,
         &executor,
     );
-    let result = rt.split(reovim_driver_layout::SplitDirection::Horizontal);
+    let result = rt.split(reovim_subsys_layout::SplitDirection::Horizontal);
     assert!(result.is_ok());
     assert!(rt.changes.windows_created.contains(&result.unwrap()));
 }
@@ -4728,7 +4728,7 @@ fn test_compositor_show_overlay() {
         &executor,
     );
     let result =
-        rt.show_overlay(reovim_driver_layout::OverlayConstraints::centered().with_size(20, 10));
+        rt.show_overlay(reovim_subsys_layout::OverlayConstraints::centered().with_size(20, 10));
     assert!(result.is_ok());
 }
 
@@ -5136,13 +5136,13 @@ fn test_arrange_with_compositor() {
 /// Mock compositor with only ONE tiled window, so `close_current_window`
 /// returns `CannotCloseLastWindow` (covers line 1176).
 struct SingleWindowLayerCompositor {
-    id: reovim_driver_layout::LayerId,
+    id: reovim_subsys_layout::LayerId,
     window: WindowId,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_layout::WindowLayerCompositor for SingleWindowLayerCompositor {
-    fn id(&self) -> reovim_driver_layout::LayerId {
+impl reovim_subsys_layout::WindowLayerCompositor for SingleWindowLayerCompositor {
+    fn id(&self) -> reovim_subsys_layout::LayerId {
         self.id
     }
     fn arrange(&self, _bounds: Rect) -> Vec<WindowPlacement> {
@@ -5154,7 +5154,7 @@ impl reovim_driver_layout::WindowLayerCompositor for SingleWindowLayerCompositor
     fn split_tiled(
         &mut self,
         _from: WindowId,
-        _direction: reovim_driver_layout::SplitDirection,
+        _direction: reovim_subsys_layout::SplitDirection,
     ) -> Option<WindowId> {
         None
     }
@@ -5188,15 +5188,15 @@ impl reovim_driver_layout::WindowLayerCompositor for SingleWindowLayerCompositor
     fn focused(&self) -> Option<WindowId> {
         Some(self.window)
     }
-    fn windows_in_zone(&self, zone: reovim_driver_layout::Zone) -> Vec<WindowId> {
-        if zone == reovim_driver_layout::Zone::Tiled {
+    fn windows_in_zone(&self, zone: reovim_subsys_layout::Zone) -> Vec<WindowId> {
+        if zone == reovim_subsys_layout::Zone::Tiled {
             vec![self.window] // Only ONE tiled window
         } else {
             Vec::new()
         }
     }
-    fn zone_of(&self, _window: WindowId) -> Option<reovim_driver_layout::Zone> {
-        Some(reovim_driver_layout::Zone::Tiled)
+    fn zone_of(&self, _window: WindowId) -> Option<reovim_subsys_layout::Zone> {
+        Some(reovim_subsys_layout::Zone::Tiled)
     }
 }
 
@@ -5208,7 +5208,7 @@ impl SingleWindowRootCompositor {
     fn new() -> Self {
         Self {
             layer: SingleWindowLayerCompositor {
-                id: reovim_driver_layout::LayerId::new(0),
+                id: reovim_subsys_layout::LayerId::new(0),
                 window: WindowId::from_raw(1),
             },
         }
@@ -5216,29 +5216,29 @@ impl SingleWindowRootCompositor {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_layout::RootCompositor for SingleWindowRootCompositor {
-    fn composite(&self, screen: Rect) -> reovim_driver_layout::CompositeResult {
-        reovim_driver_layout::CompositeResult::empty(screen)
+impl reovim_subsys_layout::RootCompositor for SingleWindowRootCompositor {
+    fn composite(&self, screen: Rect) -> reovim_subsys_layout::CompositeResult {
+        reovim_subsys_layout::CompositeResult::empty(screen)
     }
     fn create_layer(
         &mut self,
-        _config: reovim_driver_layout::LayerConfig,
-    ) -> reovim_driver_layout::LayerId {
-        reovim_driver_layout::LayerId::new(0)
+        _config: reovim_subsys_layout::LayerConfig,
+    ) -> reovim_subsys_layout::LayerId {
+        reovim_subsys_layout::LayerId::new(0)
     }
-    fn remove_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
-    fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_layout::LayerId> {
+    fn remove_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
+    fn layer_by_label(&self, _label: &str) -> Option<reovim_subsys_layout::LayerId> {
         None
     }
-    fn layers(&self) -> Vec<&reovim_driver_layout::Layer> {
+    fn layers(&self) -> Vec<&reovim_subsys_layout::Layer> {
         Vec::new()
     }
-    fn set_layer_visible(&mut self, _layer: reovim_driver_layout::LayerId, _visible: bool) {}
-    fn set_layer_opacity(&mut self, _layer: reovim_driver_layout::LayerId, _opacity: f32) {}
-    fn reorder_layer(&mut self, _layer: reovim_driver_layout::LayerId, _new_z: u16) {}
-    fn set_active_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
-    fn active_layer(&self) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+    fn set_layer_visible(&mut self, _layer: reovim_subsys_layout::LayerId, _visible: bool) {}
+    fn set_layer_opacity(&mut self, _layer: reovim_subsys_layout::LayerId, _opacity: f32) {}
+    fn reorder_layer(&mut self, _layer: reovim_subsys_layout::LayerId, _new_z: u16) {}
+    fn set_active_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
+    fn active_layer(&self) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
     fn set_focus(&mut self, _window: WindowId) {}
     fn focused(&self) -> Option<WindowId> {
@@ -5249,24 +5249,24 @@ impl reovim_driver_layout::RootCompositor for SingleWindowRootCompositor {
     }
     fn layer_compositor(
         &self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&dyn reovim_subsys_layout::WindowLayerCompositor> {
         Some(&self.layer)
     }
     fn layer_compositor_mut(
         &mut self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&mut dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&mut dyn reovim_subsys_layout::WindowLayerCompositor> {
         Some(&mut self.layer)
     }
     fn window_count(&self) -> usize {
         1
     }
     fn set_screen(&mut self, _screen: Rect) {}
-    fn layer_of(&self, _window: WindowId) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+    fn layer_of(&self, _window: WindowId) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
-    fn boxed_clone(&self) -> Box<dyn reovim_driver_layout::RootCompositor> {
+    fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
         Box::new(Self::new())
     }
 }
@@ -5280,7 +5280,7 @@ fn test_compositor_close_current_window_single_window() {
     let mut ms = ModeStack::new(test_mode());
     let mut w = crate::WindowLayout::empty();
     let mut e = crate::ExtensionMap::new();
-    let mut c: Option<Box<dyn reovim_driver_layout::RootCompositor>> =
+    let mut c: Option<Box<dyn reovim_subsys_layout::RootCompositor>> =
         Some(Box::new(SingleWindowRootCompositor::new()));
     let mut tabs = crate::TabPageSet::new();
     let mut r = RegisterBank::new();
@@ -5614,7 +5614,7 @@ fn test_set_screen_without_compositor() {
     let mut w = crate::WindowLayout::empty();
     let mut e = crate::ExtensionMap::new();
     // No compositor
-    let mut c: Option<Box<dyn reovim_driver_layout::RootCompositor>> = None;
+    let mut c: Option<Box<dyn reovim_subsys_layout::RootCompositor>> = None;
     let mut tabs = crate::TabPageSet::new();
     let mut r = RegisterBank::new();
     let mut ch = HistoryRing::new();

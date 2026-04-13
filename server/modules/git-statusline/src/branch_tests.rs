@@ -1,11 +1,11 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_git::{
+    reovim_subsys_git::{
         GitProvider,
         types::{BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},
     },
-    reovim_driver_statusline::{ComponentDataContext, ComponentDataProvider},
+    reovim_subsys_statusline::{ComponentDataContext, ComponentDataProvider},
 };
 
 use super::*;

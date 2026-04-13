@@ -1,10 +1,10 @@
 //! Binary split tree for tiled window management.
 //!
-//! Implements the `TiledLayer` trait from `reovim-driver-layout`.
+//! Implements the `TiledLayer` trait from `reovim-subsys-layout`.
 //! Windows are organized as a binary tree where internal nodes represent
 //! splits and leaves represent windows.
 
-use reovim_driver_layout::{
+use reovim_subsys_layout::{
     LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Rect, SplitDirection,
     TiledLayer, WindowId, WindowPlacement, ZOrder, Zone,
 };

@@ -2,13 +2,12 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Git status picker module for reovim.
 //!
-//! Lists working tree changes via [`GitProvider`](reovim_driver_git::GitProvider)
+//! Lists working tree changes via [`GitProvider`](reovim_subsys_git::GitProvider)
 //! and opens the selected file on confirmation.
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_git::{GitProviderStore, types::FileStatus},
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
@@ -16,6 +15,7 @@ use {
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, ServiceRegistry, Version,
     },
+    reovim_subsys_git::{GitProviderStore, types::FileStatus},
 };
 
 /// Picker that lists git status entries.

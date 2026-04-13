@@ -20,7 +20,7 @@
 //! Each tab is a self-contained "workspace" — switching tabs swaps the
 //! entire visible layout, compositor state, and window-to-cursor mappings.
 
-use {reovim_driver_layout::RootCompositor, reovim_kernel::api::v1::TabId};
+use {reovim_kernel::api::v1::TabId, reovim_subsys_layout::RootCompositor};
 
 use crate::WindowLayout;
 

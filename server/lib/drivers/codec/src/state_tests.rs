@@ -29,7 +29,7 @@ impl ContentCodec for TestInsertCodec {
 
     fn translate_edit(
         &self,
-        _bytes: &dyn reovim_driver_vfs::ByteSource,
+        _bytes: &dyn reovim_subsys_vfs::ByteSource,
         _edit: &DecodedEdit,
     ) -> Result<Option<ByteEdit>, TranslateEditError> {
         Ok(Some(ByteEdit::insert(0, &self.insert_bytes)))

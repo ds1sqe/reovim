@@ -258,29 +258,29 @@ impl MockClipboardProvider {
     }
 }
 
-impl reovim_driver_clipboard::ClipboardProvider for MockClipboardProvider {
+impl reovim_subsys_clipboard::ClipboardProvider for MockClipboardProvider {
     fn clipboard_available(&self) -> bool {
         true
     }
-    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         *self.clipboard.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
     fn paste_from_clipboard(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(self.clipboard.lock().unwrap().clone())
     }
     fn selection_available(&self) -> bool {
         true
     }
-    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         *self.selection.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
     fn paste_from_selection(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(self.selection.lock().unwrap().clone())
     }
 }

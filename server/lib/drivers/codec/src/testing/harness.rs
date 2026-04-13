@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use {reovim_driver_vfs::HeapByteSource, reovim_kernel::api::v1::BufferId};
+use {reovim_kernel::api::v1::BufferId, reovim_subsys_vfs::HeapByteSource};
 
 use crate::{ContentCodec, DecodedEdit, EditError, InodeTable, Mount, TranslateEditError};
 

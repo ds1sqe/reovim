@@ -1208,12 +1208,12 @@ fn test_editing_state_debug_format() {
 struct TestPlacementCompositor;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_layout::RootCompositor for TestPlacementCompositor {
+impl reovim_subsys_layout::RootCompositor for TestPlacementCompositor {
     fn composite(
         &self,
-        screen: reovim_driver_layout::Rect,
-    ) -> reovim_driver_layout::CompositeResult {
-        use reovim_driver_layout::{
+        screen: reovim_subsys_layout::Rect,
+    ) -> reovim_subsys_layout::CompositeResult {
+        use reovim_subsys_layout::{
             CompositeResult, LayerId, WindowId, WindowPlacement, ZOrder, Zone,
         };
 
@@ -1222,7 +1222,7 @@ impl reovim_driver_layout::RootCompositor for TestPlacementCompositor {
                 window_id: WindowId::from_raw(1),
                 layer_id: LayerId::new(0),
                 zone: Zone::Tiled,
-                bounds: reovim_driver_layout::Rect::new(0, 0, 80, 24),
+                bounds: reovim_subsys_layout::Rect::new(0, 0, 80, 24),
                 z_order: ZOrder::new(0),
                 visible: true,
                 focusable: true,
@@ -1236,54 +1236,54 @@ impl reovim_driver_layout::RootCompositor for TestPlacementCompositor {
 
     fn create_layer(
         &mut self,
-        _config: reovim_driver_layout::LayerConfig,
-    ) -> reovim_driver_layout::LayerId {
-        reovim_driver_layout::LayerId::new(0)
+        _config: reovim_subsys_layout::LayerConfig,
+    ) -> reovim_subsys_layout::LayerId {
+        reovim_subsys_layout::LayerId::new(0)
     }
 
-    fn remove_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
+    fn remove_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
 
-    fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_layout::LayerId> {
+    fn layer_by_label(&self, _label: &str) -> Option<reovim_subsys_layout::LayerId> {
         None
     }
 
-    fn layers(&self) -> Vec<&reovim_driver_layout::Layer> {
+    fn layers(&self) -> Vec<&reovim_subsys_layout::Layer> {
         Vec::new()
     }
 
-    fn set_layer_visible(&mut self, _layer: reovim_driver_layout::LayerId, _visible: bool) {}
+    fn set_layer_visible(&mut self, _layer: reovim_subsys_layout::LayerId, _visible: bool) {}
 
-    fn set_layer_opacity(&mut self, _layer: reovim_driver_layout::LayerId, _opacity: f32) {}
+    fn set_layer_opacity(&mut self, _layer: reovim_subsys_layout::LayerId, _opacity: f32) {}
 
-    fn reorder_layer(&mut self, _layer: reovim_driver_layout::LayerId, _new_z: u16) {}
+    fn reorder_layer(&mut self, _layer: reovim_subsys_layout::LayerId, _new_z: u16) {}
 
-    fn set_active_layer(&mut self, _layer: reovim_driver_layout::LayerId) {}
+    fn set_active_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
 
-    fn active_layer(&self) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+    fn active_layer(&self) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
 
-    fn set_focus(&mut self, _window: reovim_driver_layout::WindowId) {}
+    fn set_focus(&mut self, _window: reovim_subsys_layout::WindowId) {}
 
-    fn focused(&self) -> Option<reovim_driver_layout::WindowId> {
-        Some(reovim_driver_layout::WindowId::from_raw(1))
+    fn focused(&self) -> Option<reovim_subsys_layout::WindowId> {
+        Some(reovim_subsys_layout::WindowId::from_raw(1))
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<reovim_driver_layout::WindowId> {
+    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<reovim_subsys_layout::WindowId> {
         None
     }
 
     fn layer_compositor(
         &self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&dyn reovim_subsys_layout::WindowLayerCompositor> {
         None
     }
 
     fn layer_compositor_mut(
         &mut self,
-        _layer: reovim_driver_layout::LayerId,
-    ) -> Option<&mut dyn reovim_driver_layout::WindowLayerCompositor> {
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&mut dyn reovim_subsys_layout::WindowLayerCompositor> {
         None
     }
 
@@ -1291,16 +1291,16 @@ impl reovim_driver_layout::RootCompositor for TestPlacementCompositor {
         1
     }
 
-    fn set_screen(&mut self, _screen: reovim_driver_layout::Rect) {}
+    fn set_screen(&mut self, _screen: reovim_subsys_layout::Rect) {}
 
     fn layer_of(
         &self,
-        _window: reovim_driver_layout::WindowId,
-    ) -> Option<reovim_driver_layout::LayerId> {
-        Some(reovim_driver_layout::LayerId::new(0))
+        _window: reovim_subsys_layout::WindowId,
+    ) -> Option<reovim_subsys_layout::LayerId> {
+        Some(reovim_subsys_layout::LayerId::new(0))
     }
 
-    fn boxed_clone(&self) -> Box<dyn reovim_driver_layout::RootCompositor> {
+    fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
         Box::new(Self)
     }
 }

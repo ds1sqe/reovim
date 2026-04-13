@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_layout::{LayerConfig, Rect, RootCompositor, SplitDirection},
+    reovim_subsys_layout::{LayerConfig, Rect, RootCompositor, SplitDirection},
 };
 
 fn screen() -> Rect {

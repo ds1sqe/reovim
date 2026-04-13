@@ -204,7 +204,7 @@ fn test_command_context_vfs_none_by_default() {
 
 #[test]
 fn test_command_context_set_vfs() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let mut ctx = CommandContext::new();
     let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
@@ -214,7 +214,7 @@ fn test_command_context_set_vfs() {
 
 #[test]
 fn test_command_context_with_vfs() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
     let ctx = CommandContext::new().with_vfs(vfs);
@@ -223,7 +223,7 @@ fn test_command_context_with_vfs() {
 
 #[test]
 fn test_command_context_debug_with_vfs() {
-    use reovim_driver_vfs::MockVfs;
+    use reovim_subsys_vfs::MockVfs;
 
     let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
     let ctx = CommandContext::new().with_vfs(vfs);

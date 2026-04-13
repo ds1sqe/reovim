@@ -5,7 +5,7 @@
 //! the path is not inside a repository.
 
 use {
-    reovim_driver_git::{
+    reovim_subsys_git::{
         GitProvider,
         types::{BlameEntry, BranchInfo, DiffHunk, FileStatus, LogEntry, StashEntry, StatusEntry},
     },

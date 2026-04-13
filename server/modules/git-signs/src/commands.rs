@@ -3,9 +3,9 @@
 use {
     reovim_driver_command::{Command, CommandHandler, CommandResult},
     reovim_driver_command_types::CommandContext,
-    reovim_driver_git::GitProviderStore,
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_git::GitProviderStore,
 };
 
 use crate::{ids, navigation};
@@ -283,7 +283,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn navigate_hunk(
     runtime: &mut SessionRuntime<'_>,
-    direction: fn(&[reovim_driver_git::types::DiffHunk], usize) -> Option<usize>,
+    direction: fn(&[reovim_subsys_git::types::DiffHunk], usize) -> Option<usize>,
 ) -> CommandResult {
     let Some(buf_id) = runtime.active_buffer() else {
         return CommandResult::Success;

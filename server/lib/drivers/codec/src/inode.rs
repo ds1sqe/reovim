@@ -3,8 +3,8 @@
 use std::{collections::HashMap, fmt, io, num::NonZeroU64, path::Path, sync::Arc};
 
 use {
-    reovim_driver_vfs::ByteSource,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
+    reovim_subsys_vfs::ByteSource,
 };
 
 use {
@@ -290,7 +290,7 @@ impl Inode {
 
     /// Replace canonical bytes with a new byte slice.
     fn set_bytes(&mut self, bytes: Vec<u8>) {
-        self.bytes = Arc::new(reovim_driver_vfs::HeapByteSource::new(bytes));
+        self.bytes = Arc::new(reovim_subsys_vfs::HeapByteSource::new(bytes));
     }
 }
 

@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use {reovim_driver_codec::Inode, reovim_driver_vfs::HeapByteSource};
+use {reovim_driver_codec::Inode, reovim_subsys_vfs::HeapByteSource};
 
 fn main() {
     let _ = Inode {

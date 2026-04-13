@@ -23,11 +23,11 @@ mod keybinding;
 
 use {
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
-    reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version,
     },
+    reovim_subsys_manifest::ModeBridgeStore,
 };
 
 pub(crate) const KIND_JUMP: &str = "range-finder-jump";

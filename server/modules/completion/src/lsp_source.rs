@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_completion::{
+    reovim_kernel::api::v1::Service,
+    reovim_subsys_completion::{
         CompletionContext, CompletionItem, CompletionKind, CompletionSource,
     },
-    reovim_kernel::api::v1::Service,
 };
 
 /// Completion source backed by an LSP server.

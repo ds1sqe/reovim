@@ -158,8 +158,8 @@ fn test_optional_dependencies_contain_vim() {
 /// (personality module initializes before snippet).
 fn register_mock_parent(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>) {
     use {
-        reovim_driver_manifest::{ManifestModeBridge, ModeBridgeStore},
         reovim_kernel::api::v1::ModeId,
+        reovim_subsys_manifest::{ManifestModeBridge, ModeBridgeStore},
     };
 
     let parent = ModeId::new(ModuleId::new("vim"), "insert");

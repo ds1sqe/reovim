@@ -21,8 +21,8 @@
 
 use {
     reovim_domain_text::{HistoryRing, Position, RegisterBank},
-    reovim_driver_layout::RootCompositor,
     reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, WindowId},
+    reovim_subsys_layout::RootCompositor,
 };
 
 use crate::MarkBank;

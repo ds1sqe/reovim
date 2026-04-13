@@ -2,19 +2,19 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Git branches picker module for reovim.
 //!
-//! Lists local branches via [`GitProvider`](reovim_driver_git::GitProvider)
+//! Lists local branches via [`GitProvider`](reovim_subsys_git::GitProvider)
 //! and registers in the `PickerRegistry` for use with microscope.
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_git::GitProviderStore,
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
     },
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, ServiceRegistry, Version,
     },
+    reovim_subsys_git::GitProviderStore,
 };
 
 /// Picker that lists git branches.

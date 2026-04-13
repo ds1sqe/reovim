@@ -12,6 +12,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel**: `reovim-domain-text` removed from kernel dependency graph entirely. ~5,190 lines of text-domain tests relocated
 - **kernel**: `UnsavedBuffer.line_count: usize` replaced with `content_size: u64`
 - **kernel**: `CommandRegistration` capability flags renamed to domain-neutral vocabulary
+- **drivers**: 12 pure-contract driver crates renamed from `reovim-driver-*` to `reovim-subsys-*` and moved from `server/lib/drivers/` to `server/lib/subsys/`. Affected crates: annotation, clipboard, completion, formatter, git, layout, manifest, module-config, module-loader, module-registry, statusline, vfs. All `use reovim_driver_{name}` imports must change to `use reovim_subsys_{name}`
 
 ### Added
 

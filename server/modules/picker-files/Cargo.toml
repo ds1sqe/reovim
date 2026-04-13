@@ -17,7 +17,7 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 reovim-kernel = { workspace = true }
 reovim-driver-picker = { workspace = true }
 reovim-driver-session = { workspace = true }
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 reovim-module-macros = { workspace = true }
 ignore = { workspace = true }
 

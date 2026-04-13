@@ -28,17 +28,17 @@ reovim-module-editor = { workspace = true }
 reovim-module-motions = { workspace = true }
 # Note: operators module merged into vim (Epic #385)
 reovim-module-textobjects = { workspace = true }
-reovim-driver-clipboard = { workspace = true }
+reovim-subsys-clipboard = { workspace = true }
 reovim-driver-undo = { workspace = true }
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 reovim-driver-search = { workspace = true }
 # Window-ops module for window command IDs (Epic #465 - layout archived)
 reovim-module-window-ops = { workspace = true }
 # Annotation driver for data types (#455, #625 D2)
-reovim-driver-annotation = { workspace = true }
+reovim-subsys-annotation = { workspace = true }
 # Layout driver for compositor traits
-reovim-driver-layout = { workspace = true }
-reovim-driver-manifest = { workspace = true }
+reovim-subsys-layout = { workspace = true }
+reovim-subsys-manifest = { workspace = true }
 # BufferOps trait moved to provider-text (#740)
 reovim-provider-text = { workspace = true }
 serde_json = { workspace = true }

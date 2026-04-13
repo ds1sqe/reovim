@@ -90,7 +90,7 @@ struct TestState {
     mode_stack: ModeStack,
     windows: WindowLayout,
     extensions: ExtensionMap,
-    compositor: Option<Box<dyn reovim_driver_layout::RootCompositor>>,
+    compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
     tabs: reovim_driver_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
@@ -788,7 +788,7 @@ fn test_enter_insert_mode_append_on_second_line() {
 use {
     reovim_domain_text::{Edit, UndoResult, UndoTree},
     reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
-    reovim_driver_vfs::VfsDriver,
+    reovim_subsys_vfs::VfsDriver,
 };
 
 /// Minimal mock undo provider that tracks `begin_batch`/`end_batch` calls.
@@ -1746,10 +1746,10 @@ fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
     let buffer = Buffer::from_string("hello");
     let buffer_id = register_buf(&ctx, buffer);
 
-    let mock_vfs = Arc::new(reovim_driver_vfs::MockVfs::new());
+    let mock_vfs = Arc::new(reovim_subsys_vfs::MockVfs::new());
     let mut args = CommandContext::new();
     args.set_buffer_id(buffer_id);
-    args.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+    args.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_subsys_vfs::VfsDriver>);
 
     let mut state = TestState::with_buffer(Some(buffer_id));
     let mut runtime = state.runtime_with_executor(&ctx, &executor);

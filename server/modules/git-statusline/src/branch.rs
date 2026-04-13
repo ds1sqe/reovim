@@ -3,8 +3,8 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_git::GitProvider,
-    reovim_driver_statusline::{ComponentData, ComponentDataContext, ComponentDataProvider},
+    reovim_subsys_git::GitProvider,
+    reovim_subsys_statusline::{ComponentData, ComponentDataContext, ComponentDataProvider},
 };
 
 /// Statusline data provider that produces the current git branch name.

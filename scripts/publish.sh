@@ -64,29 +64,29 @@ CRATES=(
 
     # Tier 1 — kernel, protocol, base drivers
     "shared/clients/driver"                        # reovim-client-driver
-    "server/lib/drivers/module-registry"           # reovim-driver-module-registry
+    "server/lib/subsys/module-registry"            # reovim-subsys-module-registry
     "clients/tui/lib/drivers/tui"                  # reovim-driver-tui
     "server/lib/kernel"                            # reovim-kernel
     "shared/protocol"                              # reovim-protocol
 
     # Tier 2 — drivers, shared libs, TUI client modules
     "clients/cli"                                  # reovim-client-cli
-    "server/lib/drivers/annotation"                # reovim-driver-annotation
+    "server/lib/subsys/annotation"                 # reovim-subsys-annotation
     "server/lib/drivers/buffer"                    # reovim-driver-buffer
-    "server/lib/drivers/clipboard"                 # reovim-driver-clipboard
-    "server/lib/drivers/completion"                # reovim-driver-completion
-    "server/lib/drivers/formatter"                 # reovim-driver-formatter
-    "server/lib/drivers/git"                       # reovim-driver-git
-    "server/lib/drivers/layout"                    # reovim-driver-layout
+    "server/lib/subsys/clipboard"                  # reovim-subsys-clipboard
+    "server/lib/subsys/completion"                 # reovim-subsys-completion
+    "server/lib/subsys/formatter"                  # reovim-subsys-formatter
+    "server/lib/subsys/git"                        # reovim-subsys-git
+    "server/lib/subsys/layout"                     # reovim-subsys-layout
     "shared/log"                                   # reovim-driver-log
-    "server/lib/drivers/manifest"                  # reovim-driver-manifest
-    "server/lib/drivers/module-config"             # reovim-driver-module-config
-    "server/lib/drivers/module-loader"             # reovim-driver-module-loader
+    "server/lib/subsys/manifest"                   # reovim-subsys-manifest
+    "server/lib/subsys/module-config"              # reovim-subsys-module-config
+    "server/lib/subsys/module-loader"               # reovim-subsys-module-loader
     "shared/net"                                   # reovim-driver-net
     "server/lib/drivers/search"                    # reovim-driver-search
-    "server/lib/drivers/statusline"                # reovim-driver-statusline
+    "server/lib/subsys/statusline"                 # reovim-subsys-statusline
     "shared/trace"                                 # reovim-driver-trace
-    "server/lib/drivers/vfs"                       # reovim-driver-vfs
+    "server/lib/subsys/vfs"                       # reovim-subsys-vfs
     "shared/module-macros"                         # reovim-module-macros
     "clients/tui/modules/bufferline"               # reovim-tui-mod-bufferline
     "clients/tui/modules/cmdline"                  # reovim-tui-mod-cmdline

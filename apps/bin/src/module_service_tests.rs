@@ -2,13 +2,13 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use {
     super::*,
-    reovim_driver_module_loader::registry::ModuleRegistry,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     reovim_protocol::v2::{
         ListModulesRequest, LoadModuleRequest, ReloadModuleRequest, UnloadModuleRequest,
         module_service_client::ModuleServiceClient,
     },
     reovim_server::{Server, ServerConfig, SessionFactory, SessionState},
+    reovim_subsys_module_loader::registry::ModuleRegistry,
     tonic::Request,
 };
 

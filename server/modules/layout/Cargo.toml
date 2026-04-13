@@ -16,7 +16,7 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-driver-layout = { workspace = true }
+reovim-subsys-layout = { workspace = true }
 
 [lints]
 workspace = true

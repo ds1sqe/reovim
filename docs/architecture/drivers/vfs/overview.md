@@ -44,11 +44,11 @@ pub struct Metadata {
 
 The large-file subsystem adds zero-copy, mmap-backed infrastructure for working with
 files that are too large to load into a heap buffer. The components live in
-`server/lib/drivers/vfs/src/`.
+`server/lib/subsys/vfs/src/`.
 
 ### PieceTree
 
-Located in `server/lib/drivers/vfs/src/piece_table.rs`.
+Located in `server/lib/subsys/vfs/src/piece_table.rs`.
 
 A B-tree data structure with `Arc` structural sharing that enables O(1) clone. It is
 byte-only — it carries no text semantics (no line indexing, no encoding). Higher layers

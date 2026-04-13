@@ -559,7 +559,7 @@ use {
     reovim_driver_undo::{
         UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
     },
-    reovim_driver_vfs::VfsDriver,
+    reovim_subsys_vfs::VfsDriver,
 };
 
 struct MockUndoProvider {

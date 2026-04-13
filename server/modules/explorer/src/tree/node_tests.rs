@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_vfs::MockVfs, std::path::Path};
+use {super::*, reovim_subsys_vfs::MockVfs, std::path::Path};
 
 fn setup_mock_vfs() -> MockVfs {
     let vfs = MockVfs::new();
@@ -268,11 +268,11 @@ fn test_from_entry_symlink() {
         fn exists(&self, _: &Path) -> bool {
             self.0
         }
-        fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn metadata(&self, p: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(&self, _: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
-            Ok(reovim_driver_vfs::FileMetadata::symlink())
+        fn symlink_metadata(&self, _: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
+            Ok(reovim_subsys_vfs::FileMetadata::symlink())
         }
         fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
             Ok(p.to_path_buf())
@@ -307,8 +307,8 @@ fn test_from_entry_symlink() {
         fn open(
             &self,
             _: &Path,
-            _: reovim_driver_vfs::OpenOptions,
-        ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+            _: reovim_subsys_vfs::OpenOptions,
+        ) -> Result<Box<dyn reovim_subsys_vfs::FileHandle>, VfsError> {
             Err(VfsError::NotSupported("open".into()))
         }
     }
@@ -343,11 +343,11 @@ fn test_from_path_symlink() {
         fn exists(&self, _: &Path) -> bool {
             false
         }
-        fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn metadata(&self, p: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(&self, _: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
-            Ok(reovim_driver_vfs::FileMetadata::symlink())
+        fn symlink_metadata(&self, _: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
+            Ok(reovim_subsys_vfs::FileMetadata::symlink())
         }
         fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
             Ok(p.to_path_buf())
@@ -382,8 +382,8 @@ fn test_from_path_symlink() {
         fn open(
             &self,
             _: &Path,
-            _: reovim_driver_vfs::OpenOptions,
-        ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+            _: reovim_subsys_vfs::OpenOptions,
+        ) -> Result<Box<dyn reovim_subsys_vfs::FileHandle>, VfsError> {
             Err(VfsError::NotSupported("open".into()))
         }
     }
@@ -483,16 +483,16 @@ fn test_load_children_entry_error() {
         fn exists(&self, _: &Path) -> bool {
             true
         }
-        fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn metadata(&self, p: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn symlink_metadata(&self, p: &Path) -> Result<reovim_subsys_vfs::FileMetadata, VfsError> {
             if p.file_name().is_some_and(|n| n == "bad.txt") {
                 Err(VfsError::PermissionDenied(p.to_path_buf()))
             } else if p.ends_with("good.txt") {
-                Ok(reovim_driver_vfs::FileMetadata::file(10))
+                Ok(reovim_subsys_vfs::FileMetadata::file(10))
             } else {
-                Ok(reovim_driver_vfs::FileMetadata::directory())
+                Ok(reovim_subsys_vfs::FileMetadata::directory())
             }
         }
         fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
@@ -531,8 +531,8 @@ fn test_load_children_entry_error() {
         fn open(
             &self,
             _: &Path,
-            _: reovim_driver_vfs::OpenOptions,
-        ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+            _: reovim_subsys_vfs::OpenOptions,
+        ) -> Result<Box<dyn reovim_subsys_vfs::FileHandle>, VfsError> {
             Err(VfsError::NotSupported("open".into()))
         }
     }

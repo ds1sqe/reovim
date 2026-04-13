@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_vfs::VfsDriver, std::path::Path};
+use {super::*, reovim_subsys_vfs::VfsDriver, std::path::Path};
 
 #[test]
 fn state_create_defaults() {
@@ -112,7 +112,7 @@ fn node_count_no_tree() {
 
 #[test]
 fn node_count_with_tree() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -137,7 +137,7 @@ fn update_scroll_no_tree() {
 
 #[test]
 fn update_scroll_clamps_cursor() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -153,7 +153,7 @@ fn update_scroll_clamps_cursor() {
 
 #[test]
 fn update_scroll_scrolls_down() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -173,7 +173,7 @@ fn update_scroll_scrolls_down() {
 
 #[test]
 fn update_scroll_zero_height() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -190,7 +190,7 @@ fn update_scroll_zero_height() {
 
 #[test]
 fn update_scroll_scrolls_up() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -210,7 +210,7 @@ fn update_scroll_scrolls_up() {
 
 #[test]
 fn node_count_uses_cache() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -228,7 +228,7 @@ fn node_count_uses_cache() {
 
 #[test]
 fn node_count_cache_populated_with_tree() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -247,7 +247,7 @@ fn node_count_cache_populated_with_tree() {
 
 #[test]
 fn invalidate_clears_cache() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();
@@ -269,7 +269,7 @@ fn invalidate_clears_cache() {
 
 #[test]
 fn update_scroll_with_count_same_as_update_scroll() {
-    use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+    use {reovim_subsys_vfs::MockVfs, std::sync::Arc};
 
     let mock = Arc::new(MockVfs::new());
     mock.create_dir(Path::new("/root")).unwrap();

@@ -1,0 +1,17 @@
+[package]
+name = "reovim-subsys-formatter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Formatter provider driver for reovim - external formatters and formatting traits"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+tracing = { workspace = true }

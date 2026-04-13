@@ -5,8 +5,8 @@
 use {
     crate::args::ArgValue,
     reovim_domain_text::Position,
-    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_subsys_vfs::VfsDriver,
     std::{collections::HashMap, sync::Arc},
 };
 

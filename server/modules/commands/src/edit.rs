@@ -12,9 +12,9 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
-    reovim_driver_vfs::{FileMapping, VfsDriver},
     reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
     reovim_provider_text::VirtualBuffer,
+    reovim_subsys_vfs::{FileMapping, VfsDriver},
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
@@ -215,11 +215,11 @@ fn open_large_binary(
     let factory_store = services.get::<ContentCodecFactoryStore>();
 
     if let (Some(classifiers), Some(factories)) = (&classifier_store, &factory_store)
-        && let Ok(mut handle) = vfs.open(path, reovim_driver_vfs::OpenOptions::read())
+        && let Ok(mut handle) = vfs.open(path, reovim_subsys_vfs::OpenOptions::read())
     {
         let mut header = [0u8; 64];
         let _ = handle.read(&mut header);
-        let _ = handle.seek(reovim_driver_vfs::SeekFrom::Start(0));
+        let _ = handle.seek(reovim_subsys_vfs::SeekFrom::Start(0));
 
         if let Some(content_type) = classifiers.classify(&header, filename)
             && let Some(codec) = factories.find(&content_type)
@@ -230,7 +230,7 @@ fn open_large_binary(
             if let Some(result) = codec.decode_streaming(handle.as_mut(), file_size) {
                 match result {
                     Ok(decode_result) => {
-                        if handle.seek(reovim_driver_vfs::SeekFrom::Start(0)).is_ok() {
+                        if handle.seek(reovim_subsys_vfs::SeekFrom::Start(0)).is_ok() {
                             let mut canonical = Vec::new();
                             if handle.read_to_end(&mut canonical).is_ok() {
                                 if let Some(codec_state) =

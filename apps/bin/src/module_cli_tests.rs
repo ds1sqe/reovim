@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_module_registry::{InstalledModule, InstalledModules, RegistryError},
+    reovim_subsys_module_registry::{InstalledModule, InstalledModules, RegistryError},
 };
 
 /// Create a unique temp directory for the test, returning its path.

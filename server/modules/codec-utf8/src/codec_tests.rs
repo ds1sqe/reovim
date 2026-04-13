@@ -3,8 +3,8 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType, DecodedEdit},
-    reovim_driver_vfs::HeapByteSource,
     reovim_kernel::api::v1::ByteEdit,
+    reovim_subsys_vfs::HeapByteSource,
 };
 
 use super::*;

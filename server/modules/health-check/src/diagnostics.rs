@@ -1,11 +1,11 @@
 //! Diagnostic collection and formatting.
 
 use {
-    reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_driver_lsp::{LspKey, LspProviderRegistry},
-    reovim_driver_module_loader::report::ModuleLoadReport,
     reovim_driver_syntax::{LanguageInfoStore, SyntaxFactoryStore},
     reovim_kernel::api::v1::{API_VERSION_STR, KernelContext},
+    reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry},
+    reovim_subsys_module_loader::report::ModuleLoadReport,
     std::fmt::{self, Write},
 };
 

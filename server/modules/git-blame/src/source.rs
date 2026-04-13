@@ -8,12 +8,12 @@ use std::{
 };
 
 use {
-    reovim_driver_annotation::{
+    reovim_kernel::api::v1::BufferId,
+    reovim_subsys_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget,
     },
-    reovim_driver_git::{GitProvider, types::BlameEntry},
-    reovim_kernel::api::v1::BufferId,
+    reovim_subsys_git::{GitProvider, types::BlameEntry},
 };
 
 use crate::format::format_blame;

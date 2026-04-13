@@ -19,8 +19,8 @@ use {
         PreviewContent, SessionRuntime,
     },
     reovim_driver_session::{BufferApi, ChangeTracker, WindowApi},
-    reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_subsys_vfs::VfsInstance,
 };
 
 /// Number of context lines to show around a grep match in preview.

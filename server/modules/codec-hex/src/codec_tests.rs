@@ -2,7 +2,7 @@
 
 use {
     reovim_driver_codec::{ContentCodec, ContentType, DecodedEdit},
-    reovim_driver_vfs::HeapByteSource,
+    reovim_subsys_vfs::HeapByteSource,
 };
 
 use super::*;

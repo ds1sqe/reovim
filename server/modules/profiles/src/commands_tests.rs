@@ -2,8 +2,8 @@ use {
     super::*,
     reovim_driver_command_types::ArgValue,
     reovim_driver_session::testing::TestSessionRuntime,
-    reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::api::v1::{OptionSpec, OptionValue},
+    reovim_subsys_vfs::{MockVfs, VfsDriver},
     std::sync::Arc,
 };
 
@@ -112,7 +112,7 @@ fn test_save_vfs_write_error() {
     let vfs = Arc::new(MockVfs::new());
     vfs.add_dir("/data");
     vfs.add_dir("/data/profiles");
-    vfs.set_error("/data/profiles/test.toml", reovim_driver_vfs::MockErrorKind::PermissionDenied);
+    vfs.set_error("/data/profiles/test.toml", reovim_subsys_vfs::MockErrorKind::PermissionDenied);
     let args = make_ctx_with_vfs_and_name(&vfs, "test");
 
     let cmd = ProfileSaveCommand::new(profiles_dir());
@@ -327,7 +327,7 @@ fn test_list_vfs_error() {
     let mut test = TestSessionRuntime::new();
     let vfs = Arc::new(MockVfs::new());
     vfs.add_dir("/data/profiles");
-    vfs.set_error("/data/profiles", reovim_driver_vfs::MockErrorKind::PermissionDenied);
+    vfs.set_error("/data/profiles", reovim_subsys_vfs::MockErrorKind::PermissionDenied);
     let args = make_ctx_with_vfs(&vfs);
 
     let cmd = ProfileListCommand::new(profiles_dir());

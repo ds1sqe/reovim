@@ -25,11 +25,11 @@
 //! on the underlying tiled/float window.
 //!
 use {
-    reovim_driver_layout::{
+    reovim_kernel::api::v1::TabId,
+    reovim_subsys_layout::{
         LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowId,
         WindowPlacement,
     },
-    reovim_kernel::api::v1::TabId,
 };
 
 /// Errors from compositor operations.

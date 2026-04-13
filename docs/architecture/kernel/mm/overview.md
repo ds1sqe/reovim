@@ -114,7 +114,7 @@ The following types were removed from `mm/` as part of #740 and now live in
 | `BufferSnapshot` | `reovim-provider-text` |
 | `Position`, `Edit`, `Selection` | `reovim-domain-text` |
 | `LineIndex`, delimiter matching | `reovim-domain-text` |
-| `FileMapping`, `PieceTree` | `reovim-driver-vfs` |
+| `FileMapping`, `PieceTree` | `reovim-subsys-vfs` |
 
 ## Related Documents
 

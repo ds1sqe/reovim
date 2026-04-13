@@ -1,9 +1,9 @@
 //! Root compositor implementation.
 //!
 //! Manages multiple layers, each with its own `HybridLayerCompositor`.
-//! Implements `RootCompositor` from `reovim-driver-layout`.
+//! Implements `RootCompositor` from `reovim-subsys-layout`.
 
-use reovim_driver_layout::{
+use reovim_subsys_layout::{
     CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
     WindowLayerCompositor, WindowPlacement, ZOrder,
 };
@@ -43,7 +43,7 @@ impl HybridCompositor {
     /// Find the layer index containing a window.
     fn layer_index_of(&self, window: WindowId) -> Option<usize> {
         self.layers.iter().position(|(_, comp)| {
-            comp.windows_in_zone(reovim_driver_layout::Zone::Tiled)
+            comp.windows_in_zone(reovim_subsys_layout::Zone::Tiled)
                 .contains(&window)
         })
     }
@@ -202,7 +202,7 @@ impl RootCompositor for HybridCompositor {
         self.layers
             .iter()
             .map(|(_, comp)| {
-                comp.windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                comp.windows_in_zone(reovim_subsys_layout::Zone::Tiled)
                     .len()
             })
             .sum()

@@ -1,8 +1,8 @@
 use {
     super::*,
     reovim_driver_lsp::{DiagnosticCache, LspProvider, LspRequest, lsp_types::ServerInfo},
-    reovim_driver_module_loader::report::ModuleLoadReport,
     reovim_kernel::api::v1::{ModuleId, OptionSpec, OptionValue},
+    reovim_subsys_module_loader::report::ModuleLoadReport,
     std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -741,7 +741,7 @@ fn test_collect_treesitter_both_factories_and_langs() {
 // collect_clipboard - with providers
 // ========================================================================
 
-use reovim_driver_clipboard::ClipboardProvider;
+use reovim_subsys_clipboard::ClipboardProvider;
 
 /// Mock clipboard provider for testing diagnostics.
 struct MockClipboardProvider {
@@ -761,26 +761,26 @@ impl ClipboardProvider for MockClipboardProvider {
     fn copy_to_clipboard(
         &self,
         _text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         Ok(())
     }
 
     fn paste_from_clipboard(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(None)
     }
 
     fn copy_to_selection(
         &self,
         _text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<(), reovim_subsys_clipboard::ClipboardError> {
         Ok(())
     }
 
     fn paste_from_selection(
         &self,
-    ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+    ) -> Result<Option<String>, reovim_subsys_clipboard::ClipboardError> {
         Ok(None)
     }
 }

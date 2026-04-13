@@ -6,11 +6,11 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_annotation::{
+    reovim_kernel::api::v1::BufferId,
+    reovim_subsys_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget, LineNumberMode,
     },
-    reovim_kernel::api::v1::BufferId,
 };
 
 /// Static annotation kind for line numbers.

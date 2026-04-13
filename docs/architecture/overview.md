@@ -107,7 +107,7 @@ See: [Session Model](./session-model.md)
 | `arch/` | `shared/arch/` | Platform abstraction (Unix, Windows) |
 | `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
 | `drivers/` | `server/lib/drivers/*` | Hardware/service adapters |
-| `fs/` | `server/lib/drivers/vfs/` | Virtual filesystem |
+| `fs/` | `server/lib/subsys/vfs/` | Virtual filesystem |
 | Subsystem libraries | `server/lib/providers/*` | High-level domain services |
 | Loadable Modules | `server/modules/` | Dynamic policy modules |
 

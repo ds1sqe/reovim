@@ -15,26 +15,26 @@ members = [
     "server/lib/drivers/syntax",
     "server/lib/drivers/syntax-treesitter",
     "server/lib/drivers/lsp",
-    "server/lib/drivers/vfs",
+    "server/lib/subsys/vfs",
     "server/lib/drivers/session",
     "server/lib/drivers/undo",
     "server/lib/drivers/buffer",
     "server/lib/drivers/search",
-    "server/lib/drivers/clipboard",
-    "server/lib/drivers/formatter",
+    "server/lib/subsys/clipboard",
+    "server/lib/subsys/formatter",
     "server/lib/drivers/ffi",
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
-    "server/lib/drivers/completion",
+    "server/lib/subsys/completion",
     "shared/depgraph",
-    "server/lib/drivers/manifest",
-    "server/lib/drivers/module-config",
-    "server/lib/drivers/module-loader",
-    "server/lib/drivers/git",
-    "server/lib/drivers/module-registry",
-    "server/lib/drivers/layout",
-    "server/lib/drivers/annotation",
-    "server/lib/drivers/statusline",
+    "server/lib/subsys/manifest",
+    "server/lib/subsys/module-config",
+    "server/lib/subsys/module-loader",
+    "server/lib/subsys/git",
+    "server/lib/subsys/module-registry",
+    "server/lib/subsys/layout",
+    "server/lib/subsys/annotation",
+    "server/lib/subsys/statusline",
     "server/lib/drivers/codec",
     "server/lib/drivers/codec-xxd",
 
@@ -173,8 +173,8 @@ members = [
     "tools/perf-report",
 
     # Test fixtures (cdylib modules for integration testing)
-    "server/lib/drivers/module-loader/tests/fixtures/test_module",
-    "server/lib/drivers/module-loader/tests/fixtures/sample_module",
+    "server/lib/subsys/module-loader/tests/fixtures/test_module",
+    "server/lib/subsys/module-loader/tests/fixtures/sample_module",
     "clients/tui/tests/fixtures/sample_client_module",
     "shared/clients/driver/tests/fixtures/minimal_client_module",
     "shared/clients/driver/tests/fixtures/incompatible_api_client_module",
@@ -262,27 +262,27 @@ reovim-driver-input = { path = "./server/lib/drivers/input", version = "0.15.0-d
 reovim-driver-syntax = { path = "./server/lib/drivers/syntax", version = "0.15.0-dev" }
 reovim-driver-syntax-treesitter = { path = "./server/lib/drivers/syntax-treesitter", version = "0.15.0-dev" }
 reovim-driver-lsp = { path = "./server/lib/drivers/lsp", version = "0.15.0-dev" }
-reovim-driver-vfs = { path = "./server/lib/drivers/vfs", version = "0.15.0-dev" }
+reovim-subsys-vfs = { path = "./server/lib/subsys/vfs", version = "0.15.0-dev" }
 reovim-driver-session = { path = "./server/lib/drivers/session", version = "0.15.0-dev" }
 reovim-driver-undo = { path = "./server/lib/drivers/undo", version = "0.15.0-dev" }
 reovim-driver-buffer = { path = "./server/lib/drivers/buffer", version = "0.15.0-dev" }
 reovim-driver-search = { path = "./server/lib/drivers/search", version = "0.15.0-dev" }
-reovim-driver-clipboard = { path = "./server/lib/drivers/clipboard", version = "0.15.0-dev" }
-reovim-driver-formatter = { path = "./server/lib/drivers/formatter", version = "0.15.0-dev" }
+reovim-subsys-clipboard = { path = "./server/lib/subsys/clipboard", version = "0.15.0-dev" }
+reovim-subsys-formatter = { path = "./server/lib/subsys/formatter", version = "0.15.0-dev" }
 reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.15.0-dev" }
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.15.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.15.0-dev" }
-reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.15.0-dev" }
+reovim-subsys-completion = { path = "./server/lib/subsys/completion", version = "0.15.0-dev" }
 reovim-depgraph = { path = "./shared/depgraph", version = "0.15.0-dev" }
-reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.15.0-dev" }
-reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.15.0-dev" }
+reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
+reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
 reovim-provider-text = { path = "./server/lib/providers/text", version = "0.15.0-dev" }
-reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.15.0-dev" }
-reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.15.0-dev" }
-reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry", version = "0.15.0-dev" }
-reovim-driver-layout = { path = "./server/lib/drivers/layout", version = "0.15.0-dev" }
-reovim-driver-annotation = { path = "./server/lib/drivers/annotation", version = "0.15.0-dev" }
-reovim-driver-statusline = { path = "./server/lib/drivers/statusline", version = "0.15.0-dev" }
+reovim-subsys-module-loader = { path = "./server/lib/subsys/module-loader", version = "0.15.0-dev" }
+reovim-subsys-git = { path = "./server/lib/subsys/git", version = "0.15.0-dev" }
+reovim-subsys-module-registry = { path = "./server/lib/subsys/module-registry", version = "0.15.0-dev" }
+reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-dev" }
+reovim-subsys-annotation = { path = "./server/lib/subsys/annotation", version = "0.15.0-dev" }
+reovim-subsys-statusline = { path = "./server/lib/subsys/statusline", version = "0.15.0-dev" }
 reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.15.0-dev" }
 reovim-driver-codec-xxd = { path = "./server/lib/drivers/codec-xxd", version = "0.15.0-dev" }
 
