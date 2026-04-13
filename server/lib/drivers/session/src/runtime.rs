@@ -39,7 +39,6 @@
 
 use {
     reovim_domain_text::{Edit, Position, UndoResult},
-    reovim_driver_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         BufferId, ByteEdit, CommandId, KernelContext, ModeId, OptionValue, TabId, WindowId,
@@ -47,6 +46,7 @@ use {
     },
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry},
+    reovim_subsys_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_subsys_layout::{
         LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowPlacement,
     },

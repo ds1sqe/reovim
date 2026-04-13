@@ -23,9 +23,9 @@ use std::ffi::CStr;
 
 use {
     libc::c_char,
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::api::CommandApi,
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 #[allow(clippy::wildcard_imports)]
@@ -95,10 +95,10 @@ pub unsafe extern "C" fn reovim_execute_command(
         let mut ctx = CommandContext::new();
         if count >= 0 {
             #[allow(clippy::cast_sign_loss)]
-            ctx.set("count", reovim_driver_command_types::ArgValue::Count(count as usize));
+            ctx.set("count", reovim_subsys_command_types::ArgValue::Count(count as usize));
         }
         if register != 0 {
-            ctx.set("register", reovim_driver_command_types::ArgValue::Register(register as char));
+            ctx.set("register", reovim_subsys_command_types::ArgValue::Register(register as char));
         }
 
         match with_runtime(|rt| {
@@ -110,7 +110,7 @@ pub unsafe extern "C" fn reovim_execute_command(
             Ok((result, signals)) => {
                 if signals
                     .iter()
-                    .any(|s| matches!(s, reovim_driver_command_types::RuntimeSignal::Quit))
+                    .any(|s| matches!(s, reovim_subsys_command_types::RuntimeSignal::Quit))
                 {
                     REOVIM_CMD_QUIT
                 } else {
@@ -215,9 +215,10 @@ fn command_context_to_ffi_args(ctx: &CommandContext) -> ReovimCommandArgs {
 
     let (has_register, register) = ctx.register().map_or((0, 0), |c| (1, c as u8));
 
-    let (has_cursor, cursor) = ctx
-        .cursor_position()
-        .map_or_else(|| (0, ReovimPosition::new(0, 0)), |pos| (1, ReovimPosition::from(pos)));
+    let (has_cursor, cursor) = ctx.cursor_position().map_or_else(
+        || (0, ReovimPosition::new(0, 0)),
+        |(line, col)| (1, ReovimPosition::new(line as u32, col as u32)),
+    );
 
     ReovimCommandArgs {
         has_count,

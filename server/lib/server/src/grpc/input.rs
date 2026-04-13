@@ -27,13 +27,13 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
     reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
         notification,
     },
+    reovim_subsys_command_types::{ArgValue, CommandContext, CommandResult},
     tonic::{Request, Response, Status},
 };
 
@@ -754,7 +754,7 @@ impl InputServiceImpl {
                         changes.merge(cmd_state_changes);
                         for signal in signals {
                             match signal {
-                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                reovim_subsys_command_types::RuntimeSignal::Quit => {
                                     tracing::info!(
                                         %client_id,
                                         "Client requested quit via RuntimeSignal"
@@ -1020,7 +1020,7 @@ impl InputServiceImpl {
                         tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
                         for signal in signals {
                             match signal {
-                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                reovim_subsys_command_types::RuntimeSignal::Quit => {
                                     tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
                                     changes.record_quit_requested();
                                 }
@@ -1031,7 +1031,7 @@ impl InputServiceImpl {
                         changes.merge(cmd_changes);
                         for signal in signals {
                             match signal {
-                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                reovim_subsys_command_types::RuntimeSignal::Quit => {
                                     tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
                                     changes.record_quit_requested();
                                 }

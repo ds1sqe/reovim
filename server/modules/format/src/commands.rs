@@ -5,9 +5,9 @@
 
 use {
     reovim_driver_command::CommandHandler,
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command_types::{CommandContext, CommandResult},
     tracing::debug,
 };
 

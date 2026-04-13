@@ -1,4 +1,8 @@
-use super::*;
+use {
+    super::*,
+    reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command::{ArgSpec, Command, CommandPriority},
+};
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]

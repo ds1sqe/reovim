@@ -25,7 +25,7 @@ reovim-domain-text = { workspace = true }
 reovim-driver-session = { workspace = true }
 
 # Command types (CommandContext, CommandResult)
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 
 # FFI support
 libc = "0.2"

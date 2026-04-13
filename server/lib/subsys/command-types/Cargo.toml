@@ -1,0 +1,20 @@
+[package]
+name = "reovim-subsys-command-types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command types for reovim (shared between command and session drivers)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (for BufferId)
+reovim-kernel = { workspace = true }
+
+# Driver layer (for VfsDriver)
+reovim-subsys-vfs = { workspace = true }

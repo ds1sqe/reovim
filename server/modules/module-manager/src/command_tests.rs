@@ -1,9 +1,9 @@
 use {
     super::*,
     reovim_driver_command::Command,
-    reovim_driver_command_types::CommandContext,
     reovim_driver_session::{BufferApi, testing::TestSessionRuntime},
     reovim_kernel::api::v1::ModuleId,
+    reovim_subsys_command_types::CommandContext,
     reovim_subsys_module_loader::report::ModuleLoadReport,
     std::sync::Arc,
 };

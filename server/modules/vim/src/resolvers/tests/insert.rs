@@ -20,7 +20,6 @@ use {
 
 use {
     reovim_domain_text::{Edit, UndoResult},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         Selection, WindowError,
         api::{
@@ -28,6 +27,7 @@ use {
             WindowApi,
         },
     },
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.

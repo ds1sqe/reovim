@@ -340,7 +340,7 @@ fn register_constrained_int_option(harness: &reovim_driver_session::testing::Tes
 
 fn make_ctx(expr: &str) -> CommandContext {
     let mut ctx = CommandContext::new();
-    ctx.set("expr", reovim_driver_command_types::ArgValue::String(expr.to_string()));
+    ctx.set("expr", reovim_subsys_command_types::ArgValue::String(expr.to_string()));
     ctx
 }
 

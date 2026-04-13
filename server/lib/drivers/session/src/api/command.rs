@@ -34,8 +34,8 @@
 //! ```
 
 use {
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command_types::{CommandContext, CommandResult},
     std::sync::Arc,
 };
 

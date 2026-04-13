@@ -17,7 +17,7 @@ reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-driver-ffi = { workspace = true }
 reovim-driver-session = { workspace = true }
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 # Note: extension-module is NOT used because we embed Python in the runner.
 # If building a standalone Python extension, add extension-module feature.
 pyo3 = { version = "0.27", features = ["auto-initialize"] }

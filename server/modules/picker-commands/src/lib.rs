@@ -8,7 +8,6 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_command_types::CommandContext,
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
@@ -16,6 +15,7 @@ use {
     reovim_kernel::api::v1::{
         CommandId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
+    reovim_subsys_command_types::CommandContext,
 };
 
 // ============================================================================

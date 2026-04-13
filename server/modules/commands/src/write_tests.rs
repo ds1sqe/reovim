@@ -275,7 +275,7 @@ fn test_write_success_with_existing_path() {
 #[test]
 fn test_write_with_explicit_file_renames_buffer() {
     use {
-        reovim_driver_command_types::ArgValue, reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_command_types::ArgValue,
         reovim_subsys_vfs::MockVfs, std::sync::Arc,
     };
 

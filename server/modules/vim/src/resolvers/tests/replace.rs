@@ -64,7 +64,6 @@ fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
 
 use {
     reovim_domain_text::{Edit, UndoResult},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         Selection, WindowError,
         api::{
@@ -72,6 +71,7 @@ use {
             WindowApi,
         },
     },
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 /// Mock session with configurable buffer content.

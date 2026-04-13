@@ -418,12 +418,12 @@ impl PyRuntimeApi {
     ) -> PyResult<String> {
         let command_id = reovim_kernel::api::v1::CommandId::from_qualified(cmd_id.to_string());
 
-        let mut ctx = reovim_driver_command_types::CommandContext::new();
+        let mut ctx = reovim_subsys_command_types::CommandContext::new();
         if let Some(n) = count {
-            ctx.set("count", reovim_driver_command_types::ArgValue::Count(n));
+            ctx.set("count", reovim_subsys_command_types::ArgValue::Count(n));
         }
         if let Some(r) = register {
-            ctx.set("register", reovim_driver_command_types::ArgValue::Register(r));
+            ctx.set("register", reovim_subsys_command_types::ArgValue::Register(r));
         }
 
         with_runtime(|rt| {
@@ -431,13 +431,13 @@ impl PyRuntimeApi {
             let signals = rt.take_signals();
             if signals
                 .iter()
-                .any(|s| matches!(s, reovim_driver_command_types::RuntimeSignal::Quit))
+                .any(|s| matches!(s, reovim_subsys_command_types::RuntimeSignal::Quit))
             {
                 "quit".to_string()
             } else {
                 match result {
-                    reovim_driver_command_types::CommandResult::Success => "success".to_string(),
-                    reovim_driver_command_types::CommandResult::Error(e) => format!("error: {e}"),
+                    reovim_subsys_command_types::CommandResult::Success => "success".to_string(),
+                    reovim_subsys_command_types::CommandResult::Error(e) => format!("error: {e}"),
                 }
             }
         })

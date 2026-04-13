@@ -2,9 +2,9 @@
 
 use {
     reovim_driver_command::{Command, CommandHandler, CommandResult},
-    reovim_driver_command_types::CommandContext,
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command_types::CommandContext,
     reovim_subsys_git::GitProviderStore,
 };
 

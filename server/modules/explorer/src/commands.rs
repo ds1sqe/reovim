@@ -6,12 +6,12 @@
 
 use {
     reovim_driver_command::CommandHandler,
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         BufferApi, ClipboardApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
         WindowApi,
     },
     reovim_kernel::api::v1::{CommandId, events::kernel::FileOpened},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
     std::path::{Path, PathBuf},
 };
 

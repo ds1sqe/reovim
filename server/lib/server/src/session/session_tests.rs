@@ -871,7 +871,7 @@ fn test_execute_command_for_client_nonexistent() {
         reovim_kernel::api::v1::ModuleId::new("test"),
         "noop",
     );
-    let ctx = reovim_driver_command_types::CommandContext::new();
+    let ctx = reovim_subsys_command_types::CommandContext::new();
 
     let result = session.execute_command_for_client(ClientId::new(999), &cmd_id, &ctx);
     assert!(result.is_none());
@@ -896,7 +896,7 @@ fn test_execute_command_for_client_following_ignored() {
         reovim_kernel::api::v1::ModuleId::new("test"),
         "noop",
     );
-    let ctx = reovim_driver_command_types::CommandContext::new();
+    let ctx = reovim_subsys_command_types::CommandContext::new();
 
     let result = session.execute_command_for_client(follower_id, &cmd_id, &ctx);
     // Following clients should return None (input ignored)

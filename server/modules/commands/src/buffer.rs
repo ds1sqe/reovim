@@ -3,9 +3,9 @@
 use {
     reovim_driver_codec::CodecSessionState,
     reovim_driver_command::{Command, CommandHandler, CommandResult},
-    reovim_driver_command_types::CommandContext,
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_subsys_command_types::CommandContext,
 };
 
 const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");

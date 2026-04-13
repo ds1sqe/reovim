@@ -23,7 +23,7 @@ reovim-subsys-completion = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-input = { workspace = true }
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-subsys-module-config = { workspace = true }

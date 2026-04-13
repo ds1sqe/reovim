@@ -14,11 +14,11 @@ use std::collections::HashMap;
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_command_types::ArgValue,
     reovim_driver_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeTransition, Modifiers, PopResult,
     },
     reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_subsys_command_types::ArgValue,
 };
 
 use crate::{ids::OperatorId, modes::VimMode};

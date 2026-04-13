@@ -22,7 +22,7 @@ reovim-domain-text = { workspace = true }
 # Text-domain events for dual-emission transition (#740 Plan 09 Phase 6)
 reovim-domain-text-events = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 # Layout driver for compositor traits (Rect, WindowPlacement, etc.)
 reovim-subsys-layout = { workspace = true }
 # Session subsystem contracts (types + traits, zero domain deps)

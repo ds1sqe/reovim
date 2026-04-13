@@ -577,7 +577,7 @@ fn test_handle_pop_result_data() {
         PopResult::Data {
             values: HashMap::from([(
                 "key".to_string(),
-                reovim_driver_command_types::ArgValue::String("value".to_string()),
+                reovim_subsys_command_types::ArgValue::String("value".to_string()),
             )]),
         },
     );
@@ -632,11 +632,11 @@ fn test_handle_pop_result_execute_command_with_args() {
     );
 
     let mut args = HashMap::new();
-    args.insert("count".to_string(), reovim_driver_command_types::ArgValue::Count(5));
-    args.insert("register".to_string(), reovim_driver_command_types::ArgValue::Register('a'));
+    args.insert("count".to_string(), reovim_subsys_command_types::ArgValue::Count(5));
+    args.insert("register".to_string(), reovim_subsys_command_types::ArgValue::Register('a'));
     args.insert(
         "description".to_string(),
-        reovim_driver_command_types::ArgValue::String("test arg".to_string()),
+        reovim_subsys_command_types::ArgValue::String("test arg".to_string()),
     );
 
     // Should not panic - command not found, but args are processed
@@ -895,7 +895,7 @@ async fn test_apply_mode_transition_pop_with_data_result() {
         result: Some(PopResult::Data {
             values: HashMap::from([(
                 "search".to_string(),
-                reovim_driver_command_types::ArgValue::String("pattern".to_string()),
+                reovim_subsys_command_types::ArgValue::String("pattern".to_string()),
             )]),
         }),
     };
@@ -1070,7 +1070,7 @@ fn test_handle_pop_result_execute_command_with_active_buffer() {
             command: cmd_id,
             args: HashMap::from([(
                 "range".to_string(),
-                reovim_driver_command_types::ArgValue::String("1,5".to_string()),
+                reovim_subsys_command_types::ArgValue::String("1,5".to_string()),
             )]),
         },
     );
@@ -1350,10 +1350,10 @@ fn test_handle_pop_result_data_with_multiple_values() {
     let mut values = HashMap::new();
     values.insert(
         "mode".to_string(),
-        reovim_driver_command_types::ArgValue::String("visual".to_string()),
+        reovim_subsys_command_types::ArgValue::String("visual".to_string()),
     );
-    values.insert("count".to_string(), reovim_driver_command_types::ArgValue::Count(10));
-    values.insert("register".to_string(), reovim_driver_command_types::ArgValue::Register('a'));
+    values.insert("count".to_string(), reovim_subsys_command_types::ArgValue::Count(10));
+    values.insert("register".to_string(), reovim_subsys_command_types::ArgValue::Register('a'));
 
     InputServiceImpl::handle_pop_result_for_client(&session, client_id, PopResult::Data { values });
 }
@@ -1871,10 +1871,10 @@ fn test_handle_pop_result_execute_error_with_args() {
     session.add_client(client_id);
 
     let mut args = HashMap::new();
-    args.insert("count".to_string(), reovim_driver_command_types::ArgValue::Count(5));
+    args.insert("count".to_string(), reovim_subsys_command_types::ArgValue::Count(5));
     args.insert(
         "description".to_string(),
-        reovim_driver_command_types::ArgValue::String("test".to_string()),
+        reovim_subsys_command_types::ArgValue::String("test".to_string()),
     );
 
     InputServiceImpl::handle_pop_result_for_client(
@@ -2657,7 +2657,7 @@ fn session_with_execute_quit_signal_command(
             runtime: &mut SessionRuntime<'_>,
             _args: &CommandContext,
         ) -> CommandResult {
-            use reovim_driver_command_types::RuntimeSignal;
+            use reovim_subsys_command_types::RuntimeSignal;
             runtime.signal(RuntimeSignal::Quit);
             self.result.clone()
         }
@@ -2790,9 +2790,9 @@ fn session_with_quit_signal_command(
 ) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_command_types::RuntimeSignal,
         reovim_driver_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, ModuleId},
+        reovim_subsys_command_types::RuntimeSignal,
     };
 
     struct QuitSignalCmd {
@@ -3742,9 +3742,9 @@ fn test_resolve_to_command_context_position_metadata() {
     // Position converts to ArgValue::Position(line, col); cursor_position reads back "cursor"
     let pos = cmd_ctx.cursor_position();
     assert!(pos.is_some());
-    let pos = pos.unwrap();
-    assert_eq!(pos.line, 3);
-    assert_eq!(pos.column, 7);
+    let (line, col) = pos.unwrap();
+    assert_eq!(line, 3);
+    assert_eq!(col, 7);
 }
 
 #[test]
@@ -4058,13 +4058,13 @@ async fn test_send_keys_presence_update_on_focus_changed() {
         fn execute(
             &self,
             runtime: &mut SessionRuntime<'_>,
-            _args: &reovim_driver_command_types::CommandContext,
-        ) -> reovim_driver_command_types::CommandResult {
+            _args: &reovim_subsys_command_types::CommandContext,
+        ) -> reovim_subsys_command_types::CommandResult {
             // Focus the active window to set focus_changed = true
             if let Some(win_id) = runtime.active_window() {
                 let _ = runtime.focus_window(win_id);
             }
-            reovim_driver_command_types::CommandResult::Success
+            reovim_subsys_command_types::CommandResult::Success
         }
     }
 
@@ -4456,9 +4456,9 @@ fn session_with_pop_result_completion_resolver(name: &str) -> crate::session::Se
         fn execute(
             &self,
             _runtime: &mut SessionRuntime<'_>,
-            _args: &reovim_driver_command_types::CommandContext,
-        ) -> reovim_driver_command_types::CommandResult {
-            reovim_driver_command_types::CommandResult::Success
+            _args: &reovim_subsys_command_types::CommandContext,
+        ) -> reovim_subsys_command_types::CommandResult {
+            reovim_subsys_command_types::CommandResult::Success
         }
     }
 

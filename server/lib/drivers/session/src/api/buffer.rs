@@ -15,7 +15,7 @@
 //!
 //! ```ignore
 //! use reovim_driver_session::api::BufferApi;
-//! use reovim_driver_command_types::CommandContext;
+//! use reovim_subsys_command_types::CommandContext;
 //!
 //! fn delete_word<S: BufferApi>(session: &mut S, args: &CommandContext) {
 //!     if let Some(buffer) = session.active_buffer() {

@@ -224,9 +224,9 @@ fn line_operator_guu() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
-            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(1)));
+            assert_eq!(args.get("count"), Some(&reovim_subsys_command_types::ArgValue::Count(1)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -250,7 +250,7 @@ fn line_operator_gUU() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
         } else {
             panic!("expected ExecuteCommand");
@@ -274,7 +274,7 @@ fn line_operator_toggle_case() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
         } else {
             panic!("expected ExecuteCommand");
@@ -305,10 +305,10 @@ fn line_operator_with_motion_count() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
             // count = operator_count(1) * motion_count(3) = 3
-            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(3)));
+            assert_eq!(args.get("count"), Some(&reovim_subsys_command_types::ArgValue::Count(3)));
         } else {
             panic!("expected ExecuteCommand");
         }

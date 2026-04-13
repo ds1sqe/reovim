@@ -13,10 +13,11 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Kernel layer (for CommandId)
-reovim-kernel = { workspace = true }
+# Subsys layer (command contracts)
+reovim-subsys-command = { workspace = true }
 
-# Driver layer
-reovim-driver-command-types = { workspace = true }
-reovim-subsys-vfs = { workspace = true }
+# Driver layer (for SessionRuntime in CommandHandler)
 reovim-driver-session = { workspace = true }
+
+# Kernel layer (for Service in registry)
+reovim-kernel = { workspace = true }

@@ -3,9 +3,9 @@
 use {
     crate::diagnostics,
     reovim_driver_command::{Command, CommandHandler},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 const HEALTH_CHECK_MODULE: ModuleId = ModuleId::new("health-check");

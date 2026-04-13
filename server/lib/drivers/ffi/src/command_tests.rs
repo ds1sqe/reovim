@@ -60,7 +60,7 @@ fn test_context_to_ffi_args_empty() {
 #[test]
 fn test_context_to_ffi_args_with_count() {
     let mut ctx = CommandContext::new();
-    ctx.set("count", reovim_driver_command_types::ArgValue::Count(5));
+    ctx.set("count", reovim_subsys_command_types::ArgValue::Count(5));
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_count, 1);
     assert_eq!(args.count, 5);
@@ -69,7 +69,7 @@ fn test_context_to_ffi_args_with_count() {
 #[test]
 fn test_context_to_ffi_args_with_register() {
     let mut ctx = CommandContext::new();
-    ctx.set("register", reovim_driver_command_types::ArgValue::Register('a'));
+    ctx.set("register", reovim_subsys_command_types::ArgValue::Register('a'));
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_register, 1);
     assert_eq!(args.register, b'a');
@@ -78,7 +78,7 @@ fn test_context_to_ffi_args_with_register() {
 #[test]
 fn test_context_to_ffi_args_with_cursor() {
     let mut ctx = CommandContext::new();
-    ctx.set_cursor_position(reovim_domain_text::Position::new(10, 5));
+    ctx.set_cursor_position(10, 5);
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_cursor, 1);
     assert_eq!(args.cursor.line, 10);
@@ -88,9 +88,9 @@ fn test_context_to_ffi_args_with_cursor() {
 #[test]
 fn test_context_to_ffi_args_fully_populated() {
     let mut ctx = CommandContext::new();
-    ctx.set("count", reovim_driver_command_types::ArgValue::Count(3));
-    ctx.set("register", reovim_driver_command_types::ArgValue::Register('"'));
-    ctx.set_cursor_position(reovim_domain_text::Position::new(42, 7));
+    ctx.set("count", reovim_subsys_command_types::ArgValue::Count(3));
+    ctx.set("register", reovim_subsys_command_types::ArgValue::Register('"'));
+    ctx.set_cursor_position(42, 7);
     let args = command_context_to_ffi_args(&ctx);
     assert_eq!(args.has_count, 1);
     assert_eq!(args.count, 3);
@@ -231,7 +231,7 @@ fn test_ffi_command_handler_execute_callback() {
     };
 
     let mut ctx = CommandContext::new();
-    ctx.set("count", reovim_driver_command_types::ArgValue::Count(5));
+    ctx.set("count", reovim_subsys_command_types::ArgValue::Count(5));
 
     let result = handler.execute_callback(&ctx);
     assert_eq!(result, 15); // 10 + 5

@@ -2,9 +2,9 @@
 
 use {
     reovim_driver_command::{Command, CommandHandler},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
     reovim_subsys_module_loader::report::ModuleLoadReport,
     std::fmt::Write,
 };

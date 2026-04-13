@@ -304,7 +304,7 @@ impl SessionState {
     ) -> Option<(
         CommandResult,
         reovim_driver_session::api::StateChanges,
-        Vec<reovim_driver_command_types::RuntimeSignal>,
+        Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
         // No flush needed — edits are recorded immediately via undo provider.
         // Use per-client state (#471, #477, #515)

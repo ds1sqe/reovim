@@ -2,8 +2,8 @@
 
 use {
     reovim_driver_command::{Command, CommandHandler},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{ChangeTracker, ExtensionApi, SessionRuntime, WindowApi},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 use crate::{ids, state::IlluminateState};

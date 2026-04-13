@@ -22,7 +22,7 @@ reovim-subsys-formatter = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-capabilities = { workspace = true }
 reovim-provider-text = { workspace = true }

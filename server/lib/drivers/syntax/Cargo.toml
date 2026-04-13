@@ -13,15 +13,11 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Only depends on kernel layer
-# NOTE: NO tree-sitter! That's an implementation detail of language modules.
-reovim-kernel = { workspace = true }
+# Subsystem contracts (traits, types, state)
+reovim-subsys-syntax = { workspace = true }
 
-# Session extension trait (for SyntaxSessionState as SessionExtension)
-reovim-driver-session = { workspace = true }
-
-# Sync primitives for SyntaxFactoryStore
-parking_lot = { workspace = true }
-
-# Text domain events (for text_event_to_syntax_edit bridge)
+# Text domain events (for text_event_to_syntax_edit bridge in bridge.rs)
 reovim-domain-text-events = { workspace = true }
+
+# Kernel layer (needed by bridge.rs)
+reovim-kernel = { workspace = true }

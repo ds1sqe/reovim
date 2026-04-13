@@ -562,7 +562,7 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
     }
     // Propagate range if detected (#666)
     if let Some((start, end)) = range {
-        ctx.set("range", reovim_driver_command_types::ArgValue::Range(start, end));
+        ctx.set("range", reovim_subsys_command_types::ArgValue::Range(start, end));
     }
 
     let result = runtime.execute_command(cmd_id, ctx);

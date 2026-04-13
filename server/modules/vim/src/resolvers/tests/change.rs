@@ -108,7 +108,7 @@ fn test_line_operator_cc() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
         } else {
             panic!("expected ExecuteCommand");
@@ -286,9 +286,9 @@ fn test_line_operator_cc_with_count() {
         if let PopResult::ExecuteCommand { args, .. } = r {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bool(true))
+                Some(&reovim_subsys_command_types::ArgValue::Bool(true))
             );
-            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(2)));
+            assert_eq!(args.get("count"), Some(&reovim_subsys_command_types::ArgValue::Count(2)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -307,7 +307,6 @@ fn test_line_operator_cc_with_count() {
 
 use {
     reovim_domain_text::{Edit, UndoResult},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         TextObjRange, WindowError,
         api::{
@@ -316,6 +315,7 @@ use {
         },
     },
     reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.
@@ -572,14 +572,14 @@ fn test_resolve_with_session_cc_uses_cursor() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
+        assert_eq!(args.get("linewise"), Some(&reovim_subsys_command_types::ArgValue::Bool(true)));
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(4, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(4, 0))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(4, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(4, 0))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -615,17 +615,17 @@ fn test_resolve_with_session_cc_with_count() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
+        assert_eq!(args.get("linewise"), Some(&reovim_subsys_command_types::ArgValue::Bool(true)));
         // start=2, end=3 (2 lines from line 2)
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(2, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(2, 0))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(3, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(3, 0))
         );
-        assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(2)));
+        assert_eq!(args.get("count"), Some(&reovim_subsys_command_types::ArgValue::Count(2)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -800,13 +800,13 @@ fn test_on_command_complete_with_textobj_range() {
         assert_eq!(command.name(), "change");
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 3))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 3))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 8))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 8))
         );
-        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
+        assert_eq!(args.get("linewise"), Some(&reovim_subsys_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -843,13 +843,13 @@ fn test_on_command_complete_with_motion_range() {
         assert_eq!(command.name(), "change");
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 0))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 5))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 5))
         );
-        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
+        assert_eq!(args.get("linewise"), Some(&reovim_subsys_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -882,7 +882,7 @@ fn test_on_command_complete_inclusive_motion_adjusts_end() {
         // End should be adjusted +1 for inclusive motion
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 5))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 5))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -918,7 +918,7 @@ fn test_on_command_complete_word_forward_subtracts_end() {
         // End should be adjusted -1 for cw (word_forward) behavior
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 5))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 5))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -949,7 +949,7 @@ fn test_on_command_complete_linewise_motion() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
+        assert_eq!(args.get("linewise"), Some(&reovim_subsys_command_types::ArgValue::Bool(true)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -981,11 +981,11 @@ fn test_on_command_complete_backward_motion_normalizes_range() {
     {
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 2))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 2))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 8))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 8))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -1156,11 +1156,11 @@ fn test_resolve_with_session_cc_no_cursor_fallback() {
     {
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 0))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(0, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(0, 0))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -1233,15 +1233,15 @@ fn test_resolve_with_session_cc_with_motion_count() {
     }) = result
     {
         // count = operator_count(1) * motion_count(3) = 3
-        assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(3)));
+        assert_eq!(args.get("count"), Some(&reovim_subsys_command_types::ArgValue::Count(3)));
         // start=1, end=3 (3 lines from line 1)
         assert_eq!(
             args.get("range_start"),
-            Some(&reovim_driver_command_types::ArgValue::Position(1, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(1, 0))
         );
         assert_eq!(
             args.get("range_end"),
-            Some(&reovim_driver_command_types::ArgValue::Position(3, 0))
+            Some(&reovim_subsys_command_types::ArgValue::Position(3, 0))
         );
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");

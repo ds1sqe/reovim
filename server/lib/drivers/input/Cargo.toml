@@ -18,8 +18,8 @@ reovim-provider-text = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-driver-session = { workspace = true }
-reovim-driver-command-types = { workspace = true }
-bitflags = "2.4"
+reovim-subsys-command-types = { workspace = true }
+reovim-subsys-input = { workspace = true }
 tracing = "0.1"
 
 [dev-dependencies]

@@ -490,7 +490,6 @@ fn test_mode_id_names() {
 
 use {
     reovim_domain_text::{Edit, Position, UndoResult},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{
         WindowError,
         api::{
@@ -499,6 +498,7 @@ use {
         },
     },
     reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 /// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.

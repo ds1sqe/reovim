@@ -171,7 +171,7 @@ impl CommandRegistry {
     ) -> Option<(
         CommandResult,
         reovim_driver_session::api::StateChanges,
-        Vec<reovim_driver_command_types::RuntimeSignal>,
+        Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
         use reovim_driver_session::{ClientId as DriverClientId, api::ChangeTracker};
         profile_scope!("command_execute_for_client", "server::command");

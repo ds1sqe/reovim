@@ -1668,8 +1668,8 @@ fn test_windows_mut_accessor() {
 #[test]
 fn test_execute_command_api() {
     use {
-        crate::testing::TestSessionRuntime, reovim_driver_command_types::CommandContext,
-        reovim_kernel::api::v1::ModuleId,
+        crate::testing::TestSessionRuntime, reovim_kernel::api::v1::ModuleId,
+        reovim_subsys_command_types::CommandContext,
     };
 
     let mut harness = TestSessionRuntime::new();
@@ -1678,7 +1678,7 @@ fn test_execute_command_api() {
     let result =
         harness.with_runtime(|runtime| runtime.execute_command(cmd, CommandContext::new()));
     // StubExecutor returns None (command not found) -> Error
-    assert!(matches!(result, reovim_driver_command_types::CommandResult::Error(_)));
+    assert!(matches!(result, reovim_subsys_command_types::CommandResult::Error(_)));
 }
 
 // =========================================================================
@@ -2249,8 +2249,8 @@ fn test_execute_command_not_found() {
 #[test]
 fn test_execute_command_recursion_guard() {
     use {
-        crate::testing::TestSessionRuntime, reovim_driver_command_types::CommandContext,
-        reovim_kernel::api::v1::ModuleId,
+        crate::testing::TestSessionRuntime, reovim_kernel::api::v1::ModuleId,
+        reovim_subsys_command_types::CommandContext,
     };
 
     let mut harness = TestSessionRuntime::new();

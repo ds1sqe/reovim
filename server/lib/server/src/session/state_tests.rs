@@ -373,7 +373,7 @@ fn test_try_on_command_complete_for_client_returns_none_without_resolver() {
 
 #[test]
 fn test_execute_command_for_client_returns_none_without_command() {
-    use reovim_driver_command_types::CommandContext;
+    use reovim_subsys_command_types::CommandContext;
 
     let kernel = KernelContext::default();
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());

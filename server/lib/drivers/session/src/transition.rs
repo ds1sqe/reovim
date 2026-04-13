@@ -34,7 +34,7 @@
 
 use std::collections::HashMap;
 
-use {reovim_driver_command_types::ArgValue, reovim_kernel::api::v1::CommandId};
+use {reovim_kernel::api::v1::CommandId, reovim_subsys_command_types::ArgValue};
 
 /// Context passed when entering a new mode.
 ///

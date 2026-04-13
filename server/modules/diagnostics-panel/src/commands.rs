@@ -2,9 +2,9 @@
 
 use {
     reovim_driver_command::{ArgKind, ArgSpec, Command, CommandHandler, CommandResult},
-    reovim_driver_command_types::CommandContext,
     reovim_driver_session::{ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
+    reovim_subsys_command_types::CommandContext,
 };
 
 use crate::{ids, items::PanelMode, state::DiagnosticsState};

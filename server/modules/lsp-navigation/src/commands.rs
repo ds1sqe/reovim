@@ -8,7 +8,6 @@ use std::{path::Path, sync::Arc, time::Duration};
 use {
     lsp_types::{GotoDefinitionResponse, HoverContents, MarkedString},
     reovim_driver_command::CommandHandler,
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_lsp::{
         LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response, uri_from_path,
     },
@@ -20,6 +19,7 @@ use {
     reovim_kernel::api::v1::{CommandId, ServiceRegistry},
     reovim_module_microscope::{MicroscopeState, modes::MicroscopeMode},
     reovim_module_notification::{NotificationLevel, NotificationState},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
     tracing::{debug, info, warn},
 };
 

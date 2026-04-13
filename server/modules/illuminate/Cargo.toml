@@ -25,7 +25,7 @@ reovim-domain-text = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde_json = { workspace = true }

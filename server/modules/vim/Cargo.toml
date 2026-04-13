@@ -20,7 +20,7 @@ reovim-domain-text = { workspace = true }
 reovim-capabilities = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-command-types = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-module-cmdline = { workspace = true }

@@ -1,8 +1,8 @@
 use {
     super::*,
-    reovim_driver_command_types::ArgValue,
     reovim_driver_session::testing::TestSessionRuntime,
     reovim_kernel::api::v1::{OptionSpec, OptionValue},
+    reovim_subsys_command_types::ArgValue,
     reovim_subsys_vfs::{MockVfs, VfsDriver},
     std::sync::Arc,
 };

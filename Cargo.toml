@@ -9,8 +9,10 @@ members = [
     "server/lib/server",
 
     # Server drivers
-    "server/lib/drivers/command-types",
+    "server/lib/subsys/command-types",
+    "server/lib/subsys/command",
     "server/lib/drivers/command",
+    "server/lib/subsys/input",
     "server/lib/drivers/input",
     "server/lib/drivers/syntax",
     "server/lib/drivers/syntax-treesitter",
@@ -36,6 +38,7 @@ members = [
     "server/lib/subsys/session",
     "server/lib/subsys/annotation",
     "server/lib/subsys/statusline",
+    "server/lib/subsys/syntax",
     "server/lib/drivers/codec",
     "server/lib/drivers/codec-xxd",
 
@@ -257,8 +260,10 @@ reovim-kernel = { path = "./server/lib/kernel", version = "0.15.0-dev" }
 reovim-server = { path = "./server/lib/server", version = "0.15.0-dev" }
 
 # Server drivers
-reovim-driver-command-types = { path = "./server/lib/drivers/command-types", version = "0.15.0-dev" }
+reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", version = "0.15.0-dev" }
+reovim-subsys-command = { path = "./server/lib/subsys/command", version = "0.15.0-dev" }
 reovim-driver-command = { path = "./server/lib/drivers/command", version = "0.15.0-dev" }
+reovim-subsys-input = { path = "./server/lib/subsys/input", version = "0.15.0-dev" }
 reovim-driver-input = { path = "./server/lib/drivers/input", version = "0.15.0-dev" }
 reovim-driver-syntax = { path = "./server/lib/drivers/syntax", version = "0.15.0-dev" }
 reovim-driver-syntax-treesitter = { path = "./server/lib/drivers/syntax-treesitter", version = "0.15.0-dev" }
@@ -285,6 +290,7 @@ reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-
 reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.0-dev" }
 reovim-subsys-annotation = { path = "./server/lib/subsys/annotation", version = "0.15.0-dev" }
 reovim-subsys-statusline = { path = "./server/lib/subsys/statusline", version = "0.15.0-dev" }
+reovim-subsys-syntax = { path = "./server/lib/subsys/syntax", version = "0.15.0-dev" }
 reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.15.0-dev" }
 reovim-driver-codec-xxd = { path = "./server/lib/drivers/codec-xxd", version = "0.15.0-dev" }
 
