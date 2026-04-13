@@ -62,11 +62,7 @@
 
 mod buffer;
 mod changes;
-mod clipboard;
 mod command;
-mod compositor;
-mod extension;
-mod find_char;
 mod mode;
 mod register;
 mod search;
@@ -76,17 +72,17 @@ mod window;
 // Buffer API
 pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
 
-// Clipboard API (#515)
-pub use clipboard::ClipboardApi;
+// Clipboard API (#515) — moved to reovim-subsys-session
+pub use reovim_subsys_session::api::ClipboardApi;
 
-// Find-char state extension (#563)
-pub use find_char::{FindCharRecord, FindCharState};
+// Find-char state extension (#563) — moved to reovim-subsys-session
+pub use reovim_subsys_session::api::{FindCharRecord, FindCharState};
 
 // Search state extension
 pub use search::SearchState;
 
-// Compositor API
-pub use compositor::{CompositorApi, CompositorError};
+// Compositor API — moved to reovim-subsys-session
+pub use reovim_subsys_session::api::{CompositorApi, CompositorError};
 
 // Register API
 pub use register::{RegisterApi, RegisterContent, YankType};
@@ -97,8 +93,8 @@ pub use changes::{ChangeTracker, OptionChange, StateChanges};
 // Command API
 pub use command::{CommandApi, CommandExecutor, CommandHandle};
 
-// Extension API
-pub use extension::ExtensionApi;
+// Extension API — moved to reovim-subsys-session
+pub use reovim_subsys_session::api::ExtensionApi;
 
 // Mode API
 pub use mode::{ModeApi, ModeError};

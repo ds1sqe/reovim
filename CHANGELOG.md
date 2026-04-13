@@ -13,6 +13,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **kernel**: `UnsavedBuffer.line_count: usize` replaced with `content_size: u64`
 - **kernel**: `CommandRegistration` capability flags renamed to domain-neutral vocabulary
 - **drivers**: 12 pure-contract driver crates renamed from `reovim-driver-*` to `reovim-subsys-*` and moved from `server/lib/drivers/` to `server/lib/subsys/`. Affected crates: annotation, clipboard, completion, formatter, git, layout, manifest, module-config, module-loader, module-registry, statusline, vfs. All `use reovim_driver_{name}` imports must change to `use reovim_subsys_{name}`
+- **drivers**: Session contract types extracted from `reovim-driver-session` into new `reovim-subsys-session` crate. Moved items: ClientId, Viewport, CursorSnapshot, KeySequence, SessionExtension, ExtensionMap, SessionMode, EmptySessionHandler, SessionHandlerKey/Registry, InitialModeProvider, LeaderKeyProvider, PendingNotificationQueue, StaleCheck, TickScheduler, ClipboardApi, ExtensionApi, FindCharRecord, CompositorApi, BridgeRegistry/Provider. Driver-session re-exports all items for backwards compatibility
 
 ### Added
 

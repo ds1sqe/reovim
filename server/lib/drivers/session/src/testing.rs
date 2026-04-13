@@ -28,9 +28,8 @@
 
 use {
     crate::{
-        ClientId, Jumplist, MarkBank, Session, WindowLayout,
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout,
         api::{CommandExecutor, CommandHandle, StateChanges},
-        extension::ExtensionMap,
         runtime::SessionRuntime,
     },
     reovim_arch::sync::RwLock,

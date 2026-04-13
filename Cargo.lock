@@ -2640,6 +2640,7 @@ dependencies = [
  "reovim-provider-text",
  "reovim-subsys-clipboard",
  "reovim-subsys-layout",
+ "reovim-subsys-session",
  "reovim-subsys-vfs",
  "serde_json",
 ]
@@ -3939,6 +3940,16 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "reovim-subsys-session"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-kernel",
+ "reovim-subsys-layout",
+ "serde_json",
 ]
 
 [[package]]

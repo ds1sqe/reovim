@@ -33,6 +33,7 @@ members = [
     "server/lib/subsys/git",
     "server/lib/subsys/module-registry",
     "server/lib/subsys/layout",
+    "server/lib/subsys/session",
     "server/lib/subsys/annotation",
     "server/lib/subsys/statusline",
     "server/lib/drivers/codec",
@@ -281,6 +282,7 @@ reovim-subsys-module-loader = { path = "./server/lib/subsys/module-loader", vers
 reovim-subsys-git = { path = "./server/lib/subsys/git", version = "0.15.0-dev" }
 reovim-subsys-module-registry = { path = "./server/lib/subsys/module-registry", version = "0.15.0-dev" }
 reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-dev" }
+reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.0-dev" }
 reovim-subsys-annotation = { path = "./server/lib/subsys/annotation", version = "0.15.0-dev" }
 reovim-subsys-statusline = { path = "./server/lib/subsys/statusline", version = "0.15.0-dev" }
 reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.15.0-dev" }

@@ -94,54 +94,35 @@
 pub mod api;
 pub mod bridges;
 mod buffer_access;
-mod empty_handler;
-mod extension;
-mod handler_key;
-mod handler_registry;
-mod initial_mode;
 mod jumplist;
-mod leader_key;
 mod mark;
-mod mode;
 mod notification_drain;
-mod notification_queue;
 mod operator_state;
 mod runtime;
 mod snippet_expander;
-mod stale_check;
 pub mod tab;
 pub mod testing;
 pub mod tick;
 mod transition;
 mod types;
 
+// Re-export all subsys-session contracts (types + traits, zero domain deps).
+// This provides full backwards compatibility: all items previously defined in
+// this crate are still accessible at `reovim_driver_session::*`.
+pub use reovim_subsys_session::*;
+
 pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
 // Mark types (moved from kernel in #740)
 pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
 
-// Empty session handling
-pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHandler};
-
-// Initial mode provider for cross-personality support (#623)
-pub use initial_mode::InitialModeProvider;
-
-// Leader key provider for personality-aware binding expansion (#700)
-pub use leader_key::{LeaderKeyProvider, expand_leader};
-
-// Session extension system
-pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};
-
 // Operator-pending state for text object communication
 pub use operator_state::OperatorPendingState;
 
-// Mode lifecycle
-pub use mode::{ModeError, SessionMode};
-
-// Session types
+// Session types (remaining types not in subsys-session)
 pub use types::{
-    BootstrapState, ClientContext, ClientId, CursorPosition, CursorSnapshot, KeySequence, Session,
-    SessionShared, TextObjRange, Viewport, Window, WindowLayout,
+    BootstrapState, ClientContext, CursorPosition, Session, SessionShared, TextObjRange, Window,
+    WindowLayout,
 };
 
 // SessionContext removed in #491 - use SessionRuntime instead
@@ -151,9 +132,6 @@ pub use transition::{PopResult, TransitionContext};
 
 // Session runtime (implements all API traits)
 pub use runtime::SessionRuntime;
-
-// StaleCheck hook — Phase 5 sub-commit 5e seam for codec re-decode on read.
-pub use stale_check::StaleCheck;
 
 // Session API traits (re-export for convenience)
 pub use api::{
@@ -170,22 +148,11 @@ pub use reovim_domain_text::{HistoryRing, RegisterBank};
 // Tab page management (#401)
 pub use tab::{TabPage, TabPageSet};
 
-// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
-pub use {handler_key::SessionHandlerKey, handler_registry::SessionHandlerRegistry};
-
-// Pending notification queue (#542 - cross-module decoupling, #691 - progress ops)
-pub use notification_queue::{
-    PendingEntry, PendingLevel, PendingNotification, PendingNotificationQueue, PendingOp,
-};
-
 // Notification drain trait (#542 - decouple completion from notification module)
 pub use notification_drain::{NotificationDrain, NotificationDrainRegistry};
 
 // Snippet expander trait (#542 - decouple completion from snippet module)
 pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
-
-// Tick scheduler (#546 - periodic state advancement)
-pub use tick::{TickScheduler, TickSchedulerHandle};
 
 pub use buffer_access::BufferReadAccess;
 
