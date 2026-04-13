@@ -48,7 +48,7 @@ pub use super::context::{KernelContext, ModuleContext};
 pub use crate::mm::{BufferId, TabId, WindowId};
 
 // Snapshot moved to reovim-provider-text (#740)
-// Note: FileMapping and PieceTree moved to reovim-driver-vfs (#740)
+// Note: FileMapping and PieceTree moved to reovim-subsys-vfs (#740)
 
 // LineCache removed (#740) — dead code, zero production consumers.
 

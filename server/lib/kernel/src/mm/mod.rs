@@ -7,7 +7,7 @@
 //! extracted:
 //! - Position, Edit, Selection → `reovim-domain-text`
 //! - `LineIndex`, delimiter matching → `reovim-domain-text` (#740)
-//! - `FileMapping`, `PieceTree` → `reovim-driver-vfs` (#740)
+//! - `FileMapping`, `PieceTree` → `reovim-subsys-vfs` (#740)
 //! - `Buffer`, `Rope` → `reovim-provider-text` (#740)
 //! - `VirtualBuffer`, `HeapMapping` → `reovim-provider-text`
 //! - `BufferSnapshot` → `reovim-provider-text` (#740)

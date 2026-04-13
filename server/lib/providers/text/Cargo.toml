@@ -15,6 +15,6 @@ workspace = true
 [dependencies]
 reovim-domain-text = { workspace = true }
 reovim-kernel = { workspace = true }
-reovim-driver-vfs = { workspace = true }
+reovim-subsys-vfs = { workspace = true }
 bitflags = { workspace = true }
 reovim-arch = { workspace = true }

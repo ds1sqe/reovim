@@ -24,8 +24,8 @@ use crate::virtual_snapshot::VirtualSnapshot;
 use {
     crate::{BufferCapabilities, BufferOps},
     reovim_domain_text::{LineIndex, Position, TextGeometry},
-    reovim_driver_vfs::{FileMapping, Piece, PieceMetrics, PieceSource, PieceTree},
     reovim_kernel::api::v1::{BufferId, BufferMeta, StorageCapabilities, StorageError, StorageOps},
+    reovim_subsys_vfs::{FileMapping, Piece, PieceMetrics, PieceSource, PieceTree},
 };
 
 /// Create byte-only metrics from a string's byte length.

@@ -6,7 +6,7 @@ mod buffer_id;
 mod saturator;
 
 // LineIndex tests moved to reovim-domain-text (#740)
-// PieceTree tests moved to reovim-driver-vfs (#740)
+// PieceTree tests moved to reovim-subsys-vfs (#740)
 // BufferSnapshot tests moved to reovim-provider-text (#740)
 // VirtualBuffer tests moved to reovim-provider-text (#740)
 
