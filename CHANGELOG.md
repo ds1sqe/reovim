@@ -24,6 +24,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **depgraph**: Layer enforcement tests — `subsys_no_domain`, `subsys_no_driver`, `subsys_no_name_leak`, `server_no_domain`, `server_no_driver` guard the subsys/driver layer separation
+
 ### Changed
 
 ### Fixed
