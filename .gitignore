@@ -6,6 +6,7 @@ COVERAGE-SERVER.md
 CLAUDE.md
 
 .claude/
+.opencode/
 
 # Python cache
 __pycache__/
