@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_subsys_syntax::bracket::{BracketConfig, BracketConfigStore, BracketPair};
+//! use reovim_driver_syntax::bracket::{BracketConfig, BracketConfigStore, BracketPair};
 //!
 //! let store = BracketConfigStore::new();
 //!

@@ -21,7 +21,7 @@ use std::ops::Range;
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::Injection;
+/// use reovim_driver_syntax::Injection;
 ///
 /// // A Rust code block in a markdown file
 /// let inj = Injection::new("rust", 100..200, 5, 3, 10, 3);

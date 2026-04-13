@@ -29,7 +29,7 @@ use std::{fmt, ops::Range, sync::Arc};
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::HighlightCategory;
+/// use reovim_driver_syntax::HighlightCategory;
 ///
 /// let cat = HighlightCategory::new("keyword.function");
 /// assert_eq!(cat.as_str(), "keyword.function");
@@ -148,7 +148,7 @@ impl HighlightCategory {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{Annotation, HighlightCategory};
+/// use reovim_driver_syntax::{Annotation, HighlightCategory};
 ///
 /// let ann = Annotation::new(0, 5, HighlightCategory::new("keyword.function"));
 /// assert_eq!(ann.category.as_str(), "keyword.function");

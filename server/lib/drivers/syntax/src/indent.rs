@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_subsys_syntax::indent::{IndentConfig, IndentConfigStore};
+//! use reovim_driver_syntax::indent::{IndentConfig, IndentConfigStore};
 //!
 //! let store = IndentConfigStore::new();
 //!

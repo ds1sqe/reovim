@@ -26,7 +26,6 @@ reovim-subsys-command-types = { workspace = true }
 reovim-subsys-input = { workspace = true }
 reovim-subsys-layout = { workspace = true }
 reovim-subsys-session = { workspace = true }
-reovim-subsys-syntax = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 
 # Drivers (domain-locked — Tier 2 decoupling deferred)

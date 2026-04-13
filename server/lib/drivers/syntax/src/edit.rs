@@ -21,7 +21,7 @@ use std::ops::Range;
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::SyntaxEdit;
+/// use reovim_driver_syntax::SyntaxEdit;
 ///
 /// // Inserting "Hello" at position 0
 /// let edit = SyntaxEdit::insert(0, 0, 0, 5, 0, 5);

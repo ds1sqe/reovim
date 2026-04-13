@@ -2639,9 +2639,10 @@ dependencies = [
 name = "reovim-driver-syntax"
 version = "0.15.0-dev"
 dependencies = [
+ "parking_lot",
  "reovim-domain-text-events",
  "reovim-kernel",
- "reovim-subsys-syntax",
+ "reovim-subsys-session",
 ]
 
 [[package]]
@@ -3814,14 +3815,15 @@ dependencies = [
  "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-input",
- "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-driver-undo",
  "reovim-kernel",
  "reovim-protocol",
+ "reovim-subsys-command",
  "reovim-subsys-command-types",
+ "reovim-subsys-input",
  "reovim-subsys-layout",
+ "reovim-subsys-session",
  "reovim-subsys-vfs",
  "reovim-testing",
  "serde",
@@ -3972,15 +3974,6 @@ name = "reovim-subsys-statusline"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-kernel",
-]
-
-[[package]]
-name = "reovim-subsys-syntax"
-version = "0.15.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-kernel",
- "reovim-subsys-session",
 ]
 
 [[package]]

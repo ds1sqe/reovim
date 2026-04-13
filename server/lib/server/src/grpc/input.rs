@@ -28,13 +28,13 @@ use std::{
 use {
     parking_lot::Mutex,
     reovim_driver_input::{ModeTransition, PopResult, ResolveContext, ResolveResult},
-    reovim_subsys_input::KeySequence,
     reovim_driver_session::api::StateChanges,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
         notification,
     },
     reovim_subsys_command_types::{ArgValue, CommandContext, CommandResult},
+    reovim_subsys_input::KeySequence,
     reovim_subsys_session::bridges::BridgeRegistry,
     tonic::{Request, Response, Status},
 };

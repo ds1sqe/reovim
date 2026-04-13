@@ -10,7 +10,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::FoldKind;
+/// use reovim_driver_syntax::FoldKind;
 ///
 /// let kind = FoldKind::Function;
 /// assert_eq!(kind, FoldKind::Function);
@@ -45,7 +45,7 @@ impl FoldKind {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{FoldRange, FoldKind};
+/// use reovim_driver_syntax::{FoldRange, FoldKind};
 ///
 /// let fold = FoldRange::new(5, 10, FoldKind::Function, "fn foo() {");
 /// assert!(fold.is_foldable());

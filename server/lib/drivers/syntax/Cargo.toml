@@ -13,11 +13,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Subsystem contracts (traits, types, state)
-reovim-subsys-syntax = { workspace = true }
-
-# Text domain events (for text_event_to_syntax_edit bridge in bridge.rs)
-reovim-domain-text-events = { workspace = true }
-
-# Kernel layer (needed by bridge.rs)
 reovim-kernel = { workspace = true }
+reovim-subsys-session = { workspace = true }
+reovim-domain-text-events = { workspace = true }
+parking_lot = { workspace = true }

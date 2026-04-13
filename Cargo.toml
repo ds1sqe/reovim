@@ -38,7 +38,6 @@ members = [
     "server/lib/subsys/session",
     "server/lib/subsys/annotation",
     "server/lib/subsys/statusline",
-    "server/lib/subsys/syntax",
     "server/lib/drivers/codec",
     "server/lib/drivers/codec-xxd",
 
@@ -290,7 +289,6 @@ reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-
 reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.0-dev" }
 reovim-subsys-annotation = { path = "./server/lib/subsys/annotation", version = "0.15.0-dev" }
 reovim-subsys-statusline = { path = "./server/lib/subsys/statusline", version = "0.15.0-dev" }
-reovim-subsys-syntax = { path = "./server/lib/subsys/syntax", version = "0.15.0-dev" }
 reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.15.0-dev" }
 reovim-driver-codec-xxd = { path = "./server/lib/drivers/codec-xxd", version = "0.15.0-dev" }
 

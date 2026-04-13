@@ -14,7 +14,7 @@ use std::fmt;
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::ScopeKind;
+/// use reovim_driver_syntax::ScopeKind;
 ///
 /// let kind = ScopeKind::Function;
 /// assert!(kind.is_definition());
@@ -71,7 +71,7 @@ impl fmt::Display for ScopeKind {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{ScopeRange, ScopeKind};
+/// use reovim_driver_syntax::{ScopeRange, ScopeKind};
 ///
 /// let scope = ScopeRange::new(5, 20, ScopeKind::Function, "fn main", Some("main".to_string()));
 /// assert!(scope.contains_line(10));
@@ -139,7 +139,7 @@ impl ScopeRange {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{ContextHierarchy, ScopeRange, ScopeKind};
+/// use reovim_driver_syntax::{ContextHierarchy, ScopeRange, ScopeKind};
 ///
 /// let scopes = vec![
 ///     ScopeRange::new(0, 100, ScopeKind::Module, "mod utils", Some("utils".to_string())),

@@ -11,7 +11,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{LanguageInfo, CommentTokens};
+/// use reovim_driver_syntax::{LanguageInfo, CommentTokens};
 ///
 /// let rust = LanguageInfo::new("rust", "Rust")
 ///     .with_extensions(["rs"])
@@ -113,7 +113,7 @@ impl LanguageInfo {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::CommentTokens;
+/// use reovim_driver_syntax::CommentTokens;
 ///
 /// // C-style comments
 /// let c_style = CommentTokens::with_block("//", "/*", "*/");
@@ -239,7 +239,7 @@ pub trait LanguageRegistry: Send + Sync {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{DefaultLanguageRegistry, LanguageInfo, LanguageRegistry};
+/// use reovim_driver_syntax::{DefaultLanguageRegistry, LanguageInfo, LanguageRegistry};
 ///
 /// let registry = DefaultLanguageRegistry::new(vec![
 ///     LanguageInfo::new("rust", "Rust").with_extensions(["rs"]),

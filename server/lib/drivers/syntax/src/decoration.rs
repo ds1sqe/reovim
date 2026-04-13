@@ -28,7 +28,7 @@ use crate::{Annotation, HighlightCategory};
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{DecorationRule, HighlightCategory};
+/// use reovim_driver_syntax::{DecorationRule, HighlightCategory};
 ///
 /// let rule = DecorationRule {
 ///     capture_name: "heading.1.marker".into(),
@@ -52,7 +52,7 @@ pub struct DecorationRule {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::DecorationCapture;
+/// use reovim_driver_syntax::DecorationCapture;
 ///
 /// let cap = DecorationCapture {
 ///     name: "heading.1.marker".into(),
@@ -101,7 +101,7 @@ impl DecorationCapture {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_syntax::{
+/// use reovim_driver_syntax::{
 ///     DecorationCapture, DecorationRule, HighlightCategory,
 ///     decoration::apply_rules,
 /// };
