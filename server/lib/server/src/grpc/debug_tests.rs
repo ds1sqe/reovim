@@ -669,6 +669,29 @@ async fn test_debug_get_extension_state_client_scope() {
 }
 
 #[tokio::test]
+async fn test_debug_get_extension_state_shared_scope() {
+    // Exercises lines 425-434: the `ExtensionScope::Shared` branch in
+    // `debug_get_extension_state`.  The "shared-ext" bridge is registered in
+    // `test_debug_service_with_session()` with `ExtensionScope::Shared`, so
+    // this request hits `session.with_state(...)` rather than the per-client
+    // extensions path.  A non-zero `target_client_id` is required to pass
+    // `resolve_target` even though the Shared branch does not look up a client.
+    let (service, _session) = test_debug_service_with_session();
+
+    let request = Request::new(DebugGetExtensionStateRequest {
+        kind: "shared-ext".to_string(),
+        target_client_id: 1,
+    });
+    let response = service
+        .debug_get_extension_state(request)
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(response.active);
+    assert!(response.data.contains("test"));
+}
+
+#[tokio::test]
 async fn test_debug_list_extensions_with_bridges() {
     let (service, _) = test_debug_service_with_session();
 

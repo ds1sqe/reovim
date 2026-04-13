@@ -2611,6 +2611,92 @@ fn test_notify_codec_indices_uses_decoded_route_when_possible() {
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
+// =========================================================================
+// Coverage: RuntimeSignal::Quit paths in handle_resolve_result (L789-800)
+// =========================================================================
+
+/// Create a session with a command that emits `RuntimeSignal::Quit` and
+/// returns the specified result, for use in `handle_resolve_result` tests.
+fn session_with_execute_quit_signal_command(
+    session_name: &str,
+    result: CommandResult,
+) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
+    use {
+        reovim_driver_command::{ArgSpec, Command, CommandHandler},
+        reovim_driver_session::SessionRuntime,
+        reovim_kernel::api::v1::{CommandId, ModuleId},
+    };
+
+    struct ExecuteQuitCmd {
+        id: CommandId,
+        result: CommandResult,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for ExecuteQuitCmd {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+        fn description(&self) -> &'static str {
+            "execute quit command"
+        }
+        fn args(&self) -> Vec<ArgSpec> {
+            vec![]
+        }
+        fn names(&self) -> &[&'static str] {
+            &[]
+        }
+    }
+
+    impl CommandHandler for ExecuteQuitCmd {
+        fn execute(
+            &self,
+            runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            use reovim_driver_command_types::RuntimeSignal;
+            runtime.signal(RuntimeSignal::Quit);
+            self.result.clone()
+        }
+    }
+
+    let cmd_id = CommandId::new(ModuleId::new("test"), "execute-quit-cmd");
+    let session = crate::session::Session::new(SessionId::new(session_name));
+    session.with_state_mut_sync(|state| {
+        state.command_registry.register(Arc::new(ExecuteQuitCmd {
+            id: cmd_id.clone(),
+            result,
+        }));
+    });
+    (session, cmd_id)
+}
+
+#[tokio::test]
+async fn test_handle_resolve_result_execute_quit_signal_success() {
+    // Covers the Quit signal path in handle_resolve_result (L789-800).
+    use reovim_driver_input::KeyCode;
+
+    let (session, cmd_id) =
+        session_with_execute_quit_signal_command("exec-quit-success-test", CommandResult::Success);
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+    session.with_state_mut_sync(|state| {
+        state.create_buffer("hello");
+    });
+
+    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let (handled, changes) = InputServiceImpl::handle_resolve_result(
+        &session,
+        ResolveResult::Execute(cmd_id, ResolveContext::default()),
+        &key,
+        client_id,
+    )
+    .await;
+
+    assert!(handled);
+    assert!(changes.should_quit, "Quit signal should set should_quit");
+}
+
 #[test]
 fn test_notify_codec_indices_uses_byte_edits_for_full_replace() {
     let buffer_id = BufferId::from_raw(2);
@@ -2669,4 +2755,386 @@ fn test_notify_codec_indices_skips_byte_updates_when_decoded_edit_already_applie
     });
     assert_eq!(bytes, Some(b"Dabc".to_vec()));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+// =========================================================================
+// Coverage: RuntimeSignal::Quit in handle_pop_result_for_client
+// (L1065-1069: error path, L1075-1079: success path)
+// =========================================================================
+
+/// Create a session with a command that emits `RuntimeSignal::Quit` and
+/// returns the specified result.
+fn session_with_quit_signal_command(
+    session_name: &str,
+    result: CommandResult,
+) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
+    use {
+        reovim_driver_command::{ArgSpec, Command, CommandHandler},
+        reovim_driver_command_types::RuntimeSignal,
+        reovim_driver_session::SessionRuntime,
+        reovim_kernel::api::v1::{CommandId, ModuleId},
+    };
+
+    struct QuitSignalCmd {
+        id: CommandId,
+        result: CommandResult,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for QuitSignalCmd {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+        fn description(&self) -> &'static str {
+            "quit signal command"
+        }
+        fn args(&self) -> Vec<ArgSpec> {
+            vec![]
+        }
+        fn names(&self) -> &[&'static str] {
+            &[]
+        }
+    }
+
+    impl CommandHandler for QuitSignalCmd {
+        fn execute(
+            &self,
+            runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            runtime.signal(RuntimeSignal::Quit);
+            self.result.clone()
+        }
+    }
+
+    let cmd_id = CommandId::new(ModuleId::new("test"), "quit-signal-cmd");
+    let session = crate::session::Session::new(SessionId::new(session_name));
+    session.with_state_mut_sync(|state| {
+        state.command_registry.register(Arc::new(QuitSignalCmd {
+            id: cmd_id.clone(),
+            result,
+        }));
+    });
+    (session, cmd_id)
+}
+
+#[test]
+fn test_handle_pop_result_execute_command_success_with_quit_signal() {
+    // Covers lines 1072-1080: success path with RuntimeSignal::Quit.
+    let (session, cmd_id) =
+        session_with_quit_signal_command("pop-quit-success-test", CommandResult::Success);
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let changes = InputServiceImpl::handle_pop_result_for_client(
+        &session,
+        client_id,
+        PopResult::ExecuteCommand {
+            command: cmd_id,
+            args: HashMap::new(),
+        },
+    );
+
+    // should_quit is set from record_quit_requested().
+    assert!(changes.should_quit, "Quit signal should set should_quit");
+}
+
+#[test]
+fn test_handle_pop_result_execute_command_error_with_quit_signal() {
+    // Covers lines 1053-1069: error path with RuntimeSignal::Quit.
+    let (session, cmd_id) = session_with_quit_signal_command(
+        "pop-quit-error-test",
+        CommandResult::Error("some error".to_string()),
+    );
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let changes = InputServiceImpl::handle_pop_result_for_client(
+        &session,
+        client_id,
+        PopResult::ExecuteCommand {
+            command: cmd_id,
+            args: HashMap::new(),
+        },
+    );
+
+    // should_quit is set from record_quit_requested() in the error path too.
+    assert!(changes.should_quit, "Quit signal in error path should set should_quit");
+}
+
+// =========================================================================
+// notify_bridges_mode_changed direct tests (L417-433)
+// =========================================================================
+
+/// `notify_bridges_mode_changed` should call `on_mode_changed` on every
+/// `Client`-scoped bridge and skip `Shared`-scoped bridges.
+#[test]
+fn test_notify_bridges_mode_changed_calls_client_bridges() {
+    let session = Session::new(SessionId::new("notify-mode-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let mut bridges = BridgeRegistry::new();
+    bridges.register(TestBridge::client("mode-bridge"));
+    bridges.register(TestBridge::shared("shared-bridge"));
+
+    // Should not panic — exercises the iteration + scope filter body.
+    InputServiceImpl::notify_bridges_mode_changed(
+        &session, client_id, &bridges, "normal", "insert",
+    );
+}
+
+/// `notify_bridges_mode_changed` with no registered bridges — empty iteration.
+#[test]
+fn test_notify_bridges_mode_changed_empty_registry() {
+    let session = Session::new(SessionId::new("notify-mode-empty-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let bridges = BridgeRegistry::new();
+    InputServiceImpl::notify_bridges_mode_changed(&session, client_id, &bridges, "a", "b");
+}
+
+// =========================================================================
+// notify_bridges_cursor_moved direct tests (L439-468)
+// =========================================================================
+
+/// `notify_bridges_cursor_moved` with a client that has an active window —
+/// exercises the full body including the cursor-position lookup.
+#[test]
+fn test_notify_bridges_cursor_moved_with_window() {
+    let session = Session::new(SessionId::new("notify-cursor-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
+    session.clients().update_client_state(client_id, |state| {
+        let window = reovim_driver_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_session::WindowLayout::single(window);
+    });
+
+    let mut bridges = BridgeRegistry::new();
+    bridges.register(TestBridge::client("cursor-bridge"));
+
+    let mut changes = StateChanges::new();
+    InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
+    // No assertions beyond "did not panic".
+}
+
+/// `notify_bridges_cursor_moved` with no active window — exercises the early
+/// return branch.
+#[test]
+fn test_notify_bridges_cursor_moved_no_window() {
+    let session = Session::new(SessionId::new("notify-cursor-nowin-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+    // No windows configured — `active()` returns None → early return.
+
+    let mut bridges = BridgeRegistry::new();
+    bridges.register(TestBridge::client("cursor-bridge"));
+
+    let mut changes = StateChanges::new();
+    InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
+}
+
+// =========================================================================
+// send_keys post-processing: active_buffer + viewport (L222-265)
+// =========================================================================
+
+/// Create a session with:
+/// - A `CompletedResolver` (returns `ResolveResult::Completed` for any key)
+/// - A real buffer manager
+/// - A buffer created and registered as the client's active buffer
+/// - A client with a window + viewport
+fn session_with_resolver_and_active_buffer(
+    name: &str,
+) -> (crate::session::Session, reovim_kernel::api::v1::BufferId, ClientId) {
+    use {
+        reovim_driver_input::{
+            KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
+        },
+        reovim_kernel::api::v1::{ModeId, ModuleId},
+    };
+
+    struct CompletedResolver {
+        mode: ModeId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ModeKeyResolver for CompletedResolver {
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn resolve_with_keymap(
+            &self,
+            _key: &DriverKeyEvent,
+            _state: &mut ModeState,
+            _input: &ResolveInput<'_>,
+        ) -> ResolveResult {
+            ResolveResult::Completed
+        }
+    }
+
+    let kernel = {
+        use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
+        let services = Arc::new(ServiceRegistry::new());
+        services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            Arc::new(OptionRegistry::new()),
+            services,
+        )
+    };
+    let state = crate::session::SessionState::with_kernel(kernel);
+    let session = crate::session::Session::from_state(SessionId::new(name), state);
+
+    let mode = ModeId::new(ModuleId::new("default"), "normal");
+    session.with_state_mut_sync(|state| {
+        state.resolver_registry.register(CompletedResolver { mode });
+    });
+
+    // Create a buffer
+    let buffer_id = session.with_state_mut_sync(|state| state.create_buffer("content"));
+
+    // Add client
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    // Set active_buffer and a window for the client
+    session.clients().update_client_state(client_id, |state| {
+        state.active_buffer = Some(buffer_id);
+        let window = reovim_driver_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_session::WindowLayout::single(window);
+    });
+
+    (session, buffer_id, client_id)
+}
+
+/// `send_keys` with a resolver + active buffer covers the cursor-move and
+/// viewport-scroll post-processing branches (L222-244).
+#[tokio::test]
+async fn test_send_keys_post_processing_with_active_buffer() {
+    let (session, _buffer_id, client_id) =
+        session_with_resolver_and_active_buffer("sendkeys-postproc-test");
+
+    let registry = Arc::new(SessionRegistry::new());
+    let session_arc = Arc::new(session);
+    registry.insert(&session_arc);
+
+    let service = InputServiceImpl::new(
+        Arc::clone(&registry),
+        SessionId::new("sendkeys-postproc-test"),
+        Arc::new(BridgeRegistry::new()),
+    );
+
+    let request = authed_request(
+        SendKeysRequest {
+            keys: "a".to_string(),
+        },
+        client_id,
+    );
+    let response = service.send_keys(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    assert!(resp.ok);
+}
+
+/// `send_keys` with mode-change bridges covers `notify_bridges_mode_changed`
+/// being called from the `send_keys` loop (L289-296).
+#[tokio::test]
+async fn test_send_keys_with_mode_change_notifies_bridges() {
+    use {
+        reovim_driver_input::{
+            KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput, TransitionContext,
+        },
+        reovim_kernel::api::v1::{ModeId, ModuleId},
+    };
+
+    // A resolver that transitions mode on key press
+    struct ModeChangeResolver {
+        mode: ModeId,
+        target: ModeId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ModeKeyResolver for ModeChangeResolver {
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn resolve_with_keymap(
+            &self,
+            _key: &DriverKeyEvent,
+            _state: &mut ModeState,
+            _input: &ResolveInput<'_>,
+        ) -> ResolveResult {
+            ResolveResult::ModeTransition(reovim_driver_input::ModeTransition::Push {
+                mode: self.target.clone(),
+                context: TransitionContext::new(),
+            })
+        }
+    }
+
+    // Also need a resolver for the target mode
+    struct TargetResolver {
+        mode: ModeId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ModeKeyResolver for TargetResolver {
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn resolve_with_keymap(
+            &self,
+            _key: &DriverKeyEvent,
+            _state: &mut ModeState,
+            _input: &ResolveInput<'_>,
+        ) -> ResolveResult {
+            ResolveResult::Completed
+        }
+    }
+
+    let session = crate::session::Session::new(SessionId::new("sendkeys-modechange-test"));
+    let normal_mode = ModeId::new(ModuleId::new("default"), "normal");
+    let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
+
+    session.with_state_mut_sync(|state| {
+        state.resolver_registry.register(ModeChangeResolver {
+            mode: normal_mode,
+            target: insert_mode.clone(),
+        });
+        state
+            .resolver_registry
+            .register(TargetResolver { mode: insert_mode });
+    });
+
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let mut bridges = BridgeRegistry::new();
+    bridges.register(TestBridge::client("mode-bridge"));
+
+    let registry = Arc::new(SessionRegistry::new());
+    let session_arc = Arc::new(session);
+    registry.insert(&session_arc);
+
+    let service = InputServiceImpl::new(
+        Arc::clone(&registry),
+        SessionId::new("sendkeys-modechange-test"),
+        Arc::new(bridges),
+    );
+
+    let request = authed_request(
+        SendKeysRequest {
+            keys: "a".to_string(),
+        },
+        client_id,
+    );
+    let response = service.send_keys(request).await;
+    assert!(response.is_ok());
 }

@@ -73,3 +73,7 @@ impl PresenceService {
         self.map.is_empty()
     }
 }
+
+#[cfg(test)]
+#[path = "presence_service_tests.rs"]
+mod tests;

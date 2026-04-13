@@ -1936,3 +1936,188 @@ fn test_pending_bindings_cleared_on_completed() {
     let pb = extensions.get::<PendingBindings>().unwrap();
     assert!(!pb.is_active());
 }
+
+// =========================================================================
+// ensure_initial_compositor_window coverage (lines 223-242)
+// =========================================================================
+
+/// Cover lines 223-242: `ensure_initial_compositor_window()` adds a tiled
+/// window when buffers exist but the compositor has no tiled windows yet.
+///
+/// This happens when the scratch buffer is created after `with_registries()`
+/// has already set up the compositor (so the inline `if !buffer_ids.is_empty()`
+/// guard in `with_registries` was false) and we later need to ensure the
+/// compositor has a window.
+#[test]
+fn test_ensure_initial_compositor_window_adds_tiled_when_no_windows() {
+    let kernel = test_kernel();
+
+    let compositor: Box<dyn reovim_driver_layout::RootCompositor> = Box::new(MockCompositor::new());
+
+    // Create a state with a compositor but NO buffers yet so the inline guard
+    // in with_registries() does NOT create a window.
+    let mut state = SessionState::with_registries(
+        kernel,
+        test_mode_id(),
+        test_vfs(),
+        ModeRegistry::new(),
+        CommandRegistry::new(),
+        KeymapRegistry::new(),
+        ResolverRegistry::new(),
+        Some(compositor),
+    );
+
+    // Sanity: compositor has no tiled windows yet.
+    {
+        let comp = state.driver_session.compositor().unwrap();
+        let layer_id = comp.active_layer().unwrap();
+        let layer = comp.layer_compositor(layer_id).unwrap();
+        assert!(
+            layer
+                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .is_empty(),
+            "should have no tiled windows before buffer creation"
+        );
+    }
+
+    // Now add a buffer — this is what the server does when creating the
+    // scratch buffer.
+    state.create_buffer("scratch");
+
+    // Calling ensure_initial_compositor_window should now add a tiled window
+    // (lines 223-242).
+    state.ensure_initial_compositor_window();
+
+    // Verify a tiled window was added.
+    let comp = state.driver_session.compositor().unwrap();
+    let layer_id = comp.active_layer().unwrap();
+    let layer = comp.layer_compositor(layer_id).unwrap();
+    let tiled = layer.windows_in_zone(reovim_driver_layout::Zone::Tiled);
+    assert_eq!(tiled.len(), 1, "ensure_initial_compositor_window should add one tiled window");
+}
+
+/// Cover line 224: early-return branch when buffer list is empty.
+#[test]
+fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
+    let kernel = KernelContext::default(); // no buffer manager → empty list
+    let compositor: Box<dyn reovim_driver_layout::RootCompositor> = Box::new(MockCompositor::new());
+
+    let mut state = SessionState::with_registries(
+        kernel,
+        test_mode_id(),
+        test_vfs(),
+        ModeRegistry::new(),
+        CommandRegistry::new(),
+        KeymapRegistry::new(),
+        ResolverRegistry::new(),
+        Some(compositor),
+    );
+
+    // No buffers → should return early without touching compositor.
+    state.ensure_initial_compositor_window();
+
+    // Compositor should still have no tiled windows.
+    let comp = state.driver_session.compositor().unwrap();
+    let layer_id = comp.active_layer().unwrap();
+    let layer = comp.layer_compositor(layer_id).unwrap();
+    assert!(
+        layer
+            .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+            .is_empty(),
+        "no-op: compositor should still have no tiled windows"
+    );
+}
+
+/// Cover lines 227-228: early-return when the driver session has no compositor.
+#[test]
+fn test_ensure_initial_compositor_window_noop_when_no_compositor() {
+    let kernel = test_kernel();
+    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+    state.create_buffer("some buffer");
+
+    // No compositor set → should return early without panicking.
+    state.ensure_initial_compositor_window(); // must not panic
+}
+
+/// Cover line 236 (`windows_in_zone` is NOT empty → skip `add_tiled`).
+#[test]
+fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
+    let kernel = test_kernel();
+    let compositor: Box<dyn reovim_driver_layout::RootCompositor> = Box::new(MockCompositor::new());
+
+    // Create state with a buffer AND compositor so with_registries creates a window.
+    let mut buffer = reovim_provider_text::Buffer::new();
+    buffer.set_content("existing");
+    let _ = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
+
+    let mut state = SessionState::with_registries(
+        kernel,
+        test_mode_id(),
+        test_vfs(),
+        ModeRegistry::new(),
+        CommandRegistry::new(),
+        KeymapRegistry::new(),
+        ResolverRegistry::new(),
+        Some(compositor),
+    );
+
+    // Compositor now has one tiled window (created by with_registries).
+    {
+        let comp = state.driver_session.compositor().unwrap();
+        let layer_id = comp.active_layer().unwrap();
+        let layer = comp.layer_compositor(layer_id).unwrap();
+        assert_eq!(
+            layer
+                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .len(),
+            1
+        );
+    }
+
+    // Calling ensure again should NOT add a second window.
+    state.ensure_initial_compositor_window();
+
+    let comp = state.driver_session.compositor().unwrap();
+    let layer_id = comp.active_layer().unwrap();
+    let layer = comp.layer_compositor(layer_id).unwrap();
+    assert_eq!(
+        layer
+            .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+            .len(),
+        1,
+        "should not add a second tiled window when one already exists"
+    );
+}
+
+/// Test `PendingBindings` NOT populated when `Pending` result has empty
+/// pending keys — covers the `if !pending.is_empty()` false branch (L523).
+#[test]
+fn test_pending_result_with_empty_keys_skips_bindings() {
+    let kernel = KernelContext::default();
+    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+    // Register resolver that returns Pending but with EMPTY pending keys
+    state.resolver_registry.register(PendingWithKeysResolver {
+        mode: test_mode_id(),
+        parent: None,
+        keys: reovim_driver_input::KeySequence::new(), // empty
+    });
+
+    // Register a keymap binding to ensure the keymap is non-trivial
+    let dummy = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy");
+    state
+        .keymap_registry
+        .register_str(&test_mode_id(), "gg", dummy);
+
+    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+    let result = resolve_pb_test(&mut state, &key, &mut extensions);
+    assert!(result.is_some());
+
+    // Empty pending keys → the `if !pending.is_empty()` guard skips population
+    assert!(
+        extensions.get::<PendingBindings>().is_none(),
+        "PendingBindings should not be populated when pending keys are empty"
+    );
+}

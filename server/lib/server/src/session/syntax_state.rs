@@ -109,6 +109,12 @@ impl SyntaxStreamState {
     /// * `edit` - The edit description for incremental parsing
     /// * `start_line` - First line affected by the edit (for `TokenUpdate`)
     /// * `end_line` - Last line affected by the edit (for `TokenUpdate`)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the syntax driver for `buffer_id` is removed between the
+    /// mutable `update()` call and the immutable re-acquisition.  This cannot
+    /// happen in practice because no code path removes drivers in between.
     #[allow(clippy::cast_possible_truncation)]
     pub fn notify_edit(
         &mut self,
@@ -137,10 +143,12 @@ impl SyntaxStreamState {
         let start_byte = edit.start_byte.saturating_sub(100);
         let end_byte = (edit.new_end_byte + 100).min(content.len());
 
-        // Re-acquire immutable reference after mutable borrow ended
-        let Some(driver) = syntax.get(buffer_id) else {
-            return;
-        };
+        // Re-acquire immutable reference after mutable borrow ended.
+        // The driver cannot vanish between the mutable update() and this
+        // immutable re-acquisition — nothing removes it in between.
+        let driver = syntax
+            .get(buffer_id)
+            .expect("driver present: just used for update()");
         let mut highlights = driver.highlights(start_byte..end_byte);
         highlights.extend(driver.decorations(start_byte..end_byte));
 

@@ -174,3 +174,71 @@ async fn test_resize_with_authenticated_client() {
         panic!("Expected ResizeRequest payload");
     }
 }
+
+/// Cover lines 107-109: the closure body inside `update_client_state` for resize.
+///
+/// The existing `test_resize_with_authenticated_client` passes a `ClientId` in
+/// request extensions but does NOT add the client to the session, so
+/// `update_client_state` exits early without ever running the closure.  Here we
+/// add the client first so the closure executes.
+#[tokio::test]
+async fn test_resize_updates_terminal_size_for_existing_client() {
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let service = EditorServiceImpl::new(registry, SessionId::new("test"));
+
+    let mut request = Request::new(ResizeRequest {
+        width: 120,
+        height: 40,
+    });
+    request.extensions_mut().insert(client_id);
+
+    let response = service.resize(request).await;
+    assert!(response.is_ok());
+    assert!(response.unwrap().into_inner().ok);
+
+    // Verify the closure body ran: terminal_size was updated in per-client state.
+    let updated = session
+        .clients()
+        .with_clients(|clients| clients.get(&client_id).map(|c| c.state.terminal_size));
+    assert_eq!(updated, Some((120u16, 40u16)));
+}
+
+/// Cover lines 152-154: the closure body inside `update_client_state` for
+/// `set_active_buffer`.
+///
+/// Same pattern as resize: the existing `test_set_active_buffer_success` calls
+/// the handler without a `ClientId` in extensions, so the closure never runs.
+/// Here we add the client and inject its ID.
+#[tokio::test]
+async fn test_set_active_buffer_updates_per_client_state() {
+    let (registry, session) = test_registry_with_buffer_manager();
+
+    let buffer_id = session
+        .with_state_mut(|state| state.create_buffer("test content"))
+        .await;
+
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    let service = EditorServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let mut request = Request::new(SetActiveBufferRequest {
+        buffer_id: buffer_id.as_usize() as u64,
+    });
+    request.extensions_mut().insert(client_id);
+
+    let response = service.set_active_buffer(request).await;
+    assert!(response.is_ok());
+    assert!(response.unwrap().into_inner().ok);
+
+    // Verify the closure body ran: active_buffer was set for this client.
+    let active = session
+        .clients()
+        .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer));
+    assert_eq!(active, Some(buffer_id));
+}

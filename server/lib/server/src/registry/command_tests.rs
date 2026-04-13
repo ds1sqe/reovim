@@ -719,3 +719,64 @@ fn test_build_name_index_commands_without_names() {
     // TestCommand has one name (its name field), so it appears
     assert!(index.resolve("internal-cmd").is_some());
 }
+
+// ========================================================================
+// HandlerBridge::execute coverage (#547)
+// ========================================================================
+
+/// Exercise `HandlerBridge::execute` via `get_handle()` + `handle.execute()`.
+///
+/// `HandlerBridge` is only reachable through `CommandExecutor::get_handle` — the
+/// existing `execute_for_client` tests go through a different code path.  This
+/// test calls the bridge directly so the three lines that form its body are
+/// counted by the coverage tool.
+#[test]
+fn test_handler_bridge_execute_via_get_handle() {
+    use reovim_driver_session::api::CommandExecutor;
+
+    let mut registry = CommandRegistry::new();
+    let cmd = TestCommand::new("bridge-cmd");
+    let id = cmd.id.clone();
+    registry.register(Arc::new(cmd));
+
+    let handle = registry.get_handle(&id).expect("handle exists");
+
+    let kernel = KernelContext::default();
+    let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
+    let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
+    let args = CommandContext::new();
+
+    let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
+    let mut client_windows = reovim_driver_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_compositor = None;
+    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut registers = RegisterBank::new();
+    let mut clipboard_history = HistoryRing::new();
+    let mut local_marks = MarkBank::new();
+    let mut jumplist = Jumplist::new();
+    let mut active_buffer = None;
+    let mut terminal_size = (80u16, 24u16);
+
+    let mut runtime = SessionRuntime::new(
+        &mut driver_session,
+        reovim_driver_session::ClientContext {
+            mode_stack: &mut client_mode_stack,
+            windows: &mut client_windows,
+            extensions: &mut client_extensions,
+            compositor: &mut client_compositor,
+            tabs: &mut tabs,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            local_marks: &mut local_marks,
+            jumplist: &mut jumplist,
+            active_buffer: &mut active_buffer,
+            terminal_size: &mut terminal_size,
+        },
+        &kernel,
+        &registry,
+    );
+
+    let result = handle.execute(&mut runtime, &args);
+    assert_eq!(result, CommandResult::Success);
+}

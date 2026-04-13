@@ -826,3 +826,199 @@ async fn test_stream_tokens_nonexistent_buffer() {
     assert!(response.is_err());
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
+
+// =========================================================================
+// Coverage for file-path-gated branches (lines 287, 362)
+// =========================================================================
+
+/// Cover line 287: `syntax_state.ensure_driver_from_path(...)` inside `get_tokens`.
+///
+/// This branch only runs when `buffer.file_path()` is `Some(...)`.  We create a
+/// buffer, set its file path to a Rust source file, then call `get_tokens`.  The
+/// factory in the test-with-syntax-factory session supports "text" and "rust",
+/// so the path-based detection may load a driver even if the no-op factory
+/// doesn't recognise the language — what matters is the branch is entered.
+#[tokio::test]
+async fn test_get_tokens_with_file_path_covers_ensure_driver_from_path() {
+    let (registry, session) = test_registry_with_syntax_factory();
+
+    let buffer_id = session
+        .with_state_mut(|state| state.create_buffer("fn main() {}"))
+        .await;
+
+    // Set a file path on the buffer so the `if let Some(path) = &file_path` branch
+    // is taken inside get_tokens (line 287).
+    session
+        .with_state_mut(|state| {
+            if let Some(buf_arc) = state.buffer(buffer_id) {
+                buf_arc.write().set_file_path(Some("main.rs".to_string()));
+            }
+        })
+        .await;
+
+    let service = SyntaxServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let request = Request::new(GetTokensRequest {
+        buffer_id: buffer_id.as_usize() as u64,
+        start_line: None,
+        end_line: None,
+    });
+    let response = service.get_tokens(request).await;
+    assert!(response.is_ok());
+    // Language should now be "rust" (detected from .rs path).
+    let resp = response.unwrap().into_inner();
+    assert_eq!(resp.language_id, "rust");
+}
+
+/// Cover line 362: `syntax_state.ensure_driver_from_path(...)` inside `stream_tokens`.
+///
+/// Same idea as above but for the `stream_tokens` handler path.
+#[tokio::test]
+async fn test_stream_tokens_with_file_path_covers_ensure_driver_from_path() {
+    let (registry, session) = test_registry_with_syntax_factory();
+
+    let buffer_id = session
+        .with_state_mut(|state| state.create_buffer("fn main() {}"))
+        .await;
+
+    // Attach a file path so the inner `if let Some(path) = &file_path` guard fires.
+    session
+        .with_state_mut(|state| {
+            if let Some(buf_arc) = state.buffer(buffer_id) {
+                buf_arc.write().set_file_path(Some("lib.rs".to_string()));
+            }
+        })
+        .await;
+
+    let service = SyntaxServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let request = Request::new(StreamTokensRequest {
+        buffer_id: buffer_id.as_usize() as u64,
+    });
+    let response = service.stream_tokens(request).await;
+    assert!(response.is_ok());
+}
+
+// =========================================================================
+// Coverage for registry-based language detection in get_language_info
+// (lines 442-453)
+// =========================================================================
+
+/// Cover lines 442-453: the registry-based detection branch in `get_language_info`.
+///
+/// This branch requires:
+///   1. `file_path` is `Some`
+///   2. `syntax_state.detect_language(path)` returns `Some(lang_id)`
+///   3. `syntax_state.registry()` returns `Some(registry)`
+///   4. `registry.get_info(&lang_id)` returns `Some(info)`
+///
+/// When the test factory is installed but no language registry is configured,
+/// conditions 2-4 are not all met, so the fall-through path is taken instead.
+/// Without a real tree-sitter registry it is difficult to satisfy all four
+/// conditions in a unit test.  We therefore verify the fall-through (plain-text)
+/// path works correctly when a file path is set but no registry entry exists,
+/// ensuring the surrounding code (lines 440-441, 455-462) is exercised, and we
+/// accept that the `if let` chain on 442-453 evaluates its conditions (lines
+/// 442-444 are entered even if the overall guard is false).
+#[tokio::test]
+async fn test_get_language_info_with_file_path_fallback() {
+    let (registry, session) = test_registry_with_syntax_factory();
+
+    let buffer_id = session
+        .with_state_mut(|state| state.create_buffer("fn main() {}"))
+        .await;
+
+    // Set a .rs file path.  The test factory supports "rust" but there is no
+    // language registry, so `detect_language` returns None and the fallback
+    // (lines 455-462) is taken.  The file_path branch entry (line 441) is
+    // still covered.
+    session
+        .with_state_mut(|state| {
+            if let Some(buf_arc) = state.buffer(buffer_id) {
+                buf_arc.write().set_file_path(Some("main.rs".to_string()));
+            }
+        })
+        .await;
+
+    let service = SyntaxServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let request = Request::new(GetLanguageInfoRequest {
+        buffer_id: buffer_id.as_usize() as u64,
+    });
+    let response = service.get_language_info(request).await;
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    // Hardcoded fallback: detected as "rust" from .rs extension.
+    assert_eq!(resp.language_id, "rust");
+    assert!(resp.has_parser, "test factory supports rust");
+}
+
+// =========================================================================
+// Coverage: registry-based detection let-chain body (lines 443-453)
+// =========================================================================
+
+/// Cover lines 443-453: the `if let` chain body in `get_language_info` that
+/// returns early with registry-derived language info.
+///
+/// Requires: `file_path` set, `detect_language` returns Some, `registry()` returns
+/// Some, and `registry.get_info(lang_id)` returns Some(info).
+#[tokio::test]
+async fn test_get_language_info_via_registry_based_detection() {
+    use {
+        reovim_driver_syntax::{DefaultLanguageRegistry, LanguageInfo},
+        std::sync::Arc,
+    };
+
+    let (registry, session) = test_registry_with_syntax_factory();
+
+    let buffer_id = session
+        .with_state_mut(|state| state.create_buffer("fn main() {}"))
+        .await;
+
+    // Set file path so detect_language can match it.
+    session
+        .with_state_mut(|state| {
+            if let Some(buf_arc) = state.buffer(buffer_id) {
+                buf_arc.write().set_file_path(Some("main.rs".to_string()));
+            }
+        })
+        .await;
+
+    // Install a DefaultLanguageRegistry that recognises "rust" from ".rs".
+    session.with_state_mut_sync(|state| {
+        let syntax_state = state
+            .app
+            .extensions
+            .get_or_insert::<crate::session::SyntaxSessionState>();
+        let lang_registry = Arc::new(DefaultLanguageRegistry::new(vec![
+            LanguageInfo::new("rust", "Rust").with_extensions(["rs"]),
+        ]));
+        syntax_state.set_registry(lang_registry);
+    });
+
+    let service = SyntaxServiceImpl::new(registry, SessionId::new("test"));
+
+    #[allow(clippy::cast_possible_truncation)]
+    let request = Request::new(GetLanguageInfoRequest {
+        buffer_id: buffer_id.as_usize() as u64,
+    });
+    let response = service.get_language_info(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+
+    // Registry-based detection path: language_id and name from LanguageInfo.
+    assert_eq!(resp.language_id, "rust");
+    assert_eq!(resp.language_name, "Rust");
+    // extensions from LanguageInfo: ".rs"
+    assert!(
+        resp.extensions.contains(&".rs".to_string()),
+        "expected .rs in extensions, got {:?}",
+        resp.extensions
+    );
+    // test factory supports rust
+    assert!(resp.has_parser);
+}

@@ -313,6 +313,25 @@ async fn run_until_without_port_sender() {
     assert!(result.is_ok());
 }
 
+/// Cover lines 212-226: `Server::with_module_service` replaces the default
+/// `ModuleServiceImpl` with a caller-supplied concrete implementation.
+///
+/// This is a `#[cfg(feature = "grpc")]` method guarded by the same feature as
+/// the test.  We use the built-in `ModuleServiceImpl` as the replacement type
+/// because the only requirement is that it implements `ModuleService + Clone +
+/// Send + Sync + 'static`.
+#[cfg(feature = "grpc")]
+#[test]
+fn server_with_module_service() {
+    use crate::grpc::ModuleServiceImpl;
+
+    let server = Server::new(ServerConfig::default());
+    // `with_module_service` transfers all fields and changes the M type parameter.
+    let server2 = server.with_module_service(ModuleServiceImpl::new());
+    // The session registry and token registry should survive the transfer.
+    assert!(server2.sessions().is_empty());
+}
+
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn run_with_custom_session_name() {

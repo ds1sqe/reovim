@@ -1721,3 +1721,241 @@ async fn test_get_selection_dangling_follower_not_found() {
     let err = service.get_selection(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::NotFound);
 }
+
+// =========================================================================
+// Coverage: kernel_to_proto_option() all variants (L62-77)
+// =========================================================================
+
+#[test]
+fn test_kernel_to_proto_option_bool_true() {
+    use {
+        super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
+        reovim_protocol::v2::option_value::Value,
+    };
+
+    let proto = kernel_to_proto_option(&KernelOptionValue::Bool(true));
+    assert_eq!(proto.value, Some(Value::BoolValue(true)));
+}
+
+#[test]
+fn test_kernel_to_proto_option_bool_false() {
+    use {
+        super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
+        reovim_protocol::v2::option_value::Value,
+    };
+
+    let proto = kernel_to_proto_option(&KernelOptionValue::Bool(false));
+    assert_eq!(proto.value, Some(Value::BoolValue(false)));
+}
+
+#[test]
+fn test_kernel_to_proto_option_integer() {
+    use {
+        super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
+        reovim_protocol::v2::option_value::Value,
+    };
+
+    let proto = kernel_to_proto_option(&KernelOptionValue::Integer(42));
+    assert_eq!(proto.value, Some(Value::IntValue(42)));
+}
+
+#[test]
+fn test_kernel_to_proto_option_string() {
+    use {
+        super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
+        reovim_protocol::v2::option_value::Value,
+    };
+
+    let proto = kernel_to_proto_option(&KernelOptionValue::String("hello".to_string()));
+    assert_eq!(proto.value, Some(Value::StringValue("hello".to_string())));
+}
+
+#[test]
+fn test_kernel_to_proto_option_choice() {
+    use {
+        super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
+        reovim_protocol::v2::option_value::Value,
+    };
+
+    let proto = kernel_to_proto_option(&KernelOptionValue::Choice {
+        value: "all".to_string(),
+        choices: vec!["none".to_string(), "all".to_string(), "block".to_string()],
+    });
+    // Choice maps to StringValue with the selected value
+    assert_eq!(proto.value, Some(Value::StringValue("all".to_string())));
+}
+
+// =========================================================================
+// Coverage: get_options with specific named options (L229-239)
+// =========================================================================
+
+#[tokio::test]
+async fn test_get_options_with_specific_names_registered() {
+    use {
+        reovim_driver_buffer::TestBufferManager,
+        reovim_kernel::api::v1::{
+            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
+        },
+    };
+
+    // Build a session with a real OptionRegistry that has a registered option.
+    let option_registry = Arc::new(OptionRegistry::new());
+    option_registry
+        .register(OptionSpec::new("number", "Show line numbers", OptionValue::Bool(false)))
+        .expect("register option");
+
+    let kernel = KernelContext::new(
+        Arc::new(EventBus::new()),
+        Arc::new(TestBufferManager::new()),
+        option_registry,
+        Arc::new(ServiceRegistry::new()),
+    );
+    let state = crate::session::SessionState::with_kernel(kernel);
+    let session = Arc::new(Session::from_state(SessionId::new("test"), state));
+    let registry = Arc::new(SessionRegistry::new());
+    registry.insert(&session);
+
+    let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+    // Request by specific name — exercises the non-empty names branch (L229-233).
+    let request = Request::new(GetOptionsRequest {
+        names: vec!["number".to_string()],
+    });
+    let response = service.get_options(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    // "number" was registered with default Bool(false), so it should appear.
+    assert_eq!(resp.options.len(), 1);
+    assert!(resp.options.contains_key("number"));
+    let opt = &resp.options["number"];
+    assert_eq!(opt.value, Some(reovim_protocol::v2::option_value::Value::BoolValue(false)));
+}
+
+#[tokio::test]
+async fn test_get_options_with_alias_resolves() {
+    use {
+        reovim_driver_buffer::TestBufferManager,
+        reovim_kernel::api::v1::{
+            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
+        },
+    };
+
+    let option_registry = Arc::new(OptionRegistry::new());
+    option_registry
+        .register(
+            OptionSpec::new("number", "Show line numbers", OptionValue::Bool(true))
+                .with_short("nu"),
+        )
+        .expect("register option");
+
+    let kernel = KernelContext::new(
+        Arc::new(EventBus::new()),
+        Arc::new(TestBufferManager::new()),
+        option_registry,
+        Arc::new(ServiceRegistry::new()),
+    );
+    let state = crate::session::SessionState::with_kernel(kernel);
+    let session = Arc::new(Session::from_state(SessionId::new("test"), state));
+    let registry = Arc::new(SessionRegistry::new());
+    registry.insert(&session);
+
+    let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+    // Request by short alias "nu" — resolve_name returns "number".
+    let request = Request::new(GetOptionsRequest {
+        names: vec!["nu".to_string()],
+    });
+    let response = service.get_options(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    // Resolved to full name "number".
+    assert_eq!(resp.options.len(), 1);
+    assert!(resp.options.contains_key("number"));
+}
+
+#[tokio::test]
+async fn test_get_options_with_unknown_name_omitted() {
+    use {
+        reovim_driver_buffer::TestBufferManager,
+        reovim_kernel::api::v1::{
+            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
+        },
+    };
+
+    let option_registry = Arc::new(OptionRegistry::new());
+    option_registry
+        .register(OptionSpec::new(
+            "expandtab",
+            "Use spaces instead of tabs",
+            OptionValue::Bool(false),
+        ))
+        .expect("register option");
+
+    let kernel = KernelContext::new(
+        Arc::new(EventBus::new()),
+        Arc::new(TestBufferManager::new()),
+        option_registry,
+        Arc::new(ServiceRegistry::new()),
+    );
+    let state = crate::session::SessionState::with_kernel(kernel);
+    let session = Arc::new(Session::from_state(SessionId::new("test"), state));
+    let registry = Arc::new(SessionRegistry::new());
+    registry.insert(&session);
+
+    let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+    // "nonexistent" is unknown — filter_map drops it, result has only known options.
+    let request = Request::new(GetOptionsRequest {
+        names: vec!["expandtab".to_string(), "nonexistent".to_string()],
+    });
+    let response = service.get_options(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    // Only "expandtab" should be present; "nonexistent" is silently dropped.
+    assert_eq!(resp.options.len(), 1);
+    assert!(resp.options.contains_key("expandtab"));
+}
+
+#[tokio::test]
+async fn test_get_options_empty_names_returns_all() {
+    use {
+        reovim_driver_buffer::TestBufferManager,
+        reovim_kernel::api::v1::{
+            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
+        },
+    };
+
+    let option_registry = Arc::new(OptionRegistry::new());
+    option_registry
+        .register(OptionSpec::new("wrap", "Line wrap", OptionValue::Bool(true)))
+        .expect("register wrap");
+    option_registry
+        .register(OptionSpec::new("tabstop", "Tab stop width", OptionValue::Integer(8)))
+        .expect("register tabstop");
+
+    let kernel = KernelContext::new(
+        Arc::new(EventBus::new()),
+        Arc::new(TestBufferManager::new()),
+        option_registry,
+        Arc::new(ServiceRegistry::new()),
+    );
+    let state = crate::session::SessionState::with_kernel(kernel);
+    let session = Arc::new(Session::from_state(SessionId::new("test"), state));
+    let registry = Arc::new(SessionRegistry::new());
+    registry.insert(&session);
+
+    let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+    // Empty names → list_all() branch returns all registered options.
+    let request = Request::new(GetOptionsRequest { names: vec![] });
+    let response = service.get_options(request).await;
+
+    assert!(response.is_ok());
+    let resp = response.unwrap().into_inner();
+    assert_eq!(resp.options.len(), 2);
+    assert!(resp.options.contains_key("wrap"));
+    assert!(resp.options.contains_key("tabstop"));
+}
