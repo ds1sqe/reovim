@@ -7,11 +7,11 @@ use std::sync::{
 
 use {
     reovim_driver_command::{Command, CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::{
         CommandId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
+    reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 
 const SAMPLE_MODULE: ModuleId = ModuleId::new("sample");
