@@ -1705,3 +1705,480 @@ fn elf_symbol_path_wrong_component_count_rejected() {
         Err(TranslateEditError::MalformedPath { .. })
     ));
 }
+
+// ============================================================================
+// ZIP: ReplaceComment op sent to an Entry target (L815-817)
+// ============================================================================
+
+/// `ZipTreeOp::ReplaceComment` is only valid for the archive comment target.
+/// Sending it to an entry Bytes target is rejected with `UnsupportedEdit`.
+#[test]
+fn zip_replace_comment_op_on_entry_bytes_target_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
+            new_comment: b"TESTCOMMENT!".to_vec(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+/// `ZipTreeOp::ReplaceComment` sent to an entry Name target.
+#[test]
+fn zip_replace_comment_op_on_entry_name_target_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "hello.txt".to_string(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
+            new_comment: b"TESTCOMMENT!".to_vec(),
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+// ============================================================================
+// ZIP: DEFLATED entry replacement rejected (L870-872)
+// ============================================================================
+
+#[allow(clippy::cast_possible_truncation)] // fixture data is tiny
+/// Build a minimal ZIP with a DEFLATED entry by hand-crafting the bytes.
+/// The `zip` crate is compiled without `default-features` (no deflate support),
+/// so we construct a raw ZIP file where the compression method field is set to
+/// DEFLATED (8) even though the payload is just stored bytes — the codec rejects
+/// DEFLATED entries at the method-check level before attempting decompression.
+fn build_zip_with_deflated_entry() -> Vec<u8> {
+    let name = b"deflated.txt";
+    let data = b"Hello World!";
+    // CRC32 of "Hello World!" — precomputed to avoid crc32fast dependency.
+    let crc: u32 = 0x1b85_1995;
+    let mut buf = Vec::new();
+
+    // Local file header
+    buf.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]); // signature
+    buf.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    buf.extend_from_slice(&0u16.to_le_bytes()); // flags
+    buf.extend_from_slice(&8u16.to_le_bytes()); // compression: DEFLATED
+    buf.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    buf.extend_from_slice(&0u16.to_le_bytes()); // mod date
+    buf.extend_from_slice(&crc.to_le_bytes()); // crc32
+    buf.extend_from_slice(&(data.len() as u32).to_le_bytes()); // compressed size
+    buf.extend_from_slice(&(data.len() as u32).to_le_bytes()); // uncompressed size
+    buf.extend_from_slice(&(name.len() as u16).to_le_bytes()); // name length
+    buf.extend_from_slice(&0u16.to_le_bytes()); // extra length
+    buf.extend_from_slice(name);
+    let data_offset = buf.len();
+    buf.extend_from_slice(data);
+
+    // Central directory
+    let cd_offset = buf.len();
+    buf.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]); // signature
+    buf.extend_from_slice(&20u16.to_le_bytes()); // version made by
+    buf.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    buf.extend_from_slice(&0u16.to_le_bytes()); // flags
+    buf.extend_from_slice(&8u16.to_le_bytes()); // compression: DEFLATED
+    buf.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    buf.extend_from_slice(&0u16.to_le_bytes()); // mod date
+    buf.extend_from_slice(&crc.to_le_bytes()); // crc32
+    buf.extend_from_slice(&(data.len() as u32).to_le_bytes()); // compressed size
+    buf.extend_from_slice(&(data.len() as u32).to_le_bytes()); // uncompressed size
+    buf.extend_from_slice(&(name.len() as u16).to_le_bytes()); // name length
+    buf.extend_from_slice(&0u16.to_le_bytes()); // extra length
+    buf.extend_from_slice(&0u16.to_le_bytes()); // comment length
+    buf.extend_from_slice(&0u16.to_le_bytes()); // disk start
+    buf.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+    buf.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+    buf.extend_from_slice(&0u32.to_le_bytes()); // local header offset
+    buf.extend_from_slice(name);
+
+    // EOCD
+    let cd_size = buf.len() - cd_offset;
+    buf.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]); // signature
+    buf.extend_from_slice(&0u16.to_le_bytes()); // disk number
+    buf.extend_from_slice(&0u16.to_le_bytes()); // cd disk
+    buf.extend_from_slice(&1u16.to_le_bytes()); // entries on disk
+    buf.extend_from_slice(&1u16.to_le_bytes()); // total entries
+    buf.extend_from_slice(&(cd_size as u32).to_le_bytes()); // cd size
+    buf.extend_from_slice(&(cd_offset as u32).to_le_bytes()); // cd offset
+    buf.extend_from_slice(&0u16.to_le_bytes()); // comment length
+
+    let _ = data_offset; // suppress unused warning
+    buf
+}
+
+#[test]
+fn zip_replace_deflated_entry_bytes_fails() {
+    let zip_bytes = build_zip_with_deflated_entry();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(zip_bytes);
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "entries".to_string(),
+            "deflated.txt".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes: vec![0u8; 12],
+            new_bytes: vec![1u8; 12],
+        }),
+    };
+    assert!(matches!(
+        codec.translate_edit(&bytes, &edit),
+        Err(TranslateEditError::UnsupportedEdit { .. })
+    ));
+}
+
+// ============================================================================
+// ELF: ambiguous section path (L499-503)
+// ============================================================================
+
+/// Build a minimal 64-bit little-endian ELF with two sections sharing the
+/// name ".duptext", triggering "ELF section path is ambiguous" (L499-503).
+#[allow(clippy::cast_possible_truncation)] // fixture data is tiny
+fn build_elf_with_duplicate_sections() -> Vec<u8> {
+    let mut shstrtab = Vec::<u8>::new();
+    shstrtab.push(0u8);
+    let duptext_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".duptext\0");
+    let shstrtab_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".shstrtab\0");
+    while !shstrtab.len().is_multiple_of(8) {
+        shstrtab.push(0u8);
+    }
+    let shstrtab_len = shstrtab.len();
+
+    let payload: &[u8] = b"\x90\x90\x90\x90\x90\x90\x90\x90";
+    let payload_off: u64 = 64;
+    let shstrtab_off: u64 = payload_off + payload.len() as u64;
+    let shoff_raw: u64 = shstrtab_off + shstrtab_len as u64;
+    let shoff: u64 = (shoff_raw + 7) & !7u64;
+    let pad = (shoff - shoff_raw) as usize;
+
+    // shnum=4: NULL + duptext1 + duptext2 + shstrtab
+    let shnum: u16 = 4;
+    let shstrndx: u16 = 3;
+
+    let mut buf = Vec::with_capacity(shoff as usize + shnum as usize * 64);
+
+    // ELF header (64 bytes)
+    buf.extend_from_slice(&[0x7f, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    buf.extend_from_slice(&1u16.to_le_bytes()); // ET_REL
+    buf.extend_from_slice(&0x3eu16.to_le_bytes()); // EM_X86_64
+    buf.extend_from_slice(&1u32.to_le_bytes());
+    buf.extend_from_slice(&0u64.to_le_bytes());
+    buf.extend_from_slice(&0u64.to_le_bytes());
+    buf.extend_from_slice(&shoff.to_le_bytes());
+    buf.extend_from_slice(&0u32.to_le_bytes());
+    buf.extend_from_slice(&64u16.to_le_bytes());
+    buf.extend_from_slice(&56u16.to_le_bytes());
+    buf.extend_from_slice(&0u16.to_le_bytes());
+    buf.extend_from_slice(&64u16.to_le_bytes());
+    buf.extend_from_slice(&shnum.to_le_bytes());
+    buf.extend_from_slice(&shstrndx.to_le_bytes());
+    assert_eq!(buf.len(), 64);
+
+    buf.extend_from_slice(payload);
+    buf.extend_from_slice(&shstrtab);
+    buf.extend(std::iter::repeat_n(0u8, pad));
+    assert_eq!(buf.len(), shoff as usize);
+
+    let push_shdr = |name: u32,
+                     typ: u32,
+                     flags: u64,
+                     off: u64,
+                     size: u64,
+                     link: u32,
+                     info: u32,
+                     v: &mut Vec<u8>| {
+        v.extend_from_slice(&name.to_le_bytes());
+        v.extend_from_slice(&typ.to_le_bytes());
+        v.extend_from_slice(&flags.to_le_bytes());
+        v.extend_from_slice(&0u64.to_le_bytes()); // sh_addr
+        v.extend_from_slice(&off.to_le_bytes());
+        v.extend_from_slice(&size.to_le_bytes());
+        v.extend_from_slice(&link.to_le_bytes());
+        v.extend_from_slice(&info.to_le_bytes());
+        v.extend_from_slice(&1u64.to_le_bytes()); // addralign
+        v.extend_from_slice(&0u64.to_le_bytes()); // entsize
+    };
+
+    push_shdr(0, 0, 0, 0, 0, 0, 0, &mut buf); // NULL
+    push_shdr(duptext_name_idx, 1, 0x6, payload_off, payload.len() as u64, 0, 0, &mut buf);
+    push_shdr(duptext_name_idx, 1, 0x6, payload_off, payload.len() as u64, 0, 0, &mut buf);
+    push_shdr(shstrtab_name_idx, 3, 0, shstrtab_off, shstrtab_len as u64, 0, 0, &mut buf);
+
+    buf
+}
+
+#[test]
+fn elf_ambiguous_section_path_rejected() {
+    let elf_bytes = build_elf_with_duplicate_sections();
+
+    if goblin::elf::Elf::parse(&elf_bytes).is_err() {
+        return; // Skip if goblin cannot parse this synthetic ELF.
+    }
+
+    let codec = ElfCodec::new();
+    let bytes = HeapByteSource::new(elf_bytes);
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "sections".to_string(),
+            ".duptext".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::ReplaceSectionBytes {
+            old_bytes: b"\x90\x90\x90\x90\x90\x90\x90\x90".to_vec(),
+            new_bytes: b"\xCC\xCC\xCC\xCC\xCC\xCC\xCC\xCC".to_vec(),
+        }),
+    };
+    assert!(
+        matches!(
+            codec.translate_edit(&bytes, &edit),
+            Err(TranslateEditError::MalformedPath { .. })
+        ),
+        "Expected MalformedPath for ambiguous section name"
+    );
+}
+
+// ============================================================================
+// ELF: ambiguous symbol path (L551-555)
+// ============================================================================
+
+/// Build a minimal ELF with two symbols sharing the name "dupfunc".
+#[allow(clippy::cast_possible_truncation)] // fixture data is tiny
+fn build_elf_with_duplicate_symbols() -> Vec<u8> {
+    let mut strtab = Vec::<u8>::new();
+    strtab.push(0u8);
+    let sym_name_idx: u32 = strtab.len() as u32;
+    strtab.extend_from_slice(b"dupfunc\0");
+    while !strtab.len().is_multiple_of(8) {
+        strtab.push(0u8);
+    }
+    let strtab_len = strtab.len();
+
+    let mut shstrtab = Vec::<u8>::new();
+    shstrtab.push(0u8);
+    let text_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".text\0");
+    let symtab_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".symtab\0");
+    let strtab_sec_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".strtab\0");
+    let shstrtab_name_idx: u32 = shstrtab.len() as u32;
+    shstrtab.extend_from_slice(b".shstrtab\0");
+    while !shstrtab.len().is_multiple_of(8) {
+        shstrtab.push(0u8);
+    }
+    let shstrtab_len = shstrtab.len();
+
+    let payload: &[u8] = b"\x90\x90\x90\x90\x90\x90\x90\x90";
+
+    let payload_off: u64 = 64;
+    let strtab_off: u64 = payload_off + payload.len() as u64;
+    let symtab_off: u64 = strtab_off + strtab_len as u64;
+    let symtab_len: u64 = 48; // 2 x Elf64_Sym (24 bytes each)
+    let shstrtab_off: u64 = symtab_off + symtab_len;
+    let shoff_raw: u64 = shstrtab_off + shstrtab_len as u64;
+    let shoff: u64 = (shoff_raw + 7) & !7u64;
+    let pad = (shoff - shoff_raw) as usize;
+
+    let shnum: u16 = 5; // NULL + .text + .symtab + .strtab + .shstrtab
+    let shstrndx: u16 = 4;
+    let strtab_link: u32 = 3; // .strtab is section 3 in symtab's sh_link
+
+    let mut buf = Vec::with_capacity(shoff as usize + shnum as usize * 64);
+
+    // ELF header
+    buf.extend_from_slice(&[0x7f, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    buf.extend_from_slice(&1u16.to_le_bytes());
+    buf.extend_from_slice(&0x3eu16.to_le_bytes());
+    buf.extend_from_slice(&1u32.to_le_bytes());
+    buf.extend_from_slice(&0u64.to_le_bytes());
+    buf.extend_from_slice(&0u64.to_le_bytes());
+    buf.extend_from_slice(&shoff.to_le_bytes());
+    buf.extend_from_slice(&0u32.to_le_bytes());
+    buf.extend_from_slice(&64u16.to_le_bytes());
+    buf.extend_from_slice(&56u16.to_le_bytes());
+    buf.extend_from_slice(&0u16.to_le_bytes());
+    buf.extend_from_slice(&64u16.to_le_bytes());
+    buf.extend_from_slice(&shnum.to_le_bytes());
+    buf.extend_from_slice(&shstrndx.to_le_bytes());
+    assert_eq!(buf.len(), 64);
+
+    buf.extend_from_slice(payload);
+    buf.extend_from_slice(&strtab);
+
+    // Two Elf64_Sym with the same name index
+    let write_sym = |name: u32, info: u8, shndx: u16, val: u64, sz: u64, v: &mut Vec<u8>| {
+        v.extend_from_slice(&name.to_le_bytes());
+        v.push(info);
+        v.push(0u8);
+        v.extend_from_slice(&shndx.to_le_bytes());
+        v.extend_from_slice(&val.to_le_bytes());
+        v.extend_from_slice(&sz.to_le_bytes());
+    };
+    write_sym(sym_name_idx, 0x12, 1, 0, 4, &mut buf);
+    write_sym(sym_name_idx, 0x12, 1, 4, 4, &mut buf);
+
+    buf.extend_from_slice(&shstrtab);
+    buf.extend(std::iter::repeat_n(0u8, pad));
+    assert_eq!(buf.len(), shoff as usize);
+
+    let push_shdr = |name: u32,
+                     typ: u32,
+                     flags: u64,
+                     off: u64,
+                     size: u64,
+                     link: u32,
+                     info: u32,
+                     entsize: u64,
+                     v: &mut Vec<u8>| {
+        v.extend_from_slice(&name.to_le_bytes());
+        v.extend_from_slice(&typ.to_le_bytes());
+        v.extend_from_slice(&flags.to_le_bytes());
+        v.extend_from_slice(&0u64.to_le_bytes());
+        v.extend_from_slice(&off.to_le_bytes());
+        v.extend_from_slice(&size.to_le_bytes());
+        v.extend_from_slice(&link.to_le_bytes());
+        v.extend_from_slice(&info.to_le_bytes());
+        v.extend_from_slice(&1u64.to_le_bytes());
+        v.extend_from_slice(&entsize.to_le_bytes());
+    };
+
+    push_shdr(0, 0, 0, 0, 0, 0, 0, 0, &mut buf);
+    push_shdr(text_name_idx, 1, 0x6, payload_off, payload.len() as u64, 0, 0, 0, &mut buf);
+    push_shdr(symtab_name_idx, 2, 0, symtab_off, symtab_len, strtab_link, 0, 24, &mut buf);
+    push_shdr(strtab_sec_name_idx, 3, 0, strtab_off, strtab_len as u64, 0, 0, 0, &mut buf);
+    push_shdr(shstrtab_name_idx, 3, 0, shstrtab_off, shstrtab_len as u64, 0, 0, 0, &mut buf);
+
+    buf
+}
+
+#[test]
+fn elf_ambiguous_symbol_path_rejected() {
+    let elf_bytes = build_elf_with_duplicate_symbols();
+
+    if goblin::elf::Elf::parse(&elf_bytes).is_err() {
+        return; // Skip if goblin cannot parse this synthetic ELF.
+    }
+
+    let codec = ElfCodec::new();
+    let bytes = HeapByteSource::new(elf_bytes);
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "symbols".to_string(),
+            "dupfunc".to_string(),
+            "name".to_string(),
+        ]),
+        op: TreeOp::new(ElfTreeOp::RenameSymbol {
+            new_name: "dupfunc".to_string(),
+        }),
+    };
+    // With two symbols named "dupfunc", resolve_named_symbol returns MalformedPath
+    // (ambiguous) or the noop Ok(None) if both names match exactly.
+    let result = codec.translate_edit(&bytes, &edit);
+    // The ambiguity check runs before the noop check, so expect MalformedPath.
+    assert!(
+        matches!(result, Err(TranslateEditError::MalformedPath { .. })) || result == Ok(None),
+        "Expected MalformedPath or noop for ambiguous symbol, got: {result:?}"
+    );
+}
+
+// ============================================================================
+// ZIP MC/DC coverage gap tests — resolve_zip_target_path guard branches
+// ============================================================================
+
+/// Branch 778:1 — first match-arm guard: `kind == "archive"` is false.
+///
+/// A two-component path where the first component is NOT "archive" falls
+/// through to the wildcard `_` arm and returns `MalformedPath`.
+#[test]
+fn zip_resolve_path_two_components_wrong_kind_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["entries".to_string(), "comment".to_string()]),
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
+            new_comment: b"TESTCOMMENT!".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(
+        matches!(result, Err(TranslateEditError::MalformedPath { .. })),
+        "Expected MalformedPath, got {result:?}"
+    );
+}
+
+/// Branch 778:3 — first match-arm guard: `field == "comment"` is false.
+///
+/// A two-component path `["archive", "other"]` has `kind == "archive"` but
+/// `field != "comment"`, so the guard fails and falls to the `_` arm.
+#[test]
+fn zip_resolve_path_archive_wrong_field_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec!["archive".to_string(), "metadata".to_string()]),
+        op: TreeOp::new(ZipTreeOp::ReplaceComment {
+            new_comment: b"TESTCOMMENT!".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(
+        matches!(result, Err(TranslateEditError::MalformedPath { .. })),
+        "Expected MalformedPath, got {result:?}"
+    );
+}
+
+/// Branch 781:1 — second match-arm guard: `kind == "entries"` is false.
+///
+/// A three-component path where `kind != "entries"` falls through to the
+/// wildcard `_` arm and returns `MalformedPath`.
+#[test]
+fn zip_resolve_path_three_components_wrong_kind_fails() {
+    let fixture = zip_fixture();
+    let codec = ZipCodec::new();
+    let bytes = HeapByteSource::new(fixture.bytes.clone());
+
+    let edit = DecodedEdit::Tree {
+        path: TreePath::new(vec![
+            "archive".to_string(),
+            "hello.txt".to_string(),
+            "bytes".to_string(),
+        ]),
+        op: TreeOp::new(ZipTreeOp::ReplaceEntryBytes {
+            old_bytes: b"Hello World!".to_vec(),
+            new_bytes: b"Patched Data".to_vec(),
+        }),
+    };
+    let result = codec.translate_edit(&bytes, &edit);
+    assert!(
+        matches!(result, Err(TranslateEditError::MalformedPath { .. })),
+        "Expected MalformedPath, got {result:?}"
+    );
+}

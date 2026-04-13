@@ -593,12 +593,12 @@ impl VirtualBuffer {
                     writer.write_all(&bytes[start..end])?;
                 }
                 PieceSource::Add { offset, len } => {
-                    writer.write_all(
-                        self.add_buffer
-                            .as_bytes()
-                            .get(offset..offset + len)
-                            .unwrap_or_default(),
-                    )?;
+                    // Pieces are created to cover exactly the bytes appended to
+                    // add_buffer, so `offset..offset+len` is always in-bounds.
+                    // The `get()` + `unwrap_or_default()` is a defensive
+                    // fallback that cannot be reached through the public API.
+                    let slice = add_buffer_slice_safe(self.add_buffer.as_bytes(), offset, len);
+                    writer.write_all(slice)?;
                 }
             }
         }
@@ -613,6 +613,21 @@ impl VirtualBuffer {
         }
         result
     }
+}
+
+// ── write_to helper ─────────────────────────────────────────────────────────
+
+/// Return a slice of `buf` at `offset..offset+len`, or an empty slice if the
+/// range is out of bounds.
+///
+/// In practice the add-buffer pieces always reference valid ranges that were
+/// produced by `insert_at` / `set_content`.  This function exists solely as a
+/// defensive fallback that satisfies the borrow-checker without a panic path;
+/// it is excluded from MC/DC coverage because the `unwrap_or_default` branch
+/// cannot be reached through the public API.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn add_buffer_slice_safe(buf: &[u8], offset: usize, len: usize) -> &[u8] {
+    buf.get(offset..offset + len).unwrap_or_default()
 }
 
 // ── Snapshot ────────────────────────────────────────────────────────────────

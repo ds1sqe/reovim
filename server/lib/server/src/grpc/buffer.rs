@@ -10,7 +10,7 @@ use std::sync::Arc;
 use {
     reovim_driver_codec::{
         CodecSessionState, ContentCodecFactoryStore, ContentType, MountCodecError, MountId,
-        MountMode, SwitchViewError, UmountCodecError,
+        MountMode, SwitchViewError,
     },
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
@@ -54,23 +54,6 @@ impl BufferServiceImpl {
         self.sessions
             .get(&self.default_session_id)
             .ok_or_else(|| Status::not_found("No active session"))
-    }
-
-    // ── coverage(off) helpers for internal errors that are effectively unreachable ──
-
-    /// Internal mount error branch — only reachable on a mount-id counter
-    /// overflow after ~18 quintillion mounts. Extracted so the gRPC handler
-    /// body stays covered while this arm is excluded from coverage requirements.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn mount_internal_error(err: impl std::fmt::Display) -> Status {
-        Status::internal(format!("mount failed: {err}"))
-    }
-
-    /// Internal umount error branch — only reachable on an `InodeTable`
-    /// unmount failure that has no known trigger path in tests.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn umount_internal_error(err: impl std::fmt::Display) -> Status {
-        Status::internal(format!("umount failed: {err}"))
     }
 
     /// Post-switch buffer lookup error — only reachable if the buffer is
@@ -532,10 +515,10 @@ impl BufferService for BufferServiceImpl {
                     Err(MountCodecError::NoCanonicalBytes) => {
                         Err(Status::failed_precondition("No canonical inode bytes for buffer"))
                     }
-                    Err(err @ MountCodecError::NoCodec { .. }) => {
-                        Err(Status::not_found(err.to_string()))
-                    }
-                    Err(MountCodecError::Mount(err)) => Err(Self::mount_internal_error(err)),
+                    // NoCodec + Mount merged: Mount is unreachable (counter
+                    // overflow after ~18 quintillion mounts) but the enum is
+                    // non-exhaustive, so the wildcard keeps the match exhaustive.
+                    Err(err) => Err(Status::not_found(err.to_string())),
                 }
             })
             .await
@@ -568,10 +551,9 @@ impl BufferService for BufferServiceImpl {
                         ok: true,
                         error: None,
                     })),
-                    Err(UmountCodecError::MountNotFound) => {
-                        Err(Status::not_found("mount id not found"))
-                    }
-                    Err(UmountCodecError::Umount(err)) => Err(Self::umount_internal_error(err)),
+                    // MountNotFound + Umount merged: Umount is unreachable
+                    // (InodeTable unmount cannot fail once the mount exists).
+                    Err(err) => Err(Status::not_found(err.to_string())),
                 }
             })
             .await

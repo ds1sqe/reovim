@@ -34,11 +34,6 @@ use crate::{
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
-/// Unreachable defensive guard in `ensure_initial_compositor_window`:
-/// compositors always have an active layer with a valid layer compositor.
-#[cfg_attr(coverage_nightly, coverage(off))]
-const fn compositor_layer_unavailable() {}
-
 /// No-op command executor for key resolution and mode transition paths.
 ///
 /// Resolvers only need `SessionApiDyn` (excludes `CommandExecutor`), so
@@ -232,15 +227,11 @@ impl SessionState {
         let Some(compositor) = self.driver_session.compositor_mut() else {
             return;
         };
-        let active_layer = compositor.active_layer();
-        let Some(layer) = active_layer.and_then(|a| compositor.layer_compositor_mut(a)) else {
-            // Defensive: compositors always have an active layer with a valid
-            // layer compositor in normal operation.
-            return compositor_layer_unavailable();
-        };
-        if layer
-            .windows_in_zone(reovim_driver_layout::Zone::Tiled)
-            .is_empty()
+        if let Some(active) = compositor.active_layer()
+            && let Some(layer) = compositor.layer_compositor_mut(active)
+            && layer
+                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
+                .is_empty()
         {
             layer.add_tiled();
         }

@@ -452,16 +452,17 @@ impl InputServiceImpl {
         session
             .clients()
             .with_client_extensions_mut(client_id, |ext| {
-                for bridge in bridges.values() {
-                    if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
-                        let was_active = bridge.is_active(ext);
-                        bridge.on_cursor_moved(line, col, ext);
-                        let is_active = bridge.is_active(ext);
-                        // If the bridge deactivated, record an extension change
-                        // so the notification pipeline sends the updated state.
-                        if was_active && !is_active {
-                            changes.record_extension_change(bridge.kind().into());
-                        }
+                for bridge in bridges
+                    .values()
+                    .filter(|b| b.scope() == reovim_driver_session::bridges::ExtensionScope::Client)
+                {
+                    let was_active = bridge.is_active(ext);
+                    bridge.on_cursor_moved(line, col, ext);
+                    let is_active = bridge.is_active(ext);
+                    // If the bridge deactivated, record an extension change
+                    // so the notification pipeline sends the updated state.
+                    if was_active && !is_active {
+                        changes.record_extension_change(bridge.kind().into());
                     }
                 }
             });
@@ -601,10 +602,9 @@ impl InputServiceImpl {
                     .map(text_event_to_syntax_edit);
 
                 if let Some(driver) = syntax.get_mut(buffer_id) {
-                    if let Some(ref edit) = edit_info {
-                        driver.update(&content, edit);
-                    } else {
-                        driver.parse(&content);
+                    match edit_info {
+                        Some(ref edit) => driver.update(&content, edit),
+                        None => driver.parse(&content),
                     }
                 }
 
@@ -827,9 +827,10 @@ impl InputServiceImpl {
                     if let Some((buffer_id, text_event)) = modified_buffer {
                         if let Some(event) = text_event {
                             changes.record_buffer_modified_with_text_edit(buffer_id, event);
-                        } else {
-                            changes.record_buffer_modified(buffer_id);
                         }
+                        // Always record modification — idempotent after
+                        // record_buffer_modified_with_text_edit (which calls it internally).
+                        changes.record_buffer_modified(buffer_id);
                         changes.record_cursor_move(buffer_id);
                         tracing::debug!(?buffer_id, "Recorded buffer modification for InsertChar");
                     }

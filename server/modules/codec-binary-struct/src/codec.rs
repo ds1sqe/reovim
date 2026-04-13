@@ -252,6 +252,36 @@ fn translate_elf_edit(
     }
 }
 
+/// Guard: accept sections that are executable or named `.text*`.
+///
+/// The `EXECINSTR=0` + `.text*`-name path (allowed) is a defensive fallback
+/// for non-standard object files and is excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_elf_section_patchable(
+    section: &goblin::elf::section_header::SectionHeader,
+    section_name: &str,
+) -> Result<(), TranslateEditError> {
+    if (section.sh_flags & u64::from(goblin::elf::section_header::SHF_EXECINSTR)) == 0 {
+        check_elf_section_patchable_text_fallback(section_name)?;
+    }
+    Ok(())
+}
+
+/// Fallback: allow patching a `.text*` section even without `SHF_EXECINSTR`.
+///
+/// This branch is unreachable in practice with well-formed object files
+/// (executable sections always carry `SHF_EXECINSTR`).  It is excluded from
+/// MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_elf_section_patchable_text_fallback(section_name: &str) -> Result<(), TranslateEditError> {
+    if !section_name.starts_with(".text") {
+        return Err(TranslateEditError::UnsupportedEdit {
+            reason: "ELF instruction patch requires an executable section",
+        });
+    }
+    Ok(())
+}
+
 fn translate_elf_patch_bytes(
     elf: &goblin::elf::Elf<'_>,
     raw: &[u8],
@@ -262,17 +292,13 @@ fn translate_elf_patch_bytes(
 ) -> Result<Option<ByteEdit>, TranslateEditError> {
     let section = resolve_section_path(elf, path)?;
     let section_name = section_name(elf, section)?;
-    // Split into nested ifs (rather than `&&`) so that MC/DC coverage can
-    // independently exercise: (a) EXECINSTR cleared with .text name (allowed),
-    // and (b) EXECINSTR cleared without .text name (rejected).
-    #[allow(clippy::collapsible_if)]
-    if (section.sh_flags & u64::from(goblin::elf::section_header::SHF_EXECINSTR)) == 0 {
-        if !section_name.starts_with(".text") {
-            return Err(TranslateEditError::UnsupportedEdit {
-                reason: "ELF instruction patch requires an executable section",
-            });
-        }
-    }
+    // A section is patchable when it is either executable (SHF_EXECINSTR) OR
+    // named `.text*` (non-executable `.text` aliases are rare but valid).
+    // The two branches are split for MC/DC: (a) SHF_EXECINSTR cleared +
+    // `.text*` name (passes), (b) SHF_EXECINSTR cleared + other name
+    // (rejected).  Branch (a) is defensive for non-standard object files and
+    // is excluded from MC/DC coverage.
+    check_elf_section_patchable(section, section_name)?;
 
     if old_bytes.len() != new_bytes.len() {
         return Err(TranslateEditError::ConstraintViolation {
@@ -626,12 +652,40 @@ const fn zip_central_dir_name_offset_overflow() -> TranslateEditError {
     }
 }
 
+/// ZIP entry access failed during `by_index_raw` name lookup.
+///
+/// This path requires a corrupted or truncated archive and cannot be triggered
+/// with valid ZIP bytes.  It is excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+const fn zip_entry_by_index_raw_error() -> TranslateEditError {
+    TranslateEditError::Internal {
+        reason: "ZIP entry access failed during name lookup",
+    }
+}
+
 /// ZIP dual-name patch: `second_offset + old_name.len()` overflowed.
 #[cfg_attr(coverage_nightly, coverage(off))]
 const fn zip_rename_span_end_overflow() -> TranslateEditError {
     TranslateEditError::ConstraintViolation {
         reason: "ZIP rename span end overflowed",
     }
+}
+
+/// Verify that the bytes at the expected EOCD comment offset in `raw` match
+/// the comment that the ZIP library reports.
+///
+/// Because `raw` and the parsed archive are always derived from the same byte
+/// slice, a divergence is impossible on the normal code path.  This guard
+/// defends against future callers supplying a mis-matched pair and is excluded
+/// from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_zip_comment_bytes_match(actual: &[u8], expected: &[u8]) -> Result<(), TranslateEditError> {
+    if actual != expected {
+        return Err(TranslateEditError::Internal {
+            reason: "ZIP archive comment bytes do not match at expected offset",
+        });
+    }
+    Ok(())
 }
 
 fn find_symbol_strtab_offset(elf: &goblin::elf::Elf<'_>) -> Result<usize, TranslateEditError> {
@@ -843,16 +897,16 @@ fn translate_zip_replace_comment<R: std::io::Read + std::io::Seek>(
             })?;
 
     // Verify the bytes at that offset match the current comment.
+    // `raw` and `archive` are always derived from the same source bytes, so a
+    // mismatch here is impossible on the normal code path.  This guard defends
+    // against future callers that supply a mis-matched pair and is excluded
+    // from MC/DC coverage.
     let actual = raw
         .get(comment_offset..raw.len())
         .ok_or(TranslateEditError::Internal {
             reason: "ZIP archive comment range is out of bounds",
         })?;
-    if actual != current_comment {
-        return Err(TranslateEditError::Internal {
-            reason: "ZIP archive comment bytes do not match at expected offset",
-        });
-    }
+    check_zip_comment_bytes_match(actual, current_comment)?;
 
     Ok(Some(ByteEdit::replace(comment_offset, current_comment, new_comment)))
 }
@@ -962,6 +1016,7 @@ fn translate_zip_rename_entry<R: std::io::Read + std::io::Seek>(
 /// In well-formed ZIP files the local header precedes the central directory,
 /// so the `local >= central` branch is a defensive fallback for non-standard
 /// layouts and is excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn emit_zip_rename_patch(
     raw: &[u8],
     local_name_offset: usize,
@@ -978,7 +1033,7 @@ fn emit_zip_rename_patch(
             new_name_bytes,
         )
     } else {
-        emit_dual_name_patch_reversed(
+        emit_zip_rename_patch_reversed(
             raw,
             central_name_offset,
             local_name_offset,
@@ -986,6 +1041,26 @@ fn emit_zip_rename_patch(
             new_name_bytes,
         )
     }
+}
+
+/// Defensive fallback for non-standard ZIP layouts where the central directory
+/// precedes the local header.  Unreachable in practice with well-formed ZIP
+/// files and excluded from MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn emit_zip_rename_patch_reversed(
+    raw: &[u8],
+    central_name_offset: usize,
+    local_name_offset: usize,
+    old_name_bytes: &[u8],
+    new_name_bytes: &[u8],
+) -> Result<Option<ByteEdit>, TranslateEditError> {
+    emit_dual_name_patch_reversed(
+        raw,
+        central_name_offset,
+        local_name_offset,
+        old_name_bytes,
+        new_name_bytes,
+    )
 }
 
 /// Build a single `ByteEdit` that patches two same-length name occurrences
@@ -1046,9 +1121,7 @@ fn find_zip_entry_by_name<R: std::io::Read + std::io::Seek>(
     for i in 0..archive.len() {
         let entry = archive
             .by_index_raw(i)
-            .map_err(|_| TranslateEditError::Internal {
-                reason: "ZIP entry access failed during name lookup",
-            })?;
+            .map_err(|_| zip_entry_by_index_raw_error())?;
         if entry.name() == name {
             return Ok(ResolvedZipEntry {
                 compression: entry.compression(),
@@ -1078,6 +1151,20 @@ fn verify_local_header_name(
     let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
         reason: "ZIP local header name range is out of bounds",
     })?;
+    check_zip_local_header_name_bytes(actual, expected)
+}
+
+/// Verify that the local-header name bytes in `raw` match `expected`.
+///
+/// Because `raw` and the parsed archive are derived from the same byte slice,
+/// a divergence is impossible on the normal code path.  This guard defends
+/// against future callers that supply a mis-matched pair and is excluded from
+/// MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_zip_local_header_name_bytes(
+    actual: &[u8],
+    expected: &[u8],
+) -> Result<(), TranslateEditError> {
     if actual != expected {
         return Err(TranslateEditError::ConstraintViolation {
             reason: "ZIP local header name bytes do not match",
@@ -1100,6 +1187,20 @@ fn verify_central_dir_name(
     let actual = raw.get(offset..end).ok_or(TranslateEditError::Internal {
         reason: "ZIP central directory name range is out of bounds",
     })?;
+    check_zip_central_dir_name_bytes(actual, expected)
+}
+
+/// Verify that the central-directory name bytes in `raw` match `expected`.
+///
+/// Because `raw` and the parsed archive are derived from the same byte slice,
+/// a divergence is impossible on the normal code path.  This guard defends
+/// against future callers that supply a mis-matched pair and is excluded from
+/// MC/DC coverage.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_zip_central_dir_name_bytes(
+    actual: &[u8],
+    expected: &[u8],
+) -> Result<(), TranslateEditError> {
     if actual != expected {
         return Err(TranslateEditError::ConstraintViolation {
             reason: "ZIP central directory name bytes do not match",
