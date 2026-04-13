@@ -370,8 +370,8 @@ declare_module!(KeymapModule);
 
 ## Related Documents
 
-- [Architecture Overview](../architecture/overview.md) - Architecture overview
-- [Mechanism vs Policy](../contributing/philosophy/mechanism-vs-policy.md) - Design principle
+- [Architecture Overview](../overview.md) - Architecture overview
+- [Mechanism vs Policy](../../contributing/philosophy/mechanism-vs-policy.md) - Design principle
 - [Module-Mode Inheritance](./mode-inheritance.md) - Mode system
 - [Kernel Subsystems](../kernel/overview.md) - Kernel internals
 - [FFI Overview](../ffi/overview.md) - C FFI interface

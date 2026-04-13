@@ -21,7 +21,7 @@ Architecture documentation for Epic #353: implementing pure mechanism/policy sep
 
 Epic #353 achieved complete separation between:
 
-- **Mechanism (Runner)**: `KeymapRegistry.query()` returns pure facts about what exists
+- **Mechanism (Server)**: `KeymapRegistry.query()` returns pure facts about what exists
 - **Policy (Vim Module)**: `ModeKeyResolver` decides what those facts mean
 
 This enables swappable keybinding paradigms (Vim, Emacs, Kakoune, games) using the same underlying engine.

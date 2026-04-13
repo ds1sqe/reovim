@@ -9,20 +9,21 @@ Keyboard, mouse, and clipboard abstractions.
 ## Key Traits
 
 ```rust
-pub trait KeyboardDriver: Send + Sync {
-    fn read_key(&mut self) -> Option<KeyEvent>;
-    fn pending(&self) -> bool;
+pub trait ClipboardProvider: Send + Sync {
+    fn get_clipboard(&self) -> Result<String>;
+    fn set_clipboard(&self, content: &str) -> Result<()>;
+    fn get_selection(&self) -> Result<String>;
+    fn set_selection(&self, content: &str) -> Result<()>;
 }
 
-pub trait MouseDriver: Send + Sync {
-    fn read_mouse(&mut self) -> Option<MouseEvent>;
-    fn enable(&mut self);
-    fn disable(&mut self);
-}
+pub trait ModeKeyResolver: Send + Sync {
+    fn mode_id(&self) -> &ModeId;
+    fn inherits_from(&self) -> Option<&ModeId>;
 
-pub trait ClipboardDriver: Send + Sync {
-    fn get(&self) -> Result<String>;
-    fn set(&mut self, content: &str) -> Result<()>;
+    fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
+    fn resolve_with_keymap(&self, ...) -> ResolveResult;
+    fn resolve_with_extensions(&self, ...) -> ResolveResult;
+    fn resolve_with_session(&self, ...) -> ResolveResult;
 }
 ```
 
@@ -67,15 +68,6 @@ impl KeySequence {
 }
 ```
 
-## Mode Behavior
-
-```rust
-// Mode behavior trait
-pub trait ModeInput {
-    fn accepts_char_input(&self) -> bool;  // Does this mode accept character input?
-}
-```
-
 ## Fallback Handling
 
 When a key sequence doesn't match any keymap binding, the event loop delegates to a fallback handler. The input driver provides the trait interface and basic implementations.
@@ -111,20 +103,13 @@ Modules provide policy implementations (e.g., `EditorFallbackHandler` inserts ch
 
 ## Mode Key Resolution
 
-The input driver provides a **resolver chain** for mode-specific key handling. See [Resolver Chain Architecture](./resolver-chain.md) for the complete documentation.
+The input driver provides a **resolver chain** for mode-specific key handling via `ModeKeyResolver` (see "Key Traits" above). See [Resolver Chain Architecture](./resolver-chain.md) for the complete documentation.
 
-```rust
-pub trait ModeKeyResolver: Send + Sync {
-    fn mode_id(&self) -> &ModeId;
-    fn inherits_from(&self) -> Option<&ModeId>;
-
-    // Resolution chain (each level can be overridden)
-    fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
-    fn resolve_with_keymap(&self, ...) -> ResolveResult;      // + keymap access
-    fn resolve_with_extensions(&self, ...) -> ResolveResult;  // + extension data
-    fn resolve_with_session(&self, ...) -> ResolveResult;     // + session access
-}
-```
+The resolution methods follow a layered override pattern:
+- `resolve()` — base resolution
+- `resolve_with_keymap()` — adds keymap access
+- `resolve_with_extensions()` — adds extension data
+- `resolve_with_session()` — adds session access
 
 Modules register resolvers for their modes:
 

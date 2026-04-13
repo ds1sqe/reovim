@@ -40,8 +40,9 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │                    KERNEL (server/lib/kernel/)                  │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
 │  │  mm/   │ │  ipc/  │ │ core/  │ │ block/ │ │ sched/ │         │
-│  │ Buffer │ │EventBus│ │ Motion │ │UndoTree│ │Runtime │         │
-│  │Position│ │ Scope  │ │TextObj │ │  Txn   │ │WorkQue │         │
+│  │BufferId│ │EventBus│ │  Mode  │ │ByteEdit│ │Runtime │         │
+│  │WindId  │ │ Scope  │ │ Config │ │Storage │ │WorkQue │         │
+│  │ TabId  │ │        │ │        │ │  Ops   │ │        │         │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
@@ -65,9 +66,18 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
+│              PROVIDERS (server/lib/providers/)                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  text/   (reovim-provider-text)                         │    │
+│  │  High-level text services built on kernel + drivers      │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────┐
 │                        SHARED (shared/)                         │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  protocol/ │ arch/ │ net/ │ log/ │ trace/ │ module-macros │   │
+│  │  domain/ │ domains/text/                                │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -98,6 +108,7 @@ See: [Session Model](./session-model.md)
 | `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
 | `drivers/` | `server/lib/drivers/*` | Hardware/service adapters |
 | `fs/` | `server/lib/drivers/vfs/` | Virtual filesystem |
+| Subsystem libraries | `server/lib/providers/*` | High-level domain services |
 | Loadable Modules | `server/modules/` | Dynamic policy modules |
 
 ## Design Principles
@@ -107,7 +118,7 @@ See: [Session Model](./session-model.md)
 - **Kernel** provides WHAT can be done (service objects via `sys.*`, traits)
 - **Modules** decide HOW to do it (keybindings, behavior)
 
-See: [Mechanism vs Policy](./mechanism-vs-policy.md)
+See: [Mechanism vs Policy](./mechanism-policy/README.md)
 
 ### 2. Kernel Purity
 
@@ -126,6 +137,13 @@ See: [Mechanism vs Policy](./mechanism-vs-policy.md)
 - Kernel defines traits, drivers implement
 - Multiple implementations possible (e.g., different terminals)
 - Hot-swappable at runtime
+
+### 5. Provider Layer
+
+`server/lib/providers/` sits between drivers and modules. Providers compose kernel
+primitives and driver services into higher-level, domain-oriented APIs (e.g.,
+`reovim-provider-text` for text operations). Modules consume providers rather than
+accessing drivers directly when a provider already wraps the needed functionality.
 
 ## Crate Dependency Graph
 
@@ -161,22 +179,34 @@ server/
 │   │   └── src/
 │   │       ├── api/         # PUBLIC interface
 │   │       │   ├── v1.rs    # Stable API re-exports
-│   │       │   ├── module.rs # Module trait, registrations
-│   │       │   └── context.rs # KernelContext, ModuleContext
+│   │       │   ├── module/  # Module trait, registrations
+│   │       │   ├── context.rs # KernelContext, ModuleContext
+│   │       │   └── service.rs # ServiceRegistry
 │   │       │
-│   │       ├── mm/          # Memory management
-│   │       │   ├── buffer.rs # Buffer storage
-│   │       │   └── position.rs # Position types
+│   │       ├── mm/          # Memory management (ID types)
+│   │       │   ├── buffer_id.rs # BufferId newtype
+│   │       │   ├── window_id.rs # WindowId newtype
+│   │       │   ├── tab_id.rs    # TabId newtype
+│   │       │   └── saturator.rs # SaturatorHandle (work-queue)
 │   │       │
 │   │       ├── ipc/         # Inter-process communication
-│   │       │   └── event_bus.rs # Pub/sub event system
+│   │       │   ├── event_bus/ # Pub/sub event system
+│   │       │   └── events/    # Kernel event definitions
 │   │       │
 │   │       ├── core/        # Core primitives
-│   │       │   ├── motion.rs # Motion types
-│   │       │   └── register.rs # Register types
+│   │       │   ├── mode.rs  # Mode, ModeId, ModeStack, CommandId
+│   │       │   ├── config.rs # Config, ConfigValue
+│   │       │   └── option/  # Editor option types
 │   │       │
-│   │       └── block/       # Block operations
-│   │           └── undo.rs  # UndoTree
+│   │       ├── block/       # Block-level storage
+│   │       │   ├── byte_edit.rs     # ByteEdit operations
+│   │       │   ├── byte_undo_log.rs # Byte-level undo log
+│   │       │   └── storage_ops.rs   # StorageOps trait
+│   │       │
+│   │       ├── sched/       # Scheduler
+│   │       ├── debug/       # Metrics, profiler, tracing
+│   │       ├── printk/      # Kernel logging (pr_err!, etc.)
+│   │       └── panic/       # Panic handling and recovery
 │   │
 │   ├── server/              # Server runtime
 │   │   └── src/
@@ -196,24 +226,29 @@ server/
 │   │       │   ├── auth.rs        # Authentication
 │   │       │   └── notification_builder.rs # Notification helpers
 │   │       ├── session/     # Session management
-│   │       └── registry/    # Module loader, registry
+│   │       └── registry/    # Mode, keymap, command registries
 │   │
-│   └── drivers/             # Driver implementations (14 crates)
-│       ├── input/           # Key event parsing
-│       ├── syntax/          # Tree-sitter integration
-│       ├── lsp/             # LSP client
-│       ├── vfs/             # Virtual filesystem
-│       ├── session/         # Session state traits
-│       ├── buffer/          # Buffer operations
-│       ├── undo/            # Undo/redo
-│       └── ...              # (search, clipboard, ffi, etc.)
+│   ├── drivers/             # Driver implementations (27 crates)
+│   │   ├── input/           # Key event parsing
+│   │   ├── syntax/          # Tree-sitter integration
+│   │   ├── lsp/             # LSP client
+│   │   ├── vfs/             # Virtual filesystem
+│   │   ├── session/         # Session state traits
+│   │   ├── buffer/          # Buffer operations
+│   │   ├── codec/           # Codec framework
+│   │   ├── module-loader/   # Dynamic module loading
+│   │   └── ...              # (undo, search, clipboard, ffi, git, etc.)
+│   │
+│   └── providers/           # Provider layer (high-level services)
+│       └── text/            # reovim-provider-text: text services on kernel+drivers
 │
-└── modules/                 # Policy modules (21 crates)
+└── modules/                 # Policy modules (73 crates)
     ├── vim/                 # Core Vim behavior
     ├── motions/             # Movement commands
     ├── textobjects/         # Text object definitions
     ├── keymap/              # Keymap definitions
-    └── ...                  # (editor, options, etc.)
+    ├── codec-*/             # Codec modules (9)
+    └── ...                  # (editor, options, git, lsp, etc.)
 
 clients/
 ├── tui/                     # TUI client
@@ -231,7 +266,15 @@ shared/
 ├── log/                     # Logging infrastructure
 ├── trace/                   # Tracing/diagnostics
 ├── module-macros/           # declare_module! proc-macro
-└── testing/                 # Integration test utilities
+├── testing/                 # Integration test utilities
+├── capabilities/            # Capability definitions
+├── depgraph/                # Dependency graph utilities
+├── domain/                  # reovim-domain: core domain abstractions
+├── domains/                 # Domain type families
+│   └── text/                # reovim-domain-text: Text domain (Buffer, Position, Motion, TextObject)
+└── clients/                 # Client shared libraries
+    ├── model/               # reovim-client-model: client model types
+    └── driver/              # reovim-client-driver: client driver traits
 ```
 
 ## Client Layer Model
@@ -256,7 +299,10 @@ See: [Client Architecture](./client/overview.md) for the full specification.
 ## Related Documents
 
 - [Session Model](./session-model.md) - tmux-like multi-client architecture
-- [Mechanism vs Policy](./mechanism-vs-policy.md) - Core principle
+- [Mechanism vs Policy](./mechanism-policy/README.md) - Core design principle
+- [Server/Client Split](./server-client-split.md) - Data/presentation separation
+- [Event Layers](./event-layers.md) - Kernel, domain, and streaming events
+- [Type Layers](./type-layers.md) - Context type hierarchy
 - [Module-Mode Inheritance](./modules/mode-inheritance.md) - Mode system
 - [Kernel Subsystems](./kernel/overview.md) - Kernel internals
 - [Driver Layer](./drivers/overview.md) - Server driver implementations

@@ -8,53 +8,28 @@ Event loop and async task management.
 
 ## Key Types
 
-```rust
-pub struct Runtime {
-    event_rx: Receiver<Event>,
-    work_queue: WorkQueue,
-}
+The scheduler exports the following types:
 
-pub struct WorkQueue {
-    tasks: VecDeque<Task>,
-}
-```
+- `Runtime` — main event loop, owns the executor and priority queue of pending tasks
+- `Executor` — drives task execution to completion
+- `Task` / `TaskId` — unit of scheduled work and its unique identifier
+- `TaskState` — lifecycle state of a task (pending, running, completed, cancelled)
+- `Priority` — task priority level controlling dispatch order
+- `PriorityQueue` — priority-ordered queue of ready tasks
+
+Note: internal field layouts are not part of the public API and may change.
 
 ## Runtime
 
-Main event loop:
+Main event loop: processes incoming events, drains the priority queue of ready tasks,
+and triggers rendering when the display state is dirty.
 
-```rust
-loop {
-    // 1. Process events
-    while let Ok(event) = event_rx.try_recv() {
-        handle_event(event);
-    }
+## PriorityQueue
 
-    // 2. Run scheduled tasks
-    work_queue.run_pending();
-
-    // 3. Render if needed
-    if needs_render {
-        render();
-    }
-}
-```
-
-## WorkQueue
-
-Deferred task execution:
-
-```rust
-work_queue.schedule(|| {
-    // Run later in event loop
-});
-
-work_queue.schedule_delayed(Duration::from_ms(100), || {
-    // Run after delay
-});
-```
+Tasks are dispatched in `Priority` order — higher-priority tasks run before lower ones.
+The `Executor` polls tasks from the queue and drives them to completion.
 
 ## Related Documents
 
 - [Kernel Overview](../overview.md) - Kernel architecture
-- [Concurrency Reference](../../contributing/internals/concurrency.md) - Tokio patterns
+- [Concurrency Reference](../../../contributing/internals/concurrency.md) - Tokio patterns

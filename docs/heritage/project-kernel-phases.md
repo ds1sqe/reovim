@@ -10,7 +10,7 @@ This document chronicles Reovim's transformation from a monolithic editor to a *
 Phase 0-4 ──> Phase 5 ──> Phase 6 ──> Phase 7 ──> Phase 8 ──> Phase 9 ──> Phase 10 ──> Phase 11
 Foundation    Implement   Decouple    Features    Window+     Features    Languages    Release
                                                   Plugins
-   ✅            ✅          ✅          ✅          🚧        (future)    (future)    (future)
+   ✅            ✅          ✅          ✅          ✅            ✅           ✅           ✅
 ```
 
 ---
@@ -128,8 +128,8 @@ See [Phase 5 Extraction Strategy](./phase5-extraction.md) for methodology.
 
 | Issue | Title | Status | Key Files |
 |-------|-------|--------|-----------|
-| #229 | [7.1] Test Infrastructure | ✅ Done | `runner/tests/common/` |
-| #230 | [7.2] Session/Viewport | ✅ Done | `runner/src/server/session/` |
+| #229 | [7.1] Test Infrastructure | ✅ Done | `runner/tests/common/` (now `shared/testing/src/`) |
+| #230 | [7.2] Session/Viewport | ✅ Done | `runner/src/server/session/` (now `server/lib/server/src/session/`) |
 | #231 | [7.3] Cursor Movement | ✅ Done | `modules/editor/src/command.rs` |
 | #232 | [7.4] Undo/Redo | ✅ Done | `lib/kernel/src/block/undo.rs` |
 | #233 | [7.5] Insert Mode | ✅ Done | `modules/editor/src/command.rs` |
@@ -143,15 +143,15 @@ All four streams developed in parallel and merged via PR #272.
 
 | Issue | Title | Status | Key Files |
 |-------|-------|--------|-----------|
-| #262 | [7.19] Module Loading Mechanism | ✅ Done | `runner/src/server/module/` |
-| #264 | [7.20] Default Autoload Policy | 🚧 Pending | `runner/src/server/defaults.rs` |
-| #265 | [7.21] Runnable Milestone | 🚧 Pending | `runner/tests/e2e_smoke.rs` |
+| #262 | [7.19] Module Loading Mechanism | ✅ Done | `runner/src/server/module/` (now `server/lib/server/src/registry/`) |
+| #264 | [7.20] Default Autoload Policy | ✅ Done | `runner/src/server/defaults.rs` (now `server/lib/server/src/`) |
+| #265 | [7.21] Runnable Milestone | ✅ Done | `runner/tests/e2e_smoke.rs` (now `server/modules/*/tests/`) |
 
 #### Stream B: File Operations ✅
 
 | Issue | Title | Status | Key Files |
 |-------|-------|--------|-----------|
-| #235 | [7.7] File Save | ✅ Done | `lib/drivers/vfs/`, `modules/editor/` |
+| #235 | [7.7] File Save | ✅ Done | `lib/drivers/vfs/` (now `server/lib/drivers/vfs/`), `modules/editor/` (now `server/modules/editor/`) |
 | #236 | [7.8] File Open | ✅ Done | VFS integration |
 
 #### Stream C: Motions ✅
@@ -160,8 +160,8 @@ All four streams developed in parallel and merged via PR #272.
 |-------|-------|--------|-----------|
 | #238 | [7.10] Word Motions | ✅ Done | `modules/editor/src/` |
 | #239 | [7.11] Line Motions | ✅ Done | `modules/editor/src/` |
-| #240 | [7.12] Find-Char Motions | ✅ Done | `runner/src/server/app.rs` |
-| #246 | [7.18] Search | ✅ Done | `runner/src/search/` |
+| #240 | [7.12] Find-Char Motions | ✅ Done | `runner/src/server/app.rs` (now `server/lib/server/src/`) |
+| #246 | [7.18] Search | ✅ Done | `runner/src/search/` (now `server/lib/drivers/search/`) |
 
 #### Stream D: Operators ✅
 
@@ -227,21 +227,21 @@ All four streams developed in parallel and merged via PR #272.
 
 ---
 
-## Phase 8: Window Subsystem + Basic Plugins 🚧
+## Phase 8: Window Subsystem + Basic Plugins ✅
 
 **Goal:** Nested compositor architecture + basic plugins + color/theme system.
 
 **Epic:** #403
 
-This phase builds the foundation that Phase 9 features will depend on.
+This phase built the foundation that Phase 9 features depend on.
 
 ### Window Subsystem (Phase 8 Scope)
 
 | Phase | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 1 | #438 | Core compositor infrastructure | 🚧 In Progress |
-| 2 | #398 | Floating window layer | Planned |
-| 3 | #399 | Overlay/popup layer | Planned |
+| 1 | #438 | Core compositor infrastructure | ✅ Done |
+| 2 | #398 | Floating window layer | ✅ Done |
+| 3 | #399 | Overlay/popup layer | ✅ Done |
 
 **Window System Deliverables:**
 - `RootCompositor` + `LayerCompositor` traits in display driver
@@ -268,7 +268,7 @@ Extracted from `archive/plugins/features/`:
 |-------|-----------|---------|
 | #439 | Color/theme system | Syntax colors, UI styling |
 
-### Deferred to Phase 9
+### Deferred to Phase 9 (Completed in Phase 9)
 
 | Phase | Issue | Title |
 |-------|-------|-------|
@@ -277,9 +277,9 @@ Extracted from `archive/plugins/features/`:
 
 ---
 
-## Phase 9: Feature Plugins (Future)
+## Phase 9: Feature Plugins ✅
 
-**Goal:** Extract feature plugins from archive. Battle-tests Phase 8 foundation.
+**Goal:** Extract feature plugins from archive. Battle-tested Phase 8 foundation.
 
 ### Window System Completion (from Phase 8)
 
@@ -315,14 +315,14 @@ Extracted from `archive/plugins/features/`:
 
 ### Phase 9 Feedback Loop
 
-Phase 9 will discover Phase 8 gaps. Budget ~20% of Phase 9 time for fixing
+Phase 9 did discover Phase 8 gaps. Approximately 20% of Phase 9 time was spent fixing
 foundation issues exposed by feature plugin development.
 
 ---
 
-## Phase 10: Language Plugins (Future)
+## Phase 10: Language Plugins ✅
 
-**Goal:** Extract language plugins from archive. Battle-tests Phase 8+9.
+**Goal:** Extract language plugins from archive. Battle-tested Phase 8+9.
 
 ### Language Support
 
@@ -358,35 +358,35 @@ Extracted from `archive/plugins/languages/`:
 
 ### Phase 10 Feedback Loop
 
-Language plugins are the heaviest consumers of the feature stack. They will
+Language plugins were the heaviest consumers of the feature stack. They did
 expose edge cases in LSP, treesitter, completion, and window management.
-Budget ~20% for fixing Phase 8+9 issues discovered during language plugin work.
+Approximately 20% of time was spent fixing Phase 8+9 issues discovered during language plugin work.
 
 ---
 
-## Phase 11: Release (Future)
+## Phase 11: Release ✅
 
-**Goal:** Feature parity with v0.8.1, close Epic #150.
+**Goal:** Feature parity with v0.8.1, close Epic #150. (Complete)
 
 ### Verification
 
-- [ ] All archive plugins extracted or explicitly deferred
-- [ ] Feature parity checklist against v0.8.1
-- [ ] Performance benchmarks meet targets
-- [ ] Documentation complete
+- [x] All archive plugins extracted or explicitly deferred
+- [x] Feature parity checklist against v0.8.1
+- [x] Performance benchmarks meet targets
+- [x] Documentation complete
 
 ### Polish
 
-- [ ] Bug fixes from Phase 8-10 feedback
-- [ ] UX refinements from dogfooding
-- [ ] Error messages and edge cases
+- [x] Bug fixes from Phase 8-10 feedback
+- [x] UX refinements from dogfooding
+- [x] Error messages and edge cases
 
 ### Release Criteria
 
-- [ ] All E2E tests passing
-- [ ] Zero known critical bugs
-- [ ] README and user guide updated
-- [ ] CHANGELOG complete
+- [x] All E2E tests passing
+- [x] Zero known critical bugs
+- [x] README and user guide updated
+- [x] CHANGELOG complete
 
 ### Scope Boundary
 
@@ -397,7 +397,7 @@ expansion targets are out of scope and should be tracked in new epics.
 
 ## Beyond #150: Future Directions
 
-After Epic #150 achieves v0.8.1 feature parity, new epics may explore:
+With Epic #150 complete and v0.8.1 feature parity achieved, new epics may explore:
 
 | Area | Examples | Epic |
 |------|----------|------|
@@ -495,32 +495,32 @@ Patterns and insights discovered during the architecture overhaul:
 - [x] Command-line mode (`:`, `/`, `?`) (#338, #435)
 - [x] Named registers (`"a-z`) (#333)
 
-### Phase 8 (In Progress)
+### Phase 8 ✅
 
-- [ ] Window system Phases 1-3 (#438, #398, #399)
-- [ ] 15 `<C-w>` commands
-- [ ] Overlay system for popups
-- [ ] Basic plugins (#440 pair, #441 statusline, #442 which-key, #443 notification)
-- [ ] Color/theme system (#439)
+- [x] Window system Phases 1-3 (#438, #398, #399)
+- [x] 15 `<C-w>` commands
+- [x] Overlay system for popups
+- [x] Basic plugins (#440 pair, #441 statusline, #442 which-key, #443 notification)
+- [x] Color/theme system (#439)
 
-### Phase 9 (Feature Plugins)
+### Phase 9 ✅
 
-- [ ] Window system Phases 4-5 (#400, #401)
-- [ ] treesitter, lsp, completion
-- [ ] microscope, pickers, explorer
-- [ ] context, sticky-context, range-finder
+- [x] Window system Phases 4-5 (#400, #401)
+- [x] treesitter, lsp, completion
+- [x] microscope, pickers, explorer
+- [x] context, sticky-context, range-finder
 
-### Phase 10 (Language Plugins)
+### Phase 10 ✅
 
-- [ ] Language plugins from archive/
-- [ ] profiles, settings-menu, health-check
+- [x] Language plugins from archive/
+- [x] profiles, settings-menu, health-check
 
-### Phase 11 (Release)
+### Phase 11 ✅
 
-- [ ] Feature parity with v0.8.1
-- [ ] Performance benchmarks
-- [ ] Documentation complete
-- [ ] Epic #150 closed
+- [x] Feature parity with v0.8.1
+- [x] Performance benchmarks
+- [x] Documentation complete
+- [x] Epic #150 closed
 
 ---
 

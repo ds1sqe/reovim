@@ -102,7 +102,7 @@ All runtime editing state lives in `EditingState` per client (#471):
 - `registers` - Yank/paste registers
 - `local_marks` - Buffer-local marks
 
-`SessionShared` retains only `compositor` (template) and `home_mode` (bootstrap default).
+`SessionShared` retains only `compositor` (template), `home_mode` (bootstrap default), and `global_marks` (A-Z marks shared across clients).
 
 ## Related Documents
 

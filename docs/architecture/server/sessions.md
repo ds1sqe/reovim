@@ -4,7 +4,7 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 
 ## Source Location
 
-- Sessions: `server/lib/server/src/session/` (moved from `runner/` in Phase 8)
+- Sessions: `server/lib/server/src/session/`
 - Per-client state: `server/lib/server/src/session/client.rs` (`EditingState`)
 - Driver Session: `server/lib/drivers/session/` (shared state + bootstrap)
 
@@ -18,9 +18,8 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 │  │ ├── driver_session: DriverSession                      │ │
 │  │ │   └── shared: SessionShared                          │ │
 │  │ │       ├── compositor                                 │ │
-│  │ │       ├── active_buffer                              │ │
-│  │ │       ├── terminal_size                              │ │
-│  │ │       └── home_mode (for new client init)            │ │
+│  │ │       ├── home_mode (for new client init)            │ │
+│  │ │       └── global_marks (A-Z marks)                   │ │
 │  │ ├── app: AppState                                      │ │
 │  │ │   ├── kernel (buffers, event_bus)                    │ │
 │  │ │   ├── undo_registry                                  │ │
@@ -72,9 +71,8 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 | Field | Location | Description |
 |-------|----------|-------------|
 | `home_mode` | `driver_session.shared` | Mode for initializing new clients |
-| `active_buffer` | `driver_session.shared` | Session-level active buffer |
-| `terminal_size` | `driver_session.shared` | Default terminal dimensions |
-| `compositor` | `driver_session.shared` | Window layout management |
+| `compositor` | `driver_session.shared` | Window layout template |
+| `global_marks` | `driver_session.shared` | Global marks (A-Z) shared across clients |
 | `kernel` | `app` | Core kernel services (buffers, events) |
 | `undo_registry` | `app` | Per-buffer undo trees |
 | `cmdline` | `app` | Command-line mode state |
@@ -86,8 +84,10 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 |-------|----------|-------------|
 | `mode_stack` | `EditingState` | Per-client editing mode (NORMAL/INSERT/VISUAL) |
 | `pending_keys` | `EditingState` | Per-client key sequence accumulator |
+| `active_buffer` | `EditingState` | Per-client active buffer (migrated from shared in #471) |
+| `terminal_size` | `EditingState` | Per-client terminal dimensions (migrated from shared in #471) |
 | `windows` | `EditingState` | Per-client window layout and cursor positions |
-| `viewport` | `EditingState` | Per-client terminal dimensions, scroll offset |
+| `viewport` | `EditingState` | Per-client viewport scroll offset |
 | `selection` | `EditingState` | Per-client visual selection |
 | `extensions` | `EditingState` | Per-client module state (#477) |
 | `compositor` | `EditingState` | Per-client compositor cloned from shared template (#474) |
@@ -99,17 +99,30 @@ Commands use `SessionRuntime` which borrows both shared and per-client state.
 
 ### Accessing Per-Client State
 
-```rust
-// Get per-client state (read-only)
-let state = session.client_state(client_id);
+After #741 the direct `session.client_state()` and `session.update_client_state()` methods
+were removed. The correct pattern is to go through `session.clients()`:
 
-// Update per-client state
-session.update_client_state(client_id, |editing_state| {
-    editing_state.mode_stack.push(insert_mode);
-    editing_state.windows.active_mut().map(|w| {
-        w.cursor = CursorPosition { line: 10, column: 5 };
-    });
-});
+```rust
+// Get per-client state (read-only) — acquire clients lock, read state
+let state = {
+    let clients = session.clients().read();
+    clients.get(&client_id)
+        .and_then(|c| c.editing_state())
+        .cloned()
+};
+
+// Update per-client state — acquire clients write lock
+{
+    let mut clients = session.clients().write();
+    if let Some(client) = clients.get_mut(&client_id) {
+        if let Some(editing_state) = client.editing_state_mut() {
+            editing_state.mode_stack.push(insert_mode);
+            editing_state.windows.active_mut().map(|w| {
+                w.cursor = CursorPosition { line: 10, column: 5 };
+            });
+        }
+    }
+}
 
 // Get per-client mode
 let mode = session.client_current_mode(client_id);
@@ -202,23 +215,28 @@ To prevent deadlocks, locks are acquired in strict order:
 ```
 Level 0 (Lock-Free):  ArcSwap<SessionRegistry>
        ↓
-Level 1 (Per-Session): RwLock<SessionState>
+Level 1 (Acquired First):  ClientDirectory (RwLock<HashMap<ClientId, Client>>)
        ↓
-Level 2 (Per-Client):  RwLock<HashMap<ClientId, Client>>
+Level 2 (Acquired Second): RwLock<SessionState>
 ```
 
-**Rule**: Always drop higher-level locks before acquiring lower-level locks.
+**Rule**: Always acquire clients (L1) before session state (L2). Never hold a session
+state lock while attempting to acquire the clients lock.
+
+This order matches how gRPC handlers actually execute:
+- `resolve_key_for_client`: acquires clients first, then session state
+- `execute_command_for_client`: acquires clients first, then session state
 
 ```rust
-// SAFE: client state (L2) → session (L1)
+// SAFE: clients (L1) acquired first, state (L2) acquired after clients lock is dropped
 let mode = {
     let clients = session.clients().read();
     clients.get(&client_id)
         .and_then(|c| c.editing_state())
         .map(|s| s.mode_stack.current().clone())
-}; // Lock dropped
+}; // Clients lock dropped here
 
-session.with_state(|state| { ... });  // Now safe to acquire
+session.with_state(|state| { ... });  // Now safe to acquire session state
 ```
 
 ## Token-Based Authentication (#483)
@@ -372,6 +390,54 @@ async fn get_mode(&self, request: Request<GetModeRequest>) -> Result<Response<Ge
     // Fallback to shared mode (backward compatibility)
     // ...
 }
+```
+
+## Session Authority Decomposition (#741)
+
+The `Session` surface was refactored to extract explicit authority objects, reducing the
+footprint of the monolithic session struct and making lock boundaries explicit at the
+type level.
+
+### Extracted Authorities
+
+**`ClientDirectory`** (`session/client_directory.rs`) — Owns client membership, the
+editing-relation graph, and input-target resolution. Accessed via `session.clients()`.
+
+Key methods:
+
+| Method | Description |
+|--------|-------------|
+| `add_client_with_state` | Register a new client with its initial editing state |
+| `remove_client_with` | Remove a client and run a cleanup closure |
+| `get_client` | Read-only access to a client entry |
+| `set_client_relation` | Update the `ClientRelation` for a client |
+| `find_input_target` | Resolve which client receives input (follows Sharing graph) |
+| `connected_client_ids` | Return all currently connected client IDs |
+| `client_count` | Number of connected clients |
+
+**`PresenceService`** (`session/presence_service.rs`) — Owns the presence and sync graph.
+Wraps `PresenceMap`. Compiled unconditionally. Accessed via `session.presence()`.
+
+**`Session`** remains the composition root (~27 public methods) responsible for
+multi-lock coordination between `ClientDirectory`, `PresenceService`, and
+`SessionState`. Callers should not bypass the `Session` API to reach inner authorities
+directly.
+
+### Updated Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Session "default"                                           │
+│  ├── ClientDirectory (RwLock)   ← client membership, input  │
+│  │   └── HashMap<ClientId, Client>                          │
+│  │       └── EditingState (per-client)                      │
+│  ├── PresenceService            ← presence / sync graph     │
+│  │   └── PresenceMap (RwLock)                               │
+│  └── SessionState (RwLock)      ← shared editor state       │
+│      ├── driver_session: DriverSession                      │
+│      ├── app: AppState                                      │
+│      └── CommandRegistry, KeymapRegistry, ModeRegistry      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Related Documents

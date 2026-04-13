@@ -433,7 +433,7 @@ mod tests {
 
 ### Integration Tests
 
-Test FFI loading (see `runner/tests/module_loading.rs`):
+Test FFI loading (see `server/lib/drivers/module-loader/tests/`):
 
 ```rust
 #[test]

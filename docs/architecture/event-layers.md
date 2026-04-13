@@ -55,8 +55,9 @@ time, do not use `EventBus::emit`. Use shared atomic state, `arc-swap`,
 `watch` channels, or similar non-queuing mechanisms. Emit transitions
 (start/stop/seek/mode-change) on the bus, not per-frame values.
 
-This layer does not yet exist in reovim. Design exploration for stream
-support is captured in `tmp/740/09-stream-architecture-exploration.md`.
+This layer does not yet exist in reovim. Streaming state transport is a future
+design area; architecture options were explored during #740 planning but no
+implementation has landed.
 
 ## Rules for Future Events
 

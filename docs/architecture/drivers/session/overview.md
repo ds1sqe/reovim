@@ -133,7 +133,7 @@ Buffer created, session ready
 The empty session handling follows a layered architecture:
 
 ```
-runner/
+server/lib/server/
 └── Calls handlers during session creation
 
 modules/scratch-buffer/

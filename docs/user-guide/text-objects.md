@@ -134,6 +134,84 @@ let x = ((nested));
 // `d2i(` deletes `(nested)`
 ```
 
+## Semantic Text Objects (Tree-sitter)
+
+Semantic text objects are powered by the tree-sitter syntax driver. They understand
+language structure rather than purely textual delimiters, and work across all languages
+that have a tree-sitter grammar loaded.
+
+> **Requirement**: A tree-sitter module must be active for the current file type (e.g.,
+> `reovim-module-treesitter-rust` for Rust files). If no grammar is loaded, the text
+> object silently does nothing.
+
+### Available Semantic Text Objects
+
+| Text Object | Inner | Around | Scope | Description |
+|-------------|-------|--------|-------|-------------|
+| Function | `if` | `af` | Linewise | Function/method body and signature |
+| Class | `ic` | `ac` | Linewise | Class, struct, or impl block |
+| Argument | `ia` | `aa` | Characterwise | Function call argument or parameter |
+| Conditional | `io` | `ao` | Linewise | `if`/`else`/`match` body |
+| Loop | `il` | `al` | Linewise | `for`/`while`/`loop` body |
+| Comment | `i/` | `a/` | Characterwise | Comment text (without `//` markers) or full comment |
+
+The TS-block kind (`inner-block-ts` / `around-block-ts`) is implemented in the command
+layer but has no default keybinding yet.
+
+### Inner vs Around
+
+- **Inner** (`i`): selects the body, excluding the surrounding syntax (signature, keyword,
+  delimiters).
+- **Around** (`a`): selects the full construct including surrounding syntax.
+
+### Examples
+
+**Function (`if` / `af`) — Rust:**
+
+```rust
+fn greet(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+// cursor anywhere inside the function body:
+// `dif` deletes only the function body (between the braces)
+// `daf` deletes the entire function including signature
+```
+
+**Argument (`ia` / `aa`) — any language:**
+
+```rust
+foo(first, second, third)
+//          ^^^^^^ cursor on "second"
+// `dia` deletes "second" (inner argument)
+// `daa` deletes "second, " (around argument, including the separator)
+```
+
+**Conditional (`io` / `ao`) — Rust:**
+
+```rust
+if condition {
+    do_something();
+}
+// `dio` deletes the body "do_something();"
+// `dao` deletes the entire if-block
+```
+
+**Comment (`i/` / `a/`):**
+
+```rust
+// This is a comment
+// `yi/` yanks the comment text without the `// ` prefix
+// `ya/` yanks the whole comment line including markers
+```
+
+### Supported Languages
+
+Semantic text objects are available for any language with a loaded tree-sitter grammar.
+Built-in grammars include: Rust, Python, Go, C, JavaScript, TypeScript, Bash, JSON,
+TOML, Markdown.
+
+---
+
 ## Implementation Details
 
 ### Text Object Module
@@ -142,4 +220,5 @@ Implemented in `server/modules/textobjects/src/`:
 - Handles paired delimiters: `()`, `[]`, `{}`, `<>`, `""`, `''`, ``` `` ```
 - Handles tags: `<tag>...</tag>`
 - Handles word, WORD, sentence, and paragraph boundaries
+- Semantic (tree-sitter) objects in `server/modules/textobjects/src/semantic.rs`
 - Command IDs defined in `server/modules/textobjects/src/ids.rs`

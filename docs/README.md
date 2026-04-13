@@ -40,6 +40,7 @@ Component architecture documentation.
 | Document | Description |
 |----------|-------------|
 | [Overview](./architecture/overview.md) | Layer diagram, crate deps |
+| [Server/Client Split](./architecture/server-client-split.md) | Boundary between server and client layers |
 | [Kernel](./architecture/kernel/overview.md) | Core mechanisms: mm/, ipc/, core/, block/ |
 | [Drivers](./architecture/drivers/overview.md) | Server drivers: syntax, input, display, LSP |
 | [Modules](./architecture/modules/overview.md) | Server modules: keymap, operators |
@@ -51,11 +52,14 @@ Component architecture documentation.
 | Document | Description |
 |----------|-------------|
 | [api/](./architecture/kernel/api/overview.md) | Public API surface |
-| [mm/](./architecture/kernel/mm/overview.md) | Memory management (Buffer, Position) |
-| [ipc/](./architecture/kernel/ipc/overview.md) | EventBus, channels |
-| [core/](./architecture/kernel/core/overview.md) | Motion, TextObject, Mode |
-| [block/](./architecture/kernel/block/overview.md) | UndoTree, transactions |
-| [sched/](./architecture/kernel/sched/overview.md) | Runtime, WorkQueue |
+| [mm/](./architecture/kernel/mm/overview.md) | Memory management (BufferId, WindowId, TabId) |
+| [ipc/](./architecture/kernel/ipc/overview.md) | EventBus, event dispatch |
+| [core/](./architecture/kernel/core/overview.md) | Mode, ModeStack, Config, Options |
+| [block/](./architecture/kernel/block/overview.md) | ByteEdit, StorageOps, KernelBuffer |
+| [sched/](./architecture/kernel/sched/overview.md) | Runtime, task scheduling |
+| [debug/](./architecture/kernel/debug/overview.md) | Metrics, profiler, tracing |
+| [printk/](./architecture/kernel/printk/overview.md) | Logging infrastructure |
+| [panic/](./architecture/kernel/panic/overview.md) | Panic handling and recovery |
 
 #### Server Drivers
 
@@ -67,8 +71,10 @@ Component architecture documentation.
 | [syntax/](./architecture/drivers/syntax/overview.md) | Syntax highlighting |
 | [lsp/](./architecture/drivers/lsp/overview.md) | LSP client |
 | [net/](./architecture/drivers/net/overview.md) | Network, RPC |
-| [vfs/](./architecture/drivers/vfs/overview.md) | Virtual filesystem |
-| [log/](./architecture/drivers/log/overview.md) | Logging (tracing) |
+| [vfs/](./architecture/drivers/vfs/overview.md) | Virtual filesystem, PieceTree, ByteSource |
+| [codec/](./architecture/drivers/codec/overview.md) | Codec driver: InodeTable, Mount, DecodedEdit |
+| [session/](./architecture/drivers/session/overview.md) | Session management traits |
+| [buffer/](./architecture/drivers/buffer/overview.md) | Buffer manager traits |
 
 #### Server Modules
 
@@ -77,6 +83,16 @@ Component architecture documentation.
 | [Mode Inheritance](./architecture/modules/mode-inheritance.md) | Mode system |
 | [Extension Contracts](./architecture/modules/extension-contracts.md) | Server-client pairing |
 | [Built-in Modules](./architecture/modules/builtin/README.md) | Editor, keymap, operators |
+
+#### Domain Layer
+
+| Document | Description |
+|----------|-------------|
+| [Domains Overview](./architecture/domains/overview.md) | Domain trait and content types |
+| [Text Domain](./architecture/domains/text/overview.md) | Position, Edit, TextGeometry, LineIndex |
+| [Text Provider](./architecture/providers/text/overview.md) | Buffer, VirtualBuffer, BufferOps |
+| [Event Layers](./architecture/event-layers.md) | Three-layer event model |
+| [Type Layers](./architecture/type-layers.md) | Type ownership across layers |
 
 #### Server Runtime
 
@@ -105,6 +121,7 @@ Component architecture documentation.
 | [Gaps](./architecture/client/gaps.md) | Known gaps, migration strategy |
 | [TUI](./architecture/client/tui.md) | Terminal user interface |
 | [CLI](./architecture/client/cli.md) | Command-line interface |
+| [Web](./architecture/client/web.md) | Browser-based client (gRPC-Web, WASM) |
 
 ---
 
@@ -116,6 +133,7 @@ Contributor documentation.
 |----------|-------------|
 | [Overview](./contributing/overview.md) | Contributor entry point |
 | [Getting Started](./contributing/getting-started.md) | Development setup |
+| [Feature Parity v0.8.1](./contributing/feature-parity-v081.md) | Feature parity checklist against v0.8.1 |
 
 #### Philosophy
 
@@ -147,8 +165,12 @@ End-user documentation.
 |----------|-------------|
 | [Configuration](./user-guide/configuration.md) | Editor settings |
 | [Commands](./user-guide/commands.md) | Command reference |
+| [CLI Reference](./user-guide/cli-reference.md) | CLI subcommands and flags |
+| [Keymap Configuration](./user-guide/keymap-config.md) | Custom keybindings |
 | [Text Objects](./user-guide/text-objects.md) | Vim text objects |
 | [Server Mode](./user-guide/server-mode.md) | RPC server usage |
+| [Frame Capture](./user-guide/frame-capture.md) | TUI screen capture for debugging |
+| [Python Modules](./user-guide/python-modules.md) | Writing Python plugin modules |
 | [Troubleshooting](./user-guide/troubleshooting.md) | Common issues |
 
 ---
@@ -163,6 +185,7 @@ Foundational documents that shaped Reovim's architecture.
 | [Legacy Memorial](./heritage/legacy-memorial.md) | What we studied and learned from v0.8.x |
 | [Clean Architecture Proposal](./heritage/clean-architecture-proposal.md) | The blueprint for kernel/drivers/modules |
 | [Phase 5 Extraction](./heritage/phase5-extraction.md) | How we transitioned v0.8.x → v0.9.0 |
+| [Phase 8 Migration](./heritage/phase-8-migration.md) | gRPC v2 migration, runner removal |
 | [Buffer Provider Proposal](./heritage/buffer-provider-proposal.md) | Deferred for future consideration |
 | [Client Extensions](./heritage/client-extensions.md) | Pre-CLM client extension taxonomy (superseded) |
 | [Runner Overview](./heritage/runner-overview.md) | Pre-Phase 8 runner architecture (superseded) |

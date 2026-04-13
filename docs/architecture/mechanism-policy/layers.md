@@ -13,7 +13,7 @@ Each layer has ZERO policy that belongs to the layer above it.
 ║                                                                             ║
 ║  ══════════════════════════════════════════════════════════════════════►    ║
 ║                                                                             ║
-║  Kernel ──► Drivers ──► Runner ──► Modules ──► VimModule ──► UserConfig     ║
+║  Kernel ──► Drivers ──► Server ──► Modules ──► VimModule ──► UserConfig     ║
 ║                                                                             ║
 ║  Facts      Types      Storage    Capabilities   Behavior     Overrides     ║
 ║                                                                             ║
@@ -60,7 +60,7 @@ Each layer has ZERO policy that belongs to the layer above it.
 ║  │ ▸ Zero Policy Of: Vim behavior, keybindings, lookup preferences        │ ║
 ║  └────────────────────────────────────────────────────────────────────────┘ ║
 ╠═════════════════════════════════════════════════════════════════════════════╣
-║                              RUNNER                                         ║
+║                              SERVER                                         ║
 ╠═════════════════════════════════════════════════════════════════════════════╣
 ║                                                                             ║
 ║  Responsibility: Store and retrieve data, orchestrate                       ║
@@ -103,7 +103,7 @@ Each layer has ZERO policy that belongs to the layer above it.
 ├────────────────────────┼───────────────────────────┼───────────────────────────────┤
 │  Kernel                │  ZERO                     │  Everything                   │
 │  Drivers               │  Type/trait design        │  Storage, behavior            │
-│  Runner                │  Storage/retrieval        │  Interpretation               │
+│  Server                │  Storage/retrieval        │  Interpretation               │
 │  Mechanism Modules     │  Capabilities             │  Vim behavior, keybindings    │
 │  Policy Module (vim/)  │  Vim behavior             │  User preferences             │
 │  User Config           │  Personal prefs           │  (top layer)                  │

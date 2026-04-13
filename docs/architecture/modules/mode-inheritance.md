@@ -7,7 +7,7 @@ This document describes Reovim's mode system architecture where modules define m
 Each module defines its own modes, but can **inherit** from other modes (typically core).
 
 ```
-ModeId = ModuleId(u16) + LocalModeId(u16) = 32 bits
+ModeId = ModuleId(string) + discriminant(u16)
 
 core/         → normal, insert, visual, command, operator (ROOT modes)
 microscope/   → files, grep, input (inherit from core:normal, core:insert)
@@ -21,52 +21,59 @@ explorer/     → tree, preview (inherit from core:normal)
 
 | Aspect | Mechanism (Kernel) | Policy (Module) |
 |--------|-------------------|-----------------|
-| **ModeId** | `ModuleId + LocalModeId` (32 bits) | Which IDs mean what |
+| **ModeId** | `ModuleId(string) + discriminant(u16)` | Which IDs mean what |
 | **Syscalls** | `mode_set(ModeId)`, `mode_get() -> ModeId` | When to call them |
-| **Trait** | `ModeProvider { modes(), handle_key(), cursor_style() }` | Keybinding implementations |
-| **Inheritance** | Resolution algorithm + `inherits_from` field | Which modes inherit from which |
-| **Registry** | `ModuleId → ModeProvider` mapping | Module registration |
-| **Fallback** | Loop: handle_key → NotHandled → try parent | Define parent relationships |
+| **Kernel traits** | `Mode { id(), cursor_style() }`, `ModeStack` | Mode state management |
+| **Driver trait** | `ModeKeyResolver { resolve(), inherits_from() }` | Keybinding resolution |
+| **Resolution** | Input driver: resolver chain + `inherits_from` parent fallback | Which modes inherit from which |
+| **Fallback** | Loop: resolve() → try parent via `inherits_from()` | Define parent relationships |
 
 ---
 
 ## Kernel Types (Mechanism)
 
 ```rust
-pub struct ModuleId(pub u16);
-pub struct LocalModeId(pub u16);
+// String-based module identity
+pub struct ModuleId(Cow<'static, str>);
 
+// Composite mode identity: which module + which mode within that module
 pub struct ModeId {
-    pub module: ModuleId,
-    pub local: LocalModeId,
+    module: ModuleId,
+    name: &'static str,
+    discriminant: u16,
 }
 
-pub struct ModeDescriptor {
-    pub local_id: LocalModeId,
-    pub name: &'static str,
-    pub cursor_style: CursorStyle,
-    pub accepts_char_input: bool,
-    pub inherits_from: Option<ModeId>,  // Inheritance link
+// Kernel mode trait: identity and cursor appearance only
+pub trait Mode: Send + Sync {
+    fn id(&self) -> ModeId;
+    fn cursor_style(&self) -> CursorStyle;
 }
 
-pub enum KeyResult {
-    Handled,              // Key processed
-    NotHandled,           // Try parent mode
-    SetMode(ModeId),      // Switch mode
-    AcceptChar,           // Insert character
-}
+// Kernel stack of active modes
+pub struct ModeStack { /* ... */ }
 ```
 
 ---
 
-## Kernel Trait (Mechanism)
+## Input Driver Trait (Mechanism)
+
+Key resolution lives in the input driver (`reovim-driver-input`), not the kernel. The
+kernel provides the `Mode` trait and `ModeStack`; the input driver provides the resolver
+contract.
 
 ```rust
-pub trait ModeProvider: Send + Sync {
-    fn module_id(&self) -> ModuleId;
-    fn modes(&self) -> Vec<ModeDescriptor>;
-    fn handle_key(&self, mode: LocalModeId, key: KeyEvent, ctx: &mut KeyContext) -> KeyResult;
-    fn cursor_style(&self, mode: LocalModeId) -> Option<CursorStyle>;
+// Defined in reovim-driver-input
+pub trait ModeKeyResolver: Send + Sync {
+    fn mode_id(&self) -> &ModeId;
+    fn inherits_from(&self) -> Option<&ModeId>;  // Inheritance link
+
+    fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
+}
+
+pub enum ResolveResult {
+    Handled,
+    NotHandled,  // Caller should try parent via inherits_from()
+    // ...
 }
 ```
 
@@ -74,12 +81,12 @@ pub trait ModeProvider: Send + Sync {
 
 ## Resolution Algorithm
 
-The kernel provides the resolution mechanism:
+The input driver provides the resolution mechanism via `ModeKeyResolver`:
 
 ```
-1. module.handle_key(local_mode, key)
-2. if NotHandled → check inherits_from
-3. if has parent → parent_module.handle_key(parent_mode, key)
+1. resolver.resolve(key)
+2. if NotHandled → check resolver.inherits_from()
+3. if has parent → look up parent resolver, call resolve(key)
 4. repeat until Handled or no parent
 ```
 
@@ -89,13 +96,13 @@ The kernel provides the resolution mechanism:
 microscope:files inherits from core:normal
 
 User presses 'G' in microscope:files:
-  1. microscope.handle_key(files, 'G') → NotHandled
-  2. inherits_from = core:normal
-  3. core.handle_key(normal, 'G') → goto_last_line() → Handled
+  1. MicroscopeFilesResolver.resolve('G') → NotHandled
+  2. inherits_from() → core:normal
+  3. VimNormalResolver.resolve('G') → goto_last_line() → Handled
   → Microscope scrolls to last item using core behavior
 
 User presses Enter in microscope:files:
-  1. microscope.handle_key(files, Enter) → select() → Handled
+  1. MicroscopeFilesResolver.resolve(Enter) → select() → Handled
   → Module-specific behavior, no fallback needed
 ```
 
@@ -170,23 +177,23 @@ mode::PREVIEW → inherits_from: Some(core:normal)  // Read-only viewing
 
 ### Adding a New Mode
 
-1. Define `LocalModeId` constants in your module
-2. Implement `ModeProvider` trait
-3. Return `ModeDescriptor` with `inherits_from` set appropriately
-4. Handle only the keys specific to your mode
-5. Return `KeyResult::NotHandled` for everything else
+1. Define `ModeId` constants in your module (using `ModuleId` + a `u16` discriminant)
+2. Implement `ModeKeyResolver` (from `reovim-driver-input`)
+3. Set `inherits_from()` to return the parent `ModeId` when applicable
+4. Handle only the keys specific to your mode in `resolve()`
+5. Return `ResolveResult::NotHandled` for everything else so the driver falls back to the parent
 
 ### Best Practices
 
-- **Inherit from the closest match** - If your mode is mostly navigation, inherit from `core:normal`
-- **Don't override common keys** - Let `j/k/h/l` fall through unless you have good reason
-- **Document overrides** - If you override `Enter`, document why
-- **Test inheritance chain** - Verify fallback behavior works as expected
+- **Inherit from the closest match** — If your mode is mostly navigation, inherit from `core:normal`
+- **Don't override common keys** — Let `j/k/h/l` fall through unless you have good reason
+- **Document overrides** — If you override `Enter`, document why
+- **Test inheritance chain** — Verify `ResolveResult::NotHandled` fallback behavior works as expected
 
 ---
 
 ## Related Documents
 
-- [Mechanism vs Policy](../contributing/philosophy/mechanism-vs-policy.md) - Core architectural principle
+- [Mechanism vs Policy](../../contributing/philosophy/mechanism-vs-policy.md) - Core architectural principle
 - [Clean Architecture Proposal](../../heritage/clean-architecture-proposal.md) - Overall architecture (historical)
 - [Module System](./overview.md) - Module development guide

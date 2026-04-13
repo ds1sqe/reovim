@@ -24,7 +24,7 @@ Looks beyond TUI to Web, Android, and iOS.
 |----------|---------------|--------|
 | TUI | [TUI Client](./tui.md) | `clients/tui/` |
 | CLI | [CLI Client](./cli.md) | `clients/cli/` |
-| Web | (planned) | `clients/web/` |
+| Web | [Web Client](./web.md) | `clients/web/` (TypeScript + WASM, gRPC-Web, Playwright tests) |
 
 ## Version History
 

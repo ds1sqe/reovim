@@ -6,10 +6,10 @@ This guide explains how to write reovim modules in Python.
 
 ### Enable Python Support
 
-Reovim must be built with the `python` feature:
+The Python FFI driver (`reovim-driver-ffi-python`) is an unconditional workspace member — no feature flag is needed. Build it directly:
 
 ```bash
-cargo build --features python
+cargo build -p reovim-driver-ffi-python
 ```
 
 ### Python Version
@@ -454,10 +454,8 @@ Modules are discovered in these directories:
 
 ## Examples
 
-See `examples/python-module/` for complete examples:
-
-- `hello.py` - Minimal hello world module
-- `counter.py` - Hot reload with state preservation
+Complete example modules (a minimal hello-world module and a hot-reload counter module)
+can be found in the integration test fixtures under `shared/testing/`.
 
 ## Related Documentation
 

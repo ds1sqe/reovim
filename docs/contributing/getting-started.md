@@ -73,7 +73,7 @@ reovim/
 │   ├── lib/
 │   │   ├── kernel/        # reovim-kernel - core mechanisms (mm/, ipc/, core/)
 │   │   ├── server/        # reovim-server - gRPC handlers, session management
-│   │   └── drivers/       # Server drivers (14 crates)
+│   │   └── drivers/       # Server drivers (27 crates)
 │   │       ├── command/       # Command trait and registry
 │   │       ├── input/         # Key events and input parsing
 │   │       ├── syntax/        # Tree-sitter integration
@@ -82,7 +82,7 @@ reovim/
 │   │       ├── session/       # Session management
 │   │       ├── buffer/        # Buffer operations
 │   │       └── ...            # (undo, search, clipboard, ffi, etc.)
-│   └── modules/           # Policy modules (21 loadable modules)
+│   └── modules/           # Policy modules (73 loadable modules)
 │       ├── vim/               # Core Vim-like behavior
 │       ├── editor/            # Editor core operations
 │       ├── motions/           # Movement commands
@@ -100,8 +100,17 @@ reovim/
 │   ├── arch/              # Platform abstraction (unix/, windows/)
 │   ├── net/               # Network transport layer
 │   ├── log/               # Logging infrastructure
+│   ├── trace/             # Tracing/diagnostics
 │   ├── module-macros/     # `declare_module!` proc-macro
-│   └── testing/           # Integration test utilities
+│   ├── testing/           # Integration test utilities
+│   ├── capabilities/      # Capability definitions
+│   ├── depgraph/          # Dependency graph utilities
+│   ├── bench/             # Benchmarking utilities
+│   ├── domain/            # Domain abstractions
+│   ├── domains/           # Domain types (text, etc.)
+│   └── clients/           # Shared client libraries
+│       ├── driver/        # reovim-client-driver
+│       └── model/         # reovim-client-model
 ├── tools/
 │   ├── bench/             # Performance benchmarks (criterion)
 │   └── perf-report/       # Performance report generator
@@ -137,6 +146,8 @@ RUST_BACKTRACE=full cargo run -p reovim  # Full backtrace
 ### LSP Debugging
 
 When troubleshooting LSP integration issues (rust-analyzer, etc.):
+
+> **Note:** LSP logging flags (`--lsp-log`) and `:LspLog` command are planned features, not yet implemented.
 
 #### Enable LSP Logging
 
@@ -222,6 +233,8 @@ cargo run -p perf-report -- compare 0.3.0 0.4.2
 ```
 
 ### Current Performance (v0.7.10 vs v0.6.0)
+
+> **Note:** These benchmarks are from an early version. See `perf/` directory for current performance reports.
 
 | Metric | v0.6.0 | v0.7.10 | Change |
 |--------|--------|---------|--------|

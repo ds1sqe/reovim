@@ -24,7 +24,7 @@ The `DebugService` bypasses authentication, allowing the stateless CLI to target
 
 ## Services
 
-12 gRPC services, ~50 RPCs total:
+12 gRPC services, ~55 RPCs total (codec RPCs added in #740):
 
 ### InputService (`input.proto`)
 
@@ -57,6 +57,20 @@ The `DebugService` bypasses authentication, allowing the stateless CLI to target
 | `OpenFile` | Open a file into a buffer |
 | `WriteFile` | Write buffer to file |
 | `SetContent` | Set buffer content |
+| `MountCodec` | Mount a codec on a buffer (see MountMode below) |
+| `UmountCodec` | Unmount a codec from a buffer |
+| `ListMounts` | List all codec mounts active on a buffer |
+| `ListAvailableCodecs` | List all registered codec factories |
+| `SwitchCodecView` | **(Deprecated)** Switch codec view; kept for backward compatibility — use `MountCodec` instead |
+
+#### MountMode
+
+`MountCodec` accepts a `MountMode` field that controls how the codec attaches to the buffer:
+
+| Mode | Description |
+|------|-------------|
+| `Summary` | Codec provides a summarised/collapsed view of the buffer content |
+| `Structural` | Codec provides a fully structured, navigable decomposition of the content |
 
 ### EditorService (`editor.proto`)
 

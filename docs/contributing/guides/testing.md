@@ -275,9 +275,9 @@ shared/testing/src/
 └── assertions.rs           # Assertion utilities
 
 server/modules/vim/tests/   # Vim module-specific tests
-├── operators.rs            # dd, yy, p, P, cw, etc.
-├── motions.rs              # hjkl, w/b/e, gg/G
-└── text_objects.rs         # iw, aw, i(, a{, etc.
+├── ex_commands.rs          # Ex-command tests
+├── register_isolation.rs   # Register isolation tests
+└── textobjects.rs          # iw, aw, i(, a{, etc.
 ```
 
 ### Test Harness Components
@@ -474,11 +474,9 @@ shared/testing/src/
 └── assertions.rs           # Assertion macros
 
 server/modules/vim/tests/   # Vim module tests
-├── operators.rs            # dd, yy, p, P, cw, cc, x, etc.
-├── registers.rs            # Register operations
-├── undo_redo.rs            # u, Ctrl-R
-├── cursor_movement.rs      # hjkl, 0$, gg/G, w/b/e
-└── edge_cases.rs           # Empty buffer, Unicode, boundaries
+├── ex_commands.rs          # Ex-command tests
+├── register_isolation.rs   # Register isolation tests
+└── textobjects.rs          # iw, aw, i(, a{, etc.
 ```
 
 ### Running Phase 7+ Tests
@@ -488,11 +486,11 @@ server/modules/vim/tests/   # Vim module tests
 cargo test -p reovim-testing
 
 # Run specific module tests
-cargo test -p reovim-module-vim --test operators
-cargo test -p reovim-module-vim --test cursor_movement
+cargo test -p reovim-module-vim --test ex_commands
+cargo test -p reovim-module-vim --test textobjects
 
 # Run single test
-cargo test -p reovim-module-vim --test operators test_dd_deletes_line
+cargo test -p reovim-module-vim --test ex_commands test_write_command
 
 # Run with output
 cargo test -- --nocapture
@@ -565,11 +563,9 @@ Coverage reports are uploaded as CI artifacts (`COVERAGE-workspace.md`, `COVERAG
 
 | Test File | Coverage Area |
 |-----------|--------------|
-| `operators.rs` | dd, yy, p, P, cw, cc, x, dw, yw, counts |
-| `cursor_movement.rs` | hjkl, 0$^, gg/G, w/b/e, boundaries |
-| `edge_cases.rs` | Empty buffer, Unicode, special chars |
-| `undo_redo.rs` | u, Ctrl-R, multiple undo/redo |
-| `registers.rs` | Named registers, unnamed, append |
+| `ex_commands.rs` | Ex-command tests |
+| `register_isolation.rs` | Register isolation tests |
+| `textobjects.rs` | iw, aw, i(, a{, etc. |
 | `multi_client_tests.rs` | Concurrent clients, shared state |
 
 ## Writing Tests
@@ -662,7 +658,7 @@ For genuinely untestable code, use the `coverage(off)` attribute:
 fn untestable_function() { /* ... */ }
 ```
 
-The `coverage_attribute` feature is now stable — no feature gate is needed in `lib.rs`.
+The `coverage_attribute` feature requires nightly Rust. Enable it with `#![cfg_attr(coverage_nightly, feature(coverage_attribute))]` in your crate's `lib.rs`.
 
 Use sparingly — only for code paths that cannot be exercised in unit tests (async runtime internals, tracing closures, panic handlers).
 

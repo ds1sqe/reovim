@@ -224,10 +224,10 @@ Modules are searched in order:
 
 ### Extra Modules via Environment Variable
 
-Use the `REOVIM_EXTRA_MODULES` environment variable to load additional modules at startup:
+Use the `REOVIM_MODULE_PATH` environment variable to add extra module search paths at startup:
 
 ```bash
-REOVIM_EXTRA_MODULES=my-module:another-module reovim server
+REOVIM_MODULE_PATH=~/my-modules:/opt/custom-modules reovim server
 ```
 
 ### Runtime Module Management

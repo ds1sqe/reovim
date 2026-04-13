@@ -4,7 +4,7 @@ Command-line interface for scripting and automation.
 
 ## Source Location
 
-`clients/cli/src/` (moved from `runner/src/client/cli/` in Phase 8)
+`clients/cli/src/`
 
 ## Commands
 
@@ -35,6 +35,48 @@ reovim cli --format json mode
 {"mode":"Normal"}
 ```
 
+### Buffer Queries
+
+```bash
+# List open buffers
+reovim cli buffers
+
+# Get buffer content (defaults to active buffer)
+reovim cli buffer
+reovim cli buffer --id 3
+```
+
+### Register Queries
+
+```bash
+# List all registers
+reovim cli registers
+
+# Get a specific register
+reovim cli registers a
+```
+
+### Screen Capture
+
+```bash
+# Capture current screen in various formats
+reovim cli capture --format raw_ansi
+reovim cli capture --format plain_text
+reovim cli capture --format cell_grid
+reovim cli capture --format png
+reovim cli capture --format html
+```
+
+### Extension Queries
+
+```bash
+# List registered extensions
+reovim cli extensions
+
+# Query extension state by kind
+reovim cli extension-state --kind <KIND>
+```
+
 ### Server Queries
 
 ```bash
@@ -46,17 +88,19 @@ reovim cli ping
 reovim cli version
 ```
 
-### Debug Commands
+### Module Management
+
+Manage the module registry — install, remove, update, and inspect loadable modules.
 
 ```bash
-# Log viewing with filters
-reovim cli log-tail --count 100   # Last 100 entries
-reovim cli log-tail --level warn  # Filter by level
-reovim cli log-tail --target mod  # Filter by module
-reovim cli log-tail --grep "err"  # Search messages
+reovim module list                    # List installed modules
+reovim module install <source>        # Install from source
+reovim module remove <id>             # Remove a module
+reovim module update [id]             # Update modules (all if no id given)
+reovim module info <id>               # Show module info
+reovim module check                   # Verify module integrity
+reovim module resolve                 # Resolve module dependencies
 ```
-
-Output is color-coded: ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
 
 ## Connection Options
 

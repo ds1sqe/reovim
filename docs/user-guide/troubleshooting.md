@@ -336,8 +336,8 @@ reovim cli --grpc 127.0.0.1:12540 log-tail --level info
 
 1. **Check documentation:**
    - [Architecture](../architecture/overview.md)
-   - [Event System](../events/overview.md)
-   - [Module System](../modules/overview.md)
+   - [Event System](../architecture/event-layers.md)
+   - [Module System](../architecture/modules/overview.md)
 
 2. **Search existing issues:**
    https://github.com/ds1sqe/reovim/issues

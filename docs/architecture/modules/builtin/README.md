@@ -11,7 +11,6 @@ This directory contains documentation for reovim's built-in policy modules.
 | [buffer-ops](./buffer-ops.md) | `reovim-module-buffer-ops` | Buffer lifecycle events | Documented |
 | [buffer-simple](./buffer-simple.md) | `reovim-module-buffer-simple` | SimpleBufferManager | Documented |
 | [commands](./commands.md) | `reovim-module-commands` | Ex commands (:w, :q, :e) | Documented |
-| [defaults](./defaults.md) | `reovim-module-defaults` | Default modules bundle | Documented |
 | [mode-manager](./mode-manager.md) | `reovim-module-mode-manager` | Mode state management | Documented |
 | [scratch-buffer](./scratch-buffer.md) | `reovim-module-scratch-buffer` | Empty buffer on startup | Documented |
 | [cmdline](./cmdline.md) | `reovim-module-cmdline` | Command-line mode input (#468) | Documented |
@@ -27,7 +26,7 @@ This directory contains documentation for reovim's built-in policy modules.
 | treesitter-rust | `reovim-module-treesitter-rust` | Rust syntax | Implemented |
 | treesitter-markdown | `reovim-module-treesitter-markdown` | Markdown syntax | Implemented |
 
-**Total: 20 modules** (9 documented + 11 implemented)
+This table covers the core/default modules documented here. The server ships 73 total loadable modules; see [Architecture Overview](../overview.md) for the full list.
 
 ## Module Architecture
 

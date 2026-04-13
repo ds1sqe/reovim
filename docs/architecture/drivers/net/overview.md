@@ -61,5 +61,5 @@ pub trait TransportListener: Send {
 ## Related Documents
 
 - [Driver Overview](../overview.md) - Driver layer architecture
-- [Server Mode Reference](../../user-guide/server-mode.md) - RPC server usage
+- [Server Mode Reference](../../../user-guide/server-mode.md) - RPC server usage
 - [Server Architecture](../../server/overview.md) - Server implementation

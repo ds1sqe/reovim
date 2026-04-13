@@ -29,8 +29,8 @@ reovim/
 ├── server/
 │   ├── lib/kernel/       # Core mechanisms
 │   ├── lib/server/       # Server runtime (gRPC handlers)
-│   ├── lib/drivers/      # Server-side drivers (13 crates)
-│   └── modules/          # Policy modules (17+ crates)
+│   ├── lib/drivers/      # Server-side drivers (13 crates at migration; 27 crates as of v0.14.5)
+│   └── modules/          # Policy modules (17+ crates at migration; 73 as of v0.14.5)
 │       └── window-ops/   # Window operations (Phase 11) ← NEW
 ├── clients/
 │   ├── cli/              # CLI client (gRPC v2)
@@ -164,7 +164,7 @@ Common code extracted to `shared/`:
 
 ### 4. Module Consolidation
 
-Modules were consolidated from 26 to 17 active modules:
+Modules were consolidated from 26 to 17 active modules at migration time (grown to 73 as of v0.14.5):
 - Core modules (vim, editor, motions, etc.) moved to `server/modules/`
 - UI modules (layout, cmdline, etc.) archived pending client-side implementation
 
@@ -186,6 +186,6 @@ When updating code or documentation:
 
 ## Related Documents
 
-- [Architecture Overview](./overview.md) - Current architecture
-- [Module System](./modules/overview.md) - Module loading and registry
-- [Driver Layer](./drivers/overview.md) - Driver architecture
+- [Architecture Overview](../architecture/overview.md) - Current architecture
+- [Module System](../architecture/modules/overview.md) - Module loading and registry
+- [Driver Layer](../architecture/drivers/overview.md) - Driver architecture

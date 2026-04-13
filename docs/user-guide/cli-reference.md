@@ -69,10 +69,10 @@ reovim cli --grpc 127.0.0.1:12540 --format json <command>
 | `capture` | | Capture TUI frame (`--client ID`, `--capture-format FMT`) |
 | `ping` | | Health check |
 | `version` | | Get server version |
-| `log-tail` | | Get recent log entries |
 | `clients` | | List connected clients |
 | `extension-state` | `KIND --client ID` | Query extension state |
 | `extensions` | | List registered extensions |
+| `module` | | Module registry management (install, remove, update, list, info, check, resolve) |
 
 ### Key Input
 
@@ -118,28 +118,6 @@ reovim cli --grpc 127.0.0.1:12540 ping
 
 # Server version
 reovim cli --grpc 127.0.0.1:12540 version
-```
-
-### Debug Commands
-
-```bash
-# View recent log entries (default: 50)
-reovim cli --grpc 127.0.0.1:12540 log-tail
-
-# Custom count
-reovim cli --grpc 127.0.0.1:12540 log-tail --count 100
-
-# Filter by level (shows entries >= specified level)
-reovim cli --grpc 127.0.0.1:12540 log-tail --level warn
-
-# Filter by target module
-reovim cli --grpc 127.0.0.1:12540 log-tail --target runner::server
-
-# Search messages (case-insensitive)
-reovim cli --grpc 127.0.0.1:12540 log-tail --grep "error"
-
-# Combine filters
-reovim cli --grpc 127.0.0.1:12540 log-tail --level info --target runner --grep error
 ```
 
 ### Extension Queries
@@ -221,7 +199,9 @@ The server runs in the background and the TUI attaches automatically. Exiting th
 | Variable | Description |
 |----------|-------------|
 | `REOVIM_LOG` | Set log level (e.g., `info`, `debug`, `trace`) |
-| `REOVIM_EXTRA_MODULES` | Additional module paths to load |
+| `REOVIM_MODULE_PATH` | Colon-separated additional server module search paths |
+| `REOVIM_CLIENT_MODULE_PATH` | Additional search paths for client modules (colon-separated) |
+| `REOVIM_LOAD_DYNAMIC_CLIENT_MODULES` | Set to `1` to enable dynamic client module discovery |
 | `REOVIM_TEST_BINARY` | Path to reovim binary (testing) |
 
 ## Key Notation

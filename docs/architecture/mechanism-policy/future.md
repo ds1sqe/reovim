@@ -1,6 +1,6 @@
 # Future Directions
 
-## Current State (v0.9.2)
+## Current State (v0.14.5-dev)
 
 Mechanism/policy separation complete for:
 
@@ -11,9 +11,16 @@ Mechanism/policy separation complete for:
 
 ### Alternative Keybinding Policies
 
+**Shipped:**
+
 | Module | Description |
 |--------|-------------|
 | `modules/emacs/` | Emacs-style keybindings with Ctrl/Meta chords |
+
+**Planned:**
+
+| Module | Description |
+|--------|-------------|
 | `modules/kakoune/` | Select-then-operate model |
 | `modules/helix/` | Helix-style selection and editing |
 
@@ -70,7 +77,7 @@ To add a new keybinding policy:
 3. Register bindings at `BindingLayer::Policy`
 4. Document the policy's behavior
 
-The mechanism layer (runner + drivers) should not need changes.
+The mechanism layer (server + drivers) should not need changes.
 
 ## See Also
 

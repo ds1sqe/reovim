@@ -9,19 +9,27 @@ Understanding which types belong where prevents layer confusion and import confl
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  MODULES (modules/)                                         POLICY      │
+│  MODULES (server/modules/)                                  POLICY      │
 │  ExCommandContext, ExCommandHandler, VimMode, Operator, ...             │
 │  → Decides HOW things behave                                            │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  DRIVERS (lib/drivers/)                                    MECHANISM    │
+│  DRIVERS (server/lib/drivers/)                             MECHANISM    │
 │  CommandContext, CommandHandler, KeySequence, ResolveContext, ...       │
 │  → Provides services, defines trait contracts                           │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  KERNEL (lib/kernel/)                                      MECHANISM    │
-│  ModeId, CommandId, Position, BufferId, KernelContext, ...              │
+│  KERNEL (server/lib/kernel/)                               MECHANISM    │
+│  BufferId (mm/), WindowId (mm/), TabId (mm/)                            │
+│  ModeId (core/), CommandId (core/)                                      │
+│  ByteEdit (block/), KernelContext, ...                                  │
 │  → Core primitives, WHAT can be done                                    │
+│  → NOTE: Position/TextPosition/TextEdit moved to DOMAIN layer (#739/#740)│
 ├─────────────────────────────────────────────────────────────────────────┤
-│  SERVER (server/lib/server/)                              MECHANISM    │
+│  DOMAIN (shared/domains/text/) — reovim-domain-text         SHARED      │
+│  Position, TextPosition, TextEdit, Motion, TextObject                   │
+│  Domain trait (shared/domain/) — reovim-domain                         │
+│  → Shared text-editing domain types, usable by kernel, drivers, modules │
+├─────────────────────────────────────────────────────────────────────────┤
+│  SERVER (server/lib/server/)                               MECHANISM    │
 │  EventLoop, ModeRegistry, CommandRegistry, SessionState, ...            │
 │  → Runtime orchestration, wires everything together                     │
 └─────────────────────────────────────────────────────────────────────────┘

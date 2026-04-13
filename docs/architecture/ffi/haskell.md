@@ -88,6 +88,12 @@ Use a function that writes to a pointer:
 void reovim_module_api_version_ptr(ReovimVersion* out);  // GHC can do this
 ```
 
+> **Warning:** The `reovim_module_api_version_ptr` function fallback described above is
+> not yet implemented in the module loader (`server/lib/drivers/module-loader/`). The
+> loader only looks for the `REOVIM_MODULE_API_VERSION` static symbol. Haskell modules
+> cannot currently be loaded because GHC cannot export that static symbol. See the
+> tracking issue for progress.
+
 ## Type Mappings
 
 | C Type | Haskell Type | Notes |

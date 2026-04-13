@@ -32,7 +32,7 @@ The keymap system handles two distinct concerns:
 ║  ▸ ModeKeyResolver implementations (VimNormalResolver)                    ║
 ║  ▸ Default bindings (middle layer in registry)                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
-║  MECHANISM (runner + drivers)                                ENGINE       ║
+║  MECHANISM (server + drivers)                                ENGINE       ║
 ║                                                                           ║
 ║  ▸ KeymapRegistry.query() returns FACTS                                   ║
 ║  ▸ Layered binding lookup                                                 ║
@@ -72,8 +72,8 @@ pub enum KeyLookupState {
                                   ▼
 ╔════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                ║
-║  Runner: KeymapRegistry.query("d")                                             ║
-║  ─────────────────────────────────                                             ║
+║  Server: KeymapRegistry.query("d")                                             ║
+║  ──────────────────────────────────                                            ║
 ║                                                                                ║
 ║  exact_match = Some("enter-delete-operator")                                   ║
 ║  has_longer  = true  (because "dd", "dw" exist)                                ║
@@ -173,7 +173,7 @@ The same facts can produce different behaviors with different resolvers:
 │  KakouneLookupPolicy    │  Select first, then operate                         │
 └─────────────────────────┴─────────────────────────────────────────────────────┘
 
-           All possible because Runner returns FACTS, not DECISIONS.
+           All possible because Server returns FACTS, not DECISIONS.
 ```
 
 ## What We Achieved (Epic #353)
@@ -183,7 +183,7 @@ The same facts can produce different behaviors with different resolvers:
 │             BEFORE                │                AFTER                      │
 ├───────────────────────────────────┼───────────────────────────────────────────┤
 │                                   │                                           │
-│  • Runner's lookup() made         │  • KeymapRegistry.query() returns         │
+│  • Server's lookup() made         │  • KeymapRegistry.query() returns         │
 │    Vim-specific decisions         │    pure facts                             │
 │                                   │                                           │
 │  • Vim keybindings in             │  • ModeKeyResolver applies policy         │

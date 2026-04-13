@@ -98,9 +98,14 @@ registry.load(Box::new(defaults))?;
 
 ## Note on Client-Side Modules
 
-Client-side UI modules (layout, pair, statusline, undotree) were removed in Epic #465 Phase 11. Their functionality is now handled by client extensions (e.g., cmdline and which-key are server modules that expose state via `ExtensionService`).
+The `statusline` and `undotree` client-side UI modules were removed in Epic #465 Phase 11.
+Their functionality is now handled by client extensions (e.g., cmdline and which-key are
+server modules that expose state via `ExtensionService`).
+
+The `layout` and `pair` modules still exist at `server/modules/layout/` and
+`server/modules/pair/` respectively and were not removed.
 
 ## Related Documents
 
 - [Module System Overview](../overview.md)
-- [vim Module](./vim.md)
+- [vim Module](./README.md)

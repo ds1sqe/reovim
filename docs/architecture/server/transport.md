@@ -4,7 +4,7 @@ The server supports multiple transport protocols for client connections.
 
 ## Source Location
 
-`shared/net/src/` (moved from `runner/src/server/transport/` in Phase 8)
+`shared/net/src/`
 
 ## Transport Options
 

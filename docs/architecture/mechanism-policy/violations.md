@@ -11,16 +11,16 @@
 
 ## Violation Example 1: Decision in Mechanism Layer
 
-### BAD (Policy leaked into runner)
+### BAD (Policy leaked into server)
 
 ```rust
-// runner/src/server/registry/keymap.rs
+// server/lib/server/src/registry/keymap.rs
 impl KeymapRegistry {
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
         let exact = self.get_binding(mode, keys);
         let has_longer = self.has_longer_bindings(mode, keys);
 
-        // VIOLATION: This is VIM's decision, not runner's!
+        // VIOLATION: This is VIM's decision, not the server's!
         if has_longer {
             return KeyLookupResult::Prefix;  // "wait for more keys"
         }
@@ -33,13 +33,13 @@ impl KeymapRegistry {
 }
 ```
 
-**Problem**: Runner decides "if longer exists, wait" - that's Vim behavior!
+**Problem**: Server decides "if longer exists, wait" - that's Vim behavior!
 Emacs would execute immediately. Games need instant response.
 
-### GOOD (Pure facts in runner, policy in resolver)
+### GOOD (Pure facts in server, policy in resolver)
 
 ```rust
-// runner/src/server/registry/keymap.rs
+// server/lib/server/src/registry/keymap.rs
 impl KeymapRegistry {
     /// Returns FACTS only. No decisions.
     pub fn query(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
@@ -158,7 +158,7 @@ pub struct VimConfig {
 
 Before committing code, ask:
 
-- [ ] Does `runner/` make any behavior decisions? (Should be NO)
+- [ ] Does `server/lib/server/` make any behavior decisions? (Should be NO)
 - [ ] Does `modules/keymap/` have any default keybindings? (Should be NO)
 - [ ] Could I swap `modules/vim/` for `modules/emacs/` without changing mechanism? (Should be YES)
 - [ ] Are all user preferences in config, not hardcoded? (Should be YES)

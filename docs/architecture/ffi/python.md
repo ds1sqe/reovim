@@ -26,7 +26,7 @@ between Python and Rust types.
 │  PythonModule struct implementing Module trait              │
 │  Delegates to Python methods via PyO3 GIL                   │
 ├─────────────────────────────────────────────────────────────┤
-│  MODULE LOADER (runner/src/server/module/loading/)          │
+│  MODULE LOADER (server/lib/drivers/module-loader/)          │
 │  load_python() - Python module loading                      │
 │  discover_python_modules() - .py file detection             │
 │  Unified interface: static/dynamic/python                   │
@@ -202,20 +202,14 @@ and live for the program's lifetime.
 
 ## Feature Flag
 
-Python support is optional and controlled by the `python` feature:
+The `reovim-driver-ffi-python` crate is an unconditional workspace member — there is no
+`python` feature gate in `server/lib/server/Cargo.toml`. Python support is compiled in
+whenever the `reovim-driver-ffi-python` crate is present in the workspace, which it is by
+default.
 
-```toml
-# runner/Cargo.toml
-[features]
-default = []
-python = ["dep:reovim-driver-ffi-python", "dep:pyo3"]
-```
-
-Build with Python support:
-
-```bash
-cargo build --features python
-```
+The `#[cfg(feature = "python")]` guard shown in the module loading code below is internal
+to `reovim-driver-ffi-python` itself (via its own dependency on `pyo3`), not a top-level
+toggle.
 
 ## Search Paths
 
@@ -242,7 +236,9 @@ def restore_state(self, state: bytes):
     self.__dict__.update(pickle.loads(state))
 ```
 
-State is limited to 16 MiB to prevent memory issues.
+Note: there is no enforced state size limit in the loader. The 16 MiB figure is a
+recommended guideline only — no enforcement exists in `server/lib/drivers/ffi-python/`.
+Modules that serialize very large state may cause memory pressure; keep state compact.
 
 ## Error Handling
 
@@ -281,7 +277,7 @@ For latency-critical paths, prefer Rust modules.
 Hot reload state uses pickle, which can execute arbitrary code.
 Mitigations:
 - State comes from the module itself (not user input)
-- Size limit (16 MiB) prevents memory attacks
+- No enforced size limit; rely on module authors keeping state compact
 - Document risks in user guide
 
 ### Module Sandboxing

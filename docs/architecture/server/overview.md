@@ -4,7 +4,7 @@ The gRPC server manages sessions, clients, and request dispatching.
 
 ## Source Location
 
-`server/lib/server/src/` (moved from `runner/src/server/` in Phase 8)
+`server/lib/server/src/`
 
 ## Components
 
@@ -13,7 +13,7 @@ The gRPC server manages sessions, clients, and request dispatching.
 | Server | `mod.rs` | Main server struct, accept loop |
 | Session | `session/` | Session state management |
 | Client | `session/client.rs` | Per-client state, viewport |
-| gRPC Handlers | `grpc/` | Request routing, 15 handler files |
+| gRPC Handlers | `grpc/` | Request routing, 12 service handlers |
 | Transport | `shared/net/` | Network transport layer (separate crate) |
 | Notification | `grpc/notification.rs` | Broadcast to clients |
 
@@ -29,7 +29,7 @@ The gRPC server manages sessions, clients, and request dispatching.
 │  └─────────────────────────────────────────────────────┘   │
 │                          │                                  │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ ClientRegistry                                       │   │
+│  │ ClientDirectory                                      │   │
 │  │ ├── Client 1 (viewport, writer)                     │   │
 │  │ ├── Client 2 (viewport, writer)                     │   │
 │  │ └── Client N (viewport, writer)                     │   │
@@ -37,7 +37,7 @@ The gRPC server manages sessions, clients, and request dispatching.
 │                          │                                  │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │ gRPC Handlers (grpc/)                               │   │
-│  │ └── 15 handler files (input, state, buffer, ...)    │   │
+│  │ └── 12 service handlers (input, state, buffer, ...)  │   │
 │  └─────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────┘
 ```

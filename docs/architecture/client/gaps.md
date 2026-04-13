@@ -62,7 +62,8 @@ Modules that support export would implement both traits.
 
 The server Module has `api_version()` for runtime compatibility checking.
 The client model relies on Cargo semver for compiled-in modules (caught at
-compile time) and `REOVIM_TOOLCHAIN_HASH` for dynamic modules. An explicit
+compile time) and `REOVIM_CLIENT_MODULE_API_VERSION` (validated via semver
+comparison in the module loader) for dynamic modules. An explicit
 `api_version()` is redundant for compiled-in modules but could be useful for
 dynamic loading. Deferred until the dynamic loading story matures.
 

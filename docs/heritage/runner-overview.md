@@ -11,7 +11,7 @@
 > - CLI client: `clients/cli/`
 > - Main binary: `apps/bin/`
 >
-> See [Phase 8 Migration Guide](../../heritage/phase-8-migration.md) for details on the restructure.
+> See [Phase 8 Migration Guide](./phase-8-migration.md) for details on the restructure.
 
 The runner was the application layer that orchestrated kernel, drivers, and modules.
 
@@ -103,6 +103,6 @@ See [Server Mode Reference](../user-guide/server-mode.md) for complete usage.
 
 ## Related Documents
 
-- [Server Architecture](./server/overview.md) - RPC server details
-- [Client Architecture](./client/overview.md) - CLI/TUI clients
+- [Server Architecture](../architecture/server/overview.md) - RPC server details
+- [Client Architecture](../architecture/client/overview.md) - CLI/TUI clients
 - [Server Mode Reference](../user-guide/server-mode.md) - Usage guide

@@ -75,9 +75,9 @@ pub struct CompositeLogger {
 }
 
 impl Logger for CompositeLogger {
-    fn log(&self, entry: LogEntry) {
-        self.ring_buffer.push(entry.clone());
-        self.tracing_subscriber.emit(entry);
+    fn log(&self, record: &Record) {
+        self.ring_buffer.push(LogEntry::from(record));
+        self.tracing_subscriber.emit(record);
     }
 }
 ```
@@ -93,11 +93,13 @@ impl Logger for CompositeLogger {
 The ring buffer implements the kernel's `Logger` trait:
 
 ```rust
-// server/lib/kernel/src/api/logger.rs
+// server/lib/kernel/src/printk/mod.rs
 pub trait Logger: Send + Sync {
-    fn log(&self, level: Level, target: &str, message: &str);
+    fn log(&self, record: &Record);
 }
 ```
+
+`Record` carries level, target, message, and optional source location info.
 
 This enables kernel code to log via `pr_err!`, `pr_info!`, etc.
 
@@ -185,6 +187,13 @@ The `DebugService` provides access via gRPC:
 service DebugService {
     rpc LogTail(LogTailRequest) returns (LogTailResponse);
     rpc LogLevel(LogLevelRequest) returns (LogLevelResponse);
+    rpc DebugSendKeys(DebugSendKeysRequest) returns (DebugSendKeysResponse);
+    rpc DebugCapture(DebugCaptureRequest) returns (DebugCaptureResponse);
+    rpc DebugGetMode(DebugGetModeRequest) returns (DebugGetModeResponse);
+    rpc DebugGetCursor(DebugGetCursorRequest) returns (DebugGetCursorResponse);
+    rpc DebugListClients(DebugListClientsRequest) returns (DebugListClientsResponse);
+    rpc DebugGetExtensionState(DebugGetExtensionStateRequest) returns (DebugGetExtensionStateResponse);
+    rpc DebugListExtensions(DebugListExtensionsRequest) returns (DebugListExtensionsResponse);
 }
 
 message LogTailRequest {
