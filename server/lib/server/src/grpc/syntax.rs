@@ -263,13 +263,8 @@ impl SyntaxService for SyntaxServiceImpl {
                         _ => total_lines.saturating_sub(1),
                     };
 
-                    let start_byte =
-                        buffer.position_to_byte(reovim_domain_text::Position::new(start_line, 0));
-                    let end_byte = if end_line < total_lines {
-                        buffer.position_to_byte(reovim_domain_text::Position::new(end_line + 1, 0))
-                    } else {
-                        content.len()
-                    };
+                    let start_byte = buffer.line_to_byte_offset(start_line);
+                    let end_byte = buffer.line_to_byte_offset(end_line + 1);
 
                     (total_lines, content, file_path, start_byte, end_byte)
                 };

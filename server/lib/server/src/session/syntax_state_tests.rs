@@ -277,6 +277,8 @@ fn test_send_full_refresh_no_subscribers_returns_early() {
 // text_event_to_syntax_edit tests (#740 Plan 09)
 // =============================================================================
 
+use reovim_driver_syntax::{compute_end_position, text_event_to_syntax_edit};
+
 #[test]
 fn test_text_event_to_syntax_edit_insert_single_line() {
     use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};

@@ -598,8 +598,6 @@ impl StateService for StateServiceImpl {
         &self,
         request: Request<GetRegistersRequest>,
     ) -> Result<Response<GetRegistersResponse>, Status> {
-        use reovim_domain_text::YankType;
-
         let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
@@ -615,17 +613,11 @@ impl StateService for StateServiceImpl {
         let registers = if req.names.is_empty() {
             // Return all non-empty registers
             bank.iter_non_empty()
-                .map(|(name, content)| {
-                    let yank_type_str = match content.yank_type {
-                        YankType::Characterwise => "char",
-                        YankType::Linewise => "line",
-                    };
-                    RegisterEntry {
-                        name: name.to_string(),
-                        content_type: "text".to_string(),
-                        content: content.text.clone(),
-                        yank_type: yank_type_str.to_string(),
-                    }
+                .map(|(name, content)| RegisterEntry {
+                    name: name.to_string(),
+                    content_type: "text".to_string(),
+                    content: content.text.clone(),
+                    yank_type: content.yank_type_str().to_string(),
                 })
                 .collect::<Vec<_>>()
         } else {
@@ -638,15 +630,11 @@ impl StateService for StateServiceImpl {
                     if content.is_empty() {
                         return None;
                     }
-                    let yank_type_str = match content.yank_type {
-                        YankType::Characterwise => "char",
-                        YankType::Linewise => "line",
-                    };
                     Some(RegisterEntry {
                         name: name_char.to_string(),
                         content_type: "text".to_string(),
                         content: content.text.clone(),
-                        yank_type: yank_type_str.to_string(),
+                        yank_type: content.yank_type_str().to_string(),
                     })
                 })
                 .collect()

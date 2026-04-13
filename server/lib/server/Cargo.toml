@@ -17,13 +17,8 @@ grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
 [dependencies]
 # Core crates
 reovim-kernel = { workspace = true }
-reovim-domain-text = { workspace = true }
-reovim-provider-text = { workspace = true }
 reovim-protocol = { workspace = true }
 reovim-arch = { workspace = true }
-
-# Domain events (#740 Plan 09 Phase 7d)
-reovim-domain-text-events = { workspace = true }
 
 # Drivers
 reovim-driver-command = { workspace = true }
@@ -73,7 +68,9 @@ reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
-# Buffer moved to provider-text (#740); tests use it via dev-dep
+# Domain crates removed from [dependencies]; tests use them via dev-deps
+reovim-domain-text = { workspace = true }
+reovim-domain-text-events = { workspace = true }
 reovim-provider-text = { workspace = true }
 
 [lints]

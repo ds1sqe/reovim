@@ -2490,6 +2490,7 @@ dependencies = [
  "parking_lot",
  "reovim-domain",
  "reovim-domain-text",
+ "reovim-domain-text-events",
  "reovim-driver-annotation",
  "reovim-driver-session",
  "reovim-driver-vfs",
@@ -2750,6 +2751,7 @@ name = "reovim-driver-syntax"
 version = "0.14.5-dev"
 dependencies = [
  "parking_lot",
+ "reovim-domain-text-events",
  "reovim-driver-session",
  "reovim-kernel",
 ]

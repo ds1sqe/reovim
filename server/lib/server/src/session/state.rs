@@ -19,14 +19,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
-    reovim_domain_text::RegisterContent,
+    reovim_driver_buffer::{Buffer, BufferOps},
     reovim_driver_command::{CommandContext, CommandResult},
-    reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
+    reovim_driver_input::{PendingBindings, ResolverRegistry},
     reovim_driver_layout::RootCompositor,
-    reovim_driver_session::{ClientId, Session as DriverSession},
+    reovim_driver_session::{ClientId, RegisterContent, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
-    reovim_provider_text::{Buffer, BufferOps},
 };
 
 use crate::{
@@ -307,8 +306,7 @@ impl SessionState {
         reovim_driver_session::api::StateChanges,
         Vec<reovim_driver_command_types::RuntimeSignal>,
     )> {
-        // Flush pending edits before command execution
-        self.app.flush_pending_edits();
+        // No flush needed — edits are recorded immediately via undo provider.
         // Use per-client state (#471, #477, #515)
         // Pass client_id for per-client undo support
         // Pass shared extensions for session-wide state (#543)
@@ -370,7 +368,7 @@ impl SessionState {
         self.app
             .kernel
             .services
-            .get::<reovim_provider_text::TextBufferRegistry>()
+            .get::<reovim_driver_buffer::TextBufferRegistry>()
             .and_then(|reg| reg.get(id))
     }
 
@@ -388,7 +386,7 @@ impl SessionState {
             .app
             .kernel
             .services
-            .get::<reovim_provider_text::TextBufferRegistry>()
+            .get::<reovim_driver_buffer::TextBufferRegistry>()
         {
             reg.register(arc.clone());
         }

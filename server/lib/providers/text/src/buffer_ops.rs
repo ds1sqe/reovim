@@ -64,6 +64,18 @@ pub trait BufferOps: StorageOps + BufferMeta {
     /// Convert a (line, column) position to a byte offset.
     fn position_to_byte(&self, pos: Position) -> usize;
 
+    /// Byte offset of the start of a line.
+    ///
+    /// Equivalent to `position_to_byte(Position::new(line, 0))`.
+    /// If `line >= line_count()`, returns `content().len()`.
+    fn line_to_byte_offset(&self, line: usize) -> usize {
+        if line >= self.line_count() {
+            self.content().len()
+        } else {
+            self.position_to_byte(Position::new(line, 0))
+        }
+    }
+
     /// Convert a byte offset to a (line, column) position.
     fn byte_to_position(&self, byte_offset: usize) -> Position;
 

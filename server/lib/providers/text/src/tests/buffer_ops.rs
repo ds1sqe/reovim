@@ -311,3 +311,27 @@ fn buffer_capabilities_returns_text_flags() {
     let dyn_buf: &dyn BufferOps = &buf;
     assert_eq!(dyn_buf.buffer_capabilities(), BufferCapabilities::ROPE);
 }
+
+// === line_to_byte_offset ===
+
+#[test]
+fn line_to_byte_offset_first_line() {
+    let buf = MockBuffer::new("hello\nworld\nfoo");
+    let dyn_buf: &dyn BufferOps = &buf;
+    assert_eq!(dyn_buf.line_to_byte_offset(0), 0);
+}
+
+#[test]
+fn line_to_byte_offset_middle_line() {
+    let buf = MockBuffer::new("hello\nworld\nfoo");
+    let dyn_buf: &dyn BufferOps = &buf;
+    assert_eq!(dyn_buf.line_to_byte_offset(1), 6); // "hello\n" = 6 bytes
+}
+
+#[test]
+fn line_to_byte_offset_beyond_last_line() {
+    let buf = MockBuffer::new("hello\nworld");
+    let dyn_buf: &dyn BufferOps = &buf;
+    // line >= line_count() should return content length
+    assert_eq!(dyn_buf.line_to_byte_offset(5), 11); // "hello\nworld" = 11 bytes
+}

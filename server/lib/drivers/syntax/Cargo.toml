@@ -22,3 +22,6 @@ reovim-driver-session = { workspace = true }
 
 # Sync primitives for SyntaxFactoryStore
 parking_lot = { workspace = true }
+
+# Text domain events (for text_event_to_syntax_edit bridge)
+reovim-domain-text-events = { workspace = true }

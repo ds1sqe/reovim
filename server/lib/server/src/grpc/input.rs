@@ -27,7 +27,6 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_codec::DecodedEdit,
     reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
     reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
@@ -554,8 +553,9 @@ impl InputServiceImpl {
     /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
     /// 2. Access `SyntaxStreamState`, broadcast the update
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
-        use crate::session::{
-            SyntaxSessionState, SyntaxStreamState, build_token_update, text_event_to_syntax_edit,
+        use {
+            crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update},
+            reovim_driver_syntax::text_event_to_syntax_edit,
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)
@@ -638,7 +638,7 @@ impl InputServiceImpl {
         session.with_state_mut_sync(|state| {
             if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
                 for event in &changes.text_buffer_edits {
-                    let decoded_edit = Self::text_edit_to_decoded_edit(event);
+                    let decoded_edit = reovim_driver_codec::text_edit_to_decoded_edit(event);
 
                     let view = codec_state
                         .active_view(event.buffer_id)
@@ -663,40 +663,6 @@ impl InputServiceImpl {
                 }
             }
         });
-    }
-
-    /// Convert a `TextBufferModified` event into a codec decoded edit
-    /// (#740 Plan 09 Phase 7d).
-    fn text_edit_to_decoded_edit(
-        event: &reovim_domain_text_events::TextBufferModified,
-    ) -> DecodedEdit {
-        use reovim_domain_text_events::TextEdit;
-
-        match &event.edit {
-            TextEdit::Insert { position, text } => DecodedEdit::Text {
-                start: reovim_domain_text::Position::new(position.line, position.column),
-                end: reovim_domain_text::Position::new(position.line, position.column),
-                replacement: text.clone(),
-            },
-            TextEdit::Delete { position, text } => {
-                // Compute end position from start + deleted text content
-                let mut end_line = position.line;
-                let mut end_col = position.column;
-                for ch in text.chars() {
-                    if ch == '\n' {
-                        end_line += 1;
-                        end_col = 0;
-                    } else {
-                        end_col += 1;
-                    }
-                }
-                DecodedEdit::Text {
-                    start: reovim_domain_text::Position::new(position.line, position.column),
-                    end: reovim_domain_text::Position::new(end_line, end_col),
-                    replacement: String::new(),
-                }
-            }
-        }
     }
 
     /// Convert `ResolveContext` to `CommandContext`.
@@ -1091,7 +1057,7 @@ impl InputServiceImpl {
     }
 
     // NOTE (#471): `fallback_char_insert()` was REMOVED.
-    // NOTE (#477): `insert_char_by_target()` moved to Session::insert_char_for_client().
+    // NOTE (#477): `insert_char_by_target()` removed (server domain decoupling).
     //
     // The fallback was a design mistake that masked configuration bugs by silently
     // inserting characters when no resolver was found. This caused:

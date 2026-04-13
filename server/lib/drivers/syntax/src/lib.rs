@@ -68,6 +68,7 @@
 // ============================================================================
 
 pub mod bracket;
+mod bridge;
 mod cache;
 mod composite;
 pub mod decoration;
@@ -118,3 +119,6 @@ pub use error::ModuleError;
 
 // Per-session syntax driver storage
 pub use state::SyntaxSessionState;
+
+// Bridge functions: convert text-domain events to syntax driver inputs
+pub use bridge::{compute_end_position, text_event_to_syntax_edit};

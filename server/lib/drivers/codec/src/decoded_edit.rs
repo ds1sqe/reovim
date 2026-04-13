@@ -230,6 +230,43 @@ impl DecodedEdit {
     }
 }
 
+/// Convert a `TextBufferModified` event into a codec `DecodedEdit`.
+///
+/// This lives in driver-codec (not the server) so the server doesn't need
+/// to import `reovim-domain-text-events` for this conversion.
+#[must_use]
+pub fn text_edit_to_decoded_edit(
+    event: &reovim_domain_text_events::TextBufferModified,
+) -> DecodedEdit {
+    use reovim_domain_text_events::TextEdit;
+
+    match &event.edit {
+        TextEdit::Insert { position, text } => DecodedEdit::Text {
+            start: Position::new(position.line, position.column),
+            end: Position::new(position.line, position.column),
+            replacement: text.clone(),
+        },
+        TextEdit::Delete { position, text } => {
+            // Compute end position from start + deleted text content
+            let mut end_line = position.line;
+            let mut end_col = position.column;
+            for ch in text.chars() {
+                if ch == '\n' {
+                    end_line += 1;
+                    end_col = 0;
+                } else {
+                    end_col += 1;
+                }
+            }
+            DecodedEdit::Text {
+                start: Position::new(position.line, position.column),
+                end: Position::new(end_line, end_col),
+                replacement: String::new(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "decoded_edit_tests.rs"]
 mod tests;

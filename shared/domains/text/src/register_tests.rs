@@ -100,6 +100,18 @@ fn test_register_content_default() {
     assert!(!content.is_linewise());
 }
 
+#[test]
+fn test_yank_type_str_characterwise() {
+    let content = RegisterContent::characterwise("hello");
+    assert_eq!(content.yank_type_str(), "char");
+}
+
+#[test]
+fn test_yank_type_str_linewise() {
+    let content = RegisterContent::linewise("hello\n");
+    assert_eq!(content.yank_type_str(), "line");
+}
+
 // === clear_named ===
 
 #[test]

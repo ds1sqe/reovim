@@ -43,8 +43,6 @@ pub use {
     ring_buffer::{ClientEventType, ClientRingBuffer},
     session::Session,
     state::SessionState,
-    syntax_state::{
-        SyntaxSessionState, SyntaxStreamState, build_token_update, text_event_to_syntax_edit,
-    },
+    syntax_state::{SyntaxSessionState, SyntaxStreamState, build_token_update},
     token_registry::{SessionToken, TokenRegistry},
 };

@@ -163,6 +163,10 @@ pub use api::{
     SessionApi, SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
 };
 
+// Domain-text re-exports for server layer access via driver path.
+// The server depends on this driver (not on reovim-domain-text directly).
+pub use reovim_domain_text::{HistoryRing, RegisterBank};
+
 // Tab page management (#401)
 pub use tab::{TabPage, TabPageSet};
 

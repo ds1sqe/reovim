@@ -87,6 +87,17 @@ impl RegisterContent {
     pub const fn is_linewise(&self) -> bool {
         matches!(self.yank_type, YankType::Linewise)
     }
+
+    /// Return the yank type as a string label ("char" or "line").
+    ///
+    /// Used by gRPC serialization to avoid importing `YankType` directly.
+    #[must_use]
+    pub const fn yank_type_str(&self) -> &'static str {
+        match self.yank_type {
+            YankType::Characterwise => "char",
+            YankType::Linewise => "line",
+        }
+    }
 }
 
 impl Default for RegisterContent {
