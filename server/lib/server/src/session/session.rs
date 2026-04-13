@@ -20,7 +20,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use reovim_driver_session::{ExtensionMap, RegisterContent};
+use {reovim_driver_session::RegisterContent, reovim_subsys_session::ExtensionMap};
 
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
@@ -362,7 +362,7 @@ impl Session {
         F: FnOnce(
             &ExtensionMap,
             &ExtensionMap,
-            &[(reovim_driver_session::ClientId, &ExtensionMap)],
+            &[(reovim_subsys_session::ClientId, &ExtensionMap)],
         ) -> R,
     {
         let clients = self.clients.read();
@@ -371,12 +371,12 @@ impl Session {
 
         // Pre-collect opponent extension maps with driver-layer ClientId.
         // The driver crate cannot see `Client`, so we resolve here.
-        let opponents: Vec<(reovim_driver_session::ClientId, &ExtensionMap)> = clients
+        let opponents: Vec<(reovim_subsys_session::ClientId, &ExtensionMap)> = clients
             .iter()
             .filter(|&(&id, _)| id != client_id)
             .filter_map(|(&id, c)| {
                 c.effective_state(&clients).map(|state| {
-                    (reovim_driver_session::ClientId::new(id.as_usize()), &state.extensions)
+                    (reovim_subsys_session::ClientId::new(id.as_usize()), &state.extensions)
                 })
             })
             .collect();
@@ -459,7 +459,7 @@ impl Session {
     pub async fn resolve_key_for_client(
         &self,
         client_id: ClientId,
-        key: &reovim_driver_input::KeyEvent,
+        key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
         // Acquire both locks in consistent order to avoid deadlocks

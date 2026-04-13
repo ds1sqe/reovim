@@ -8,12 +8,12 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_command::{CommandNameIndex, CommandQueryService},
     reovim_protocol::v2::{
         CommandSource, CompleteArgsRequest, CompleteArgsResponse, KeybindingCommandEntry,
         SearchCommandsRequest, SearchCommandsResponse, UserCommandEntry,
         command_service_server::CommandService,
     },
+    reovim_subsys_command::{CommandNameIndex, CommandQueryService},
     tonic::{Request, Response, Status},
 };
 

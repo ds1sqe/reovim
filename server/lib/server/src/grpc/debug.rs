@@ -49,7 +49,7 @@ use crate::{
     },
 };
 
-use reovim_driver_session::bridges::{BridgeRegistry, ExtensionScope};
+use reovim_subsys_session::bridges::{BridgeRegistry, ExtensionScope};
 
 /// Get the global debug ring buffer, returning `Status::unavailable` if not initialized.
 ///

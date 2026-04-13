@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use {
     parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-    reovim_driver_session::ExtensionMap,
+    reovim_subsys_session::ExtensionMap,
 };
 
 use super::{Client, ClientId, ClientRelation, EditingState, TransitionResult};

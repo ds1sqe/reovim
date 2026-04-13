@@ -11,11 +11,11 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_session::bridges::{BridgeRegistry, ExtensionScope},
     reovim_protocol::v2::{
         ExtensionInfo, GetExtensionStateRequest, GetExtensionStateResponse, ListExtensionsRequest,
         ListExtensionsResponse, extension_service_server::ExtensionService,
     },
+    reovim_subsys_session::bridges::{BridgeRegistry, ExtensionScope},
     tonic::{Request, Response, Status},
 };
 

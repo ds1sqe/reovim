@@ -31,13 +31,14 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
-    reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
+    reovim_driver_session::api::StateChanges,
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
         ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
         OptionChangedPayload, Position, SelectionChangedPayload, TabPageInfo,
         ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
     },
+    reovim_subsys_session::bridges::BridgeRegistry,
 };
 
 use crate::session::{ClientId, Session};
@@ -552,7 +553,7 @@ pub(crate) fn build_extension_notification(
     client_id: u64,
     bridges: &BridgeRegistry,
 ) -> Option<Notification> {
-    use reovim_driver_session::bridges::{BridgeContext, ExtensionScope};
+    use reovim_subsys_session::bridges::{BridgeContext, ExtensionScope};
 
     let bridge = bridges.get(kind)?;
     let cid = ClientId::new(client_id as usize);
@@ -562,7 +563,7 @@ pub(crate) fn build_extension_notification(
             // Use with_bridge_context for cross-client reads (#543).
             // Holds both clients + state locks, pre-collects opponent data.
             session.with_bridge_context(cid, |own_ext, shared_ext, opponents| {
-                let driver_cid = reovim_driver_session::ClientId::new(client_id as usize);
+                let driver_cid = reovim_subsys_session::ClientId::new(client_id as usize);
                 let context = BridgeContext::new(driver_cid, shared_ext, opponents);
                 bridge.snapshot_with_context(own_ext, &context)
             })??

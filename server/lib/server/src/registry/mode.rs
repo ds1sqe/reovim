@@ -74,7 +74,7 @@ impl ModeEntry {
     ///
     /// Used when extracting modes from `ModeInfoStore`.
     #[must_use]
-    pub fn from_info(info: reovim_driver_input::ModeInfo) -> Self {
+    pub fn from_info(info: reovim_subsys_input::ModeInfo) -> Self {
         Self {
             id: info.id,
             display_name: info.display_name,

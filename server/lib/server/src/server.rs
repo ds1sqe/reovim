@@ -17,7 +17,6 @@ use {
         NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
         SyntaxServiceImpl,
     },
-    reovim_driver_session::bridges::BridgeRegistry,
     reovim_protocol::v2::{
         buffer_service_server::BufferServiceServer,
         command_service_server::CommandServiceServer,
@@ -32,6 +31,7 @@ use {
         state_service_server::StateServiceServer,
         syntax_service_server::SyntaxServiceServer,
     },
+    reovim_subsys_session::bridges::BridgeRegistry,
 };
 
 #[cfg(feature = "grpc")]
@@ -373,7 +373,7 @@ impl<M: Send + Sync> Server<M> {
         // Tick scheduler for server-driven state advancement (#546).
         // Modules call TickSchedulerHandle.start() to begin periodic ticking.
         {
-            use reovim_driver_session::TickSchedulerHandle;
+            use reovim_subsys_session::{TickSchedulerHandle, tick::TickScheduler};
 
             let tick_scheduler = Arc::new(crate::tick::TokioTickScheduler::new(
                 Arc::clone(&self.sessions),
@@ -384,8 +384,7 @@ impl<M: Send + Sync> Server<M> {
             if let Some(session) = self.sessions.get(&default_session_id) {
                 session.with_state_mut_sync(|state| {
                     let handle = state.app.services.get_or_create::<TickSchedulerHandle>();
-                    handle
-                        .set(tick_scheduler as Arc<dyn reovim_driver_session::tick::TickScheduler>);
+                    handle.set(tick_scheduler as Arc<dyn TickScheduler>);
                 });
             }
         }

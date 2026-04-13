@@ -5,8 +5,8 @@
 //! state like active buffer and mode stack.
 
 use {
-    reovim_driver_input::ExtensionMap,
     reovim_kernel::api::v1::{KernelContext, ServiceRegistry},
+    reovim_subsys_session::ExtensionMap,
     std::sync::Arc,
 };
 

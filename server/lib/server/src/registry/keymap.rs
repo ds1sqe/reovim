@@ -18,13 +18,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_input::{
-        BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult,
-        KeyLookupState, KeySequence, KeymapQuery,
-    },
     reovim_kernel::{
         api::v1::{CommandId, ModeId, ModuleId},
         profile_scope,
+    },
+    reovim_subsys_input::{
+        BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult,
+        KeyLookupState, KeySequence, KeymapQuery,
     },
 };
 

@@ -25,5 +25,5 @@ pub use {
     mode::{ModeEntry, ModeRegistry},
 };
 
-// Re-export KeyLookupResult from driver (moved from keymap.rs in Epic #353)
-pub use reovim_driver_input::KeyLookupResult;
+// Re-export KeyLookupResult from subsys (moved from keymap.rs in Epic #353)
+pub use reovim_subsys_input::KeyLookupResult;

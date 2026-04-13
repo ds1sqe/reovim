@@ -20,11 +20,13 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::RwLock,
     reovim_driver_buffer::{Buffer, BufferOps},
-    reovim_driver_command::{CommandContext, CommandResult},
-    reovim_driver_input::{PendingBindings, ResolverRegistry},
-    reovim_driver_session::{ClientId, RegisterContent, Session as DriverSession},
+    reovim_driver_input::ResolverRegistry,
+    reovim_driver_session::{RegisterContent, Session as DriverSession},
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
+    reovim_subsys_command::{CommandContext, CommandResult},
+    reovim_subsys_input::PendingBindings,
     reovim_subsys_layout::RootCompositor,
+    reovim_subsys_session::ClientId,
     reovim_subsys_vfs::VfsDriver,
 };
 
@@ -277,7 +279,7 @@ impl SessionState {
     pub fn lookup_keys(
         &self,
         mode: &ModeId,
-        keys: &reovim_driver_input::KeySequence,
+        keys: &reovim_subsys_input::KeySequence,
     ) -> KeyLookupResult {
         self.keymap_registry.lookup(mode, keys)
     }
@@ -427,12 +429,12 @@ impl SessionState {
         &mut self,
         client_id: usize,
         client: reovim_driver_session::ClientContext<'_>,
-        key: &reovim_driver_input::KeyEvent,
+        key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
         use {
-            reovim_driver_input::ModeState,
-            reovim_driver_session::{ClientId as DriverClientId, SessionRuntime},
+            reovim_driver_input::ModeState, reovim_driver_session::SessionRuntime,
+            reovim_subsys_session::ClientId as DriverClientId,
         };
 
         let reovim_driver_session::ClientContext {
@@ -460,7 +462,7 @@ impl SessionState {
         // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
         let stub_executor = StubExecutor;
         let driver_client_id = DriverClientId::new(client_id);
-        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
+        let mut runtime_ext = reovim_subsys_session::ExtensionMap::new();
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
@@ -524,8 +526,8 @@ impl SessionState {
                 // On mode push (e.g., entering an operator-pending mode),
                 // populate PendingBindings with the new mode's available bindings
                 // so which-key can show hints immediately on mode entry.
-                let trigger_key = reovim_driver_input::KeySequence::from_keys(&[*key]);
-                let empty = reovim_driver_input::KeySequence::new();
+                let trigger_key = reovim_subsys_input::KeySequence::from_keys(&[*key]);
+                let empty = reovim_subsys_input::KeySequence::new();
                 let mut continuations = self
                     .keymap_registry
                     .bindings_with_prefix(target_mode, &empty);
@@ -539,7 +541,7 @@ impl SessionState {
                 if !continuations.is_empty() {
                     let pb = client_extensions.get_or_insert::<PendingBindings>();
                     pb.mode_prefix = trigger_key;
-                    pb.pending_keys = reovim_driver_input::KeySequence::new();
+                    pb.pending_keys = reovim_subsys_input::KeySequence::new();
                     pb.mode = target_mode.clone();
                     pb.continuations = continuations;
                 }
@@ -576,7 +578,10 @@ impl SessionState {
         client_id: usize,
         client: reovim_driver_session::ClientContext<'_>,
     ) -> Option<reovim_driver_input::ModeTransition> {
-        use reovim_driver_session::{ClientId as DriverClientId, SessionRuntime};
+        use {
+            reovim_driver_session::SessionRuntime,
+            reovim_subsys_session::ClientId as DriverClientId,
+        };
 
         let reovim_driver_session::ClientContext {
             mode_stack: client_mode_stack,
@@ -600,7 +605,7 @@ impl SessionState {
         let resolver = self.resolver_registry.get(&mode)?;
         let stub_executor = StubExecutor;
         let driver_client_id = DriverClientId::new(client_id);
-        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
+        let mut runtime_ext = reovim_subsys_session::ExtensionMap::new();
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,

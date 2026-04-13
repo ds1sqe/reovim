@@ -19,6 +19,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **drivers**: Command metadata traits extracted from `reovim-driver-command` into new `reovim-subsys-command` crate. Moved items: Command, CommandPriority, CommandInfo, CommandQueryProvider, CommandQueryService, AmbiguousPrefix, CommandNameIndex, bind_args, parse_cmdline, tokenize_args. CommandHandler, CommandHandlerStore, and CommandProvider remain in driver-command (they reference SessionRuntime). Driver-command re-exports all items for backwards compatibility
 - **drivers**: Domain-free input contract types extracted from `reovim-driver-input` into new `reovim-subsys-input` crate. Moved items: KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers, MouseButton, MouseEvent, MouseEventKind, ClipboardError, InputError, ClipboardProvider, KeySequence, Keybinding, KeybindingTarget, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery, ModeLifecycleHandler, NopLifecycleHandler, DefaultModeProvider, ProviderPriority, DefaultModeProviderModule, ModeProviderKey, ModeProviderRegistry, ModeInfo, ModeInfoStore, KeybindingStore, LookupPolicyStore, PendingBindings, BindingInfo. Driver-input re-exports all moved items for backwards compatibility; resolver, fallback, and resolver_registry remain in driver-input
 
+- **server**: `reovim-driver-undo` and `reovim-driver-search` removed from server dependencies (zero production usage). Server imports for subsys-available types switched from driver crates to subsys crates (subsys-session, subsys-command, subsys-command-types, subsys-input, subsys-syntax). Remaining driver deps (session, input, command, buffer, codec, syntax) are domain-locked and documented for Tier 2 decoupling
+
 ### Added
 
 ### Changed

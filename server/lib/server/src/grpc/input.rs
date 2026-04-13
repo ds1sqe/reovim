@@ -27,13 +27,15 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
-    reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
+    reovim_driver_input::{ModeTransition, PopResult, ResolveContext, ResolveResult},
+    reovim_subsys_input::KeySequence,
+    reovim_driver_session::api::StateChanges,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
         notification,
     },
     reovim_subsys_command_types::{ArgValue, CommandContext, CommandResult},
+    reovim_subsys_session::bridges::BridgeRegistry,
     tonic::{Request, Response, Status},
 };
 
@@ -254,7 +256,7 @@ impl InputService for InputServiceImpl {
                     let snap = client
                         .state
                         .extensions
-                        .get_or_insert::<reovim_driver_session::CursorSnapshot>();
+                        .get_or_insert::<reovim_subsys_session::CursorSnapshot>();
                     snap.line = window.cursor.line as u32;
                     snap.col = window.cursor.column as u32;
                     snap.buffer_id = buffer_id.as_usize() as u64;
@@ -353,16 +355,16 @@ impl InputService for InputServiceImpl {
 impl InputServiceImpl {
     /// Check bridge `is_active()` for the appropriate scope.
     fn bridge_is_active(
-        bridge: &dyn reovim_driver_session::bridges::ExtensionStateBridge,
+        bridge: &dyn reovim_subsys_session::bridges::ExtensionStateBridge,
         session: &Session,
         client_id: ClientId,
     ) -> bool {
         match bridge.scope() {
-            reovim_driver_session::bridges::ExtensionScope::Client => session
+            reovim_subsys_session::bridges::ExtensionScope::Client => session
                 .clients()
                 .with_client_extensions(client_id, |ext| bridge.is_active(ext))
                 .unwrap_or(false),
-            reovim_driver_session::bridges::ExtensionScope::Shared => {
+            reovim_subsys_session::bridges::ExtensionScope::Shared => {
                 session.with_state_sync(|state| bridge.is_active(&state.app.extensions))
             }
         }
@@ -424,7 +426,7 @@ impl InputServiceImpl {
             .clients()
             .with_client_extensions_mut(client_id, |ext| {
                 for bridge in bridges.values() {
-                    if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                    if bridge.scope() == reovim_subsys_session::bridges::ExtensionScope::Client {
                         bridge.on_mode_changed(from, to, ext);
                     }
                 }
@@ -453,7 +455,7 @@ impl InputServiceImpl {
             .with_client_extensions_mut(client_id, |ext| {
                 for bridge in bridges
                     .values()
-                    .filter(|b| b.scope() == reovim_driver_session::bridges::ExtensionScope::Client)
+                    .filter(|b| b.scope() == reovim_subsys_session::bridges::ExtensionScope::Client)
                 {
                     let was_active = bridge.is_active(ext);
                     bridge.on_cursor_moved(line, col, ext);
@@ -555,7 +557,7 @@ impl InputServiceImpl {
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
         use {
             crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update},
-            reovim_driver_syntax::text_event_to_syntax_edit,
+            reovim_driver_syntax::text_event_to_syntax_edit, // TODO: relocate bridge call (Tier 2 server decoupling)
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)
@@ -715,7 +717,7 @@ impl InputServiceImpl {
     fn handle_resolve_result<'a>(
         session: &'a Session,
         result: ResolveResult,
-        key: &'a reovim_driver_input::KeyEvent,
+        key: &'a reovim_subsys_input::KeyEvent,
         client_id: ClientId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = (bool, StateChanges)> + Send + 'a>>
     {

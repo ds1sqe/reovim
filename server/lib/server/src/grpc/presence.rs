@@ -297,7 +297,7 @@ impl PresenceService for PresenceServiceImpl {
 
         // Start per-client illuminate tick (#664)
         session.with_state_mut_sync(|state| {
-            use reovim_driver_session::{ClientId as DriverClientId, TickSchedulerHandle};
+            use reovim_subsys_session::{ClientId as DriverClientId, TickSchedulerHandle};
 
             if let Some(tick_handle) = state.app.services.get::<TickSchedulerHandle>() {
                 tick_handle.start(

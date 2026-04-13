@@ -13,10 +13,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_command::{
-        CommandContext, CommandHandler, CommandInfo, CommandPriority, CommandQueryService,
-        CommandResult,
-    },
+    reovim_driver_command::CommandHandler,
     reovim_driver_session::{
         Session as DriverSession, SessionRuntime,
         api::{CommandExecutor, CommandHandle},
@@ -24,6 +21,9 @@ use {
     reovim_kernel::{
         api::v1::{CommandId, KernelContext, ModuleId, Service},
         profile_scope,
+    },
+    reovim_subsys_command::{
+        CommandContext, CommandInfo, CommandPriority, CommandQueryService, CommandResult,
     },
     reovim_subsys_vfs::VfsDriver,
 };
@@ -167,13 +167,16 @@ impl CommandRegistry {
         kernel: &KernelContext,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
-        shared_extensions: Option<&mut reovim_driver_session::ExtensionMap>,
+        shared_extensions: Option<&mut reovim_subsys_session::ExtensionMap>,
     ) -> Option<(
         CommandResult,
         reovim_driver_session::api::StateChanges,
         Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
-        use reovim_driver_session::{ClientId as DriverClientId, api::ChangeTracker};
+        use {
+            reovim_driver_session::api::ChangeTracker,
+            reovim_subsys_session::ClientId as DriverClientId,
+        };
         profile_scope!("command_execute_for_client", "server::command");
 
         self.entries.get(id).map(|entry| {
@@ -231,12 +234,12 @@ impl CommandRegistry {
     /// the command's ID and `Command` trait object. The resulting index
     /// is stored in `ServiceRegistry` for vim dispatch (#547).
     #[must_use]
-    pub fn build_name_index(&self) -> reovim_driver_command::CommandNameIndex {
-        let mut index = reovim_driver_command::CommandNameIndex::new();
+    pub fn build_name_index(&self) -> reovim_subsys_command::CommandNameIndex {
+        let mut index = reovim_subsys_command::CommandNameIndex::new();
         for entry in self.entries.values() {
             let id = entry.handler.id();
             let handler = Arc::clone(&entry.handler);
-            let cmd: Arc<dyn reovim_driver_command::Command> = handler;
+            let cmd: Arc<dyn reovim_subsys_command::Command> = handler;
             for &name in cmd.names() {
                 index.insert(name.to_string(), id.clone(), Arc::clone(&cmd));
             }

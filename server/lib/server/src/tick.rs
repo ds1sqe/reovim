@@ -22,7 +22,7 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_session::{
+    reovim_subsys_session::{
         ClientId as DriverClientId, bridges::BridgeRegistry, tick::TickScheduler,
     },
 };
