@@ -1000,6 +1000,19 @@ impl WindowApi for SessionRuntime<'_> {
         }
     }
 
+    fn set_cursor_position(&mut self, pos: Position) -> bool {
+        if let Some(w) = self.windows.active_mut() {
+            w.cursor.line = pos.line;
+            w.cursor.column = pos.column;
+            if let Some(buffer_id) = w.buffer_id {
+                self.changes.record_cursor_move(buffer_id);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     fn set_active_selection(&mut self, selection: Option<Selection>) {
         if let Some(w) = self.windows.active_mut() {
             w.selection = selection;

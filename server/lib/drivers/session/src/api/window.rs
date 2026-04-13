@@ -40,6 +40,16 @@ pub trait WindowApi: Send {
     /// Note: This returns cursor for the current client's active window.
     fn cursor_position(&self) -> Option<Position>;
 
+    /// Set cursor position on the active window.
+    ///
+    /// Updates the cursor and records the move in accumulated state changes.
+    /// Returns `false` if no active window exists.
+    ///
+    /// Default: no-op returning `false` (for mock implementations).
+    fn set_cursor_position(&mut self, _pos: Position) -> bool {
+        false
+    }
+
     /// Get the window count.
     fn window_count(&self) -> usize;
 

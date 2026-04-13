@@ -98,7 +98,13 @@ impl ModeKeyResolver for VimReplaceResolver {
             // For newline, just insert (don't overwrite) — vim behavior
             if c == '\n' {
                 push_restore_entry(session, client_extensions);
-                return ResolveResult::insert_char('\n');
+                if let (Some(buffer_id), Some(cursor)) =
+                    (session.active_buffer(), session.cursor_position())
+                {
+                    session.insert_text(buffer_id, cursor, "\n");
+                    session.set_cursor_position(Position::new(cursor.line + 1, 0));
+                }
+                return ResolveResult::Completed;
             }
 
             return handle_replace_char(session, client_extensions, c);
@@ -165,17 +171,17 @@ fn handle_replace_char(
     replacement: char,
 ) -> ResolveResult {
     let Some(buffer_id) = session.active_buffer() else {
-        return ResolveResult::insert_char(replacement);
+        return ResolveResult::Completed;
     };
 
     let Some(cursor) = session.cursor_position() else {
-        return ResolveResult::insert_char(replacement);
+        return ResolveResult::Completed;
     };
 
     let line_len = session.buffer_line_len(buffer_id, cursor.line).unwrap_or(0);
 
     if cursor.column < line_len {
-        // Within line: read original char, delete it, then let InsertChar insert replacement
+        // Within line: read original char, delete it, then insert replacement
         let original_char = session
             .buffer_line(buffer_id, cursor.line)
             .and_then(|line| line.chars().nth(cursor.column));
@@ -200,6 +206,9 @@ fn handle_replace_char(
         }
     }
 
-    // Insert the replacement character via InsertChar (runner handles insertion)
-    ResolveResult::insert_char(replacement)
+    // Insert the replacement character through session API
+    let text = replacement.to_string();
+    session.insert_text(buffer_id, cursor, &text);
+    session.set_cursor_position(Position::new(cursor.line, cursor.column + 1));
+    ResolveResult::Completed
 }

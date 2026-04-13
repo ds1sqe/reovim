@@ -817,23 +817,14 @@ impl InputServiceImpl {
                     (true, changes)
                 }
 
-                ResolveResult::InsertChar { char: ch, target } => {
-                    // Generic Input Target routing (#482, #477)
-                    // Route character based on target specified by resolver
-                    // Phase #477: Use insert_char_for_client which checks per-client extensions first
-                    let modified_buffer = session.insert_char_for_client(client_id, ch, target);
-
-                    // Record buffer modification and cursor movement for notification
-                    if let Some((buffer_id, text_event)) = modified_buffer {
-                        if let Some(event) = text_event {
-                            changes.record_buffer_modified_with_text_edit(buffer_id, event);
-                        }
-                        // Always record modification — idempotent after
-                        // record_buffer_modified_with_text_edit (which calls it internally).
-                        changes.record_buffer_modified(buffer_id);
-                        changes.record_cursor_move(buffer_id);
-                        tracing::debug!(?buffer_id, "Recorded buffer modification for InsertChar");
-                    }
+                ResolveResult::InsertChar { .. } => {
+                    // InsertChar is handled by resolvers via resolve_with_session.
+                    // If we reach here, a resolver returned InsertChar instead of
+                    // using the session API directly. Log an error but don't crash —
+                    // the character is simply dropped (no buffer mutation).
+                    tracing::error!(
+                        "InsertChar reached server dispatch — resolvers must handle insertion via SessionApi"
+                    );
                     (true, changes)
                 }
 

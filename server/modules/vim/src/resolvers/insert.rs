@@ -4,9 +4,10 @@
 //! like Escape exit insert mode, and control sequences trigger commands.
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
-        Modifiers, ResolveContext, ResolveInput, ResolveResult,
+        Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -119,16 +120,21 @@ impl ModeKeyResolver for VimInsertResolver {
         }
     }
 
-    /// Insert mode key resolution with extension tracking for dot repeat.
+    /// Insert mode key resolution with session access.
     ///
-    /// This method tracks all inserted characters in `VimSessionState.insert_buffer`
+    /// Insertable characters are inserted directly through the session API
+    /// (buffer mutation, undo recording, event emission). Non-insertable keys
+    /// delegate to keymap lookup.
+    ///
+    /// Tracks all inserted characters in `VimSessionState.insert_buffer`
     /// for dot repeat support (Epic #465).
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn resolve_with_extensions(
+    fn resolve_with_session(
         &self,
         key: &KeyEvent,
         state: &mut ModeState,
         input: &ResolveInput<'_>,
+        session: &mut dyn SessionApiDyn,
         _shared_extensions: &mut ExtensionMap,
         client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
@@ -143,7 +149,23 @@ impl ModeKeyResolver for VimInsertResolver {
             if let Some(vim) = client_extensions.get_mut::<VimSessionState>() {
                 vim.insert_buffer.push(c);
             }
-            return ResolveResult::insert_char(c);
+
+            // Insert through session API — handles buffer mutation, undo, events
+            if let (Some(buffer_id), Some(cursor)) =
+                (session.active_buffer(), session.cursor_position())
+            {
+                let text = c.to_string();
+                session.insert_text(buffer_id, cursor, &text);
+
+                // Advance cursor after insertion
+                let new_cursor = if c == '\n' {
+                    Position::new(cursor.line + 1, 0)
+                } else {
+                    Position::new(cursor.line, cursor.column + 1)
+                };
+                session.set_cursor_position(new_cursor);
+            }
+            return ResolveResult::Completed;
         }
 
         // Non-insertable key - delegate to keymap lookup

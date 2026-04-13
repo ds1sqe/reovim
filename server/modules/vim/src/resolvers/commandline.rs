@@ -3,10 +3,12 @@
 //! In command-line mode (`:`, `/`, `?`), typed characters accumulate in
 //! the command-line buffer. Enter executes, Escape cancels.
 
+use std::any::TypeId;
+
 use {
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
-        ResolveContext, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
+        Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
     reovim_module_cmdline::CmdlineState,
@@ -63,18 +65,43 @@ impl Default for VimCommandLineResolver {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl ModeKeyResolver for VimCommandLineResolver {
+    /// Session-level resolution: intercepts insertable chars and routes them
+    /// directly to the `CmdlineState` extension via `TextInputSink`.
+    /// Non-insertable keys delegate to `resolve_with_keymap`.
+    fn resolve_with_session(
+        &self,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        _session: &mut dyn SessionApiDyn,
+        shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        // Check for insertable character first
+        // Route to CmdlineState extension (#482 - Generic Input Target)
+        if let Some(c) = Self::is_insertable(key) {
+            let type_id = TypeId::of::<CmdlineState>();
+            // Try per-client extensions first, then shared
+            if let Some(sink) = client_extensions.get_text_input_sink_by_id(type_id) {
+                sink.insert_char(c);
+            } else if let Some(sink) = shared_extensions.get_text_input_sink_by_id(type_id) {
+                sink.insert_char(c);
+            }
+            return ResolveResult::Completed;
+        }
+
+        // Non-insertable keys: delegate to keymap lookup
+        self.resolve_with_keymap(key, state, input)
+    }
+
+    /// Keymap-level resolution: handles non-insertable keys (Escape, Enter,
+    /// Backspace, arrows) via keymap bindings.
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
         _state: &mut ModeState,
         input: &ResolveInput<'_>,
     ) -> ResolveResult {
-        // Check for insertable character first
-        // Route to CmdlineState extension (#482 - Generic Input Target)
-        if let Some(c) = Self::is_insertable(key) {
-            return ResolveResult::insert_char_to::<CmdlineState>(c);
-        }
-
         // For non-insertable keys (Escape, Enter, Backspace, etc.), look up in keymap
         let mut keys = KeySequence::new();
         keys.push(*key);

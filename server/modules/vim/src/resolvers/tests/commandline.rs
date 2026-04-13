@@ -1,14 +1,188 @@
 #![allow(clippy::doc_markdown)]
 
 use {
+    reovim_domain_text::Position,
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver, ModeState,
-        Modifiers, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
+        ModeState, Modifiers, ResolveInput, ResolveResult,
     },
-    reovim_kernel::api::v1::ModeId,
+    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, WindowId},
 };
 
 use {super::super::commandline::*, crate::modes::VimMode};
+
+// =========================================================================
+// MockSession for resolve_with_session tests
+// =========================================================================
+
+use {
+    reovim_domain_text::{Edit, UndoResult},
+    reovim_driver_command_types::{CommandContext, CommandResult},
+    reovim_driver_session::{
+        Selection, WindowError,
+        api::{
+            BufferApi, ChangeTracker, CommandApi, ModeApi, ModeError, StateChanges, UndoApi,
+            WindowApi,
+        },
+    },
+};
+
+/// Minimal mock implementing `SessionApiDyn` for resolve_with_session tests.
+/// The commandline resolver does not use the session, so this mock is a no-op.
+struct MockSession {
+    mode: ModeId,
+}
+
+impl MockSession {
+    fn new() -> Self {
+        Self {
+            mode: VimMode::COMMANDLINE_ID,
+        }
+    }
+}
+
+impl ModeApi for MockSession {
+    fn current_mode(&self) -> &ModeId {
+        &self.mode
+    }
+    fn home_mode(&self) -> &ModeId {
+        &self.mode
+    }
+    fn mode_depth(&self) -> usize {
+        1
+    }
+    fn is_mode_active(&self, _mode: &ModeId) -> bool {
+        false
+    }
+    fn mode_stack(&self) -> Vec<ModeId> {
+        vec![self.mode.clone()]
+    }
+    fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {}
+    fn pop_mode(
+        &mut self,
+        _result: Option<reovim_driver_session::PopResult>,
+    ) -> Result<(), ModeError> {
+        Ok(())
+    }
+    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {
+        self.mode = mode;
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl BufferApi for MockSession {
+    fn active_buffer(&self) -> Option<BufferId> {
+        None
+    }
+    fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
+    fn buffer_line(&self, _b: BufferId, _l: usize) -> Option<String> {
+        None
+    }
+    fn buffer_line_count(&self, _b: BufferId) -> Option<usize> {
+        None
+    }
+    fn buffer_line_len(&self, _b: BufferId, _l: usize) -> Option<usize> {
+        None
+    }
+    fn buffer_text_range(&self, _b: BufferId, _s: Position, _e: Position) -> Option<String> {
+        None
+    }
+    fn buffer_content(&self, _b: BufferId) -> Option<String> {
+        None
+    }
+    fn buffer_file_path(&self, _b: BufferId) -> Option<String> {
+        None
+    }
+    fn is_buffer_modified(&self, _b: BufferId) -> Option<bool> {
+        None
+    }
+    fn set_buffer_modified(&mut self, _b: BufferId, _m: bool) {}
+    fn insert_text(&mut self, _b: BufferId, _p: Position, _t: &str) {}
+    fn delete_range(&mut self, _b: BufferId, _s: Position, _e: Position) {}
+    fn create_buffer(&mut self, _n: Option<&str>, _c: &str) -> BufferId {
+        BufferId::new()
+    }
+    fn delete_buffer(
+        &mut self,
+        _b: BufferId,
+    ) -> Result<(), reovim_driver_session::api::BufferError> {
+        Ok(())
+    }
+    fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
+    fn replace_content(&mut self, _b: BufferId, _c: &str) {}
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl WindowApi for MockSession {
+    fn active_window(&self) -> Option<WindowId> {
+        None
+    }
+    fn cursor_position(&self) -> Option<Position> {
+        None
+    }
+    fn window_count(&self) -> usize {
+        0
+    }
+    fn window_buffer(&self, _w: WindowId) -> Option<BufferId> {
+        None
+    }
+    fn create_window(&mut self, _b: Option<BufferId>) -> WindowId {
+        WindowId::new()
+    }
+    fn close_window(&mut self, _w: WindowId) -> Result<(), WindowError> {
+        Ok(())
+    }
+    fn focus_window(&mut self, _w: WindowId) -> Result<(), WindowError> {
+        Ok(())
+    }
+    fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> {
+        Ok(())
+    }
+    fn set_active_selection(&mut self, _selection: Option<Selection>) {}
+    fn active_selection(&self) -> Option<&Selection> {
+        None
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandApi for MockSession {
+    fn execute_command(&mut self, _cmd: CommandId, _ctx: CommandContext) -> CommandResult {
+        CommandResult::Success
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl UndoApi for MockSession {
+    fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn redo(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn record_edit(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
+    fn can_undo(&self, _b: BufferId) -> bool {
+        false
+    }
+    fn can_redo(&self, _b: BufferId) -> bool {
+        false
+    }
+    fn undo_mine(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn redo_mine(&mut self, _b: BufferId) -> Option<UndoResult> {
+        None
+    }
+    fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl ChangeTracker for MockSession {
+    fn take_changes(&mut self) -> StateChanges {
+        StateChanges::new()
+    }
+    fn record_cursor_move(&mut self, _b: BufferId) {}
+    fn record_selection_change(&mut self, _b: BufferId) {}
+}
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -51,15 +225,40 @@ fn test_insert_character() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    // Command-line mode routes to CmdlineState extension (InputTarget::Extension)
-    let result = resolver.resolve_with_keymap(&key('w'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'w', .. }));
+    // Command-line mode routes chars to CmdlineState extension via resolve_with_session
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
 
-    let result = resolver.resolve_with_keymap(&key('q'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'q', .. }));
+    let result = resolver.resolve_with_session(
+        &key('w'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 
-    let result = resolver.resolve_with_keymap(&key(' '), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: ' ', .. }));
+    let result = resolver.resolve_with_session(
+        &key('q'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
+
+    let result = resolver.resolve_with_session(
+        &key(' '),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -145,11 +344,22 @@ fn test_insert_digits() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
+
     for c in '0'..='9' {
-        let result = resolver.resolve_with_keymap(&key(c), &mut state, &input);
+        let result = resolver.resolve_with_session(
+            &key(c),
+            &mut state,
+            &input,
+            &mut session,
+            &mut shared,
+            &mut client,
+        );
         assert!(
-            matches!(result, ResolveResult::InsertChar { char: ch, .. } if ch == c),
-            "digit '{c}' should be insertable"
+            matches!(result, ResolveResult::Completed),
+            "digit '{c}' should be insertable (Completed)"
         );
     }
 }
@@ -161,14 +371,39 @@ fn test_insert_special_symbols() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result = resolver.resolve_with_keymap(&key('/'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: '/', .. }));
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
 
-    let result = resolver.resolve_with_keymap(&key('!'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: '!', .. }));
+    let result = resolver.resolve_with_session(
+        &key('/'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 
-    let result = resolver.resolve_with_keymap(&key('.'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: '.', .. }));
+    let result = resolver.resolve_with_session(
+        &key('!'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
+
+    let result = resolver.resolve_with_session(
+        &key('.'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -302,11 +537,22 @@ fn test_insert_uppercase_chars() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
+
     for c in 'A'..='Z' {
-        let result = resolver.resolve_with_keymap(&key(c), &mut state, &input);
+        let result = resolver.resolve_with_session(
+            &key(c),
+            &mut state,
+            &input,
+            &mut session,
+            &mut shared,
+            &mut client,
+        );
         assert!(
-            matches!(result, ResolveResult::InsertChar { char: ch, .. } if ch == c),
-            "uppercase '{c}' should be insertable"
+            matches!(result, ResolveResult::Completed),
+            "uppercase '{c}' should be insertable (Completed)"
         );
     }
 }
@@ -318,15 +564,19 @@ fn test_insert_unicode_char() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Char('\u{00e9}')), &mut state, &input);
-    assert!(matches!(
-        result,
-        ResolveResult::InsertChar {
-            char: '\u{00e9}',
-            ..
-        }
-    ));
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
+
+    let result = resolver.resolve_with_session(
+        &KeyEvent::new(KeyCode::Char('\u{00e9}')),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -414,9 +664,19 @@ fn test_shift_char_is_insertable() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&key_with_mod('A', Modifiers::SHIFT), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'A', .. }));
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
+
+    let result = resolver.resolve_with_session(
+        &key_with_mod('A', Modifiers::SHIFT),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -428,8 +688,19 @@ fn test_reset_then_resolve() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'a', .. }));
+    let mut session = MockSession::new();
+    let mut shared = ExtensionMap::new();
+    let mut client = ExtensionMap::new();
+
+    let result = resolver.resolve_with_session(
+        &key('a'),
+        &mut state,
+        &input,
+        &mut session,
+        &mut shared,
+        &mut client,
+    );
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]

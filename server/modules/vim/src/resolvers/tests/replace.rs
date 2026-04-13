@@ -301,8 +301,8 @@ fn test_insertable_char_returns_insert_char() {
         &mut client,
     );
 
-    // Should return InsertChar (after deleting the char under cursor)
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'X', .. }));
+    // Should return Completed (resolver now inserts directly via session API)
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -353,7 +353,7 @@ fn test_replace_at_eol_pushes_none_original() {
         &mut client,
     );
 
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'X', .. }));
+    assert!(matches!(result, ResolveResult::Completed));
     let vim = client.get::<VimSessionState>().unwrap();
     assert_eq!(vim.replace_restore_stack.len(), 1);
     assert!(vim.replace_restore_stack[0].original.is_none());
@@ -409,7 +409,7 @@ fn test_enter_returns_insert_char_newline() {
         &mut client,
     );
 
-    assert!(matches!(result, ResolveResult::InsertChar { char: '\n', .. }));
+    assert!(matches!(result, ResolveResult::Completed));
 
     // Should push a restore entry
     let vim = client.get::<VimSessionState>().unwrap();
@@ -583,7 +583,7 @@ fn test_tab_replaces_char() {
         &mut client,
     );
 
-    assert!(matches!(result, ResolveResult::InsertChar { char: '\t', .. }));
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 // =========================================================================
@@ -612,8 +612,8 @@ fn test_no_buffer_returns_insert_char() {
         &mut client,
     );
 
-    // Should still return InsertChar even without buffer
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'X', .. }));
+    // Should still return Completed even without buffer
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]
@@ -638,7 +638,7 @@ fn test_no_cursor_returns_insert_char() {
         &mut client,
     );
 
-    assert!(matches!(result, ResolveResult::InsertChar { char: 'X', .. }));
+    assert!(matches!(result, ResolveResult::Completed));
 }
 
 #[test]

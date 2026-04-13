@@ -2087,7 +2087,7 @@ async fn test_send_keys_flow_without_active_buffer() {
 }
 
 // =========================================================================
-// Coverage: InsertChar with buffer modification (lines 347-348)
+// Coverage: InsertChar defensive no-op path
 // =========================================================================
 
 #[tokio::test]
@@ -2131,10 +2131,13 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
     )
     .await;
 
+    // InsertChar reaching the server dispatch is now a defensive no-op:
+    // resolvers must handle insertion via SessionApi::resolve_with_session.
+    // The result is handled=true (input consumed) but no buffer mutation.
     assert!(handled);
     assert!(
-        changes.buffer_modified,
-        "InsertChar should record buffer modification (lines 347-348)"
+        !changes.buffer_modified,
+        "InsertChar at server dispatch must not modify the buffer"
     );
 }
 

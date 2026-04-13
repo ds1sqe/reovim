@@ -57,6 +57,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **BREAKING (internal)**: `ResolveResult::InsertChar` no longer handled by server dispatch. Insert-mode, replace-mode, and command-line resolvers now insert characters directly through `SessionApiDyn` (buffer mutation, undo, events) and return `Completed`. Server `InsertChar` arm is now a defensive no-op with error logging. New `WindowApi::set_cursor_position()` method added to session driver
 - **BREAKING (internal)**: `reovim-domain-text` removed from kernel dependency graph entirely. ~5,190 lines of text-domain tests relocated from `server/lib/kernel/` to `shared/domains/text/`. Depgraph guard now rejects `reovim-domain-text` in kernel deps. Kernel has zero domain dependencies in both production and test builds
 - **BREAKING (internal)**: `CommandRegistration` capability flags renamed to domain-neutral vocabulary: `with_motion()` to `with_operand()`, `with_jump()` to `with_navigation()`, `with_text_modifying()` to `with_content_modifying()`. All callers updated (kernel, vim module, FFI Python driver)
 - **kernel**: `UnsavedBuffer.line_count: usize` replaced with `content_size: u64` in panic recovery — byte-generic instead of text-specific. Recovery file header changed from `# Lines:` to `# Bytes:`
