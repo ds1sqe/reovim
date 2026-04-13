@@ -45,4 +45,9 @@ pub use {buffer::Buffer, rope::Rope};
 
 pub use text_buffer_registry::TextBufferRegistry;
 
+// Domain-text re-export: Position is used by BufferOps trait methods.
+// Consumers of provider-text (e.g., driver-buffer) re-export this to
+// avoid direct domain-text dependencies in upper layers.
+pub use reovim_domain_text::Position;
+
 pub mod testing;

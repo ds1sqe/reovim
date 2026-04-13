@@ -68,10 +68,6 @@ reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
-# Domain crates removed from [dependencies]; tests use them via dev-deps
-reovim-domain-text = { workspace = true }
-reovim-domain-text-events = { workspace = true }
-reovim-provider-text = { workspace = true }
 
 [lints]
 workspace = true

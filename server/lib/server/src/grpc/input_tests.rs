@@ -2099,7 +2099,7 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
         let default = reovim_kernel::api::v1::KernelContext::default();
         default
             .services
-            .register(std::sync::Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+            .register(std::sync::Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
         reovim_kernel::api::v1::KernelContext {
             buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
             ..default
@@ -2323,8 +2323,8 @@ fn test_ensure_selection_change_cursor_moved_with_selection() {
     // Window with selection
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_domain_text::Position::new(0, 0),
-        reovim_domain_text::Position::new(0, 5),
+        reovim_driver_buffer::Position::new(0, 0),
+        reovim_driver_buffer::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 
@@ -2342,8 +2342,8 @@ fn test_ensure_selection_change_already_recorded_is_noop() {
 
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_domain_text::Position::new(0, 0),
-        reovim_domain_text::Position::new(0, 5),
+        reovim_driver_buffer::Position::new(0, 0),
+        reovim_driver_buffer::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 
@@ -2376,8 +2376,8 @@ fn test_ensure_selection_change_no_cursor_moved_is_noop() {
 
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_domain_text::Position::new(0, 0),
-        reovim_domain_text::Position::new(0, 5),
+        reovim_driver_buffer::Position::new(0, 0),
+        reovim_driver_buffer::Position::new(0, 5),
     ));
     let windows = reovim_driver_session::WindowLayout::single(window);
 
@@ -2589,10 +2589,10 @@ fn test_notify_codec_indices_uses_decoded_route_when_possible() {
     let mut changes = StateChanges::new();
     changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        reovim_domain_text_events::TextBufferModified {
+        reovim_driver_codec::TextBufferModified {
             buffer_id,
-            edit: reovim_domain_text_events::TextEdit::insert(
-                reovim_domain_text_events::TextPosition::new(0, 0),
+            edit: reovim_driver_codec::TextEdit::insert(
+                reovim_driver_codec::TextPosition::new(0, 0),
                 "x".to_string(),
             ),
             start_byte: 0,
@@ -2734,10 +2734,10 @@ fn test_notify_codec_indices_skips_byte_updates_when_decoded_edit_already_applie
     let mut changes = StateChanges::new();
     changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        reovim_domain_text_events::TextBufferModified {
+        reovim_driver_codec::TextBufferModified {
             buffer_id,
-            edit: reovim_domain_text_events::TextEdit::insert(
-                reovim_domain_text_events::TextPosition::new(0, 0),
+            edit: reovim_driver_codec::TextEdit::insert(
+                reovim_driver_codec::TextPosition::new(0, 0),
                 "x".to_string(),
             ),
             start_byte: 0,
@@ -2999,7 +2999,7 @@ fn session_with_resolver_and_active_buffer(
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
             Arc::new(reovim_driver_buffer::TestBufferManager::new()),
@@ -3443,7 +3443,7 @@ fn session_with_syntax_support(name: &str) -> (crate::session::Session, BufferId
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -3505,10 +3505,10 @@ fn test_emit_syntax_updates_with_text_edit() {
     let mut changes = StateChanges::new();
     changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        reovim_domain_text_events::TextBufferModified {
+        reovim_driver_codec::TextBufferModified {
             buffer_id,
-            edit: reovim_domain_text_events::TextEdit::insert(
-                reovim_domain_text_events::TextPosition::new(0, 0),
+            edit: reovim_driver_codec::TextEdit::insert(
+                reovim_driver_codec::TextPosition::new(0, 0),
                 "x".to_string(),
             ),
             start_byte: 0,
@@ -3575,7 +3575,7 @@ fn test_emit_syntax_updates_buffer_exists_but_no_driver() {
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -3633,10 +3633,10 @@ fn test_notify_codec_indices_delete_text_edit_single_line() {
     let mut changes = StateChanges::new();
     changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        reovim_domain_text_events::TextBufferModified {
+        reovim_driver_codec::TextBufferModified {
             buffer_id,
-            edit: reovim_domain_text_events::TextEdit::delete(
-                reovim_domain_text_events::TextPosition::new(0, 0),
+            edit: reovim_driver_codec::TextEdit::delete(
+                reovim_driver_codec::TextPosition::new(0, 0),
                 "hel".to_string(),
             ),
             start_byte: 0,
@@ -3659,10 +3659,10 @@ fn test_notify_codec_indices_delete_text_edit_with_newline() {
     let mut changes = StateChanges::new();
     changes.record_buffer_modified_with_text_edit(
         buffer_id,
-        reovim_domain_text_events::TextBufferModified {
+        reovim_driver_codec::TextBufferModified {
             buffer_id,
-            edit: reovim_domain_text_events::TextEdit::delete(
-                reovim_domain_text_events::TextPosition::new(0, 0),
+            edit: reovim_driver_codec::TextEdit::delete(
+                reovim_driver_codec::TextPosition::new(0, 0),
                 "line1\nli".to_string(),
             ),
             start_byte: 0,
@@ -3736,7 +3736,7 @@ fn test_resolve_to_command_context_position_metadata() {
     let mut ctx = ResolveContext::default();
     ctx.metadata.insert(
         "cursor".to_string(),
-        reovim_driver_input::ArgValue::Position(reovim_domain_text::Position::new(3, 7)),
+        reovim_driver_input::ArgValue::Position(reovim_driver_buffer::Position::new(3, 7)),
     );
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // Position converts to ArgValue::Position(line, col); cursor_position reads back "cursor"
@@ -3765,8 +3765,8 @@ fn test_resolve_to_command_context_range_metadata_skipped() {
     ctx.metadata.insert(
         "r".to_string(),
         reovim_driver_input::ArgValue::Range {
-            start: reovim_domain_text::Position::new(0, 0),
-            end: reovim_domain_text::Position::new(1, 5),
+            start: reovim_driver_buffer::Position::new(0, 0),
+            end: reovim_driver_buffer::Position::new(1, 5),
             linewise: false,
         },
     );
@@ -3950,7 +3950,7 @@ fn session_for_viewport_scroll(name: &str) -> (crate::session::Session, ClientId
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
             Arc::new(reovim_driver_buffer::TestBufferManager::new()),
@@ -4094,7 +4094,7 @@ async fn test_send_keys_presence_update_on_focus_changed() {
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
             Arc::new(reovim_driver_buffer::TestBufferManager::new()),

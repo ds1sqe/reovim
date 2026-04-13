@@ -110,5 +110,9 @@ pub use {
 // Per-session state
 pub use state::{CodecSessionState, MountInfo};
 
+// Domain-text-events re-exports for upper layers (server tests) to avoid
+// direct domain-text-events dependencies.
+pub use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+
 // StaleCheck adapter (#740 Plan 06 Phase 5 sub-commit 5e).
 pub use stale_check::{InodeStaleCheck, install as install_stale_check};

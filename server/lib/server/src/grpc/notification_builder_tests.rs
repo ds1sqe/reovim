@@ -529,7 +529,7 @@ fn test_build_cursor_notification_wrong_buffer_returns_none() {
 #[test]
 fn test_build_selection_notification_with_character_selection() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{CursorPosition, Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
@@ -572,7 +572,7 @@ fn test_build_selection_notification_with_character_selection() {
 #[test]
 fn test_build_selection_notification_with_line_selection() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
@@ -606,7 +606,7 @@ fn test_build_selection_notification_with_line_selection() {
 #[test]
 fn test_build_selection_notification_with_block_selection() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
@@ -831,7 +831,7 @@ fn test_build_notifications_cursor_moved_with_client() {
 #[test]
 fn test_build_notifications_selection_changed_with_client() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };

@@ -29,4 +29,4 @@ pub use {
 
 // Provider-text re-exports for server layer access via driver path.
 // The server depends on this driver (not on reovim-provider-text directly).
-pub use reovim_provider_text::{Buffer, BufferOps, TextBufferRegistry};
+pub use reovim_provider_text::{Buffer, BufferOps, Position, TextBufferRegistry};

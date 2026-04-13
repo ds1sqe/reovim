@@ -281,7 +281,7 @@ use reovim_driver_syntax::{compute_end_position, text_event_to_syntax_edit};
 
 #[test]
 fn test_text_event_to_syntax_edit_insert_single_line() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),
@@ -303,7 +303,7 @@ fn test_text_event_to_syntax_edit_insert_single_line() {
 
 #[test]
 fn test_text_event_to_syntax_edit_insert_multiline() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),
@@ -325,7 +325,7 @@ fn test_text_event_to_syntax_edit_insert_multiline() {
 
 #[test]
 fn test_text_event_to_syntax_edit_delete_single_line() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),
@@ -347,7 +347,7 @@ fn test_text_event_to_syntax_edit_delete_single_line() {
 
 #[test]
 fn test_text_event_to_syntax_edit_delete_multiline() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),
@@ -367,7 +367,7 @@ fn test_text_event_to_syntax_edit_delete_multiline() {
 
 #[test]
 fn test_text_event_to_syntax_edit_zero_insert() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),
@@ -389,7 +389,7 @@ fn test_text_event_to_syntax_edit_zero_insert() {
 
 #[test]
 fn test_text_event_to_syntax_edit_large_offsets() {
-    use reovim_domain_text_events::{TextBufferModified, TextEdit, TextPosition};
+    use reovim_driver_codec::{TextBufferModified, TextEdit, TextPosition};
 
     let event = TextBufferModified {
         buffer_id: buffer_id(1),

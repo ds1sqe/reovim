@@ -128,7 +128,7 @@ async fn test_session_with_state() {
 
     // Create a kernel context with a real buffer manager and TextBufferRegistry
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_provider_text::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),

@@ -394,7 +394,7 @@ async fn test_get_registers_empty() {
 
 #[tokio::test]
 async fn test_get_registers_with_content() {
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -427,7 +427,7 @@ async fn test_get_registers_with_content() {
 
 #[tokio::test]
 async fn test_get_registers_specific_register() {
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -542,7 +542,7 @@ async fn test_get_selection_no_active_window() {
 #[tokio::test]
 async fn test_get_selection_with_char_selection() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Viewport, api::Selection},
     };
 
@@ -596,7 +596,7 @@ async fn test_get_selection_with_char_selection() {
 #[tokio::test]
 async fn test_get_selection_line_mode() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Viewport, api::Selection},
     };
 
@@ -645,7 +645,7 @@ async fn test_get_selection_line_mode() {
 #[tokio::test]
 async fn test_get_selection_block_mode() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Viewport, api::Selection},
     };
 
@@ -694,7 +694,7 @@ async fn test_get_selection_block_mode() {
 #[tokio::test]
 async fn test_get_selection_reverse() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Viewport, api::Selection},
     };
 
@@ -1106,7 +1106,7 @@ async fn test_get_registers_specific_nonexistent_register() {
 
 #[tokio::test]
 async fn test_get_registers_linewise() {
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1400,7 +1400,7 @@ async fn test_get_screen_content_valid_formats() {
 async fn test_get_registers_specific_register_with_content() {
     // Test the specific register lookup path where
     // the register exists and has content.
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1437,7 +1437,7 @@ async fn test_get_registers_specific_register_with_content() {
 #[tokio::test]
 async fn test_get_registers_specific_linewise_register() {
     // Test the linewise yank_type path in specific register lookup.
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1470,7 +1470,7 @@ async fn test_get_registers_specific_linewise_register() {
 #[tokio::test]
 async fn test_get_registers_multiple_specific() {
     // Test querying multiple specific registers.
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1507,7 +1507,7 @@ async fn test_get_registers_multiple_specific() {
 #[tokio::test]
 async fn test_get_registers_specific_empty_register_filtered_out() {
     // Test that a register with empty content is filtered out.
-    use reovim_domain_text::RegisterContent;
+    use reovim_driver_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1563,7 +1563,7 @@ async fn test_get_registers_client_not_found() {
 #[tokio::test]
 async fn test_selection_isolation_per_client() {
     use {
-        reovim_domain_text::Position as KernelPosition,
+        reovim_driver_buffer::Position as KernelPosition,
         reovim_driver_session::{Viewport, api::Selection},
     };
 
