@@ -20,11 +20,10 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::RwLock,
     reovim_driver_buffer::{Buffer, BufferOps},
-    reovim_driver_input::ResolverRegistry,
+    reovim_driver_input::{PendingBindings, ResolverRegistry},
     reovim_driver_session::{RegisterContent, Session as DriverSession},
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
     reovim_subsys_command::{CommandContext, CommandResult},
-    reovim_subsys_input::PendingBindings,
     reovim_subsys_layout::RootCompositor,
     reovim_subsys_session::ClientId,
     reovim_subsys_vfs::VfsDriver,

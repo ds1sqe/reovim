@@ -39,7 +39,6 @@ mod mode_registry;
 mod mode_store;
 mod module_ext;
 mod mouse;
-mod pending;
 mod provider;
 mod traits;
 
@@ -84,9 +83,6 @@ pub use keybinding_store::KeybindingStore;
 // Re-export lookup policy store
 pub use lookup_policy_store::LookupPolicyStore;
 
-// Re-export pending bindings extension
-pub use pending::PendingBindings;
-
 // Re-export binding metadata
 pub use binding_info::BindingInfo;
 
@@ -114,8 +110,6 @@ mod mode_store_tests;
 mod mode_tests;
 #[cfg(test)]
 mod mouse_tests;
-#[cfg(test)]
-mod pending_tests;
 #[cfg(test)]
 mod provider_tests;
 #[cfg(test)]

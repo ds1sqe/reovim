@@ -3903,7 +3903,6 @@ dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
  "reovim-kernel",
- "reovim-subsys-session",
 ]
 
 [[package]]
@@ -3969,6 +3968,8 @@ version = "0.15.0-dev"
 dependencies = [
  "parking_lot",
  "reovim-kernel",
+ "reovim-subsys-coordination",
+ "reovim-subsys-input",
  "reovim-subsys-layout",
  "serde_json",
 ]

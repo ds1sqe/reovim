@@ -6,6 +6,7 @@
 //! provides the domain-specific resolver system and fallback handlers.
 
 mod fallback;
+mod pending;
 mod resolver;
 mod resolver_registry;
 
@@ -23,6 +24,9 @@ pub use resolver::{
 // Re-export resolver registry
 pub use resolver_registry::ResolverRegistry;
 
+// Re-export pending bindings (moved from subsys-input in sub-plan 02 Phase 0)
+pub use pending::PendingBindings;
+
 // Re-export ExtensionMap from session (backwards compat)
 pub use reovim_driver_session::ExtensionMap;
 
@@ -31,6 +35,8 @@ pub use reovim_subsys_input::*;
 
 #[cfg(test)]
 mod fallback_tests;
+#[cfg(test)]
+mod pending_tests;
 #[cfg(test)]
 mod resolver_registry_tests;
 #[cfg(test)]

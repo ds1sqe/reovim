@@ -1,0 +1,173 @@
+//! Domain driver trait — the contract each domain implements.
+//!
+//! The server holds `Arc<dyn DomainDriver>` per registered domain and routes
+//! operations based on the active buffer's domain. This is the VFS analogy:
+//! `SessionRuntime` is VFS (mechanism), each `DomainDriver` is a filesystem
+//! implementation (ext4/btrfs).
+//!
+//! # Interior Mutability
+//!
+//! All methods take `&self`. Implementations use interior mutability
+//! (`RwLock`/`Mutex`) to manage per-client and per-buffer state.
+//!
+//! # Dispatch vs Resolution
+//!
+//! `dispatch_key` and `dispatch_command` are routing entry points from the
+//! server. The domain driver internally delegates to its resolver registry
+//! and command registry (populated by modules at startup). The server never
+//! sees `ResolveResult`, mode transitions, or pending bindings — those are
+//! domain-internal orchestration.
+
+use std::sync::Arc;
+
+use {
+    reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_subsys_coordination::Cursor,
+    reovim_subsys_input::KeyEvent,
+};
+
+use super::{BufferContentProvider, ChangeSet, ClientId};
+
+/// What each domain implements.
+///
+/// The server holds `Arc<dyn DomainDriver>` per registered domain and routes
+/// operations based on the active buffer's domain.
+///
+/// # Minimal Surface
+///
+/// This trait is intentionally small — the domain driver is the entry point
+/// for the server to interact with a domain, not the surface area for all
+/// domain capabilities. Optional queries go on [`DomainStateQuery`].
+pub trait DomainDriver: Send + Sync {
+    /// Domain name (e.g., "text", "mesh", "image").
+    ///
+    /// Must match the name used at `CoordinationRegistry` enlistment.
+    fn domain_name(&self) -> &'static str;
+
+    /// Domain ID assigned by `CoordinationRegistry` at enlistment.
+    fn domain_id(&self) -> u32;
+
+    // --- Buffer lifecycle ---
+
+    /// Create a new buffer with initial content bytes.
+    ///
+    /// The domain interprets the bytes (text: UTF-8, mesh: OBJ/glTF, etc.).
+    fn create_buffer(&self, content: &[u8]) -> BufferId;
+
+    /// Close a buffer. Domain cleans up internal state (undo tree, syntax, etc.).
+    fn close_buffer(&self, buffer_id: BufferId);
+
+    /// Buffer content provider for this domain.
+    ///
+    /// `Arc`'d for async safety — server holds across `.await` boundaries.
+    fn content_provider(&self) -> Arc<dyn BufferContentProvider>;
+
+    // --- Key dispatch ---
+
+    /// Dispatch a key event for a client editing a buffer of this domain.
+    ///
+    /// The domain driver internally:
+    /// 1. Looks up the active mode's resolver (from its resolver registry)
+    /// 2. Resolves the key (module policy)
+    /// 3. Executes the resulting action (command, insert, mode transition)
+    /// 4. Updates internal state (cursors, undo, syntax)
+    /// 5. Returns a [`ChangeSet`] describing what changed
+    ///
+    /// The server never sees `ResolveResult` or mode transitions.
+    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> ChangeSet;
+
+    /// Dispatch a command for a client.
+    ///
+    /// Returns `Some(ChangeSet)` if the domain handles this command.
+    /// Returns `None` if the command is unknown to this domain — the server
+    /// falls back to session-global commands (`:q`, `:split`, etc.).
+    fn dispatch_command(
+        &self,
+        client_id: ClientId,
+        command: &str,
+        args: &[String],
+    ) -> Option<ChangeSet>;
+
+    // --- Per-client lifecycle ---
+
+    /// A client joined the session.
+    ///
+    /// Domain initializes per-client state (mode stack, registers, marks, etc.).
+    /// Called on ALL registered domain drivers, not just the domain of the
+    /// client's initial buffer.
+    fn on_client_added(&self, client_id: ClientId);
+
+    /// A client left the session.
+    ///
+    /// Domain cleans up per-client state. Called on ALL registered domain
+    /// drivers unconditionally.
+    fn on_client_removed(&self, client_id: ClientId);
+
+    // --- Focus notifications ---
+
+    /// Client's active window changed to a buffer of this domain.
+    ///
+    /// Domain activates per-client mode state for this domain.
+    fn on_focus_gained(&self, client_id: ClientId, window_id: WindowId, buffer_id: BufferId);
+
+    /// Client's active window moved away from this domain's buffer.
+    ///
+    /// Domain suspends per-client mode state (preserves for later resume).
+    fn on_focus_lost(&self, client_id: ClientId, window_id: WindowId, buffer_id: BufferId);
+
+    // --- Cursor access ---
+
+    /// Get the current cursors for a client in a specific window.
+    ///
+    /// The server calls this when `ChangeSet` reports `cursor_moved`, or
+    /// when a client first connects, or when broadcasting cursor presence.
+    fn cursors(&self, client_id: ClientId, window_id: WindowId) -> Vec<Box<dyn Cursor>>;
+
+    /// Create the initial cursor when a client opens a buffer of this domain.
+    fn initial_cursor(&self, client_id: ClientId, buffer_id: BufferId) -> Box<dyn Cursor>;
+}
+
+/// Optional state queries for domains that support them.
+///
+/// The server uses this for gRPC debug endpoints and status line rendering.
+/// Not all domains need to implement all methods — defaults return `None`
+/// or empty.
+///
+/// - Text domain: implements all methods
+/// - Image domain: might only implement `mode_name`
+/// - Binary/hex domain: might implement none
+pub trait DomainStateQuery: Send + Sync {
+    /// Active mode name for display (status line, gRPC).
+    ///
+    /// Returns `None` if this domain has no mode concept.
+    fn mode_name(&self, _client_id: ClientId) -> Option<String> {
+        None
+    }
+
+    /// Register contents as display representations.
+    ///
+    /// Returns empty if this domain has no registers.
+    fn registers(&self, _client_id: ClientId) -> Vec<RegisterInfo> {
+        Vec::new()
+    }
+
+    /// Domain-specific status information for the status line.
+    fn status_info(&self, _client_id: ClientId) -> Option<String> {
+        None
+    }
+}
+
+/// Display representation of a register entry.
+///
+/// Used by [`DomainStateQuery::registers`] for gRPC debug views.
+/// The server never interprets register content — it just passes
+/// these display strings to clients.
+#[derive(Debug, Clone)]
+pub struct RegisterInfo {
+    /// Register name (e.g., `'a'`, `'"'`, `'+'`).
+    pub name: char,
+    /// Human-readable display of the register content.
+    pub display: String,
+    /// Content type label (e.g., "text/characterwise", "mesh/vertices").
+    pub content_type: String,
+}

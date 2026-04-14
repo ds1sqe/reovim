@@ -1,6 +1,6 @@
 use {
+    reovim_driver_session::SessionExtension,
     reovim_kernel::api::v1::{CommandId, ModuleId},
-    reovim_subsys_session::SessionExtension,
 };
 
 use crate::{BindingInfo, BindingLayer, KeyCode, KeyEvent, KeySequence, PendingBindings};

@@ -26,6 +26,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 - **depgraph**: Layer enforcement tests — `subsys_no_domain`, `subsys_no_driver`, `subsys_no_name_leak`, `server_no_domain`, `server_no_driver` guard the subsys/driver layer separation
 - **subsys**: New `reovim-subsys-coordination` crate — domain-neutral Position and Cursor traits with `[u8; 8]` header codec pattern (`domain_id(u32) + inner_id(u16) + flags(u16)`), PositionCodec/CursorCodec decode traits, CoordinationRegistry for dynamic driver enlistment. Zero dependencies. Enables multi-domain editing (text, mesh, image) without server changes
+- **subsys**: Domain-neutral session contracts in `reovim-subsys-session` — `DomainDriver` trait (what each domain implements: dispatch, lifecycle, focus, cursors, content), `DomainStateQuery` optional trait (mode, registers, status), `ChangeSet` domain-neutral change tracking (boolean flags + ID lists, no text-domain fields), `BufferContentProvider` service trait (Arc-compatible, object-safe), domain-neutral `Window` struct with cached opaque `Vec<Box<dyn Cursor>>` handles. Enables multi-domain sessions (SessionRuntime = mechanism, DomainDriver = policy). Zero domain/driver dependencies
+- **drivers**: `PendingBindings` moved from `reovim-subsys-input` to `reovim-driver-input`. Breaks `subsys-input → subsys-session` circular dependency, enabling `subsys-session → subsys-input` for `KeyEvent` in `DomainDriver`. `reovim-subsys-session` dep removed from `reovim-subsys-input`. All `use reovim_subsys_input::PendingBindings` imports must change to `use reovim_driver_input::PendingBindings`
 
 ### Changed
 

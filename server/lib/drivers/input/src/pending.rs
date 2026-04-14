@@ -16,11 +16,11 @@
 //! This is **mechanism** — records WHAT happened, not HOW to display it.
 
 use {
+    reovim_driver_session::SessionExtension,
     reovim_kernel::api::v1::{ModeId, ModuleId},
-    reovim_subsys_session::SessionExtension,
 };
 
-use crate::{BindingInfo, KeySequence};
+use reovim_subsys_input::{BindingInfo, KeySequence};
 
 /// Sentinel module used for uninitialized `PendingBindings`.
 const PENDING_MODULE: ModuleId = ModuleId::new("__pending__");

@@ -23,6 +23,9 @@
 
 pub mod api;
 pub mod bridges;
+mod buffer_content;
+mod change_set;
+mod domain_driver;
 mod empty_handler;
 mod extension;
 mod handler_key;
@@ -34,6 +37,15 @@ mod notification_queue;
 mod stale_check;
 pub mod tick;
 mod types;
+mod window;
+
+// Domain driver contracts
+pub use {
+    buffer_content::{BufferContentProvider, DisplayLine},
+    change_set::ChangeSet,
+    domain_driver::{DomainDriver, DomainStateQuery, RegisterInfo},
+    window::Window as DomainWindow,
+};
 
 // Types
 pub use types::{ClientId, CursorSnapshot, KeySequence, Viewport};
@@ -76,3 +88,12 @@ pub use api::{
 pub use bridges::{
     BridgeContext, BridgeProvider, BridgeRegistry, ExtensionScope, ExtensionStateBridge,
 };
+
+#[cfg(test)]
+mod buffer_content_tests;
+#[cfg(test)]
+mod change_set_tests;
+#[cfg(test)]
+mod domain_driver_tests;
+#[cfg(test)]
+mod window_tests;
