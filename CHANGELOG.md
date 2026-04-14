@@ -25,6 +25,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Added
 
 - **depgraph**: Layer enforcement tests — `subsys_no_domain`, `subsys_no_driver`, `subsys_no_name_leak`, `server_no_domain`, `server_no_driver` guard the subsys/driver layer separation
+- **subsys**: New `reovim-subsys-coordination` crate — domain-neutral Position and Cursor traits with `[u8; 8]` header codec pattern (`domain_id(u32) + inner_id(u16) + flags(u16)`), PositionCodec/CursorCodec decode traits, CoordinationRegistry for dynamic driver enlistment. Zero dependencies. Enables multi-domain editing (text, mesh, image) without server changes
 
 ### Changed
 

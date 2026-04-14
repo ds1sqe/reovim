@@ -3878,6 +3878,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-subsys-coordination"
+version = "0.15.0-dev"
+
+[[package]]
 name = "reovim-subsys-formatter"
 version = "0.15.0-dev"
 dependencies = [
