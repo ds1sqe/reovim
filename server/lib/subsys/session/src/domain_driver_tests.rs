@@ -114,9 +114,9 @@ struct MockDomainDriver {
     events: Mutex<Vec<Event>>,
     next_buffer_id: Mutex<usize>,
     content_provider: Arc<dyn BufferContentProvider>,
-    /// If set, dispatch_key returns a ChangeSet with cursor_moved=true.
+    /// If set, `dispatch_key` returns a `ChangeSet` with `cursor_moved=true`.
     cursor_moves_on_key: Mutex<bool>,
-    /// If set, dispatch_command returns None (unknown command).
+    /// If set, `dispatch_command` returns `None` (unknown command).
     reject_commands: Mutex<bool>,
 }
 
@@ -156,9 +156,12 @@ impl DomainDriver for MockDomainDriver {
     }
 
     fn create_buffer(&self, _content: &[u8]) -> BufferId {
-        let mut next = self.next_buffer_id.lock().unwrap();
-        let id = BufferId::from_raw(*next);
-        *next += 1;
+        let id = {
+            let mut next = self.next_buffer_id.lock().unwrap();
+            let id = BufferId::from_raw(*next);
+            *next += 1;
+            id
+        };
         self.events.lock().unwrap().push(Event::BufferCreated);
         id
     }

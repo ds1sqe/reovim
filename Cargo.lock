@@ -2629,6 +2629,8 @@ dependencies = [
  "reovim-provider-text",
  "reovim-subsys-clipboard",
  "reovim-subsys-command-types",
+ "reovim-subsys-coordination",
+ "reovim-subsys-input",
  "reovim-subsys-layout",
  "reovim-subsys-session",
  "reovim-subsys-vfs",

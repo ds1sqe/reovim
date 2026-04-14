@@ -44,6 +44,7 @@ impl BufferContentProvider for MockContentProvider {
             .map(|(content, _)| content.len() as u64)
     }
 
+    #[allow(clippy::naive_bytecount)]
     fn content_unit_count(&self, buffer_id: BufferId) -> Option<usize> {
         self.find(buffer_id)
             .map(|(content, _)| content.iter().filter(|&&b| b == b'\n').count() + 1)
@@ -212,6 +213,7 @@ fn display_line_clone() {
         content: "test".to_string(),
         unit_index: 5,
     };
+    #[allow(clippy::redundant_clone)]
     let cloned = line.clone();
     assert_eq!(cloned.content, "test");
     assert_eq!(cloned.unit_index, 5);

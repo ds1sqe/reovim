@@ -94,6 +94,7 @@
 pub mod api;
 pub mod bridges;
 mod buffer_access;
+mod change_bridge;
 mod jumplist;
 mod mark;
 mod notification_drain;
@@ -102,6 +103,10 @@ mod runtime;
 mod snippet_expander;
 pub mod tab;
 pub mod testing;
+mod text_client_state;
+mod text_content;
+mod text_cursor;
+mod text_domain;
 pub mod tick;
 mod transition;
 mod types;
@@ -155,5 +160,25 @@ pub use notification_drain::{NotificationDrain, NotificationDrainRegistry};
 pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
 
 pub use buffer_access::BufferReadAccess;
+
+// StateChanges → ChangeSet bridge (sub-plan 03)
+pub use change_bridge::state_changes_to_change_set;
+
+// Text-domain client state bundle (sub-plan 03).
+// Transitional: wired into TextDomainDriver internally. Sub-plan 05 migrates
+// server's EditingState to use this type via ExtensionMap.
+pub use text_client_state::TextClientState;
+
+// Text-domain content provider (sub-plan 03)
+pub use text_content::TextContentProvider;
+
+// Text domain driver (sub-plan 03)
+pub use text_domain::TextDomainDriver;
+
+// Text-domain Position/Cursor implementations (sub-plan 03)
+pub use text_cursor::{
+    SelectionData, TEXT_CURSOR_INNER_ID, TEXT_POSITION_INNER_ID, TextCursor, TextCursorCodec,
+    TextPosition, TextPositionCodec,
+};
 
 // Text buffer registry for session-layer text access (#740)
