@@ -2,7 +2,7 @@
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, ModeTransition, Modifiers, PopResult,
     },
     reovim_kernel::api::v1::{CommandId, ModuleId},

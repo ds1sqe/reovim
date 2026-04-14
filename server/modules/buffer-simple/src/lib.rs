@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_driver_buffer::{BufferManagerKey, BufferManagerRegistry},
+    reovim_driver_text_buffer::{BufferManagerKey, BufferManagerRegistry},
     reovim_kernel::api::v1::{
         BufferId, BufferManager, KernelBuffer, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,

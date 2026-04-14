@@ -1,11 +1,11 @@
 //! Enforces that `reovim-server` has no dependency on text-domain crates
 //! — neither normal nor dev. Domain-specific logic belongs in modules,
 //! not the server. Test code uses driver re-exports (e.g.,
-//! `reovim_driver_buffer::Position`) instead of importing domain crates
+//! `reovim_driver_text_buffer::Position`) instead of importing domain crates
 //! directly.
 //!
 //! The server reaches domain-text transitively through drivers
-//! (`reovim-driver-session`, `reovim-driver-input`), which is acceptable —
+//! (`reovim-driver-text-session`, `reovim-driver-text-input`), which is acceptable —
 //! drivers MAY depend on domain types per the layer model. The guard
 //! ensures the server's own `Cargo.toml` stays clean.
 

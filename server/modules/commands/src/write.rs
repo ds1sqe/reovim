@@ -7,7 +7,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
-    reovim_driver_session::{BufferApi, CommandApi, ExtensionApi, SessionRuntime},
+    reovim_driver_text_session::{BufferApi, CommandApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{
         CommandId, ModuleId,
         events::kernel::{BufferSaved, BufferWillSave},

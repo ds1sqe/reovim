@@ -26,8 +26,8 @@ const KIND: &str = "completion";
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_input::KeybindingStore,
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_text_input::KeybindingStore,
+    reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
         OptionSpec, OptionValue, ProbeResult, Version,

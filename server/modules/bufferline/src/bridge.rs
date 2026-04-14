@@ -5,7 +5,7 @@
 //! the server-owned pin state.
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

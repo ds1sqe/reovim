@@ -7,11 +7,11 @@
 use std::{sync::Arc, time::Duration};
 
 use {
-    reovim_driver_lsp::{
+    reovim_driver_text_lsp::{
         LspKey, LspLifecycle, LspProvider, LspProviderRegistry, LspRequest, LspServerConfig,
         uri_from_path,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId as DriverClientId, PendingLevel, PendingNotificationQueue, PendingOp,
         TickSchedulerHandle,
     },

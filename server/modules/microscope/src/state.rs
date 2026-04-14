@@ -11,8 +11,8 @@ use {
         PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, PreviewHighlight,
         push_items,
     },
-    reovim_driver_session::{SessionExtension, TextInputSink},
-    reovim_driver_syntax::{SyntaxFactoryStore, language_id_from_path},
+    reovim_driver_text_session::{SessionExtension, TextInputSink},
+    reovim_driver_text_syntax::{SyntaxFactoryStore, language_id_from_path},
     reovim_kernel::api::v1::ServiceRegistry,
 };
 

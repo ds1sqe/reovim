@@ -7,11 +7,11 @@
 use std::collections::HashMap;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveInput,
         ResolveResult,
     },
-    reovim_driver_session::{ExtensionMap, TextInputSink},
+    reovim_driver_text_session::{ExtensionMap, TextInputSink},
     reovim_kernel::api::v1::ModeId,
 };
 

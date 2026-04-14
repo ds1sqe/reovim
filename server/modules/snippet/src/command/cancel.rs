@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
+    reovim_driver_text_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
     reovim_kernel::api::v1::{CommandId, ModeId},
 };
 

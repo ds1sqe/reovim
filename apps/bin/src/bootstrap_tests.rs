@@ -14,7 +14,7 @@ fn test_create_session_state() {
 
 #[test]
 fn test_modules_register_services() {
-    use reovim_driver_input::ResolverRegistry;
+    use reovim_driver_text_input::ResolverRegistry;
 
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
@@ -239,7 +239,7 @@ fn test_initial_mode_provider_registered_by_vim() {
     let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
 
     let provider = services
-        .get::<reovim_driver_session::InitialModeProvider>()
+        .get::<reovim_driver_text_session::InitialModeProvider>()
         .expect("VimModule should register InitialModeProvider");
     let mode = provider.get().expect("initial mode should be set");
     assert_eq!(mode, ModeId::new(ModuleId::new("vim"), "normal"));
@@ -251,7 +251,7 @@ fn test_fallback_without_personality_module() {
     // to vim:normal.
     let services = Arc::new(ServiceRegistry::new());
     let fallback = services
-        .get::<reovim_driver_session::InitialModeProvider>()
+        .get::<reovim_driver_text_session::InitialModeProvider>()
         .and_then(|p| p.get())
         .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
     assert_eq!(fallback, ModeId::new(ModuleId::new("vim"), "normal"));

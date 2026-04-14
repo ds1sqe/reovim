@@ -1,4 +1,4 @@
-use reovim_driver_input::{KeyCode, KeymapQuery};
+use reovim_driver_text_input::{KeyCode, KeymapQuery};
 
 use super::*;
 

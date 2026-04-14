@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use {lsp_types::LocationLink, reovim_driver_lsp::DiagnosticCache};
+use {lsp_types::LocationLink, reovim_driver_text_lsp::DiagnosticCache};
 
 use super::*;
 

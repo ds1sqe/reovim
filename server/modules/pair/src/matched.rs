@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use reovim_driver_syntax::BracketPair;
+use reovim_driver_text_syntax::BracketPair;
 
 use crate::rainbow::BracketInfo;
 

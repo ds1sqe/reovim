@@ -122,13 +122,13 @@ async fn test_session_with_state() {
     use std::sync::Arc;
 
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     // Create a kernel context with a real buffer manager and TextBufferRegistry
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -409,7 +409,7 @@ async fn test_with_state_sync() {
 #[tokio::test]
 async fn test_with_state_mut_sync() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -824,7 +824,7 @@ fn test_emit_notification_no_subscribers() {
 #[tokio::test]
 async fn test_resolve_key_for_client_nonexistent() {
     let session = Session::new(SessionId::new("test"));
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
 
     // Non-existent client should return None
     let result = session
@@ -848,7 +848,7 @@ async fn test_resolve_key_for_client_following_ignored() {
         .clients()
         .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
 
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let result = session.resolve_key_for_client(follower_id, &key).await;
 
     // Following clients should return None (input ignored)
@@ -906,7 +906,7 @@ fn test_execute_command_for_client_following_ignored() {
 #[test]
 fn test_add_client_with_active_buffer() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -942,7 +942,7 @@ fn test_add_client_with_active_buffer() {
 fn test_sync_and_set_relation_with_cursor_sync() {
     use {
         crate::session::ClientRelation,
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -1076,7 +1076,7 @@ fn test_update_client_state_sharing_target_removed() {
 #[test]
 fn test_ensure_client_has_window_lazy_sync() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -1108,7 +1108,7 @@ fn test_ensure_client_has_window_lazy_sync() {
     });
 
     // resolve_key_for_client should trigger ensure_client_has_window
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1311,7 +1311,7 @@ fn test_add_client_with_compositor_creates_windows() {
     // add_client_with_metadata() when shared compositor is set and
     // an active buffer exists.
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -1357,7 +1357,7 @@ fn test_ensure_client_has_window_with_compositor() {
     // ensure_client_has_window() when a client has a compositor but
     // empty windows, and the session acquires an active buffer later.
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         std::sync::Arc,
     };
@@ -1400,7 +1400,7 @@ fn test_ensure_client_has_window_with_compositor() {
     // Trigger ensure_client_has_window via resolve_key_for_client.
     // The client has a compositor + empty windows + active buffer now,
     // so lines 589-600 should execute.
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1429,7 +1429,7 @@ fn test_with_client_extensions_returns_none_for_unknown_client() {
 /// Test extension replacing module-cmdline dev-dependency.
 struct TestSessionExtension;
 
-impl reovim_driver_session::SessionExtension for TestSessionExtension {
+impl reovim_driver_text_session::SessionExtension for TestSessionExtension {
     fn create() -> Self {
         Self
     }
@@ -1731,7 +1731,7 @@ fn with_tick_mut_returns_none_for_unknown_client() {
 
 #[test]
 fn with_tick_mut_calls_closure() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
 
     #[derive(Default)]
     struct Counter {
@@ -1764,7 +1764,7 @@ fn with_tick_mut_calls_closure() {
 
 #[test]
 fn with_tick_mut_accesses_shared_extensions() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
 
     #[derive(Default)]
     struct SharedData {

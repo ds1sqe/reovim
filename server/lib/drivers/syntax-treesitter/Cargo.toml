@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 # Driver layer trait - what we implement
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 
 # Kernel API for Service trait
 reovim-kernel = { workspace = true }

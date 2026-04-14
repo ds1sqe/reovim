@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_command::CommandHandler,
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferApi, ClipboardApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
         WindowApi,
     },

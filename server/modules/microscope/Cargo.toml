@@ -17,12 +17,12 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 [dependencies]
 reovim-module-vim = { workspace = true, optional = true }
 reovim-kernel = { workspace = true }
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 reovim-driver-picker = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
-reovim-driver-input = { workspace = true }
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-input = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde_json = { workspace = true }
 

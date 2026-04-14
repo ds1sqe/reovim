@@ -11,12 +11,12 @@ fn test_registry() -> Arc<SessionRegistry> {
 /// `TextBufferRegistry` so that `state.buffer()` can resolve buffers.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),

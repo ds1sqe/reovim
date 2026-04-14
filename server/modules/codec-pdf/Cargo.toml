@@ -24,7 +24,7 @@ reovim-capabilities = { workspace = true }
 reovim-driver-codec = { workspace = true }
 reovim-subsys-annotation = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 
 # Module macros for FFI entry points
 reovim-module-macros = { workspace = true }

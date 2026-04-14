@@ -183,7 +183,7 @@ fn test_key_to_char_ctrl_rejected() {
 
 #[test]
 fn test_key_to_char_release_rejected() {
-    use reovim_driver_input::KeyEventKind;
+    use reovim_driver_text_input::KeyEventKind;
     let key = KeyEvent::full(KeyCode::Char('a'), Modifiers::NONE, KeyEventKind::Release);
     assert_eq!(key_to_char(&key), None);
 }

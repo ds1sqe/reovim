@@ -1,7 +1,7 @@
 use {
     super::*,
     reovim_driver_command::Command,
-    reovim_driver_session::testing::TestSessionRuntime,
+    reovim_driver_text_session::testing::TestSessionRuntime,
     reovim_subsys_layout::{
         Layer, LayerConfig, LayerId, OverlayConstraints, Rect, WindowId, WindowPlacement, Zone,
     },

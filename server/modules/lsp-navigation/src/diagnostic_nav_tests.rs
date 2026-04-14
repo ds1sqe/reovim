@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_lsp::diagnostic_snapshot::DiagnosticSeverity};
+use {super::*, reovim_driver_text_lsp::diagnostic_snapshot::DiagnosticSeverity};
 
 fn pos(line: u32, col: u32, severity: DiagnosticSeverity) -> (u32, u32, DiagnosticSeverity) {
     (line, col, severity)

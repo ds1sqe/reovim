@@ -31,7 +31,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
-    reovim_driver_session::api::StateChanges,
+    reovim_driver_text_session::api::StateChanges,
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
         ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
@@ -437,7 +437,7 @@ fn build_selection_notification(
             .selection
             .as_ref()
             .map_or((false, None, None), |sel| {
-                use reovim_driver_session::SelectionMode;
+                use reovim_driver_text_session::SelectionMode;
 
                 let mode_str = match sel.mode {
                     SelectionMode::Character => "char",
@@ -517,7 +517,7 @@ fn build_viewport_notification(
 
 /// Build an option changed notification.
 fn build_option_notification(
-    opt_change: &reovim_driver_session::api::OptionChange,
+    opt_change: &reovim_driver_text_session::api::OptionChange,
     timestamp: u64,
 ) -> Notification {
     use {reovim_kernel::api::v1::OptionValue, reovim_protocol::v2::option_changed_payload::Value};

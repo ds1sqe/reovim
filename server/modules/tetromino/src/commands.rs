@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_command::CommandHandler,
-    reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
+    reovim_driver_text_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
     reovim_kernel::api::v1::CommandId,
     reovim_subsys_command_types::{CommandContext, CommandResult},
 };
@@ -28,7 +28,7 @@ fn start_tick(runtime: &SessionRuntime<'_>) {
         runtime
             .kernel()
             .services
-            .get::<reovim_driver_session::TickSchedulerHandle>(),
+            .get::<reovim_driver_text_session::TickSchedulerHandle>(),
     ) {
         handle.start(client_id, "polyblocks", TICK_INTERVAL);
     }
@@ -38,12 +38,12 @@ fn start_tick(runtime: &SessionRuntime<'_>) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn start_tick_for_players(
     runtime: &SessionRuntime<'_>,
-    players: &[reovim_driver_session::ClientId],
+    players: &[reovim_driver_text_session::ClientId],
 ) {
     if let Some(handle) = runtime
         .kernel()
         .services
-        .get::<reovim_driver_session::TickSchedulerHandle>()
+        .get::<reovim_driver_text_session::TickSchedulerHandle>()
     {
         for &player_id in players {
             handle.start(player_id, "polyblocks", TICK_INTERVAL);
@@ -59,7 +59,7 @@ fn stop_tick(runtime: &SessionRuntime<'_>) {
         runtime
             .kernel()
             .services
-            .get::<reovim_driver_session::TickSchedulerHandle>(),
+            .get::<reovim_driver_text_session::TickSchedulerHandle>(),
     ) {
         handle.stop(client_id, "polyblocks");
     }
@@ -73,7 +73,7 @@ fn pause_tick(runtime: &SessionRuntime<'_>) {
         runtime
             .kernel()
             .services
-            .get::<reovim_driver_session::TickSchedulerHandle>(),
+            .get::<reovim_driver_text_session::TickSchedulerHandle>(),
     ) {
         handle.pause(client_id, "polyblocks");
     }
@@ -87,7 +87,7 @@ fn resume_tick(runtime: &SessionRuntime<'_>) {
         runtime
             .kernel()
             .services
-            .get::<reovim_driver_session::TickSchedulerHandle>(),
+            .get::<reovim_driver_text_session::TickSchedulerHandle>(),
     ) {
         handle.resume(client_id, "polyblocks");
     }

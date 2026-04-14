@@ -2,7 +2,7 @@ use {
     crate::{find_char::*, ids},
     reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, FindCharState, Jumplist, MarkBank, Session, SessionRuntime, Window,
         WindowLayout,
         api::{CommandExecutor, CommandHandle, ExtensionApi},
@@ -25,7 +25,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -48,7 +48,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -65,7 +65,7 @@ impl TestState {
     ) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,

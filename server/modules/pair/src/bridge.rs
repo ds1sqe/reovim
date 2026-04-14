@@ -2,7 +2,7 @@
 //!
 //! Serializes bracket state to JSON for transmission to TUI/web clients.
 
-use reovim_driver_session::{
+use reovim_driver_text_session::{
     ExtensionMap,
     bridges::{ExtensionScope, ExtensionStateBridge},
 };

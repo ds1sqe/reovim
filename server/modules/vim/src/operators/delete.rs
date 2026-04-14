@@ -4,7 +4,7 @@
 
 use {
     reovim_domain_text::{Edit, Position, RegisterContent},
-    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_driver_text_undo::{UndoKey, UndoProviderRegistry},
 };
 
 use super::{Operator, OperatorContext, OperatorError, Range, char_col_to_byte, registers};

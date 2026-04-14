@@ -21,7 +21,7 @@
 mod keybindings;
 
 use {
-    reovim_driver_session::InitialModeProvider,
+    reovim_driver_text_session::InitialModeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version,

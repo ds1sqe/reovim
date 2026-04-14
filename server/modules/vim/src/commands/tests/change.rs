@@ -4,13 +4,15 @@ use {
     crate::{ids, modes::VimMode},
     reovim_domain_text::Position,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_text_session::SessionRuntime,
 };
 
 use {
     reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::Command,
-    reovim_driver_session::{ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout},
+    reovim_driver_text_session::{
+        ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout,
+    },
     reovim_kernel::{
         api::{
             ModeStack,
@@ -47,7 +49,7 @@ fn text_buf(ctx: &KernelContext, id: BufferId) -> Arc<RwLock<dyn reovim_provider
         .unwrap()
 }
 
-use reovim_driver_session::{api::ModeApi, testing::StubExecutor};
+use reovim_driver_text_session::{api::ModeApi, testing::StubExecutor};
 
 struct TestState {
     session: Session,
@@ -55,7 +57,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -72,7 +74,7 @@ impl TestState {
         let mut windows = WindowLayout::empty();
         let extensions = ExtensionMap::new();
 
-        let mut window = reovim_driver_session::Window::new();
+        let mut window = reovim_driver_text_session::Window::new();
         if let Some(buffer_id) = buffer_id {
             window.buffer_id = Some(buffer_id);
         }
@@ -84,7 +86,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -97,7 +99,7 @@ impl TestState {
     fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,

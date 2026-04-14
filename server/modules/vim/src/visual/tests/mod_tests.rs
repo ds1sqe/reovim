@@ -4,7 +4,7 @@ use super::super::*;
 use {
     reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{Command, CommandContext, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         testing::StubExecutor,
     },
@@ -53,7 +53,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -72,7 +72,7 @@ impl TestState {
         let extensions = ExtensionMap::new();
 
         // Phase 8 (#465): Selection lives in Window, so create one for the buffer
-        let mut window = reovim_driver_session::Window::new();
+        let mut window = reovim_driver_text_session::Window::new();
         if let Some(buffer_id) = buffer_id {
             window.buffer_id = Some(buffer_id);
         }
@@ -84,7 +84,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -97,7 +97,7 @@ impl TestState {
     /// Create test state with a window containing buffer AND pre-existing selection.
     fn with_selection(
         buffer_id: BufferId,
-        selection: reovim_driver_session::api::Selection,
+        selection: reovim_driver_text_session::api::Selection,
     ) -> Self {
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         let session = Session::new(ClientId::new(1), home_mode.clone()); // #491
@@ -106,7 +106,7 @@ impl TestState {
         let extensions = ExtensionMap::new();
 
         // Phase 8 (#465): Set up window with selection
-        let mut window = reovim_driver_session::Window::new();
+        let mut window = reovim_driver_text_session::Window::new();
         window.buffer_id = Some(buffer_id);
         window.selection = Some(selection);
         windows.add(window);
@@ -117,7 +117,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -131,7 +131,7 @@ impl TestState {
     fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -184,7 +184,7 @@ fn run_command_with_selection<C: CommandHandler>(
     cmd: &C,
     ctx: &KernelContext,
     args: &CommandContext,
-    selection: reovim_driver_session::api::Selection,
+    selection: reovim_driver_text_session::api::Selection,
 ) -> (CommandResult, WindowLayout) {
     let buffer_id = args
         .buffer_id()
@@ -234,7 +234,7 @@ fn test_exit_visual_command_id() {
 
 #[test]
 fn test_enter_visual_activates_selection() {
-    use reovim_driver_session::SelectionMode;
+    use reovim_driver_text_session::SelectionMode;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -254,7 +254,7 @@ fn test_enter_visual_activates_selection() {
 
 #[test]
 fn test_enter_visual_line_activates_line_selection() {
-    use reovim_driver_session::SelectionMode;
+    use reovim_driver_text_session::SelectionMode;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line 1\nline 2");
@@ -274,7 +274,7 @@ fn test_enter_visual_line_activates_line_selection() {
 
 #[test]
 fn test_enter_visual_block_activates_block_selection() {
-    use reovim_driver_session::SelectionMode;
+    use reovim_driver_text_session::SelectionMode;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld");
@@ -398,7 +398,7 @@ fn test_swap_anchor_noop_without_selection() {
 
 #[test]
 fn test_toggle_visual_char_exits_if_already_char() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -419,7 +419,7 @@ fn test_toggle_visual_char_exits_if_already_char() {
 
 #[test]
 fn test_toggle_visual_char_switches_from_line() {
-    use reovim_driver_session::{SelectionMode, api::Selection};
+    use reovim_driver_text_session::{SelectionMode, api::Selection};
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -442,7 +442,7 @@ fn test_toggle_visual_char_switches_from_line() {
 
 #[test]
 fn test_toggle_visual_line_exits_if_already_line() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -463,7 +463,7 @@ fn test_toggle_visual_line_exits_if_already_line() {
 
 #[test]
 fn test_toggle_visual_block_switches_mode() {
-    use reovim_driver_session::{SelectionMode, api::Selection};
+    use reovim_driver_text_session::{SelectionMode, api::Selection};
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -631,7 +631,7 @@ fn test_change_selection_noop_without_selection() {
 
 #[test]
 fn test_delete_selection_deletes_text() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -657,7 +657,7 @@ fn test_delete_selection_deletes_text() {
 
 #[test]
 fn test_indent_selection_adds_indentation() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line1\nline2\nline3");
@@ -682,7 +682,7 @@ fn test_indent_selection_adds_indentation() {
 
 #[test]
 fn test_dedent_selection_removes_indentation() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("    line1\n    line2\nline3");
@@ -711,7 +711,7 @@ fn test_dedent_selection_removes_indentation() {
 
 #[test]
 fn test_yank_selection_yanks_text() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -737,7 +737,7 @@ fn test_yank_selection_yanks_text() {
 
 #[test]
 fn test_change_selection_changes_text() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -763,7 +763,7 @@ fn test_change_selection_changes_text() {
 
 #[test]
 fn test_delete_selection_line_mode_deletes_entire_lines() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("line one\nline two\nline three");
@@ -896,7 +896,7 @@ fn test_dedent_selection_noop_without_selection() {
 
 #[test]
 fn test_toggle_visual_line_from_char_keeps_selection() {
-    use reovim_driver_session::{SelectionMode, api::Selection};
+    use reovim_driver_text_session::{SelectionMode, api::Selection};
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -917,7 +917,7 @@ fn test_toggle_visual_line_from_char_keeps_selection() {
 
 #[test]
 fn test_toggle_visual_block_exits_if_already_block() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello world");
@@ -936,7 +936,7 @@ fn test_toggle_visual_block_exits_if_already_block() {
 
 #[test]
 fn test_swap_anchor_with_different_lines() {
-    use reovim_driver_session::api::Selection;
+    use reovim_driver_text_session::api::Selection;
 
     let ctx = make_test_ctx();
     let buffer = Buffer::from_string("hello\nworld\nfoo");

@@ -3,7 +3,7 @@
 //! Stored in the session's `ExtensionMap` as a `SessionExtension`.
 //! Displays LSP signature help near the cursor.
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// Per-client signature help state.
 ///

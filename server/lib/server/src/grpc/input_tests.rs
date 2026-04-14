@@ -6,7 +6,7 @@ use {
         CodecMetadata, ContentCodec, ContentCodecFactory, ContentCodecFactoryStore, ContentType,
         DecodeResult,
     },
-    reovim_driver_input::TransitionContext,
+    reovim_driver_text_input::TransitionContext,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
     std::{
         collections::HashMap,
@@ -319,7 +319,7 @@ fn test_resolve_to_command_context_with_metadata() {
     let mut ctx = ResolveContext::default();
     ctx.metadata.insert(
         "test_key".to_string(),
-        reovim_driver_input::ArgValue::String("test_value".to_string()),
+        reovim_driver_text_input::ArgValue::String("test_value".to_string()),
     );
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 
@@ -612,8 +612,10 @@ fn test_resolve_to_command_context_with_all_fields() {
         register: Some('z'),
         ..ResolveContext::default()
     };
-    ctx.metadata
-        .insert("motion".to_string(), reovim_driver_input::ArgValue::String("word".to_string()));
+    ctx.metadata.insert(
+        "motion".to_string(),
+        reovim_driver_text_input::ArgValue::String("word".to_string()),
+    );
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 
     assert_eq!(cmd_ctx.count(), Some(10));
@@ -659,8 +661,8 @@ fn test_emit_notifications_with_cursor_moved() {
     // Set up a window displaying the buffer for this client
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
     session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let mut changes = StateChanges::new();
@@ -743,7 +745,7 @@ fn test_emit_notifications_with_buffer_list_changed() {
 
 #[test]
 fn test_emit_notifications_with_option_changed() {
-    use reovim_driver_session::api::OptionChange;
+    use reovim_driver_text_session::api::OptionChange;
 
     let session = crate::session::Session::new(SessionId::new("emit-option-test"));
     let mut changes = StateChanges::new();
@@ -788,7 +790,7 @@ fn test_emit_notifications_with_scroll_changed() {
 
 #[test]
 fn test_emit_notifications_all_change_types_at_once() {
-    use reovim_driver_session::api::OptionChange;
+    use reovim_driver_text_session::api::OptionChange;
 
     let session = crate::session::Session::new(SessionId::new("emit-all-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
@@ -980,12 +982,18 @@ fn test_resolve_to_command_context_no_count_no_register() {
 #[test]
 fn test_resolve_to_command_context_with_multiple_metadata() {
     let mut ctx = ResolveContext::default();
-    ctx.metadata
-        .insert("key1".to_string(), reovim_driver_input::ArgValue::String("val1".to_string()));
-    ctx.metadata
-        .insert("key2".to_string(), reovim_driver_input::ArgValue::String("val2".to_string()));
-    ctx.metadata
-        .insert("key3".to_string(), reovim_driver_input::ArgValue::String("val3".to_string()));
+    ctx.metadata.insert(
+        "key1".to_string(),
+        reovim_driver_text_input::ArgValue::String("val1".to_string()),
+    );
+    ctx.metadata.insert(
+        "key2".to_string(),
+        reovim_driver_text_input::ArgValue::String("val2".to_string()),
+    );
+    ctx.metadata.insert(
+        "key3".to_string(),
+        reovim_driver_text_input::ArgValue::String("val3".to_string()),
+    );
     // Should handle multiple metadata entries without panic
     let _cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 }
@@ -1078,13 +1086,13 @@ fn test_handle_pop_result_execute_command_with_active_buffer() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_completed() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = crate::session::Session::new(SessionId::new("completed-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('x'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('x'));
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1100,13 +1108,13 @@ async fn test_handle_resolve_result_completed() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_pending() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = crate::session::Session::new(SessionId::new("pending-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('d'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('d'));
 
     let (handled, changes) =
         InputServiceImpl::handle_resolve_result(&session, ResolveResult::Pending, &key, client_id)
@@ -1118,13 +1126,13 @@ async fn test_handle_resolve_result_pending() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_not_handled() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = crate::session::Session::new(SessionId::new("nothandled-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('z'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('z'));
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1140,13 +1148,13 @@ async fn test_handle_resolve_result_not_handled() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_insert_char() {
-    use reovim_driver_input::{InputTarget, KeyCode};
+    use reovim_driver_text_input::{InputTarget, KeyCode};
 
     let session = crate::session::Session::new(SessionId::new("insertchar-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('a'));
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1165,7 +1173,7 @@ async fn test_handle_resolve_result_insert_char() {
 #[tokio::test]
 async fn test_handle_resolve_result_mode_transition() {
     use {
-        reovim_driver_input::KeyCode,
+        reovim_driver_text_input::KeyCode,
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -1173,7 +1181,7 @@ async fn test_handle_resolve_result_mode_transition() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('i'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('i'));
 
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
     let transition = ModeTransition::Push {
@@ -1195,13 +1203,13 @@ async fn test_handle_resolve_result_mode_transition() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_inject_keys_empty() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = crate::session::Session::new(SessionId::new("inject-empty-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('q'));
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1392,8 +1400,8 @@ fn test_emit_notifications_with_affected_buffers() {
 
     // Set up windows displaying the buffers for this client
     session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_session::Window::with_buffer(buf1);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buf1);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let mut changes = StateChanges::new();
@@ -1511,13 +1519,13 @@ fn test_handle_pop_result_for_nonexistent_client() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_execute_with_changes() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = crate::session::Session::new(SessionId::new("exec-changes-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('x'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('x'));
 
     let cmd_id = reovim_kernel::api::v1::CommandId::new(
         reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1579,7 +1587,7 @@ fn session_with_result_command(
 ) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_text_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
@@ -1631,7 +1639,7 @@ fn session_with_result_command(
 /// returns `ResolveResult::Completed` for any key.
 fn session_with_resolver(session_name: &str) -> crate::session::Session {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
         reovim_kernel::api::v1::{ModeId, ModuleId},
@@ -1672,7 +1680,7 @@ fn session_with_resolver(session_name: &str) -> crate::session::Session {
 
 #[tokio::test]
 async fn test_handle_resolve_result_execute_with_registered_command() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let (session, cmd_id) = session_with_success_command("exec-reg-test");
     let client_id = ClientId::new(1);
@@ -1682,7 +1690,7 @@ async fn test_handle_resolve_result_execute_with_registered_command() {
         state.create_buffer("hello");
     });
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('x'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('x'));
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1703,8 +1711,8 @@ async fn test_handle_resolve_result_execute_with_registered_command() {
 async fn test_handle_resolve_result_execute_mode_changes_during_command() {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_input::{KeyCode, TransitionContext},
-        reovim_driver_session::{SessionRuntime, api::ModeApi},
+        reovim_driver_text_input::{KeyCode, TransitionContext},
+        reovim_driver_text_session::{SessionRuntime, api::ModeApi},
         reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
     };
 
@@ -1752,7 +1760,7 @@ async fn test_handle_resolve_result_execute_mode_changes_during_command() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('i'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('i'));
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1772,7 +1780,7 @@ async fn test_handle_resolve_result_execute_mode_changes_during_command() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_insert_char_no_client_window() {
-    use reovim_driver_input::{InputTarget, KeyCode};
+    use reovim_driver_text_input::{InputTarget, KeyCode};
 
     let session = crate::session::Session::new(SessionId::new("insertchar-buf-test"));
 
@@ -1785,7 +1793,7 @@ async fn test_handle_resolve_result_insert_char_no_client_window() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('x'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('x'));
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1806,7 +1814,7 @@ async fn test_handle_resolve_result_insert_char_no_client_window() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_insert_newline_no_client_window() {
-    use reovim_driver_input::{InputTarget, KeyCode};
+    use reovim_driver_text_input::{InputTarget, KeyCode};
 
     let session = crate::session::Session::new(SessionId::new("insert-newline-test"));
 
@@ -1817,7 +1825,7 @@ async fn test_handle_resolve_result_insert_newline_no_client_window() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Enter);
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Enter);
 
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -1897,17 +1905,17 @@ fn test_handle_pop_result_execute_error_with_args() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_inject_keys_with_resolver() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let session = session_with_resolver("inject-resolver-test");
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('q'));
 
     let injected_keys = vec![
-        reovim_driver_input::KeyEvent::new(KeyCode::Char('a')),
-        reovim_driver_input::KeyEvent::new(KeyCode::Char('b')),
+        reovim_driver_text_input::KeyEvent::new(KeyCode::Char('a')),
+        reovim_driver_text_input::KeyEvent::new(KeyCode::Char('b')),
     ];
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
@@ -1927,7 +1935,7 @@ async fn test_handle_resolve_result_inject_keys_with_resolver() {
 #[tokio::test]
 async fn test_handle_resolve_result_inject_keys_nested_inject_skipped() {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyCode, KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
         reovim_kernel::api::v1::{ModeId, ModuleId},
@@ -1964,9 +1972,9 @@ async fn test_handle_resolve_result_inject_keys_nested_inject_skipped() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('q'));
 
-    let injected_keys = vec![reovim_driver_input::KeyEvent::new(KeyCode::Char('a'))];
+    let injected_keys = vec![reovim_driver_text_input::KeyEvent::new(KeyCode::Char('a'))];
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
         &session,
@@ -2092,16 +2100,16 @@ async fn test_send_keys_flow_without_active_buffer() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_insert_char_buffer_modified() {
-    use reovim_driver_input::{InputTarget, KeyCode};
+    use reovim_driver_text_input::{InputTarget, KeyCode};
 
     // Need a real BufferManager (not StubBufferManager) so buffers are actually stored
     let kernel = {
         let default = reovim_kernel::api::v1::KernelContext::default();
         default
             .services
-            .register(std::sync::Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+            .register(std::sync::Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
         reovim_kernel::api::v1::KernelContext {
-            buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            buffers: std::sync::Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
             ..default
         }
     };
@@ -2119,7 +2127,7 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('y'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('y'));
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
         ResolveResult::InsertChar {
@@ -2148,11 +2156,11 @@ async fn test_handle_resolve_result_insert_char_buffer_modified() {
 #[tokio::test]
 async fn test_handle_resolve_result_execute_with_operator_completion() {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyCode, KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ModeTransition,
             ResolveInput, TransitionContext,
         },
-        reovim_driver_session::{ExtensionMap, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, api::SessionApiDyn},
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -2220,11 +2228,11 @@ async fn test_handle_resolve_result_execute_with_operator_completion() {
     )
     .await;
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('d'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('d'));
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
         &session,
-        ResolveResult::Execute(cmd_id, reovim_driver_input::ResolveContext::new()),
+        ResolveResult::Execute(cmd_id, reovim_driver_text_input::ResolveContext::new()),
         &key,
         client_id,
     )
@@ -2281,18 +2289,18 @@ async fn test_send_keys_with_debug_tracing_covers_closure() {
 
 #[tokio::test]
 async fn test_handle_resolve_result_inject_keys_no_resolver() {
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     // Session WITHOUT any resolver registered - resolve_key_for_client returns None
     let session = crate::session::Session::new(SessionId::new("inject-noresolver-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('q'));
 
     let injected_keys = vec![
-        reovim_driver_input::KeyEvent::new(KeyCode::Char('a')),
-        reovim_driver_input::KeyEvent::new(KeyCode::Char('b')),
+        reovim_driver_text_input::KeyEvent::new(KeyCode::Char('a')),
+        reovim_driver_text_input::KeyEvent::new(KeyCode::Char('b')),
     ];
 
     let (handled, _changes) = InputServiceImpl::handle_resolve_result(
@@ -2321,12 +2329,12 @@ fn test_ensure_selection_change_cursor_moved_with_selection() {
     assert!(!changes.selection_changed);
 
     // Window with selection
-    let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
-    window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_driver_buffer::Position::new(0, 0),
-        reovim_driver_buffer::Position::new(0, 5),
+    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+    window.selection = Some(reovim_driver_text_session::api::Selection::character(
+        reovim_driver_text_buffer::Position::new(0, 0),
+        reovim_driver_text_buffer::Position::new(0, 5),
     ));
-    let windows = reovim_driver_session::WindowLayout::single(window);
+    let windows = reovim_driver_text_session::WindowLayout::single(window);
 
     InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
 
@@ -2340,12 +2348,12 @@ fn test_ensure_selection_change_already_recorded_is_noop() {
     changes.record_cursor_move(buffer_id);
     changes.selection_changed = true;
 
-    let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
-    window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_driver_buffer::Position::new(0, 0),
-        reovim_driver_buffer::Position::new(0, 5),
+    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+    window.selection = Some(reovim_driver_text_session::api::Selection::character(
+        reovim_driver_text_buffer::Position::new(0, 0),
+        reovim_driver_text_buffer::Position::new(0, 5),
     ));
-    let windows = reovim_driver_session::WindowLayout::single(window);
+    let windows = reovim_driver_text_session::WindowLayout::single(window);
 
     // Already recorded — should not change anything
     InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
@@ -2360,8 +2368,8 @@ fn test_ensure_selection_change_no_selection_is_noop() {
     changes.record_cursor_move(buffer_id);
 
     // Window without selection
-    let window = reovim_driver_session::Window::with_buffer(buffer_id);
-    let windows = reovim_driver_session::WindowLayout::single(window);
+    let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+    let windows = reovim_driver_text_session::WindowLayout::single(window);
 
     InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
 
@@ -2374,12 +2382,12 @@ fn test_ensure_selection_change_no_cursor_moved_is_noop() {
     let mut changes = StateChanges::new();
     // cursor_moved is false
 
-    let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
-    window.selection = Some(reovim_driver_session::api::Selection::character(
-        reovim_driver_buffer::Position::new(0, 0),
-        reovim_driver_buffer::Position::new(0, 5),
+    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+    window.selection = Some(reovim_driver_text_session::api::Selection::character(
+        reovim_driver_text_buffer::Position::new(0, 0),
+        reovim_driver_text_buffer::Position::new(0, 5),
     ));
-    let windows = reovim_driver_session::WindowLayout::single(window);
+    let windows = reovim_driver_text_session::WindowLayout::single(window);
 
     InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
 
@@ -2393,38 +2401,38 @@ fn test_ensure_selection_change_no_cursor_moved_is_noop() {
 /// Minimal bridge for testing generic bridge detection.
 struct TestBridge {
     kind_str: &'static str,
-    scope: reovim_driver_session::bridges::ExtensionScope,
+    scope: reovim_driver_text_session::bridges::ExtensionScope,
 }
 
 impl TestBridge {
     const fn client(kind: &'static str) -> Self {
         Self {
             kind_str: kind,
-            scope: reovim_driver_session::bridges::ExtensionScope::Client,
+            scope: reovim_driver_text_session::bridges::ExtensionScope::Client,
         }
     }
     const fn shared(kind: &'static str) -> Self {
         Self {
             kind_str: kind,
-            scope: reovim_driver_session::bridges::ExtensionScope::Shared,
+            scope: reovim_driver_text_session::bridges::ExtensionScope::Shared,
         }
     }
 }
 
-impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
     fn kind(&self) -> &'static str {
         self.kind_str
     }
-    fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
+    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
         self.scope
     }
     fn snapshot(
         &self,
-        _extensions: &reovim_driver_session::ExtensionMap,
+        _extensions: &reovim_driver_text_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         None
     }
-    fn is_active(&self, _extensions: &reovim_driver_session::ExtensionMap) -> bool {
+    fn is_active(&self, _extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
         false
     }
 }
@@ -2626,7 +2634,7 @@ fn session_with_execute_quit_signal_command(
 ) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_text_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
@@ -2677,7 +2685,7 @@ fn session_with_execute_quit_signal_command(
 #[tokio::test]
 async fn test_handle_resolve_result_execute_quit_signal_success() {
     // Covers the Quit signal path in handle_resolve_result (L789-800).
-    use reovim_driver_input::KeyCode;
+    use reovim_driver_text_input::KeyCode;
 
     let (session, cmd_id) =
         session_with_execute_quit_signal_command("exec-quit-success-test", CommandResult::Success);
@@ -2687,7 +2695,7 @@ async fn test_handle_resolve_result_execute_quit_signal_success() {
         state.create_buffer("hello");
     });
 
-    let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('q'));
+    let key = reovim_driver_text_input::KeyEvent::new(KeyCode::Char('q'));
     let (handled, changes) = InputServiceImpl::handle_resolve_result(
         &session,
         ResolveResult::Execute(cmd_id, ResolveContext::default()),
@@ -2790,7 +2798,7 @@ fn session_with_quit_signal_command(
 ) -> (crate::session::Session, reovim_kernel::api::v1::CommandId) {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_text_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, ModuleId},
         reovim_subsys_command_types::RuntimeSignal,
     };
@@ -2929,8 +2937,8 @@ fn test_notify_bridges_cursor_moved_with_window() {
 
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
     session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let mut bridges = BridgeRegistry::new();
@@ -2970,7 +2978,7 @@ fn session_with_resolver_and_active_buffer(
     name: &str,
 ) -> (crate::session::Session, reovim_kernel::api::v1::BufferId, ClientId) {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
         reovim_kernel::api::v1::{ModeId, ModuleId},
@@ -2999,10 +3007,10 @@ fn session_with_resolver_and_active_buffer(
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
-            Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
             Arc::new(OptionRegistry::new()),
             services,
         )
@@ -3025,8 +3033,8 @@ fn session_with_resolver_and_active_buffer(
     // Set active_buffer and a window for the client
     session.clients().update_client_state(client_id, |state| {
         state.active_buffer = Some(buffer_id);
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     (session, buffer_id, client_id)
@@ -3067,7 +3075,7 @@ async fn test_send_keys_post_processing_with_active_buffer() {
 #[tokio::test]
 async fn test_send_keys_with_mode_change_notifies_bridges() {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput, TransitionContext,
         },
         reovim_kernel::api::v1::{ModeId, ModuleId},
@@ -3091,7 +3099,7 @@ async fn test_send_keys_with_mode_change_notifies_bridges() {
             _state: &mut ModeState,
             _input: &ResolveInput<'_>,
         ) -> ResolveResult {
-            ResolveResult::ModeTransition(reovim_driver_input::ModeTransition::Push {
+            ResolveResult::ModeTransition(reovim_driver_text_input::ModeTransition::Push {
                 mode: self.target.clone(),
                 context: TransitionContext::new(),
             })
@@ -3170,7 +3178,7 @@ struct DeactivatingBridgeState {
     active: bool,
 }
 
-impl reovim_driver_session::SessionExtension for DeactivatingBridgeState {
+impl reovim_driver_text_session::SessionExtension for DeactivatingBridgeState {
     fn create() -> Self {
         Self { active: true }
     }
@@ -3182,23 +3190,23 @@ impl reovim_driver_session::SessionExtension for DeactivatingBridgeState {
 /// `notify_bridges_cursor_moved` (L462-464 in input.rs).
 struct DeactivatingBridge;
 
-impl reovim_driver_session::bridges::ExtensionStateBridge for DeactivatingBridge {
+impl reovim_driver_text_session::bridges::ExtensionStateBridge for DeactivatingBridge {
     fn kind(&self) -> &'static str {
         "deactivating-bridge"
     }
 
-    fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
-        reovim_driver_session::bridges::ExtensionScope::Client
+    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
+        reovim_driver_text_session::bridges::ExtensionScope::Client
     }
 
     fn snapshot(
         &self,
-        _extensions: &reovim_driver_session::ExtensionMap,
+        _extensions: &reovim_driver_text_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         None
     }
 
-    fn is_active(&self, extensions: &reovim_driver_session::ExtensionMap) -> bool {
+    fn is_active(&self, extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
         extensions
             .get::<DeactivatingBridgeState>()
             .is_some_and(|s| s.active)
@@ -3208,7 +3216,7 @@ impl reovim_driver_session::bridges::ExtensionStateBridge for DeactivatingBridge
         &self,
         _line: usize,
         _col: usize,
-        extensions: &mut reovim_driver_session::ExtensionMap,
+        extensions: &mut reovim_driver_text_session::ExtensionMap,
     ) {
         // Deactivate on cursor move
         if let Some(state) = extensions.get_mut::<DeactivatingBridgeState>() {
@@ -3241,8 +3249,8 @@ fn test_notify_bridges_cursor_moved_bridge_deactivates() {
     // Set up a window so notify_bridges_cursor_moved does not early-return.
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
     session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let mut bridges = BridgeRegistry::new();
@@ -3274,7 +3282,7 @@ struct StayActiveBridgeState {
     active: bool,
 }
 
-impl reovim_driver_session::SessionExtension for StayActiveBridgeState {
+impl reovim_driver_text_session::SessionExtension for StayActiveBridgeState {
     fn create() -> Self {
         Self { active: true }
     }
@@ -3282,24 +3290,24 @@ impl reovim_driver_session::SessionExtension for StayActiveBridgeState {
 
 struct StayActiveBridge;
 
-impl reovim_driver_session::bridges::ExtensionStateBridge for StayActiveBridge {
+impl reovim_driver_text_session::bridges::ExtensionStateBridge for StayActiveBridge {
     fn kind(&self) -> &'static str {
         "stay-active-bridge"
     }
 
-    fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
-        reovim_driver_session::bridges::ExtensionScope::Client
+    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
+        reovim_driver_text_session::bridges::ExtensionScope::Client
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn snapshot(
         &self,
-        _extensions: &reovim_driver_session::ExtensionMap,
+        _extensions: &reovim_driver_text_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         None
     }
 
-    fn is_active(&self, extensions: &reovim_driver_session::ExtensionMap) -> bool {
+    fn is_active(&self, extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
         extensions
             .get::<StayActiveBridgeState>()
             .is_some_and(|s| s.active)
@@ -3310,7 +3318,7 @@ impl reovim_driver_session::bridges::ExtensionStateBridge for StayActiveBridge {
         &self,
         _line: usize,
         _col: usize,
-        _extensions: &mut reovim_driver_session::ExtensionMap,
+        _extensions: &mut reovim_driver_text_session::ExtensionMap,
     ) {
         // Intentionally does nothing — bridge stays active.
     }
@@ -3342,8 +3350,8 @@ fn test_notify_bridges_cursor_moved_bridge_stays_active() {
     // Set up a window so notify_bridges_cursor_moved does not early-return.
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
     session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let mut bridges = BridgeRegistry::new();
@@ -3366,7 +3374,7 @@ fn test_notify_bridges_cursor_moved_bridge_stays_active() {
 mod local_syntax_driver {
     use std::{ops::Range, sync::Arc};
 
-    use reovim_driver_syntax::{Annotation, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit};
+    use reovim_driver_text_syntax::{Annotation, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit};
 
     pub struct LocalTestDriver {
         language: String,
@@ -3438,12 +3446,12 @@ mod local_syntax_driver {
 /// a local syntax factory so `emit_syntax_updates` can create drivers.
 fn session_with_syntax_support(name: &str) -> (crate::session::Session, BufferId) {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -3457,7 +3465,7 @@ fn session_with_syntax_support(name: &str) -> (crate::session::Session, BufferId
     // Install syntax factory and language registry so ensure_driver_from_path
     // can detect "rust" from ".rs" paths and create a driver (covers L604-608, L622-623).
     {
-        use reovim_driver_syntax::{DefaultLanguageRegistry, LanguageInfo};
+        use reovim_driver_text_syntax::{DefaultLanguageRegistry, LanguageInfo};
         let registry = Arc::new(DefaultLanguageRegistry::new(vec![
             LanguageInfo::new("rust", "Rust").with_extensions(["rs"]),
         ]));
@@ -3570,12 +3578,12 @@ fn test_emit_syntax_updates_missing_buffer_in_state() {
 #[test]
 fn test_emit_syntax_updates_buffer_exists_but_no_driver() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -3683,7 +3691,7 @@ fn test_notify_codec_indices_delete_text_edit_with_newline() {
 fn test_resolve_to_command_context_bool_metadata() {
     let mut ctx = ResolveContext::default();
     ctx.metadata
-        .insert("flag".to_string(), reovim_driver_input::ArgValue::Bool(true));
+        .insert("flag".to_string(), reovim_driver_text_input::ArgValue::Bool(true));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // Bool converts to ArgValue::Bool; bool_flag reads it back
     assert!(cmd_ctx.bool_flag("flag"));
@@ -3693,7 +3701,7 @@ fn test_resolve_to_command_context_bool_metadata() {
 fn test_resolve_to_command_context_char_metadata() {
     let mut ctx = ResolveContext::default();
     ctx.metadata
-        .insert("ch".to_string(), reovim_driver_input::ArgValue::Char('z'));
+        .insert("ch".to_string(), reovim_driver_text_input::ArgValue::Char('z'));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     assert!(cmd_ctx.char("ch").is_some());
 }
@@ -3703,7 +3711,7 @@ fn test_resolve_to_command_context_int_metadata_positive() {
     let mut ctx = ResolveContext::default();
     // Int(5) → ArgValue::Count(5) inserted as key "count"
     ctx.metadata
-        .insert("count".to_string(), reovim_driver_input::ArgValue::Int(5));
+        .insert("count".to_string(), reovim_driver_text_input::ArgValue::Int(5));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // Positive Int converts to ArgValue::Count; top-level count() reads the "count" key
     assert_eq!(cmd_ctx.count(), Some(5));
@@ -3714,7 +3722,7 @@ fn test_resolve_to_command_context_int_metadata_negative() {
     // Negative Int: usize::try_from fails, branch produces None (no entry set).
     let mut ctx = ResolveContext::default();
     ctx.metadata
-        .insert("neg".to_string(), reovim_driver_input::ArgValue::Int(-1));
+        .insert("neg".to_string(), reovim_driver_text_input::ArgValue::Int(-1));
     // Should not panic
     let _cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 }
@@ -3724,7 +3732,7 @@ fn test_resolve_to_command_context_uint_metadata() {
     let mut ctx = ResolveContext::default();
     // Uint(42) → ArgValue::Count(42) stored at key "motion_count"
     ctx.metadata
-        .insert("motion_count".to_string(), reovim_driver_input::ArgValue::Uint(42));
+        .insert("motion_count".to_string(), reovim_driver_text_input::ArgValue::Uint(42));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // The value is stored but only accessible via get() since key is not "count"
     // We just verify the conversion branch runs without panic.
@@ -3736,7 +3744,9 @@ fn test_resolve_to_command_context_position_metadata() {
     let mut ctx = ResolveContext::default();
     ctx.metadata.insert(
         "cursor".to_string(),
-        reovim_driver_input::ArgValue::Position(reovim_driver_buffer::Position::new(3, 7)),
+        reovim_driver_text_input::ArgValue::Position(reovim_driver_text_buffer::Position::new(
+            3, 7,
+        )),
     );
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // Position converts to ArgValue::Position(line, col); cursor_position reads back "cursor"
@@ -3752,7 +3762,7 @@ fn test_resolve_to_command_context_float_metadata_skipped() {
     // Float is skipped (produces None), exercises L721-723 trace branch.
     let mut ctx = ResolveContext::default();
     ctx.metadata
-        .insert("f".to_string(), reovim_driver_input::ArgValue::Float(1.5));
+        .insert("f".to_string(), reovim_driver_text_input::ArgValue::Float(1.5));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
     // "f" was not inserted because Float → None
     assert!(cmd_ctx.count().is_none());
@@ -3764,9 +3774,9 @@ fn test_resolve_to_command_context_range_metadata_skipped() {
     let mut ctx = ResolveContext::default();
     ctx.metadata.insert(
         "r".to_string(),
-        reovim_driver_input::ArgValue::Range {
-            start: reovim_driver_buffer::Position::new(0, 0),
-            end: reovim_driver_buffer::Position::new(1, 5),
+        reovim_driver_text_input::ArgValue::Range {
+            start: reovim_driver_text_buffer::Position::new(0, 0),
+            end: reovim_driver_text_buffer::Position::new(1, 5),
             linewise: false,
         },
     );
@@ -3783,23 +3793,23 @@ fn test_resolve_to_command_context_range_metadata_skipped() {
 /// cache in `emit_notifications` can be exercised.
 struct ConstantActiveBridge;
 
-impl reovim_driver_session::bridges::ExtensionStateBridge for ConstantActiveBridge {
+impl reovim_driver_text_session::bridges::ExtensionStateBridge for ConstantActiveBridge {
     fn kind(&self) -> &'static str {
         "constant-active"
     }
 
-    fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
-        reovim_driver_session::bridges::ExtensionScope::Client
+    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
+        reovim_driver_text_session::bridges::ExtensionScope::Client
     }
 
     fn snapshot(
         &self,
-        _extensions: &reovim_driver_session::ExtensionMap,
+        _extensions: &reovim_driver_text_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         Some(serde_json::json!({"active": true, "value": 42}))
     }
 
-    fn is_active(&self, _extensions: &reovim_driver_session::ExtensionMap) -> bool {
+    fn is_active(&self, _extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
         true
     }
 }
@@ -3921,7 +3931,7 @@ fn test_emit_notifications_dedup_allows_different_extension_data() {
 /// Returns (session, `client_id`, `buffer_id`).
 fn session_for_viewport_scroll(name: &str) -> (crate::session::Session, ClientId, BufferId) {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
         reovim_kernel::api::v1::ModeId,
@@ -3950,10 +3960,10 @@ fn session_for_viewport_scroll(name: &str) -> (crate::session::Session, ClientId
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
-            Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
             Arc::new(OptionRegistry::new()),
             services,
         )
@@ -3976,11 +3986,11 @@ fn session_for_viewport_scroll(name: &str) -> (crate::session::Session, ClientId
 
     session.clients().update_client_state(client_id, |state| {
         state.active_buffer = Some(buffer_id);
-        let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+        let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
         // Set cursor to line 30 — beyond the default 24-line viewport
         // so ensure_cursor_visible returns true, triggering scroll tracking.
         window.cursor.line = 30;
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     (session, client_id, buffer_id)
@@ -4027,10 +4037,10 @@ async fn test_send_keys_presence_update_on_focus_changed() {
     // `runtime.focus_window(active_window)` — this uses WindowApi::focus_window.
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
-        reovim_driver_session::{SessionRuntime, api::WindowApi},
+        reovim_driver_text_session::{SessionRuntime, api::WindowApi},
         reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
     };
 
@@ -4085,7 +4095,10 @@ async fn test_send_keys_presence_update_on_focus_changed() {
             _state: &mut ModeState,
             _input: &ResolveInput<'_>,
         ) -> ResolveResult {
-            ResolveResult::Execute(self.cmd.clone(), reovim_driver_input::ResolveContext::default())
+            ResolveResult::Execute(
+                self.cmd.clone(),
+                reovim_driver_text_input::ResolveContext::default(),
+            )
         }
     }
 
@@ -4094,10 +4107,10 @@ async fn test_send_keys_presence_update_on_focus_changed() {
     let kernel = {
         use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+        services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
         KernelContext::new(
             Arc::new(EventBus::new()),
-            Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
             Arc::new(OptionRegistry::new()),
             services,
         )
@@ -4131,8 +4144,8 @@ async fn test_send_keys_presence_update_on_focus_changed() {
     // Give the client a window for the buffer
     session.clients().update_client_state(client_id, |state| {
         state.active_buffer = Some(buffer_id);
-        let window = reovim_driver_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_session::WindowLayout::single(window);
+        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
+        state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
     let registry = Arc::new(SessionRegistry::new());
@@ -4167,10 +4180,10 @@ fn session_with_push_completion_resolver(
     target_mode_name: &'static str,
 ) -> crate::session::Session {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput, TransitionContext,
         },
-        reovim_driver_session::{ExtensionMap, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, api::SessionApiDyn},
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -4199,8 +4212,8 @@ fn session_with_push_completion_resolver(
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_input::ModeTransition> {
-            Some(reovim_driver_input::ModeTransition::Push {
+        ) -> Option<reovim_driver_text_input::ModeTransition> {
+            Some(reovim_driver_text_input::ModeTransition::Push {
                 mode: self.push_target.clone(),
                 context: TransitionContext::new(),
             })
@@ -4295,10 +4308,10 @@ fn session_with_set_completion_resolver(
     target_mode_name: &'static str,
 ) -> crate::session::Session {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput, TransitionContext,
         },
-        reovim_driver_session::{ExtensionMap, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, api::SessionApiDyn},
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -4325,8 +4338,8 @@ fn session_with_set_completion_resolver(
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_input::ModeTransition> {
-            Some(reovim_driver_input::ModeTransition::Set {
+        ) -> Option<reovim_driver_text_input::ModeTransition> {
+            Some(reovim_driver_text_input::ModeTransition::Set {
                 mode: self.set_target.clone(),
                 context: TransitionContext::new(),
             })
@@ -4411,10 +4424,10 @@ async fn test_apply_mode_transition_completion_loop_set() {
 fn session_with_pop_result_completion_resolver(name: &str) -> crate::session::Session {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
-        reovim_driver_session::{ExtensionMap, SessionRuntime, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, SessionRuntime, api::SessionApiDyn},
         reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
     };
 
@@ -4423,7 +4436,7 @@ fn session_with_pop_result_completion_resolver(name: &str) -> crate::session::Se
     struct OnceState {
         fired: bool,
     }
-    impl reovim_driver_session::SessionExtension for OnceState {
+    impl reovim_driver_text_session::SessionExtension for OnceState {
         fn create() -> Self {
             Self { fired: false }
         }
@@ -4487,15 +4500,15 @@ fn session_with_pop_result_completion_resolver(name: &str) -> crate::session::Se
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_input::ModeTransition> {
+        ) -> Option<reovim_driver_text_input::ModeTransition> {
             let state = client_extensions.get_or_insert::<OnceState>();
             if state.fired {
                 return None;
             }
             state.fired = true;
             // Return Pop with a nested ExecuteCommand — exercises L1007-1012.
-            Some(reovim_driver_input::ModeTransition::Pop {
-                result: Some(reovim_driver_input::PopResult::ExecuteCommand {
+            Some(reovim_driver_text_input::ModeTransition::Pop {
+                result: Some(reovim_driver_text_input::PopResult::ExecuteCommand {
                     command: self.nested_cmd.clone(),
                     args: std::collections::HashMap::new(),
                 }),
@@ -4569,10 +4582,10 @@ async fn test_apply_mode_transition_completion_loop_pop_with_nested_result() {
 /// `Pop { result: None }` from `on_command_complete`.
 fn session_with_pop_on_complete_resolver(name: &str) -> crate::session::Session {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput,
         },
-        reovim_driver_session::{ExtensionMap, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, api::SessionApiDyn},
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -4600,8 +4613,8 @@ fn session_with_pop_on_complete_resolver(name: &str) -> crate::session::Session 
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_input::ModeTransition> {
-            Some(reovim_driver_input::ModeTransition::Pop { result: None })
+        ) -> Option<reovim_driver_text_input::ModeTransition> {
+            Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
         }
     }
 
@@ -4661,10 +4674,10 @@ async fn test_apply_mode_transition_completion_loop_pop_stack_depth() {
 /// `Set { mode: "set-target" }` from `on_command_complete`.
 fn session_with_set_on_complete_resolver(name: &str) -> crate::session::Session {
     use {
-        reovim_driver_input::{
+        reovim_driver_text_input::{
             KeyEvent as DriverKeyEvent, ModeKeyResolver, ModeState, ResolveInput, TransitionContext,
         },
-        reovim_driver_session::{ExtensionMap, api::SessionApiDyn},
+        reovim_driver_text_session::{ExtensionMap, api::SessionApiDyn},
         reovim_kernel::api::v1::{ModeId, ModuleId},
     };
 
@@ -4693,8 +4706,8 @@ fn session_with_set_on_complete_resolver(name: &str) -> crate::session::Session 
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_input::ModeTransition> {
-            Some(reovim_driver_input::ModeTransition::Set {
+        ) -> Option<reovim_driver_text_input::ModeTransition> {
+            Some(reovim_driver_text_input::ModeTransition::Set {
                 mode: self.set_target.clone(),
                 context: TransitionContext::new(),
             })

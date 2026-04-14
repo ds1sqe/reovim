@@ -9,7 +9,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         SessionRuntime, TransitionContext,
         api::{ModeApi, SelectionMode},
     },
@@ -44,7 +44,7 @@ impl CommandHandler for SwapAnchor {
         };
 
         // Swap anchor and cursor - swap start and end
-        let swapped = reovim_driver_session::api::Selection {
+        let swapped = reovim_driver_text_session::api::Selection {
             start: selection.end,
             end: selection.start,
             mode: selection.mode,

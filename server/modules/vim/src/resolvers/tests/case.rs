@@ -1,7 +1,7 @@
 #![allow(clippy::doc_markdown, clippy::equatable_if_let)]
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver, ModeState,
         ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
@@ -155,7 +155,7 @@ fn escape_cancels_lowercase() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn ctrl_bracket_cancels() {
-    use reovim_driver_input::Modifiers;
+    use reovim_driver_text_input::Modifiers;
     let resolver = VimCaseResolver::new(OperatorType::Uppercase);
     let mut mstate = test_state(VimMode::UPPERCASE_ID);
     let keymap = NotFoundKeymap;

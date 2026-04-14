@@ -2,9 +2,9 @@
 //!
 //! `#740` Plan 06 Phase 5 sub-commit 5e.
 //!
-//! `reovim-driver-session` defines the [`StaleCheck`](reovim_driver_session::StaleCheck)
+//! `reovim-driver-session` defines the [`StaleCheck`](reovim_driver_text_session::StaleCheck)
 //! trait and calls it from
-//! [`SessionRuntime::buffer_content`](reovim_driver_session::SessionRuntime).
+//! [`SessionRuntime::buffer_content`](reovim_driver_text_session::SessionRuntime).
 //! This module provides the codec-side implementation so the session
 //! crate never has to import `InodeTable` / `CodecSessionState` — the
 //! session → codec dependency edge stays absent.
@@ -17,7 +17,7 @@
 //! test-side introspection. It does **not** yet mutate
 //! [`CodecSessionState`] because `BufferApi::buffer_content` passes
 //! `&self` to the hook, so the adapter cannot reach the
-//! [`ExtensionMap`](reovim_driver_session::ExtensionMap) the codec
+//! [`ExtensionMap`](reovim_driver_text_session::ExtensionMap) the codec
 //! state lives in without a larger lock migration.
 //!
 //! The full re-decode-on-read path — "when a peer mount is stale,
@@ -30,7 +30,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use {reovim_driver_session::StaleCheck, reovim_kernel::api::v1::BufferId, tracing::trace};
+use {reovim_driver_text_session::StaleCheck, reovim_kernel::api::v1::BufferId, tracing::trace};
 
 /// Codec-side [`StaleCheck`] adapter installed at bootstrap.
 ///

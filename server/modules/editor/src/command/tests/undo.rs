@@ -2,11 +2,11 @@ use {
     super::super::*,
     reovim_domain_text::{Edit, HistoryRing, Position, RegisterBank, UndoResult},
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         api::CommandExecutor, testing::StubExecutor,
     },
-    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_driver_text_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::{
         api::v1::{BufferId, KernelBuffer, KernelContext, ModeStack, RwLock},
         testing::{create_test_context, test_mode},
@@ -46,7 +46,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -65,7 +65,7 @@ impl TestState {
             windows: WindowLayout::empty(),
             extensions: ExtensionMap::new(),
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -87,7 +87,7 @@ impl TestState {
     ) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -146,7 +146,7 @@ fn test_undo_no_active_buffer_returns_error() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -155,7 +155,7 @@ fn test_undo_no_active_buffer_returns_error() {
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -243,7 +243,7 @@ fn test_redo_no_active_buffer_returns_error() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -252,7 +252,7 @@ fn test_redo_no_active_buffer_returns_error() {
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -319,7 +319,7 @@ fn test_undo_no_buffer_error_message() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -328,7 +328,7 @@ fn test_undo_no_buffer_error_message() {
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -359,7 +359,7 @@ fn test_redo_no_buffer_error_message() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -368,7 +368,7 @@ fn test_redo_no_buffer_error_message() {
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -488,7 +488,7 @@ fn test_redo_command_clone() {
 struct MockUndoProvider;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_undo::UndoProvider for MockUndoProvider {
+impl reovim_driver_text_undo::UndoProvider for MockUndoProvider {
     fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
         Some(UndoResult {
             edits: vec![],
@@ -541,7 +541,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         _buffer_id: BufferId,
         _buffer_path: &str,
         _vfs: &dyn reovim_subsys_vfs::VfsDriver,
-    ) -> Result<(), reovim_driver_undo::UndoPersistError> {
+    ) -> Result<(), reovim_driver_text_undo::UndoPersistError> {
         Ok(())
     }
 
@@ -550,7 +550,7 @@ impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         _buffer_id: BufferId,
         _buffer_path: &str,
         _vfs: &dyn reovim_subsys_vfs::VfsDriver,
-    ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
+    ) -> Result<bool, reovim_driver_text_undo::UndoPersistError> {
         Ok(false)
     }
 }

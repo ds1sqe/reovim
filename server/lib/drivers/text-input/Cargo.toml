@@ -1,0 +1,25 @@
+[package]
+name = "reovim-driver-text-input"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Input driver for reovim (keyboard, mouse, clipboard)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-provider-text = { workspace = true }
+reovim-domain-text = { workspace = true }
+reovim-arch = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
+reovim-subsys-input = { workspace = true }
+tracing = "0.1"
+
+[dev-dependencies]

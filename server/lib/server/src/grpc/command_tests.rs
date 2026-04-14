@@ -148,7 +148,7 @@ async fn test_search_commands_keybinding_with_snapshot() {
     use {
         crate::CommandQuerySnapshot,
         reovim_driver_command::{ArgSpec, CommandHandler, CommandResult},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_text_session::SessionRuntime,
     };
 
     struct MoveDown;

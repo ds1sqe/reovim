@@ -195,7 +195,7 @@ fn test_edit_command_clone_copy() {
 
 #[test]
 fn test_edit_execute_no_filename() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -208,7 +208,7 @@ fn test_edit_execute_no_filename() {
 
 #[test]
 fn test_edit_execute_no_buffer_id() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -223,7 +223,7 @@ fn test_edit_execute_no_buffer_id() {
 
 #[test]
 fn test_edit_execute_no_vfs() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     let buffer_id = harness.active_buffer().unwrap();
@@ -241,7 +241,7 @@ fn test_edit_execute_no_vfs() {
 #[test]
 fn test_edit_execute_file_not_found() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
+        reovim_driver_text_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -264,7 +264,7 @@ fn test_edit_execute_file_not_found() {
 #[test]
 fn test_edit_execute_success() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
+        reovim_driver_text_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -287,7 +287,7 @@ fn test_edit_execute_success() {
 #[test]
 fn test_edit_execute_invalid_utf8() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
+        reovim_driver_text_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -317,7 +317,7 @@ fn test_edit_execute_invalid_utf8() {
 /// `:w` round-trip corrupted binary files.
 #[test]
 fn decode_file_content_no_active_buffer_errors() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     // Construct a runtime with NO active buffer. `with_buffer` would set
     // one; `new()` leaves `active_buffer = None`.
@@ -338,7 +338,7 @@ fn decode_file_content_no_active_buffer_errors() {
 /// UTF-8 fallback and returns the decoded string.
 #[test]
 fn decode_file_content_utf8_fallback_succeeds() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
     harness.with_runtime(|runtime| {
@@ -351,7 +351,7 @@ fn decode_file_content_utf8_fallback_succeeds() {
 /// a clear error pointing at the offset.
 #[test]
 fn decode_file_content_invalid_utf8_errors() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
     harness.with_runtime(|runtime| {
@@ -380,7 +380,7 @@ fn decode_file_content_invalid_utf8_errors() {
 /// not truncated, no `CodecSessionState` registered.
 #[test]
 fn decode_file_content_codec_found_not_truncated_no_codec_state() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
 
@@ -404,7 +404,7 @@ fn decode_file_content_codec_found_not_truncated_no_codec_state() {
 /// no `CodecSessionState` registered.
 #[test]
 fn decode_file_content_codec_found_truncated_no_codec_state() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
 
@@ -429,7 +429,8 @@ fn decode_file_content_codec_found_truncated_no_codec_state() {
 #[test]
 fn decode_file_content_codec_found_stores_codec_state() {
     use {
-        reovim_driver_codec::CodecSessionState, reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_codec::CodecSessionState,
+        reovim_driver_text_session::testing::TestSessionRuntime,
     };
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
@@ -464,7 +465,7 @@ fn decode_file_content_codec_found_stores_codec_state() {
 /// content type; falls back to UTF-8.
 #[test]
 fn decode_file_content_codec_not_found_falls_back_to_utf8() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
 
@@ -490,7 +491,7 @@ fn decode_file_content_codec_not_found_falls_back_to_utf8() {
 /// Branch 376:1 — `codec.decode(bytes)` returns `Err`.
 #[test]
 fn decode_file_content_codec_decode_error_falls_back_to_utf8() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("placeholder");
 

@@ -20,7 +20,7 @@ dynamic = []
 reovim-kernel = { workspace = true }
 reovim-driver-picker = { workspace = true }
 reovim-subsys-git = { workspace = true }
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 reovim-module-macros = { workspace = true }
 
 [lints]

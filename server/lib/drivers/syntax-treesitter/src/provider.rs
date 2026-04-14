@@ -1,19 +1,19 @@
 //! Imperative decoration provider trait.
 //!
 //! Language modules implement [`DecorationProvider`] when declarative
-//! [`DecorationRule`](reovim_driver_syntax::DecorationRule) mapping is
+//! [`DecorationRule`](reovim_driver_text_syntax::DecorationRule) mapping is
 //! insufficient — for example, table rendering requires cross-row column
 //! width analysis that cannot be expressed as a simple capture-name-to-kind
 //! mapping.
 //!
 //! Providers are registered via
 //! [`TreeSitterDriverBuilder::decoration_provider()`](crate::TreeSitterDriverBuilder::decoration_provider)
-//! and called during [`SyntaxDriver::decorations()`](reovim_driver_syntax::SyntaxDriver::decorations)
+//! and called during [`SyntaxDriver::decorations()`](reovim_driver_text_syntax::SyntaxDriver::decorations)
 //! with read access to the parsed tree and buffer content.
 
 use std::ops::Range;
 
-use {reovim_driver_syntax::Annotation, tree_sitter::Tree};
+use {reovim_driver_text_syntax::Annotation, tree_sitter::Tree};
 
 /// Imperative decoration provider for complex decoration logic.
 ///

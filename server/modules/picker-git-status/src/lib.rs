@@ -11,7 +11,7 @@ use {
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
-    reovim_driver_session::{BufferApi, WindowApi},
+    reovim_driver_text_session::{BufferApi, WindowApi},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, ServiceRegistry, Version,
     },

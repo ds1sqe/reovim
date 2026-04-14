@@ -1,5 +1,5 @@
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeState, ResolveResult,
     },
     reovim_kernel::api::v1::ModeId,

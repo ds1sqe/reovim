@@ -6,8 +6,8 @@
 
 use {
     reovim_driver_command::{Command, CommandHandler, CommandResult},
-    reovim_driver_lsp::diagnostic_snapshot::{DiagnosticSeverity, DiagnosticSnapshot},
-    reovim_driver_session::{BufferApi, ChangeTracker, ExtensionApi, SessionRuntime},
+    reovim_driver_text_lsp::diagnostic_snapshot::{DiagnosticSeverity, DiagnosticSnapshot},
+    reovim_driver_text_session::{BufferApi, ChangeTracker, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
     reovim_subsys_command_types::CommandContext,
 };

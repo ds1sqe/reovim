@@ -1,5 +1,5 @@
 use {
-    reovim_driver_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState},
+    reovim_driver_text_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState},
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 

@@ -28,7 +28,7 @@
 //!
 //! ```
 //! use reovim_module_treesitter_rust::RustSyntaxFactory;
-//! use reovim_driver_syntax::SyntaxDriverFactory;
+//! use reovim_driver_text_syntax::SyntaxDriverFactory;
 //!
 //! let factory = RustSyntaxFactory::new();
 //! let mut driver = factory.create("rust").expect("Rust is supported");
@@ -42,11 +42,11 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
+    reovim_driver_text_syntax::{
         BracketConfig, BracketConfigStore, CommentTokens, LanguageInfo, LanguageInfoStore,
         SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 

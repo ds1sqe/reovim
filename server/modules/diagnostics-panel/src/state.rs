@@ -2,7 +2,7 @@
 //!
 //! Stored in the session's `ExtensionMap` as a `SessionExtension`.
 
-use {reovim_driver_lsp::DiagnosticSeverity, reovim_driver_session::SessionExtension};
+use {reovim_driver_text_lsp::DiagnosticSeverity, reovim_driver_text_session::SessionExtension};
 
 use crate::items::{PanelItem, PanelMode, SeverityFilter, SortOrder, sort_items};
 

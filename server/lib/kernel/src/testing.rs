@@ -19,7 +19,7 @@
 //!
 //! This module is unconditionally compiled (not `#[cfg(test)]`) so that
 //! downstream crates can use it in their test modules. This follows the
-//! same pattern as `reovim_driver_session::testing`.
+//! same pattern as `reovim_driver_text_session::testing`.
 
 use std::{collections::HashMap, sync::Arc};
 

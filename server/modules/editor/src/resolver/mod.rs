@@ -11,4 +11,4 @@
 //! for backwards compatibility.
 
 // Re-export from driver (Epic #417 - mechanism/policy separation)
-pub use reovim_driver_input::ResolverRegistry;
+pub use reovim_driver_text_input::ResolverRegistry;

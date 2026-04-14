@@ -1,4 +1,4 @@
-use reovim_driver_syntax::HighlightCategory;
+use reovim_driver_text_syntax::HighlightCategory;
 
 use super::*;
 

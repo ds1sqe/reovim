@@ -14,7 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::CommandHandler,
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         Session as DriverSession, SessionRuntime,
         api::{CommandExecutor, CommandHandle},
     },
@@ -163,18 +163,18 @@ impl CommandRegistry {
         client_id: usize,
         id: &CommandId,
         driver_session: &mut DriverSession,
-        client: reovim_driver_session::ClientContext<'_>,
+        client: reovim_driver_text_session::ClientContext<'_>,
         kernel: &KernelContext,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
         shared_extensions: Option<&mut reovim_subsys_session::ExtensionMap>,
     ) -> Option<(
         CommandResult,
-        reovim_driver_session::api::StateChanges,
+        reovim_driver_text_session::api::StateChanges,
         Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
         use {
-            reovim_driver_session::api::ChangeTracker,
+            reovim_driver_text_session::api::ChangeTracker,
             reovim_subsys_session::ClientId as DriverClientId,
         };
         profile_scope!("command_execute_for_client", "server::command");

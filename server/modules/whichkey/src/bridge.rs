@@ -11,8 +11,8 @@
 //! This allows filtering by category, key pattern, and binding layer.
 
 use {
-    reovim_driver_input::PendingBindings,
-    reovim_driver_session::{
+    reovim_driver_text_input::PendingBindings,
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

@@ -4,4 +4,4 @@
 //! The driver owns the type definition so both modules and runner can access it.
 
 // Re-export SearchState from driver layer
-pub use reovim_driver_session::api::SearchState;
+pub use reovim_driver_text_session::api::SearchState;

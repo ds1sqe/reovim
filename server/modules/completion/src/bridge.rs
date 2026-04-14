@@ -3,7 +3,7 @@
 //! Serializes [`CompletionState`] to JSON for gRPC transmission to clients.
 //! Both TUI (Rust) and Web (TypeScript) extensions consume the same JSON.
 
-use reovim_driver_session::{
+use reovim_driver_text_session::{
     ExtensionMap,
     bridges::{ExtensionScope, ExtensionStateBridge},
 };

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{
+    reovim_driver_text_syntax::{
         Annotation, HighlightCategory, Injection, SyntaxDriver, SyntaxDriverFactory,
         decoration::DecorationRule,
     },
@@ -397,7 +397,8 @@ fn test_strip_doc_comment_prefix_no_prefix() {
 
 #[test]
 fn test_translate_combined_annotation_single_chunk() {
-    let highlight = Annotation::new(0, 5, reovim_driver_syntax::HighlightCategory::new("variable"));
+    let highlight =
+        Annotation::new(0, 5, reovim_driver_text_syntax::HighlightCategory::new("variable"));
     let range_offsets = [(100, 0, 4)]; // src_start=100, dst_start=0, prefix_len=4
     #[allow(clippy::single_range_in_vec_init)]
     let source_ranges = vec![100..120];
@@ -419,7 +420,7 @@ fn test_translate_combined_annotation_second_chunk() {
 
     // Highlight in the second chunk at dst position 8 (offset 1 within second chunk)
     let highlight =
-        Annotation::new(8, 10, reovim_driver_syntax::HighlightCategory::new("variable"));
+        Annotation::new(8, 10, reovim_driver_text_syntax::HighlightCategory::new("variable"));
 
     let result = translate_combined_annotation(&highlight, &range_offsets, &source_ranges);
     assert!(result.is_some());
@@ -431,7 +432,7 @@ fn test_translate_combined_annotation_second_chunk() {
 #[test]
 fn test_translate_combined_annotation_not_found() {
     let highlight =
-        Annotation::new(100, 105, reovim_driver_syntax::HighlightCategory::new("variable"));
+        Annotation::new(100, 105, reovim_driver_text_syntax::HighlightCategory::new("variable"));
     let range_offsets = [(10, 0, 4)];
     #[allow(clippy::single_range_in_vec_init)]
     let source_ranges = vec![10..20];

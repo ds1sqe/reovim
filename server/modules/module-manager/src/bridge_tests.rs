@@ -1,4 +1,4 @@
-use reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge};
+use reovim_driver_text_session::{ExtensionMap, bridges::ExtensionStateBridge};
 
 use {
     super::*,

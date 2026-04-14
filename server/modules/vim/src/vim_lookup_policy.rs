@@ -10,7 +10,7 @@
 //! Vim-specific behavior. The mechanism types (`KeyLookupPolicy`,
 //! `KeyLookupState`, `KeyLookupResult`) live in `driver-input`.
 
-use reovim_driver_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState};
+use reovim_driver_text_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState};
 
 /// Vim-style lookup policy: prefer longer sequences.
 ///

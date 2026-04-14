@@ -289,12 +289,12 @@ fn test_syntax_service_get_session_found() {
 /// `TextBufferRegistry` so that `state.buffer()` can resolve buffers.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<crate::session::Session>) {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -466,7 +466,7 @@ async fn test_stream_tokens_with_buffer() {
 mod test_syntax_driver {
     use std::{ops::Range, sync::Arc};
 
-    use reovim_driver_syntax::{
+    use reovim_driver_text_syntax::{
         Annotation, HighlightCategory, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
     };
 
@@ -550,12 +550,12 @@ mod test_syntax_driver {
 /// factory pre-installed.
 fn test_registry_with_syntax_factory() -> (Arc<SessionRegistry>, Arc<crate::session::Session>) {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -731,7 +731,7 @@ async fn test_stream_tokens_forwarding_loop() {
     // This covers lines 388-395: the forwarding loop in the spawned task
     // that receives TokenUpdate messages from syntax_rx and forwards them
     // through the gRPC stream, filtering by buffer_id.
-    use {reovim_driver_syntax::SyntaxEdit, tokio_stream::StreamExt};
+    use {reovim_driver_text_syntax::SyntaxEdit, tokio_stream::StreamExt};
 
     let (registry, session) = test_registry_with_syntax_factory();
 
@@ -968,7 +968,7 @@ async fn test_get_language_info_with_file_path_fallback() {
 #[tokio::test]
 async fn test_get_language_info_via_registry_based_detection() {
     use {
-        reovim_driver_syntax::{DefaultLanguageRegistry, LanguageInfo},
+        reovim_driver_text_syntax::{DefaultLanguageRegistry, LanguageInfo},
         std::sync::Arc,
     };
 

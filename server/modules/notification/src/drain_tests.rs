@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_session::{PendingEntry, PendingLevel, PendingOp, SessionExtension},
+    reovim_driver_text_session::{PendingEntry, PendingLevel, PendingOp, SessionExtension},
 };
 
 // ========================================================================

@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         FindCharState, SessionRuntime,
         api::{CommandApi, ExtensionApi},
     },

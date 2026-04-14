@@ -1,4 +1,4 @@
-use reovim_driver_input::{KeyCode, KeyEvent, Modifiers};
+use reovim_driver_text_input::{KeyCode, KeyEvent, Modifiers};
 
 use crate::macros::*;
 

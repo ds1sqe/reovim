@@ -1,4 +1,4 @@
-use reovim_driver_session::{TextInputSink, testing::TestSessionRuntime};
+use reovim_driver_text_session::{TextInputSink, testing::TestSessionRuntime};
 
 use super::*;
 

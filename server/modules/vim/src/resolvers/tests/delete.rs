@@ -2,11 +2,11 @@
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
         ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
-    reovim_driver_session::OperatorPendingState,
+    reovim_driver_text_session::OperatorPendingState,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
 };
 
@@ -327,7 +327,7 @@ fn test_motion_key_with_count_returns_execute() {
 
 use {
     reovim_domain_text::{Edit, UndoResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         TextObjRange, WindowError,
         api::{
             BufferApi, ChangeTracker, CommandApi, ModeApi, ModeError, StateChanges, UndoApi,
@@ -376,14 +376,14 @@ impl ModeApi for MockSession {
     fn mode_stack(&self) -> Vec<ModeId> {
         vec![self.mode.clone()]
     }
-    fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {}
+    fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_text_session::TransitionContext) {}
     fn pop_mode(
         &mut self,
-        _result: Option<reovim_driver_session::PopResult>,
+        _result: Option<reovim_driver_text_session::PopResult>,
     ) -> Result<(), ModeError> {
         Ok(())
     }
-    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {
+    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_text_session::TransitionContext) {
         self.mode = mode;
     }
 }
@@ -424,7 +424,7 @@ impl BufferApi for MockSession {
     fn delete_buffer(
         &mut self,
         _b: BufferId,
-    ) -> Result<(), reovim_driver_session::api::BufferError> {
+    ) -> Result<(), reovim_driver_text_session::api::BufferError> {
         Ok(())
     }
     fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
@@ -457,8 +457,8 @@ impl WindowApi for MockSession {
     fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> {
         Ok(())
     }
-    fn set_active_selection(&mut self, _selection: Option<reovim_driver_session::Selection>) {}
-    fn active_selection(&self) -> Option<&reovim_driver_session::Selection> {
+    fn set_active_selection(&mut self, _selection: Option<reovim_driver_text_session::Selection>) {}
+    fn active_selection(&self) -> Option<&reovim_driver_text_session::Selection> {
         None
     }
 }
@@ -1331,10 +1331,10 @@ fn test_mock_session_mode_api() {
     assert_eq!(session.mode_depth(), 1);
     assert!(!session.is_mode_active(&VimMode::NORMAL_ID));
     assert_eq!(session.mode_stack(), vec![VimMode::DELETE_ID]);
-    session.push_mode(VimMode::NORMAL_ID, reovim_driver_session::TransitionContext::default());
+    session.push_mode(VimMode::NORMAL_ID, reovim_driver_text_session::TransitionContext::default());
     let pop_result = session.pop_mode(None);
     assert!(pop_result.is_ok());
-    session.set_mode(VimMode::NORMAL_ID, reovim_driver_session::TransitionContext::default());
+    session.set_mode(VimMode::NORMAL_ID, reovim_driver_text_session::TransitionContext::default());
     assert_eq!(session.current_mode(), &VimMode::NORMAL_ID);
 }
 

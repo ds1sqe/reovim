@@ -49,8 +49,8 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
-    reovim_driver_session::SnippetExpanderRegistry,
+    reovim_driver_text_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_text_session::SnippetExpanderRegistry,
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,

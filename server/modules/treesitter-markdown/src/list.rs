@@ -14,8 +14,8 @@ use std::{
 };
 
 use {
-    reovim_driver_syntax::{Annotation, HighlightCategory},
     reovim_driver_syntax_treesitter::{DecorationProvider, Node, Query, QueryCursor, Tree},
+    reovim_driver_text_syntax::{Annotation, HighlightCategory},
     streaming_iterator::StreamingIterator,
 };
 

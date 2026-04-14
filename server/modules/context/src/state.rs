@@ -2,7 +2,7 @@
 //!
 //! Per-client state holding the current scope hierarchy.
 
-use {reovim_driver_session::SessionExtension, reovim_driver_syntax::ContextHierarchy};
+use {reovim_driver_text_session::SessionExtension, reovim_driver_text_syntax::ContextHierarchy};
 
 /// Options for context display.
 #[derive(Debug, Clone)]

@@ -7,11 +7,11 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use {
-    reovim_driver_lsp::{
+    reovim_driver_text_lsp::{
         BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
         LspProviderRegistry,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

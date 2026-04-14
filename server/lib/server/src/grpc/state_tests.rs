@@ -17,7 +17,7 @@ fn test_registry_with_session() -> (Arc<SessionRegistry>, Arc<Session>) {
 /// Create a registry with a session that has a real buffer manager.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
     };
 
@@ -316,7 +316,7 @@ async fn test_get_visible_lines_with_window() {
 
 #[tokio::test]
 async fn test_get_visible_lines_with_scroll() {
-    use reovim_driver_session::Viewport;
+    use reovim_driver_text_session::Viewport;
 
     let (registry, session) = test_registry_with_buffer_manager();
 
@@ -394,7 +394,7 @@ async fn test_get_registers_empty() {
 
 #[tokio::test]
 async fn test_get_registers_with_content() {
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -427,7 +427,7 @@ async fn test_get_registers_with_content() {
 
 #[tokio::test]
 async fn test_get_registers_specific_register() {
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -542,8 +542,8 @@ async fn test_get_selection_no_active_window() {
 #[tokio::test]
 async fn test_get_selection_with_char_selection() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Viewport, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Viewport, api::Selection},
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -596,8 +596,8 @@ async fn test_get_selection_with_char_selection() {
 #[tokio::test]
 async fn test_get_selection_line_mode() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Viewport, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Viewport, api::Selection},
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -645,8 +645,8 @@ async fn test_get_selection_line_mode() {
 #[tokio::test]
 async fn test_get_selection_block_mode() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Viewport, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Viewport, api::Selection},
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -694,8 +694,8 @@ async fn test_get_selection_block_mode() {
 #[tokio::test]
 async fn test_get_selection_reverse() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Viewport, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Viewport, api::Selection},
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -788,7 +788,7 @@ async fn test_get_mode_per_client_returns_client_mode() {
 
 #[tokio::test]
 async fn test_cursor_isolation_between_clients() {
-    use reovim_driver_session::CursorPosition;
+    use reovim_driver_text_session::CursorPosition;
 
     let (registry, session) = test_registry_with_buffer_manager();
 
@@ -888,7 +888,7 @@ async fn test_mode_isolation_between_clients() {
 
 #[tokio::test]
 async fn test_layout_isolation_per_client() {
-    use reovim_driver_session::Viewport;
+    use reovim_driver_text_session::Viewport;
 
     let (registry, session) = test_registry_with_buffer_manager();
 
@@ -1000,7 +1000,7 @@ async fn test_get_visible_lines_with_invalid_window_id() {
 
 #[tokio::test]
 async fn test_get_layout_multi_window() {
-    use reovim_driver_session::Window;
+    use reovim_driver_text_session::Window;
 
     let (registry, session) = test_registry_with_buffer_manager();
 
@@ -1106,7 +1106,7 @@ async fn test_get_registers_specific_nonexistent_register() {
 
 #[tokio::test]
 async fn test_get_registers_linewise() {
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1400,7 +1400,7 @@ async fn test_get_screen_content_valid_formats() {
 async fn test_get_registers_specific_register_with_content() {
     // Test the specific register lookup path where
     // the register exists and has content.
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1437,7 +1437,7 @@ async fn test_get_registers_specific_register_with_content() {
 #[tokio::test]
 async fn test_get_registers_specific_linewise_register() {
     // Test the linewise yank_type path in specific register lookup.
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1470,7 +1470,7 @@ async fn test_get_registers_specific_linewise_register() {
 #[tokio::test]
 async fn test_get_registers_multiple_specific() {
     // Test querying multiple specific registers.
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1507,7 +1507,7 @@ async fn test_get_registers_multiple_specific() {
 #[tokio::test]
 async fn test_get_registers_specific_empty_register_filtered_out() {
     // Test that a register with empty content is filtered out.
-    use reovim_driver_session::RegisterContent;
+    use reovim_driver_text_session::RegisterContent;
 
     let (registry, session) = test_registry_with_buffer_manager();
     session.add_client(ClientId::new(1));
@@ -1563,8 +1563,8 @@ async fn test_get_registers_client_not_found() {
 #[tokio::test]
 async fn test_selection_isolation_per_client() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Viewport, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Viewport, api::Selection},
     };
 
     let (registry, session) = test_registry_with_buffer_manager();
@@ -1792,7 +1792,7 @@ fn test_kernel_to_proto_option_choice() {
 #[tokio::test]
 async fn test_get_options_with_specific_names_registered() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
             EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
         },
@@ -1835,7 +1835,7 @@ async fn test_get_options_with_specific_names_registered() {
 #[tokio::test]
 async fn test_get_options_with_alias_resolves() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
             EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
         },
@@ -1878,7 +1878,7 @@ async fn test_get_options_with_alias_resolves() {
 #[tokio::test]
 async fn test_get_options_with_unknown_name_omitted() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
             EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
         },
@@ -1922,7 +1922,7 @@ async fn test_get_options_with_unknown_name_omitted() {
 #[tokio::test]
 async fn test_get_options_empty_names_returns_all() {
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
             EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
         },

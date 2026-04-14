@@ -89,7 +89,7 @@ fn test_find_provider_no_registry() {
 
 #[test]
 fn test_has_formatting_no_capabilities() {
-    use reovim_driver_lsp::{DiagnosticCache, LspRequest};
+    use reovim_driver_text_lsp::{DiagnosticCache, LspRequest};
 
     struct NoCapProvider;
     impl LspProvider for NoCapProvider {
@@ -122,7 +122,7 @@ fn test_has_formatting_no_capabilities() {
 
 #[test]
 fn test_has_formatting_with_capability() {
-    use reovim_driver_lsp::{DiagnosticCache, LspRequest};
+    use reovim_driver_text_lsp::{DiagnosticCache, LspRequest};
 
     struct FmtProvider;
     impl LspProvider for FmtProvider {

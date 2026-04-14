@@ -4,7 +4,7 @@ use {
     crate::ids,
     reovim_domain_text::Position,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, api::ModeApi},
+    reovim_driver_text_session::{SessionRuntime, api::ModeApi},
 };
 
 use {reovim_driver_command::Command, reovim_kernel::testing::create_test_context};
@@ -73,7 +73,7 @@ fn test_all_visual_entry_default() {
 
 use {
     reovim_domain_text::{HistoryRing, RegisterBank},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::api::{
@@ -104,7 +104,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -122,7 +122,7 @@ impl TestState {
         let mut windows = WindowLayout::empty();
         let extensions = ExtensionMap::new();
 
-        let mut window = reovim_driver_session::Window::new();
+        let mut window = reovim_driver_text_session::Window::new();
         if let Some(buffer_id) = buffer_id {
             window.buffer_id = Some(buffer_id);
         }
@@ -134,7 +134,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -147,7 +147,7 @@ impl TestState {
     fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -187,7 +187,7 @@ fn test_enter_visual_mode_execute_sets_character_selection() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(0, 0));
     assert_eq!(sel.end, Position::new(0, 1));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Character);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Character);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -226,7 +226,7 @@ fn test_enter_visual_mode_execute_no_active_window() {
     let mut windows = WindowLayout::empty(); // No windows at all
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -236,7 +236,7 @@ fn test_enter_visual_mode_execute_no_active_window() {
 
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -277,7 +277,7 @@ fn test_enter_visual_line_mode_execute_sets_line_selection() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(0, 0));
     assert_eq!(sel.end, Position::new(1, 0));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -301,7 +301,7 @@ fn test_enter_visual_line_mode_execute_at_line_2() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(2, 0));
     assert_eq!(sel.end, Position::new(3, 0));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -316,7 +316,7 @@ fn test_enter_visual_line_mode_execute_no_active_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -326,7 +326,7 @@ fn test_enter_visual_line_mode_execute_no_active_window() {
 
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -367,7 +367,7 @@ fn test_enter_visual_block_mode_execute_sets_block_selection() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(0, 0));
     assert_eq!(sel.end, Position::new(0, 1));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -391,7 +391,7 @@ fn test_enter_visual_block_mode_execute_at_nonzero_cursor() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(1, 3));
     assert_eq!(sel.end, Position::new(1, 4));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -406,7 +406,7 @@ fn test_enter_visual_block_mode_execute_no_active_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -416,7 +416,7 @@ fn test_enter_visual_block_mode_execute_no_active_window() {
 
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -529,7 +529,7 @@ fn test_enter_visual_block_mode_at_line_1() {
     let sel = window.selection.as_ref().unwrap();
     assert_eq!(sel.start, Position::new(1, 0));
     assert_eq!(sel.end, Position::new(1, 1));
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]

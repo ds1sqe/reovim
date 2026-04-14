@@ -29,12 +29,12 @@ reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 
 # Drivers (domain-locked — Tier 2 decoupling deferred)
-reovim-driver-buffer = { workspace = true }
+reovim-driver-text-buffer = { workspace = true }
 reovim-driver-codec = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-input = { workspace = true }
-reovim-driver-session = { workspace = true }
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-input = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 
 # Async
 tokio = { workspace = true, features = ["full", "sync", "rt-multi-thread"] }
@@ -65,7 +65,7 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
-reovim-driver-buffer = { workspace = true }
+reovim-driver-text-buffer = { workspace = true }
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

@@ -168,7 +168,7 @@ fn custom_picker_overrides() {
 
 #[test]
 fn mock_picker_default_execute() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let picker = MockPicker;
     let mut test = TestSessionRuntime::new();

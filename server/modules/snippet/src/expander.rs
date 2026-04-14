@@ -11,7 +11,7 @@
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         SnippetExpander, TransitionContext,
     },

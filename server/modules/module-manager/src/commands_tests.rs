@@ -60,14 +60,14 @@ fn command_handlers_unique_ids() {
 
 #[test]
 fn collect_module_entries_empty_without_report() {
-    let mut test = reovim_driver_session::testing::TestSessionRuntime::new();
+    let mut test = reovim_driver_text_session::testing::TestSessionRuntime::new();
     let entries = test.with_runtime(|rt| collect_module_entries(rt));
     assert!(entries.is_empty());
 }
 
 #[test]
 fn collect_module_entries_with_report() {
-    let mut test = reovim_driver_session::testing::TestSessionRuntime::new();
+    let mut test = reovim_driver_text_session::testing::TestSessionRuntime::new();
 
     {
         let mut report = ModuleLoadReport::new();

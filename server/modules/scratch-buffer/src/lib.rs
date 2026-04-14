@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         EmptySessionAction, EmptySessionContext, EmptySessionHandler, SessionHandlerKey,
         SessionHandlerRegistry,
     },

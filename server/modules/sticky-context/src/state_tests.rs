@@ -1,5 +1,5 @@
 use {
-    reovim_driver_syntax::{ContextHierarchy, ScopeKind, ScopeRange},
+    reovim_driver_text_syntax::{ContextHierarchy, ScopeKind, ScopeRange},
     reovim_module_context::ContextSessionState,
 };
 

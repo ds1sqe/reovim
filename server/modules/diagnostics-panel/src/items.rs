@@ -1,6 +1,6 @@
 //! Panel item model and conversion from diagnostic snapshot.
 
-use reovim_driver_lsp::{DiagnosticSeverity, DiagnosticSnapshot};
+use reovim_driver_text_lsp::{DiagnosticSeverity, DiagnosticSnapshot};
 
 /// A single item displayed in the diagnostics panel.
 #[derive(Debug, Clone, PartialEq, Eq)]

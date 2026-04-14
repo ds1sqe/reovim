@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_session::SessionExtension,
+    reovim_driver_text_session::SessionExtension,
     reovim_kernel::api::v1::{ArcSwap, Service},
 };
 

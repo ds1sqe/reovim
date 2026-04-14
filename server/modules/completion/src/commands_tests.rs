@@ -2,7 +2,7 @@ use {super::*, reovim_driver_command::Command};
 
 use {
     reovim_domain_text::LineIndex,
-    reovim_driver_session::{BufferApi, testing::TestSessionRuntime},
+    reovim_driver_text_session::{BufferApi, testing::TestSessionRuntime},
     reovim_kernel::api::v1::RwLock,
     reovim_provider_text::{HeapMapping, VirtualBuffer},
     std::sync::Arc,

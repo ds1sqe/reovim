@@ -1,6 +1,6 @@
 //! Tests for the codec-side [`StaleCheck`] adapter.
 
-use {reovim_driver_session::StaleCheck, reovim_kernel::api::v1::BufferId};
+use {reovim_driver_text_session::StaleCheck, reovim_kernel::api::v1::BufferId};
 
 use super::{InodeStaleCheck, install};
 

@@ -2,7 +2,7 @@
 //!
 //! Per-client state for determining which scope headers to display.
 
-use {reovim_driver_session::SessionExtension, reovim_module_context::ContextSessionState};
+use {reovim_driver_text_session::SessionExtension, reovim_module_context::ContextSessionState};
 
 /// Options for sticky context display.
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-use reovim_driver_lsp::DiagnosticSeverity;
+use reovim_driver_text_lsp::DiagnosticSeverity;
 
 use {super::*, crate::items::PanelItem};
 

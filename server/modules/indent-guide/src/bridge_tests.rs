@@ -1,6 +1,6 @@
 use super::*;
 
-use reovim_driver_session::ExtensionMap;
+use reovim_driver_text_session::ExtensionMap;
 
 use crate::state::{IndentGuide, IndentGuideState};
 

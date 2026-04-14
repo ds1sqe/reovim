@@ -94,7 +94,7 @@ fn test_driver_with_queries_no_injections() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_highlights_with_injection_factory() {
-    use reovim_driver_syntax::SyntaxDriverFactory;
+    use reovim_driver_text_syntax::SyntaxDriverFactory;
 
     // Create a factory that can produce Rust drivers
     struct TestRustFactory {
@@ -102,12 +102,15 @@ fn test_highlights_with_injection_factory() {
         highlight_query: Arc<Query>,
     }
     impl SyntaxDriverFactory for TestRustFactory {
-        fn create(&self, language_id: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+        fn create(
+            &self,
+            language_id: &str,
+        ) -> Option<Box<dyn reovim_driver_text_syntax::SyntaxDriver>> {
             if language_id != "rust" {
                 return None;
             }
             TreeSitterDriver::new("rust", &self.language, self.highlight_query.clone())
-                .map(|d| Box::new(d) as Box<dyn reovim_driver_syntax::SyntaxDriver>)
+                .map(|d| Box::new(d) as Box<dyn reovim_driver_text_syntax::SyntaxDriver>)
         }
         fn supported_languages(&self) -> Vec<&str> {
             vec!["rust"]
@@ -827,11 +830,11 @@ fn test_decorations_conceal_category() {
 
 #[test]
 fn test_set_injection_factory_no_manager() {
-    use reovim_driver_syntax::SyntaxDriverFactory;
+    use reovim_driver_text_syntax::SyntaxDriverFactory;
 
     struct DummyFactory;
     impl SyntaxDriverFactory for DummyFactory {
-        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_text_syntax::SyntaxDriver>> {
             None
         }
         fn supported_languages(&self) -> Vec<&str> {
@@ -855,11 +858,11 @@ fn test_set_injection_factory_no_manager() {
 
 #[test]
 fn test_set_injection_factory_with_manager() {
-    use reovim_driver_syntax::SyntaxDriverFactory;
+    use reovim_driver_text_syntax::SyntaxDriverFactory;
 
     struct DummyFactory;
     impl SyntaxDriverFactory for DummyFactory {
-        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_text_syntax::SyntaxDriver>> {
             None
         }
         fn supported_languages(&self) -> Vec<&str> {
@@ -1021,7 +1024,7 @@ fn test_simplify_kind_unknown() {
 
 #[test]
 fn test_textobject_range_none_without_query() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1037,7 +1040,7 @@ fn test_textobject_range_none_without_query() {
 
 #[test]
 fn test_textobject_range_none_before_parse() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1060,7 +1063,7 @@ fn test_textobject_range_none_before_parse() {
 
 #[test]
 fn test_textobject_range_function_outer() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1088,7 +1091,7 @@ fn test_textobject_range_function_outer() {
 
 #[test]
 fn test_textobject_range_function_inner() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1115,7 +1118,7 @@ fn test_textobject_range_function_inner() {
 
 #[test]
 fn test_textobject_range_cursor_outside() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1139,7 +1142,7 @@ fn test_textobject_range_cursor_outside() {
 
 #[test]
 fn test_textobject_range_nested_picks_smallest() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1168,7 +1171,7 @@ fn test_textobject_range_nested_picks_smallest() {
 
 #[test]
 fn test_textobject_range_unknown_capture() {
-    use reovim_driver_syntax::{TextObjectKind, TextObjectScope};
+    use reovim_driver_text_syntax::{TextObjectKind, TextObjectScope};
 
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());

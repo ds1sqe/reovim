@@ -1,7 +1,7 @@
 use {
     super::*,
-    reovim_driver_buffer::TestBufferManager,
-    reovim_driver_session::{HistoryRing, Jumplist, MarkBank, RegisterBank},
+    reovim_driver_text_buffer::TestBufferManager,
+    reovim_driver_text_session::{HistoryRing, Jumplist, MarkBank, RegisterBank},
     reovim_kernel::api::v1::{
         EventBus, ModeStack, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
     },
@@ -18,7 +18,7 @@ fn test_vfs() -> Arc<dyn VfsDriver> {
 /// Create a test kernel with a real buffer manager and `TextBufferRegistry`.
 fn test_kernel() -> KernelContext {
     let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_buffer::TextBufferRegistry::new()));
+    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(TestBufferManager::new()),
@@ -64,7 +64,7 @@ fn test_session_state_lookup_keys_empty() {
     let kernel = KernelContext::default();
     let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-    let keys = reovim_driver_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
 
     assert!(result.is_not_found());
@@ -117,10 +117,10 @@ fn test_resolve_key_for_client_mode_isolation() {
     // Create per-client state (#471, #477)
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
     let mut client_mode_stack = ModeStack::new(insert_mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     // #491: Use home_mode() instead of removed current_mode()
     // Verify initial states
@@ -128,7 +128,7 @@ fn test_resolve_key_for_client_mode_isolation() {
     assert_eq!(client_mode_stack.current().name(), "insert"); // per-client
 
     // resolve_key_for_client should use per-client state, not shared
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -140,7 +140,7 @@ fn test_resolve_key_for_client_mode_isolation() {
     // but the important thing is it uses per-client state
     let _result = state.resolve_key_for_client(
         1, // test client_id for per-client undo (#471)
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,
@@ -340,10 +340,10 @@ fn test_try_on_command_complete_for_client_returns_none_without_resolver() {
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -353,7 +353,7 @@ fn test_try_on_command_complete_for_client_returns_none_without_resolver() {
 
     let result = state.try_on_command_complete_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -379,10 +379,10 @@ fn test_execute_command_for_client_returns_none_without_command() {
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -398,7 +398,7 @@ fn test_execute_command_for_client_returns_none_without_command() {
 
     let result = state.execute_command_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -424,7 +424,7 @@ fn test_with_registries_with_initial_buffer() {
 
     // Create a buffer before creating the state
     let buffer_id = {
-        let mut buffer = reovim_driver_buffer::Buffer::new();
+        let mut buffer = reovim_driver_text_buffer::Buffer::new();
         buffer.set_content("initial");
         kernel.buffers.register(Arc::new(RwLock::new(buffer)))
     };
@@ -511,7 +511,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
 
     // Register a mode that accepts char input (discriminant 1, different from home mode 0)
     let insert_mode_id = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
-    let insert_info = reovim_driver_input::ModeInfo {
+    let insert_info = reovim_driver_text_input::ModeInfo {
         id: insert_mode_id,
         display_name: "INSERT",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Bar,
@@ -530,7 +530,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
     assert!(!state.mode_accepts_char_input());
 
     // Now register home_mode with accepts_char_input: false
-    let normal_info = reovim_driver_input::ModeInfo {
+    let normal_info = reovim_driver_text_input::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -553,10 +553,10 @@ fn test_resolve_key_for_client_no_resolver() {
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -564,10 +564,10 @@ fn test_resolve_key_for_client_no_resolver() {
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('x'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('x'));
     let result = state.resolve_key_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -613,7 +613,7 @@ fn test_lookup_keys_after_registration() {
         .register_str(&test_mode_id(), "j", cmd);
 
     // Lookup should find it
-    let keys = reovim_driver_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -713,7 +713,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     let mut keymap_reg = KeymapRegistry::new();
 
     // Register something in each registry
-    let mode_info = reovim_driver_input::ModeInfo {
+    let mode_info = reovim_driver_text_input::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -742,7 +742,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     assert!(!state.mode_registry.is_empty());
 
     // Keymap lookup should find our binding
-    let keys = reovim_driver_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -752,7 +752,7 @@ fn test_with_registries_with_buffer_and_no_compositor() {
     let kernel = test_kernel();
 
     // Create a buffer first
-    let mut buffer = reovim_driver_buffer::Buffer::new();
+    let mut buffer = reovim_driver_text_buffer::Buffer::new();
     buffer.set_content("hello world");
     let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
@@ -776,11 +776,11 @@ fn test_with_registries_multiple_buffers() {
     let kernel = test_kernel();
 
     // Create multiple buffers
-    let mut buf1 = reovim_driver_buffer::Buffer::new();
+    let mut buf1 = reovim_driver_text_buffer::Buffer::new();
     buf1.set_content("first");
     let id1 = kernel.buffers.register(Arc::new(RwLock::new(buf1)));
 
-    let mut buf2 = reovim_driver_buffer::Buffer::new();
+    let mut buf2 = reovim_driver_text_buffer::Buffer::new();
     buf2.set_content("second");
     let id2 = kernel.buffers.register(Arc::new(RwLock::new(buf2)));
 
@@ -811,10 +811,10 @@ fn test_resolve_key_for_client_different_modes() {
     // Test with insert mode stack
     let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
     let mut client_mode_stack = ModeStack::new(insert_mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -822,10 +822,10 @@ fn test_resolve_key_for_client_different_modes() {
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let result = state.resolve_key_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,
@@ -849,7 +849,7 @@ fn test_resolve_key_for_client_different_modes() {
 fn test_execute_command_for_client_with_registered_command() {
     use {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_text_session::SessionRuntime,
     };
 
     struct DummyCmd;
@@ -887,10 +887,10 @@ fn test_execute_command_for_client_with_registered_command() {
     state.command_registry.register(Arc::new(cmd));
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -901,7 +901,7 @@ fn test_execute_command_for_client_with_registered_command() {
     let ctx = reovim_driver_command::CommandContext::new();
     let result = state.execute_command_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1231,7 +1231,7 @@ fn test_with_registries_with_buffer_and_compositor_creates_window() {
     let kernel = test_kernel();
 
     // Create a buffer first so buffer_ids is non-empty
-    let mut buffer = reovim_driver_buffer::Buffer::new();
+    let mut buffer = reovim_driver_text_buffer::Buffer::new();
     buffer.set_content("test content");
     let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
@@ -1274,24 +1274,24 @@ impl CompletingResolver {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for CompletingResolver {
+impl reovim_driver_text_input::ModeKeyResolver for CompletingResolver {
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::Pending
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::Pending
     }
 
     fn on_command_complete(
         &self,
-        _session: &mut dyn reovim_driver_input::SessionApiDyn,
-        _shared_extensions: &mut reovim_driver_input::ExtensionMap,
-        _client_extensions: &mut reovim_driver_input::ExtensionMap,
-    ) -> Option<reovim_driver_input::ModeTransition> {
+        _session: &mut dyn reovim_driver_text_input::SessionApiDyn,
+        _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
+        _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
+    ) -> Option<reovim_driver_text_input::ModeTransition> {
         // Return a Pop transition to indicate completion
-        Some(reovim_driver_input::ModeTransition::Pop { result: None })
+        Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1312,10 +1312,10 @@ fn test_try_on_command_complete_for_client_with_resolver() {
         .register(CompletingResolver::new(test_mode_id()));
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -1325,7 +1325,7 @@ fn test_try_on_command_complete_for_client_with_resolver() {
 
     let result = state.try_on_command_complete_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1342,7 +1342,7 @@ fn test_try_on_command_complete_for_client_with_resolver() {
 
     assert!(result.is_some(), "Should return ModeTransition from resolver");
     assert!(
-        matches!(result.unwrap(), reovim_driver_input::ModeTransition::Pop { result: None }),
+        matches!(result.unwrap(), reovim_driver_text_input::ModeTransition::Pop { result: None }),
         "Should be a Pop transition"
     );
 }
@@ -1362,22 +1362,22 @@ impl ExecutingResolver {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for ExecutingResolver {
+impl reovim_driver_text_input::ModeKeyResolver for ExecutingResolver {
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::Pending
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::Pending
     }
 
     fn on_command_complete(
         &self,
-        session: &mut dyn reovim_driver_input::SessionApiDyn,
-        _shared_extensions: &mut reovim_driver_input::ExtensionMap,
-        _client_extensions: &mut reovim_driver_input::ExtensionMap,
-    ) -> Option<reovim_driver_input::ModeTransition> {
+        session: &mut dyn reovim_driver_text_input::SessionApiDyn,
+        _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
+        _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
+    ) -> Option<reovim_driver_text_input::ModeTransition> {
         // Call execute_command to exercise the StubExecutor path
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1385,7 +1385,7 @@ impl reovim_driver_input::ModeKeyResolver for ExecutingResolver {
         );
         let ctx = reovim_driver_command::CommandContext::new();
         let _result = session.execute_command(cmd_id, ctx);
-        Some(reovim_driver_input::ModeTransition::Pop { result: None })
+        Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1406,10 +1406,10 @@ fn test_try_on_command_complete_for_client_exercises_stub_executor() {
         .register(ExecutingResolver::new(test_mode_id()));
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -1419,7 +1419,7 @@ fn test_try_on_command_complete_for_client_exercises_stub_executor() {
 
     let result = state.try_on_command_complete_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1452,16 +1452,16 @@ impl ExecutingDuringResolveResolver {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for ExecutingDuringResolveResolver {
+impl reovim_driver_text_input::ModeKeyResolver for ExecutingDuringResolveResolver {
     fn resolve_with_session(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-        session: &mut dyn reovim_driver_input::SessionApiDyn,
-        _shared_extensions: &mut reovim_driver_input::ExtensionMap,
-        _client_extensions: &mut reovim_driver_input::ExtensionMap,
-    ) -> reovim_driver_input::ResolveResult {
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+        session: &mut dyn reovim_driver_text_input::SessionApiDyn,
+        _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
+        _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
+    ) -> reovim_driver_text_input::ResolveResult {
         // Call execute_command to exercise the StubExecutor
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1469,16 +1469,16 @@ impl reovim_driver_input::ModeKeyResolver for ExecutingDuringResolveResolver {
         );
         let ctx = reovim_driver_command::CommandContext::new();
         let _result = session.execute_command(cmd_id, ctx);
-        reovim_driver_input::ResolveResult::Completed
+        reovim_driver_text_input::ResolveResult::Completed
     }
 
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::Pending
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::Pending
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1499,10 +1499,10 @@ fn test_resolve_key_for_client_exercises_stub_executor() {
         .register(ExecutingDuringResolveResolver::new(test_mode_id()));
 
     let mut mode_stack = ModeStack::new(test_mode_id());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -1510,10 +1510,10 @@ fn test_resolve_key_for_client_exercises_stub_executor() {
     let mut active_buffer = None;
     let mut terminal_size = (80u16, 24u16);
 
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let result = state.resolve_key_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1532,7 +1532,7 @@ fn test_resolve_key_for_client_exercises_stub_executor() {
     assert!(result.is_some(), "Resolver should handle the key");
     let (resolve_result, _changes) = result.unwrap();
     assert!(
-        matches!(resolve_result, reovim_driver_input::ResolveResult::Completed),
+        matches!(resolve_result, reovim_driver_text_input::ResolveResult::Completed),
         "Should be Completed"
     );
 }
@@ -1564,7 +1564,7 @@ fn test_dummy_command_trait_methods() {
     impl CommandHandler for DummyCmd {
         fn execute(
             &self,
-            _runtime: &mut reovim_driver_session::SessionRuntime<'_>,
+            _runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
             _args: &reovim_driver_command::CommandContext,
         ) -> reovim_driver_command::CommandResult {
             reovim_driver_command::CommandResult::Success
@@ -1588,18 +1588,18 @@ fn test_dummy_command_trait_methods() {
 struct PendingWithKeysResolver {
     mode: ModeId,
     parent: Option<ModeId>,
-    keys: reovim_driver_input::KeySequence,
+    keys: reovim_driver_text_input::KeySequence,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for PendingWithKeysResolver {
+impl reovim_driver_text_input::ModeKeyResolver for PendingWithKeysResolver {
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::Pending
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::Pending
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1610,7 +1610,7 @@ impl reovim_driver_input::ModeKeyResolver for PendingWithKeysResolver {
         self.parent.as_ref()
     }
 
-    fn pending_keys(&self) -> reovim_driver_input::KeySequence {
+    fn pending_keys(&self) -> reovim_driver_text_input::KeySequence {
         self.keys.clone()
     }
 }
@@ -1622,31 +1622,31 @@ struct PushToModeResolver {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for PushToModeResolver {
+impl reovim_driver_text_input::ModeKeyResolver for PushToModeResolver {
     fn resolve_with_session(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-        _session: &mut dyn reovim_driver_input::SessionApiDyn,
-        _shared_extensions: &mut reovim_driver_input::ExtensionMap,
-        _client_extensions: &mut reovim_driver_input::ExtensionMap,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::ModeTransition(
-            reovim_driver_input::ModeTransition::Push {
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+        _session: &mut dyn reovim_driver_text_input::SessionApiDyn,
+        _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
+        _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::ModeTransition(
+            reovim_driver_text_input::ModeTransition::Push {
                 mode: self.target.clone(),
-                context: reovim_driver_input::TransitionContext::new(),
+                context: reovim_driver_text_input::TransitionContext::new(),
             },
         )
     }
 
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::NotHandled
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::NotHandled
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1661,14 +1661,14 @@ struct InheritingStubResolver {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_input::ModeKeyResolver for InheritingStubResolver {
+impl reovim_driver_text_input::ModeKeyResolver for InheritingStubResolver {
     fn resolve_with_keymap(
         &self,
-        _key: &reovim_driver_input::KeyEvent,
-        _state: &mut reovim_driver_input::ModeState,
-        _input: &reovim_driver_input::ResolveInput<'_>,
-    ) -> reovim_driver_input::ResolveResult {
-        reovim_driver_input::ResolveResult::NotHandled
+        _key: &reovim_driver_text_input::KeyEvent,
+        _state: &mut reovim_driver_text_input::ModeState,
+        _input: &reovim_driver_text_input::ResolveInput<'_>,
+    ) -> reovim_driver_text_input::ResolveResult {
+        reovim_driver_text_input::ResolveResult::NotHandled
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1684,13 +1684,16 @@ impl reovim_driver_input::ModeKeyResolver for InheritingStubResolver {
 /// inspection of the client extensions afterwards.
 fn resolve_pb_test(
     state: &mut SessionState,
-    key: &reovim_driver_input::KeyEvent,
-    extensions: &mut reovim_driver_session::ExtensionMap,
-) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)> {
+    key: &reovim_driver_text_input::KeyEvent,
+    extensions: &mut reovim_driver_text_session::ExtensionMap,
+) -> Option<(
+    reovim_driver_text_input::ResolveResult,
+    reovim_driver_text_session::api::StateChanges,
+)> {
     let mut mode_stack = ModeStack::new(state.home_mode().clone());
-    let mut windows = reovim_driver_session::WindowLayout::empty();
+    let mut windows = reovim_driver_text_session::WindowLayout::empty();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -1700,7 +1703,7 @@ fn resolve_pb_test(
 
     state.resolve_key_for_client(
         1,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions,
@@ -1725,8 +1728,9 @@ fn test_pending_bindings_on_pending_result() {
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
     // Pending key sequence: "g"
-    let g_key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
-    let pending_keys = reovim_driver_input::KeySequence::from_keys(&[g_key]);
+    let g_key =
+        reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('g'));
+    let pending_keys = reovim_driver_text_input::KeySequence::from_keys(&[g_key]);
 
     // Register resolver with non-empty pending keys
     state.resolver_registry.register(PendingWithKeysResolver {
@@ -1745,8 +1749,8 @@ fn test_pending_bindings_on_pending_result() {
         .keymap_registry
         .register_str(&test_mode_id(), "gd", goto_def);
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('g'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -1765,8 +1769,9 @@ fn test_pending_bindings_on_pending_with_parent_mode() {
 
     // Use distinct discriminant so parent_mode != test_mode_id() in HashMap
     let parent_mode = ModeId::with_discriminant(ModuleId::new("test"), "motion", 10);
-    let g_key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
-    let pending_keys = reovim_driver_input::KeySequence::from_keys(&[g_key]);
+    let g_key =
+        reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('g'));
+    let pending_keys = reovim_driver_text_input::KeySequence::from_keys(&[g_key]);
 
     // Register resolver with parent
     state.resolver_registry.register(PendingWithKeysResolver {
@@ -1787,8 +1792,8 @@ fn test_pending_bindings_on_pending_with_parent_mode() {
         .keymap_registry
         .register_str(&parent_mode, "gd", goto_def);
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('g'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -1825,8 +1830,8 @@ fn test_pending_bindings_on_mode_push() {
         .keymap_registry
         .register_str(&target_mode, "b", word_backward);
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('d'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -1866,8 +1871,8 @@ fn test_pending_bindings_on_push_with_parent() {
         .keymap_registry
         .register_str(&motion_mode, "w", word_fwd);
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('d'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -1893,8 +1898,8 @@ fn test_pending_bindings_on_push_empty_continuations() {
         target: target_mode,
     });
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('d'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -1915,19 +1920,19 @@ fn test_pending_bindings_cleared_on_completed() {
         .register(ExecutingDuringResolveResolver::new(test_mode_id()));
 
     // Pre-populate PendingBindings
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
     let pb = extensions.get_or_insert::<PendingBindings>();
     let cmd = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy");
     pb.continuations.push((
-        reovim_driver_input::KeySequence::new(),
-        reovim_driver_input::BindingInfo::from_command(
+        reovim_driver_text_input::KeySequence::new(),
+        reovim_driver_text_input::BindingInfo::from_command(
             cmd,
-            reovim_driver_input::BindingLayer::Policy,
+            reovim_driver_text_input::BindingLayer::Policy,
         ),
     ));
     assert!(extensions.get::<PendingBindings>().unwrap().is_active());
 
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 
@@ -2046,7 +2051,7 @@ fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
     let compositor: Box<dyn reovim_subsys_layout::RootCompositor> = Box::new(MockCompositor::new());
 
     // Create state with a buffer AND compositor so with_registries creates a window.
-    let mut buffer = reovim_driver_buffer::Buffer::new();
+    let mut buffer = reovim_driver_text_buffer::Buffer::new();
     buffer.set_content("existing");
     let _ = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
 
@@ -2100,7 +2105,7 @@ fn test_pending_result_with_empty_keys_skips_bindings() {
     state.resolver_registry.register(PendingWithKeysResolver {
         mode: test_mode_id(),
         parent: None,
-        keys: reovim_driver_input::KeySequence::new(), // empty
+        keys: reovim_driver_text_input::KeySequence::new(), // empty
     });
 
     // Register a keymap binding to ensure the keymap is non-trivial
@@ -2109,8 +2114,8 @@ fn test_pending_result_with_empty_keys_skips_bindings() {
         .keymap_registry
         .register_str(&test_mode_id(), "gg", dummy);
 
-    let mut extensions = reovim_driver_session::ExtensionMap::new();
-    let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+    let mut extensions = reovim_driver_text_session::ExtensionMap::new();
+    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('g'));
     let result = resolve_pb_test(&mut state, &key, &mut extensions);
     assert!(result.is_some());
 

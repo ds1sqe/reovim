@@ -20,8 +20,8 @@ const KIND: &str = "polyblocks";
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_text_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
@@ -94,7 +94,7 @@ impl Module for TetrominoModule {
         // Ensure TickSchedulerHandle exists for server layer to populate (#546).
         let _ = ctx
             .services
-            .get_or_create::<reovim_driver_session::TickSchedulerHandle>();
+            .get_or_create::<reovim_driver_text_session::TickSchedulerHandle>();
 
         ProbeResult::Success
     }

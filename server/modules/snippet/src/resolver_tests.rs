@@ -1,5 +1,5 @@
 use {
-    reovim_driver_input::{KeyCode, KeymapQuery},
+    reovim_driver_text_input::{KeyCode, KeymapQuery},
     reovim_kernel::api::v1::CommandId,
 };
 

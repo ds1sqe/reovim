@@ -2,8 +2,8 @@ use {
     crate::{SearchState, ids, search::*},
     reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
-    reovim_driver_session::{
+    reovim_driver_text_search::{Direction, SearchKey, SearchProviderRegistry},
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
@@ -27,7 +27,7 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -39,7 +39,7 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -150,7 +150,7 @@ fn test_search_forward_execute_returns_success() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -162,7 +162,7 @@ fn test_search_forward_execute_returns_success() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -194,7 +194,7 @@ fn test_search_backward_execute_returns_success() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -206,7 +206,7 @@ fn test_search_backward_execute_returns_success() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -243,7 +243,7 @@ fn test_search_next_no_pattern_returns_success() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -255,7 +255,7 @@ fn test_search_next_no_pattern_returns_success() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -290,7 +290,7 @@ fn test_search_previous_no_pattern_returns_success() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -302,7 +302,7 @@ fn test_search_previous_no_pattern_returns_success() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -337,7 +337,7 @@ fn test_search_next_with_pattern_but_no_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -349,7 +349,7 @@ fn test_search_next_with_pattern_but_no_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -368,7 +368,7 @@ fn test_search_next_with_pattern_but_no_provider() {
 
     // Set a pattern in SearchState
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -391,7 +391,7 @@ fn test_search_previous_with_pattern_but_no_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -403,7 +403,7 @@ fn test_search_previous_with_pattern_but_no_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -422,7 +422,7 @@ fn test_search_previous_with_pattern_but_no_provider() {
 
     // Set a pattern in SearchState
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -445,7 +445,7 @@ fn test_search_next_no_buffer_returns_error() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -457,7 +457,7 @@ fn test_search_next_no_buffer_returns_error() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -476,7 +476,7 @@ fn test_search_next_no_buffer_returns_error() {
 
     // Set a pattern in SearchState
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -515,7 +515,7 @@ fn test_search_word_forward_no_search_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -527,7 +527,7 @@ fn test_search_word_forward_no_search_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -561,7 +561,7 @@ fn test_search_word_backward_no_search_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -573,7 +573,7 @@ fn test_search_word_backward_no_search_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -611,7 +611,7 @@ fn test_clear_search_highlight_execute_returns_success() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -623,7 +623,7 @@ fn test_clear_search_highlight_execute_returns_success() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -674,7 +674,7 @@ fn test_search_next_no_buffer_id_in_args() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -686,7 +686,7 @@ fn test_search_next_no_buffer_id_in_args() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -704,7 +704,7 @@ fn test_search_next_no_buffer_id_in_args() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let s = runtime.ext_mut::<SearchState>();
         s.set("pattern".to_string(), Direction::Forward);
     }
@@ -723,7 +723,7 @@ fn test_search_previous_no_buffer_id_in_args() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -735,7 +735,7 @@ fn test_search_previous_no_buffer_id_in_args() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -753,7 +753,7 @@ fn test_search_previous_no_buffer_id_in_args() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let s = runtime.ext_mut::<SearchState>();
         s.set("pattern".to_string(), Direction::Backward);
     }
@@ -767,7 +767,7 @@ fn test_search_previous_no_buffer_id_in_args() {
 // Tests with mock SearchProvider for full path coverage
 // =========================================================================
 
-use reovim_driver_search::{SearchError, SearchMatch, SearchProvider};
+use reovim_driver_text_search::{SearchError, SearchMatch, SearchProvider};
 
 /// Mock search provider that performs simple substring matching.
 struct MockSearchProvider;
@@ -852,7 +852,7 @@ impl SearchProvider for MockSearchProvider {
 
     fn find_next_source(
         &self,
-        source: &dyn reovim_driver_search::LineSource,
+        source: &dyn reovim_driver_text_search::LineSource,
         cursor: Position,
         pattern: &str,
         direction: Direction,
@@ -891,7 +891,7 @@ impl SearchProvider for MockSearchProvider {
 
     fn find_all_source(
         &self,
-        source: &dyn reovim_driver_search::LineSource,
+        source: &dyn reovim_driver_text_search::LineSource,
         pattern: &str,
     ) -> Result<Vec<SearchMatch>, SearchError> {
         let content = source.content();
@@ -910,7 +910,7 @@ impl SearchProvider for MockSearchProvider {
 
     fn word_at_cursor_source(
         &self,
-        source: &dyn reovim_driver_search::LineSource,
+        source: &dyn reovim_driver_text_search::LineSource,
         cursor: Position,
     ) -> Option<String> {
         let line = source.line(cursor.line)?;
@@ -957,7 +957,7 @@ fn test_search_next_with_provider_finds_match() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -969,7 +969,7 @@ fn test_search_next_with_provider_finds_match() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -988,7 +988,7 @@ fn test_search_next_with_provider_finds_match() {
 
     // Set a pattern in SearchState
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -1010,7 +1010,7 @@ fn test_search_next_with_provider_no_match() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -1022,7 +1022,7 @@ fn test_search_next_with_provider_no_match() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1040,7 +1040,7 @@ fn test_search_next_with_provider_no_match() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("missing_pattern".to_string(), Direction::Forward);
     }
@@ -1062,7 +1062,7 @@ fn test_search_previous_with_provider_finds_match() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 12; // position past the second hello
@@ -1077,7 +1077,7 @@ fn test_search_previous_with_provider_finds_match() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1095,7 +1095,7 @@ fn test_search_previous_with_provider_finds_match() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -1122,7 +1122,7 @@ fn test_search_word_forward_with_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -1134,7 +1134,7 @@ fn test_search_word_forward_with_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1168,7 +1168,7 @@ fn test_search_word_backward_with_provider() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 12; // At second 'hello'
@@ -1183,7 +1183,7 @@ fn test_search_word_backward_with_provider() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1218,7 +1218,7 @@ fn test_search_word_forward_on_whitespace() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 5; // On space between hello and world
@@ -1233,7 +1233,7 @@ fn test_search_word_forward_on_whitespace() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1268,7 +1268,7 @@ fn test_search_word_forward_cursor_past_line_end() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 100; // way past end
@@ -1283,7 +1283,7 @@ fn test_search_word_forward_cursor_past_line_end() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1317,7 +1317,7 @@ fn test_search_word_backward_on_whitespace() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 5; // On space
@@ -1332,7 +1332,7 @@ fn test_search_word_backward_on_whitespace() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1367,7 +1367,7 @@ fn test_search_next_with_provider_and_backward_direction() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 12;
@@ -1382,7 +1382,7 @@ fn test_search_next_with_provider_and_backward_direction() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1400,7 +1400,7 @@ fn test_search_next_with_provider_and_backward_direction() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Backward);
     }
@@ -1423,7 +1423,7 @@ fn test_search_previous_with_provider_backward_original() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -1435,7 +1435,7 @@ fn test_search_previous_with_provider_backward_original() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1453,7 +1453,7 @@ fn test_search_previous_with_provider_backward_original() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Backward);
     }
@@ -1478,7 +1478,7 @@ fn test_search_and_move_with_invalid_buffer_returns_error() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -1490,7 +1490,7 @@ fn test_search_and_move_with_invalid_buffer_returns_error() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1508,7 +1508,7 @@ fn test_search_and_move_with_invalid_buffer_returns_error() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let search_state = runtime.ext_mut::<SearchState>();
         search_state.set("hello".to_string(), Direction::Forward);
     }
@@ -1532,7 +1532,7 @@ fn test_search_word_forward_with_invalid_buffer() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -1544,7 +1544,7 @@ fn test_search_word_forward_with_invalid_buffer() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1580,7 +1580,7 @@ fn test_search_word_at_word_start() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 0; // At 'h' of hello
@@ -1595,7 +1595,7 @@ fn test_search_word_at_word_start() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1630,7 +1630,7 @@ fn test_search_word_backward_at_word_start() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 6; // At 'w' of world
@@ -1645,7 +1645,7 @@ fn test_search_word_backward_at_word_start() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1709,7 +1709,7 @@ fn test_search_forward_no_window() {
     let mut windows = WindowLayout::empty(); // No window added
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -1720,7 +1720,7 @@ fn test_search_forward_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1751,7 +1751,7 @@ fn test_clear_search_highlight_no_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -1762,7 +1762,7 @@ fn test_clear_search_highlight_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1794,7 +1794,7 @@ fn test_search_word_forward_no_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -1805,7 +1805,7 @@ fn test_search_word_forward_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1839,7 +1839,7 @@ fn test_search_next_no_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -1850,7 +1850,7 @@ fn test_search_next_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1868,7 +1868,7 @@ fn test_search_next_no_window() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let ss = runtime.ext_mut::<SearchState>();
         ss.set("hello".to_string(), Direction::Forward);
     }
@@ -1890,7 +1890,7 @@ fn test_search_word_backward_no_window() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
@@ -1901,7 +1901,7 @@ fn test_search_word_backward_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1935,7 +1935,7 @@ fn test_search_word_forward_empty_buffer() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::with_buffer(buffer_id));
 
     let mut registers = RegisterBank::new();
@@ -1947,7 +1947,7 @@ fn test_search_word_forward_empty_buffer() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1981,7 +1981,7 @@ fn test_search_next_with_provider_no_window_no_buffer() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     windows.add(Window::new());
 
     let mut registers = RegisterBank::new();
@@ -1993,7 +1993,7 @@ fn test_search_next_with_provider_no_window_no_buffer() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -2011,7 +2011,7 @@ fn test_search_next_with_provider_no_window_no_buffer() {
     );
 
     {
-        use reovim_driver_session::api::ExtensionApi;
+        use reovim_driver_text_session::api::ExtensionApi;
         let ss = runtime.ext_mut::<SearchState>();
         ss.set("hello".to_string(), Direction::Forward);
     }
@@ -2033,7 +2033,7 @@ fn test_search_word_forward_middle_of_word() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 2; // 'l' in hello (middle of word)
@@ -2048,7 +2048,7 @@ fn test_search_word_forward_middle_of_word() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -2082,7 +2082,7 @@ fn test_search_word_backward_middle_of_word() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
 
     let mut win = Window::with_buffer(buffer_id);
     win.cursor.column = 14; // 'l' in second hello
@@ -2097,7 +2097,7 @@ fn test_search_word_backward_middle_of_word() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,

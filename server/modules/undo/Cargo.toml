@@ -24,7 +24,7 @@ reovim-capabilities = { workspace = true }
 reovim-domain-text = { workspace = true }
 
 # Driver for UndoProvider trait
-reovim-driver-undo = { workspace = true }
+reovim-driver-text-undo = { workspace = true }
 
 # VFS driver for persistence
 reovim-subsys-vfs = { workspace = true }

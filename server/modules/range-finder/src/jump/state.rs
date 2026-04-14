@@ -18,7 +18,7 @@
 //!   -> cancel() at any phase -> Inactive
 //! ```
 
-use reovim_driver_session::{SessionExtension, TextInputSink};
+use reovim_driver_text_session::{SessionExtension, TextInputSink};
 
 use super::search::{Direction, JumpMatch, find_matches, should_auto_jump};
 

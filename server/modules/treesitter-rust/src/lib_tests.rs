@@ -355,7 +355,7 @@ fn test_reparse_updates_highlights() {
 
 #[test]
 fn test_incremental_update() {
-    use reovim_driver_syntax::SyntaxEdit;
+    use reovim_driver_text_syntax::SyntaxEdit;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -557,7 +557,7 @@ fn test_indent_for_empty_file() {
 
 #[test]
 fn test_folds_function() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -580,7 +580,7 @@ fn test_folds_function() {
 
 #[test]
 fn test_folds_impl_block() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -638,7 +638,7 @@ fn test_folds_preview_extracted() {
 
 #[test]
 fn test_folds_struct_with_fields() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -655,7 +655,7 @@ fn test_folds_struct_with_fields() {
 
 #[test]
 fn test_folds_enum_variants() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -672,7 +672,7 @@ fn test_folds_enum_variants() {
 
 #[test]
 fn test_folds_block_comment() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -687,7 +687,7 @@ fn test_folds_block_comment() {
 
 #[test]
 fn test_folds_match_expression() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -723,7 +723,7 @@ fn test_folds_empty_file() {
 
 #[test]
 fn test_folds_trait_definition() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -813,7 +813,7 @@ fn test_module_exit() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_folds_realistic_rust_file() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();
@@ -947,7 +947,7 @@ println!("{}", message);
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_nested_folds() {
-    use reovim_driver_syntax::FoldKind;
+    use reovim_driver_text_syntax::FoldKind;
 
     let factory = RustSyntaxFactory::new();
     let mut driver = factory.create("rust").unwrap();

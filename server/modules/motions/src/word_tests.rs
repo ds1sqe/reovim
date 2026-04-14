@@ -4,7 +4,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         api::CommandExecutor,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
@@ -99,10 +99,10 @@ impl TestSetup {
     /// Run a command and return the result.
     fn run<C: CommandHandler>(&mut self, cmd: &C, args: &CommandContext) -> CommandResult {
         let executor = StubExecutor;
-        let mut tabs = reovim_driver_session::TabPageSet::new();
+        let mut tabs = reovim_driver_text_session::TabPageSet::new();
         let mut runtime = SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -139,7 +139,7 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
 
     let executor = StubExecutor;
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -148,7 +148,7 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -705,7 +705,7 @@ fn test_word_forward_with_invalid_buffer_id() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -717,7 +717,7 @@ fn test_word_forward_with_invalid_buffer_id() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -748,7 +748,7 @@ fn test_word_forward_no_window() {
     let mut windows = WindowLayout::empty(); // No windows
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -759,7 +759,7 @@ fn test_word_forward_no_window() {
     let executor = StubExecutor;
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,

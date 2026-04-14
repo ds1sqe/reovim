@@ -9,7 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         OperatorPendingState, SessionRuntime, TextObjRange, api::ExtensionApi,
     },
     reovim_kernel::api::v1::CommandId,

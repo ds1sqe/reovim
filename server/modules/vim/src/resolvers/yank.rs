@@ -23,11 +23,11 @@ use std::sync::RwLock;
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         ExtensionMap, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
         ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
-    reovim_driver_session::OperatorPendingState,
+    reovim_driver_text_session::OperatorPendingState,
     reovim_kernel::api::v1::ModeId,
 };
 
@@ -136,7 +136,7 @@ impl ModeKeyResolver for VimYankResolver {
         // First try the current mode, then fall back to parent mode for motions
         let lookup_state = {
             let state = input.keymap.query(input.mode, &keys);
-            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+            if matches!(state, reovim_driver_text_input::KeyLookupState::NotFound) {
                 // Motion bindings are in normal mode, not operator modes
                 input.keymap.query(&self.parent_mode_id, &keys)
             } else {
@@ -256,7 +256,7 @@ impl ModeKeyResolver for VimYankResolver {
         // First try the current mode, then fall back to parent mode for motions
         let lookup_state = {
             let state = input.keymap.query(input.mode, &keys);
-            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+            if matches!(state, reovim_driver_text_input::KeyLookupState::NotFound) {
                 // Motion bindings are in normal mode, not operator modes
                 input.keymap.query(&self.parent_mode_id, &keys)
             } else {

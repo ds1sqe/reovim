@@ -10,11 +10,11 @@
 
 use {
     reovim_domain_text::Edit,
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult,
     },
-    reovim_driver_session::{ExtensionMap, SessionApiDyn},
+    reovim_driver_text_session::{ExtensionMap, SessionApiDyn},
     reovim_kernel::api::v1::ModeId,
 };
 

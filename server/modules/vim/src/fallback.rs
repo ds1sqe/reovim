@@ -21,7 +21,7 @@
 
 use {
     reovim_domain_text::{Edit, Position},
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
     },
 };

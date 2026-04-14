@@ -14,7 +14,7 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_text_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -116,7 +116,7 @@ impl CommandHandler for YankCommand {
 
             // #657: Record yank flash state for client-side animation
             if let Some(buffer_id) = args.buffer_id() {
-                use reovim_driver_session::api::ExtensionApi;
+                use reovim_driver_text_session::api::ExtensionApi;
                 let (end_line, end_col) = args.range_end().unwrap_or((0, 0));
                 let state = runtime.ext_mut::<super::yank_flash::YankFlashState>();
                 state.record(
@@ -163,7 +163,7 @@ impl CommandHandler for ChangeCommand {
         use {
             super::ChangeOperator,
             crate::modes::VimMode,
-            reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+            reovim_driver_text_undo::{UndoKey, UndoProviderRegistry},
         };
 
         // Start undo batching BEFORE the delete - both the delete and subsequent

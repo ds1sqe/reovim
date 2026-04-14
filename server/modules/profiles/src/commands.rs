@@ -3,7 +3,7 @@
 use {
     crate::{profile::Profile, validate::validate_profile_name},
     reovim_driver_command::{Command, CommandHandler},
-    reovim_driver_session::{BufferApi, SessionRuntime},
+    reovim_driver_text_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},
     reovim_subsys_command_types::{ArgKind, ArgSpec, CommandContext, CommandResult},
     std::{fmt::Write, path::PathBuf},

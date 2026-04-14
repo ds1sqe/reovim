@@ -17,7 +17,7 @@ workspace = true
 reovim-kernel = { workspace = true }
 
 # Driver layer - implements SyntaxDriverFactory
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
 
 # Tree-sitter Go grammar

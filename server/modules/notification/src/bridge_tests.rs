@@ -205,7 +205,7 @@ fn test_snapshot_progress_with_source() {
 // ========================================================================
 
 use {
-    reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp},
+    reovim_driver_text_session::{PendingLevel, PendingNotificationQueue, PendingOp},
     reovim_kernel::api::v1::ServiceRegistry,
 };
 

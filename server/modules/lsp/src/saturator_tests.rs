@@ -2,7 +2,7 @@ use super::*;
 
 use std::path::PathBuf;
 
-use reovim_driver_lsp::{LspServerConfig, client::Client, jsonrpc};
+use reovim_driver_text_lsp::{LspServerConfig, client::Client, jsonrpc};
 
 fn make_uri(path: &str) -> Uri {
     path.parse().expect("test URI should parse")

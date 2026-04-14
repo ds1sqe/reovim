@@ -63,7 +63,7 @@ fn test_module_context(
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+        Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
         services.clone(),
     );

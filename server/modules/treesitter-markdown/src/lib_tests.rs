@@ -194,7 +194,7 @@ fn test_reparse_updates_highlights() {
 
 #[test]
 fn test_incremental_update() {
-    use reovim_driver_syntax::SyntaxEdit;
+    use reovim_driver_text_syntax::SyntaxEdit;
 
     let factory = MarkdownSyntaxFactory::new();
     let mut driver = factory.create("markdown").unwrap();
@@ -857,7 +857,8 @@ fn test_inline_and_block_decorations_coexist() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_markdown_with_rust_injection_highlighting() {
     use {
-        reovim_driver_syntax::SyntaxDriverFactory, reovim_module_treesitter_rust::RustSyntaxFactory,
+        reovim_driver_text_syntax::SyntaxDriverFactory,
+        reovim_module_treesitter_rust::RustSyntaxFactory,
     };
 
     let md_lang: Language = tree_sitter_md::LANGUAGE.into();
@@ -903,7 +904,8 @@ fn test_markdown_with_rust_injection_highlighting() {
 #[test]
 fn test_markdown_with_multiple_language_injections() {
     use {
-        reovim_driver_syntax::SyntaxDriverFactory, reovim_module_treesitter_rust::RustSyntaxFactory,
+        reovim_driver_text_syntax::SyntaxDriverFactory,
+        reovim_module_treesitter_rust::RustSyntaxFactory,
     };
 
     let md_lang: Language = tree_sitter_md::LANGUAGE.into();

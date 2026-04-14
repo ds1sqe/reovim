@@ -5,7 +5,7 @@
 //! [`CommandHandler`] which requires domain-specific types.
 
 use {
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_text_session::SessionRuntime,
     reovim_subsys_command::{Command, CommandContext, CommandResult},
 };
 
@@ -39,7 +39,7 @@ use {
 ///
 /// ```ignore
 /// use reovim_driver_command::{Command, CommandHandler, CommandContext, CommandResult};
-/// use reovim_driver_session::{SessionRuntime, ModeApi, TransitionContext};
+/// use reovim_driver_text_session::{SessionRuntime, ModeApi, TransitionContext};
 /// use reovim_kernel::api::v1::{CommandId, ModuleId};
 ///
 /// struct EnterInsertMode;

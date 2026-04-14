@@ -5,7 +5,7 @@
 //! `Input` mode (for file creation, renaming, etc.).
 
 use {
-    reovim_driver_session::{SessionExtension, TextInputSink},
+    reovim_driver_text_session::{SessionExtension, TextInputSink},
     std::{
         path::PathBuf,
         sync::{

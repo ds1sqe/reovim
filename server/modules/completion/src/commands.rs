@@ -15,11 +15,11 @@ use std::{
 use {
     reovim_domain_text::Position,
     reovim_driver_command::CommandHandler,
-    reovim_driver_lsp::{
+    reovim_driver_text_lsp::{
         LspKey, LspLifecycleRegistry, LspProviderRegistry, LspRequest, LspServerConfig,
         uri_from_path,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferApi, ChangeTracker, ExtensionApi, NotificationDrainRegistry, SessionRuntime,
         SnippetExpanderRegistry,
     },
@@ -568,7 +568,7 @@ fn try_auto_start_lsp(
 }
 
 // Re-export from driver-lsp (#564: shared helpers moved to driver layer).
-pub use reovim_driver_lsp::{find_project_root, language_id_from_path};
+pub use reovim_driver_text_lsp::{find_project_root, language_id_from_path};
 
 /// Collect all command handlers for registration.
 #[must_use]

@@ -7,7 +7,7 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use {
     lsp_types::{FormattingOptions, TextEdit},
-    reovim_driver_lsp::{LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response},
+    reovim_driver_text_lsp::{LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response},
     reovim_kernel::api::v1::ServiceRegistry,
     reovim_subsys_formatter::{FormatError, FormatterProvider},
     tracing::warn,
@@ -95,7 +95,7 @@ pub fn format_with_lsp(
         return None;
     }
 
-    let uri = reovim_driver_lsp::uri_from_path(Path::new(path));
+    let uri = reovim_driver_text_lsp::uri_from_path(Path::new(path));
     let options = default_formatting_options();
     let (tx, rx) = reovim_kernel::api::v1::oneshot();
 

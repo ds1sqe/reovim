@@ -8,8 +8,8 @@ fn text_buffer_registry_boundary_lives_in_provider_text() {
         .nth(2)
         .expect("workspace root should be two levels above depgraph manifest");
 
-    let session_lib = root.join("server/lib/drivers/session/src/lib.rs");
-    let session_runtime = root.join("server/lib/drivers/session/src/runtime.rs");
+    let session_lib = root.join("server/lib/drivers/text-session/src/lib.rs");
+    let session_runtime = root.join("server/lib/drivers/text-session/src/runtime.rs");
     let provider_lib = root.join("server/lib/providers/text/src/lib.rs");
 
     let session_src = fs::read_to_string(&session_lib)

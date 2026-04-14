@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::{ArgSpec, Command, CommandContext, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_text_session::SessionRuntime,
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 

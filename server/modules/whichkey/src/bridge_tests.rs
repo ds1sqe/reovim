@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::filter::BindingLayerFilter,
-    reovim_driver_input::{BindingInfo, BindingLayer, KeySequence},
+    reovim_driver_text_input::{BindingInfo, BindingLayer, KeySequence},
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
@@ -55,18 +55,18 @@ fn test_whichkey_bridge_snapshot_with_hints() {
     let pb = map.get_or_insert::<PendingBindings>();
 
     // Simulate pending "g" with two continuations
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info("goto-top", "Go to first line", Some("motion")),
     ));
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info("goto-definition", "Go to definition", Some("motion")),
     ));
@@ -95,12 +95,12 @@ fn test_whichkey_bridge_snapshot_mode_prefix_only() {
     let pb = map.get_or_insert::<PendingBindings>();
 
     // Simulate operator push: "d" sets mode_prefix, pending_keys empty
-    pb.mode_prefix = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('d'),
+    pb.mode_prefix = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('d'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('w'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('w'),
         )]),
         info("delete-word", "Delete word", Some("operator")),
     ));
@@ -116,15 +116,15 @@ fn test_whichkey_bridge_snapshot_mode_prefix_with_pending() {
     let pb = map.get_or_insert::<PendingBindings>();
 
     // Simulate "di": mode_prefix="d", pending_keys="i"
-    pb.mode_prefix = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('d'),
+    pb.mode_prefix = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('d'),
     )]);
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('i'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('i'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('w'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('w'),
         )]),
         info("inner-word", "Inner word", Some("textobject")),
     ));
@@ -177,18 +177,18 @@ fn test_whichkey_bridge_is_active_after_clear() {
 fn test_whichkey_bridge_snapshot_no_filter_passes_all() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info("goto-top", "Top", Some("motion")),
     ));
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info("goto-def", "Def", Some("navigation")),
     ));
@@ -203,18 +203,18 @@ fn test_whichkey_bridge_snapshot_no_filter_passes_all() {
 fn test_whichkey_bridge_snapshot_filter_by_category() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info("goto-top", "Top", Some("motion")),
     ));
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info("goto-def", "Def", Some("navigation")),
     ));
@@ -233,18 +233,18 @@ fn test_whichkey_bridge_snapshot_filter_by_category() {
 fn test_whichkey_bridge_snapshot_filter_by_layer() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info_at_layer("goto-top", "Top", Some("motion"), BindingLayer::Policy),
     ));
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info_at_layer("custom-goto", "Custom", None, BindingLayer::User),
     ));
@@ -268,18 +268,18 @@ fn test_whichkey_bridge_snapshot_filter_by_layer() {
 fn test_whichkey_bridge_snapshot_filter_defaults_only() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info_at_layer("goto-top", "Top", None, BindingLayer::Policy),
     ));
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info_at_layer("custom", "Custom", None, BindingLayer::User),
     ));
@@ -298,12 +298,12 @@ fn test_whichkey_bridge_snapshot_filter_defaults_only() {
 fn test_whichkey_bridge_snapshot_no_category_field() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info("goto-top", "Top", None),
     ));
@@ -318,27 +318,27 @@ fn test_whichkey_bridge_snapshot_no_category_field() {
 fn test_whichkey_bridge_snapshot_combined_filter() {
     let mut map = ExtensionMap::new();
     let pb = map.get_or_insert::<PendingBindings>();
-    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    pb.pending_keys = KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )]);
     // motion at Policy
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('g'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('g'),
         )]),
         info_at_layer("goto-top", "Top", Some("motion"), BindingLayer::Policy),
     ));
     // motion at User
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('j'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('j'),
         )]),
         info_at_layer("user-motion", "User motion", Some("motion"), BindingLayer::User),
     ));
     // operator at Policy
     pb.continuations.push((
-        KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-            reovim_driver_input::KeyCode::Char('d'),
+        KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+            reovim_driver_text_input::KeyCode::Char('d'),
         )]),
         info_at_layer("delete", "Delete", Some("operator"), BindingLayer::Policy),
     ));

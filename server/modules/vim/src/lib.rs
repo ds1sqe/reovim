@@ -43,11 +43,11 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeybindingStore, LookupPolicyStore, ModeInfo, ModeInfoStore, ModeProviderKey,
         ModeProviderRegistry, ResolverRegistry,
     },
-    reovim_driver_session::{InitialModeProvider, LeaderKeyProvider, bridges::BridgeProvider},
+    reovim_driver_text_session::{InitialModeProvider, LeaderKeyProvider, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,

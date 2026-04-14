@@ -17,7 +17,7 @@ pub use engine::SearchEngine;
 use std::sync::Arc;
 
 use {
-    reovim_driver_search::{SearchKey, SearchProviderRegistry},
+    reovim_driver_text_search::{SearchKey, SearchProviderRegistry},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
     },

@@ -1,5 +1,5 @@
 use {
-    super::*, crate::hover_state::HoverSnapshot, reovim_driver_session::CursorSnapshot,
+    super::*, crate::hover_state::HoverSnapshot, reovim_driver_text_session::CursorSnapshot,
     std::sync::Arc,
 };
 

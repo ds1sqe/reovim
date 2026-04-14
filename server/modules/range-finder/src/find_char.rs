@@ -34,7 +34,7 @@ use {
     reovim_driver_command::{
         ArgValue, Command, CommandContext, CommandHandler, CommandPriority, CommandResult,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionApi, ModeApi, SessionRuntime, TransitionContext, api::ChangeTracker,
     },
     reovim_kernel::api::v1::{CommandId, ModuleId},

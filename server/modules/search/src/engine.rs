@@ -5,7 +5,7 @@
 use {
     regex::Regex,
     reovim_domain_text::Position,
-    reovim_driver_search::{Direction, LineSource, SearchError, SearchMatch, SearchProvider},
+    reovim_driver_text_search::{Direction, LineSource, SearchError, SearchMatch, SearchProvider},
     reovim_provider_text::Buffer,
 };
 

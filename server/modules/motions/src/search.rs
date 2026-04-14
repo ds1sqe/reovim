@@ -23,8 +23,10 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry, TextGeometryLineSource},
-    reovim_driver_session::{SessionRuntime, api::ExtensionApi},
+    reovim_driver_text_search::{
+        Direction, SearchKey, SearchProviderRegistry, TextGeometryLineSource,
+    },
+    reovim_driver_text_session::{SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -337,7 +339,7 @@ fn search_and_move(
 ) -> CommandResult {
     use {
         reovim_domain_text::Position,
-        reovim_driver_session::{ChangeTracker, JumpEntry},
+        reovim_driver_text_session::{ChangeTracker, JumpEntry},
     };
 
     // Get active buffer and cursor position
@@ -397,7 +399,7 @@ fn search_and_move_from(
     direction: Direction,
     search_from: Position,
 ) -> CommandResult {
-    use reovim_driver_session::{ChangeTracker, JumpEntry};
+    use reovim_driver_text_session::{ChangeTracker, JumpEntry};
 
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");

@@ -1,6 +1,6 @@
 use {
     lsp_types::{Position, Range},
-    reovim_driver_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
+    reovim_driver_text_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
 };
 
 use std::sync::Arc;

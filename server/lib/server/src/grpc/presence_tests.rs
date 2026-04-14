@@ -435,7 +435,7 @@ fn test_to_proto_client_info_independent() {
 fn test_to_proto_client_info_following() {
     use {
         crate::session::{ClientMetadata, ClientRelation},
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -1013,7 +1013,7 @@ async fn test_each_client_gets_unique_token() {
 /// are counted by the coverage tool.
 #[tokio::test]
 async fn test_join_starts_illuminate_tick_when_handle_present() {
-    use reovim_driver_session::TickSchedulerHandle;
+    use reovim_driver_text_session::TickSchedulerHandle;
 
     let state = crate::session::SessionState::default();
     state

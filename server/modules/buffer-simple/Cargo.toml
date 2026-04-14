@@ -24,7 +24,7 @@ reovim-capabilities = { workspace = true }
 reovim-provider-text = { workspace = true }
 
 # Driver for BufferManagerKey and registry
-reovim-driver-buffer = { workspace = true }
+reovim-driver-text-buffer = { workspace = true }
 
 # Platform abstraction for RwLock
 reovim-arch = { workspace = true }

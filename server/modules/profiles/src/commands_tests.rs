@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_session::testing::TestSessionRuntime,
+    reovim_driver_text_session::testing::TestSessionRuntime,
     reovim_kernel::api::v1::{OptionSpec, OptionValue},
     reovim_subsys_command_types::ArgValue,
     reovim_subsys_vfs::{MockVfs, VfsDriver},

@@ -3,7 +3,7 @@
 //! `SettingsState` is a `SessionExtension` that stores the list of
 //! settings visible in the interactive settings panel.
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// A flat item in the settings panel display list.
 #[derive(Debug, Clone, PartialEq, Eq)]

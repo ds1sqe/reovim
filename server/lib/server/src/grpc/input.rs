@@ -27,8 +27,8 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_input::{ModeTransition, PopResult, ResolveContext, ResolveResult},
-    reovim_driver_session::api::StateChanges,
+    reovim_driver_text_input::{ModeTransition, PopResult, ResolveContext, ResolveResult},
+    reovim_driver_text_session::api::StateChanges,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
         notification,
@@ -477,7 +477,7 @@ impl InputServiceImpl {
     /// directly (outside `SessionRuntime::record_cursor_move`).
     fn ensure_selection_change_recorded(
         changes: &mut StateChanges,
-        windows: &reovim_driver_session::WindowLayout,
+        windows: &reovim_driver_text_session::WindowLayout,
         active_buffer: Option<reovim_kernel::api::v1::BufferId>,
     ) {
         if !changes.cursor_moved || changes.selection_changed {
@@ -557,7 +557,7 @@ impl InputServiceImpl {
     fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
         use {
             crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update},
-            reovim_driver_syntax::text_event_to_syntax_edit, // TODO: relocate bridge call (Tier 2 server decoupling)
+            reovim_driver_text_syntax::text_event_to_syntax_edit, // TODO: relocate bridge call (Tier 2 server decoupling)
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)
@@ -632,7 +632,7 @@ impl InputServiceImpl {
     ///
     /// Routes `ByteEdit` records from `StateChanges` to
     /// `CodecSessionState::notify_index()` for incremental index updates.
-    fn notify_codec_indices(session: &Session, changes: &reovim_driver_session::StateChanges) {
+    fn notify_codec_indices(session: &Session, changes: &reovim_driver_text_session::StateChanges) {
         use reovim_driver_codec::CodecSessionState;
 
         let mut decoded_buffers = HashSet::new();
@@ -678,7 +678,7 @@ impl InputServiceImpl {
         }
         // Transfer metadata (ResolveContext::ArgValue -> CommandContext::ArgValue)
         for (key, value) in &ctx.metadata {
-            use reovim_driver_input::ArgValue as InputArgValue;
+            use reovim_driver_text_input::ArgValue as InputArgValue;
             let converted = match value {
                 InputArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
                 InputArgValue::String(s) => Some(ArgValue::String(s.clone())),

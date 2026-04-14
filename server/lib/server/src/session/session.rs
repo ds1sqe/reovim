@@ -20,7 +20,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use {reovim_driver_session::RegisterContent, reovim_subsys_session::ExtensionMap};
+use {reovim_driver_text_session::RegisterContent, reovim_subsys_session::ExtensionMap};
 
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
@@ -191,7 +191,7 @@ impl Session {
     /// Creates an independent client with the given metadata.
     /// This is the preferred method for gRPC handlers that have client info.
     pub fn add_client_with_metadata(&self, client_id: ClientId, metadata: super::ClientMetadata) {
-        use {reovim_driver_session::Window, reovim_kernel::api::v1::ModeStack};
+        use {reovim_driver_text_session::Window, reovim_kernel::api::v1::ModeStack};
 
         // Per-client state (#471, #491): Initialize new clients with session's home mode
         // stored in SessionShared. After this, the client's per-client mode stack is used.
@@ -408,7 +408,7 @@ impl Session {
     ///
     /// This helper fixes step 3 by creating a window for the active buffer.
     fn ensure_client_has_window(editing_state: &mut super::EditingState) {
-        use reovim_driver_session::Window;
+        use reovim_driver_text_session::Window;
 
         // Only sync if per-client windows are empty AND client has an active buffer
         if editing_state.windows.is_empty()
@@ -460,8 +460,10 @@ impl Session {
         &self,
         client_id: ClientId,
         key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
-    {
+    ) -> Option<(
+        reovim_driver_text_input::ResolveResult,
+        reovim_driver_text_session::api::StateChanges,
+    )> {
         // Acquire both locks in consistent order to avoid deadlocks
         let mut clients = self.clients.write();
         let mut state = self.state.write();
@@ -487,7 +489,7 @@ impl Session {
     pub async fn try_on_command_complete_for_client(
         &self,
         client_id: ClientId,
-    ) -> Option<reovim_driver_input::ModeTransition> {
+    ) -> Option<reovim_driver_text_input::ModeTransition> {
         // Acquire both locks in consistent order
         let mut clients = self.clients.write();
         let mut state = self.state.write();
@@ -537,7 +539,7 @@ impl Session {
         args: &reovim_subsys_command_types::CommandContext,
     ) -> Option<(
         reovim_driver_command::CommandResult,
-        reovim_driver_session::api::StateChanges,
+        reovim_driver_text_session::api::StateChanges,
         Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
         // Acquire both locks in consistent order to avoid deadlocks

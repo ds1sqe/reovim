@@ -19,9 +19,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
-    reovim_driver_buffer::{Buffer, BufferOps},
-    reovim_driver_input::{PendingBindings, ResolverRegistry},
-    reovim_driver_session::{RegisterContent, Session as DriverSession},
+    reovim_driver_text_buffer::{Buffer, BufferOps},
+    reovim_driver_text_input::{PendingBindings, ResolverRegistry},
+    reovim_driver_text_session::{RegisterContent, Session as DriverSession},
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
     reovim_subsys_command::{CommandContext, CommandResult},
     reovim_subsys_layout::RootCompositor,
@@ -41,11 +41,11 @@ use crate::{
 /// pulling in the full command registry.
 struct StubExecutor;
 
-impl reovim_driver_session::api::CommandExecutor for StubExecutor {
+impl reovim_driver_text_session::api::CommandExecutor for StubExecutor {
     fn get_handle(
         &self,
         _id: &reovim_kernel::api::v1::CommandId,
-    ) -> Option<std::sync::Arc<dyn reovim_driver_session::api::CommandHandle>> {
+    ) -> Option<std::sync::Arc<dyn reovim_driver_text_session::api::CommandHandle>> {
         None
     }
 }
@@ -299,12 +299,12 @@ impl SessionState {
     pub fn execute_command_for_client(
         &mut self,
         client_id: usize,
-        client: reovim_driver_session::ClientContext<'_>,
+        client: reovim_driver_text_session::ClientContext<'_>,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<(
         CommandResult,
-        reovim_driver_session::api::StateChanges,
+        reovim_driver_text_session::api::StateChanges,
         Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
         // No flush needed — edits are recorded immediately via undo provider.
@@ -369,7 +369,7 @@ impl SessionState {
         self.app
             .kernel
             .services
-            .get::<reovim_driver_buffer::TextBufferRegistry>()
+            .get::<reovim_driver_text_buffer::TextBufferRegistry>()
             .and_then(|reg| reg.get(id))
     }
 
@@ -387,7 +387,7 @@ impl SessionState {
             .app
             .kernel
             .services
-            .get::<reovim_driver_buffer::TextBufferRegistry>()
+            .get::<reovim_driver_text_buffer::TextBufferRegistry>()
         {
             reg.register(arc.clone());
         }
@@ -427,16 +427,18 @@ impl SessionState {
     pub fn resolve_key_for_client(
         &mut self,
         client_id: usize,
-        client: reovim_driver_session::ClientContext<'_>,
+        client: reovim_driver_text_session::ClientContext<'_>,
         key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
-    {
+    ) -> Option<(
+        reovim_driver_text_input::ResolveResult,
+        reovim_driver_text_session::api::StateChanges,
+    )> {
         use {
-            reovim_driver_input::ModeState, reovim_driver_session::SessionRuntime,
+            reovim_driver_text_input::ModeState, reovim_driver_text_session::SessionRuntime,
             reovim_subsys_session::ClientId as DriverClientId,
         };
 
-        let reovim_driver_session::ClientContext {
+        let reovim_driver_text_session::ClientContext {
             mode_stack: client_mode_stack,
             windows: client_windows,
             extensions: client_extensions,
@@ -465,7 +467,7 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: client_mode_stack,
                 windows: client_windows,
                 extensions: &mut runtime_ext,
@@ -497,7 +499,7 @@ impl SessionState {
         // After resolution, populate PendingBindings so bridges (e.g., WhichKeyBridge)
         // can produce UI hints without knowing about specific resolvers.
         match &result {
-            Some(reovim_driver_input::ResolveResult::Pending) => {
+            Some(reovim_driver_text_input::ResolveResult::Pending) => {
                 let pending = self.resolver_registry.pending_keys_for(&mode);
                 if !pending.is_empty() {
                     let mut continuations =
@@ -517,8 +519,8 @@ impl SessionState {
                     pb.continuations = continuations;
                 }
             }
-            Some(reovim_driver_input::ResolveResult::ModeTransition(
-                reovim_driver_input::ModeTransition::Push {
+            Some(reovim_driver_text_input::ResolveResult::ModeTransition(
+                reovim_driver_text_input::ModeTransition::Push {
                     mode: target_mode, ..
                 },
             )) => {
@@ -555,7 +557,7 @@ impl SessionState {
         }
 
         // Take accumulated changes
-        let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);
+        let changes = reovim_driver_text_session::api::ChangeTracker::take_changes(&mut runtime);
 
         result.map(|r| (r, changes))
     }
@@ -575,14 +577,14 @@ impl SessionState {
     pub fn try_on_command_complete_for_client(
         &mut self,
         client_id: usize,
-        client: reovim_driver_session::ClientContext<'_>,
-    ) -> Option<reovim_driver_input::ModeTransition> {
+        client: reovim_driver_text_session::ClientContext<'_>,
+    ) -> Option<reovim_driver_text_input::ModeTransition> {
         use {
-            reovim_driver_session::SessionRuntime,
+            reovim_driver_text_session::SessionRuntime,
             reovim_subsys_session::ClientId as DriverClientId,
         };
 
-        let reovim_driver_session::ClientContext {
+        let reovim_driver_text_session::ClientContext {
             mode_stack: client_mode_stack,
             windows: client_windows,
             extensions: client_extensions,
@@ -608,7 +610,7 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: client_mode_stack,
                 windows: client_windows,
                 extensions: &mut runtime_ext,

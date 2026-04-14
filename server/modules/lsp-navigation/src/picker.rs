@@ -10,7 +10,7 @@ use {
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent, SessionRuntime,
     },
-    reovim_driver_session::{BufferApi, ChangeTracker, WindowApi},
+    reovim_driver_text_session::{BufferApi, ChangeTracker, WindowApi},
     reovim_kernel::api::v1::ServiceRegistry,
     reovim_subsys_vfs::VfsInstance,
 };

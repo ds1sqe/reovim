@@ -1,4 +1,4 @@
-use reovim_driver_syntax::{BracketConfig, SyntaxContext};
+use reovim_driver_text_syntax::{BracketConfig, SyntaxContext};
 
 use super::*;
 

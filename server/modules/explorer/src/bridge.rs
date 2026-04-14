@@ -4,7 +4,7 @@
 //! transmission to clients. Both TUI and Web extensions consume
 //! the same JSON format.
 
-use reovim_driver_session::{
+use reovim_driver_text_session::{
     ExtensionMap,
     bridges::{ExtensionScope, ExtensionStateBridge},
 };

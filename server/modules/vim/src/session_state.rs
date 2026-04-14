@@ -34,7 +34,7 @@
 //!
 //! ```ignore
 //! use reovim_module_vim::VimSessionState;
-//! use reovim_driver_session::SessionRuntime;
+//! use reovim_driver_text_session::SessionRuntime;
 //!
 //! fn check_pending_char(runtime: &SessionRuntime) -> bool {
 //!     ctx.ext::<VimSessionState>()
@@ -44,12 +44,12 @@
 //! ```
 
 use {
-    reovim_domain_text::Position, reovim_driver_input::KeyEvent,
-    reovim_driver_session::SessionExtension,
+    reovim_domain_text::Position, reovim_driver_text_input::KeyEvent,
+    reovim_driver_text_session::SessionExtension,
 };
 
 // Re-export TextObjRange from session driver for convenience
-pub use reovim_driver_session::TextObjRange;
+pub use reovim_driver_text_session::TextObjRange;
 
 // =============================================================================
 // Replace Mode Types (#666)

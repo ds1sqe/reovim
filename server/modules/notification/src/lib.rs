@@ -25,7 +25,7 @@ pub use {
 };
 
 use {
-    reovim_driver_session::{NotificationDrainRegistry, bridges::BridgeProvider},
+    reovim_driver_text_session::{NotificationDrainRegistry, bridges::BridgeProvider},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     std::sync::Arc,
 };

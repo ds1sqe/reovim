@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_input::{ModeInfoStore, ResolverRegistry},
+    reovim_driver_text_input::{ModeInfoStore, ResolverRegistry},
     reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
     std::{path::PathBuf, sync::Arc},
 };

@@ -1,4 +1,4 @@
-use {super::*, reovim_driver_syntax::FoldKind};
+use {super::*, reovim_driver_text_syntax::FoldKind};
 
 fn make_ranges() -> Vec<FoldRange> {
     vec![

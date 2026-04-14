@@ -1,4 +1,4 @@
-use reovim_driver_lsp::{
+use reovim_driver_text_lsp::{
     BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
 };
 

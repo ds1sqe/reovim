@@ -56,7 +56,7 @@ fn test_quit_command_is_send_sync() {
 
 #[test]
 fn test_quit_unmodified_buffer_signals_quit() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -72,7 +72,7 @@ fn test_quit_unmodified_buffer_signals_quit() {
 
 #[test]
 fn test_quit_modified_buffer_returns_error() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     // Mark the buffer as modified
@@ -101,7 +101,8 @@ fn test_quit_modified_buffer_returns_error() {
 #[test]
 fn test_quit_bang_ignores_modified_buffer() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_command_types::ArgValue,
+        reovim_driver_text_session::testing::TestSessionRuntime,
+        reovim_subsys_command_types::ArgValue,
     };
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
@@ -128,7 +129,7 @@ fn test_quit_bang_ignores_modified_buffer() {
 
 #[test]
 fn test_quit_no_active_buffer_signals_quit() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {

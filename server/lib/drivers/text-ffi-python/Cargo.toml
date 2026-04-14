@@ -1,0 +1,27 @@
+[package]
+name = "reovim-driver-text-ffi-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Python FFI bindings for reovim modules via PyO3"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[lib]
+name = "reovim_driver_ffi_python"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-domain-text = { workspace = true }
+reovim-driver-text-ffi = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+reovim-subsys-command-types = { workspace = true }
+# Note: extension-module is NOT used because we embed Python in the runner.
+# If building a standalone Python extension, add extension-module feature.
+pyo3 = { version = "0.27", features = ["auto-initialize"] }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

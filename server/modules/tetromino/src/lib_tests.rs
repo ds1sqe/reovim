@@ -77,7 +77,7 @@ fn module_init_registers_all() {
     assert!(keybinding_store.is_some());
 
     // Verify TickSchedulerHandle was registered (#546).
-    let tick_handle = services.get::<reovim_driver_session::TickSchedulerHandle>();
+    let tick_handle = services.get::<reovim_driver_text_session::TickSchedulerHandle>();
     assert!(tick_handle.is_some());
 }
 

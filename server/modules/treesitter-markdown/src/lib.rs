@@ -28,7 +28,7 @@
 //!
 //! ```
 //! use reovim_module_treesitter_markdown::MarkdownSyntaxFactory;
-//! use reovim_driver_syntax::SyntaxDriverFactory;
+//! use reovim_driver_text_syntax::SyntaxDriverFactory;
 //!
 //! let factory = MarkdownSyntaxFactory::new();
 //! let mut driver = factory.create("markdown").expect("Markdown is supported");
@@ -45,11 +45,11 @@ mod table;
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
+    reovim_driver_text_syntax::{
         BracketConfig, BracketConfigStore, DecorationRule, HighlightCategory, LanguageInfo,
         LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 

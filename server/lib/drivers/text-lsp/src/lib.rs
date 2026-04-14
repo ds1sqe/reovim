@@ -1,0 +1,97 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+//! LSP driver for reovim.
+//!
+//! Provides Language Server Protocol client infrastructure following the
+//! kernel driver pattern.
+//!
+//! # Architecture
+//!
+//! Following Linux kernel principles of mechanism vs policy:
+//! - **Mechanism**: JSON-RPC transport, client lifecycle, provider trait
+//! - **Policy**: Concrete LSP module implementations (in `reovim-module-lsp`)
+//!
+//! # Components
+//!
+//! - [`LspRequest`] - LSP request variants with oneshot response channels
+//! - [`LspResponse`] - Unified response type for generic handling
+//! - [`DiagnosticCache`] - Lock-free diagnostic storage using `ArcSwap`
+//! - [`LspServerConfig`] - Server spawn configuration
+//! - [`LspError`] - Comprehensive error types
+//! - [`client::Client`] - LSP client with JSON-RPC communication
+//! - [`LspProvider`] - Service trait for language server access
+//! - [`LspProviderRegistry`] - Keyed registry for LSP providers
+//!
+//! # Example
+//!
+//! ```ignore
+//! use reovim_driver_text_lsp::{LspServerConfig, LspRequest, DiagnosticCache};
+//! use std::path::Path;
+//!
+//! // Create server configuration
+//! let config = LspServerConfig::rust_analyzer(Path::new("/my/project"));
+//!
+//! // Diagnostic cache for lock-free reads
+//! let cache = DiagnosticCache::new();
+//! ```
+
+mod cache;
+mod capability_store;
+pub mod client;
+mod config;
+pub mod diagnostic_snapshot;
+mod error;
+pub mod jsonrpc;
+mod key;
+mod lifecycle;
+mod logger;
+mod provider;
+mod registry;
+mod request;
+mod response;
+mod sync;
+pub mod transport;
+mod types;
+
+// Error types
+pub use error::{LspError, ModuleError};
+
+// Configuration
+pub use config::{
+    LspServerConfig, config_for_language, find_project_root, language_id_from_path, uri_from_path,
+};
+
+// Request/Response types
+pub use {
+    request::{LspRequest, NavigationResult},
+    response::LspResponse,
+};
+
+// Diagnostic cache
+pub use cache::{BufferDiagnostics, DiagnosticCache};
+
+// Capability store (#533 - dynamic registration)
+pub use capability_store::CapabilityStore;
+
+// Provider trait and registry (Epic #520)
+pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
+
+// Lifecycle traits (#542 - cross-module decoupling)
+pub use lifecycle::{LspLifecycle, LspLifecycleRegistry};
+
+// Sync helpers (blocking recv for command handlers)
+pub use sync::recv_response;
+
+// LSP traffic logger
+pub use logger::LspLogger;
+
+// Diagnostic snapshot types (shared data contracts for cross-module use)
+pub use diagnostic_snapshot::{
+    BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
+};
+
+// Re-export essential LSP types
+pub mod lsp_types {
+    //! Re-exports from `lsp-types` crate.
+    pub use super::types::*;
+}

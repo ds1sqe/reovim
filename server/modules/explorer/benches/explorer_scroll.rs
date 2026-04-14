@@ -11,7 +11,7 @@ use {
         criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
         scaling::SIZES_MEDIUM,
     },
-    reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge},
+    reovim_driver_text_session::{ExtensionMap, bridges::ExtensionStateBridge},
     reovim_module_explorer::{ExplorerBridge, ExplorerState, tree::FileTree},
     reovim_subsys_vfs::fixtures::TreeFixture,
 };

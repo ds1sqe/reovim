@@ -1,7 +1,7 @@
 #![allow(clippy::doc_markdown)]
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver, ModeState,
         ModeTransition, PopResult, ResolveInput, ResolveResult,
     },

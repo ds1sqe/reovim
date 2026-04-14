@@ -8,8 +8,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{ExtensionApi, SessionRuntime},
-    reovim_driver_syntax::SyntaxSessionState,
+    reovim_driver_text_session::{ExtensionApi, SessionRuntime},
+    reovim_driver_text_syntax::SyntaxSessionState,
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -46,7 +46,7 @@ impl CommandHandler for FoldToggleCommand {
         let folds = runtime
             .ext::<SyntaxSessionState>()
             .and_then(|s| s.get(buffer_id))
-            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .map(reovim_driver_text_syntax::SyntaxDriver::folds)
             .unwrap_or_default();
 
         // Mutate fold state.
@@ -89,7 +89,7 @@ impl CommandHandler for FoldOpenCommand {
         let folds = runtime
             .ext::<SyntaxSessionState>()
             .and_then(|s| s.get(buffer_id))
-            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .map(reovim_driver_text_syntax::SyntaxDriver::folds)
             .unwrap_or_default();
 
         let fold = runtime
@@ -131,7 +131,7 @@ impl CommandHandler for FoldCloseCommand {
         let folds = runtime
             .ext::<SyntaxSessionState>()
             .and_then(|s| s.get(buffer_id))
-            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .map(reovim_driver_text_syntax::SyntaxDriver::folds)
             .unwrap_or_default();
 
         let fold = runtime
@@ -168,7 +168,7 @@ impl CommandHandler for FoldOpenAllCommand {
         let folds = runtime
             .ext::<SyntaxSessionState>()
             .and_then(|s| s.get(buffer_id))
-            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .map(reovim_driver_text_syntax::SyntaxDriver::folds)
             .unwrap_or_default();
 
         let fold = runtime
@@ -203,7 +203,7 @@ impl CommandHandler for FoldCloseAllCommand {
         let folds = runtime
             .ext::<SyntaxSessionState>()
             .and_then(|s| s.get(buffer_id))
-            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .map(reovim_driver_text_syntax::SyntaxDriver::folds)
             .unwrap_or_default();
 
         let fold = runtime

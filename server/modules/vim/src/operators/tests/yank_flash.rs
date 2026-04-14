@@ -1,5 +1,5 @@
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
@@ -109,7 +109,7 @@ fn test_is_active_true_when_state_present() {
 
 #[test]
 fn test_state_create_defaults() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
     let state = YankFlashState::create();
     assert_eq!(state.buffer_id, BufferId::from_raw(0));
     assert_eq!(state.start_line, 0);
@@ -122,7 +122,7 @@ fn test_state_create_defaults() {
 
 #[test]
 fn test_state_record_updates_fields() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
     let mut state = YankFlashState::create();
 
     state.record(BufferId::from_raw(3), 5, 2, 10, 7, true);
@@ -138,7 +138,7 @@ fn test_state_record_updates_fields() {
 
 #[test]
 fn test_sequence_increments() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
     let mut state = YankFlashState::create();
     assert_eq!(state.sequence, 0);
 
@@ -175,7 +175,7 @@ fn test_sequence_increments_on_successive_insertions() {
 
 #[test]
 fn test_state_debug() {
-    use reovim_driver_session::SessionExtension;
+    use reovim_driver_text_session::SessionExtension;
     let state = YankFlashState::create();
     let debug = format!("{state:?}");
     assert!(debug.contains("YankFlashState"));

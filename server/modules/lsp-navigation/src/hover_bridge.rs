@@ -4,7 +4,7 @@
 //! Both TUI (Rust) and Web (TypeScript) extensions consume the same JSON.
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

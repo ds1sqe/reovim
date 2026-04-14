@@ -8,11 +8,11 @@ use std::{path::Path, sync::Arc, time::Duration};
 use {
     lsp_types::{GotoDefinitionResponse, HoverContents, MarkedString},
     reovim_driver_command::CommandHandler,
-    reovim_driver_lsp::{
+    reovim_driver_picker::{PickerData, PickerItem, push_items},
+    reovim_driver_text_lsp::{
         LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response, uri_from_path,
     },
-    reovim_driver_picker::{PickerData, PickerItem, push_items},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferApi, ChangeTracker, ExtensionApi, JumpEntry, ModeApi, SessionRuntime,
         TickSchedulerHandle, TransitionContext, WindowApi,
     },

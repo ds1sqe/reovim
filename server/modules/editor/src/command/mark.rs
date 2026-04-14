@@ -10,7 +10,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{JumpEntry, Mark, SessionRuntime, api::BufferApi},
+    reovim_driver_text_session::{JumpEntry, Mark, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{BufferId, CommandId},
 };
 

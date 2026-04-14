@@ -2,7 +2,7 @@
 //!
 //! Serializes [`ModuleManagerState`] to JSON for gRPC transmission to clients.
 
-use reovim_driver_session::{
+use reovim_driver_text_session::{
     ExtensionMap,
     bridges::{ExtensionScope, ExtensionStateBridge},
 };

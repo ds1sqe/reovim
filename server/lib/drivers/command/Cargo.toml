@@ -17,7 +17,7 @@ workspace = true
 reovim-subsys-command = { workspace = true }
 
 # Driver layer (for SessionRuntime in CommandHandler)
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 
 # Kernel layer (for Service in registry)
 reovim-kernel = { workspace = true }

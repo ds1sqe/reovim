@@ -4,6 +4,6 @@
 //! so that multiple modules can push notifications without depending on each other.
 //! This re-export preserves backward compatibility.
 
-pub use reovim_driver_session::{
+pub use reovim_driver_text_session::{
     PendingEntry, PendingLevel, PendingNotification, PendingNotificationQueue, PendingOp,
 };

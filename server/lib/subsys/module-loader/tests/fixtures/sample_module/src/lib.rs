@@ -7,7 +7,7 @@ use std::sync::{
 
 use {
     reovim_driver_command::{Command, CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_session::{BufferApi, SessionRuntime, WindowApi},
+    reovim_driver_text_session::{BufferApi, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::{
         CommandId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },

@@ -23,12 +23,12 @@ mod registry;
 pub use registry::{UndoRegistry, decode_path_component, encode_path_component};
 
 // Re-export error type from driver for backwards compat
-pub use reovim_driver_undo::UndoPersistError;
+pub use reovim_driver_text_undo::UndoPersistError;
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_driver_text_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
     },

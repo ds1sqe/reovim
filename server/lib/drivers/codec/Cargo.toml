@@ -36,7 +36,7 @@ reovim-domain-text = { workspace = true }
 reovim-domain-text-events = { workspace = true }
 
 # Session extension trait (for CodecSessionState as SessionExtension)
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 
 # Annotation types (for DecodeResult annotations)
 reovim-subsys-annotation = { workspace = true }

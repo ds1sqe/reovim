@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_syntax::{FoldKind, FoldRange},
+    reovim_driver_text_syntax::{FoldKind, FoldRange},
     reovim_kernel::api::v1::BufferId,
 };
 

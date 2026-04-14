@@ -6,7 +6,7 @@
 use std::any::TypeId;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
         Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },

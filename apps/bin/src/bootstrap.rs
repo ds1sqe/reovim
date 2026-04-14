@@ -30,12 +30,12 @@ use std::{
 use {
     reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         BindingLayer, EagerLookupPolicy, KeySequence, KeybindingStore, LookupPolicyStore,
         ModeInfoStore, ResolverRegistry,
     },
-    reovim_driver_session::LeaderKeyProvider,
-    reovim_driver_syntax::{
+    reovim_driver_text_session::LeaderKeyProvider,
+    reovim_driver_text_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
@@ -97,7 +97,7 @@ pub struct BootstrapResult {
     /// Shared module context paired with the live registry.
     pub module_ctx: Arc<ModuleContext>,
     /// Extension bridges collected during the same bootstrap pass.
-    pub bridges: reovim_driver_session::bridges::BridgeRegistry,
+    pub bridges: reovim_driver_text_session::bridges::BridgeRegistry,
 }
 
 /// Load user module configuration from `~/.config/reovim/modules.toml`.
@@ -222,7 +222,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     services.register(Arc::clone(&text_registry));
 
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
-    services.register(Arc::new(reovim_driver_session::BufferReadAccess::new(text_registry)));
+    services.register(Arc::new(reovim_driver_text_session::BufferReadAccess::new(text_registry)));
 
     // Create module context for initialization
     let module_ctx = Arc::new(create_module_context(kernel.clone(), Arc::clone(&services)));
@@ -263,7 +263,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
 
     // #623: Read initial mode from personality module, fallback to vim:normal
     let initial_mode = services
-        .get::<reovim_driver_session::InitialModeProvider>()
+        .get::<reovim_driver_text_session::InitialModeProvider>()
         .and_then(|p| p.get())
         .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
     tracing::info!(mode = %initial_mode, "Selected initial mode from personality module");
@@ -491,7 +491,7 @@ fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Opti
 /// `EmptySessionHandler`s to create a scratch buffer.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
-    use reovim_driver_session::{
+    use reovim_driver_text_session::{
         EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
     };
 
@@ -537,7 +537,7 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
 fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+        Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
         services,
     )
@@ -737,12 +737,12 @@ fn initialize_modules_with_dependents(
 fn collect_bridges_from_services(
     services: &Arc<ServiceRegistry>,
     tracked: &[TrackedModule],
-) -> reovim_driver_session::bridges::BridgeRegistry {
-    use reovim_driver_session::bridges::BridgeRegistry;
+) -> reovim_driver_text_session::bridges::BridgeRegistry {
+    use reovim_driver_text_session::bridges::BridgeRegistry;
 
     #[cfg(feature = "static-modules")]
     {
-        use reovim_driver_session::bridges::BridgeProvider;
+        use reovim_driver_text_session::bridges::BridgeProvider;
 
         let mut registry = BridgeRegistry::new();
         if let Some(provider) = services.get::<BridgeProvider>() {
@@ -1122,7 +1122,7 @@ fn collect_available_kinds(modules: &[TrackedModule]) -> Vec<&'static str> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn validate_extension_contracts(
     modules: &[TrackedModule],
-    bridge_registry: &reovim_driver_session::bridges::BridgeRegistry,
+    bridge_registry: &reovim_driver_text_session::bridges::BridgeRegistry,
 ) {
     use std::collections::HashSet;
 

@@ -26,7 +26,7 @@ use std::{
 
 use {
     parking_lot::{Mutex, RwLock},
-    reovim_driver_syntax::{
+    reovim_driver_text_syntax::{
         Annotation, ContextHierarchy, DecorationCapture, DecorationRule, FoldKind, FoldRange,
         HighlightCategory, Injection, ScopeKind, ScopeRange, SyntaxContext, SyntaxDriver,
         SyntaxEdit, TextObjectKind, TextObjectRange, TextObjectScope, decoration::apply_rules,
@@ -947,7 +947,7 @@ impl SyntaxDriver for TreeSitterDriver {
 
     fn set_injection_factory(
         &mut self,
-        factory: Arc<dyn reovim_driver_syntax::SyntaxDriverFactory>,
+        factory: Arc<dyn reovim_driver_text_syntax::SyntaxDriverFactory>,
     ) {
         if let Some(ref manager_mutex) = self.injection_manager {
             let mut manager = manager_mutex.lock();

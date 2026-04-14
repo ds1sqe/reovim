@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::state::{HighlightRange, IlluminateState},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
     },
     reovim_kernel::api::v1::{BufferId, RwLock, ServiceRegistry},
@@ -285,7 +285,7 @@ fn test_from_lsp_kind_none() {
 #[test]
 fn test_from_lsp_kind_text() {
     assert_eq!(
-        from_lsp_kind(Some(reovim_driver_lsp::lsp_types::DocumentHighlightKind::TEXT)),
+        from_lsp_kind(Some(reovim_driver_text_lsp::lsp_types::DocumentHighlightKind::TEXT)),
         HighlightKind::Text
     );
 }
@@ -293,7 +293,7 @@ fn test_from_lsp_kind_text() {
 #[test]
 fn test_from_lsp_kind_read() {
     assert_eq!(
-        from_lsp_kind(Some(reovim_driver_lsp::lsp_types::DocumentHighlightKind::READ)),
+        from_lsp_kind(Some(reovim_driver_text_lsp::lsp_types::DocumentHighlightKind::READ)),
         HighlightKind::Read
     );
 }
@@ -301,7 +301,7 @@ fn test_from_lsp_kind_read() {
 #[test]
 fn test_from_lsp_kind_write() {
     assert_eq!(
-        from_lsp_kind(Some(reovim_driver_lsp::lsp_types::DocumentHighlightKind::WRITE)),
+        from_lsp_kind(Some(reovim_driver_text_lsp::lsp_types::DocumentHighlightKind::WRITE)),
         HighlightKind::Write
     );
 }

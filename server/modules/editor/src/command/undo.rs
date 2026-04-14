@@ -13,7 +13,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         SessionRuntime,
         api::{BufferApi, UndoApi},
     },

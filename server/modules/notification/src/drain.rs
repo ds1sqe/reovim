@@ -14,7 +14,7 @@
 
 use {
     parking_lot::Mutex,
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ChangeTracker, ExtensionApi, NotificationDrain, PendingEntry, PendingLevel,
         PendingNotificationQueue, PendingOp, SessionRuntime,
     },

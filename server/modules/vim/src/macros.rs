@@ -32,7 +32,7 @@
 //!
 //! ```ignore
 //! use reovim_module_vim::macros::{key_to_notation, notation_to_keys};
-//! use reovim_driver_input::{KeyEvent, KeyCode};
+//! use reovim_driver_text_input::{KeyEvent, KeyCode};
 //!
 //! // Serialize
 //! let key = KeyEvent::new(KeyCode::Escape);
@@ -43,7 +43,7 @@
 //! assert_eq!(keys.len(), 2);
 //! ```
 
-use reovim_driver_input::{KeyCode, KeyEvent, KeySequence, Modifiers};
+use reovim_driver_text_input::{KeyCode, KeyEvent, KeySequence, Modifiers};
 
 /// Convert a single `KeyEvent` to vim notation string.
 ///

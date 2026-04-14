@@ -2,7 +2,7 @@
 //!
 //! `BufferlineState` holds the pin list (session-wide shared extension).
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// Session-wide bufferline state (pin list).
 ///

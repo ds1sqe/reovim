@@ -51,7 +51,7 @@ fn command_handlers_count() {
 fn bdelete_clears_codec_session_state() {
     use {
         reovim_driver_codec::{CodecMetadata, CodecSessionState, ContentType},
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
     };
 
     // Two buffers so the delete passes last-buffer protection.
@@ -97,7 +97,7 @@ fn bdelete_clears_codec_session_state() {
 /// and returns `Success`.
 #[test]
 fn bdelete_without_codec_state_succeeds() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("first");
     let buf_a = harness.active_buffer().unwrap();
@@ -114,7 +114,7 @@ fn bdelete_without_codec_state_succeeds() {
 /// `BufferApi::delete_buffer` instead of `kernel.buffers.unregister`).
 #[test]
 fn bdelete_refuses_to_delete_last_buffer() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("only");
     harness.with_runtime(|runtime| {
@@ -128,7 +128,7 @@ fn bdelete_refuses_to_delete_last_buffer() {
 /// `:bd` is a no-op when there is no active buffer (matches vim behaviour).
 #[test]
 fn bdelete_no_active_buffer_is_noop() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {
@@ -151,7 +151,7 @@ fn bdelete_no_active_buffer_is_noop() {
 /// Branch 157:1 — no active buffer → `:bn` is a no-op.
 #[test]
 fn bnext_no_active_buffer_is_noop() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::new();
     harness.with_runtime(|runtime| {
@@ -164,7 +164,7 @@ fn bnext_no_active_buffer_is_noop() {
 /// Branch 162:0 — only one buffer → `:bn` is a no-op.
 #[test]
 fn bnext_single_buffer_is_noop() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("only");
     let buf = harness.active_buffer().unwrap();
@@ -179,7 +179,7 @@ fn bnext_single_buffer_is_noop() {
 /// Branches 157:0, 162:1 — active buffer, two buffers → `:bn` advances.
 #[test]
 fn bnext_cycles_to_next_buffer() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("first");
     let buf_a = harness.active_buffer().unwrap();
@@ -198,7 +198,7 @@ fn bnext_cycles_to_next_buffer() {
 /// Branch 172:0 — `current_idx` == 0 → `:bp` wraps to last buffer.
 #[test]
 fn bprevious_at_first_buffer_wraps_to_last() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("first");
     let buf_a = harness.active_buffer().unwrap();
@@ -222,7 +222,7 @@ fn bprevious_at_first_buffer_wraps_to_last() {
 /// Branch 172:1 — `current_idx` > 0 → `:bp` decrements.
 #[test]
 fn bprevious_not_at_first_decrements() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("first");
     let buf_a = harness.active_buffer().unwrap();
@@ -248,7 +248,7 @@ fn bprevious_not_at_first_decrements() {
 
 #[test]
 fn qall_sends_quit_signal() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("test");
     harness.with_runtime(|runtime| {

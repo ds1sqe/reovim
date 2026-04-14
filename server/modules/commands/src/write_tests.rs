@@ -118,7 +118,7 @@ fn test_write_quit_command_is_send_sync() {
 
 #[test]
 fn test_write_no_buffer_returns_error() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -136,7 +136,7 @@ fn test_write_no_buffer_returns_error() {
 #[test]
 fn test_write_no_filename_returns_error() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
+        reovim_driver_text_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -159,7 +159,7 @@ fn test_write_no_filename_returns_error() {
 
 #[test]
 fn test_write_vfs_not_available_returns_error() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     let buffer_id = harness.active_buffer().unwrap();
@@ -188,7 +188,7 @@ fn test_write_vfs_not_available_returns_error() {
 #[test]
 fn test_write_vfs_error_returns_error() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         reovim_subsys_vfs::{MockErrorKind, MockVfs},
         std::sync::Arc,
     };
@@ -222,7 +222,7 @@ fn test_write_vfs_error_returns_error() {
 #[test]
 fn test_write_success_with_existing_path() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
+        reovim_driver_text_session::testing::TestSessionRuntime, reovim_subsys_vfs::MockVfs,
         std::sync::Arc,
     };
 
@@ -275,8 +275,8 @@ fn test_write_success_with_existing_path() {
 #[test]
 fn test_write_with_explicit_file_renames_buffer() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime, reovim_subsys_command_types::ArgValue,
-        reovim_subsys_vfs::MockVfs, std::sync::Arc,
+        reovim_driver_text_session::testing::TestSessionRuntime,
+        reovim_subsys_command_types::ArgValue, reovim_subsys_vfs::MockVfs, std::sync::Arc,
     };
 
     let mut harness = TestSessionRuntime::with_buffer("save as content");
@@ -314,7 +314,7 @@ fn test_write_with_explicit_file_renames_buffer() {
 #[test]
 fn test_write_emits_buffer_saved_event() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         reovim_kernel::api::v1::events::kernel::BufferSaved,
         reovim_subsys_vfs::MockVfs,
         std::sync::{
@@ -361,7 +361,7 @@ fn test_write_emits_buffer_saved_event() {
 #[test]
 fn test_write_emits_buffer_will_save_event() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         reovim_kernel::api::v1::events::kernel::BufferWillSave,
         reovim_subsys_vfs::MockVfs,
         std::sync::{
@@ -410,7 +410,7 @@ fn test_write_emits_buffer_will_save_event() {
 #[test]
 fn test_write_will_save_fires_before_saved() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         reovim_kernel::api::v1::events::kernel::{BufferSaved, BufferWillSave},
         reovim_subsys_vfs::MockVfs,
         std::sync::{Arc, Mutex},
@@ -469,7 +469,7 @@ fn test_write_will_save_fires_before_saved() {
 
 #[test]
 fn test_write_quit_propagates_write_error() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {

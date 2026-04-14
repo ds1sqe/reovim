@@ -9,7 +9,7 @@
 //!
 //! ```
 //! use reovim_module_treesitter_toml::TomlSyntaxFactory;
-//! use reovim_driver_syntax::SyntaxDriverFactory;
+//! use reovim_driver_text_syntax::SyntaxDriverFactory;
 //!
 //! let factory = TomlSyntaxFactory::new();
 //! let mut driver = factory.create("toml").expect("TOML is supported");
@@ -23,11 +23,11 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
+    reovim_driver_text_syntax::{
         CommentTokens, LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 

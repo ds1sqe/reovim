@@ -3,8 +3,8 @@
 //! Serializes [`DiagnosticsState`] to JSON for gRPC transmission to clients.
 
 use {
-    reovim_driver_lsp::DiagnosticSeverity,
-    reovim_driver_session::{
+    reovim_driver_text_lsp::DiagnosticSeverity,
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

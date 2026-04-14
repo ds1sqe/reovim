@@ -9,7 +9,7 @@ use {
         KIND, NotificationLevel, NotificationState,
         drain::{NotificationTokenMap, drain_entries},
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap, PendingNotificationQueue,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

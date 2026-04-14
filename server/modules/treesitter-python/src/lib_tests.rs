@@ -1,4 +1,4 @@
-use reovim_driver_syntax::SyntaxDriverFactory;
+use reovim_driver_text_syntax::SyntaxDriverFactory;
 
 use super::*;
 

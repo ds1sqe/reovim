@@ -2,7 +2,7 @@
 //!
 //! Stored in the session's `ExtensionMap` as a `SessionExtension`.
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// Module status indicator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

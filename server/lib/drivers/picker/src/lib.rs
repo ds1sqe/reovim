@@ -29,5 +29,5 @@ pub use {
     picker::Picker,
     preview::{PreviewContent, PreviewHighlight},
     registry::PickerRegistry,
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_text_session::SessionRuntime,
 };

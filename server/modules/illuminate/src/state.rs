@@ -2,7 +2,7 @@
 //!
 //! Stores highlighted ranges and cursor-hold tracking for each client.
 
-use {reovim_driver_session::SessionExtension, reovim_kernel::api::v1::BufferId};
+use {reovim_driver_text_session::SessionExtension, reovim_kernel::api::v1::BufferId};
 
 /// Kind of document highlight (from LSP `DocumentHighlightKind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

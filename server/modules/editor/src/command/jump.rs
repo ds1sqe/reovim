@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, api::BufferApi},
+    reovim_driver_text_session::{SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::CommandId,
 };
 

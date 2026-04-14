@@ -140,7 +140,7 @@ fn test_available_theme_names_with_loader() {
 
 #[test]
 fn test_colorscheme_execute_no_theme_manager() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -153,7 +153,7 @@ fn test_colorscheme_execute_no_theme_manager() {
 
 #[test]
 fn test_colorscheme_execute_show_current() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     // Register SharedThemeManager
@@ -173,7 +173,7 @@ fn test_colorscheme_execute_show_current() {
 
 #[test]
 fn test_colorscheme_execute_switch_builtin_dark() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness
@@ -192,7 +192,7 @@ fn test_colorscheme_execute_switch_builtin_dark() {
 
 #[test]
 fn test_colorscheme_execute_unknown_theme() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness

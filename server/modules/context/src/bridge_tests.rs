@@ -1,9 +1,9 @@
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_driver_syntax::{ContextHierarchy, ScopeKind, ScopeRange},
+    reovim_driver_text_syntax::{ContextHierarchy, ScopeKind, ScopeRange},
 };
 
 use {super::*, crate::state::ContextSessionState};

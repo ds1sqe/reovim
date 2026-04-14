@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_lsp::{DiagnosticCache, LspProvider, LspRequest, lsp_types::ServerInfo},
+    reovim_driver_text_lsp::{DiagnosticCache, LspProvider, LspRequest, lsp_types::ServerInfo},
     reovim_kernel::api::v1::{ModuleId, OptionSpec, OptionValue},
     reovim_subsys_module_loader::report::ModuleLoadReport,
     std::{
@@ -139,7 +139,7 @@ impl LspProvider for MockLspProvider {
         self.active
     }
 
-    fn capabilities(&self) -> Option<Arc<reovim_driver_lsp::lsp_types::ServerCapabilities>> {
+    fn capabilities(&self) -> Option<Arc<reovim_driver_text_lsp::lsp_types::ServerCapabilities>> {
         None
     }
 
@@ -642,7 +642,7 @@ fn test_format_report_all_statuses() {
 
 #[test]
 fn test_collect_treesitter_with_factories() {
-    use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+    use reovim_driver_text_syntax::{SyntaxDriver, SyntaxDriverFactory};
 
     struct StubFactory;
     impl SyntaxDriverFactory for StubFactory {
@@ -670,11 +670,11 @@ fn test_collect_treesitter_with_factories() {
 
 #[test]
 fn test_collect_treesitter_with_language_defs() {
-    use reovim_driver_syntax::CommentTokens;
+    use reovim_driver_text_syntax::CommentTokens;
 
     let kernel = test_kernel();
     let store = LanguageInfoStore::new();
-    store.add(reovim_driver_syntax::LanguageInfo {
+    store.add(reovim_driver_text_syntax::LanguageInfo {
         id: "rust".to_string(),
         name: "Rust".to_string(),
         extensions: vec!["rs".to_string()],
@@ -694,7 +694,7 @@ fn test_collect_treesitter_with_language_defs() {
 
 #[test]
 fn test_collect_treesitter_both_factories_and_langs() {
-    use reovim_driver_syntax::{CommentTokens, SyntaxDriver, SyntaxDriverFactory};
+    use reovim_driver_text_syntax::{CommentTokens, SyntaxDriver, SyntaxDriverFactory};
 
     struct StubFactory;
     impl SyntaxDriverFactory for StubFactory {
@@ -712,7 +712,7 @@ fn test_collect_treesitter_both_factories_and_langs() {
     kernel.services.register(Arc::new(factory_store));
 
     let lang_store = LanguageInfoStore::new();
-    lang_store.add(reovim_driver_syntax::LanguageInfo {
+    lang_store.add(reovim_driver_text_syntax::LanguageInfo {
         id: "rust".to_string(),
         name: "Rust".to_string(),
         extensions: vec!["rs".to_string()],

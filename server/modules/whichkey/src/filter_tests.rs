@@ -10,8 +10,8 @@ fn make_info(name: &'static str, cat: Option<&'static str>, layer: BindingLayer)
 }
 
 fn key_g() -> KeySequence {
-    KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
-        reovim_driver_input::KeyCode::Char('g'),
+    KeySequence::from_keys(&[reovim_driver_text_input::KeyEvent::new(
+        reovim_driver_text_input::KeyCode::Char('g'),
     )])
 }
 

@@ -13,7 +13,7 @@
 //! - **No proto changes**: Reuses existing `extension_updated` notification type
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap, SessionExtension,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

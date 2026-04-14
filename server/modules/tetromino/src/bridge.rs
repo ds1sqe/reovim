@@ -3,7 +3,7 @@
 //! Serializes [`TetrominoState`] to JSON for gRPC transmission to clients.
 //! The TUI extension consumes this JSON to render the game board.
 
-use reovim_driver_session::{
+use reovim_driver_text_session::{
     ExtensionMap,
     bridges::{BridgeContext, ExtensionScope, ExtensionStateBridge},
 };

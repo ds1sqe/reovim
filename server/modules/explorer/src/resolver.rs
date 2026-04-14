@@ -7,7 +7,7 @@
 use std::sync::RwLock;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult,
     },

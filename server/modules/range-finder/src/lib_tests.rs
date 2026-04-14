@@ -77,7 +77,7 @@ fn test_module_init_with_bridge_store() {
 
     // Verify bridges were registered (jump + fold = 2)
     let provider = services
-        .get::<reovim_driver_session::bridges::BridgeProvider>()
+        .get::<reovim_driver_text_session::bridges::BridgeProvider>()
         .unwrap();
     let bridges = provider.take_bridges();
     assert_eq!(bridges.len(), 2);
@@ -154,7 +154,7 @@ fn test_module_context(
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+        Arc::new(reovim_driver_text_buffer::TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
         services.clone(),
     );

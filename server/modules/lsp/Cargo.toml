@@ -22,13 +22,13 @@ reovim-kernel = { workspace = true }
 reovim-capabilities = { workspace = true }
 
 # LSP driver (types, client, transport)
-reovim-driver-lsp = { workspace = true }
+reovim-driver-text-lsp = { workspace = true }
 
 # Module FFI macros
 reovim-module-macros = { workspace = true }
 
 # Session driver (PendingNotificationQueue, BridgeProvider, ExtensionMap)
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 reovim-provider-text = { workspace = true }
 
 # Async runtime

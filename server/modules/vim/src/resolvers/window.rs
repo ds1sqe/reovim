@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
         PopResult, ResolveInput, ResolveResult,
     },

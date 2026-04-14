@@ -11,9 +11,9 @@ use std::{
     time::Instant,
 };
 
-use {rand::Rng, reovim_driver_session::SessionExtension};
+use {rand::Rng, reovim_driver_text_session::SessionExtension};
 
-pub use reovim_driver_session::ClientId;
+pub use reovim_driver_text_session::ClientId;
 
 use crate::game::{self, GameState, PieceType};
 

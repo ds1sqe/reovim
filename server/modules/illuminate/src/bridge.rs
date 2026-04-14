@@ -5,7 +5,7 @@
 
 use {
     reovim_domain_text::{CharKind, TextGeometry, WordType, char_kind, word_bounds},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferReadAccess, CursorSnapshot, ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
@@ -222,9 +222,9 @@ fn find_word_occurrences(buffer: &dyn TextGeometry, word: &str) -> Vec<Highlight
 /// Convert LSP `DocumentHighlightKind` to our `HighlightKind`.
 #[must_use]
 pub fn from_lsp_kind(
-    kind: Option<reovim_driver_lsp::lsp_types::DocumentHighlightKind>,
+    kind: Option<reovim_driver_text_lsp::lsp_types::DocumentHighlightKind>,
 ) -> HighlightKind {
-    use reovim_driver_lsp::lsp_types::DocumentHighlightKind;
+    use reovim_driver_text_lsp::lsp_types::DocumentHighlightKind;
 
     match kind {
         Some(k) if k == DocumentHighlightKind::READ => HighlightKind::Read,

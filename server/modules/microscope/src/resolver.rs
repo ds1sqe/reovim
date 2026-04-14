@@ -6,7 +6,7 @@
 //! - Unbound special keys → `NotHandled`
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveInput, ResolveResult,
     },
@@ -71,7 +71,7 @@ impl ModeKeyResolver for MicroscopeResolver {
 
         match lookup_state {
             KeyLookupState::ExactWithLonger { exact, .. } | KeyLookupState::ExactOnly(exact) => {
-                ResolveResult::Execute(exact, reovim_driver_input::ResolveContext::default())
+                ResolveResult::Execute(exact, reovim_driver_text_input::ResolveContext::default())
             }
             KeyLookupState::PrefixOnly => ResolveResult::Pending,
             KeyLookupState::NotFound => ResolveResult::NotHandled,

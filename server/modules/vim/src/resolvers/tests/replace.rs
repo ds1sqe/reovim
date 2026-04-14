@@ -2,7 +2,7 @@
 
 use {
     reovim_domain_text::Position,
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
         ModeState, Modifiers, ResolveInput, ResolveResult,
     },
@@ -64,7 +64,7 @@ fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
 
 use {
     reovim_domain_text::{Edit, UndoResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         Selection, WindowError,
         api::{
             BufferApi, ChangeTracker, CommandApi, ModeApi, ModeError, StateChanges, UndoApi,
@@ -120,14 +120,14 @@ impl ModeApi for MockSession {
     fn mode_stack(&self) -> Vec<ModeId> {
         vec![self.mode.clone()]
     }
-    fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {}
+    fn push_mode(&mut self, _mode: ModeId, _ctx: reovim_driver_text_session::TransitionContext) {}
     fn pop_mode(
         &mut self,
-        _result: Option<reovim_driver_session::PopResult>,
+        _result: Option<reovim_driver_text_session::PopResult>,
     ) -> Result<(), ModeError> {
         Ok(())
     }
-    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_session::TransitionContext) {
+    fn set_mode(&mut self, mode: ModeId, _ctx: reovim_driver_text_session::TransitionContext) {
         self.mode = mode;
     }
 }
@@ -168,7 +168,7 @@ impl BufferApi for MockSession {
     fn delete_buffer(
         &mut self,
         _b: BufferId,
-    ) -> Result<(), reovim_driver_session::api::BufferError> {
+    ) -> Result<(), reovim_driver_text_session::api::BufferError> {
         Ok(())
     }
     fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}

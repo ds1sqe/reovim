@@ -134,7 +134,7 @@ fn test_build_buffer_list_notification_removed() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_bool() {
-    let opt_change = reovim_driver_session::api::OptionChange {
+    let opt_change = reovim_driver_text_session::api::OptionChange {
         name: "number".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Bool(true),
         window_id: None,
@@ -158,7 +158,7 @@ fn test_build_option_notification_bool() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_integer() {
-    let opt_change = reovim_driver_session::api::OptionChange {
+    let opt_change = reovim_driver_text_session::api::OptionChange {
         name: "tabstop".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Integer(4),
         window_id: None,
@@ -179,7 +179,7 @@ fn test_build_option_notification_integer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_string() {
-    let opt_change = reovim_driver_session::api::OptionChange {
+    let opt_change = reovim_driver_text_session::api::OptionChange {
         name: "theme".to_string(),
         value: reovim_kernel::api::v1::OptionValue::String("monokai".to_string()),
         window_id: None,
@@ -202,7 +202,7 @@ fn test_build_option_notification_string() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_choice() {
-    let opt_change = reovim_driver_session::api::OptionChange {
+    let opt_change = reovim_driver_text_session::api::OptionChange {
         name: "virtualedit".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Choice {
             value: "block".to_string(),
@@ -286,7 +286,7 @@ fn test_build_notifications_option_changed() {
     let mut changes = StateChanges::new();
     changes
         .options_changed
-        .push(reovim_driver_session::api::OptionChange {
+        .push(reovim_driver_text_session::api::OptionChange {
             name: "number".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(true),
             window_id: None,
@@ -332,7 +332,7 @@ fn test_build_notifications_multiple_changes() {
     changes.buffers_created.push(buffer_id);
     changes
         .options_changed
-        .push(reovim_driver_session::api::OptionChange {
+        .push(reovim_driver_text_session::api::OptionChange {
             name: "wrap".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(false),
             window_id: None,
@@ -465,7 +465,7 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
 #[test]
 fn test_build_cursor_notification_with_client_and_window() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -503,7 +503,7 @@ fn test_build_cursor_notification_with_client_and_window() {
 #[test]
 fn test_build_cursor_notification_wrong_buffer_returns_none() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -529,8 +529,8 @@ fn test_build_cursor_notification_wrong_buffer_returns_none() {
 #[test]
 fn test_build_selection_notification_with_character_selection() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{CursorPosition, Window, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{CursorPosition, Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -572,8 +572,8 @@ fn test_build_selection_notification_with_character_selection() {
 #[test]
 fn test_build_selection_notification_with_line_selection() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Window, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -606,8 +606,8 @@ fn test_build_selection_notification_with_line_selection() {
 #[test]
 fn test_build_selection_notification_with_block_selection() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Window, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -640,7 +640,7 @@ fn test_build_selection_notification_with_block_selection() {
 #[test]
 fn test_build_selection_notification_no_selection() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -674,7 +674,7 @@ fn test_build_selection_notification_no_selection() {
 #[test]
 fn test_build_viewport_notification_with_client_window() {
     use {
-        reovim_driver_session::{Viewport, Window},
+        reovim_driver_text_session::{Viewport, Window},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -715,7 +715,7 @@ fn test_build_viewport_notification_with_client_window() {
 #[test]
 fn test_build_viewport_notification_wrong_window_returns_none() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -768,7 +768,7 @@ fn test_build_mode_notification_with_registered_client() {
 #[test]
 fn test_build_layout_notification_with_client_windows() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -802,7 +802,7 @@ fn test_build_layout_notification_with_client_windows() {
 #[test]
 fn test_build_notifications_cursor_moved_with_client() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -831,8 +831,8 @@ fn test_build_notifications_cursor_moved_with_client() {
 #[test]
 fn test_build_notifications_selection_changed_with_client() {
     use {
-        reovim_driver_buffer::Position as KernelPosition,
-        reovim_driver_session::{Window, api::Selection},
+        reovim_driver_text_buffer::Position as KernelPosition,
+        reovim_driver_text_session::{Window, api::Selection},
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -862,7 +862,7 @@ fn test_build_notifications_selection_changed_with_client() {
 #[test]
 fn test_build_notifications_scroll_changed_with_client() {
     use {
-        reovim_driver_session::Window,
+        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
@@ -982,7 +982,7 @@ fn test_build_layout_notification_with_compositor() {
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
-    let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
     // Override the window id to match the compositor placement
     window.id = reovim_kernel::api::v1::WindowId::from_raw(1);
     let metadata = crate::session::ClientMetadata::default();
@@ -1047,7 +1047,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     // Test compositor branch where client_windows has no matching window
     // but active_buffer is set as fallback
     use {
-        reovim_driver_buffer::TestBufferManager,
+        reovim_driver_text_buffer::TestBufferManager,
         reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         reovim_subsys_layout::{
             CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
@@ -1150,7 +1150,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         "normal",
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
     window.id = reovim_kernel::api::v1::WindowId::from_raw(10);
     let metadata = crate::session::ClientMetadata::default();
     let mut client =
@@ -1185,14 +1185,14 @@ fn test_build_notifications_multiple_option_changes() {
     let mut changes = StateChanges::new();
     changes
         .options_changed
-        .push(reovim_driver_session::api::OptionChange {
+        .push(reovim_driver_text_session::api::OptionChange {
             name: "number".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(true),
             window_id: None,
         });
     changes
         .options_changed
-        .push(reovim_driver_session::api::OptionChange {
+        .push(reovim_driver_text_session::api::OptionChange {
             name: "tabstop".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Integer(8),
             window_id: None,
@@ -1227,7 +1227,7 @@ fn test_extension_changed_without_bridges_no_notification() {
 
 #[test]
 fn test_extension_changed_with_bridges_unknown_kind() {
-    use reovim_driver_session::bridges::BridgeRegistry;
+    use reovim_driver_text_session::bridges::BridgeRegistry;
 
     let mut changes = StateChanges::new();
     changes.record_extension_change("unknown".into());
@@ -1243,7 +1243,7 @@ struct TestBridgeExtension {
     active: bool,
 }
 
-impl reovim_driver_session::SessionExtension for TestBridgeExtension {
+impl reovim_driver_text_session::SessionExtension for TestBridgeExtension {
     fn create() -> Self {
         Self { active: false }
     }
@@ -1252,18 +1252,18 @@ impl reovim_driver_session::SessionExtension for TestBridgeExtension {
 /// Test bridge that serializes `TestBridgeExtension` to JSON.
 struct TestBridge;
 
-impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
     fn kind(&self) -> &'static str {
         "test-ext"
     }
 
-    fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
-        reovim_driver_session::bridges::ExtensionScope::Client
+    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
+        reovim_driver_text_session::bridges::ExtensionScope::Client
     }
 
     fn snapshot(
         &self,
-        extensions: &reovim_driver_session::ExtensionMap,
+        extensions: &reovim_driver_text_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         let ext = extensions.get::<TestBridgeExtension>()?;
         Some(serde_json::json!({
@@ -1271,7 +1271,7 @@ impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
         }))
     }
 
-    fn is_active(&self, extensions: &reovim_driver_session::ExtensionMap) -> bool {
+    fn is_active(&self, extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
         extensions
             .get::<TestBridgeExtension>()
             .is_some_and(|e| e.active)
@@ -1281,14 +1281,14 @@ impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
         &self,
         _from: &str,
         _to: &str,
-        _extensions: &mut reovim_driver_session::ExtensionMap,
+        _extensions: &mut reovim_driver_text_session::ExtensionMap,
     ) {
     }
 }
 
 #[test]
 fn test_extension_changed_with_bridge() {
-    use reovim_driver_session::bridges::BridgeRegistry;
+    use reovim_driver_text_session::bridges::BridgeRegistry;
 
     let mut changes = StateChanges::new();
     changes.record_extension_change("test-ext".into());
@@ -1319,7 +1319,7 @@ fn test_extension_changed_with_bridge() {
 
 #[test]
 fn test_extension_not_changed_no_notification() {
-    use reovim_driver_session::bridges::BridgeRegistry;
+    use reovim_driver_text_session::bridges::BridgeRegistry;
 
     let changes = StateChanges::new(); // No extension changes
 
@@ -1333,7 +1333,7 @@ fn test_extension_not_changed_no_notification() {
 
 #[test]
 fn test_build_extension_notification_shared_scope_returns_notification() {
-    use reovim_driver_session::{
+    use reovim_driver_text_session::{
         ExtensionMap,
         bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
     };
@@ -1376,7 +1376,7 @@ fn test_build_extension_notification_shared_scope_returns_notification() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_extension_notification_shared_scope_empty_returns_none() {
-    use reovim_driver_session::{
+    use reovim_driver_text_session::{
         ExtensionMap,
         bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
     };

@@ -2,13 +2,13 @@ use {
     crate::{TEXTOBJECTS_MODULE, semantic::*},
     reovim_domain_text::{HistoryRing, RegisterBank},
     reovim_driver_command::{Command, CommandContext, CommandHandler},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
-    reovim_driver_syntax::{
+    reovim_driver_text_syntax::{
         Annotation, SyntaxEdit, SyntaxSessionState, TextObjectKind, TextObjectRange,
         TextObjectScope,
     },
@@ -31,7 +31,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -55,7 +55,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -79,7 +79,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -96,7 +96,7 @@ impl TestState {
     ) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -356,7 +356,7 @@ impl MockSyntaxDriver {
     }
 }
 
-impl reovim_driver_syntax::SyntaxDriver for MockSyntaxDriver {
+impl reovim_driver_text_syntax::SyntaxDriver for MockSyntaxDriver {
     fn language(&self) -> &'static str {
         "mock"
     }
@@ -524,7 +524,7 @@ fn test_visual_line_mode_sets_line_selection() {
     assert!(window.selection.is_some());
 
     let sel = window.selection.as_ref().unwrap();
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[test]
@@ -548,7 +548,7 @@ fn test_visual_block_mode_sets_block_selection() {
     assert!(window.selection.is_some());
 
     let sel = window.selection.as_ref().unwrap();
-    assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(sel.mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 // =========================================================================

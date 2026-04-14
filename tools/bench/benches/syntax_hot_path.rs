@@ -13,7 +13,7 @@ use std::sync::Arc;
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 
 use {
-    reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxEdit},
+    reovim_driver_text_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxEdit},
     reovim_module_treesitter_rust::RustSyntaxFactory,
 };
 

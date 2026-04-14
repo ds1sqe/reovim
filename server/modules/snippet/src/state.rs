@@ -3,7 +3,7 @@
 //! `SnippetSessionState` is a `SessionExtension` that tracks the active
 //! snippet for each client. Stored in `client_extensions` (per-client isolated).
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 use crate::engine::ActiveSnippet;
 

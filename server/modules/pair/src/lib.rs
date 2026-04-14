@@ -4,7 +4,7 @@
 //!
 //! Provides rainbow bracket coloring, matched-pair highlighting, and
 //! auto-pair insertion. Language-agnostic: reads per-language bracket
-//! configs from [`BracketConfigStore`](reovim_driver_syntax::BracketConfigStore).
+//! configs from [`BracketConfigStore`](reovim_driver_text_syntax::BracketConfigStore).
 //!
 //! # Architecture
 //!
@@ -31,7 +31,7 @@ pub mod rainbow;
 pub mod state;
 
 use {
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 

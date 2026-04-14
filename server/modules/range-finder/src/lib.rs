@@ -22,7 +22,7 @@ pub mod jump;
 mod keybinding;
 
 use {
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_text_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version,
@@ -79,7 +79,7 @@ impl Module for RangeFinderModule {
         // Register bridges (#524)
         let provider = ctx
             .services
-            .get_or_create::<reovim_driver_session::bridges::BridgeProvider>();
+            .get_or_create::<reovim_driver_text_session::bridges::BridgeProvider>();
         provider.register(jump::bridge::JumpBridge);
         provider.register(fold::bridge::FoldBridge);
 

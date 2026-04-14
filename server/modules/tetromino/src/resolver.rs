@@ -10,11 +10,11 @@
 use std::sync::RwLock;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, ResolveContext,
         ResolveInput, ResolveResult,
     },
-    reovim_driver_session::ExtensionMap,
+    reovim_driver_text_session::ExtensionMap,
     reovim_kernel::api::v1::ModeId,
 };
 

@@ -24,8 +24,8 @@ reovim-subsys-git = { workspace = true }
 reovim-subsys-annotation = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
-reovim-driver-session = { workspace = true }
-reovim-driver-input = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+reovim-driver-text-input = { workspace = true }
 reovim-module-macros = { workspace = true }
 tracing.workspace = true
 

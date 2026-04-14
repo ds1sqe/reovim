@@ -21,8 +21,8 @@ reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-capabilities = { workspace = true }
 reovim-driver-command = { workspace = true }
-reovim-driver-input = { workspace = true }
-reovim-driver-session = { workspace = true }
+reovim-driver-text-input = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-subsys-manifest = { workspace = true }
 reovim-module-macros = { workspace = true }

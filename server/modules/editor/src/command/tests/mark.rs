@@ -3,7 +3,7 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{api::BufferApi, testing::TestSessionRuntime},
+    reovim_driver_text_session::{api::BufferApi, testing::TestSessionRuntime},
 };
 
 use crate::command::{GotoMarkExact, GotoMarkLine, SetMark};
@@ -507,8 +507,8 @@ fn test_goto_special_mark_not_set() {
 #[test]
 fn test_goto_global_mark_cross_buffer() {
     use {
-        reovim_driver_session::Mark, reovim_kernel::api::v1::RwLock, reovim_provider_text::Buffer,
-        std::sync::Arc,
+        reovim_driver_text_session::Mark, reovim_kernel::api::v1::RwLock,
+        reovim_provider_text::Buffer, std::sync::Arc,
     };
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");
@@ -552,8 +552,8 @@ fn test_goto_global_mark_cross_buffer() {
 #[test]
 fn test_goto_global_mark_cross_buffer_line_mode() {
     use {
-        reovim_driver_session::Mark, reovim_kernel::api::v1::RwLock, reovim_provider_text::Buffer,
-        std::sync::Arc,
+        reovim_driver_text_session::Mark, reovim_kernel::api::v1::RwLock,
+        reovim_provider_text::Buffer, std::sync::Arc,
     };
 
     let mut test = TestSessionRuntime::with_buffer("buffer 1\n");

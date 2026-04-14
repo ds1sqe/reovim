@@ -2,7 +2,7 @@ use {
     crate::{TEXTOBJECTS_MODULE, word::*},
     reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, OperatorPendingState, Session, SessionRuntime,
         Window, WindowLayout,
         api::{CommandExecutor, ExtensionApi},
@@ -31,7 +31,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -56,7 +56,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -81,7 +81,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -106,7 +106,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -124,7 +124,7 @@ impl TestState {
     ) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -492,7 +492,7 @@ fn test_inner_word_visual_line_mode_sets_line_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[test]
@@ -513,7 +513,7 @@ fn test_inner_word_visual_block_mode_sets_block_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[test]
@@ -827,7 +827,7 @@ fn test_a_word_visual_line_mode() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[test]
@@ -848,7 +848,7 @@ fn test_a_word_visual_block_mode() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[test]
@@ -893,7 +893,7 @@ fn test_inner_word_no_active_window_returns_error() {
         windows,
         extensions,
         compositor: None,
-        tabs: reovim_driver_session::TabPageSet::new(),
+        tabs: reovim_driver_text_session::TabPageSet::new(),
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
@@ -925,7 +925,7 @@ fn test_a_word_no_active_window_returns_error() {
         windows,
         extensions,
         compositor: None,
-        tabs: reovim_driver_session::TabPageSet::new(),
+        tabs: reovim_driver_text_session::TabPageSet::new(),
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
@@ -957,7 +957,7 @@ fn test_inner_word_big_no_active_window_returns_error() {
         windows,
         extensions,
         compositor: None,
-        tabs: reovim_driver_session::TabPageSet::new(),
+        tabs: reovim_driver_text_session::TabPageSet::new(),
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
@@ -989,7 +989,7 @@ fn test_a_word_big_no_active_window_returns_error() {
         windows,
         extensions,
         compositor: None,
-        tabs: reovim_driver_session::TabPageSet::new(),
+        tabs: reovim_driver_text_session::TabPageSet::new(),
         registers: RegisterBank::new(),
         clipboard_history: HistoryRing::new(),
         local_marks: MarkBank::new(),
@@ -1031,7 +1031,7 @@ fn test_inner_word_big_visual_line_mode_sets_line_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[test]
@@ -1052,7 +1052,7 @@ fn test_inner_word_big_visual_block_mode_sets_block_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 #[test]
@@ -1073,7 +1073,7 @@ fn test_a_word_big_visual_line_mode_sets_line_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Line);
 }
 
 #[test]
@@ -1094,7 +1094,7 @@ fn test_a_word_big_visual_block_mode_sets_block_selection() {
 
     let selection = runtime.windows().active().and_then(|w| w.selection.clone());
     assert!(selection.is_some());
-    assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    assert_eq!(selection.unwrap().mode, reovim_driver_text_session::api::SelectionMode::Block);
 }
 
 // =========================================================================

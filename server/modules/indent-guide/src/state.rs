@@ -3,7 +3,7 @@
 //! `IndentGuideState` is a `SessionExtension` that stores computed indent
 //! guide data for the client's active buffer.
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// A single indent guide line at a specific column.
 #[derive(Debug, Clone, PartialEq, Eq)]

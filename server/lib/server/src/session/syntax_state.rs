@@ -16,10 +16,10 @@
 //! ```
 
 // Re-export core syntax state from driver crate for backward compatibility.
-pub use reovim_driver_syntax::SyntaxSessionState;
+pub use reovim_driver_text_syntax::SyntaxSessionState;
 
 use {
-    reovim_driver_syntax::SyntaxEdit,
+    reovim_driver_text_syntax::SyntaxEdit,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{TokenSpan, TokenUpdate},
     reovim_subsys_session::SessionExtension,

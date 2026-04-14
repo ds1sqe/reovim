@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use reovim_driver_syntax::BracketPair;
+use reovim_driver_text_syntax::BracketPair;
 
 /// Information about a single bracket at a position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -163,7 +163,7 @@ fn test_session_commands_as_trait_objects() {
 
 #[test]
 fn test_detach_execute_signals_quit() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -179,7 +179,7 @@ fn test_detach_execute_signals_quit() {
 
 #[test]
 fn test_servers_execute_returns_success() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {
@@ -192,7 +192,7 @@ fn test_servers_execute_returns_success() {
 
 #[test]
 fn test_kill_server_execute_signals_quit() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     harness.with_runtime(|runtime| {

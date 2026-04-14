@@ -3,14 +3,14 @@
 //! Indent guide rendering module for reovim.
 //!
 //! Provides vertical indent guide lines in leading whitespace. Uses
-//! per-language indent configuration from [`IndentConfigStore`](reovim_driver_syntax::IndentConfigStore)
+//! per-language indent configuration from [`IndentConfigStore`](reovim_driver_text_syntax::IndentConfigStore)
 //! when available, falling back to pure whitespace analysis.
 
 mod bridge;
 pub mod state;
 
 use {
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 

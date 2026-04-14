@@ -42,7 +42,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         CursorPosition, HistoryRing, Jumplist, MarkBank, RegisterBank, Selection, SelectionMode,
         TabPageSet, Window, WindowLayout,
     },
@@ -790,8 +790,8 @@ impl EditingState {
     ///
     /// This bundles the fields that `SessionRuntime` needs, avoiding
     /// 7-argument parameter lists throughout the session execution chain.
-    pub fn client_context(&mut self) -> reovim_driver_session::ClientContext<'_> {
-        reovim_driver_session::ClientContext {
+    pub fn client_context(&mut self) -> reovim_driver_text_session::ClientContext<'_> {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut self.mode_stack,
             windows: &mut self.windows,
             extensions: &mut self.extensions,

@@ -11,8 +11,8 @@
 //! - **Layer**: Show only user-defined or only default bindings
 
 use {
-    reovim_driver_input::{BindingInfo, BindingLayer, KeySequence},
-    reovim_driver_session::SessionExtension,
+    reovim_driver_text_input::{BindingInfo, BindingLayer, KeySequence},
+    reovim_driver_text_session::SessionExtension,
 };
 
 /// Filter configuration for which-key hints.

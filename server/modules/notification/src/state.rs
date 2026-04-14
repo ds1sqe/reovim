@@ -10,7 +10,7 @@
 //! The bridge reads it and serializes to JSON for gRPC transmission.
 //! The TUI client manages display lifecycle (timeouts, stacking, dismissal).
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 /// Notification severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

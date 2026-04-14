@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use {
-    reovim_driver_session::testing::TestSessionRuntime,
-    reovim_driver_syntax::{Annotation, FoldKind, FoldRange, SyntaxDriver, SyntaxEdit},
+    reovim_driver_text_session::testing::TestSessionRuntime,
+    reovim_driver_text_syntax::{Annotation, FoldKind, FoldRange, SyntaxDriver, SyntaxEdit},
     reovim_kernel::api::v1::BufferId,
 };
 

@@ -13,19 +13,19 @@ members = [
     "server/lib/subsys/command",
     "server/lib/drivers/command",
     "server/lib/subsys/input",
-    "server/lib/drivers/input",
-    "server/lib/drivers/syntax",
+    "server/lib/drivers/text-input",
+    "server/lib/drivers/text-syntax",
     "server/lib/drivers/syntax-treesitter",
-    "server/lib/drivers/lsp",
+    "server/lib/drivers/text-lsp",
     "server/lib/subsys/vfs",
-    "server/lib/drivers/session",
-    "server/lib/drivers/undo",
-    "server/lib/drivers/buffer",
-    "server/lib/drivers/search",
+    "server/lib/drivers/text-session",
+    "server/lib/drivers/text-undo",
+    "server/lib/drivers/text-buffer",
+    "server/lib/drivers/text-search",
     "server/lib/subsys/clipboard",
     "server/lib/subsys/formatter",
-    "server/lib/drivers/ffi",
-    "server/lib/drivers/ffi-python",
+    "server/lib/drivers/text-ffi",
+    "server/lib/drivers/text-ffi-python",
     "server/lib/drivers/picker",
     "server/lib/subsys/completion",
     "shared/depgraph",
@@ -264,19 +264,19 @@ reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", vers
 reovim-subsys-command = { path = "./server/lib/subsys/command", version = "0.15.0-dev" }
 reovim-driver-command = { path = "./server/lib/drivers/command", version = "0.15.0-dev" }
 reovim-subsys-input = { path = "./server/lib/subsys/input", version = "0.15.0-dev" }
-reovim-driver-input = { path = "./server/lib/drivers/input", version = "0.15.0-dev" }
-reovim-driver-syntax = { path = "./server/lib/drivers/syntax", version = "0.15.0-dev" }
+reovim-driver-text-input = { path = "./server/lib/drivers/text-input", version = "0.15.0-dev" }
+reovim-driver-text-syntax = { path = "./server/lib/drivers/text-syntax", version = "0.15.0-dev" }
 reovim-driver-syntax-treesitter = { path = "./server/lib/drivers/syntax-treesitter", version = "0.15.0-dev" }
-reovim-driver-lsp = { path = "./server/lib/drivers/lsp", version = "0.15.0-dev" }
+reovim-driver-text-lsp = { path = "./server/lib/drivers/text-lsp", version = "0.15.0-dev" }
 reovim-subsys-vfs = { path = "./server/lib/subsys/vfs", version = "0.15.0-dev" }
-reovim-driver-session = { path = "./server/lib/drivers/session", version = "0.15.0-dev" }
-reovim-driver-undo = { path = "./server/lib/drivers/undo", version = "0.15.0-dev" }
-reovim-driver-buffer = { path = "./server/lib/drivers/buffer", version = "0.15.0-dev" }
-reovim-driver-search = { path = "./server/lib/drivers/search", version = "0.15.0-dev" }
+reovim-driver-text-session = { path = "./server/lib/drivers/text-session", version = "0.15.0-dev" }
+reovim-driver-text-undo = { path = "./server/lib/drivers/text-undo", version = "0.15.0-dev" }
+reovim-driver-text-buffer = { path = "./server/lib/drivers/text-buffer", version = "0.15.0-dev" }
+reovim-driver-text-search = { path = "./server/lib/drivers/text-search", version = "0.15.0-dev" }
 reovim-subsys-clipboard = { path = "./server/lib/subsys/clipboard", version = "0.15.0-dev" }
 reovim-subsys-formatter = { path = "./server/lib/subsys/formatter", version = "0.15.0-dev" }
-reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.15.0-dev" }
-reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.15.0-dev" }
+reovim-driver-text-ffi = { path = "./server/lib/drivers/text-ffi", version = "0.15.0-dev" }
+reovim-driver-text-ffi-python = { path = "./server/lib/drivers/text-ffi-python", version = "0.15.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.15.0-dev" }
 reovim-subsys-completion = { path = "./server/lib/subsys/completion", version = "0.15.0-dev" }
 reovim-depgraph = { path = "./shared/depgraph", version = "0.15.0-dev" }

@@ -4,7 +4,7 @@
 //! No character input - all keys go through the keybinding system.
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, ResolveContext,
         ResolveInput, ResolveResult,
     },

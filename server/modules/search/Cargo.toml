@@ -22,7 +22,7 @@ reovim-domain-text = { workspace = true }
 reovim-capabilities = { workspace = true }
 
 # Driver for SearchProvider trait
-reovim-driver-search = { workspace = true }
+reovim-driver-text-search = { workspace = true }
 
 # Buffer moved to provider-text (#740)
 reovim-provider-text = { workspace = true }

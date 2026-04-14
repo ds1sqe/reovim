@@ -73,7 +73,7 @@ fn test_command_priority_is_override() {
 // Execute tests using TestSessionRuntime
 // ========================================================================
 
-use reovim_driver_session::{TextInputSink, testing::TestSessionRuntime};
+use reovim_driver_text_session::{TextInputSink, testing::TestSessionRuntime};
 
 #[test]
 fn test_execute_no_find_char_arg() {

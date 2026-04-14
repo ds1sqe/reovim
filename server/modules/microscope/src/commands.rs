@@ -5,7 +5,9 @@
 use {
     reovim_driver_command::{CommandHandler, CommandQueryProvider},
     reovim_driver_picker::{PickerAction, PickerContext, PickerRegistry, push_items},
-    reovim_driver_session::{BufferApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
+    reovim_driver_text_session::{
+        BufferApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
+    },
     reovim_kernel::api::v1::{CommandId, OptionScopeId},
     reovim_subsys_command_types::{CommandContext, CommandResult},
 };

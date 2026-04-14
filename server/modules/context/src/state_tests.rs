@@ -1,4 +1,4 @@
-use reovim_driver_syntax::{ContextHierarchy, ScopeKind, ScopeRange};
+use reovim_driver_text_syntax::{ContextHierarchy, ScopeKind, ScopeRange};
 
 use super::*;
 

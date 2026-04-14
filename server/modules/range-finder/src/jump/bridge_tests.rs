@@ -1,4 +1,4 @@
-use {super::*, crate::jump::search::Direction, reovim_driver_session::TextInputSink};
+use {super::*, crate::jump::search::Direction, reovim_driver_text_session::TextInputSink};
 
 #[test]
 fn test_jump_bridge_kind() {

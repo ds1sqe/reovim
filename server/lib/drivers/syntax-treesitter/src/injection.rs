@@ -34,7 +34,7 @@
 
 use std::{collections::HashMap, ops::Range, sync::Arc};
 
-use reovim_driver_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory};
+use reovim_driver_text_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory};
 
 /// Maximum injection nesting depth.
 ///

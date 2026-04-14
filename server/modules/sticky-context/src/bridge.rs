@@ -3,7 +3,7 @@
 //! Serializes header rows to JSON for TUI/web clients.
 
 use {
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },

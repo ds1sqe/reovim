@@ -23,7 +23,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 reovim-provider-text = { workspace = true }
 
 # Syntax hot path benchmarks
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
 serde_json = { workspace = true }

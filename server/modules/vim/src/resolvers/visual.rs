@@ -33,7 +33,7 @@
 use std::sync::RwLock;
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         ExtensionMap, KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
@@ -219,7 +219,7 @@ impl ModeKeyResolver for VimVisualResolver {
         // Look up in visual mode first, then fall back to normal mode for motions
         let lookup_state = {
             let visual_lookup = input.keymap.query(input.mode, &keys);
-            if matches!(visual_lookup, reovim_driver_input::KeyLookupState::NotFound) {
+            if matches!(visual_lookup, reovim_driver_text_input::KeyLookupState::NotFound) {
                 // Motion bindings are in normal mode
                 input.keymap.query(&self.parent_mode_id, &keys)
             } else {
@@ -307,7 +307,7 @@ impl ModeKeyResolver for VimVisualResolver {
         // Look up in visual mode first, then fall back to normal mode for motions
         let lookup_state = {
             let visual_lookup = input.keymap.query(input.mode, &keys);
-            if matches!(visual_lookup, reovim_driver_input::KeyLookupState::NotFound) {
+            if matches!(visual_lookup, reovim_driver_text_input::KeyLookupState::NotFound) {
                 // Motion bindings are in normal mode
                 input.keymap.query(&self.parent_mode_id, &keys)
             } else {

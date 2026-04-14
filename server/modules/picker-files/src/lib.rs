@@ -17,7 +17,7 @@ use {
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
         PreviewContent, SessionRuntime,
     },
-    reovim_driver_session::{BufferApi, WindowApi},
+    reovim_driver_text_session::{BufferApi, WindowApi},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     reovim_subsys_vfs::VfsInstance,
 };

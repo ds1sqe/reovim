@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_input::KeybindingStore,
     reovim_driver_picker::PickerRegistry,
-    reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
+    reovim_driver_text_input::KeybindingStore,
+    reovim_driver_text_session::{TickSchedulerHandle, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },

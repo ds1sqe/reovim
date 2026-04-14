@@ -20,12 +20,12 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_search::Direction,
-    reovim_driver_session::{
+    reovim_driver_text_search::Direction,
+    reovim_driver_text_session::{
         BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ExtensionApi, ModeApi, SearchState},
     },
-    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_driver_text_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::CommandId,
     reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
     std::sync::Arc,
@@ -504,7 +504,7 @@ fn strip_range_prefix<'a>(
 fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
     use {
         reovim_driver_command::{CommandNameIndex, bind_args, parse_cmdline},
-        reovim_driver_session::CommandApi,
+        reovim_driver_text_session::CommandApi,
     };
 
     // Strip range prefix (%, line numbers) from cmdline (#666)
@@ -580,7 +580,7 @@ fn execute_search(
     pattern: &str,
     direction: Direction,
 ) {
-    use reovim_driver_search::{SearchKey, SearchProviderRegistry, TextGeometryLineSource};
+    use reovim_driver_text_search::{SearchKey, SearchProviderRegistry, TextGeometryLineSource};
 
     let Some(buffer_id) = args.buffer_id() else {
         return;

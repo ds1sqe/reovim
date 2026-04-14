@@ -44,7 +44,7 @@ fn capture_error_to_status(e: CaptureError) -> Status {
 /// This conversion happens in the gRPC layer to keep the driver crate
 /// free of protocol dependencies.
 #[allow(clippy::cast_possible_truncation)]
-fn window_to_leaf(window: &reovim_driver_session::Window) -> WindowLeaf {
+fn window_to_leaf(window: &reovim_driver_text_session::Window) -> WindowLeaf {
     WindowLeaf {
         window_id: window.id.as_usize() as u64,
         // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer")
@@ -453,7 +453,7 @@ impl StateService for StateServiceImpl {
             .ok_or_else(|| Status::not_found("No active window"))?;
 
         if let Some(ref sel) = window.selection {
-            use reovim_driver_session::SelectionMode;
+            use reovim_driver_text_session::SelectionMode;
 
             let mode_str = match sel.mode {
                 SelectionMode::Character => "char",

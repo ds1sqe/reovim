@@ -10,7 +10,7 @@
 //! layer (POLICY) because it defines HOW command-line mode behaves.
 //! The driver layer only provides the `SessionExtension` trait (MECHANISM).
 
-use reovim_driver_session::{SessionExtension, TextInputSink};
+use reovim_driver_text_session::{SessionExtension, TextInputSink};
 
 /// Command-line prompt type for session extensions.
 ///

@@ -29,8 +29,8 @@ const KIND: &str = "microscope";
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_text_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
         OptionSpec, OptionValue, ProbeResult, Version,

@@ -14,11 +14,11 @@ pub use saturator::{LspSaturator, LspSaturatorHandle};
 use std::sync::Arc;
 
 use {
-    reovim_driver_lsp::{
+    reovim_driver_text_lsp::{
         LspLifecycleRegistry, LspProviderRegistry, LspRequest, config_for_language,
         find_project_root, language_id_from_path, uri_from_path,
     },
-    reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
+    reovim_driver_text_session::{TickSchedulerHandle, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         BufferId, EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Subscription, Version,
@@ -98,7 +98,7 @@ impl Module for LspModule {
         let _ = ctx.services.get_or_create::<TickSchedulerHandle>();
 
         // Register LspLifecycle implementation (#542: decouple completion from module-lsp).
-        let lifecycle: Arc<dyn reovim_driver_lsp::LspLifecycle> =
+        let lifecycle: Arc<dyn reovim_driver_text_lsp::LspLifecycle> =
             Arc::new(auto_starter::LspAutoStarter);
         let lifecycle_registry = ctx.services.get_or_create::<LspLifecycleRegistry>();
         lifecycle_registry.register(Arc::clone(&lifecycle));
@@ -123,7 +123,7 @@ impl Module for LspModule {
                         // Check if an LSP provider is already active for this language.
                         let registry = services.get_or_create::<LspProviderRegistry>();
                         if let Some(provider) =
-                            registry.get(&reovim_driver_lsp::LspKey::Language(lang.clone()))
+                            registry.get(&reovim_driver_text_lsp::LspKey::Language(lang.clone()))
                             && provider.is_active()
                         {
                             // Provider already running — send DidOpen for the new file.

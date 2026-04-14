@@ -86,10 +86,10 @@ fn test_pending_char_op_variants() {
 // Macro Recording Tests (Epic #465 Phase 8D)
 // ========================================================================
 
-use reovim_driver_input::KeyCode;
+use reovim_driver_text_input::KeyCode;
 
-fn key(c: char) -> reovim_driver_input::KeyEvent {
-    reovim_driver_input::KeyEvent::new(KeyCode::Char(c))
+fn key(c: char) -> reovim_driver_text_input::KeyEvent {
+    reovim_driver_text_input::KeyEvent::new(KeyCode::Char(c))
 }
 
 #[test]
@@ -515,7 +515,7 @@ fn test_vim_session_state_debug() {
 
 #[test]
 fn test_session_extension_create() {
-    let state = <VimSessionState as reovim_driver_session::SessionExtension>::create();
+    let state = <VimSessionState as reovim_driver_text_session::SessionExtension>::create();
     assert!(!state.is_pending());
     assert!(!state.is_recording());
     assert!(!state.is_macro_depth_exceeded());
@@ -885,7 +885,7 @@ fn test_repeat_recording_full_lifecycle() {
     state.record_repeat_key(key('r'));
 
     // Simulate Esc
-    let esc = reovim_driver_input::KeyEvent::new(KeyCode::Escape);
+    let esc = reovim_driver_text_input::KeyEvent::new(KeyCode::Escape);
     state.record_repeat_key(esc);
 
     // Set last_change before finishing

@@ -74,24 +74,27 @@ fn sessions_accessor() {
 #[test]
 fn server_with_bridges() {
     struct TestBridge;
-    impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+    impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
         fn kind(&self) -> &'static str {
             "test-bridge"
         }
-        fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
-            reovim_driver_session::bridges::ExtensionScope::Client
+        fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
+            reovim_driver_text_session::bridges::ExtensionScope::Client
         }
-        fn snapshot(&self, _: &reovim_driver_session::ExtensionMap) -> Option<serde_json::Value> {
+        fn snapshot(
+            &self,
+            _: &reovim_driver_text_session::ExtensionMap,
+        ) -> Option<serde_json::Value> {
             None
         }
-        fn is_active(&self, _: &reovim_driver_session::ExtensionMap) -> bool {
+        fn is_active(&self, _: &reovim_driver_text_session::ExtensionMap) -> bool {
             false
         }
         fn on_mode_changed(
             &self,
             _from: &str,
             _to: &str,
-            _: &mut reovim_driver_session::ExtensionMap,
+            _: &mut reovim_driver_text_session::ExtensionMap,
         ) {
         }
     }

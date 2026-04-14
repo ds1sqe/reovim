@@ -113,7 +113,7 @@ fn test_init_subscribes_to_buffer_saved() {
 #[test]
 fn test_buffer_saved_event_sends_did_save() {
     use {
-        reovim_driver_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
+        reovim_driver_text_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
         reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
         std::{
             path::{Path, PathBuf},
@@ -229,7 +229,7 @@ fn test_buffer_saved_no_providers_no_panic() {
 #[test]
 fn test_buffer_saved_inactive_provider_skipped() {
     use {
-        reovim_driver_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
+        reovim_driver_text_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
         reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
         std::{
             path::{Path, PathBuf},
@@ -322,13 +322,13 @@ struct FileOpenedMockProvider {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::unnecessary_literal_bound)]
-impl reovim_driver_lsp::LspProvider for FileOpenedMockProvider {
+impl reovim_driver_text_lsp::LspProvider for FileOpenedMockProvider {
     fn is_active(&self) -> bool {
         self.active
     }
 
-    fn send_request(&self, request: reovim_driver_lsp::LspRequest) -> bool {
-        if matches!(request, reovim_driver_lsp::LspRequest::DidOpen { .. }) {
+    fn send_request(&self, request: reovim_driver_text_lsp::LspRequest) -> bool {
+        if matches!(request, reovim_driver_text_lsp::LspRequest::DidOpen { .. }) {
             self.did_open_flag
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -339,10 +339,10 @@ impl reovim_driver_lsp::LspProvider for FileOpenedMockProvider {
         None
     }
 
-    fn diagnostics(&self) -> &reovim_driver_lsp::DiagnosticCache {
-        static CACHE: std::sync::OnceLock<reovim_driver_lsp::DiagnosticCache> =
+    fn diagnostics(&self) -> &reovim_driver_text_lsp::DiagnosticCache {
+        static CACHE: std::sync::OnceLock<reovim_driver_text_lsp::DiagnosticCache> =
             std::sync::OnceLock::new();
-        CACHE.get_or_init(reovim_driver_lsp::DiagnosticCache::new)
+        CACHE.get_or_init(reovim_driver_text_lsp::DiagnosticCache::new)
     }
 
     fn root_path(&self) -> &std::path::Path {
@@ -387,7 +387,7 @@ fn test_file_opened_unknown_extension_not_handled() {
 #[test]
 fn test_file_opened_active_provider_sends_did_open() {
     use {
-        reovim_driver_lsp::LspKey,
+        reovim_driver_text_lsp::LspKey,
         reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
         std::{
             path::PathBuf,
@@ -435,7 +435,7 @@ fn test_file_opened_active_provider_sends_did_open() {
 #[test]
 fn test_file_opened_inactive_provider_tries_auto_start() {
     use {
-        reovim_driver_lsp::LspKey,
+        reovim_driver_text_lsp::LspKey,
         reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
         std::{
             path::PathBuf,

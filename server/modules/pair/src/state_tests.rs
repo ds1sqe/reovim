@@ -1,4 +1,4 @@
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 use super::*;
 

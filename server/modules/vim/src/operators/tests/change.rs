@@ -8,7 +8,7 @@ use super::super::*;
 use {
     reovim_domain_text::{HistoryRing, Position, Register, RegisterBank},
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         testing::StubExecutor,
     },
@@ -60,7 +60,7 @@ fn run_command<C: CommandHandler>(
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -69,7 +69,7 @@ fn run_command<C: CommandHandler>(
     let mut terminal_size = (80u16, 24u16);
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -556,7 +556,7 @@ fn test_change_to_register_z() {
 
 use {
     reovim_domain_text::{Edit, UndoResult, UndoTree},
-    reovim_driver_undo::{
+    reovim_driver_text_undo::{
         UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
     },
     reovim_subsys_vfs::VfsDriver,

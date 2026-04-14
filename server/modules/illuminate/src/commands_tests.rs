@@ -2,7 +2,7 @@ use {
     super::*,
     crate::state::{HighlightKind, HighlightRange, IlluminateState},
     reovim_driver_command::{Command, CommandHandler},
-    reovim_driver_session::testing::TestSessionRuntime,
+    reovim_driver_text_session::testing::TestSessionRuntime,
     reovim_subsys_command_types::{CommandContext, CommandResult},
 };
 

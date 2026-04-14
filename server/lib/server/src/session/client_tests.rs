@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use {
-    reovim_driver_session::{CursorPosition, SelectionMode},
+    reovim_driver_text_session::{CursorPosition, SelectionMode},
     reovim_kernel::api::v1::{ModeStack, ModuleId},
 };
 
@@ -461,7 +461,7 @@ fn test_sync_cursor_to() {
         id2,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     // Set target's cursor position
     if let Some(w) = target.state.windows.active_mut() {
@@ -473,7 +473,7 @@ fn test_sync_cursor_to() {
         id1,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     // Verify initial cursor is at default
     assert_eq!(source.state.windows.active().unwrap().cursor, CursorPosition::default());
@@ -522,7 +522,7 @@ fn test_validate_following_to_sharing_requires_cursor_sync() {
         id2,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     if let Some(w) = target.state.windows.active_mut() {
         w.cursor = CursorPosition::new(5, 10);
@@ -534,7 +534,7 @@ fn test_validate_following_to_sharing_requires_cursor_sync() {
         id1,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     follower.relation = Some(ClientRelation::Following { target: id2 });
 
@@ -567,7 +567,7 @@ fn test_validate_following_to_sharing_same_cursor_ok() {
         id2,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     clients.insert(id2, target);
 
@@ -575,7 +575,7 @@ fn test_validate_following_to_sharing_same_cursor_ok() {
         id1,
         test_metadata(),
         test_mode_stack(),
-        reovim_driver_session::Window::new(),
+        reovim_driver_text_session::Window::new(),
     );
     follower.relation = Some(ClientRelation::Following { target: id2 });
 
@@ -713,7 +713,7 @@ fn test_client_ring_buffer_accessor() {
 #[test]
 fn test_editing_state_with_mode_stack_and_window() {
     let mode_stack = test_mode_stack();
-    let window = reovim_driver_session::Window::new();
+    let window = reovim_driver_text_session::Window::new();
     let state = EditingState::with_mode_stack_and_window(mode_stack.clone(), window);
 
     assert_eq!(state.mode_stack.current().name(), mode_stack.current().name());
@@ -889,7 +889,7 @@ fn test_effective_state_sharing_chain() {
 fn test_client_with_mode_stack_and_window() {
     let id = ClientId::new(1);
     let mode_stack = test_mode_stack();
-    let window = reovim_driver_session::Window::new();
+    let window = reovim_driver_text_session::Window::new();
 
     let client =
         Client::with_mode_stack_and_window(id, test_metadata(), mode_stack.clone(), window);

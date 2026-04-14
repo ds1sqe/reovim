@@ -7,7 +7,7 @@
 mod tests {
     use std::sync::Arc;
 
-    use {reovim_driver_input::ModeKeyResolver, reovim_module_editor::ResolverRegistry};
+    use {reovim_driver_text_input::ModeKeyResolver, reovim_module_editor::ResolverRegistry};
 
     use crate::{
         VimChangeResolver, VimDeleteResolver, VimInsertResolver, VimMode, VimNormalResolver,

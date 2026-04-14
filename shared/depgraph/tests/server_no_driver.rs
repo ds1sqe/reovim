@@ -9,12 +9,12 @@ use cargo_metadata::MetadataCommand;
 /// that cannot be abstracted to subsys without a session facade.
 // TODO: create tracking issue for Tier 2 server decoupling (session facade)
 const KNOWN_DRIVER_DEPS: &[&str] = &[
-    "reovim-driver-buffer",
+    "reovim-driver-text-buffer",
     "reovim-driver-codec",
     "reovim-driver-command",
-    "reovim-driver-input",
-    "reovim-driver-session",
-    "reovim-driver-syntax",
+    "reovim-driver-text-input",
+    "reovim-driver-text-session",
+    "reovim-driver-text-syntax",
 ];
 
 #[test]

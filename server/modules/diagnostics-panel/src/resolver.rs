@@ -5,7 +5,7 @@
 //! - All other keys → `NotHandled` (no character insertion)
 
 use {
-    reovim_driver_input::{
+    reovim_driver_text_input::{
         KeyLookupState, KeySequence, ModeKeyResolver, ModeState, ResolveInput, ResolveResult,
     },
     reovim_kernel::api::v1::ModeId,
@@ -40,7 +40,7 @@ impl Default for DiagnosticsPanelResolver {
 impl ModeKeyResolver for DiagnosticsPanelResolver {
     fn resolve_with_keymap(
         &self,
-        key: &reovim_driver_input::KeyEvent,
+        key: &reovim_driver_text_input::KeyEvent,
         _state: &mut ModeState,
         input: &ResolveInput<'_>,
     ) -> ResolveResult {
@@ -50,7 +50,7 @@ impl ModeKeyResolver for DiagnosticsPanelResolver {
 
         match lookup_state {
             KeyLookupState::ExactWithLonger { exact, .. } | KeyLookupState::ExactOnly(exact) => {
-                ResolveResult::Execute(exact, reovim_driver_input::ResolveContext::default())
+                ResolveResult::Execute(exact, reovim_driver_text_input::ResolveContext::default())
             }
             KeyLookupState::PrefixOnly => ResolveResult::Pending,
             KeyLookupState::NotFound => ResolveResult::NotHandled,

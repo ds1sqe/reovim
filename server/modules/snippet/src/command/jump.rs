@@ -5,7 +5,7 @@
 use {
     reovim_domain_text::{Edit, Position},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },

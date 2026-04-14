@@ -21,14 +21,14 @@ use {
         TextDocumentItem, UnregistrationParams, Uri, VersionedTextDocumentIdentifier,
         WorkDoneProgress,
     },
-    reovim_driver_lsp::{
+    reovim_driver_text_lsp::{
         CapabilityStore, DiagnosticCache, LspError, LspLogger, LspProvider, LspRequest,
         LspServerConfig,
         client::Client,
         jsonrpc::{Message, Response},
         transport::Transport,
     },
-    reovim_driver_session::{PendingLevel, PendingNotificationQueue, PendingOp},
+    reovim_driver_text_session::{PendingLevel, PendingNotificationQueue, PendingOp},
     tokio::sync::mpsc,
     tracing::{debug, error, info, warn},
 };
@@ -356,7 +356,7 @@ impl LspSaturator {
     fn handle_server_request(
         client: &Arc<Client>,
         capabilities: &CapabilityStore,
-        request: reovim_driver_lsp::jsonrpc::Request,
+        request: reovim_driver_text_lsp::jsonrpc::Request,
     ) {
         debug!(method = %request.method, id = ?request.id, "Server request");
 
@@ -395,8 +395,8 @@ impl LspSaturator {
                 debug!(method = %request.method, "Unknown server request");
                 Response::error(
                     request.id,
-                    reovim_driver_lsp::jsonrpc::Error::new(
-                        reovim_driver_lsp::jsonrpc::error_codes::METHOD_NOT_FOUND,
+                    reovim_driver_text_lsp::jsonrpc::Error::new(
+                        reovim_driver_text_lsp::jsonrpc::error_codes::METHOD_NOT_FOUND,
                         format!("Method not found: {}", request.method),
                     ),
                 )

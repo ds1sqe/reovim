@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_input::{DefaultModeProvider, ProviderPriority},
+    reovim_driver_text_input::{DefaultModeProvider, ProviderPriority},
     reovim_kernel::api::v1::{ModeId, ModuleId},
 };
 

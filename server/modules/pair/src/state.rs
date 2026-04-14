@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use reovim_driver_session::SessionExtension;
+use reovim_driver_text_session::SessionExtension;
 
 use crate::{matched::MatchedPair, rainbow::BracketInfo};
 

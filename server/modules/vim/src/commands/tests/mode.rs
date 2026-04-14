@@ -9,7 +9,7 @@ use {
     crate::ids,
     reovim_domain_text::{HistoryRing, Position, RegisterBank},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, WindowLayout,
         api::{CommandExecutor, CommandHandle},
         testing::StubExecutor,
@@ -39,7 +39,7 @@ fn register_buf(ctx: &KernelContext, buffer: Buffer) -> BufferId {
     ctx.buffers.register(arc)
 }
 
-use reovim_driver_session::api::ModeApi;
+use reovim_driver_text_session::api::ModeApi;
 
 // ========================================================================
 // Test infrastructure
@@ -91,7 +91,7 @@ struct TestState {
     windows: WindowLayout,
     extensions: ExtensionMap,
     compositor: Option<Box<dyn reovim_subsys_layout::RootCompositor>>,
-    tabs: reovim_driver_session::TabPageSet,
+    tabs: reovim_driver_text_session::TabPageSet,
     registers: RegisterBank,
     clipboard_history: HistoryRing,
     local_marks: MarkBank,
@@ -108,7 +108,7 @@ impl TestState {
         let mut windows = WindowLayout::empty();
         let extensions = ExtensionMap::new();
 
-        let mut window = reovim_driver_session::Window::new();
+        let mut window = reovim_driver_text_session::Window::new();
         if let Some(buffer_id) = buffer_id {
             window.buffer_id = Some(buffer_id);
         }
@@ -120,7 +120,7 @@ impl TestState {
             windows,
             extensions,
             compositor: None,
-            tabs: reovim_driver_session::TabPageSet::new(),
+            tabs: reovim_driver_text_session::TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -141,7 +141,7 @@ impl TestState {
     ) -> SessionRuntime<'a> {
         SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -787,7 +787,7 @@ fn test_enter_insert_mode_append_on_second_line() {
 
 use {
     reovim_domain_text::{Edit, UndoResult, UndoTree},
-    reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
+    reovim_driver_text_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
     reovim_subsys_vfs::VfsDriver,
 };
 
@@ -926,7 +926,7 @@ fn test_exit_to_normal_calls_end_batch() {
 // VimSessionState dot-repeat recording tests
 // ========================================================================
 
-use reovim_driver_session::api::ExtensionApi;
+use reovim_driver_text_session::api::ExtensionApi;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -1027,10 +1027,10 @@ fn test_exit_commandline_mode_search_forward_with_pending() {
 
     // Set up search forward mode: pending search + cmdline input
     {
-        use reovim_driver_session::api::SearchState;
+        use reovim_driver_text_session::api::SearchState;
         runtime
             .ext_mut::<SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1044,7 +1044,7 @@ fn test_exit_commandline_mode_search_forward_with_pending() {
     assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
 
     // Search state should have stored pattern/direction
-    let search_state = runtime.ext_mut::<reovim_driver_session::api::SearchState>();
+    let search_state = runtime.ext_mut::<reovim_driver_text_session::api::SearchState>();
     assert!(search_state.pattern_for_repeat().is_some());
 }
 
@@ -1063,10 +1063,10 @@ fn test_exit_commandline_mode_search_backward_with_pending() {
 
     // Set up search backward mode
     {
-        use reovim_driver_session::api::SearchState;
+        use reovim_driver_text_session::api::SearchState;
         runtime
             .ext_mut::<SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Backward);
+            .start_pending_search(reovim_driver_text_search::Direction::Backward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchBackward);
@@ -1094,10 +1094,10 @@ fn test_exit_commandline_mode_search_empty_cmdline() {
 
     // Set up search forward but with empty cmdline
     {
-        use reovim_driver_session::api::SearchState;
+        use reovim_driver_text_session::api::SearchState;
         runtime
             .ext_mut::<SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1162,10 +1162,10 @@ fn test_exit_commandline_search_no_buffer_id() {
 
     // Search forward pending with cmdline, but no buffer_id
     {
-        use reovim_driver_session::api::SearchState;
+        use reovim_driver_text_session::api::SearchState;
         runtime
             .ext_mut::<SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1207,7 +1207,7 @@ fn test_exit_commandline_search_no_pending() {
 // execute_search with SearchProviderRegistry tests
 // ========================================================================
 
-use reovim_driver_search::{
+use reovim_driver_text_search::{
     SearchError, SearchKey, SearchMatch, SearchProvider, SearchProviderRegistry,
 };
 
@@ -1243,7 +1243,7 @@ impl SearchProvider for MockSearchProvider {
         _buffer: &Buffer,
         _cursor: Position,
         _pattern: &str,
-        _direction: reovim_driver_search::Direction,
+        _direction: reovim_driver_text_search::Direction,
         _wrap: bool,
     ) -> Result<Option<SearchMatch>, SearchError> {
         self.result.read().clone().unwrap_or(Ok(None))
@@ -1259,10 +1259,10 @@ impl SearchProvider for MockSearchProvider {
 
     fn find_next_source(
         &self,
-        _source: &dyn reovim_driver_search::LineSource,
+        _source: &dyn reovim_driver_text_search::LineSource,
         _cursor: Position,
         _pattern: &str,
-        _direction: reovim_driver_search::Direction,
+        _direction: reovim_driver_text_search::Direction,
         _wrap: bool,
     ) -> Result<Option<SearchMatch>, SearchError> {
         self.result.read().clone().unwrap_or(Ok(None))
@@ -1270,7 +1270,7 @@ impl SearchProvider for MockSearchProvider {
 
     fn find_all_source(
         &self,
-        _source: &dyn reovim_driver_search::LineSource,
+        _source: &dyn reovim_driver_text_search::LineSource,
         _pattern: &str,
     ) -> Result<Vec<SearchMatch>, SearchError> {
         Ok(vec![])
@@ -1278,7 +1278,7 @@ impl SearchProvider for MockSearchProvider {
 
     fn word_at_cursor_source(
         &self,
-        _source: &dyn reovim_driver_search::LineSource,
+        _source: &dyn reovim_driver_text_search::LineSource,
         _cursor: Position,
     ) -> Option<String> {
         None
@@ -1313,8 +1313,8 @@ fn test_exit_commandline_search_with_match_found() {
     // Set up search forward with pattern
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1348,8 +1348,8 @@ fn test_exit_commandline_search_no_match() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1383,8 +1383,8 @@ fn test_exit_commandline_search_invalid_pattern() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1424,8 +1424,8 @@ fn test_exit_commandline_search_backward_with_match() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Backward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Backward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchBackward);
@@ -1462,7 +1462,7 @@ fn test_exit_commandline_search_no_cursor_position() {
     let mut windows = WindowLayout::empty();
     let mut extensions = ExtensionMap::new();
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -1472,7 +1472,7 @@ fn test_exit_commandline_search_no_cursor_position() {
 
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,
@@ -1491,8 +1491,8 @@ fn test_exit_commandline_search_no_cursor_position() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1781,8 +1781,8 @@ fn test_exit_commandline_search_no_search_registry() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1820,8 +1820,8 @@ fn test_exit_commandline_search_no_search_provider_for_key() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);
@@ -1852,8 +1852,8 @@ fn test_exit_commandline_search_buffer_not_found() {
 
     {
         runtime
-            .ext_mut::<reovim_driver_session::api::SearchState>()
-            .start_pending_search(reovim_driver_search::Direction::Forward);
+            .ext_mut::<reovim_driver_text_session::api::SearchState>()
+            .start_pending_search(reovim_driver_text_search::Direction::Forward);
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::SearchForward);

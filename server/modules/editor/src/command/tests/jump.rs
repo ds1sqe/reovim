@@ -3,7 +3,7 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler},
-    reovim_driver_session::{JumpEntry, testing::TestSessionRuntime},
+    reovim_driver_text_session::{JumpEntry, testing::TestSessionRuntime},
 };
 
 use crate::command::{JumpBackward, JumpForward};

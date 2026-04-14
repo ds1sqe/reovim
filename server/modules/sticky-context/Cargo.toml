@@ -21,12 +21,12 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-driver-session = { workspace = true }
+reovim-driver-text-session = { workspace = true }
 reovim-module-context = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reovim-driver-syntax = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 reovim-testing = { workspace = true }

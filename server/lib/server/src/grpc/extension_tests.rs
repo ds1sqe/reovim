@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge},
+    reovim_driver_text_session::{ExtensionMap, bridges::ExtensionStateBridge},
 };
 
 struct TestBridge {

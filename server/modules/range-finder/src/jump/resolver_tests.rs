@@ -1,5 +1,5 @@
 use {
-    reovim_driver_input::{KeyLookupState, KeySequence, KeymapQuery},
+    reovim_driver_text_input::{KeyLookupState, KeySequence, KeymapQuery},
     reovim_kernel::api::v1::ModuleId,
 };
 
@@ -225,7 +225,7 @@ fn test_backspace_not_handled() {
 
 #[test]
 fn test_text_input_sink_wired() {
-    use reovim_driver_session::TextInputSink;
+    use reovim_driver_text_session::TextInputSink;
 
     // Verify JumpSessionState's TextInputSink works through insert_char.
     let mut state = JumpSessionState::default();

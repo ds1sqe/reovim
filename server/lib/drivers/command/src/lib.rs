@@ -10,7 +10,7 @@
 //!
 //! ```ignore
 //! use reovim_driver_command::{Command, CommandHandler, CommandContext, CommandResult, ArgSpec, ArgKind};
-//! use reovim_driver_session::SessionRuntime;
+//! use reovim_driver_text_session::SessionRuntime;
 //! use reovim_kernel::api::v1::{CommandId, ModuleId};
 //!
 //! const MY_MODULE: ModuleId = ModuleId::new_const("my-module");

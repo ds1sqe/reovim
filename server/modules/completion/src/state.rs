@@ -5,7 +5,7 @@
 //! because it operates within insert mode where the buffer receives input.
 
 use {
-    reovim_driver_session::SessionExtension,
+    reovim_driver_text_session::SessionExtension,
     reovim_subsys_completion::{CompletionItem, CompletionKind},
 };
 

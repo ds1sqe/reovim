@@ -267,7 +267,7 @@ fn test_set_command_clone_copy() {
 // ========================================================================
 
 /// Helper: register a boolean option for testing.
-fn register_bool_option(harness: &reovim_driver_session::testing::TestSessionRuntime) {
+fn register_bool_option(harness: &reovim_driver_text_session::testing::TestSessionRuntime) {
     harness
         .kernel()
         .options
@@ -284,7 +284,7 @@ fn register_bool_option(harness: &reovim_driver_session::testing::TestSessionRun
 }
 
 /// Helper: register an integer option for testing.
-fn register_int_option(harness: &reovim_driver_session::testing::TestSessionRuntime) {
+fn register_int_option(harness: &reovim_driver_text_session::testing::TestSessionRuntime) {
     harness
         .kernel()
         .options
@@ -297,7 +297,7 @@ fn register_int_option(harness: &reovim_driver_session::testing::TestSessionRunt
 }
 
 /// Helper: register a string option for testing.
-fn register_string_option(harness: &reovim_driver_session::testing::TestSessionRuntime) {
+fn register_string_option(harness: &reovim_driver_text_session::testing::TestSessionRuntime) {
     harness
         .kernel()
         .options
@@ -310,7 +310,7 @@ fn register_string_option(harness: &reovim_driver_session::testing::TestSessionR
 }
 
 /// Helper: register a choice option for testing.
-fn register_choice_option(harness: &reovim_driver_session::testing::TestSessionRuntime) {
+fn register_choice_option(harness: &reovim_driver_text_session::testing::TestSessionRuntime) {
     harness
         .kernel()
         .options
@@ -323,7 +323,9 @@ fn register_choice_option(harness: &reovim_driver_session::testing::TestSessionR
 }
 
 /// Helper: register an integer option with constraints for testing.
-fn register_constrained_int_option(harness: &reovim_driver_session::testing::TestSessionRuntime) {
+fn register_constrained_int_option(
+    harness: &reovim_driver_text_session::testing::TestSessionRuntime,
+) {
     harness
         .kernel()
         .options
@@ -348,7 +350,7 @@ fn make_ctx(expr: &str) -> CommandContext {
 
 #[test]
 fn test_execute_set_bool_true() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -372,7 +374,7 @@ fn test_execute_set_bool_true() {
 
 #[test]
 fn test_execute_set_bool_false() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -401,7 +403,7 @@ fn test_execute_set_bool_false() {
 
 #[test]
 fn test_execute_toggle() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -424,7 +426,7 @@ fn test_execute_toggle() {
 
 #[test]
 fn test_execute_assign_integer() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -447,7 +449,7 @@ fn test_execute_assign_integer() {
 
 #[test]
 fn test_execute_assign_string() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_string_option(&harness);
@@ -467,7 +469,7 @@ fn test_execute_assign_string() {
 
 #[test]
 fn test_execute_assign_choice() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_choice_option(&harness);
@@ -490,7 +492,7 @@ fn test_execute_assign_choice() {
 
 #[test]
 fn test_execute_assign_bool_via_equals() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -513,7 +515,7 @@ fn test_execute_assign_bool_via_equals() {
 
 #[test]
 fn test_execute_reset() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -543,7 +545,7 @@ fn test_execute_reset() {
 
 #[test]
 fn test_execute_reset_already_default() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -560,7 +562,7 @@ fn test_execute_reset_already_default() {
 
 #[test]
 fn test_execute_query() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -577,7 +579,7 @@ fn test_execute_query() {
 
 #[test]
 fn test_execute_list_changed() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -594,7 +596,7 @@ fn test_execute_list_changed() {
 
 #[test]
 fn test_execute_list_all() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -611,7 +613,7 @@ fn test_execute_list_all() {
 
 #[test]
 fn test_execute_short_alias() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -632,7 +634,7 @@ fn test_execute_short_alias() {
 
 #[test]
 fn test_execute_short_alias_query() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -649,7 +651,7 @@ fn test_execute_short_alias_query() {
 
 #[test]
 fn test_execute_bare_name_non_bool_shows_value() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -667,7 +669,7 @@ fn test_execute_bare_name_non_bool_shows_value() {
 
 #[test]
 fn test_execute_unknown_option() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -681,7 +683,7 @@ fn test_execute_unknown_option() {
 
 #[test]
 fn test_execute_unknown_option_query() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -695,7 +697,7 @@ fn test_execute_unknown_option_query() {
 
 #[test]
 fn test_execute_unknown_option_toggle() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -709,7 +711,7 @@ fn test_execute_unknown_option_toggle() {
 
 #[test]
 fn test_execute_unknown_option_assign() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -723,7 +725,7 @@ fn test_execute_unknown_option_assign() {
 
 #[test]
 fn test_execute_unknown_option_reset() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -739,7 +741,7 @@ fn test_execute_unknown_option_reset() {
 
 #[test]
 fn test_execute_type_mismatch_toggle_on_int() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -754,7 +756,7 @@ fn test_execute_type_mismatch_toggle_on_int() {
 
 #[test]
 fn test_execute_type_mismatch_assign_string_to_int() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -769,7 +771,7 @@ fn test_execute_type_mismatch_assign_string_to_int() {
 
 #[test]
 fn test_execute_type_mismatch_set_bool_on_int() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -787,7 +789,7 @@ fn test_execute_type_mismatch_set_bool_on_int() {
 
 #[test]
 fn test_execute_constraint_violation() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_constrained_int_option(&harness);
@@ -805,7 +807,7 @@ fn test_execute_constraint_violation() {
 #[test]
 fn test_event_emitted_on_set() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{
             Arc, Mutex,
             atomic::{AtomicBool, Ordering},
@@ -848,7 +850,7 @@ fn test_event_emitted_on_set() {
 #[test]
 fn test_event_emitted_on_toggle() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -884,7 +886,7 @@ fn test_event_emitted_on_toggle() {
 #[test]
 fn test_event_emitted_on_reset() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -927,7 +929,7 @@ fn test_event_emitted_on_reset() {
 #[test]
 fn test_no_event_on_error() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -960,7 +962,7 @@ fn test_no_event_on_error() {
 
 #[test]
 fn test_state_changes_recorded_on_set() {
-    use reovim_driver_session::{ChangeTracker, testing::TestSessionRuntime};
+    use reovim_driver_text_session::{ChangeTracker, testing::TestSessionRuntime};
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -981,7 +983,7 @@ fn test_state_changes_recorded_on_set() {
 
 #[test]
 fn test_state_changes_recorded_on_toggle() {
-    use reovim_driver_session::{ChangeTracker, testing::TestSessionRuntime};
+    use reovim_driver_text_session::{ChangeTracker, testing::TestSessionRuntime};
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -1001,7 +1003,7 @@ fn test_state_changes_recorded_on_toggle() {
 
 #[test]
 fn test_state_changes_recorded_on_reset() {
-    use reovim_driver_session::{ChangeTracker, testing::TestSessionRuntime};
+    use reovim_driver_text_session::{ChangeTracker, testing::TestSessionRuntime};
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);
@@ -1031,7 +1033,7 @@ fn test_state_changes_recorded_on_reset() {
 #[test]
 fn test_old_value_uses_default_when_none() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{Arc, Mutex},
     };
 
@@ -1064,7 +1066,7 @@ fn test_old_value_uses_default_when_none() {
 #[test]
 fn test_old_value_uses_previous_when_some() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{Arc, Mutex},
     };
 
@@ -1103,7 +1105,7 @@ fn test_old_value_uses_previous_when_some() {
 
 #[test]
 fn test_execute_list_all_empty() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -1117,7 +1119,7 @@ fn test_execute_list_all_empty() {
 
 #[test]
 fn test_execute_list_changed_empty() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
 
@@ -1133,7 +1135,7 @@ fn test_execute_list_changed_empty() {
 
 #[test]
 fn test_execute_list_changed_with_changes() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -1155,7 +1157,7 @@ fn test_execute_list_changed_with_changes() {
 
 #[test]
 fn test_execute_assign_bool_invalid() {
-    use reovim_driver_session::testing::TestSessionRuntime;
+    use reovim_driver_text_session::testing::TestSessionRuntime;
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_bool_option(&harness);
@@ -1173,7 +1175,7 @@ fn test_execute_assign_bool_invalid() {
 #[test]
 fn test_event_emitted_on_assign() {
     use {
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_text_session::testing::TestSessionRuntime,
         std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -1210,7 +1212,7 @@ fn test_event_emitted_on_assign() {
 
 #[test]
 fn test_state_changes_recorded_on_assign() {
-    use reovim_driver_session::{ChangeTracker, testing::TestSessionRuntime};
+    use reovim_driver_text_session::{ChangeTracker, testing::TestSessionRuntime};
 
     let mut harness = TestSessionRuntime::with_buffer("hello");
     register_int_option(&harness);

@@ -16,11 +16,11 @@
 use {
     reovim_domain_text::Position,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         OperatorPendingState, SessionRuntime, TextObjRange,
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
-    reovim_driver_syntax::{SyntaxSessionState, TextObjectKind, TextObjectScope},
+    reovim_driver_text_syntax::{SyntaxSessionState, TextObjectKind, TextObjectScope},
     reovim_kernel::api::v1::CommandId,
 };
 

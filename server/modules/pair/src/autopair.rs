@@ -2,7 +2,7 @@
 //!
 //! Context-aware: skips insertion inside string/comment nodes.
 
-use reovim_driver_syntax::{BracketConfig, SyntaxContext};
+use reovim_driver_text_syntax::{BracketConfig, SyntaxContext};
 
 /// Determine if auto-pair should fire for a character insertion.
 ///

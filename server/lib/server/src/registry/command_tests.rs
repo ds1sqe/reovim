@@ -1,7 +1,7 @@
 use {
     super::*,
     reovim_driver_command::{ArgSpec, Command},
-    reovim_driver_session::{ClientId, HistoryRing, Jumplist, MarkBank, RegisterBank},
+    reovim_driver_text_session::{ClientId, HistoryRing, Jumplist, MarkBank, RegisterBank},
     reovim_kernel::api::v1::{KernelContext, ModuleId},
     reovim_subsys_vfs::MockVfs,
 };
@@ -100,10 +100,10 @@ fn test_command_registry_execute_for_client() {
 
     // Per-client state
     let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -115,7 +115,7 @@ fn test_command_registry_execute_for_client() {
         1, // test client_id for per-client undo (#471)
         &id,
         &mut driver_session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,
@@ -409,10 +409,10 @@ fn test_command_registry_execute_for_client_not_found() {
     let id = CommandId::new(ModuleId::new("test"), "nonexistent");
 
     let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -424,7 +424,7 @@ fn test_command_registry_execute_for_client_not_found() {
         1,
         &id,
         &mut driver_session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,
@@ -505,10 +505,10 @@ fn test_command_registry_execute_with_buffer() {
     let args = CommandContext::new();
 
     let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -520,7 +520,7 @@ fn test_command_registry_execute_with_buffer() {
         1,
         &id,
         &mut driver_session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,
@@ -731,7 +731,7 @@ fn test_build_name_index_commands_without_names() {
 /// counted by the coverage tool.
 #[test]
 fn test_handler_bridge_execute_via_get_handle() {
-    use reovim_driver_session::api::CommandExecutor;
+    use reovim_driver_text_session::api::CommandExecutor;
 
     let mut registry = CommandRegistry::new();
     let cmd = TestCommand::new("bridge-cmd");
@@ -746,10 +746,10 @@ fn test_handler_bridge_execute_via_get_handle() {
     let args = CommandContext::new();
 
     let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
+    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
     let mut client_compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut registers = RegisterBank::new();
     let mut clipboard_history = HistoryRing::new();
     let mut local_marks = MarkBank::new();
@@ -759,7 +759,7 @@ fn test_handler_bridge_execute_via_get_handle() {
 
     let mut runtime = SessionRuntime::new(
         &mut driver_session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut client_mode_stack,
             windows: &mut client_windows,
             extensions: &mut client_extensions,

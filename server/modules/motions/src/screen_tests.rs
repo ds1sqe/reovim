@@ -4,7 +4,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
+    reovim_driver_text_session::{
         ClientId, ExtensionMap, Jumplist, MarkBank, Session, SessionRuntime, Window, WindowLayout,
         testing::{StubExecutor, create_test_kernel, dual_register_buffer},
     },
@@ -102,10 +102,10 @@ impl TestSetup {
 
     fn run<C: CommandHandler>(&mut self, cmd: &C, args: &CommandContext) -> CommandResult {
         let executor = StubExecutor;
-        let mut tabs = reovim_driver_session::TabPageSet::new();
+        let mut tabs = reovim_driver_text_session::TabPageSet::new();
         let mut runtime = SessionRuntime::new(
             &mut self.session,
-            reovim_driver_session::ClientContext {
+            reovim_driver_text_session::ClientContext {
                 mode_stack: &mut self.mode_stack,
                 windows: &mut self.windows,
                 extensions: &mut self.extensions,
@@ -144,10 +144,10 @@ fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
 
     let executor = StubExecutor;
     let mut compositor = None;
-    let mut tabs = reovim_driver_session::TabPageSet::new();
+    let mut tabs = reovim_driver_text_session::TabPageSet::new();
     let mut runtime = SessionRuntime::new(
         &mut session,
-        reovim_driver_session::ClientContext {
+        reovim_driver_text_session::ClientContext {
             mode_stack: &mut mode_stack,
             windows: &mut windows,
             extensions: &mut extensions,

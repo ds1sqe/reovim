@@ -1,7 +1,7 @@
 use {
     super::*,
     reovim_driver_command::Command,
-    reovim_driver_session::{BufferApi, testing::TestSessionRuntime},
+    reovim_driver_text_session::{BufferApi, testing::TestSessionRuntime},
     reovim_subsys_command_types::CommandContext,
 };
 
