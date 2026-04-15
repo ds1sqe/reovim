@@ -1,5 +1,51 @@
 use super::*;
 
+// =========================================================================
+// SurfaceDescriptor tests
+// =========================================================================
+
+#[test]
+fn test_surface_descriptor_new_and_accessors() {
+    let body = vec![0x01u8, 0x02, 0x03];
+    let sd = SurfaceDescriptor::new(SurfaceDescriptor::KIND_CELL_GRID, body.clone());
+    assert_eq!(sd.kind(), SurfaceDescriptor::KIND_CELL_GRID);
+    assert_eq!(sd.body(), body.as_slice());
+}
+
+#[test]
+fn test_surface_descriptor_empty_body() {
+    let sd = SurfaceDescriptor::new(SurfaceDescriptor::KIND_PIXEL_BUFFER, vec![]);
+    assert_eq!(sd.kind(), SurfaceDescriptor::KIND_PIXEL_BUFFER);
+    assert!(sd.body().is_empty());
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_surface_descriptor_debug() {
+    let sd = SurfaceDescriptor::new(SurfaceDescriptor::KIND_VR_SCENE, vec![0xAB]);
+    let s = format!("{sd:?}");
+    assert!(s.contains("SurfaceDescriptor"));
+}
+
+#[test]
+fn test_surface_descriptor_clone_and_eq() {
+    let a = SurfaceDescriptor::new(SurfaceDescriptor::KIND_VOLUMETRIC, vec![1, 2, 3]);
+    let b = a.clone();
+    assert_eq!(a, b);
+
+    let c = SurfaceDescriptor::new(SurfaceDescriptor::KIND_VOLUMETRIC, vec![1, 2, 4]);
+    assert_ne!(a, c);
+}
+
+#[test]
+fn test_surface_descriptor_kind_constants() {
+    assert_eq!(SurfaceDescriptor::KIND_CELL_GRID, 0x0001);
+    assert_eq!(SurfaceDescriptor::KIND_PIXEL_BUFFER, 0x0002);
+    assert_eq!(SurfaceDescriptor::KIND_VR_SCENE, 0x0003);
+    assert_eq!(SurfaceDescriptor::KIND_VOLUMETRIC, 0x0004);
+    assert_eq!(SurfaceDescriptor::KIND_NEURAL, 0x0005);
+}
+
 #[test]
 fn test_client_id() {
     let id = ClientId::new(42);
@@ -247,33 +293,31 @@ fn test_client_id_display_format() {
 // =========================================================================
 
 #[test]
-fn test_cursor_snapshot_new() {
-    let snap = CursorSnapshot::new(10, 5, 42);
-    assert_eq!(snap.line, 10);
-    assert_eq!(snap.col, 5);
-    assert_eq!(snap.buffer_id, 42);
+fn test_cursor_snapshot_from_bytes() {
+    let bytes = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let snap = CursorSnapshot::from_bytes(bytes);
+    assert_eq!(snap.as_bytes(), &bytes);
 }
 
 #[test]
-fn test_cursor_snapshot_create() {
+fn test_cursor_snapshot_sentinel() {
     let snap = CursorSnapshot::create();
-    assert_eq!(snap.line, u32::MAX);
-    assert_eq!(snap.col, u32::MAX);
-    assert_eq!(snap.buffer_id, 0);
+    assert_eq!(snap, CursorSnapshot::SENTINEL);
+    assert_eq!(snap.as_bytes(), &[0u8; 8]);
 }
 
 #[test]
 fn test_cursor_snapshot_eq() {
-    let a = CursorSnapshot::new(1, 2, 3);
-    let b = CursorSnapshot::new(1, 2, 3);
-    let c = CursorSnapshot::new(1, 2, 4);
+    let a = CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
+    let b = CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
+    let c = CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 9]);
     assert_eq!(a, b);
     assert_ne!(a, c);
 }
 
 #[test]
 fn test_cursor_snapshot_clone_copy() {
-    let snap = CursorSnapshot::new(5, 10, 100);
+    let snap = CursorSnapshot::from_bytes([10, 20, 30, 40, 50, 60, 70, 80]);
     let copied = snap;
     assert_eq!(snap, copied);
 }
@@ -281,7 +325,7 @@ fn test_cursor_snapshot_clone_copy() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_cursor_snapshot_debug() {
-    let snap = CursorSnapshot::new(1, 2, 3);
+    let snap = CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
     let debug = format!("{snap:?}");
     assert!(debug.contains("CursorSnapshot"));
 }

@@ -1,31 +1,38 @@
-//! Domain-neutral change tracking for session operations.
+//! Internal change-set type for text-domain migration.
 //!
-//! [`ChangeSet`] is returned by domain drivers after each operation (key dispatch,
-//! command execution). The server reads the flags and ID lists to determine what
-//! to broadcast to connected clients.
+//! [`ChangeSet`] is a text-domain internal type used as an intermediate
+//! representation during the migration to `DispatchResult`. It is no longer
+//! part of the `DomainDriver` public API — drivers return `DispatchResult`
+//! and `CommandResult` instead.
+//!
+//! # Status
+//!
+//! This module is `#[doc(hidden)]` and accessible only to drivers mid-migration
+//! (e.g., `reovim-driver-text-session`). Once migration is complete it will be
+//! removed from this crate entirely.
 //!
 //! # Design
 //!
 //! `ChangeSet` carries **signals**, not data. It says "cursor moved" or "buffer
-//! modified" — the server then queries the domain for updated values. This keeps
-//! all domain-specific data (text edits, vertex moves) inside the domain driver.
+//! modified". All signal flags except buffer lifecycle and session directives
+//! are dropped when converting to `DispatchResult`.
 
 use reovim_kernel::api::v1::{BufferId, WindowId};
 
-/// Domain-neutral change set returned by `DomainDriver` after each operation.
+/// Internal text-domain change set (migration intermediate type).
 ///
-/// The server inspects this to decide what notifications to broadcast:
-/// - `modified_buffers` → re-render buffer content for connected clients
-/// - `cursor_moved` → re-query domain for updated cursor positions
-/// - `mode_changed` → re-query domain for mode display name
-/// - `layout_changed` → re-render window layout
+/// Used by `reovim-driver-text-session` as an internal bridge type while
+/// migrating from `ChangeSet`-based dispatch to `DispatchResult`-based dispatch.
+/// The driver converts this to `DispatchResult` at the public boundary.
+///
+/// Not part of the `DomainDriver` public API.
 ///
 /// # What is NOT here
 ///
 /// Domain-specific change details stay inside the domain driver:
 /// - `TextBufferModified { buffer_id, edits }` → text-domain internal
 /// - `ByteEdit { offset, old, new }` → codec-domain internal
-/// - Concrete cursor/position values → server re-queries domain
+/// - Concrete cursor/position values → server polls via `collect_projections`
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
 pub struct ChangeSet {

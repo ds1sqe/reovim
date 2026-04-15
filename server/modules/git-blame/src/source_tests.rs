@@ -4,12 +4,12 @@ use std::{
 };
 
 use {
-    reovim_kernel::api::v1::BufferId,
     reovim_driver_annotation::{AnnotationContext, AnnotationSource},
     reovim_driver_git::{
         GitProvider,
         types::{BlameEntry, BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},
     },
+    reovim_kernel::api::v1::BufferId,
 };
 
 use super::*;

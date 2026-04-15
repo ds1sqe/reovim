@@ -552,7 +552,10 @@ impl InputServiceImpl {
             return;
         }
 
-        let result = session.projection_store().write().update(subsys_cid, projections);
+        let result = session
+            .projection_store()
+            .write()
+            .update(subsys_cid, projections);
 
         let notifications = notification_builder::build_projection_notifications(
             &result,

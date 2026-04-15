@@ -7,8 +7,8 @@ use {
 };
 
 use super::{
-    BufferContentProvider, ChangeSet, ClientId, DisplayLine, DomainDriver, DomainStateQuery,
-    ExtensionMap, RegisterInfo, SelectionInfo, Viewport,
+    BufferContentProvider, ClientId, CommandResult, Directive, DispatchResult, DisplayLine,
+    DomainDriver, ExtensionMap,
 };
 
 // --- Test cursor implementation ---
@@ -75,7 +75,8 @@ impl BufferContentProvider for TestContentProvider {
     fn display_lines(
         &self,
         _buffer_id: BufferId,
-        _viewport: &Viewport,
+        _offset: usize,
+        _count: usize,
     ) -> Option<Vec<DisplayLine>> {
         Some(Vec::new())
     }
@@ -114,9 +115,10 @@ struct MockDomainDriver {
     events: Mutex<Vec<Event>>,
     next_buffer_id: Mutex<usize>,
     content_provider: Arc<dyn BufferContentProvider>,
-    /// If set, `dispatch_key` returns a `ChangeSet` with `cursor_moved=true`.
+    /// Internal flag: when true, the driver considers the cursor moved on key.
+    /// Not reflected in `DispatchResult` — the server polls via `collect_projections`.
     cursor_moves_on_key: Mutex<bool>,
-    /// If set, `dispatch_command` returns `None` (unknown command).
+    /// If set, `dispatch_command` returns `NotHandled` (unknown command).
     reject_commands: Mutex<bool>,
 }
 
@@ -177,17 +179,17 @@ impl DomainDriver for MockDomainDriver {
         Arc::clone(&self.content_provider)
     }
 
-    fn dispatch_key(&self, client_id: ClientId, _key: &KeyEvent) -> ChangeSet {
+    fn dispatch_key(&self, client_id: ClientId, _key: &KeyEvent) -> DispatchResult {
         self.events
             .lock()
             .unwrap()
             .push(Event::DispatchKey(client_id));
 
-        let mut cs = ChangeSet::new();
-        if *self.cursor_moves_on_key.lock().unwrap() {
-            cs.record_cursor_move(reovim_kernel::api::v1::BufferId::from_raw(0));
-        }
-        cs
+        // cursor_moves_on_key is tracked internally but DispatchResult does not
+        // carry cursor_moved (the server polls). We record the flag for test
+        // assertions on the MockDomainDriver state only.
+        let _ = *self.cursor_moves_on_key.lock().unwrap();
+        DispatchResult::default()
     }
 
     fn dispatch_command(
@@ -195,16 +197,16 @@ impl DomainDriver for MockDomainDriver {
         client_id: ClientId,
         command: &str,
         _args: &[String],
-    ) -> Option<ChangeSet> {
+    ) -> CommandResult {
         self.events
             .lock()
             .unwrap()
             .push(Event::DispatchCommand(client_id, command.to_string()));
 
         if *self.reject_commands.lock().unwrap() {
-            return None;
+            return CommandResult::NotHandled;
         }
-        Some(ChangeSet::new())
+        CommandResult::Handled(DispatchResult::default())
     }
 
     fn on_client_added(&self, client_id: ClientId) {
@@ -258,49 +260,11 @@ impl DomainDriver for MockDomainDriver {
     }
 }
 
-// --- Mock DomainStateQuery ---
-
-struct MockStateQuery {
-    mode: Option<String>,
-    registers: Vec<RegisterInfo>,
-}
-
-impl MockStateQuery {
-    fn with_mode(mode: &str) -> Self {
-        Self {
-            mode: Some(mode.to_string()),
-            registers: Vec::new(),
-        }
-    }
-
-    fn with_registers(registers: Vec<RegisterInfo>) -> Self {
-        Self {
-            mode: None,
-            registers,
-        }
-    }
-}
-
-impl DomainStateQuery for MockStateQuery {
-    fn mode_name(&self, _client_id: ClientId) -> Option<String> {
-        self.mode.clone()
-    }
-
-    fn registers(&self, _client_id: ClientId) -> Vec<RegisterInfo> {
-        self.registers.clone()
-    }
-}
-
 // --- Tests ---
 
 #[test]
 fn domain_driver_object_safety() {
     let _: Arc<dyn DomainDriver> = Arc::new(MockDomainDriver::new("text", 1));
-}
-
-#[test]
-fn domain_state_query_object_safety() {
-    let _: Box<dyn DomainStateQuery> = Box::new(MockStateQuery::with_mode("NORMAL"));
 }
 
 #[test]
@@ -336,23 +300,27 @@ fn content_provider_returns_arc() {
 }
 
 #[test]
-fn dispatch_key_returns_changeset() {
+fn dispatch_key_returns_dispatch_result() {
     let driver = MockDomainDriver::new("text", 1);
     let client = ClientId(0);
     let key = KeyEvent::new(KeyCode::Char('j'));
-    let cs = driver.dispatch_key(client, &key);
-    assert!(!cs.has_changes()); // default: no cursor move
+    let result = driver.dispatch_key(client, &key);
+    // Default: no buffer changes, Continue directive
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
-fn dispatch_key_with_cursor_move() {
+fn dispatch_key_records_event() {
     let driver = MockDomainDriver::new("text", 1);
     driver.set_cursor_moves_on_key(true);
     let client = ClientId(0);
     let key = KeyEvent::new(KeyCode::Char('j'));
-    let cs = driver.dispatch_key(client, &key);
-    assert!(cs.cursor_moved);
-    assert!(cs.has_changes());
+    driver.dispatch_key(client, &key);
+    // cursor_moved is no longer in DispatchResult — server polls via
+    // collect_projections. Verify the dispatch event was recorded.
+    let events = driver.events();
+    assert!(matches!(events.last(), Some(Event::DispatchKey(c)) if *c == client));
 }
 
 #[test]
@@ -360,16 +328,16 @@ fn dispatch_command_handled() {
     let driver = MockDomainDriver::new("text", 1);
     let client = ClientId(0);
     let result = driver.dispatch_command(client, "w", &[]);
-    assert!(result.is_some());
+    assert!(matches!(result, CommandResult::Handled(_)));
 }
 
 #[test]
-fn dispatch_command_unknown_returns_none() {
+fn dispatch_command_unknown_returns_not_handled() {
     let driver = MockDomainDriver::new("text", 1);
     driver.set_reject_commands(true);
     let client = ClientId(0);
     let result = driver.dispatch_command(client, "q", &[]);
-    assert!(result.is_none());
+    assert!(matches!(result, CommandResult::NotHandled));
 }
 
 #[test]
@@ -422,50 +390,6 @@ fn initial_cursor_has_correct_domain() {
 }
 
 #[test]
-fn state_query_defaults() {
-    struct EmptyQuery;
-    impl DomainStateQuery for EmptyQuery {}
-
-    let q = EmptyQuery;
-    assert!(q.mode_name(ClientId(0)).is_none());
-    assert!(q.registers(ClientId(0)).is_empty());
-    assert!(q.status_info(ClientId(0)).is_none());
-}
-
-#[test]
-fn state_query_with_mode() {
-    let q = MockStateQuery::with_mode("NORMAL");
-    assert_eq!(q.mode_name(ClientId(0)).unwrap(), "NORMAL");
-}
-
-#[test]
-fn state_query_with_registers() {
-    let regs = vec![RegisterInfo {
-        name: '"',
-        display: "hello world".to_string(),
-        content_type: "text/characterwise".to_string(),
-    }];
-    let q = MockStateQuery::with_registers(regs);
-    let result = q.registers(ClientId(0));
-    assert_eq!(result.len(), 1);
-    assert_eq!(result[0].name, '"');
-    assert_eq!(result[0].display, "hello world");
-}
-
-#[test]
-fn register_info_debug_and_clone() {
-    let info = RegisterInfo {
-        name: 'a',
-        display: "test".to_string(),
-        content_type: "text/linewise".to_string(),
-    };
-    let cloned = info.clone();
-    assert_eq!(cloned.name, 'a');
-    let debug = format!("{info:?}");
-    assert!(debug.contains("RegisterInfo"));
-}
-
-#[test]
 fn multiple_domains_independent_state() {
     let text_driver = MockDomainDriver::new("text", 1);
     let mesh_driver = MockDomainDriver::new("mesh", 2);
@@ -511,8 +435,10 @@ fn dispatch_key_with_extensions_default_delegates_to_dispatch_key() {
     let mut client_ext = ExtensionMap::new();
     let mut shared_ext = ExtensionMap::new();
 
-    let cs = driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
-    assert!(cs.cursor_moved);
+    let result =
+        driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
+    // DispatchResult carries no cursor_moved flag; server polls via collect_projections.
+    assert_eq!(result.directive, Directive::Continue);
     // Verify dispatch_key was called (event recorded)
     let events = driver.events();
     assert!(matches!(events.last(), Some(Event::DispatchKey(c)) if *c == client));
@@ -552,35 +478,4 @@ fn windows_default_returns_empty() {
 fn window_count_default_returns_zero() {
     let driver = MockDomainDriver::new("text", 1);
     assert_eq!(driver.window_count(ClientId(0)), 0);
-}
-
-// --- Phase 4A tests: SelectionInfo ---
-
-#[test]
-fn selection_info_default_returns_none() {
-    struct EmptyQuery;
-    impl DomainStateQuery for EmptyQuery {}
-
-    let q = EmptyQuery;
-    assert!(
-        q.selection_info(ClientId(0), WindowId::from_raw(1))
-            .is_none()
-    );
-}
-
-#[test]
-fn selection_info_debug_and_clone() {
-    let info = SelectionInfo {
-        start_line: 0,
-        start_column: 5,
-        end_line: 2,
-        end_column: 10,
-        mode: "char".to_string(),
-    };
-    let cloned = info.clone();
-    assert_eq!(cloned.start_line, 0);
-    assert_eq!(cloned.end_column, 10);
-    assert_eq!(cloned.mode, "char");
-    let debug = format!("{info:?}");
-    assert!(debug.contains("SelectionInfo"));
 }

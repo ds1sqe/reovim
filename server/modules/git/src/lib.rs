@@ -17,8 +17,8 @@ pub mod subprocess;
 
 use {
     cache::CachedGitProvider,
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     reovim_driver_git::GitProviderStore,
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     std::{sync::Arc, time::Duration},
     subprocess::SubprocessGitProvider,
 };

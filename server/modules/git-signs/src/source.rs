@@ -3,12 +3,12 @@
 use std::{ops::Range, sync::Arc};
 
 use {
-    reovim_kernel::api::v1::{BufferId, ServiceRegistry},
     reovim_driver_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget,
     },
     reovim_driver_git::GitProviderStore,
+    reovim_kernel::api::v1::{BufferId, ServiceRegistry},
 };
 
 use crate::hunk::{SignKind, hunk_to_signs};

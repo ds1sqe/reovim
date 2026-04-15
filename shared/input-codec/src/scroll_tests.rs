@@ -1,7 +1,9 @@
 //! Round-trip tests for scroll codec.
 
-use crate::scroll::{decode, encode, ScrollEvent, KIND_SCROLL};
-use reovim_subsys_input::{input_event::INPUT_HEADER_SIZE, input_kind};
+use {
+    crate::scroll::{KIND_SCROLL, ScrollEvent, decode, encode},
+    reovim_subsys_input::{input_event::INPUT_HEADER_SIZE, input_kind},
+};
 
 #[test]
 fn round_trip_scroll_down() {

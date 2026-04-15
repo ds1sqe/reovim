@@ -5,8 +5,8 @@
 //! because it operates within insert mode where the buffer receives input.
 
 use {
-    reovim_driver_text_session::SessionExtension,
     reovim_driver_completion::{CompletionItem, CompletionKind},
+    reovim_driver_text_session::SessionExtension,
 };
 
 /// Snapshot of a completion item for bridge serialization.

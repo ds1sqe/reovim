@@ -127,8 +127,8 @@ pub use operator_state::OperatorPendingState;
 
 // Session types (remaining types not in subsys-session)
 pub use types::{
-    BootstrapState, ClientContext, CursorPosition, Session, SessionShared, TextObjRange, Window,
-    WindowLayout,
+    BootstrapState, ClientContext, CursorPosition, Session, SessionShared, TextObjRange, Viewport,
+    Window, WindowLayout,
 };
 
 // SessionContext removed in #491 - use SessionRuntime instead

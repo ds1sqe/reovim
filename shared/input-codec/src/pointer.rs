@@ -8,8 +8,7 @@
 //!
 //! Context bits 0-3: button mask
 
-use reovim_subsys_input::input_event::INPUT_HEADER_SIZE;
-use reovim_subsys_input::InputFlags;
+use reovim_subsys_input::{InputFlags, input_event::INPUT_HEADER_SIZE};
 
 /// Well-known kind for pointer/mouse input.
 pub const KIND_POINTER: u16 = 0x0002;
@@ -47,8 +46,7 @@ pub fn decode(payload: &[u8]) -> Option<PointerEvent> {
         return None;
     }
 
-    let flags =
-        InputFlags::from_bits_truncate(u16::from_le_bytes([payload[2], payload[3]]));
+    let flags = InputFlags::from_bits_truncate(u16::from_le_bytes([payload[2], payload[3]]));
     let context = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
     let x = u16::from_le_bytes([payload[8], payload[9]]);

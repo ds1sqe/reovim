@@ -1,7 +1,7 @@
 use {
     super::*,
-    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     reovim_driver_statusline::ComponentDataProviderKey,
+    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     std::sync::Arc,
 };
 

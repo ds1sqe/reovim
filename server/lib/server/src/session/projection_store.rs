@@ -6,10 +6,10 @@
 
 use std::collections::HashMap;
 
-use reovim_subsys_coordination::{
-    DomainId, Projection, ProjectionDelivery, ProjectionTag,
+use {
+    reovim_subsys_coordination::{DomainId, Projection, ProjectionDelivery, ProjectionTag},
+    reovim_subsys_session::ClientId,
 };
-use reovim_subsys_session::ClientId;
 
 /// A stored projection entry with version tracking.
 #[derive(Debug, Clone)]
@@ -60,10 +60,7 @@ impl ProjectionStore {
     pub fn seed(&mut self, client_id: ClientId, projections: Vec<Projection>) {
         for proj in projections {
             if proj.delivery == ProjectionDelivery::Transient {
-                debug_assert!(
-                    false,
-                    "initial_projections must return only Persistent projections"
-                );
+                debug_assert!(false, "initial_projections must return only Persistent projections");
                 continue;
             }
             self.insert(client_id, proj);

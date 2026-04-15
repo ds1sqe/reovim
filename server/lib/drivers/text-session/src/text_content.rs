@@ -8,7 +8,7 @@ use std::sync::Arc;
 use {
     reovim_kernel::api::v1::BufferId,
     reovim_provider_text::TextBufferRegistry,
-    reovim_subsys_session::{BufferContentProvider, DisplayLine, Viewport},
+    reovim_subsys_session::{BufferContentProvider, DisplayLine},
 };
 
 /// Text-domain content provider wrapping `TextBufferRegistry`.
@@ -45,16 +45,19 @@ impl BufferContentProvider for TextContentProvider {
         Some(guard.line_count())
     }
 
-    fn display_lines(&self, buffer_id: BufferId, viewport: &Viewport) -> Option<Vec<DisplayLine>> {
+    fn display_lines(
+        &self,
+        buffer_id: BufferId,
+        offset: usize,
+        count: usize,
+    ) -> Option<Vec<DisplayLine>> {
         let buffer = self.registry.get(buffer_id)?;
         let guard = buffer.read();
         let line_count = guard.line_count();
 
-        let start = viewport.scroll_top;
-        let end = (start + viewport.height as usize).min(line_count);
-
-        let mut lines = Vec::with_capacity(end.saturating_sub(start));
-        for idx in start..end {
+        let end = (offset + count).min(line_count);
+        let mut lines = Vec::with_capacity(end.saturating_sub(offset));
+        for idx in offset..end {
             if let Some(line_text) = guard.line(idx) {
                 lines.push(DisplayLine {
                     content: line_text.into_owned(),

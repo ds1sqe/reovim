@@ -4,7 +4,7 @@ use {
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_input::{KeyCode, KeyEvent},
-    reovim_subsys_session::{ClientId, DomainDriver, DomainStateQuery},
+    reovim_subsys_session::{ClientId, CommandResult, Directive, DomainDriver},
 };
 
 use {
@@ -116,10 +116,10 @@ fn test_on_client_added() {
 
     driver.on_client_added(client);
 
-    // Client should have a mode name (from home mode)
-    let mode = driver.mode_name(client);
+    // Client should have an active mode (from home mode)
+    let mode = driver.current_mode(client);
     assert!(mode.is_some());
-    assert_eq!(mode.unwrap(), "normal");
+    assert_eq!(mode.unwrap().name(), "normal");
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn test_on_client_removed() {
     driver.on_client_removed(client);
 
     // Client state should be gone
-    assert!(driver.mode_name(client).is_none());
+    assert!(driver.current_mode(client).is_none());
 }
 
 #[test]
@@ -144,12 +144,12 @@ fn test_multiple_clients() {
     driver.on_client_added(c2);
 
     // Both clients should have independent state
-    assert!(driver.mode_name(c1).is_some());
-    assert!(driver.mode_name(c2).is_some());
+    assert!(driver.current_mode(c1).is_some());
+    assert!(driver.current_mode(c2).is_some());
 
     driver.on_client_removed(c1);
-    assert!(driver.mode_name(c1).is_none());
-    assert!(driver.mode_name(c2).is_some());
+    assert!(driver.current_mode(c1).is_none());
+    assert!(driver.current_mode(c2).is_some());
 }
 
 // ============================================================================
@@ -180,7 +180,7 @@ fn test_on_focus_lost() {
     driver.on_focus_lost(client, window, buffer_id);
 
     // Mode state should be preserved (not cleaned up)
-    assert!(driver.mode_name(client).is_some());
+    assert!(driver.current_mode(client).is_some());
 }
 
 // ============================================================================
@@ -245,9 +245,10 @@ fn test_dispatch_key_no_client() {
     let client = ClientId::new(99);
     let key = KeyEvent::new(KeyCode::Char('l'));
 
-    let cs = driver.dispatch_key(client, &key);
-    // No client → default empty ChangeSet
-    assert!(!cs.has_changes());
+    let result = driver.dispatch_key(client, &key);
+    // No client → default empty DispatchResult
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
@@ -258,11 +259,12 @@ fn test_dispatch_key_with_client() {
     driver.on_client_added(client);
 
     let key = KeyEvent::new(KeyCode::Char('l'));
-    let cs = driver.dispatch_key(client, &key);
+    let result = driver.dispatch_key(client, &key);
 
-    // Without resolver wired, dispatch_key returns empty ChangeSet
+    // Without resolver wired, dispatch_key returns empty DispatchResult
     // The infrastructure (lock → SessionRuntime → bridge) is exercised
-    assert!(!cs.has_changes());
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
@@ -271,8 +273,8 @@ fn test_dispatch_command_no_client() {
     let client = ClientId::new(99);
 
     let result = driver.dispatch_command(client, "test:cmd", &[]);
-    // No client → None (not Some(empty))
-    assert!(result.is_none());
+    // No client → NotHandled
+    assert!(matches!(result, CommandResult::NotHandled));
 }
 
 #[test]
@@ -283,55 +285,8 @@ fn test_dispatch_command_with_client() {
     driver.on_client_added(client);
 
     let result = driver.dispatch_command(client, "test:cmd", &[]);
-    // Client exists → Some(ChangeSet) even if no command runs
-    assert!(result.is_some());
-}
-
-// ============================================================================
-// DomainStateQuery
-// ============================================================================
-
-#[test]
-fn test_mode_name() {
-    let driver = make_driver();
-    let client = ClientId::new(1);
-
-    driver.on_client_added(client);
-
-    let name = driver.mode_name(client);
-    assert_eq!(name, Some("normal".to_owned()));
-}
-
-#[test]
-fn test_mode_name_no_client() {
-    let driver = make_driver();
-    assert!(driver.mode_name(ClientId::new(99)).is_none());
-}
-
-#[test]
-fn test_registers_empty() {
-    let driver = make_driver();
-    let client = ClientId::new(1);
-
-    driver.on_client_added(client);
-
-    let regs = driver.registers(client);
-    assert!(regs.is_empty());
-}
-
-#[test]
-fn test_registers_no_client() {
-    let driver = make_driver();
-    let regs = driver.registers(ClientId::new(99));
-    assert!(regs.is_empty());
-}
-
-#[test]
-fn test_status_info() {
-    let driver = make_driver();
-    let client = ClientId::new(1);
-    driver.on_client_added(client);
-    assert!(driver.status_info(client).is_none());
+    // Client exists → Handled even if no command runs
+    assert!(matches!(result, CommandResult::Handled(_)));
 }
 
 // ============================================================================
@@ -339,7 +294,7 @@ fn test_status_info() {
 // ============================================================================
 
 #[test]
-fn dispatch_with_extensions_returns_changeset() {
+fn dispatch_with_extensions_returns_dispatch_result() {
     let driver = make_driver();
     let client = ClientId::new(1);
     driver.on_client_added(client);
@@ -349,9 +304,10 @@ fn dispatch_with_extensions_returns_changeset() {
     let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
 
     // No dispatch provider wired → falls back to dispatch_key (no-op)
-    let cs = driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
-    // Should not panic, and should return a valid ChangeSet
-    assert!(!cs.should_quit);
+    let result =
+        driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
+    // Should not panic, and should return a valid DispatchResult
+    assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
@@ -361,13 +317,14 @@ fn dispatch_with_extensions_unknown_client_returns_empty() {
     let mut client_ext = reovim_subsys_session::ExtensionMap::new();
     let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
 
-    let cs = driver.dispatch_key_with_extensions(
+    let result = driver.dispatch_key_with_extensions(
         ClientId::new(999),
         &key,
         &mut client_ext,
         &mut shared_ext,
     );
-    assert!(!cs.has_changes());
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
 }
 
 // ============================================================================
@@ -440,16 +397,4 @@ fn window_count_empty_client_returns_zero() {
 fn window_count_unknown_client_returns_zero() {
     let driver = make_driver();
     assert_eq!(driver.window_count(ClientId::new(99)), 0);
-}
-
-#[test]
-fn selection_info_no_selection_returns_none() {
-    let driver = make_driver();
-    let client = ClientId::new(1);
-    driver.on_client_added(client);
-    assert!(
-        driver
-            .selection_info(client, WindowId::from_raw(1))
-            .is_none()
-    );
 }

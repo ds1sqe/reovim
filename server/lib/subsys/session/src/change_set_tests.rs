@@ -1,6 +1,6 @@
 use reovim_kernel::api::v1::{BufferId, OptionValue, WindowId};
 
-use super::{ChangeSet, option_change::OptionChange};
+use super::{change_set::ChangeSet, option_change::OptionChange};
 
 #[test]
 fn empty_changeset_has_no_changes() {

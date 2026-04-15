@@ -26,13 +26,13 @@ const KIND: &str = "completion";
 
 use {
     reovim_driver_command::CommandHandlerStore,
+    reovim_driver_completion::CompletionSourceRegistry,
     reovim_driver_text_input::KeybindingStore,
     reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
         OptionSpec, OptionValue, ProbeResult, Version,
     },
-    reovim_driver_completion::CompletionSourceRegistry,
     reovim_subsys_module_config::ModuleConfigStore,
     std::sync::Arc,
 };

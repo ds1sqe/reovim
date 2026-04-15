@@ -26,11 +26,7 @@ use {
     reovim_subsys_input::{InputEvent, KeyEvent},
 };
 
-use super::{
-    BufferContentProvider, ChangeSet, ClientId, CommandResult, Directive, DispatchResult,
-    ExtensionMap,
-};
-use super::dispatch_result::BufferChanges;
+use super::{BufferContentProvider, ClientId, CommandResult, DispatchResult, ExtensionMap};
 
 /// What each domain implements.
 ///
@@ -41,7 +37,7 @@ use super::dispatch_result::BufferChanges;
 ///
 /// This trait is intentionally small — the domain driver is the entry point
 /// for the server to interact with a domain, not the surface area for all
-/// domain capabilities. Optional queries go on [`DomainStateQuery`].
+/// domain capabilities.
 pub trait DomainDriver: Send + Sync {
     /// Domain name (e.g., "text", "mesh", "image").
     ///
@@ -75,22 +71,22 @@ pub trait DomainDriver: Send + Sync {
     /// 2. Resolves the key (module policy)
     /// 3. Executes the resulting action (command, insert, mode transition)
     /// 4. Updates internal state (cursors, undo, syntax)
-    /// 5. Returns a [`ChangeSet`] describing what changed
+    /// 5. Returns a [`DispatchResult`] describing what changed
     ///
     /// The server never sees `ResolveResult` or mode transitions.
-    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> ChangeSet;
+    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> DispatchResult;
 
     /// Dispatch a command for a client.
     ///
-    /// Returns `Some(ChangeSet)` if the domain handles this command.
-    /// Returns `None` if the command is unknown to this domain — the server
-    /// falls back to session-global commands (`:q`, `:split`, etc.).
+    /// Returns [`CommandResult::Handled`] if the domain handles this command.
+    /// Returns [`CommandResult::NotHandled`] if the command is unknown to this
+    /// domain — the server falls back to session-global commands (`:q`, `:split`, etc.).
     fn dispatch_command(
         &self,
         client_id: ClientId,
         command: &str,
         args: &[String],
-    ) -> Option<ChangeSet>;
+    ) -> CommandResult;
 
     // --- Per-client lifecycle ---
 
@@ -123,7 +119,7 @@ pub trait DomainDriver: Send + Sync {
 
     /// Get the current cursors for a client in a specific window.
     ///
-    /// The server calls this when `ChangeSet` reports `cursor_moved`, or
+    /// The server calls this after dispatch (polling for cursor state), or
     /// when a client first connects, or when broadcasting cursor presence.
     fn cursors(&self, client_id: ClientId, window_id: WindowId) -> Vec<Box<dyn Cursor>>;
 
@@ -152,13 +148,11 @@ pub trait DomainDriver: Send + Sync {
         if payload.len() >= 12 {
             let kind = u16::from_le_bytes([payload[0], payload[1]]);
             if kind == 0x0001 {
-                // KIND_KEY — delegate to legacy dispatch_key path
+                // KIND_KEY — delegate to dispatch_key_with_extensions
                 let key_event = self.decode_key_fallback(payload);
                 if let Some(key) = key_event {
-                    let change_set = self.dispatch_key_with_extensions(
-                        client_id, &key, client_ext, shared_ext,
-                    );
-                    return changeset_to_dispatch_result(&change_set);
+                    return self
+                        .dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext);
                 }
             }
         }
@@ -183,14 +177,11 @@ pub trait DomainDriver: Send + Sync {
         command: &str,
         args: &[String],
     ) -> CommandResult {
-        // Fallback to legacy dispatch_command
-        match self.dispatch_command(client_id, command, args) {
-            Some(cs) => CommandResult::Handled(changeset_to_dispatch_result(&cs)),
-            None => CommandResult::NotHandled,
-        }
+        // Delegate to dispatch_command (same contract, v2 is now the canonical path)
+        self.dispatch_command(client_id, command, args)
     }
 
-    // --- Legacy dispatch (kept for gradual migration) ---
+    // --- Extension-aware dispatch ---
 
     /// Dispatch a key with access to the server's extension maps.
     ///
@@ -214,7 +205,7 @@ pub trait DomainDriver: Send + Sync {
         key: &KeyEvent,
         _client_ext: &mut ExtensionMap,
         _shared_ext: &mut ExtensionMap,
-    ) -> ChangeSet {
+    ) -> DispatchResult {
         self.dispatch_key(client_id, key)
     }
 
@@ -263,108 +254,5 @@ pub trait DomainDriver: Send + Sync {
     /// Number of windows for a client.
     fn window_count(&self, _client_id: ClientId) -> usize {
         0
-    }
-}
-
-/// Optional state queries for domains that support them.
-///
-/// The server uses this for gRPC debug endpoints and status line rendering.
-/// Not all domains need to implement all methods — defaults return `None`
-/// or empty.
-///
-/// - Text domain: implements all methods
-/// - Image domain: might only implement `mode_name`
-/// - Binary/hex domain: might implement none
-pub trait DomainStateQuery: Send + Sync {
-    /// Active mode name for display (status line, gRPC).
-    ///
-    /// Returns `None` if this domain has no mode concept.
-    fn mode_name(&self, _client_id: ClientId) -> Option<String> {
-        None
-    }
-
-    /// Register contents as display representations.
-    ///
-    /// Returns empty if this domain has no registers.
-    fn registers(&self, _client_id: ClientId) -> Vec<RegisterInfo> {
-        Vec::new()
-    }
-
-    /// Domain-specific status information for the status line.
-    fn status_info(&self, _client_id: ClientId) -> Option<String> {
-        None
-    }
-
-    /// Selection info for a client's window.
-    ///
-    /// Returns domain-neutral selection coordinates for gRPC notifications.
-    /// `mode` is a domain-specific label (text: "char"/"line"/"block").
-    fn selection_info(&self, _client_id: ClientId, _window_id: WindowId) -> Option<SelectionInfo> {
-        None
-    }
-}
-
-/// Domain-neutral selection information for gRPC notifications.
-///
-/// The server never interprets selection semantics — it passes these
-/// display coordinates to clients. The `mode` label is domain-specific
-/// (text domain uses "char"/"line"/"block").
-#[derive(Debug, Clone)]
-pub struct SelectionInfo {
-    /// Start line (0-indexed).
-    pub start_line: u64,
-    /// Start column (0-indexed).
-    pub start_column: u64,
-    /// End line (0-indexed).
-    pub end_line: u64,
-    /// End column (0-indexed).
-    pub end_column: u64,
-    /// Domain-specific selection mode label.
-    pub mode: String,
-}
-
-/// Display representation of a register entry.
-///
-/// Used by [`DomainStateQuery::registers`] for gRPC debug views.
-/// The server never interprets register content — it just passes
-/// these display strings to clients.
-#[derive(Debug, Clone)]
-pub struct RegisterInfo {
-    /// Register name (e.g., `'a'`, `'"'`, `'+'`).
-    pub name: char,
-    /// Human-readable display of the register content.
-    pub display: String,
-    /// Content type label (e.g., "text/characterwise", "mesh/vertices").
-    pub content_type: String,
-}
-
-/// Bridge: convert a legacy `ChangeSet` to a `DispatchResult`.
-///
-/// Extracts only the fields that `DispatchResult` cares about (buffer lifecycle
-/// and session directives). All signal flags (cursor_moved, mode_changed, etc.)
-/// are dropped — the server polls for those.
-pub fn changeset_to_dispatch_result(cs: &ChangeSet) -> DispatchResult {
-    let directive = if cs.should_quit {
-        Directive::Quit
-    } else if cs.should_detach {
-        Directive::Detach
-    } else {
-        Directive::Continue
-    };
-
-    let created = cs.created_buffers.clone();
-    let closed = {
-        let mut c = cs.deleted_buffers.clone();
-        c.extend_from_slice(&cs.closed_buffers);
-        c
-    };
-
-    DispatchResult {
-        buffers: BufferChanges {
-            modified: cs.modified_buffers.clone(),
-            created,
-            closed,
-        },
-        directive,
     }
 }

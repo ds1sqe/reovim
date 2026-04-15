@@ -2,8 +2,8 @@
 
 use {
     crate::traits::{
-        ClearType, Color, PlatformEvent, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers,
-        MouseButton, MouseEvent, MouseEventKind, TerminalSize,
+        ClearType, Color, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers, MouseButton,
+        MouseEvent, MouseEventKind, PlatformEvent, TerminalSize,
     },
     crossterm::{
         event::{self as ct_event, Event as CtEvent},

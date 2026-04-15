@@ -20,8 +20,6 @@
 
 use reovim_kernel::api::v1::BufferId;
 
-use super::Viewport;
-
 /// Domain-neutral buffer content access.
 ///
 /// Each domain driver provides a single `Arc<dyn BufferContentProvider>` that
@@ -47,7 +45,10 @@ pub trait BufferContentProvider: Send + Sync {
     /// Returns `None` if the buffer doesn't exist or the concept doesn't apply.
     fn content_unit_count(&self, buffer_id: BufferId) -> Option<usize>;
 
-    /// Display lines for a viewport region.
+    /// Display lines for a region.
+    ///
+    /// `offset` is the first unit to render (0-indexed).
+    /// `count` is the maximum number of units to return.
     ///
     /// Domain decides how to render:
     /// - Text shows source lines with syntax highlighting
@@ -55,7 +56,12 @@ pub trait BufferContentProvider: Send + Sync {
     /// - Image shows pixel/color info
     ///
     /// Returns `None` if the buffer doesn't exist in this domain.
-    fn display_lines(&self, buffer_id: BufferId, viewport: &Viewport) -> Option<Vec<DisplayLine>>;
+    fn display_lines(
+        &self,
+        buffer_id: BufferId,
+        offset: usize,
+        count: usize,
+    ) -> Option<Vec<DisplayLine>>;
 
     /// Whether the buffer has been modified since last save.
     fn is_modified(&self, buffer_id: BufferId) -> bool;

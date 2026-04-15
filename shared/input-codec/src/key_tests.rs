@@ -1,7 +1,11 @@
 //! Round-trip tests for keyboard codec.
 
-use crate::key::{decode, encode, KIND_KEY};
-use reovim_subsys_input::{input_event::INPUT_HEADER_SIZE, input_kind, KeyCode, KeyEvent, KeyEventKind, Modifiers};
+use {
+    crate::key::{KIND_KEY, decode, encode},
+    reovim_subsys_input::{
+        KeyCode, KeyEvent, KeyEventKind, Modifiers, input_event::INPUT_HEADER_SIZE, input_kind,
+    },
+};
 
 #[test]
 fn round_trip_char_press() {

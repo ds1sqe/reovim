@@ -1,10 +1,10 @@
 //! Tests for ProjectionStore.
 
-use super::projection_store::*;
-use reovim_subsys_coordination::{
-    DomainId, Projection, ProjectionDelivery, ProjectionTag,
+use {
+    super::projection_store::*,
+    reovim_subsys_coordination::{DomainId, Projection, ProjectionDelivery, ProjectionTag},
+    reovim_subsys_session::ClientId,
 };
-use reovim_subsys_session::ClientId;
 
 fn make_persistent(tag: &str, payload: &[u8]) -> Projection {
     Projection {
@@ -81,10 +81,7 @@ fn update_detects_payload_change() {
 #[test]
 fn update_forwards_transient() {
     let mut store = ProjectionStore::new();
-    let result = store.update(
-        cid(1),
-        vec![make_transient("platform.haptic", &[0xFF])],
-    );
+    let result = store.update(cid(1), vec![make_transient("platform.haptic", &[0xFF])]);
     assert!(result.changed.is_empty());
     assert_eq!(result.transient.len(), 1);
 }

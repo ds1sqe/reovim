@@ -114,10 +114,7 @@ fn flags_truncates_unknown_bits() {
 #[test]
 fn payload_error_display() {
     let err = InputPayloadError::TooShort { got: 3, min: 8 };
-    assert_eq!(
-        err.to_string(),
-        "input payload too short: got 3, need at least 8"
-    );
+    assert_eq!(err.to_string(), "input payload too short: got 3, need at least 8");
 }
 
 #[test]

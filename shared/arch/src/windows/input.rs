@@ -4,7 +4,7 @@
 
 use std::{io, time::Duration};
 
-use crate::traits::{PlatformEvent, InputSource};
+use crate::traits::{InputSource, PlatformEvent};
 
 /// Windows input source stub.
 ///

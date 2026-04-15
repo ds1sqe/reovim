@@ -142,49 +142,16 @@ fn test_z_order_offset() {
     assert_eq!(z_zero.offset(50).as_u16(), 50);
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_overlay_constraints_at_cursor() {
     let window = WindowId::from_raw(5);
-    let line = LineIndex::new(10);
-    let col = ColIndex::new(20);
-    let constraints = OverlayConstraints::at_cursor(window, line, col);
+    let constraints = OverlayConstraints::at_cursor(window);
 
     match constraints.anchor {
-        Anchor::Cursor {
-            window: w,
-            line: l,
-            col: c,
-        } => {
+        Anchor::CursorInWindow(w) => {
             assert_eq!(w, window);
-            assert_eq!(l, line);
-            assert_eq!(c, col);
         }
-        _ => panic!("Expected Anchor::Cursor"),
-    }
-    assert_eq!(constraints.preferred_width, None);
-    assert_eq!(constraints.preferred_height, None);
-    assert_eq!(constraints.max_width, None);
-    assert_eq!(constraints.max_height, None);
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_overlay_constraints_at_cursor_raw() {
-    let window = WindowId::from_raw(3);
-    let constraints = OverlayConstraints::at_cursor_raw(window, 7, 15);
-
-    match constraints.anchor {
-        Anchor::Cursor {
-            window: w,
-            line,
-            col,
-        } => {
-            assert_eq!(w, window);
-            assert_eq!(line, LineIndex::new(7));
-            assert_eq!(col, ColIndex::new(15));
-        }
-        _ => panic!("Expected Anchor::Cursor"),
+        _ => panic!("Expected Anchor::CursorInWindow"),
     }
     assert_eq!(constraints.preferred_width, None);
     assert_eq!(constraints.preferred_height, None);

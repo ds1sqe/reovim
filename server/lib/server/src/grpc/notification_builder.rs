@@ -601,18 +601,16 @@ pub fn build_projection_notifications(
         notifications.push(Notification {
             event_type: "projection_updated".to_string(),
             timestamp_ms: timestamp,
-            payload: Some(notification::Payload::ProjectionUpdated(
-                ProjectionUpdatedPayload {
-                    tag: proj.tag.as_str().to_string(),
-                    domain_id: proj.domain_id.0,
-                    window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
-                    payload: proj.payload.clone(),
-                    display: proj.display.clone(),
-                    transient: false,
-                    version: versioned.version,
-                    client_id,
-                },
-            )),
+            payload: Some(notification::Payload::ProjectionUpdated(ProjectionUpdatedPayload {
+                tag: proj.tag.as_str().to_string(),
+                domain_id: proj.domain_id.0,
+                window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
+                payload: proj.payload.clone(),
+                display: proj.display.clone(),
+                transient: false,
+                version: versioned.version,
+                client_id,
+            })),
         });
     }
 
@@ -621,18 +619,16 @@ pub fn build_projection_notifications(
         notifications.push(Notification {
             event_type: "projection_updated".to_string(),
             timestamp_ms: timestamp,
-            payload: Some(notification::Payload::ProjectionUpdated(
-                ProjectionUpdatedPayload {
-                    tag: proj.tag.as_str().to_string(),
-                    domain_id: proj.domain_id.0,
-                    window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
-                    payload: proj.payload.clone(),
-                    display: proj.display.clone(),
-                    transient: true,
-                    version: 0,
-                    client_id,
-                },
-            )),
+            payload: Some(notification::Payload::ProjectionUpdated(ProjectionUpdatedPayload {
+                tag: proj.tag.as_str().to_string(),
+                domain_id: proj.domain_id.0,
+                window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
+                payload: proj.payload.clone(),
+                display: proj.display.clone(),
+                transient: true,
+                version: 0,
+                client_id,
+            })),
         });
     }
 

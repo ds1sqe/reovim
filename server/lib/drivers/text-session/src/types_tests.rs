@@ -760,6 +760,14 @@ impl RootCompositor for MockCompositor {
     fn boxed_clone(&self) -> Box<dyn RootCompositor> {
         Box::new(Self)
     }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+        reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
+    }
 }
 
 // =========================================================================
@@ -933,50 +941,49 @@ fn test_window_layout_remove_last_window() {
 }
 
 // =========================================================================
-// CursorSnapshot (#664)
+// CursorSnapshot (#664, updated C2 #753)
+// CursorSnapshot is now an opaque [u8; 8] cursor identity in subsys-session.
 // =========================================================================
 
 #[test]
-fn cursor_snapshot_new() {
-    let snap = super::CursorSnapshot::new(10, 20, 42);
-    assert_eq!(snap.line, 10);
-    assert_eq!(snap.col, 20);
-    assert_eq!(snap.buffer_id, 42);
+fn cursor_snapshot_from_bytes() {
+    let bytes = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let snap = super::CursorSnapshot::from_bytes(bytes);
+    assert_eq!(snap.as_bytes(), &bytes);
 }
 
 #[test]
 fn cursor_snapshot_create_sentinel() {
     use crate::SessionExtension;
     let snap = super::CursorSnapshot::create();
-    assert_eq!(snap.line, u32::MAX);
-    assert_eq!(snap.col, u32::MAX);
-    assert_eq!(snap.buffer_id, 0);
+    assert_eq!(snap, super::CursorSnapshot::SENTINEL);
+    assert_eq!(snap.as_bytes(), &[0u8; 8]);
 }
 
 #[test]
 fn cursor_snapshot_eq() {
-    let a = super::CursorSnapshot::new(1, 2, 3);
-    let b = super::CursorSnapshot::new(1, 2, 3);
+    let a = super::CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
+    let b = super::CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(a, b);
 }
 
 #[test]
 fn cursor_snapshot_ne() {
-    let a = super::CursorSnapshot::new(1, 2, 3);
-    let b = super::CursorSnapshot::new(1, 2, 4);
+    let a = super::CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
+    let b = super::CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 9]);
     assert_ne!(a, b);
 }
 
 #[test]
 fn cursor_snapshot_clone() {
-    let a = super::CursorSnapshot::new(5, 6, 7);
+    let a = super::CursorSnapshot::from_bytes([10, 20, 30, 40, 50, 60, 70, 80]);
     let b = a;
     assert_eq!(a, b);
 }
 
 #[test]
 fn cursor_snapshot_debug() {
-    let snap = super::CursorSnapshot::new(0, 0, 0);
+    let snap = super::CursorSnapshot::from_bytes([0u8; 8]);
     let debug = format!("{snap:?}");
     assert!(debug.contains("CursorSnapshot"));
 }

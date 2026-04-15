@@ -16,7 +16,13 @@
 //! by `dispatch_key_for_client` and consumed by the server's syntax/codec paths.
 //! Phase 5 will move those consumers into the domain driver.
 
-use {crate::api::StateChanges, reovim_subsys_session::ChangeSet};
+use {
+    crate::api::StateChanges,
+    reovim_subsys_session::{
+        CommandResult, Directive, DispatchResult, change_set::ChangeSet,
+        dispatch_result::BufferChanges,
+    },
+};
 
 /// Convert text-domain `StateChanges` to domain-neutral `ChangeSet`.
 ///
@@ -94,6 +100,50 @@ pub fn state_changes_from_change_set(cs: ChangeSet) -> StateChanges {
     sc.options_changed = cs.option_changes;
 
     sc
+}
+
+/// Bridge: convert a text-domain `ChangeSet` to a `DispatchResult`.
+///
+/// Extracts only the fields that `DispatchResult` cares about (buffer lifecycle
+/// and session directives). All signal flags (cursor_moved, mode_changed, etc.)
+/// are dropped — the server polls for those via `collect_projections`.
+///
+/// This is a crate-internal utility for the text driver's migration path.
+#[must_use]
+pub(crate) fn changeset_to_dispatch_result(cs: &ChangeSet) -> DispatchResult {
+    let directive = if cs.should_quit {
+        Directive::Quit
+    } else if cs.should_detach {
+        Directive::Detach
+    } else {
+        Directive::Continue
+    };
+
+    let created = cs.created_buffers.clone();
+    let closed = {
+        let mut c = cs.deleted_buffers.clone();
+        c.extend_from_slice(&cs.closed_buffers);
+        c
+    };
+
+    DispatchResult {
+        buffers: BufferChanges {
+            modified: cs.modified_buffers.clone(),
+            created,
+            closed,
+        },
+        directive,
+    }
+}
+
+/// Bridge: convert a text-domain `ChangeSet` to a `CommandResult`.
+///
+/// `Some(cs)` means the command was handled; `None` is unreachable here
+/// (callers already pattern-match before calling this). The `ChangeSet`
+/// is converted to `DispatchResult` via `changeset_to_dispatch_result`.
+#[must_use]
+pub(crate) fn changeset_to_command_result(cs: &ChangeSet) -> CommandResult {
+    CommandResult::Handled(changeset_to_dispatch_result(cs))
 }
 
 #[cfg(test)]

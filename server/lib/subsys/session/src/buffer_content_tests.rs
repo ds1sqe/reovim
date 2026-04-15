@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use reovim_kernel::api::v1::BufferId;
 
-use super::{BufferContentProvider, DisplayLine, Viewport};
+use super::{BufferContentProvider, DisplayLine};
 
 // --- Mock implementation ---
 
@@ -50,19 +50,23 @@ impl BufferContentProvider for MockContentProvider {
             .map(|(content, _)| content.iter().filter(|&&b| b == b'\n').count() + 1)
     }
 
-    fn display_lines(&self, buffer_id: BufferId, viewport: &Viewport) -> Option<Vec<DisplayLine>> {
+    fn display_lines(
+        &self,
+        buffer_id: BufferId,
+        offset: usize,
+        count: usize,
+    ) -> Option<Vec<DisplayLine>> {
         let (content, _) = self.find(buffer_id)?;
         let text = String::from_utf8_lossy(&content);
         let lines: Vec<&str> = text.lines().collect();
-        let start = viewport.scroll_top;
-        let end = (start + viewport.height as usize).min(lines.len());
+        let end = (offset + count).min(lines.len());
         Some(
-            lines[start..end]
+            lines[offset..end]
                 .iter()
                 .enumerate()
                 .map(|(i, line)| DisplayLine {
                     content: (*line).to_string(),
-                    unit_index: start + i,
+                    unit_index: offset + i,
                 })
                 .collect(),
         )
@@ -127,13 +131,7 @@ fn display_lines_within_viewport() {
     let provider = MockContentProvider::new();
     let id = BufferId::from_raw(1);
     provider.add_buffer(id, b"line0\nline1\nline2\nline3", false);
-    let viewport = Viewport {
-        width: 80,
-        height: 2,
-        scroll_top: 1,
-        scroll_left: 0,
-    };
-    let lines = provider.display_lines(id, &viewport).unwrap();
+    let lines = provider.display_lines(id, 1, 2).unwrap();
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].content, "line1");
     assert_eq!(lines[0].unit_index, 1);
@@ -144,15 +142,9 @@ fn display_lines_within_viewport() {
 #[test]
 fn display_lines_missing_buffer() {
     let provider = MockContentProvider::new();
-    let viewport = Viewport {
-        width: 80,
-        height: 10,
-        scroll_top: 0,
-        scroll_left: 0,
-    };
     assert!(
         provider
-            .display_lines(BufferId::from_raw(99), &viewport)
+            .display_lines(BufferId::from_raw(99), 0, 10)
             .is_none()
     );
 }

@@ -7,11 +7,11 @@
 use std::fmt::Write;
 
 use {
+    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_driver_codec::{
         CodecError, CodecMetadata, ContentType, DecodeResult, DecodedEdit, TranslateEditError,
     },
     reovim_kernel::api::v1::ByteEdit,
-    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
 };
 
 /// Annotation kind for the header row.

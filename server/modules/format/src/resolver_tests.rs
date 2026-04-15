@@ -1,8 +1,8 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_kernel::api::v1::ServiceRegistry,
     reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 use super::*;

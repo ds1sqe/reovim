@@ -187,6 +187,23 @@ pub trait RootCompositor: Send + Sync {
     /// driver_session.set_compositor(box_compositor);
     /// ```
     fn boxed_clone(&self) -> Box<dyn RootCompositor>;
+
+    // ========================================================================
+    // Generation & Topology (#753 C9)
+    // ========================================================================
+
+    /// Monotonic generation counter for change detection.
+    ///
+    /// Increments on any layout mutation (split, close, focus, resize, etc.).
+    /// The server compares generations to detect layout changes without
+    /// relying on domain-specific change signals.
+    fn generation(&self) -> u64;
+
+    /// Current window arrangement as a domain-neutral topology.
+    ///
+    /// Returns the tiled tree structure for the active layer.
+    /// Used by the server for layout polling and by proto serialization.
+    fn topology(&self) -> crate::LayoutTopology;
 }
 
 /// Window layer compositor manages windows within a single layer.

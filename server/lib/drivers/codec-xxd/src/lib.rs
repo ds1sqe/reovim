@@ -19,8 +19,8 @@
 use std::fmt::Write;
 
 use {
-    reovim_driver_codec::{CodecError, CodecMetadata, CodecView, ContentType, DecodeResult},
     reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+    reovim_driver_codec::{CodecError, CodecMetadata, CodecView, ContentType, DecodeResult},
 };
 
 /// Annotation kind for the hex offset/address column.

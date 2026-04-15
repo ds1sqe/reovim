@@ -42,6 +42,7 @@
 use std::sync::Arc;
 
 use {
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_driver_text_input::{
         KeybindingStore, LookupPolicyStore, ModeInfo, ModeInfoStore, ModeProviderKey,
@@ -52,7 +53,6 @@ use {
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,
     },
-    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
     reovim_subsys_manifest::ModeBridgeStore,
 };
 

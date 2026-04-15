@@ -8,7 +8,7 @@
 //!
 //! # Contents
 //!
-//! - **Types**: [`ClientId`], [`Viewport`], [`CursorSnapshot`], [`KeySequence`]
+//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`KeySequence`]
 //! - **Extension system**: [`SessionExtension`], [`ExtensionMap`], [`TextInputSink`]
 //! - **Mode lifecycle**: [`SessionMode`], [`ModeError`]
 //! - **Empty session handling**: [`EmptySessionHandler`], [`EmptySessionContext`], [`EmptySessionAction`]
@@ -24,7 +24,10 @@
 pub mod api;
 pub mod bridges;
 mod buffer_content;
-mod change_set;
+/// Internal change-set type. Not part of the public driver API.
+/// Drivers that are mid-migration may access this via `change_set::ChangeSet`.
+#[doc(hidden)]
+pub mod change_set;
 pub mod dispatch_result;
 #[cfg(test)]
 mod dispatch_result_tests;
@@ -46,18 +49,16 @@ mod window;
 // Domain driver contracts
 pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
-    change_set::ChangeSet,
     dispatch_result::{BufferChanges, CommandResult, Directive, DispatchResult},
-    domain_driver::{
-        changeset_to_dispatch_result, DomainDriver, DomainStateQuery, RegisterInfo,
-        SelectionInfo,
-    },
+    domain_driver::DomainDriver,
     option_change::OptionChange,
     window::Window as DomainWindow,
 };
 
 // Types
-pub use types::{ClientId, CursorSnapshot, KeySequence, Viewport};
+pub use types::{ClientId, CursorSnapshot, KeySequence, SurfaceDescriptor};
+// Viewport is domain-specific (text layout); kept crate-internal for window.rs.
+pub(crate) use types::Viewport;
 
 // Extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};

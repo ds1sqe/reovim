@@ -4,7 +4,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::BufferId,
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_subsys_session::{BufferContentProvider, Viewport},
+    reovim_subsys_session::BufferContentProvider,
 };
 
 use super::*;
@@ -83,8 +83,7 @@ fn test_display_lines_full_viewport() {
     let (registry, buffer_id) = setup_registry_with_buffer("line1\nline2\nline3");
     let provider = TextContentProvider::new(registry);
 
-    let viewport = Viewport::new(80, 10);
-    let lines = provider.display_lines(buffer_id, &viewport).unwrap();
+    let lines = provider.display_lines(buffer_id, 0, 10).unwrap();
 
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[0].content, "line1");
@@ -101,8 +100,7 @@ fn test_display_lines_partial_viewport() {
     let provider = TextContentProvider::new(registry);
 
     // Only show 2 lines
-    let viewport = Viewport::new(80, 2);
-    let lines = provider.display_lines(buffer_id, &viewport).unwrap();
+    let lines = provider.display_lines(buffer_id, 0, 2).unwrap();
 
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].unit_index, 0);
@@ -114,9 +112,7 @@ fn test_display_lines_scrolled() {
     let (registry, buffer_id) = setup_registry_with_buffer("a\nb\nc\nd\ne");
     let provider = TextContentProvider::new(registry);
 
-    let mut viewport = Viewport::new(80, 2);
-    viewport.scroll_top = 2;
-    let lines = provider.display_lines(buffer_id, &viewport).unwrap();
+    let lines = provider.display_lines(buffer_id, 2, 2).unwrap();
 
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].content, "c");
@@ -130,9 +126,7 @@ fn test_display_lines_scrolled_past_end() {
     let (registry, buffer_id) = setup_registry_with_buffer("a\nb");
     let provider = TextContentProvider::new(registry);
 
-    let mut viewport = Viewport::new(80, 10);
-    viewport.scroll_top = 1;
-    let lines = provider.display_lines(buffer_id, &viewport).unwrap();
+    let lines = provider.display_lines(buffer_id, 1, 10).unwrap();
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].content, "b");
@@ -144,8 +138,7 @@ fn test_display_lines_nonexistent() {
     let registry = Arc::new(TextBufferRegistry::new());
     let provider = TextContentProvider::new(registry);
 
-    let viewport = Viewport::new(80, 10);
-    assert!(provider.display_lines(BufferId::new(), &viewport).is_none());
+    assert!(provider.display_lines(BufferId::new(), 0, 10).is_none());
 }
 
 #[test]

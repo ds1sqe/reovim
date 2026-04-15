@@ -30,9 +30,101 @@ use crate::MarkBank;
 use crate::{ExtensionMap, Jumplist, api::Selection as ApiSelection};
 
 // Re-export moved types so they are accessible within this module and its tests via `use super::*`.
-// CursorSnapshot is only referenced in tests, suppress the lint.
+// CursorSnapshot is only referenced in tests. It is now an opaque [u8; 8] identity (C2 #753).
 #[allow(unused_imports)]
-pub use crate::{ClientId, CursorSnapshot, KeySequence, Viewport};
+pub use crate::{ClientId, CursorSnapshot, KeySequence};
+
+/// Viewport for a client session.
+///
+/// Represents the visible area of a buffer in a window.
+/// Tracks both vertical and horizontal scroll positions.
+///
+/// Moved from subsys-session to driver-text-session as part of the C-chain
+/// subsys cleanup (#753). Viewport is a text/layout concept; it does not
+/// belong in domain-neutral subsys contracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Viewport {
+    /// Width in columns.
+    pub width: u16,
+    /// Height in rows.
+    pub height: u16,
+    /// Vertical scroll offset (first visible line, 0-indexed).
+    pub scroll_top: usize,
+    /// Horizontal scroll offset (first visible column, 0-indexed).
+    pub scroll_left: usize,
+}
+
+impl Viewport {
+    /// Create a new viewport.
+    #[must_use]
+    pub const fn new(width: u16, height: u16) -> Self {
+        Self {
+            width,
+            height,
+            scroll_top: 0,
+            scroll_left: 0,
+        }
+    }
+
+    /// Create a default viewport (80x24).
+    #[must_use]
+    pub const fn default_size() -> Self {
+        Self::new(80, 24)
+    }
+
+    /// Get the last visible line index.
+    #[must_use]
+    pub const fn last_visible_line(&self) -> usize {
+        self.scroll_top + self.height as usize - 1
+    }
+
+    /// Get the last visible column index.
+    #[must_use]
+    pub const fn last_visible_column(&self) -> usize {
+        self.scroll_left + self.width as usize - 1
+    }
+
+    /// Check if a line is visible.
+    #[must_use]
+    pub const fn is_line_visible(&self, line: usize) -> bool {
+        line >= self.scroll_top && line <= self.last_visible_line()
+    }
+
+    /// Check if a column is visible.
+    #[must_use]
+    pub const fn is_column_visible(&self, column: usize) -> bool {
+        column >= self.scroll_left && column <= self.last_visible_column()
+    }
+
+    /// Check if a position (line, column) is visible.
+    #[must_use]
+    pub const fn is_position_visible(&self, line: usize, column: usize) -> bool {
+        self.is_line_visible(line) && self.is_column_visible(column)
+    }
+
+    /// Adjust `scroll_top` so the cursor line is visible.
+    ///
+    /// Returns `true` if `scroll_top` was changed.
+    pub const fn ensure_cursor_visible(&mut self, cursor_line: usize) -> bool {
+        if self.height == 0 {
+            return false;
+        }
+        let old = self.scroll_top;
+        let h = self.height as usize;
+        if cursor_line < self.scroll_top {
+            self.scroll_top = cursor_line;
+        } else if cursor_line >= self.scroll_top + h {
+            self.scroll_top = cursor_line - h + 1;
+        }
+        self.scroll_top != old
+    }
+}
+
+impl Default for Viewport {
+    fn default() -> Self {
+        Self::default_size()
+    }
+}
 
 /// Cursor position within a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -429,8 +521,8 @@ impl TextObjRange {
     }
 }
 
-// ClientId, Viewport, CursorPosition, KeySequence, CursorSnapshot are now defined
-// in reovim-subsys-session, along with the From<Position>/From<CursorPosition> impls.
+// ClientId, Viewport, CursorPosition, KeySequence are now defined in reovim-subsys-session.
+// CursorSnapshot is also in reovim-subsys-session but is now an opaque [u8; 8] identity (C2 #753).
 
 /// Window within a session.
 ///
@@ -838,7 +930,7 @@ impl Session {
     }
 }
 
-// CursorSnapshot has moved to reovim-subsys-session.
+// CursorSnapshot has moved to reovim-subsys-session (now an opaque [u8; 8] identity, C2 #753).
 
 #[cfg(test)]
 #[path = "types_tests.rs"]

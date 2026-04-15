@@ -1,7 +1,9 @@
 //! Round-trip tests for pointer codec.
 
-use crate::pointer::{decode, encode, PointerEvent, KIND_POINTER};
-use reovim_subsys_input::{input_event::INPUT_HEADER_SIZE, input_kind, InputFlags};
+use {
+    crate::pointer::{KIND_POINTER, PointerEvent, decode, encode},
+    reovim_subsys_input::{InputFlags, input_event::INPUT_HEADER_SIZE, input_kind},
+};
 
 #[test]
 fn round_trip_click() {

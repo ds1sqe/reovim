@@ -585,8 +585,8 @@ impl Session {
                 driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
 
             // Pending text/byte edits for syntax/codec bridge: currently not
-            // extracted from the domain driver path. The `ChangeSet` is domain-
-            // neutral and does not carry text edits. Phase 5 moves syntax/codec
+            // extracted from the domain driver path. `DispatchResult` carries
+            // only buffer lifecycle + directive. Phase 5 moves syntax/codec
             // updates into the domain driver entirely, making this unnecessary.
             // Until Phase 5, the runner does not call `set_domain_driver`, so
             // the fallback path below handles all actual dispatch.

@@ -48,8 +48,8 @@ mod transition;
 
 // Re-export opaque input event types
 pub use input_event::{
-    input_context, input_flags, input_kind, InputEvent, InputFlags, InputPayloadError,
-    INPUT_HEADER_SIZE,
+    INPUT_HEADER_SIZE, InputEvent, InputFlags, InputPayloadError, input_context, input_flags,
+    input_kind,
 };
 
 // Re-export error types

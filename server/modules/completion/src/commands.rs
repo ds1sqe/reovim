@@ -15,6 +15,7 @@ use std::{
 use {
     reovim_domain_text::Position,
     reovim_driver_command::CommandHandler,
+    reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
     reovim_driver_text_lsp::{
         LspKey, LspLifecycleRegistry, LspProviderRegistry, LspRequest, LspServerConfig,
         uri_from_path,
@@ -25,7 +26,6 @@ use {
     },
     reovim_kernel::api::v1::{BufferId, CommandId, ServiceRegistry, oneshot},
     reovim_subsys_command_types::{CommandContext, CommandResult},
-    reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
     tracing::{debug, info, warn},
 };
 

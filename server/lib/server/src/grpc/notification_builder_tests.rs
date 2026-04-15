@@ -1457,10 +1457,10 @@ fn test_build_notifications_presence_changed_missing_client() {
 // =========================================================================
 
 mod projection_tests {
-    use super::*;
-    use crate::session::projection_store::{StoreUpdateResult, VersionedProjection};
-    use reovim_subsys_coordination::{
-        DomainId, Projection, ProjectionDelivery, ProjectionTag,
+    use {
+        super::*,
+        crate::session::projection_store::{StoreUpdateResult, VersionedProjection},
+        reovim_subsys_coordination::{DomainId, Projection, ProjectionDelivery, ProjectionTag},
     };
 
     fn make_persistent(tag: &str, payload: &[u8]) -> Projection {

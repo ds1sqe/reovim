@@ -1,8 +1,8 @@
 use {
     super::*,
-    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_driver_git::{GitProvider, GitProviderStore},
+    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     std::sync::Arc,
 };
 

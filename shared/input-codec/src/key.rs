@@ -8,9 +8,11 @@
 //! Context bits 0-7: modifier flags (Shift/Ctrl/Alt/Super/Meta)
 //! Flags field: PRESS, RELEASE, REPEAT from InputFlags
 
-use reovim_arch::KeyCode as ArchKeyCode;
-use reovim_subsys_input::{
-    input_event::INPUT_HEADER_SIZE, InputFlags, KeyCode, KeyEvent, KeyEventKind, Modifiers,
+use {
+    reovim_arch::KeyCode as ArchKeyCode,
+    reovim_subsys_input::{
+        InputFlags, KeyCode, KeyEvent, KeyEventKind, Modifiers, input_event::INPUT_HEADER_SIZE,
+    },
 };
 
 /// Well-known kind for keyboard input.
@@ -48,8 +50,7 @@ pub fn decode(payload: &[u8]) -> Option<KeyEvent> {
         return None;
     }
 
-    let flags =
-        InputFlags::from_bits_truncate(u16::from_le_bytes([payload[2], payload[3]]));
+    let flags = InputFlags::from_bits_truncate(u16::from_le_bytes([payload[2], payload[3]]));
     let context = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
     let keycode_u32 = u32::from_le_bytes([payload[8], payload[9], payload[10], payload[11]]);
 
@@ -186,7 +187,8 @@ fn u32_to_keycode(value: u32) -> KeyCode {
         0x003B => KeyCode::RightMeta,
         0x003C => KeyCode::IsoLevel3Shift,
         0x003D => KeyCode::IsoLevel5Shift,
-        v if v & 0x200_0000 != 0 => {
+        v if v & 0x200_0000 != 0 =>
+        {
             #[allow(clippy::cast_possible_truncation)]
             KeyCode::F((v & 0xFF) as u8)
         }

@@ -15,8 +15,6 @@
 
 use crate::{Rect, WindowId};
 
-use super::view::{ColIndex, LineIndex};
-
 /// Opacity threshold below which mouse clicks pass through to the layer below.
 ///
 /// Layers with opacity below this value are considered "click-through" —
@@ -261,17 +259,12 @@ impl WindowPlacement {
 ///
 /// Overlays can be anchored to various reference points.
 #[derive(Debug, Clone, Copy)]
-#[allow(clippy::doc_markdown)] // Code blocks in doc comments
 pub enum Anchor {
-    /// Relative to cursor position in a window.
-    Cursor {
-        /// Window containing the cursor.
-        window: WindowId,
-        /// Line number (0-indexed).
-        line: LineIndex,
-        /// Column number (0-indexed).
-        col: ColIndex,
-    },
+    /// Relative to the cursor in a window.
+    ///
+    /// The exact cursor coordinates are domain-specific and resolved by
+    /// the layout policy implementation when computing overlay positions.
+    CursorInWindow(WindowId),
     /// Relative to a screen position.
     Screen {
         /// X coordinate (column).
@@ -303,27 +296,14 @@ pub struct OverlayConstraints {
 }
 
 impl OverlayConstraints {
-    /// Create constraints anchored to cursor position.
+    /// Create constraints anchored to the cursor in a window.
+    ///
+    /// The exact cursor coordinates within the window are resolved by the
+    /// layout policy implementation at arrangement time.
     #[must_use]
-    pub const fn at_cursor(window: WindowId, line: LineIndex, col: ColIndex) -> Self {
+    pub const fn at_cursor(window: WindowId) -> Self {
         Self {
-            anchor: Anchor::Cursor { window, line, col },
-            preferred_width: None,
-            preferred_height: None,
-            max_width: None,
-            max_height: None,
-        }
-    }
-
-    /// Create constraints anchored to cursor position from raw values.
-    #[must_use]
-    pub const fn at_cursor_raw(window: WindowId, line: usize, col: usize) -> Self {
-        Self {
-            anchor: Anchor::Cursor {
-                window,
-                line: LineIndex::new(line),
-                col: ColIndex::new(col),
-            },
+            anchor: Anchor::CursorInWindow(window),
             preferred_width: None,
             preferred_height: None,
             max_width: None,

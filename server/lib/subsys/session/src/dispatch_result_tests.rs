@@ -1,7 +1,6 @@
 //! Tests for DispatchResult types.
 
-use super::dispatch_result::*;
-use reovim_kernel::api::v1::BufferId;
+use {super::dispatch_result::*, reovim_kernel::api::v1::BufferId};
 
 #[test]
 fn buffer_changes_none_has_no_changes() {

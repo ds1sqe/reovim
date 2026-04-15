@@ -6,7 +6,7 @@ use crossterm::event;
 
 use {
     super::convert::convert_event,
-    crate::traits::{PlatformEvent, InputSource},
+    crate::traits::{InputSource, PlatformEvent},
 };
 
 /// Unix input source implementation wrapping crossterm's event system.

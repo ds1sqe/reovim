@@ -36,7 +36,7 @@ mod floating;
 mod layer;
 mod overlay;
 mod tiled;
-mod view;
+mod topology;
 
 // Re-export all public types
 
@@ -56,17 +56,17 @@ pub use {
     tiled::{MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, TiledLayer},
 };
 
-// View management and index types
-pub use view::{ColIndex, LineIndex, Position, View, ViewManager};
-
 // Typed key and registry (Epic #417 - UniqueProvider abstraction)
 pub use {compositor_key::CompositorKey, compositor_registry::CompositorRegistry};
+
+// Layout topology types
+pub use topology::{LayoutTopology, Permil, SplitError};
 
 // Re-export geometry and direction types from common client model
 pub use reovim_client_model::{Direction, Rect, Size, SplitDirection};
 
 // Re-export kernel ID types
-pub use reovim_kernel::api::v1::{BufferId, WindowId};
+pub use reovim_kernel::api::v1::WindowId;
 
 /// Type alias for backward compatibility.
 ///

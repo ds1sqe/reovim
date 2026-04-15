@@ -9,9 +9,9 @@
 use std::sync::Arc;
 
 use {
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     reovim_driver_git::GitProviderStore,
     reovim_driver_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 mod branch;

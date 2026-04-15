@@ -6,8 +6,7 @@
 //!
 //! Linux equivalent: `struct input_event` in `include/uapi/linux/input.h`.
 
-use bitflags::bitflags;
-use reovim_kernel::api::WindowId;
+use {bitflags::bitflags, reovim_kernel::api::WindowId};
 
 /// Minimum payload size: 8-byte header.
 pub const INPUT_HEADER_SIZE: usize = 8;

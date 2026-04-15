@@ -50,15 +50,17 @@ use {
     reovim_subsys_coordination::Cursor,
     reovim_subsys_input::{InputEvent, KeyEvent},
     reovim_subsys_session::{
-        BufferContentProvider, ChangeSet, ClientId, DispatchResult, DomainDriver,
-        DomainStateQuery, ExtensionMap, RegisterInfo,
+        BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver, ExtensionMap,
+        change_set::ChangeSet,
     },
 };
 
 use crate::{
     Jumplist, MarkBank, Session, WindowLayout,
     api::{ChangeTracker, CommandExecutor, StateChanges},
-    change_bridge::state_changes_to_change_set,
+    change_bridge::{
+        changeset_to_command_result, changeset_to_dispatch_result, state_changes_to_change_set,
+    },
     tab::TabPageSet,
     text_content::TextContentProvider,
     text_cursor::TextCursor,
@@ -370,10 +372,7 @@ impl DomainDriver for TextDomainDriver {
         match kind {
             reovim_input_codec::key::KIND_KEY => {
                 if let Some(key) = reovim_input_codec::key::decode(payload) {
-                    let cs = self.dispatch_key_with_extensions(
-                        client_id, &key, client_ext, shared_ext,
-                    );
-                    reovim_subsys_session::changeset_to_dispatch_result(&cs)
+                    self.dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext)
                 } else {
                     DispatchResult::default()
                 }
@@ -383,17 +382,20 @@ impl DomainDriver for TextDomainDriver {
         }
     }
 
-    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> ChangeSet {
+    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> DispatchResult {
         // Sub-plan 05 Phase 1: dispatch via injected TextKeyDispatchProvider.
         if let Some(ref provider) = self.dispatch_provider {
             return self
                 .dispatch_key_via_provider(client_id, key, provider)
+                .map(|cs| changeset_to_dispatch_result(&cs))
                 .unwrap_or_default();
         }
 
         // Fallback: no dispatch provider wired (sub-plan 03 infrastructure only)
         self.with_client_runtime(client_id, |_runtime| {})
-            .map(|((), changes)| state_changes_to_change_set(&changes))
+            .map(|((), changes)| {
+                changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
+            })
             .unwrap_or_default()
     }
 
@@ -402,23 +404,28 @@ impl DomainDriver for TextDomainDriver {
         client_id: ClientId,
         _command: &str,
         _args: &[String],
-    ) -> Option<ChangeSet> {
+    ) -> CommandResult {
         // Command dispatch requires mapping command name strings to CommandId
         // (module + name). This mapping lives in the server layer's command
         // registry, not in the driver.
         //
         // Sub-plan 05 wires the full command dispatch path. For now, verify
         // the infrastructure: lock state, create SessionRuntime, take changes.
-        self.with_client_runtime(client_id, |_runtime| {
+        match self.with_client_runtime(client_id, |_runtime| {
             // Command lookup deferred to sub-plan 05.
-        })
-        .map(|((), changes)| state_changes_to_change_set(&changes))
+        }) {
+            Some(((), changes)) => {
+                changeset_to_command_result(&state_changes_to_change_set(&changes))
+            }
+            None => CommandResult::NotHandled,
+        }
     }
 
-    fn collect_projections(&self, client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
-        use reovim_subsys_coordination::{
-            DomainId, Projection, ProjectionDelivery, ProjectionTag,
-        };
+    fn collect_projections(
+        &self,
+        client_id: ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
+        use reovim_subsys_coordination::{DomainId, Projection, ProjectionDelivery, ProjectionTag};
 
         let clients = self.clients.read();
         let Some(state) = clients.get(&client_id) else {
@@ -442,7 +449,10 @@ impl DomainDriver for TextDomainDriver {
         projections
     }
 
-    fn initial_projections(&self, client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
+    fn initial_projections(
+        &self,
+        client_id: ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
         // Initial state = same as collect (all persistent, no transient)
         self.collect_projections(client_id)
     }
@@ -497,7 +507,7 @@ impl DomainDriver for TextDomainDriver {
         key: &KeyEvent,
         client_ext: &mut ExtensionMap,
         shared_ext: &mut ExtensionMap,
-    ) -> ChangeSet {
+    ) -> DispatchResult {
         let Some(ref provider) = self.dispatch_provider else {
             // No dispatch provider: fallback to basic dispatch (no extension access)
             return self.dispatch_key(client_id, key);
@@ -507,7 +517,7 @@ impl DomainDriver for TextDomainDriver {
         let mut clients_guard = self.clients.write();
 
         let Some(client_state) = clients_guard.get_mut(&client_id) else {
-            return ChangeSet::new();
+            return DispatchResult::default();
         };
 
         // Build ClientContext with a placeholder ExtensionMap for the runtime.
@@ -542,7 +552,7 @@ impl DomainDriver for TextDomainDriver {
         drop(session_guard);
         drop(clients_guard);
 
-        state_changes_to_change_set(&changes)
+        changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
     }
 
     fn current_mode(&self, client_id: ClientId) -> Option<ModeId> {
@@ -582,76 +592,6 @@ impl DomainDriver for TextDomainDriver {
             .map_or(0, |state| state.windows.windows.len());
         drop(clients);
         count
-    }
-}
-
-impl DomainStateQuery for TextDomainDriver {
-    fn mode_name(&self, client_id: ClientId) -> Option<String> {
-        let clients = self.clients.read();
-        let state = clients.get(&client_id)?;
-        let name = state.mode_stack.current().name().to_owned();
-        drop(clients);
-        Some(name)
-    }
-
-    fn registers(&self, client_id: ClientId) -> Vec<RegisterInfo> {
-        let clients = self.clients.read();
-        let Some(state) = clients.get(&client_id) else {
-            return Vec::new();
-        };
-
-        let infos: Vec<RegisterInfo> = state
-            .registers
-            .iter_non_empty()
-            .map(|(name, content)| {
-                use reovim_domain_text::YankType;
-                let type_label = match content.yank_type {
-                    YankType::Characterwise => "characterwise",
-                    YankType::Linewise => "linewise",
-                };
-                RegisterInfo {
-                    name,
-                    display: content.text.clone(),
-                    content_type: format!("text/{type_label}"),
-                }
-            })
-            .collect();
-        drop(clients);
-        infos
-    }
-
-    fn status_info(&self, _client_id: ClientId) -> Option<String> {
-        None
-    }
-
-    #[allow(clippy::cast_possible_truncation)] // usize→u64 widening on 64-bit; never truncates
-    fn selection_info(
-        &self,
-        client_id: ClientId,
-        window_id: WindowId,
-    ) -> Option<reovim_subsys_session::SelectionInfo> {
-        use crate::SelectionMode;
-
-        let clients = self.clients.read();
-        let state = clients.get(&client_id)?;
-        let window = state.windows.get(window_id)?;
-        let sel = window.selection.as_ref()?;
-
-        let mode_label = match sel.mode {
-            SelectionMode::Character => "char",
-            SelectionMode::Line => "line",
-            SelectionMode::Block => "block",
-        };
-
-        let info = reovim_subsys_session::SelectionInfo {
-            start_line: sel.start.line as u64,
-            start_column: sel.start.column as u64,
-            end_line: sel.end.line as u64,
-            end_column: sel.end.column as u64,
-            mode: mode_label.to_string(),
-        };
-        drop(clients);
-        Some(info)
     }
 }
 

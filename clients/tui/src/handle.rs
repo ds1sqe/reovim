@@ -18,7 +18,7 @@
 use std::time::Duration;
 
 use {
-    reovim_driver_tui::{PlatformEvent, InputReader, KeyEvent, MouseEvent},
+    reovim_driver_tui::{InputReader, KeyEvent, MouseEvent, PlatformEvent},
     tokio::sync::{mpsc, oneshot},
 };
 
@@ -241,7 +241,9 @@ pub fn spawn_tty_reader(input_tx: mpsc::Sender<TuiInput>) -> tokio::task::JoinHa
                 PlatformEvent::Mouse(m) => TuiInput::Raw(RawInputEvent::Mouse(m)),
                 PlatformEvent::Resize(r) => TuiInput::Raw(RawInputEvent::Resize(r.width, r.height)),
                 // Skip focus and paste events
-                PlatformEvent::FocusGained | PlatformEvent::FocusLost | PlatformEvent::Paste(_) => continue,
+                PlatformEvent::FocusGained | PlatformEvent::FocusLost | PlatformEvent::Paste(_) => {
+                    continue;
+                }
             };
             if input_tx.send(tui_input).await.is_err() {
                 // Channel closed, TuiApp dropped

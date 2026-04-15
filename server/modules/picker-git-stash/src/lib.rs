@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use {
+    reovim_driver_git::GitProviderStore,
     reovim_driver_picker::{
         Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
     },
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, ServiceRegistry, Version,
     },
-    reovim_driver_git::GitProviderStore,
 };
 
 /// Picker that lists git stash entries.

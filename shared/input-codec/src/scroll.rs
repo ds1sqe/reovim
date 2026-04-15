@@ -8,8 +8,7 @@
 //! - bytes 4-5: x position (u16, little-endian)
 //! - bytes 6-7: y position (u16, little-endian)
 
-use reovim_subsys_input::input_event::INPUT_HEADER_SIZE;
-use reovim_subsys_input::InputFlags;
+use reovim_subsys_input::{InputFlags, input_event::INPUT_HEADER_SIZE};
 
 /// Well-known kind for scroll input.
 pub const KIND_SCROLL: u16 = 0x0003;
