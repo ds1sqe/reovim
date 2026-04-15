@@ -97,6 +97,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
+- **input**: add `InputEvent` opaque envelope with 8-byte frozen header (kind/flags/context) to subsys-input, `shared/input-codec` crate with key/pointer/scroll codecs (#753)
+- **session**: add `DispatchResult`, `BufferChanges`, `Directive`, `CommandResult` types; `DomainDriver` gains `dispatch_input` for domain-neutral input dispatch (#753)
 - **arch**: rename `InputEvent` → `PlatformEvent` to free the name for the new opaque input envelope in subsys-input (#753)
 - **subsys/drivers**: promote 5 feature contracts (annotation, completion, formatter, git, statusline) from subsys to driver layer — these carry domain-specific traits, not domain-neutral contracts (#753)
 - **server**: remove 14 temporary `ClientDirectory` forwarder methods from `Session`, expose `Session::clients()` accessor, and migrate all gRPC and test callers to use `session.clients().*` directly — `Session` drops from ~35 to ~21 methods (#741)

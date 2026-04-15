@@ -589,6 +589,34 @@ impl Session {
         state.dispatch_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
     }
 
+    /// Dispatch an opaque InputEvent for a client (domain-neutral path).
+    ///
+    /// This is the A4 entry point — encodes PlatformEvent → InputEvent and calls
+    /// `driver.dispatch_input()`. Returns `DispatchResult` instead of `ChangeSet`.
+    pub async fn dispatch_input_for_client(
+        &self,
+        client_id: ClientId,
+        event: &reovim_subsys_input::InputEvent,
+    ) -> Option<reovim_subsys_session::DispatchResult> {
+        let driver = self.domain_driver.read().clone();
+        let driver = driver.as_ref()?;
+
+        let mut clients = self.clients.write();
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+        let editing_state = &mut target_client.state;
+
+        Self::ensure_client_has_window(editing_state);
+
+        let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
+        let client_ext = &mut editing_state.extensions;
+
+        let mut state = self.state.write();
+        let shared_ext = &mut state.app.extensions;
+
+        Some(driver.dispatch_input(subsys_client_id, event, client_ext, shared_ext))
+    }
+
     /// Take pending text edits from the last dispatch batch (for syntax — Phase 5 stub).
     pub fn take_pending_text_edits(&self) -> Vec<reovim_driver_codec::TextBufferModified> {
         self.state.write().take_pending_text_edits()

@@ -48,10 +48,10 @@ use {
     reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ModeStack, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_coordination::Cursor,
-    reovim_subsys_input::KeyEvent,
+    reovim_subsys_input::{InputEvent, KeyEvent},
     reovim_subsys_session::{
-        BufferContentProvider, ChangeSet, ClientId, DomainDriver, DomainStateQuery, ExtensionMap,
-        RegisterInfo,
+        BufferContentProvider, ChangeSet, ClientId, DispatchResult, DomainDriver,
+        DomainStateQuery, ExtensionMap, RegisterInfo,
     },
 };
 
@@ -354,6 +354,33 @@ impl DomainDriver for TextDomainDriver {
 
     fn content_provider(&self) -> Arc<dyn BufferContentProvider> {
         Arc::clone(&self.content_provider) as Arc<dyn BufferContentProvider>
+    }
+
+    fn dispatch_input(
+        &self,
+        client_id: ClientId,
+        event: &InputEvent,
+        client_ext: &mut ExtensionMap,
+        shared_ext: &mut ExtensionMap,
+    ) -> DispatchResult {
+        // Decode InputEvent payload via input-codec
+        let payload = event.payload();
+        let kind = reovim_subsys_input::input_kind(payload);
+
+        match kind {
+            reovim_input_codec::key::KIND_KEY => {
+                if let Some(key) = reovim_input_codec::key::decode(payload) {
+                    let cs = self.dispatch_key_with_extensions(
+                        client_id, &key, client_ext, shared_ext,
+                    );
+                    reovim_subsys_session::changeset_to_dispatch_result(&cs)
+                } else {
+                    DispatchResult::default()
+                }
+            }
+            // Pointer and scroll events not handled by text domain yet
+            _ => DispatchResult::default(),
+        }
     }
 
     fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> ChangeSet {

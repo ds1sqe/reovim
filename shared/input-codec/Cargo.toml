@@ -1,0 +1,18 @@
+[package]
+name = "reovim-input-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Input codec crate — key, pointer, scroll encode/decode for InputEvent"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-subsys-input = { workspace = true }
+reovim-arch = { workspace = true }
+bitflags = "2.4"

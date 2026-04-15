@@ -25,6 +25,9 @@ pub mod api;
 pub mod bridges;
 mod buffer_content;
 mod change_set;
+pub mod dispatch_result;
+#[cfg(test)]
+mod dispatch_result_tests;
 mod domain_driver;
 mod empty_handler;
 mod extension;
@@ -44,7 +47,11 @@ mod window;
 pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
     change_set::ChangeSet,
-    domain_driver::{DomainDriver, DomainStateQuery, RegisterInfo, SelectionInfo},
+    dispatch_result::{BufferChanges, CommandResult, Directive, DispatchResult},
+    domain_driver::{
+        changeset_to_dispatch_result, DomainDriver, DomainStateQuery, RegisterInfo,
+        SelectionInfo,
+    },
     option_change::OptionChange,
     window::Window as DomainWindow,
 };

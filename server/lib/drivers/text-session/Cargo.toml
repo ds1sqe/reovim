@@ -27,8 +27,10 @@ reovim-subsys-command-types = { workspace = true }
 reovim-subsys-layout = { workspace = true }
 # Domain coordination contracts (Position/Cursor traits, codecs)
 reovim-subsys-coordination = { workspace = true }
-# Input subsystem contracts (KeyEvent)
+# Input subsystem contracts (KeyEvent, InputEvent)
 reovim-subsys-input = { workspace = true }
+# Input codec for decoding InputEvent payloads
+reovim-input-codec = { workspace = true }
 # Session subsystem contracts (types + traits, zero domain deps)
 reovim-subsys-session = { workspace = true }
 # Platform abstraction (RwLock for test buffer manager)

@@ -2676,6 +2676,7 @@ dependencies = [
  "reovim-domain-text-events",
  "reovim-driver-text-search",
  "reovim-driver-text-undo",
+ "reovim-input-codec",
  "reovim-kernel",
  "reovim-provider-text",
  "reovim-subsys-clipboard",
@@ -2734,6 +2735,15 @@ name = "reovim-incompatible-api-client-module"
 version = "1.0.0"
 dependencies = [
  "reovim-client-driver",
+]
+
+[[package]]
+name = "reovim-input-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "bitflags 2.11.0",
+ "reovim-arch",
+ "reovim-subsys-input",
 ]
 
 [[package]]

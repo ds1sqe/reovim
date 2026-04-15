@@ -23,10 +23,14 @@ use std::sync::Arc;
 use {
     reovim_kernel::api::v1::{BufferId, ModeId, WindowId},
     reovim_subsys_coordination::Cursor,
-    reovim_subsys_input::KeyEvent,
+    reovim_subsys_input::{InputEvent, KeyEvent},
 };
 
-use super::{BufferContentProvider, ChangeSet, ClientId, ExtensionMap};
+use super::{
+    BufferContentProvider, ChangeSet, ClientId, CommandResult, Directive, DispatchResult,
+    ExtensionMap,
+};
+use super::dispatch_result::BufferChanges;
 
 /// What each domain implements.
 ///
@@ -126,7 +130,67 @@ pub trait DomainDriver: Send + Sync {
     /// Create the initial cursor when a client opens a buffer of this domain.
     fn initial_cursor(&self, client_id: ClientId, buffer_id: BufferId) -> Box<dyn Cursor>;
 
-    // --- Extended dispatch (Phase 4A) ---
+    // --- Opaque input dispatch (Phase A, domain-neutral) ---
+
+    /// Dispatch an opaque input event with access to extension maps.
+    ///
+    /// This is the new domain-neutral dispatch path. The domain driver decodes
+    /// the InputEvent payload via codec crates and dispatches accordingly.
+    /// Returns `DispatchResult` — the server polls for all other state changes.
+    ///
+    /// Default: decodes as KeyEvent via input-codec fallback to dispatch_key.
+    /// Domains should override this to handle all input modalities.
+    fn dispatch_input(
+        &self,
+        client_id: ClientId,
+        event: &InputEvent,
+        client_ext: &mut ExtensionMap,
+        shared_ext: &mut ExtensionMap,
+    ) -> DispatchResult {
+        // Fallback: try to decode as key event for backward compatibility
+        let payload = event.payload();
+        if payload.len() >= 12 {
+            let kind = u16::from_le_bytes([payload[0], payload[1]]);
+            if kind == 0x0001 {
+                // KIND_KEY — delegate to legacy dispatch_key path
+                let key_event = self.decode_key_fallback(payload);
+                if let Some(key) = key_event {
+                    let change_set = self.dispatch_key_with_extensions(
+                        client_id, &key, client_ext, shared_ext,
+                    );
+                    return changeset_to_dispatch_result(&change_set);
+                }
+            }
+        }
+        DispatchResult::default()
+    }
+
+    /// Decode a key event from InputEvent payload (fallback helper).
+    /// Override not needed — this is only for the default dispatch_input impl.
+    fn decode_key_fallback(&self, _payload: &[u8]) -> Option<KeyEvent> {
+        None
+    }
+
+    /// Dispatch a command for a client (domain-neutral).
+    ///
+    /// Returns `CommandResult`:
+    /// - `Handled(DispatchResult)` — command recognized and executed
+    /// - `NotHandled` — command not recognized by this domain
+    /// - `Error(String)` — command recognized but execution failed
+    fn dispatch_command_v2(
+        &self,
+        client_id: ClientId,
+        command: &str,
+        args: &[String],
+    ) -> CommandResult {
+        // Fallback to legacy dispatch_command
+        match self.dispatch_command(client_id, command, args) {
+            Some(cs) => CommandResult::Handled(changeset_to_dispatch_result(&cs)),
+            None => CommandResult::NotHandled,
+        }
+    }
+
+    // --- Legacy dispatch (kept for gradual migration) ---
 
     /// Dispatch a key with access to the server's extension maps.
     ///
@@ -254,4 +318,35 @@ pub struct RegisterInfo {
     pub display: String,
     /// Content type label (e.g., "text/characterwise", "mesh/vertices").
     pub content_type: String,
+}
+
+/// Bridge: convert a legacy `ChangeSet` to a `DispatchResult`.
+///
+/// Extracts only the fields that `DispatchResult` cares about (buffer lifecycle
+/// and session directives). All signal flags (cursor_moved, mode_changed, etc.)
+/// are dropped — the server polls for those.
+pub fn changeset_to_dispatch_result(cs: &ChangeSet) -> DispatchResult {
+    let directive = if cs.should_quit {
+        Directive::Quit
+    } else if cs.should_detach {
+        Directive::Detach
+    } else {
+        Directive::Continue
+    };
+
+    let created = cs.created_buffers.clone();
+    let closed = {
+        let mut c = cs.deleted_buffers.clone();
+        c.extend_from_slice(&cs.closed_buffers);
+        c
+    };
+
+    DispatchResult {
+        buffers: BufferChanges {
+            modified: cs.modified_buffers.clone(),
+            created,
+            closed,
+        },
+        directive,
+    }
 }

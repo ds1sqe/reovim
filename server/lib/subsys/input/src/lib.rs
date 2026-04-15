@@ -28,6 +28,9 @@
 mod binding_info;
 mod convert;
 mod error;
+pub mod input_event;
+#[cfg(test)]
+mod input_event_tests;
 mod key;
 mod keybinding_store;
 mod lifecycle;
@@ -42,6 +45,12 @@ mod mouse;
 mod provider;
 mod traits;
 mod transition;
+
+// Re-export opaque input event types
+pub use input_event::{
+    input_context, input_flags, input_kind, InputEvent, InputFlags, InputPayloadError,
+    INPUT_HEADER_SIZE,
+};
 
 // Re-export error types
 pub use error::{ClipboardError, InputError};
