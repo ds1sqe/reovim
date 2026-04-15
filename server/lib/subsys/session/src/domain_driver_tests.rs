@@ -8,7 +8,7 @@ use {
 
 use super::{
     BufferContentProvider, ChangeSet, ClientId, DisplayLine, DomainDriver, DomainStateQuery,
-    RegisterInfo, Viewport,
+    ExtensionMap, RegisterInfo, SelectionInfo, Viewport,
 };
 
 // --- Test cursor implementation ---
@@ -484,4 +484,89 @@ fn broadcast_client_lifecycle_to_all_domains() {
     // Both domains received the event
     assert_eq!(text.domain_name(), "text");
     assert_eq!(mesh.domain_name(), "mesh");
+}
+
+// --- Phase 4A tests: dispatch_key_with_extensions ---
+
+#[test]
+fn dispatch_key_with_extensions_default_delegates_to_dispatch_key() {
+    let driver = MockDomainDriver::new("text", 1);
+    driver.set_cursor_moves_on_key(true);
+    let client = ClientId(0);
+    let key = KeyEvent::new(KeyCode::Char('j'));
+    let mut client_ext = ExtensionMap::new();
+    let mut shared_ext = ExtensionMap::new();
+
+    let cs = driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
+    assert!(cs.cursor_moved);
+    // Verify dispatch_key was called (event recorded)
+    let events = driver.events();
+    assert!(matches!(events.last(), Some(Event::DispatchKey(c)) if *c == client));
+}
+
+// --- Phase 4A tests: query method defaults ---
+
+#[test]
+fn current_mode_default_returns_none() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert!(driver.current_mode(ClientId(0)).is_none());
+}
+
+#[test]
+fn active_window_default_returns_none() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert!(driver.active_window(ClientId(0)).is_none());
+}
+
+#[test]
+fn window_buffer_default_returns_none() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert!(
+        driver
+            .window_buffer(ClientId(0), WindowId::from_raw(1))
+            .is_none()
+    );
+}
+
+#[test]
+fn windows_default_returns_empty() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert!(driver.windows(ClientId(0)).is_empty());
+}
+
+#[test]
+fn window_count_default_returns_zero() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert_eq!(driver.window_count(ClientId(0)), 0);
+}
+
+// --- Phase 4A tests: SelectionInfo ---
+
+#[test]
+fn selection_info_default_returns_none() {
+    struct EmptyQuery;
+    impl DomainStateQuery for EmptyQuery {}
+
+    let q = EmptyQuery;
+    assert!(
+        q.selection_info(ClientId(0), WindowId::from_raw(1))
+            .is_none()
+    );
+}
+
+#[test]
+fn selection_info_debug_and_clone() {
+    let info = SelectionInfo {
+        start_line: 0,
+        start_column: 5,
+        end_line: 2,
+        end_column: 10,
+        mode: "char".to_string(),
+    };
+    let cloned = info.clone();
+    assert_eq!(cloned.start_line, 0);
+    assert_eq!(cloned.end_column, 10);
+    assert_eq!(cloned.mode, "char");
+    let debug = format!("{info:?}");
+    assert!(debug.contains("SelectionInfo"));
 }

@@ -44,7 +44,7 @@ mod window;
 pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
     change_set::ChangeSet,
-    domain_driver::{DomainDriver, DomainStateQuery, RegisterInfo},
+    domain_driver::{DomainDriver, DomainStateQuery, RegisterInfo, SelectionInfo},
     option_change::OptionChange,
     window::Window as DomainWindow,
 };

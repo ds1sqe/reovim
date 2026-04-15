@@ -333,3 +333,123 @@ fn test_status_info() {
     driver.on_client_added(client);
     assert!(driver.status_info(client).is_none());
 }
+
+// ============================================================================
+// Phase 4A: dispatch_key_with_extensions tests
+// ============================================================================
+
+#[test]
+fn dispatch_with_extensions_returns_changeset() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    let key = KeyEvent::new(KeyCode::Char('j'));
+    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
+    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
+
+    // No dispatch provider wired → falls back to dispatch_key (no-op)
+    let cs = driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
+    // Should not panic, and should return a valid ChangeSet
+    assert!(!cs.should_quit);
+}
+
+#[test]
+fn dispatch_with_extensions_unknown_client_returns_empty() {
+    let driver = make_driver();
+    let key = KeyEvent::new(KeyCode::Char('j'));
+    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
+    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
+
+    let cs = driver.dispatch_key_with_extensions(
+        ClientId::new(999),
+        &key,
+        &mut client_ext,
+        &mut shared_ext,
+    );
+    assert!(!cs.has_changes());
+}
+
+// ============================================================================
+// Phase 4A: query method tests
+// ============================================================================
+
+#[test]
+fn current_mode_returns_home_mode() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    let mode = driver.current_mode(client);
+    assert!(mode.is_some());
+    assert_eq!(mode.unwrap().name(), "normal");
+}
+
+#[test]
+fn current_mode_unknown_client_returns_none() {
+    let driver = make_driver();
+    assert!(driver.current_mode(ClientId::new(99)).is_none());
+}
+
+#[test]
+fn active_window_empty_client_returns_none() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    // New client has empty WindowLayout → no active window
+    assert!(driver.active_window(client).is_none());
+}
+
+#[test]
+fn window_buffer_unknown_window_returns_none() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    assert!(
+        driver
+            .window_buffer(client, WindowId::from_raw(99))
+            .is_none()
+    );
+}
+
+#[test]
+fn windows_empty_client_returns_empty() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+    assert!(driver.windows(client).is_empty());
+}
+
+#[test]
+fn windows_unknown_client_returns_empty() {
+    let driver = make_driver();
+    assert!(driver.windows(ClientId::new(99)).is_empty());
+}
+
+#[test]
+fn window_count_empty_client_returns_zero() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+    assert_eq!(driver.window_count(client), 0);
+}
+
+#[test]
+fn window_count_unknown_client_returns_zero() {
+    let driver = make_driver();
+    assert_eq!(driver.window_count(ClientId::new(99)), 0);
+}
+
+#[test]
+fn selection_info_no_selection_returns_none() {
+    let driver = make_driver();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+    assert!(
+        driver
+            .selection_info(client, WindowId::from_raw(1))
+            .is_none()
+    );
+}

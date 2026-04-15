@@ -431,6 +431,99 @@ impl DomainDriver for TextDomainDriver {
     fn initial_cursor(&self, _client_id: ClientId, _buffer_id: BufferId) -> Box<dyn Cursor> {
         Box::new(TextCursor::new(self.domain_id, 0, 0))
     }
+
+    fn dispatch_key_with_extensions(
+        &self,
+        client_id: ClientId,
+        key: &KeyEvent,
+        client_ext: &mut ExtensionMap,
+        shared_ext: &mut ExtensionMap,
+    ) -> ChangeSet {
+        let Some(ref provider) = self.dispatch_provider else {
+            // No dispatch provider: fallback to basic dispatch (no extension access)
+            return self.dispatch_key(client_id, key);
+        };
+
+        let mut session_guard = self.session.write();
+        let mut clients_guard = self.clients.write();
+
+        let Some(client_state) = clients_guard.get_mut(&client_id) else {
+            return ChangeSet::new();
+        };
+
+        // Build ClientContext with a placeholder ExtensionMap for the runtime.
+        // The real client_ext and shared_ext are passed directly to the provider.
+        let mut placeholder_ext = ExtensionMap::new();
+        let client_ctx = crate::ClientContext {
+            mode_stack: &mut client_state.mode_stack,
+            windows: &mut client_state.windows,
+            extensions: &mut placeholder_ext,
+            compositor: &mut client_state.compositor,
+            tabs: &mut client_state.tabs,
+            registers: &mut client_state.registers,
+            clipboard_history: &mut client_state.clipboard_history,
+            local_marks: &mut client_state.local_marks,
+            jumplist: &mut client_state.jumplist,
+            active_buffer: &mut client_state.active_buffer,
+            terminal_size: &mut client_state.terminal_size,
+        };
+
+        let mut runtime = crate::SessionRuntime::with_owner(
+            client_id,
+            &mut session_guard,
+            client_ctx,
+            &self.kernel,
+            &*self.executor,
+        );
+
+        let (_handled, changes) =
+            provider.dispatch_key(&mut runtime, key, shared_ext, client_ext, &*self.executor);
+
+        drop(runtime);
+        drop(session_guard);
+        drop(clients_guard);
+
+        state_changes_to_change_set(&changes)
+    }
+
+    fn current_mode(&self, client_id: ClientId) -> Option<ModeId> {
+        let clients = self.clients.read();
+        let mode = clients.get(&client_id)?.mode_stack.current().clone();
+        drop(clients);
+        Some(mode)
+    }
+
+    fn active_window(&self, client_id: ClientId) -> Option<WindowId> {
+        let clients = self.clients.read();
+        let id = clients.get(&client_id)?.windows.active_id();
+        drop(clients);
+        id
+    }
+
+    fn window_buffer(&self, client_id: ClientId, window_id: WindowId) -> Option<BufferId> {
+        let clients = self.clients.read();
+        let bid = clients.get(&client_id)?.windows.get(window_id)?.buffer_id;
+        drop(clients);
+        bid
+    }
+
+    fn windows(&self, client_id: ClientId) -> Vec<WindowId> {
+        let clients = self.clients.read();
+        let ids = clients
+            .get(&client_id)
+            .map_or_else(Vec::new, |s| s.windows.windows.iter().map(|w| w.id).collect());
+        drop(clients);
+        ids
+    }
+
+    fn window_count(&self, client_id: ClientId) -> usize {
+        let clients = self.clients.read();
+        let count = clients
+            .get(&client_id)
+            .map_or(0, |state| state.windows.windows.len());
+        drop(clients);
+        count
+    }
 }
 
 impl DomainStateQuery for TextDomainDriver {
@@ -470,6 +563,36 @@ impl DomainStateQuery for TextDomainDriver {
 
     fn status_info(&self, _client_id: ClientId) -> Option<String> {
         None
+    }
+
+    #[allow(clippy::cast_possible_truncation)] // usize→u64 widening on 64-bit; never truncates
+    fn selection_info(
+        &self,
+        client_id: ClientId,
+        window_id: WindowId,
+    ) -> Option<reovim_subsys_session::SelectionInfo> {
+        use crate::SelectionMode;
+
+        let clients = self.clients.read();
+        let state = clients.get(&client_id)?;
+        let window = state.windows.get(window_id)?;
+        let sel = window.selection.as_ref()?;
+
+        let mode_label = match sel.mode {
+            SelectionMode::Character => "char",
+            SelectionMode::Line => "line",
+            SelectionMode::Block => "block",
+        };
+
+        let info = reovim_subsys_session::SelectionInfo {
+            start_line: sel.start.line as u64,
+            start_column: sel.start.column as u64,
+            end_line: sel.end.line as u64,
+            end_column: sel.end.column as u64,
+            mode: mode_label.to_string(),
+        };
+        drop(clients);
+        Some(info)
     }
 }
 

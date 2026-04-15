@@ -10,6 +10,8 @@
 //! The `presence` service tracks display preferences and sync awareness.
 //! The `clients` directory tracks editing roles and state ownership.
 
+use std::sync::Arc;
+
 use reovim_kernel::api::v1::ServiceRegistry;
 
 use parking_lot::RwLock;
@@ -20,7 +22,10 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use {reovim_driver_text_session::RegisterContent, reovim_subsys_session::ExtensionMap};
+use {
+    reovim_driver_text_session::RegisterContent,
+    reovim_subsys_session::{DomainDriver, ExtensionMap},
+};
 
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
@@ -47,6 +52,13 @@ pub struct Session {
 
     /// Per-client membership and editing-relation authority.
     clients: ClientDirectory,
+
+    /// Domain driver for key dispatch and state queries (Phase 4A).
+    ///
+    /// When `Some`, `dispatch_key_for_client` delegates to the domain driver.
+    /// When `None`, falls back to the inline dispatch path in `SessionState`.
+    /// Set by the runner at session creation via [`Session::set_domain_driver`].
+    domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
 
     /// Notification broadcast channel (gRPC only).
     #[cfg(feature = "grpc")]
@@ -86,6 +98,7 @@ impl Session {
             id,
             state: RwLock::new(SessionState::default()),
             clients: ClientDirectory::new(),
+            domain_driver: RwLock::new(None),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -124,6 +137,7 @@ impl Session {
             id,
             state: RwLock::new(state),
             clients: ClientDirectory::new(),
+            domain_driver: RwLock::new(None),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -165,6 +179,24 @@ impl Session {
     #[must_use]
     pub const fn presence(&self) -> &PresenceService {
         &self.presence
+    }
+
+    // =========================================================================
+    // Domain Driver (Phase 4A)
+    // =========================================================================
+
+    /// Set the domain driver for this session.
+    ///
+    /// After this is called, `dispatch_key_for_client` delegates to the domain
+    /// driver instead of using the inline dispatch path in `SessionState`.
+    pub fn set_domain_driver(&self, driver: Arc<dyn DomainDriver>) {
+        *self.domain_driver.write() = Some(driver);
+    }
+
+    /// Get the domain driver (if wired).
+    #[must_use]
+    pub fn domain_driver(&self) -> Option<Arc<dyn DomainDriver>> {
+        self.domain_driver.read().clone()
     }
 
     // =========================================================================
@@ -482,12 +514,19 @@ impl Session {
         state.resolve_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
     }
 
-    /// Dispatch a key through the full pipeline (sub-plan 05 Phase 1).
+    /// Dispatch a key through the full pipeline (sub-plan 05 Phase 4A).
     ///
-    /// Replaces `resolve_key_for_client` + `handle_resolve_result` in a single
-    /// call. The dispatch pipeline handles resolution, command execution, mode
-    /// transitions, pending bindings, and `on_command_complete` — all within the
-    /// runtime scope. The server never sees `ResolveResult`.
+    /// Delegates to the domain driver when wired. The domain driver internally
+    /// handles resolver lookup, command execution, mode transitions, pending
+    /// bindings, and `on_command_complete`. The server never sees `ResolveResult`.
+    ///
+    /// Falls back to the inline `SessionState::dispatch_key_for_client` path
+    /// when no domain driver is wired (log a warning in that case).
+    ///
+    /// # Lock ordering
+    ///
+    /// Acquires `clients` (write) → `state` (write). The domain driver's
+    /// internal locks are disjoint from these — no deadlock risk.
     ///
     /// # Returns
     ///
@@ -499,11 +538,49 @@ impl Session {
         client_id: ClientId,
         key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(bool, reovim_subsys_session::ChangeSet)> {
+        // Check for domain driver first (no lock needed — read is cheap).
+        let driver = self.domain_driver.read().clone();
+
+        if let Some(ref driver) = driver {
+            // Domain driver path: delegate entirely to the driver.
+            // Lock ordering: clients (write) → state (write). Domain driver's
+            // internal locks are disjoint — no deadlock risk.
+            let mut clients = self.clients.write();
+            let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
+
+            let target_client = clients.get_mut(&target_id)?;
+            let editing_state = &mut target_client.state;
+
+            // Ensure per-client windows are populated (fixes buffer-after-client-join).
+            Self::ensure_client_has_window(editing_state);
+
+            let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
+            let client_ext = &mut editing_state.extensions;
+
+            // Acquire state lock for shared extensions.
+            let mut state = self.state.write();
+            let shared_ext = &mut state.app.extensions;
+
+            let cs =
+                driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
+
+            // Pending text/byte edits for syntax/codec bridge: currently not
+            // extracted from the domain driver path. The `ChangeSet` is domain-
+            // neutral and does not carry text edits. Phase 5 moves syntax/codec
+            // updates into the domain driver entirely, making this unnecessary.
+            // Until Phase 5, the runner does not call `set_domain_driver`, so
+            // the fallback path below handles all actual dispatch.
+
+            return Some((true, cs));
+        }
+
+        // Fallback: no domain driver wired — use inline SessionState dispatch.
+        // Expected during Phase 4A (runner does not call set_domain_driver yet).
+        tracing::debug!("dispatch_key_for_client: no domain driver wired, using fallback path");
         let mut clients = self.clients.write();
         let mut state = self.state.write();
 
         let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-
         let target_client = clients.get_mut(&target_id)?;
         let editing_state = &mut target_client.state;
 

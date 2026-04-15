@@ -28,7 +28,7 @@ reovim-subsys-layout = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 
-# Drivers (domain-locked — Tier 2 decoupling deferred)
+# Drivers (domain-locked) - Should remove all
 reovim-driver-text-buffer = { workspace = true }
 reovim-driver-codec = { workspace = true }
 reovim-driver-command = { workspace = true }

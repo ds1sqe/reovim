@@ -1811,3 +1811,33 @@ fn with_tick_mut_returns_none_for_following_client() {
     let result = session.with_tick_mut(ClientId::new(2), |_, _, _| true);
     assert!(result.is_none());
 }
+
+// ============================================================================
+// Phase 4A: DomainDriver dispatch tests (server-level, no domain type leaks)
+// ============================================================================
+//
+// Full DomainDriver dispatch tests (extension pass-through, ChangeSet content,
+// delegation verification) live in driver-text-session/src/text_domain_tests.rs
+// where Cursor types are available without leaking domain deps into the server.
+//
+// Server-level tests verify: getter/setter, fallback behavior only.
+
+#[test]
+fn domain_driver_getter_returns_none_by_default() {
+    let session = Session::new(SessionId::new("getter-test"));
+    assert!(session.domain_driver().is_none());
+}
+
+#[tokio::test]
+async fn dispatch_fallback_without_domain_driver() {
+    let session = Session::new(SessionId::new("fallback-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+
+    // No domain driver wired — fallback path used
+    let key = reovim_subsys_input::KeyEvent::new(reovim_subsys_input::KeyCode::Char('j'));
+    let result = session.dispatch_key_for_client(client_id, &key).await;
+
+    // Fallback: state.dispatch_key_for_client returns Some (no resolver → empty ChangeSet)
+    assert!(result.is_some(), "fallback dispatch should work without domain driver");
+}

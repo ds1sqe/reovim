@@ -21,12 +21,12 @@
 use std::sync::Arc;
 
 use {
-    reovim_kernel::api::v1::{BufferId, WindowId},
+    reovim_kernel::api::v1::{BufferId, ModeId, WindowId},
     reovim_subsys_coordination::Cursor,
     reovim_subsys_input::KeyEvent,
 };
 
-use super::{BufferContentProvider, ChangeSet, ClientId};
+use super::{BufferContentProvider, ChangeSet, ClientId, ExtensionMap};
 
 /// What each domain implements.
 ///
@@ -125,6 +125,63 @@ pub trait DomainDriver: Send + Sync {
 
     /// Create the initial cursor when a client opens a buffer of this domain.
     fn initial_cursor(&self, client_id: ClientId, buffer_id: BufferId) -> Box<dyn Cursor>;
+
+    // --- Extended dispatch (Phase 4A) ---
+
+    /// Dispatch a key with access to the server's extension maps.
+    ///
+    /// The server owns `client_ext` (per-client module state: `PendingBindings`,
+    /// `VimSessionState`, etc.) and `shared_ext` (session-scoped state). The
+    /// domain driver borrows them for the duration of dispatch so that modules
+    /// and bridges can read/write extension state during key resolution.
+    ///
+    /// # Lock ordering
+    ///
+    /// The caller (`Session::dispatch_key_for_client`) acquires locks in order:
+    /// `clients` (write) → `state` (write). The domain driver's internal locks
+    /// (`TextDomainDriver::session`, `TextDomainDriver::clients`) are disjoint
+    /// from these. No deadlock risk.
+    ///
+    /// Default implementation delegates to [`dispatch_key`](Self::dispatch_key),
+    /// ignoring the extension maps.
+    fn dispatch_key_with_extensions(
+        &self,
+        client_id: ClientId,
+        key: &KeyEvent,
+        _client_ext: &mut ExtensionMap,
+        _shared_ext: &mut ExtensionMap,
+    ) -> ChangeSet {
+        self.dispatch_key(client_id, key)
+    }
+
+    // --- State queries (Phase 4A, consumed by 4B/4C) ---
+
+    /// Current mode for a client. Returns `None` if client not found.
+    ///
+    /// The server calls this for mode change detection and notifications.
+    fn current_mode(&self, _client_id: ClientId) -> Option<ModeId> {
+        None
+    }
+
+    /// Active (focused) window for a client.
+    fn active_window(&self, _client_id: ClientId) -> Option<WindowId> {
+        None
+    }
+
+    /// Buffer assigned to a window for a client.
+    fn window_buffer(&self, _client_id: ClientId, _window_id: WindowId) -> Option<BufferId> {
+        None
+    }
+
+    /// All window IDs for a client.
+    fn windows(&self, _client_id: ClientId) -> Vec<WindowId> {
+        Vec::new()
+    }
+
+    /// Number of windows for a client.
+    fn window_count(&self, _client_id: ClientId) -> usize {
+        0
+    }
 }
 
 /// Optional state queries for domains that support them.
@@ -155,6 +212,33 @@ pub trait DomainStateQuery: Send + Sync {
     fn status_info(&self, _client_id: ClientId) -> Option<String> {
         None
     }
+
+    /// Selection info for a client's window.
+    ///
+    /// Returns domain-neutral selection coordinates for gRPC notifications.
+    /// `mode` is a domain-specific label (text: "char"/"line"/"block").
+    fn selection_info(&self, _client_id: ClientId, _window_id: WindowId) -> Option<SelectionInfo> {
+        None
+    }
+}
+
+/// Domain-neutral selection information for gRPC notifications.
+///
+/// The server never interprets selection semantics — it passes these
+/// display coordinates to clients. The `mode` label is domain-specific
+/// (text domain uses "char"/"line"/"block").
+#[derive(Debug, Clone)]
+pub struct SelectionInfo {
+    /// Start line (0-indexed).
+    pub start_line: u64,
+    /// Start column (0-indexed).
+    pub start_column: u64,
+    /// End line (0-indexed).
+    pub end_line: u64,
+    /// End column (0-indexed).
+    pub end_column: u64,
+    /// Domain-specific selection mode label.
+    pub mode: String,
 }
 
 /// Display representation of a register entry.
