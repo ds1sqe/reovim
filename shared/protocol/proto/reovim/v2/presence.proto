@@ -1,12 +1,12 @@
-// Phase 14: Multi-client presence awareness (Epic #465)
+// Multi-client presence awareness (Epic #465)
 //
 // PresenceService enables clients to follow each other's viewports
 // and support collaborative editing scenarios.
-// Note: Cursor/selection tracking moved to CursorMoved/SelectionChanged notifications.
 //
 // Philosophy:
 // - Server provides WHAT (presence data, sync mode)
 // - Client decides HOW (follow behavior, rendering)
+// v3 domain-neutral design: cursor/position fields replaced by DomainDatum (#753).
 
 syntax = "proto3";
 package reovim.v2;
@@ -65,18 +65,16 @@ message ClientPresence {
   string display_name = 3;
 
   // Current buffer being viewed.
-  // Phase #479: Made optional to eliminate ID ambiguity (0 vs "no buffer").
+  // Use optional to eliminate ID ambiguity (0 vs "no buffer").
   optional uint64 buffer_id = 4;
 
-  // Field 5 removed: cursor now tracked via CursorMovedPayload with client_id
+  // Field 5 removed: cursor was text-domain specific.
   reserved 5;
   reserved "cursor";
 
-  // Visible line range (for viewport sync).
-  LineRange visible_lines = 6;
-
-  // Current mode name ("NORMAL", "INSERT", etc.).
-  string mode = 7;
+  // Opaque viewport state (domain-neutral, replaces LineRange + mode string).
+  // Domain-defined format; absent if not available or not applicable.
+  optional DomainDatum viewport_state = 6;
 
   // Sync mode.
   SyncMode sync_mode = 8;
@@ -86,12 +84,6 @@ message ClientPresence {
 
   // Timestamp when client joined (Unix ms).
   uint64 joined_at_ms = 10;
-}
-
-// Visible line range for viewport tracking.
-message LineRange {
-  uint64 start = 1;  // First visible line (0-indexed)
-  uint64 end = 2;    // Last visible line (exclusive)
 }
 
 // Synchronization mode for a client (display-level).
@@ -146,18 +138,14 @@ message ClientRelation {
 }
 
 // Minimal view state for rendering peer presence.
+// v3: domain-specific cursor/selection replaced by opaque DomainDatum.
 message ClientViewState {
-  // Current mode name ("NORMAL", "INSERT", etc.).
-  string mode = 1;
-
-  // Cursor position.
-  Position cursor = 2;
-
   // Which buffer this client is viewing.
   optional uint64 buffer_id = 3;
 
-  // Selection range for visual mode.
-  optional Selection selection = 4;
+  // Opaque domain state (replaces cursor + selection fields).
+  // Domain-defined format; absent if not available.
+  optional DomainDatum domain_state = 5;
 }
 
 // Client metadata.
@@ -200,8 +188,8 @@ enum TransitionError {
   // Cannot share with self.
   TRANSITION_ERROR_CANNOT_TARGET_SELF = 3;
 
-  // Requires cursor sync first (Following -> Sharing).
-  TRANSITION_ERROR_REQUIRES_CURSOR_SYNC = 4;
+  // Requires domain sync first (Following -> Sharing).
+  TRANSITION_ERROR_REQUIRES_DOMAIN_SYNC = 4;
 }
 
 // Presence update event (streamed to clients).
@@ -275,11 +263,9 @@ message UpdatePresenceRequest {
   // New buffer ID (optional, only if changed).
   optional uint64 buffer_id = 2;
 
-  // New visible line range (optional, only if changed).
-  optional LineRange visible_lines = 4;
-
-  // New mode name (optional, only if changed).
-  optional string mode = 5;
+  // New viewport state (optional, only if changed).
+  // Replaces visible_lines + mode fields.
+  optional DomainDatum viewport_state = 4;
 }
 
 // Update presence response.

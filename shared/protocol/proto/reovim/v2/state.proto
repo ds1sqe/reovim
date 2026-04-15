@@ -2,6 +2,8 @@
 //
 // Philosophy: Returns raw data only. No rendering, no cell grids.
 // Clients (TUI, GUI, Web) decide how to render.
+// v3 domain-neutral design: GetMode/GetCursor/GetSelection removed;
+// domain state is now queried via GetProjections (#753).
 
 syntax = "proto3";
 package reovim.v2;
@@ -9,23 +11,17 @@ package reovim.v2;
 import "reovim/v2/common.proto";
 
 service StateService {
-  // Get current mode.
-  rpc GetMode(GetModeRequest) returns (GetModeResponse);
+  // Get domain-neutral projection state (replaces GetMode, GetCursor, GetSelection).
+  rpc GetProjections(GetProjectionsRequest) returns (GetProjectionsResponse);
 
-  // Get cursor position.
-  rpc GetCursor(GetCursorRequest) returns (GetCursorResponse);
-
-  // Get editor options.
+  // Get editor options (server-owned, kept typed).
   rpc GetOptions(GetOptionsRequest) returns (GetOptionsResponse);
 
-  // Get window layout tree.
+  // Get window layout tree (server-owned, kept typed).
   rpc GetLayout(GetLayoutRequest) returns (GetLayoutResponse);
 
   // Get visible line range for a window.
   rpc GetVisibleLines(GetVisibleLinesRequest) returns (GetVisibleLinesResponse);
-
-  // Get selection state.
-  rpc GetSelection(GetSelectionRequest) returns (GetSelectionResponse);
 
   // Get rendered screen content via TUI capture relay.
   //
@@ -47,37 +43,34 @@ service StateService {
   rpc GetRegisters(GetRegistersRequest) returns (GetRegistersResponse);
 }
 
-// Mode
+// ─────────────────────────────────────────────────────────────────────────────
+// Projections (#753) — domain-neutral state query
+// ─────────────────────────────────────────────────────────────────────────────
 
-message GetModeRequest {
-  // Per-client state (#471): Per-client mode isolation.
-  // If client_id > 0, returns the mode for that specific client's mode stack.
-  // If client_id == 0 (default), returns the shared session mode (backward compat).
+message GetProjectionsRequest {
   uint64 client_id = 1;
+  // Filter by tags (empty = all projections for this client).
+  repeated string tags = 2;
 }
 
-message GetModeResponse {
-  string name = 1;        // Internal name (e.g., "normal", "insert")
-  string display = 2;     // Display name (e.g., "NORMAL", "INSERT")
-  bool is_insert = 3;     // True if mode accepts text input
+message GetProjectionsResponse {
+  repeated ProjectionEntry projections = 1;
 }
 
-// Cursor
-
-message GetCursorRequest {
-  optional uint64 window_id = 1;  // Default: focused window
-  // Per-client state (#471): Per-client cursor isolation.
-  // If client_id > 0, returns the cursor for that specific client's editing state.
-  // If client_id == 0 (default), returns the cursor from the active buffer (backward compat).
-  uint64 client_id = 2;
+message ProjectionEntry {
+  string tag = 1;
+  uint32 domain_id = 2;
+  // Window scope (absent = session-wide, present = specific window).
+  optional uint64 window_id = 3;
+  // Opaque domain datum — domain-defined format with optional display string.
+  optional DomainDatum datum = 4;
+  // Monotonic version.
+  uint64 version = 5;
 }
 
-message GetCursorResponse {
-  uint64 window_id = 1;
-  Position position = 2;  // Buffer-relative (0-indexed)
-}
-
-// Options
+// ─────────────────────────────────────────────────────────────────────────────
+// Options (server-owned)
+// ─────────────────────────────────────────────────────────────────────────────
 
 message GetOptionsRequest {
   repeated string names = 1;  // Option names to query (empty = all)
@@ -95,10 +88,11 @@ message OptionValue {
   }
 }
 
-// Layout
+// ─────────────────────────────────────────────────────────────────────────────
+// Layout (server-owned)
+// ─────────────────────────────────────────────────────────────────────────────
 
 message GetLayoutRequest {
-  // Phase #471: Per-client window layout.
   // If client_id > 0, returns the layout for that client's editing state.
   // If client_id == 0 (default), returns the shared session layout (backward compat).
   uint64 client_id = 1;
@@ -106,12 +100,12 @@ message GetLayoutRequest {
 
 message GetLayoutResponse {
   WindowNode root = 1;
-  // Optional: None when no windows exist, Some(id) when a window is focused.
-  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus").
+  // None when no windows exist, Some(id) when a window is focused.
+  // Use optional to eliminate ID ambiguity (0 vs "no focus").
   optional uint64 focused_window_id = 2;
-  // #401: Active tab page ID (absent = no tabs / single tab)
+  // #401: Active tab page ID (absent = no tabs / single tab).
   optional uint64 active_tab_id = 3;
-  // #401: Tab page list (empty = no tabs / single tab)
+  // #401: Tab page list (empty = no tabs / single tab).
   repeated TabPageInfo tabs = 4;
 }
 
@@ -124,8 +118,8 @@ message WindowNode {
 
 message WindowLeaf {
   uint64 window_id = 1;
-  // Optional: None when window has no buffer, Some(id) when displaying a buffer.
-  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer").
+  // None when window has no buffer, Some(id) when displaying a buffer.
+  // Use optional to eliminate ID ambiguity (0 vs "no buffer").
   optional uint64 buffer_id = 2;
   WindowRect rect = 3;
 }
@@ -141,13 +135,12 @@ enum SplitDirection {
   SPLIT_DIRECTION_VERTICAL = 2;
 }
 
-// WindowRect is imported from common.proto
-
+// ─────────────────────────────────────────────────────────────────────────────
 // Visible lines
+// ─────────────────────────────────────────────────────────────────────────────
 
 message GetVisibleLinesRequest {
   optional uint64 window_id = 1;  // Default: focused window
-  // Phase #471: Per-client visible lines.
   // If client_id > 0, returns visible lines from that client's window layout.
   // If client_id == 0 (default), returns from shared session layout (backward compat).
   uint64 client_id = 2;
@@ -160,23 +153,9 @@ message GetVisibleLinesResponse {
   uint64 viewport_height = 4;
 }
 
-// Selection
-
-message GetSelectionRequest {
-  optional uint64 window_id = 1;
-  // Phase #471: Per-client selection state.
-  // If client_id > 0, returns selection from that client's window layout.
-  // If client_id == 0 (default), returns from shared session layout (backward compat).
-  uint64 client_id = 2;
-}
-
-message GetSelectionResponse {
-  bool has_selection = 1;
-  optional Selection selection = 2;
-  optional string visual_mode = 3;  // "char", "line", "block"
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
 // Screen content (TUI migration convenience)
+// ─────────────────────────────────────────────────────────────────────────────
 
 message GetScreenContentRequest {
   // Format: "plain_text", "raw_ansi", "cell_grid"
@@ -190,14 +169,32 @@ message GetScreenContentResponse {
   uint64 width = 1;
   uint64 height = 2;
   string format = 3;
-  string content = 4;  // Formatted screen content
+  string content = 4;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture relay (TUI → Server)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TUI submits captured screen content in response to capture_request notification.
+message SubmitCaptureRequest {
+  uint64 request_id = 1;  // Must match request_id from capture_request notification
+  uint64 width = 2;
+  uint64 height = 3;
+  string format = 4;
+  string content = 5;
+}
+
+message SubmitCaptureResponseReply {
+  bool ok = 1;  // True if the request was matched and delivered
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registers
+// ─────────────────────────────────────────────────────────────────────────────
 
 message GetRegistersRequest {
   repeated string names = 1;  // Register names to query (empty = all non-empty)
-  // Per-client state (#515): Per-client register isolation.
   // If client_id > 0, returns the registers for that specific client.
   // If client_id == 0 (default), returns the authenticated client's registers.
   uint64 client_id = 2;
@@ -208,26 +205,12 @@ message GetRegistersResponse {
 }
 
 message RegisterEntry {
-  string name = 1;            // Single char register name (e.g., "a", "\"", "0")
-  string content_type = 2;    // "text", "macro", or "empty"
-  string content = 3;         // Text content or macro notation
-  string yank_type = 4;       // For text: "char", "line", "block"; empty for macro
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Capture relay (TUI → Server)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TUI submits captured screen content in response to capture_request notification.
-
-message SubmitCaptureRequest {
-  uint64 request_id = 1;  // Must match request_id from capture_request notification
-  uint64 width = 2;       // Frame width
-  uint64 height = 3;      // Frame height
-  string format = 4;      // Format used for capture
-  string content = 5;     // Captured frame content
-}
-
-message SubmitCaptureResponseReply {
-  bool ok = 1;            // True if the request was matched and delivered
+  // Register name (domain-neutral, e.g., "a", "\"", "0").
+  string name = 1;
+  // Domain that owns this register (0 = global).
+  optional uint32 domain_id = 2;
+  // Opaque register content — domain-defined format.
+  optional DomainDatum content = 3;
+  // Reserved: old text-domain fields.
+  reserved 4;
 }

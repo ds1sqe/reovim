@@ -3,6 +3,7 @@
 // CLI uses this service for all client-targeting operations (no auth required).
 // The CLI is stateless — it never joins as a client. Instead, it targets
 // specific connected clients (TUI/Web) by their client ID.
+// v3 domain-neutral design: DebugGetCursor replaced by DebugGetProjections (#753).
 
 syntax = "proto3";
 package reovim.v2;
@@ -24,11 +25,13 @@ service DebugService {
   // Capture a client's screen content (no auth required).
   rpc DebugCapture(DebugCaptureRequest) returns (DebugCaptureResponse);
 
-  // Get a client's current editor mode (no auth required).
+  // DEPRECATED: use DebugGetProjections with tag filter ["text.mode"] instead.
+  // Kept for backward compatibility during migration.
   rpc DebugGetMode(DebugGetModeRequest) returns (DebugGetModeResponse);
 
-  // Get a client's cursor position (no auth required).
-  rpc DebugGetCursor(DebugGetCursorRequest) returns (DebugGetCursorResponse);
+  // Get a client's domain-neutral projection state (no auth required).
+  // Replaces DebugGetCursor — domain projections carry cursor state as opaque data.
+  rpc DebugGetProjections(DebugGetProjectionsRequest) returns (DebugGetProjectionsResponse);
 
   // List connected clients (read-only, no auth required).
   rpc DebugListClients(DebugListClientsRequest) returns (DebugListClientsResponse);
@@ -100,16 +103,27 @@ message DebugGetModeRequest {
 message DebugGetModeResponse {
   string name = 1;
   string display = 2;
+  // DEPRECATED (#753): always false. Clients use ProjectionUpdated "text.mode" instead.
   bool is_insert = 3;
 }
 
-message DebugGetCursorRequest {
+// Query domain-neutral projection state for a client (replaces DebugGetCursor).
+message DebugGetProjectionsRequest {
   uint64 target_client_id = 1;
+  // Filter by tags (empty = all projections for this client).
+  repeated string tags = 2;
 }
 
-message DebugGetCursorResponse {
-  uint64 window_id = 1;
-  Position position = 2;
+message DebugGetProjectionsResponse {
+  repeated DebugProjectionEntry projections = 1;
+}
+
+message DebugProjectionEntry {
+  string tag = 1;
+  uint32 domain_id = 2;
+  optional uint64 window_id = 3;
+  optional DomainDatum datum = 4;
+  uint64 version = 5;
 }
 
 message DebugListClientsRequest {}
