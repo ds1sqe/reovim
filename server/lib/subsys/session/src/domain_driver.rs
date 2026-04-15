@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::{BufferId, ModeId, WindowId},
-    reovim_subsys_coordination::Cursor,
+    reovim_subsys_coordination::{Cursor, Projection},
     reovim_subsys_input::{InputEvent, KeyEvent},
 };
 
@@ -217,6 +217,24 @@ pub trait DomainDriver: Send + Sync {
     ) -> ChangeSet {
         self.dispatch_key(client_id, key)
     }
+
+    // --- Projections (domain-neutral state transport) ---
+
+    /// Collect projections for changed state after dispatch.
+    ///
+    /// REQUIRED: no default. A forgotten implementation is a compile error,
+    /// not a silent blank client. Domain drivers that genuinely emit no
+    /// projections return empty Vec explicitly.
+    ///
+    /// Called after EVERY dispatch_input. Must be O(changed-tags), not O(all-state).
+    /// The domain driver tracks dirty state internally.
+    fn collect_projections(&self, client_id: ClientId) -> Vec<Projection>;
+
+    /// Seed projections for a new client (initial state).
+    ///
+    /// REQUIRED: no default. Must return only Persistent projections.
+    /// Transient projections would deliver phantom events to late-joining clients.
+    fn initial_projections(&self, client_id: ClientId) -> Vec<Projection>;
 
     // --- State queries (Phase 4A, consumed by 4B/4C) ---
 

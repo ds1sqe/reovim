@@ -38,11 +38,19 @@
 mod codec;
 mod cursor;
 mod position;
+pub mod projection;
+#[cfg(test)]
+mod projection_tests;
+pub mod register;
+#[cfg(test)]
+mod register_tests;
 mod registry;
 
 pub use {
     codec::{CursorCodec, PositionCodec},
     cursor::{Cursor, CursorHeader},
     position::{Position, PositionHeader},
+    projection::{DomainId, Projection, ProjectionDelivery, ProjectionTag},
+    register::{RegisterKey, RegisterName},
     registry::{CoordinationRegistry, EnlistError},
 };

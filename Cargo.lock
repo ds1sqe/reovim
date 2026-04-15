@@ -3914,6 +3914,9 @@ dependencies = [
 [[package]]
 name = "reovim-subsys-coordination"
 version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
 
 [[package]]
 name = "reovim-subsys-input"

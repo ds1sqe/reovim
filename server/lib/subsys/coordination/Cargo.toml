@@ -13,4 +13,5 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Zero external dependencies — pure Rust contracts
+# Kernel types for WindowId (used in Projection.window_id)
+reovim-kernel = { workspace = true }

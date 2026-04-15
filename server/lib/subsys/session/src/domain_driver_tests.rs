@@ -242,6 +242,20 @@ impl DomainDriver for MockDomainDriver {
     fn initial_cursor(&self, _client_id: ClientId, _buffer_id: BufferId) -> Box<dyn Cursor> {
         Box::new(TestCursor::new(self.id, 0, 0))
     }
+
+    fn collect_projections(
+        &self,
+        _client_id: ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
+        Vec::new()
+    }
+
+    fn initial_projections(
+        &self,
+        _client_id: ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
+        Vec::new()
+    }
 }
 
 // --- Mock DomainStateQuery ---

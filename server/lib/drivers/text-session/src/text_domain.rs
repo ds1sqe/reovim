@@ -415,6 +415,17 @@ impl DomainDriver for TextDomainDriver {
         .map(|((), changes)| state_changes_to_change_set(&changes))
     }
 
+    fn collect_projections(&self, _client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
+        // B3: TextProjectionEmitter will encode all text state as projections.
+        // For now, return empty — no projections emitted yet.
+        Vec::new()
+    }
+
+    fn initial_projections(&self, _client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
+        // B3: TextProjectionEmitter will provide initial state.
+        Vec::new()
+    }
+
     fn on_client_added(&self, client_id: ClientId) {
         let home_mode = self.home_mode();
         let mut clients = self.clients.write();
