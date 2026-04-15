@@ -757,7 +757,8 @@ fn test_build_mode_notification_with_registered_client() {
     if let Some(notification::Payload::ModeChanged(payload)) = notification.payload {
         assert_eq!(payload.name, "insert");
         assert_eq!(payload.display, "INSERT");
-        assert!(payload.is_insert);
+        // DEPRECATED (#753): is_insert is always false — clients use projections
+        assert!(!payload.is_insert);
         assert_eq!(payload.client_id, 8);
     } else {
         panic!("Expected ModeChangedPayload");
@@ -1449,4 +1450,181 @@ fn test_build_notifications_presence_changed_missing_client() {
 
     let notifications = build_notifications(&changes, &session, 12345, None);
     assert!(notifications.is_empty());
+}
+
+// =========================================================================
+// Projection notification tests (#753 B5)
+// =========================================================================
+
+mod projection_tests {
+    use super::*;
+    use crate::session::projection_store::{StoreUpdateResult, VersionedProjection};
+    use reovim_subsys_coordination::{
+        DomainId, Projection, ProjectionDelivery, ProjectionTag,
+    };
+
+    fn make_persistent(tag: &str, payload: &[u8]) -> Projection {
+        Projection {
+            tag: ProjectionTag::from(tag),
+            domain_id: DomainId(1),
+            window_id: None,
+            payload: payload.to_vec(),
+            display: None,
+            delivery: ProjectionDelivery::Persistent,
+        }
+    }
+
+    fn make_transient(tag: &str, payload: &[u8]) -> Projection {
+        Projection {
+            tag: ProjectionTag::from(tag),
+            domain_id: DomainId(1),
+            window_id: None,
+            payload: payload.to_vec(),
+            display: None,
+            delivery: ProjectionDelivery::Transient,
+        }
+    }
+
+    #[test]
+    fn empty_result_produces_no_notifications() {
+        let result = StoreUpdateResult {
+            changed: vec![],
+            transient: vec![],
+        };
+        let notifications = build_projection_notifications(&result, 1, 99999);
+        assert!(notifications.is_empty());
+    }
+
+    #[test]
+    fn persistent_changed_produces_notification() {
+        let result = StoreUpdateResult {
+            changed: vec![VersionedProjection {
+                projection: make_persistent("text.mode", b"NORMAL"),
+                version: 42,
+            }],
+            transient: vec![],
+        };
+        let notifications = build_projection_notifications(&result, 7, 12345);
+
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].event_type, "projection_updated");
+        assert_eq!(notifications[0].timestamp_ms, 12345);
+
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
+            assert_eq!(p.tag, "text.mode");
+            assert_eq!(p.domain_id, 1);
+            assert_eq!(p.window_id, 0); // None → 0
+            assert_eq!(p.payload, b"NORMAL");
+            assert!(!p.transient);
+            assert_eq!(p.version, 42);
+            assert_eq!(p.client_id, 7);
+        } else {
+            panic!("Expected ProjectionUpdatedPayload");
+        }
+    }
+
+    #[test]
+    fn transient_produces_notification_with_transient_flag() {
+        let result = StoreUpdateResult {
+            changed: vec![],
+            transient: vec![make_transient("platform.haptic", &[0xFF])],
+        };
+        let notifications = build_projection_notifications(&result, 3, 55555);
+
+        assert_eq!(notifications.len(), 1);
+
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
+            assert_eq!(p.tag, "platform.haptic");
+            assert!(p.transient);
+            assert_eq!(p.version, 0);
+            assert_eq!(p.client_id, 3);
+        } else {
+            panic!("Expected ProjectionUpdatedPayload");
+        }
+    }
+
+    #[test]
+    fn mixed_changed_and_transient() {
+        let result = StoreUpdateResult {
+            changed: vec![VersionedProjection {
+                projection: make_persistent("text.mode", b"INSERT"),
+                version: 10,
+            }],
+            transient: vec![make_transient("platform.bell", &[0x01])],
+        };
+        let notifications = build_projection_notifications(&result, 1, 77777);
+
+        assert_eq!(notifications.len(), 2);
+
+        // First: persistent
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
+            assert!(!p.transient);
+            assert_eq!(p.version, 10);
+        } else {
+            panic!("Expected persistent ProjectionUpdatedPayload");
+        }
+
+        // Second: transient
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[1].payload {
+            assert!(p.transient);
+            assert_eq!(p.version, 0);
+        } else {
+            panic!("Expected transient ProjectionUpdatedPayload");
+        }
+    }
+
+    #[test]
+    fn display_field_propagated() {
+        let mut proj = make_persistent("text.mode", b"VISUAL");
+        proj.display = Some("VISUAL".to_string());
+
+        let result = StoreUpdateResult {
+            changed: vec![VersionedProjection {
+                projection: proj,
+                version: 5,
+            }],
+            transient: vec![],
+        };
+        let notifications = build_projection_notifications(&result, 1, 10000);
+
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
+            assert_eq!(p.display, Some("VISUAL".to_string()));
+        } else {
+            panic!("Expected ProjectionUpdatedPayload");
+        }
+    }
+
+    #[test]
+    fn window_scoped_projection() {
+        let mut proj = make_persistent("text.cursor", &[0, 0, 0, 5]);
+        proj.window_id = Some(reovim_kernel::api::v1::WindowId::from_raw(42));
+
+        let result = StoreUpdateResult {
+            changed: vec![VersionedProjection {
+                projection: proj,
+                version: 1,
+            }],
+            transient: vec![],
+        };
+        let notifications = build_projection_notifications(&result, 1, 20000);
+
+        if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
+            assert_eq!(p.window_id, 42);
+        } else {
+            panic!("Expected ProjectionUpdatedPayload");
+        }
+    }
+
+    #[test]
+    fn is_insert_deprecated_to_false() {
+        // B5: is_insert is always false now (domain-specific logic removed)
+        let session = Session::new(SessionId::new("is-insert-test"));
+        let notification = build_mode_notification(&session, 12345, 0);
+
+        if let Some(notification::Payload::ModeChanged(ref p)) = notification.payload {
+            assert!(!p.is_insert, "is_insert should always be false (deprecated)");
+        } else {
+            panic!("Expected ModeChangedPayload");
+        }
+    }
 }

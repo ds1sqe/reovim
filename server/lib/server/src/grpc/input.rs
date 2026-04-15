@@ -311,6 +311,11 @@ impl InputService for InputServiceImpl {
             );
         }
 
+        // Collect projections from domain driver and emit updates (#753).
+        // Called AFTER dispatch releases all Session locks. The driver holds
+        // its own state; ProjectionStore acquires its own disjoint lock.
+        Self::emit_projection_updates(&session, client_id);
+
         // Take domain-specific edits for syntax/codec (Phase 5 will move these into driver)
         let pending_text_edits = session.take_pending_text_edits();
         let pending_byte_edits = session.take_pending_byte_edits();
@@ -526,6 +531,37 @@ impl InputServiceImpl {
                 selection_changed = changes.selection_changed,
                 "Emitted notifications"
             );
+        }
+    }
+
+    /// Collect projections from the domain driver and emit updates (#753).
+    ///
+    /// Called AFTER dispatch releases all `Session` locks. The domain driver
+    /// holds its own per-client state; `ProjectionStore` acquires its own
+    /// disjoint `RwLock` — no deadlock risk.
+    #[allow(clippy::cast_possible_truncation)]
+    fn emit_projection_updates(session: &Session, client_id: ClientId) {
+        let driver = session.domain_driver();
+        let Some(driver) = driver else {
+            return; // No domain driver wired — skip projection collection
+        };
+
+        let subsys_cid = reovim_subsys_session::ClientId::new(client_id.as_usize());
+        let projections = driver.collect_projections(subsys_cid);
+        if projections.is_empty() {
+            return;
+        }
+
+        let result = session.projection_store().write().update(subsys_cid, projections);
+
+        let notifications = notification_builder::build_projection_notifications(
+            &result,
+            client_id.as_usize() as u64,
+            notification_builder::current_timestamp_ms(),
+        );
+
+        for notif in notifications {
+            session.emit_notification(notif);
         }
     }
 

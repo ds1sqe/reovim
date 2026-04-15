@@ -330,3 +330,10 @@ fn default_buffer_write_to_not_found() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
 }
+
+#[test]
+fn selection_mode_as_str() {
+    assert_eq!(SelectionMode::Character.as_str(), "char");
+    assert_eq!(SelectionMode::Line.as_str(), "line");
+    assert_eq!(SelectionMode::Block.as_str(), "block");
+}

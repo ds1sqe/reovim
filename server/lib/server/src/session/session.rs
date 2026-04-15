@@ -60,6 +60,12 @@ pub struct Session {
     /// Set by the runner at session creation via [`Session::set_domain_driver`].
     domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
 
+    /// Server-side projection cache (#753).
+    ///
+    /// Stores versioned domain projections per (ClientId, ProjectionTag).
+    /// Disjoint from `state`/`clients` locks — acquired independently after dispatch.
+    projection_store: RwLock<super::projection_store::ProjectionStore>,
+
     /// Notification broadcast channel (gRPC only).
     #[cfg(feature = "grpc")]
     notification_tx: broadcast::Sender<Notification>,
@@ -99,6 +105,7 @@ impl Session {
             state: RwLock::new(SessionState::default()),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -138,6 +145,7 @@ impl Session {
             state: RwLock::new(state),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
@@ -197,6 +205,18 @@ impl Session {
     #[must_use]
     pub fn domain_driver(&self) -> Option<Arc<dyn DomainDriver>> {
         self.domain_driver.read().clone()
+    }
+
+    // =========================================================================
+    // Projection Store (#753)
+    // =========================================================================
+
+    /// Access the projection store for reading/writing.
+    ///
+    /// Lock ordering: acquire AFTER releasing `clients`/`state` locks.
+    /// The projection store lock is disjoint — no overlap with other session locks.
+    pub fn projection_store(&self) -> &RwLock<super::projection_store::ProjectionStore> {
+        &self.projection_store
     }
 
     // =========================================================================

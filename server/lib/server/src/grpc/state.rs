@@ -453,14 +453,6 @@ impl StateService for StateServiceImpl {
             .ok_or_else(|| Status::not_found("No active window"))?;
 
         if let Some(ref sel) = window.selection {
-            use reovim_driver_text_session::SelectionMode;
-
-            let mode_str = match sel.mode {
-                SelectionMode::Character => "char",
-                SelectionMode::Line => "line",
-                SelectionMode::Block => "block",
-            };
-
             return Ok(Response::new(GetSelectionResponse {
                 has_selection: true,
                 selection: Some(Selection {
@@ -473,7 +465,7 @@ impl StateService for StateServiceImpl {
                         column: sel.end.column as u64,
                     }),
                 }),
-                visual_mode: Some(mode_str.to_string()),
+                visual_mode: Some(sel.mode.as_str().to_string()),
             }));
         }
 

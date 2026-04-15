@@ -34,8 +34,8 @@ use {
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
         ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
-        OptionChangedPayload, Position, SelectionChangedPayload, TabPageInfo,
-        ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
+        OptionChangedPayload, Position, ProjectionUpdatedPayload, SelectionChangedPayload,
+        TabPageInfo, ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
     },
     reovim_subsys_session::{ChangeSet, bridges::BridgeRegistry},
 };
@@ -44,7 +44,7 @@ use crate::session::{ClientId, Session};
 
 /// Get current timestamp in milliseconds since Unix epoch.
 #[allow(clippy::cast_possible_truncation)]
-fn current_timestamp_ms() -> u64 {
+pub(crate) fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time before UNIX_EPOCH")
@@ -195,8 +195,10 @@ fn build_mode_notification(session: &Session, timestamp: u64, client_id: u64) ->
     // Derive display name (capitalize first letter, e.g., "normal" -> "NORMAL")
     let display_name = mode_name.to_uppercase();
 
-    // Check if mode is an insert-like mode
-    let is_insert = mode_name.contains("insert") || mode_name.contains("replace");
+    // DEPRECATED (#753): is_insert was domain-specific string matching
+    // (text-domain policy in server mechanism layer). Clients should use
+    // ProjectionUpdated "text.mode" projections instead.
+    let is_insert = false;
 
     Notification {
         event_type: "mode_changed".to_string(),
@@ -436,14 +438,6 @@ fn build_selection_notification(
             .selection
             .as_ref()
             .map_or((false, None, None), |sel| {
-                use reovim_driver_text_session::SelectionMode;
-
-                let mode_str = match sel.mode {
-                    SelectionMode::Character => "char",
-                    SelectionMode::Line => "line",
-                    SelectionMode::Block => "block",
-                };
-
                 (
                     true,
                     Some(reovim_protocol::v2::Selection {
@@ -456,7 +450,7 @@ fn build_selection_notification(
                             column: sel.end.column as u64,
                         }),
                     }),
-                    Some(mode_str.to_string()),
+                    Some(sel.mode.as_str().to_string()),
                 )
             });
 
@@ -581,6 +575,68 @@ pub(crate) fn build_extension_notification(
             client_id,
         })),
     })
+}
+
+/// Build projection notifications from a `StoreUpdateResult` (#753).
+///
+/// Converts changed persistent projections and transient projections into
+/// `ProjectionUpdated` gRPC notifications. Pure function — no `Session` access needed.
+///
+/// # Arguments
+///
+/// * `result` - The store update result from `ProjectionStore::update()`
+/// * `client_id` - Client that owns these projections
+/// * `timestamp` - Notification timestamp (batch consistency)
+#[must_use]
+pub fn build_projection_notifications(
+    result: &crate::session::projection_store::StoreUpdateResult,
+    client_id: u64,
+    timestamp: u64,
+) -> Vec<Notification> {
+    let mut notifications = Vec::with_capacity(result.changed.len() + result.transient.len());
+
+    // Persistent projections that changed (new version assigned)
+    for versioned in &result.changed {
+        let proj = &versioned.projection;
+        notifications.push(Notification {
+            event_type: "projection_updated".to_string(),
+            timestamp_ms: timestamp,
+            payload: Some(notification::Payload::ProjectionUpdated(
+                ProjectionUpdatedPayload {
+                    tag: proj.tag.as_str().to_string(),
+                    domain_id: proj.domain_id.0,
+                    window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
+                    payload: proj.payload.clone(),
+                    display: proj.display.clone(),
+                    transient: false,
+                    version: versioned.version,
+                    client_id,
+                },
+            )),
+        });
+    }
+
+    // Transient projections (fire-and-forget, never cached)
+    for proj in &result.transient {
+        notifications.push(Notification {
+            event_type: "projection_updated".to_string(),
+            timestamp_ms: timestamp,
+            payload: Some(notification::Payload::ProjectionUpdated(
+                ProjectionUpdatedPayload {
+                    tag: proj.tag.as_str().to_string(),
+                    domain_id: proj.domain_id.0,
+                    window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
+                    payload: proj.payload.clone(),
+                    display: proj.display.clone(),
+                    transient: true,
+                    version: 0,
+                    client_id,
+                },
+            )),
+        });
+    }
+
+    notifications
 }
 
 #[cfg(test)]

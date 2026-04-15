@@ -231,6 +231,21 @@ pub enum SelectionMode {
     Block,
 }
 
+impl SelectionMode {
+    /// Wire-format string for the selection mode.
+    ///
+    /// Used by notification/state serialization without requiring callers
+    /// to match on domain-specific enum variants.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Character => "char",
+            Self::Line => "line",
+            Self::Block => "block",
+        }
+    }
+}
+
 /// Errors from buffer operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BufferError {

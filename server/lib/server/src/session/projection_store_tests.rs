@@ -127,3 +127,11 @@ fn multiple_tags_per_client() {
     );
     assert_eq!(store.get_all(cid(1)).len(), 2);
 }
+
+#[test]
+fn session_has_projection_store() {
+    use crate::session::{Session, SessionId};
+    let session = Session::new(SessionId::new("proj-test"));
+    let store = session.projection_store().read();
+    assert!(store.get_all(cid(1)).is_empty());
+}

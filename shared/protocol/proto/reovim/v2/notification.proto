@@ -51,6 +51,9 @@ message Notification {
 
     // Extension state updates (#514)
     ExtensionUpdatedPayload extension_updated = 26;
+
+    // Projection updates (#753): domain-neutral opaque state
+    ProjectionUpdatedPayload projection_updated = 27;
   }
 }
 
@@ -250,4 +253,30 @@ message ExtensionUpdatedPayload {
   string data = 2;
   // Client ID that owns this state (for per-client extensions).
   uint64 client_id = 3;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Projection updates (#753)
+//
+// Domain-neutral opaque state projections. Replaces typed display structs
+// (CursorPosition, Viewport, SelectionInfo) with opaque domain-tagged payloads.
+// ─────────────────────────────────────────────────────────────────────────────
+
+message ProjectionUpdatedPayload {
+  // Projection tag (e.g., "text.mode", "text.cursor").
+  string tag = 1;
+  // Domain that produced this projection.
+  uint32 domain_id = 2;
+  // Window scope (0 = session-wide, nonzero = specific window).
+  uint64 window_id = 3;
+  // Opaque payload bytes — domain-defined format.
+  bytes payload = 4;
+  // Human-readable display string (optional, for statusline/debug).
+  optional string display = 5;
+  // True if transient (fire-and-forget), false if persistent (cached).
+  bool transient = 6;
+  // Monotonic version for persistent projections (0 for transient).
+  uint64 version = 7;
+  // Client that owns this projection state.
+  uint64 client_id = 8;
 }
