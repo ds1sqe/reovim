@@ -353,7 +353,7 @@ fn test_convert_event_key() {
     ));
     let our = convert_event(ct);
     match our {
-        InputEvent::Key(key) => {
+        PlatformEvent::Key(key) => {
             assert_eq!(key.code, KeyCode::Char('z'));
             assert!(key.modifiers.contains(Modifiers::ALT));
         }
@@ -370,7 +370,7 @@ fn test_convert_event_mouse() {
         modifiers: ct_event::KeyModifiers::NONE,
     });
     let our = convert_event(ct);
-    assert!(matches!(our, InputEvent::Mouse(_)));
+    assert!(matches!(our, PlatformEvent::Mouse(_)));
 }
 
 #[test]
@@ -379,7 +379,7 @@ fn test_convert_event_resize() {
     let ct = CtEvent::Resize(120, 40);
     let our = convert_event(ct);
     match our {
-        InputEvent::Resize(size) => {
+        PlatformEvent::Resize(size) => {
             assert_eq!(size.cols, 120);
             assert_eq!(size.rows, 40);
         }
@@ -390,10 +390,10 @@ fn test_convert_event_resize() {
 #[test]
 fn test_convert_event_focus() {
     let gained = convert_event(CtEvent::FocusGained);
-    assert!(matches!(gained, InputEvent::FocusGained));
+    assert!(matches!(gained, PlatformEvent::FocusGained));
 
     let lost = convert_event(CtEvent::FocusLost);
-    assert!(matches!(lost, InputEvent::FocusLost));
+    assert!(matches!(lost, PlatformEvent::FocusLost));
 }
 
 #[test]
@@ -402,7 +402,7 @@ fn test_convert_event_paste() {
     let ct = CtEvent::Paste("pasted text".to_string());
     let our = convert_event(ct);
     match our {
-        InputEvent::Paste(text) => assert_eq!(text, "pasted text"),
+        PlatformEvent::Paste(text) => assert_eq!(text, "pasted text"),
         _ => panic!("Expected Paste event"),
     }
 }

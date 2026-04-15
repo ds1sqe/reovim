@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use reovim_subsys_annotation::{
+//! use reovim_driver_annotation::{
 //!     Annotation, AnnotationContext, AnnotationKind, AnnotationSource,
 //!     AnnotationTarget, AnnotationPayload,
 //! };
@@ -72,7 +72,7 @@ use {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_annotation::AnnotationContext;
+/// use reovim_driver_annotation::AnnotationContext;
 ///
 /// let context = AnnotationContext::new(100, 50, "NORMAL");
 ///

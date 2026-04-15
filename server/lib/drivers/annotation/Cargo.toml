@@ -1,5 +1,5 @@
 [package]
-name = "reovim-subsys-annotation"
+name = "reovim-driver-annotation"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

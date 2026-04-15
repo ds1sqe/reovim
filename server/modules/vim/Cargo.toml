@@ -35,7 +35,7 @@ reovim-driver-text-search = { workspace = true }
 # Window-ops module for window command IDs (Epic #465 - layout archived)
 reovim-module-window-ops = { workspace = true }
 # Annotation driver for data types (#455, #625 D2)
-reovim-subsys-annotation = { workspace = true }
+reovim-driver-annotation = { workspace = true }
 # Layout driver for compositor traits
 reovim-subsys-layout = { workspace = true }
 reovim-subsys-manifest = { workspace = true }

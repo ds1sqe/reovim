@@ -5,7 +5,7 @@
 //! between on-disk byte representation and the internal UTF-8 text
 //! representation used by the kernel's buffer.
 
-use reovim_subsys_annotation::Annotation;
+use reovim_driver_annotation::Annotation;
 
 use crate::{CodecError, CodecMetadata, DecodedEdit, TranslateEditError};
 

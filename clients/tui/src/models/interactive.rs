@@ -5,7 +5,7 @@
 
 use std::io;
 
-use reovim_driver_tui::{Cursor, CursorStyle, InputEvent, InputReader, Terminal};
+use reovim_driver_tui::{Cursor, CursorStyle, PlatformEvent, InputReader, Terminal};
 
 use crate::{
     render_backend::ScreenBackend,
@@ -110,13 +110,13 @@ impl TuiModel for InteractiveModel {
         loop {
             let event = self.input.next_event().await?;
             match event {
-                InputEvent::Key(key) => return Some(TuiInputEvent::Key(key)),
-                InputEvent::Mouse(mouse) => return Some(TuiInputEvent::Mouse(mouse)),
-                InputEvent::Resize(resize) => {
+                PlatformEvent::Key(key) => return Some(TuiInputEvent::Key(key)),
+                PlatformEvent::Mouse(mouse) => return Some(TuiInputEvent::Mouse(mouse)),
+                PlatformEvent::Resize(resize) => {
                     return Some(TuiInputEvent::Resize(resize.width, resize.height));
                 }
                 // Skip focus and paste events, continue polling
-                InputEvent::FocusGained | InputEvent::FocusLost | InputEvent::Paste(_) => {}
+                PlatformEvent::FocusGained | PlatformEvent::FocusLost | PlatformEvent::Paste(_) => {}
             }
         }
     }

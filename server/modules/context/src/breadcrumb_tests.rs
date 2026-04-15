@@ -1,4 +1,4 @@
-use reovim_subsys_statusline::{ComponentDataContext, ComponentDataProvider};
+use reovim_driver_statusline::{ComponentDataContext, ComponentDataProvider};
 
 use super::*;
 

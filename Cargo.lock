@@ -2460,6 +2460,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-annotation"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "smallvec",
+]
+
+[[package]]
 name = "reovim-driver-codec"
 version = "0.15.0-dev"
 dependencies = [
@@ -2467,9 +2475,9 @@ dependencies = [
  "reovim-domain",
  "reovim-domain-text",
  "reovim-domain-text-events",
+ "reovim-driver-annotation",
  "reovim-driver-text-session",
  "reovim-kernel",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "tempfile",
  "thiserror 2.0.18",
@@ -2482,8 +2490,8 @@ dependencies = [
 name = "reovim-driver-codec-xxd"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-annotation",
  "reovim-driver-codec",
- "reovim-subsys-annotation",
 ]
 
 [[package]]
@@ -2496,21 +2504,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-completion"
+version = "0.15.0-dev"
+dependencies = [
+ "nucleo",
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-display"
 version = "0.15.0-dev"
 dependencies = [
  "dirs",
  "reovim-arch",
  "reovim-client-model",
+ "reovim-driver-annotation",
+ "reovim-driver-statusline",
  "reovim-kernel",
- "reovim-subsys-annotation",
  "reovim-subsys-layout",
- "reovim-subsys-statusline",
  "serde",
  "smallvec",
  "tempfile",
  "toml 0.8.23",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-driver-formatter"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-driver-git"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
 ]
 
 [[package]]
@@ -2540,6 +2571,13 @@ version = "0.15.0-dev"
 dependencies = [
  "nucleo",
  "reovim-driver-text-session",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-statusline"
+version = "0.15.0-dev"
+dependencies = [
  "reovim-kernel",
 ]
 
@@ -2785,10 +2823,10 @@ dependencies = [
  "goblin",
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
@@ -2817,10 +2855,10 @@ dependencies = [
  "csv",
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
@@ -2832,11 +2870,11 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-driver-codec-xxd",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
@@ -2865,12 +2903,12 @@ dependencies = [
  "pdf-extract",
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
@@ -2883,10 +2921,10 @@ dependencies = [
  "goblin",
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tracing",
@@ -2899,10 +2937,10 @@ dependencies = [
  "flate2",
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-codec",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
  "reovim-subsys-vfs",
  "reovim-testing",
  "tar",
@@ -2955,6 +2993,7 @@ dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-command",
+ "reovim-driver-completion",
  "reovim-driver-text-input",
  "reovim-driver-text-lsp",
  "reovim-driver-text-session",
@@ -2963,7 +3002,6 @@ dependencies = [
  "reovim-module-vim",
  "reovim-provider-text",
  "reovim-subsys-command-types",
- "reovim-subsys-completion",
  "reovim-subsys-module-config",
  "serde_json",
  "tokio",
@@ -2975,11 +3013,11 @@ dependencies = [
 name = "reovim-module-context"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-statusline",
  "reovim-driver-text-session",
  "reovim-driver-text-syntax",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-statusline",
  "reovim-testing",
  "serde_json",
  "tracing",
@@ -3057,13 +3095,13 @@ dependencies = [
  "lsp-types",
  "reovim-capabilities",
  "reovim-driver-command",
+ "reovim-driver-formatter",
  "reovim-driver-text-lsp",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
  "reovim-subsys-command-types",
- "reovim-subsys-formatter",
  "tracing",
 ]
 
@@ -3072,34 +3110,34 @@ name = "reovim-module-git"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-module-git-blame"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-annotation",
+ "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-annotation",
- "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-module-git-signs"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-annotation",
  "reovim-driver-command",
+ "reovim-driver-git",
  "reovim-driver-text-input",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-vim",
- "reovim-subsys-annotation",
  "reovim-subsys-command-types",
- "reovim-subsys-git",
  "tracing",
 ]
 
@@ -3107,10 +3145,10 @@ dependencies = [
 name = "reovim-module-git-statusline"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-statusline",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
- "reovim-subsys-statusline",
 ]
 
 [[package]]
@@ -3617,6 +3655,7 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-driver-annotation",
  "reovim-driver-command",
  "reovim-driver-text-input",
  "reovim-driver-text-search",
@@ -3630,7 +3669,6 @@ dependencies = [
  "reovim-module-textobjects",
  "reovim-module-window-ops",
  "reovim-provider-text",
- "reovim-subsys-annotation",
  "reovim-subsys-clipboard",
  "reovim-subsys-command-types",
  "reovim-subsys-layout",
@@ -3718,41 +3756,41 @@ dependencies = [
 name = "reovim-picker-git-branches"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-log"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-stash"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
 ]
 
 [[package]]
 name = "reovim-picker-git-status"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-git",
  "reovim-driver-picker",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-subsys-git",
 ]
 
 [[package]]
@@ -3841,14 +3879,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-subsys-annotation"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "smallvec",
-]
-
-[[package]]
 name = "reovim-subsys-clipboard"
 version = "0.15.0-dev"
 dependencies = [
@@ -3872,31 +3902,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-subsys-completion"
-version = "0.15.0-dev"
-dependencies = [
- "nucleo",
- "reovim-kernel",
-]
-
-[[package]]
 name = "reovim-subsys-coordination"
 version = "0.15.0-dev"
-
-[[package]]
-name = "reovim-subsys-formatter"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "tracing",
-]
-
-[[package]]
-name = "reovim-subsys-git"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
-]
 
 [[package]]
 name = "reovim-subsys-input"
@@ -3975,13 +3982,6 @@ dependencies = [
  "reovim-subsys-input",
  "reovim-subsys-layout",
  "serde_json",
-]
-
-[[package]]
-name = "reovim-subsys-statusline"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
 ]
 
 [[package]]

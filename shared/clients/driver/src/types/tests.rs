@@ -766,50 +766,50 @@ fn style_inequality_attributes() {
 }
 
 // =============================================================================
-// InputEvent
+// PlatformEvent
 // =============================================================================
 
 #[test]
 fn input_event_key_variant() {
-    let event = InputEvent::Key(KeyEvent::new(KeyCode::Char('a'), Modifiers::NONE));
-    assert!(matches!(event, InputEvent::Key(_)));
+    let event = PlatformEvent::Key(KeyEvent::new(KeyCode::Char('a'), Modifiers::NONE));
+    assert!(matches!(event, PlatformEvent::Key(_)));
     assert!(!format!("{event:?}").is_empty());
 }
 
 #[test]
 fn input_event_pointer_variant() {
-    let event = InputEvent::Pointer(PointerEvent {
+    let event = PlatformEvent::Pointer(PointerEvent {
         kind: PointerKind::Down(PointerButton::Left),
         x: 10,
         y: 20,
         modifiers: Modifiers::NONE,
     });
-    assert!(matches!(event, InputEvent::Pointer(_)));
+    assert!(matches!(event, PlatformEvent::Pointer(_)));
 }
 
 #[test]
 fn input_event_touch_variant() {
-    let event = InputEvent::Touch(TouchEvent {
+    let event = PlatformEvent::Touch(TouchEvent {
         kind: TouchKind::Start,
         id: 1,
         x: 100.0,
         y: 200.0,
     });
-    assert!(matches!(event, InputEvent::Touch(_)));
+    assert!(matches!(event, PlatformEvent::Touch(_)));
 }
 
 #[test]
 fn input_event_focus_variant() {
-    let gained = InputEvent::Focus(FocusEvent::Gained);
-    let lost = InputEvent::Focus(FocusEvent::Lost);
-    assert!(matches!(gained, InputEvent::Focus(FocusEvent::Gained)));
-    assert!(matches!(lost, InputEvent::Focus(FocusEvent::Lost)));
+    let gained = PlatformEvent::Focus(FocusEvent::Gained);
+    let lost = PlatformEvent::Focus(FocusEvent::Lost);
+    assert!(matches!(gained, PlatformEvent::Focus(FocusEvent::Gained)));
+    assert!(matches!(lost, PlatformEvent::Focus(FocusEvent::Lost)));
 }
 
 #[test]
 fn input_event_paste_variant() {
-    let event = InputEvent::Paste("hello".to_string());
-    assert!(matches!(event, InputEvent::Paste(_)));
+    let event = PlatformEvent::Paste("hello".to_string());
+    assert!(matches!(event, PlatformEvent::Paste(_)));
     let cloned = event.clone();
     assert_eq!(event, cloned);
 }

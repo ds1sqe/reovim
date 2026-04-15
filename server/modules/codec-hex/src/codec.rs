@@ -105,7 +105,7 @@ impl ContentCodec for HexCodec {
 /// Delegates to [`reovim_driver_codec_xxd::format_xxd_dump`] with default
 /// settings (16 bytes/line, 8-byte groups).
 #[must_use]
-pub fn format_hex_dump(raw: &[u8]) -> (String, Vec<reovim_subsys_annotation::Annotation>) {
+pub fn format_hex_dump(raw: &[u8]) -> (String, Vec<reovim_driver_annotation::Annotation>) {
     reovim_driver_codec_xxd::format_xxd_dump(raw, 16, 8)
 }
 

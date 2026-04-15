@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use {
     reovim_kernel::api::v1::ServiceRegistry,
-    reovim_subsys_formatter::{FormatError, FormatterProvider, FormatterRegistry},
+    reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
 };
 
 use super::*;

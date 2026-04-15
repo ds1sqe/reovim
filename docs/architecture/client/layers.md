@@ -37,7 +37,7 @@
 │  │    - Region allocator (Top/Bottom/Left/Right/Overlay)          │  │
 │  │    - Frame compositor (delegates to ViewportRenderer)          │  │
 │  │    - Module lifecycle (load, init, shutdown)                   │  │
-│  │    - Input forwarding (InputEvent -> gRPC -> server)           │  │
+│  │    - Input forwarding (PlatformEvent -> gRPC -> server)           │  │
 │  │                                                                │  │
 │  │  grep test: search CORE for "statusline", "gutter",           │  │
 │  │  "line_number", "diagnostic", "git_branch", "breadcrumb",     │  │
@@ -60,7 +60,7 @@
 │  │    ThemeProvider     — color scheme and highlight groups        │  │
 │  │                                                                │  │
 │  │  Atoms:                                                        │  │
-│  │    Style, Rect, Insets, InputEvent                             │  │
+│  │    Style, Rect, Insets, PlatformEvent                             │  │
 │  │                                                                │  │
 │  │  Registries:                                                   │  │
 │  │    ServiceRegistry — cross-module communication                │  │
@@ -127,7 +127,7 @@
                     ┌──────────┴──────────┐
                     │   CLIENT DRIVER     │  ClientModule, ViewportRenderer,
                     │ (reovim-client-     │  PlatformCapabilities, RenderSurface,
-                    │  driver)            │  ThemeProvider, InputEvent, Style
+                    │  driver)            │  ThemeProvider, PlatformEvent, Style
                     └──┬─────┬────────┬──┘
                        │     │        │
             ┌──────────┘     │        └──────────┐

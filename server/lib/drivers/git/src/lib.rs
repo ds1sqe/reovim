@@ -35,7 +35,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use reovim_subsys_git::{GitProviderStore, GitProvider};
+//! use reovim_driver_git::{GitProviderStore, GitProvider};
 //!
 //! // In module init():
 //! let store = ctx.services.get_or_create::<GitProviderStore>();

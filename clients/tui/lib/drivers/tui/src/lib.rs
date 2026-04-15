@@ -71,7 +71,7 @@ mod terminal;
 pub use {
     cursor::{Cursor, CursorStyle},
     frame::{Cell, FrameBuffer, FrameRenderer, char_width},
-    input::{InputEvent, InputReader, KeyEvent, MouseEvent, ResizeEvent},
+    input::{PlatformEvent, InputReader, KeyEvent, MouseEvent, ResizeEvent},
     screen::Screen,
     style::{Attributes, ColorMode, Style},
     terminal::Terminal,

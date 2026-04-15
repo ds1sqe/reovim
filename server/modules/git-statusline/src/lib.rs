@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    reovim_subsys_git::GitProviderStore,
-    reovim_subsys_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
+    reovim_driver_git::GitProviderStore,
+    reovim_driver_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
 };
 
 mod branch;

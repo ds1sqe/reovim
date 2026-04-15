@@ -19,7 +19,7 @@ reovim-module-vim = { workspace = true, optional = true }
 reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-capabilities = { workspace = true }
-reovim-subsys-completion = { workspace = true }
+reovim-driver-completion = { workspace = true }
 reovim-driver-text-session = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-text-input = { workspace = true }

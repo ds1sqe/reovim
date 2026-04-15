@@ -20,8 +20,8 @@ dynamic = []
 [dependencies]
 reovim-module-vim = { workspace = true, optional = true }
 reovim-kernel = { workspace = true }
-reovim-subsys-git = { workspace = true }
-reovim-subsys-annotation = { workspace = true }
+reovim-driver-git = { workspace = true }
+reovim-driver-annotation = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
 reovim-driver-text-session = { workspace = true }

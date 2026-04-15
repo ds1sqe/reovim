@@ -88,7 +88,7 @@ See [Rendering](rendering.md) for the full compositor flow.
 Platform input (keyboard, mouse, touch)
     |
     v
-PLATFORM ADAPTER: translate to InputEvent, send to channel
+PLATFORM ADAPTER: translate to PlatformEvent, send to channel
     |
     v
 CORE: receive from InputSource channel

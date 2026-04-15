@@ -599,7 +599,7 @@ fn convert_key_event_char() {
     let event = convert_key_event(&tui_key);
     assert!(matches!(
         event,
-        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+        reovim_client_driver::PlatformEvent::Key(reovim_client_driver::KeyEvent {
             code: reovim_client_driver::KeyCode::Char('a'),
             ..
         })
@@ -617,7 +617,7 @@ fn convert_key_event_enter() {
     let event = convert_key_event(&tui_key);
     assert!(matches!(
         event,
-        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+        reovim_client_driver::PlatformEvent::Key(reovim_client_driver::KeyEvent {
             code: reovim_client_driver::KeyCode::Enter,
             ..
         })
@@ -635,7 +635,7 @@ fn convert_key_event_esc() {
     let event = convert_key_event(&tui_key);
     assert!(matches!(
         event,
-        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+        reovim_client_driver::PlatformEvent::Key(reovim_client_driver::KeyEvent {
             code: reovim_client_driver::KeyCode::Esc,
             ..
         })
@@ -669,7 +669,7 @@ fn convert_key_event_special_keys() {
             vim_notation: String::new(),
         };
         let event = convert_key_event(&tui_key);
-        if let reovim_client_driver::InputEvent::Key(ke) = event {
+        if let reovim_client_driver::PlatformEvent::Key(ke) = event {
             assert_eq!(ke.code, expected_code);
         } else {
             panic!("Expected Key event");
@@ -688,7 +688,7 @@ fn convert_key_event_f_keys() {
     let event = convert_key_event(&tui_key);
     assert!(matches!(
         event,
-        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+        reovim_client_driver::PlatformEvent::Key(reovim_client_driver::KeyEvent {
             code: reovim_client_driver::KeyCode::F(12),
             ..
         })
@@ -706,7 +706,7 @@ fn convert_key_event_modifiers() {
         vim_notation: String::new(),
     };
     let event = convert_key_event(&tui_key);
-    if let reovim_client_driver::InputEvent::Key(ke) = event {
+    if let reovim_client_driver::PlatformEvent::Key(ke) = event {
         assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::CTRL));
         assert!(
             ke.modifiers
@@ -727,7 +727,7 @@ fn convert_key_event_alt() {
         vim_notation: String::new(),
     };
     let event = convert_key_event(&tui_key);
-    if let reovim_client_driver::InputEvent::Key(ke) = event {
+    if let reovim_client_driver::PlatformEvent::Key(ke) = event {
         assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::ALT));
         assert!(!ke.modifiers.contains(reovim_client_driver::Modifiers::CTRL));
     } else {
@@ -744,7 +744,7 @@ fn convert_key_event_backtab() {
         vim_notation: String::new(),
     };
     let event = convert_key_event(&tui_key);
-    if let reovim_client_driver::InputEvent::Key(ke) = event {
+    if let reovim_client_driver::PlatformEvent::Key(ke) = event {
         assert_eq!(ke.code, reovim_client_driver::KeyCode::Tab);
         assert!(
             ke.modifiers
@@ -764,7 +764,7 @@ fn convert_mouse_event_left_click() {
         kind: MouseEventKind::Down(MouseButton::Left),
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert_eq!(pe.x, 10);
         assert_eq!(pe.y, 5);
         assert!(matches!(
@@ -785,7 +785,7 @@ fn convert_mouse_event_right_release() {
         kind: MouseEventKind::Up(MouseButton::Right),
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(
             pe.kind,
             reovim_client_driver::PointerKind::Up(reovim_client_driver::PointerButton::Right)
@@ -804,7 +804,7 @@ fn convert_mouse_event_drag() {
         kind: MouseEventKind::Drag(MouseButton::Middle),
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(
             pe.kind,
             reovim_client_driver::PointerKind::Drag(reovim_client_driver::PointerButton::Middle)
@@ -823,7 +823,7 @@ fn convert_mouse_event_scroll() {
         kind: MouseEventKind::ScrollUp,
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollUp));
     } else {
         panic!("Expected Pointer event");
@@ -835,7 +835,7 @@ fn convert_mouse_event_scroll() {
         kind: MouseEventKind::ScrollDown,
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
     } else {
         panic!("Expected Pointer event");
@@ -851,7 +851,7 @@ fn convert_mouse_event_moved() {
         kind: MouseEventKind::Moved,
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(pe.kind, reovim_client_driver::PointerKind::Move));
         assert_eq!(pe.x, 50);
         assert_eq!(pe.y, 25);
@@ -869,7 +869,7 @@ fn convert_mouse_event_scroll_left_maps_to_scroll_down() {
         kind: MouseEventKind::ScrollLeft,
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         // Best-effort mapping: ScrollLeft -> ScrollDown
         assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
     } else {
@@ -886,7 +886,7 @@ fn convert_mouse_event_scroll_right_maps_to_scroll_down() {
         kind: MouseEventKind::ScrollRight,
     };
     let event = convert_mouse_event(&tui_mouse);
-    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+    if let reovim_client_driver::PlatformEvent::Pointer(pe) = event {
         assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
     } else {
         panic!("Expected Pointer event");

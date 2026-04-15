@@ -4,7 +4,7 @@
 
 use std::{io, time::Duration};
 
-use crate::traits::{InputEvent, InputSource};
+use crate::traits::{PlatformEvent, InputSource};
 
 /// Windows input source stub.
 ///
@@ -34,7 +34,7 @@ impl InputSource for WindowsInputSource {
         todo!("Windows input source support not yet implemented")
     }
 
-    fn read_event(&mut self) -> io::Result<InputEvent> {
+    fn read_event(&mut self) -> io::Result<PlatformEvent> {
         todo!("Windows input source support not yet implemented")
     }
 }

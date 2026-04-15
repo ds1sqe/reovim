@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_text_session::SessionExtension,
-    reovim_subsys_completion::{CompletionItem, CompletionKind},
+    reovim_driver_completion::{CompletionItem, CompletionKind},
 };
 
 /// Snapshot of a completion item for bridge serialization.

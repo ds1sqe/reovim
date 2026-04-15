@@ -6,7 +6,7 @@ use crossterm::event;
 
 use {
     super::convert::convert_event,
-    crate::traits::{InputEvent, InputSource},
+    crate::traits::{PlatformEvent, InputSource},
 };
 
 /// Unix input source implementation wrapping crossterm's event system.
@@ -34,7 +34,7 @@ impl InputSource for UnixInputSource {
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn read_event(&mut self) -> io::Result<InputEvent> {
+    fn read_event(&mut self) -> io::Result<PlatformEvent> {
         let ct_event = event::read()?;
         Ok(convert_event(ct_event))
     }

@@ -15,7 +15,7 @@ use {
 
 /// Terminal input event.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InputEvent {
+pub enum PlatformEvent {
     /// Keyboard event.
     Key(KeyEvent),
     /// Mouse event.
@@ -147,20 +147,20 @@ impl InputReader {
     /// Get the next input event.
     ///
     /// Returns `None` if the stream ends.
-    pub async fn next_event(&mut self) -> Option<InputEvent> {
+    pub async fn next_event(&mut self) -> Option<PlatformEvent> {
         match self.stream.next().await {
             Some(Ok(event)) => {
                 let input_event = match event {
-                    CrosstermEvent::Key(key) => InputEvent::Key(KeyEvent::from_crossterm(key)),
+                    CrosstermEvent::Key(key) => PlatformEvent::Key(KeyEvent::from_crossterm(key)),
                     CrosstermEvent::Mouse(mouse) => {
-                        InputEvent::Mouse(MouseEvent::from_crossterm(mouse))
+                        PlatformEvent::Mouse(MouseEvent::from_crossterm(mouse))
                     }
                     CrosstermEvent::Resize(width, height) => {
-                        InputEvent::Resize(ResizeEvent { width, height })
+                        PlatformEvent::Resize(ResizeEvent { width, height })
                     }
-                    CrosstermEvent::FocusGained => InputEvent::FocusGained,
-                    CrosstermEvent::FocusLost => InputEvent::FocusLost,
-                    CrosstermEvent::Paste(text) => InputEvent::Paste(text),
+                    CrosstermEvent::FocusGained => PlatformEvent::FocusGained,
+                    CrosstermEvent::FocusLost => PlatformEvent::FocusLost,
+                    CrosstermEvent::Paste(text) => PlatformEvent::Paste(text),
                 };
                 tracing::trace!(?input_event, "Input event received");
                 Some(input_event)
@@ -187,7 +187,7 @@ impl InputReader {
     pub async fn next_event_timeout(
         &mut self,
         timeout: Duration,
-    ) -> std::io::Result<Option<InputEvent>> {
+    ) -> std::io::Result<Option<PlatformEvent>> {
         match tokio::time::timeout(timeout, self.next_event()).await {
             Ok(Some(event)) => Ok(Some(event)),
             Ok(None) | Err(_) => Ok(None), // Stream ended or timeout

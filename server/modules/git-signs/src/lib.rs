@@ -14,7 +14,7 @@ use {
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
-    reovim_subsys_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
 };
 
 pub mod commands;

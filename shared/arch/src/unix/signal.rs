@@ -9,7 +9,7 @@ use crate::traits::{SignalHandler, TerminalSize};
 /// Unix signal handler implementation.
 ///
 /// On Unix with crossterm:
-/// - Resize (SIGWINCH) is delivered via `InputEvent::Resize` through the input source
+/// - Resize (SIGWINCH) is delivered via `PlatformEvent::Resize` through the input source
 /// - Interrupt (SIGINT) is typically delivered as Ctrl+C key event in raw mode
 /// - Suspend (SIGTSTP) is typically delivered as Ctrl+Z key event in raw mode
 ///
@@ -49,7 +49,7 @@ impl SignalHandler for UnixSignalHandler {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_resize(&mut self, handler: Box<dyn Fn(TerminalSize) + Send + Sync>) {
         // Note: With crossterm, resize events are delivered through the
-        // event stream as InputEvent::Resize, not through signal handlers.
+        // event stream as PlatformEvent::Resize, not through signal handlers.
         // We store the handler for compatibility but it won't be called
         // in the current implementation.
         self.resize_handler = Some(handler);

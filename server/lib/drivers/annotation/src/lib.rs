@@ -33,7 +33,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_subsys_annotation::{
+//! use reovim_driver_annotation::{
 //!     Annotation, AnnotationKind, AnnotationTarget, AnnotationPayload,
 //! };
 //!

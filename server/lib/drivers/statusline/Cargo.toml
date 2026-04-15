@@ -1,17 +1,16 @@
 [package]
-name = "reovim-subsys-formatter"
+name = "reovim-driver-statusline"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Formatter provider driver for reovim - external formatters and formatting traits"
+description = "Display-agnostic statusline data types for reovim"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 reovim-kernel = { workspace = true }
-tracing = { workspace = true }
+
+[lints]
+workspace = true

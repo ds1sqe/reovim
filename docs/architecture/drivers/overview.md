@@ -6,18 +6,18 @@ Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each dr
 
 | Driver | Crate | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `annotation/` | `reovim-subsys-annotation` | Annotation system | - |
+| `annotation/` | `reovim-driver-annotation` | Annotation system | - |
 | `buffer/` | `reovim-driver-buffer` | Buffer manager registry | [buffer/overview.md](./buffer/overview.md) |
 | `clipboard/` | `reovim-subsys-clipboard` | System clipboard interface | [clipboard/overview.md](./clipboard/overview.md) |
 | `codec/` | `reovim-driver-codec` | Codec framework, file type detection | - |
 | `codec-xxd/` | `reovim-driver-codec-xxd` | XXD hex codec | - |
 | `command/` | `reovim-driver-command` | Command traits and execution | [command/overview.md](./command/overview.md) |
 | `command-types/` | `reovim-driver-command-types` | CommandContext, CommandResult | [command-types/overview.md](./command-types/overview.md) |
-| `completion/` | `reovim-subsys-completion` | Completion framework | - |
+| `completion/` | `reovim-driver-completion` | Completion framework | - |
 | `ffi/` | `reovim-driver-ffi` | C FFI interface + ABI versioning | [ffi/overview.md](./ffi/overview.md) |
 | `ffi-python/` | `reovim-driver-ffi-python` | Python bindings via PyO3 | [ffi-python/overview.md](./ffi-python/overview.md) |
-| `formatter/` | `reovim-subsys-formatter` | Code formatting interface | - |
-| `git/` | `reovim-subsys-git` | Git integration | - |
+| `formatter/` | `reovim-driver-formatter` | Code formatting interface | - |
+| `git/` | `reovim-driver-git` | Git integration | - |
 | `input/` | `reovim-driver-input` | Keyboard, mouse input | [input/overview.md](./input/overview.md) |
 | `layout/` | `reovim-subsys-layout` | Layout traits and policies | - |
 | `lsp/` | `reovim-driver-lsp` | LSP client infrastructure | [lsp/overview.md](./lsp/overview.md) |
@@ -28,7 +28,7 @@ Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each dr
 | `picker/` | `reovim-driver-picker` | Picker/fuzzy-find framework | - |
 | `search/` | `reovim-driver-search` | Search provider interface | [search/overview.md](./search/overview.md) |
 | `session/` | `reovim-driver-session` | Session management traits | [session/overview.md](./session/overview.md) |
-| `statusline/` | `reovim-subsys-statusline` | Statusline traits | - |
+| `statusline/` | `reovim-driver-statusline` | Statusline traits | - |
 | `syntax/` | `reovim-driver-syntax` | Syntax highlighting abstraction | [syntax/overview.md](./syntax/overview.md) |
 | `syntax-treesitter/` | `reovim-driver-syntax-treesitter` | Tree-sitter implementation | [syntax-treesitter/overview.md](./syntax-treesitter/overview.md) |
 | `undo/` | `reovim-driver-undo` | Undo provider interface | [undo/overview.md](./undo/overview.md) |

@@ -237,7 +237,7 @@ fn test_resize_event_debug() {
 
 #[test]
 fn test_input_event_clone() {
-    let event = InputEvent::Key(KeyEvent {
+    let event = PlatformEvent::Key(KeyEvent {
         code: KeyCode::Char('a'),
         modifiers: KeyModifiers::NONE,
         vim_notation: "a".to_string(),
@@ -248,22 +248,22 @@ fn test_input_event_clone() {
 
 #[test]
 fn test_input_event_debug() {
-    let event = InputEvent::FocusGained;
+    let event = PlatformEvent::FocusGained;
     let debug = format!("{event:?}");
     assert!(debug.contains("FocusGained"));
 }
 
 #[test]
 fn test_input_event_focus_lost() {
-    let event = InputEvent::FocusLost;
-    assert!(matches!(event, InputEvent::FocusLost));
+    let event = PlatformEvent::FocusLost;
+    assert!(matches!(event, PlatformEvent::FocusLost));
 }
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_event_paste() {
-    let event = InputEvent::Paste("hello".to_string());
-    if let InputEvent::Paste(text) = event {
+    let event = PlatformEvent::Paste("hello".to_string());
+    if let PlatformEvent::Paste(text) = event {
         assert_eq!(text, "hello");
     } else {
         panic!("Expected Paste event");
@@ -380,7 +380,7 @@ fn test_mouse_event_moved() {
 
 #[test]
 fn test_input_event_variants_debug() {
-    let mouse = InputEvent::Mouse(MouseEvent {
+    let mouse = PlatformEvent::Mouse(MouseEvent {
         column: 0,
         row: 0,
         kind: MouseEventKind::Down(MouseButton::Left),
@@ -388,7 +388,7 @@ fn test_input_event_variants_debug() {
     let debug = format!("{mouse:?}");
     assert!(debug.contains("Mouse"));
 
-    let resize = InputEvent::Resize(ResizeEvent {
+    let resize = PlatformEvent::Resize(ResizeEvent {
         width: 80,
         height: 24,
     });
@@ -398,22 +398,22 @@ fn test_input_event_variants_debug() {
 
 #[test]
 fn test_input_event_variants_eq() {
-    let e1 = InputEvent::FocusGained;
-    let e2 = InputEvent::FocusGained;
+    let e1 = PlatformEvent::FocusGained;
+    let e2 = PlatformEvent::FocusGained;
     assert_eq!(e1, e2);
 
-    let e3 = InputEvent::FocusLost;
+    let e3 = PlatformEvent::FocusLost;
     assert_ne!(e1, e3);
 }
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_event_resize() {
-    let event = InputEvent::Resize(ResizeEvent {
+    let event = PlatformEvent::Resize(ResizeEvent {
         width: 100,
         height: 50,
     });
-    if let InputEvent::Resize(r) = event {
+    if let PlatformEvent::Resize(r) = event {
         assert_eq!(r.width, 100);
         assert_eq!(r.height, 50);
     } else {
@@ -424,12 +424,12 @@ fn test_input_event_resize() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_event_mouse() {
-    let event = InputEvent::Mouse(MouseEvent {
+    let event = PlatformEvent::Mouse(MouseEvent {
         column: 42,
         row: 10,
         kind: MouseEventKind::ScrollUp,
     });
-    if let InputEvent::Mouse(m) = &event {
+    if let PlatformEvent::Mouse(m) = &event {
         assert_eq!(m.column, 42);
         assert!(m.is_scroll());
     } else {

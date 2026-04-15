@@ -350,11 +350,11 @@ fn convert_driver_style_to_display_style(style: &reovim_client_driver::Style) ->
 // Input event conversion: TUI driver -> client-driver
 // =============================================================================
 
-/// Convert a TUI driver `KeyEvent` to a platform-agnostic `InputEvent`.
+/// Convert a TUI driver `KeyEvent` to a platform-agnostic `PlatformEvent`.
 #[must_use]
 pub const fn convert_key_event(
     key: &reovim_driver_tui::KeyEvent,
-) -> reovim_client_driver::InputEvent {
+) -> reovim_client_driver::PlatformEvent {
     use {
         crossterm::event::{KeyCode as CK, KeyModifiers as CM},
         reovim_client_driver::{KeyCode as DK, KeyEvent as DE, Modifiers as DM},
@@ -391,14 +391,14 @@ pub const fn convert_key_event(
         modifiers.set(DM::ALT);
     }
 
-    reovim_client_driver::InputEvent::Key(DE::new(code, modifiers))
+    reovim_client_driver::PlatformEvent::Key(DE::new(code, modifiers))
 }
 
-/// Convert a TUI driver `MouseEvent` to a platform-agnostic `InputEvent`.
+/// Convert a TUI driver `MouseEvent` to a platform-agnostic `PlatformEvent`.
 #[must_use]
 pub fn convert_mouse_event(
     mouse: &reovim_driver_tui::MouseEvent,
-) -> reovim_client_driver::InputEvent {
+) -> reovim_client_driver::PlatformEvent {
     use {
         crossterm::event::{MouseButton as CB, MouseEventKind as MK},
         reovim_client_driver::{Modifiers, PointerButton as PB, PointerEvent, PointerKind},
@@ -419,7 +419,7 @@ pub fn convert_mouse_event(
         MK::ScrollDown | MK::ScrollLeft | MK::ScrollRight => PointerKind::ScrollDown,
     };
 
-    reovim_client_driver::InputEvent::Pointer(PointerEvent {
+    reovim_client_driver::PlatformEvent::Pointer(PointerEvent {
         kind,
         x: mouse.column,
         y: mouse.row,

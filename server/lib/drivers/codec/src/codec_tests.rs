@@ -1,7 +1,7 @@
 //! Tests for codec trait and `DecodeResult`.
 
 use {
-    reovim_subsys_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_subsys_vfs::HeapByteSource,
 };
 

@@ -44,12 +44,12 @@ Async input event stream with vim key notation:
 let mut input = InputReader::new();
 while let Some(event) = input.next_event().await {
     match event {
-        InputEvent::Key(key) => {
+        PlatformEvent::Key(key) => {
             // key.vim_notation is "<C-w>", "j", "<Esc>", etc.
             send_to_server(&key.vim_notation);
         }
-        InputEvent::Resize(r) => handle_resize(r.width, r.height),
-        InputEvent::Mouse(m) => handle_mouse(m),
+        PlatformEvent::Resize(r) => handle_resize(r.width, r.height),
+        PlatformEvent::Mouse(m) => handle_mouse(m),
         _ => {}
     }
 }

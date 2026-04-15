@@ -25,7 +25,7 @@ use {
     },
     reovim_kernel::api::v1::{BufferId, CommandId, ServiceRegistry, oneshot},
     reovim_subsys_command_types::{CommandContext, CommandResult},
-    reovim_subsys_completion::{CompletionContext, CompletionSourceRegistry},
+    reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
     tracing::{debug, info, warn},
 };
 

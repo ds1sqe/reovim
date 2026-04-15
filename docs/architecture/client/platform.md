@@ -121,7 +121,7 @@ channel) and Mobile (native callback posts to channel).
 
 ```rust
 /// Platform-agnostic input event.
-enum InputEvent {
+enum PlatformEvent {
     Key(KeyEvent),
     Pointer(PointerEvent),
     Touch(TouchEvent),
@@ -133,21 +133,21 @@ enum InputEvent {
 `InputSource` is NOT a trait and NOT defined in CLIENT DRIVER. It lives in
 CLIENT CORE as an implementation detail — modules never touch input.
 
-CORE receives input via `tokio::sync::mpsc::Receiver<InputEvent>`. The
+CORE receives input via `tokio::sync::mpsc::Receiver<PlatformEvent>`. The
 platform adapter creates the channel pair at startup and hands the receiver
 to CORE:
 
 ```rust
 // In platform binary main.rs:
-let (input_tx, input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
+let (input_tx, input_rx) = tokio::sync::mpsc::channel::<PlatformEvent>(64);
 
 // Platform adapter sends events:
-input_tx.send(InputEvent::Key(key)).await;
+input_tx.send(PlatformEvent::Key(key)).await;
 
 // CORE receives and forwards to server:
 while let Some(event) = input_rx.recv().await {
     match event {
-        InputEvent::Key(k) => server.send_keys(&[k]),
+        PlatformEvent::Key(k) => server.send_keys(&[k]),
         // ... other event types
     }
 }

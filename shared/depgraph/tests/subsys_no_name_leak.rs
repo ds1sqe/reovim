@@ -49,7 +49,7 @@ fn scan_directory(dir: &Path, violations: &mut Vec<String>) {
 /// Baseline count of `reovim_driver_` references in server source.
 /// This number must NOT increase — it can only decrease as driver deps
 /// are eliminated via the session facade effort (Tier 2 decoupling).
-const SERVER_DRIVER_REF_BASELINE: usize = 593;
+const SERVER_DRIVER_REF_BASELINE: usize = 605;
 
 #[test]
 fn server_source_driver_references_do_not_increase() {

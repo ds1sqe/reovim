@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::BufferId,
-    reovim_subsys_annotation::{
+    reovim_driver_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget, LineNumberMode,
     },

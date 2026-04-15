@@ -1,4 +1,4 @@
-use reovim_subsys_git::types::DiffHunk;
+use reovim_driver_git::types::DiffHunk;
 
 use super::*;
 

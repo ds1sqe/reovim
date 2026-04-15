@@ -97,6 +97,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
+- **arch**: rename `InputEvent` → `PlatformEvent` to free the name for the new opaque input envelope in subsys-input (#753)
+- **subsys/drivers**: promote 5 feature contracts (annotation, completion, formatter, git, statusline) from subsys to driver layer — these carry domain-specific traits, not domain-neutral contracts (#753)
 - **server**: remove 14 temporary `ClientDirectory` forwarder methods from `Session`, expose `Session::clients()` accessor, and migrate all gRPC and test callers to use `session.clients().*` directly — `Session` drops from ~35 to ~21 methods (#741)
 - **server**: extract `PresenceService` from `Session` so the presence/sync graph is owned by a dedicated authority without pulling notification or event-translation work into this slice (#741)
 - **server**: extract `ClientDirectory` from `Session` so client membership, relation validation, and input-target resolution live behind a dedicated authority (#741)

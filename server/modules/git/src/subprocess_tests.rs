@@ -1,7 +1,7 @@
 use super::subprocess::*;
 
 use {
-    reovim_subsys_git::{GitProvider, types::FileStatus},
+    reovim_driver_git::{GitProvider, types::FileStatus},
     std::{
         path::{Path, PathBuf},
         process::Command,

@@ -52,7 +52,7 @@ use {
         KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
         Version, pr_info,
     },
-    reovim_subsys_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
     reovim_subsys_manifest::ModeBridgeStore,
 };
 

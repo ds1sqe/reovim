@@ -5,8 +5,8 @@ use std::{
 
 use {
     reovim_kernel::api::v1::{BufferId, ServiceRegistry},
-    reovim_subsys_annotation::{AnnotationContext, AnnotationSource},
-    reovim_subsys_git::{
+    reovim_driver_annotation::{AnnotationContext, AnnotationSource},
+    reovim_driver_git::{
         GitProvider, GitProviderStore,
         types::{BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},
     },

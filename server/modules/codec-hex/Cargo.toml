@@ -23,7 +23,7 @@ reovim-capabilities = { workspace = true }
 # Driver layer - implements ContentCodec, ContentClassifier, ContentCodecFactory
 reovim-driver-codec = { workspace = true }
 reovim-driver-codec-xxd = { workspace = true }
-reovim-subsys-annotation = { workspace = true }
+reovim-driver-annotation = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-domain-text = { workspace = true }
 

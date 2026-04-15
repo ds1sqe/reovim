@@ -1,4 +1,4 @@
-use reovim_subsys_git::types::BlameEntry;
+use reovim_driver_git::types::BlameEntry;
 
 use super::*;
 

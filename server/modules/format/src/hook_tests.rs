@@ -6,7 +6,7 @@ use {
         events::kernel::BufferWillSave,
     },
     reovim_provider_text::{Buffer, TextBufferRegistry},
-    reovim_subsys_formatter::{FormatError, FormatterProvider, FormatterRegistry},
+    reovim_driver_formatter::{FormatError, FormatterProvider, FormatterRegistry},
 };
 
 use super::*;

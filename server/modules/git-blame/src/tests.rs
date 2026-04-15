@@ -1,8 +1,8 @@
 use {
     super::*,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
-    reovim_subsys_annotation::AnnotationSourceRegistry,
-    reovim_subsys_git::{GitProvider, GitProviderStore},
+    reovim_driver_annotation::AnnotationSourceRegistry,
+    reovim_driver_git::{GitProvider, GitProviderStore},
     std::sync::Arc,
 };
 
@@ -49,10 +49,10 @@ impl GitProvider for StubGitProvider {
     fn current_branch(&self, _: &std::path::Path) -> Option<String> {
         None
     }
-    fn branches(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::BranchInfo> {
+    fn branches(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::BranchInfo> {
         vec![]
     }
-    fn status(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::StatusEntry> {
+    fn status(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StatusEntry> {
         vec![]
     }
     fn log(
@@ -60,13 +60,13 @@ impl GitProvider for StubGitProvider {
         _: &std::path::Path,
         _: &str,
         _: usize,
-    ) -> Vec<reovim_subsys_git::types::LogEntry> {
+    ) -> Vec<reovim_driver_git::types::LogEntry> {
         vec![]
     }
-    fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::StashEntry> {
+    fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StashEntry> {
         vec![]
     }
-    fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_subsys_git::types::DiffHunk> {
+    fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::DiffHunk> {
         vec![]
     }
 }

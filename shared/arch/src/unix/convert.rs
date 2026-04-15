@@ -2,7 +2,7 @@
 
 use {
     crate::traits::{
-        ClearType, Color, InputEvent, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers,
+        ClearType, Color, PlatformEvent, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers,
         MouseButton, MouseEvent, MouseEventKind, TerminalSize,
     },
     crossterm::{
@@ -11,16 +11,16 @@ use {
     },
 };
 
-/// Convert a crossterm event to our `InputEvent`.
+/// Convert a crossterm event to our `PlatformEvent`.
 #[must_use]
-pub fn convert_event(event: CtEvent) -> InputEvent {
+pub fn convert_event(event: CtEvent) -> PlatformEvent {
     match event {
-        CtEvent::Key(k) => InputEvent::Key(convert_key_event(k)),
-        CtEvent::Mouse(m) => InputEvent::Mouse(convert_mouse_event(m)),
-        CtEvent::Resize(cols, rows) => InputEvent::Resize(TerminalSize::new(cols, rows)),
-        CtEvent::FocusGained => InputEvent::FocusGained,
-        CtEvent::FocusLost => InputEvent::FocusLost,
-        CtEvent::Paste(s) => InputEvent::Paste(s),
+        CtEvent::Key(k) => PlatformEvent::Key(convert_key_event(k)),
+        CtEvent::Mouse(m) => PlatformEvent::Mouse(convert_mouse_event(m)),
+        CtEvent::Resize(cols, rows) => PlatformEvent::Resize(TerminalSize::new(cols, rows)),
+        CtEvent::FocusGained => PlatformEvent::FocusGained,
+        CtEvent::FocusLost => PlatformEvent::FocusLost,
+        CtEvent::Paste(s) => PlatformEvent::Paste(s),
     }
 }
 

@@ -4,14 +4,14 @@
 //!
 //! Provides gutter annotations for git blame information: hash, author,
 //! and commit summary per line. Implements `AnnotationSource` from
-//! `reovim-subsys-annotation`.
+//! `reovim-driver-annotation`.
 
 use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    reovim_subsys_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
-    reovim_subsys_git::GitProviderStore,
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
+    reovim_driver_git::GitProviderStore,
 };
 
 mod format;

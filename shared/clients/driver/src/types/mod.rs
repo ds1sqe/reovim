@@ -933,9 +933,9 @@ impl Style {
 /// Platform-agnostic input event.
 ///
 /// Abstracts over terminal, web, and mobile input sources. Each platform
-/// converts its native events into `InputEvent` at the boundary.
+/// converts its native events into `PlatformEvent` at the boundary.
 #[derive(Debug, Clone, PartialEq)]
-pub enum InputEvent {
+pub enum PlatformEvent {
     /// Keyboard event.
     Key(KeyEvent),
     /// Pointer (mouse/trackpad) event.

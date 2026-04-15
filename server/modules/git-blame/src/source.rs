@@ -9,11 +9,11 @@ use std::{
 
 use {
     reovim_kernel::api::v1::BufferId,
-    reovim_subsys_annotation::{
+    reovim_driver_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget,
     },
-    reovim_subsys_git::{GitProvider, types::BlameEntry},
+    reovim_driver_git::{GitProvider, types::BlameEntry},
 };
 
 use crate::format::format_blame;

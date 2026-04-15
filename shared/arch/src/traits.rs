@@ -617,7 +617,7 @@ pub struct MouseEvent {
 
 /// Union of all input events from the terminal.
 #[derive(Debug, Clone)]
-pub enum InputEvent {
+pub enum PlatformEvent {
     /// Keyboard event.
     Key(KeyEvent),
     /// Mouse event.
@@ -760,7 +760,7 @@ pub trait Terminal: Send + Sync {
 
     /// Enable mouse capture.
     ///
-    /// Mouse events will be reported as [`InputEvent::Mouse`].
+    /// Mouse events will be reported as [`PlatformEvent::Mouse`].
     fn enable_mouse_capture(&mut self) -> io::Result<()>;
 
     /// Disable mouse capture.
@@ -797,12 +797,12 @@ pub trait InputSource: Send {
     /// Read next input event.
     ///
     /// This is a blocking call. Use `poll` first to check for availability.
-    fn read_event(&mut self) -> io::Result<InputEvent>;
+    fn read_event(&mut self) -> io::Result<PlatformEvent>;
 
     /// Drain all pending events.
     ///
     /// Returns a vector of all currently queued events.
-    fn drain(&mut self) -> Vec<InputEvent> {
+    fn drain(&mut self) -> Vec<PlatformEvent> {
         let mut events = Vec::new();
         while self.poll(Duration::ZERO).unwrap_or(false) {
             if let Ok(event) = self.read_event() {
@@ -820,13 +820,13 @@ pub trait InputSource: Send {
 /// Signal handler abstraction.
 ///
 /// Provides callbacks for OS signals. Note that on Unix with crossterm,
-/// resize signals (SIGWINCH) are typically delivered as [`InputEvent::Resize`]
+/// resize signals (SIGWINCH) are typically delivered as [`PlatformEvent::Resize`]
 /// through the input source rather than through this handler.
 pub trait SignalHandler: Send + Sync {
     /// Register handler for terminal resize.
     ///
     /// Note: On most platforms with crossterm, resize is delivered via
-    /// [`InputEvent::Resize`] instead of through this handler.
+    /// [`PlatformEvent::Resize`] instead of through this handler.
     fn on_resize(&mut self, handler: Box<dyn Fn(TerminalSize) + Send + Sync>);
 
     /// Register handler for interrupt (Ctrl+C / SIGINT).

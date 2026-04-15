@@ -1,10 +1,10 @@
 [package]
-name = "reovim-subsys-git"
+name = "reovim-driver-completion"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Git provider driver for reovim — trait contract and typed data"
+description = "Completion driver for reovim - defines CompletionSource trait, types, engine, and registry"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -14,3 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
+nucleo = { workspace = true }

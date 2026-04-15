@@ -7,7 +7,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use {reovim_kernel::api::v1::ServiceRegistry, reovim_subsys_formatter::FormatterRegistry};
+use {reovim_kernel::api::v1::ServiceRegistry, reovim_driver_formatter::FormatterRegistry};
 
 use crate::lsp_formatter;
 

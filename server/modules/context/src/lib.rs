@@ -28,7 +28,7 @@ use std::sync::Arc;
 use {
     reovim_driver_text_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    reovim_subsys_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
+    reovim_driver_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
 };
 
 /// Scope context provider module.

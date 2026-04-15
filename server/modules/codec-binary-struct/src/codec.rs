@@ -12,7 +12,7 @@ use {
         TranslateEditError, TreePath, impl_tree_op,
     },
     reovim_kernel::api::v1::ByteEdit,
-    reovim_subsys_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_subsys_vfs::ByteSource,
 };
 

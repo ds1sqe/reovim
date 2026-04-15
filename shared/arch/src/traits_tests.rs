@@ -1063,45 +1063,45 @@ fn test_mouse_event_debug() {
 }
 
 // =========================================================================
-// InputEvent
+// PlatformEvent
 // =========================================================================
 
 #[test]
 fn test_input_event_key() {
-    let event = InputEvent::Key(KeyEvent::new(KeyCode::Char('a')));
-    assert!(matches!(event, InputEvent::Key(_)));
+    let event = PlatformEvent::Key(KeyEvent::new(KeyCode::Char('a')));
+    assert!(matches!(event, PlatformEvent::Key(_)));
 }
 
 #[test]
 fn test_input_event_mouse() {
-    let event = InputEvent::Mouse(MouseEvent {
+    let event = PlatformEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 0,
         row: 0,
         modifiers: Modifiers::NONE,
     });
-    assert!(matches!(event, InputEvent::Mouse(_)));
+    assert!(matches!(event, PlatformEvent::Mouse(_)));
 }
 
 #[test]
 fn test_input_event_resize() {
-    let event = InputEvent::Resize(TerminalSize::new(80, 24));
-    assert!(matches!(event, InputEvent::Resize(_)));
+    let event = PlatformEvent::Resize(TerminalSize::new(80, 24));
+    assert!(matches!(event, PlatformEvent::Resize(_)));
 }
 
 #[test]
 fn test_input_event_focus() {
-    let gained = InputEvent::FocusGained;
-    let lost = InputEvent::FocusLost;
-    assert!(matches!(gained, InputEvent::FocusGained));
-    assert!(matches!(lost, InputEvent::FocusLost));
+    let gained = PlatformEvent::FocusGained;
+    let lost = PlatformEvent::FocusLost;
+    assert!(matches!(gained, PlatformEvent::FocusGained));
+    assert!(matches!(lost, PlatformEvent::FocusLost));
 }
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_event_paste() {
-    let event = InputEvent::Paste("hello world".to_string());
-    if let InputEvent::Paste(text) = event {
+    let event = PlatformEvent::Paste("hello world".to_string());
+    if let PlatformEvent::Paste(text) = event {
         assert_eq!(text, "hello world");
     } else {
         panic!("Expected Paste variant");
@@ -1111,13 +1111,13 @@ fn test_input_event_paste() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_event_clone() {
-    let event = InputEvent::Key(KeyEvent::new(KeyCode::Enter));
+    let event = PlatformEvent::Key(KeyEvent::new(KeyCode::Enter));
     let cloned = event;
-    assert!(matches!(cloned, InputEvent::Key(_)));
+    assert!(matches!(cloned, PlatformEvent::Key(_)));
 
-    let paste = InputEvent::Paste("test".to_string());
+    let paste = PlatformEvent::Paste("test".to_string());
     let paste_cloned = paste;
-    if let InputEvent::Paste(text) = paste_cloned {
+    if let PlatformEvent::Paste(text) = paste_cloned {
         assert_eq!(text, "test");
     } else {
         panic!("Expected Paste variant after clone");
@@ -1126,19 +1126,19 @@ fn test_input_event_clone() {
 
 #[test]
 fn test_input_event_debug() {
-    let event = InputEvent::Key(KeyEvent::new(KeyCode::Escape));
+    let event = PlatformEvent::Key(KeyEvent::new(KeyCode::Escape));
     let debug = format!("{event:?}");
     assert!(debug.contains("Key"));
 
-    let event = InputEvent::FocusGained;
+    let event = PlatformEvent::FocusGained;
     let debug = format!("{event:?}");
     assert!(debug.contains("FocusGained"));
 
-    let event = InputEvent::FocusLost;
+    let event = PlatformEvent::FocusLost;
     let debug = format!("{event:?}");
     assert!(debug.contains("FocusLost"));
 
-    let event = InputEvent::Paste("data".to_string());
+    let event = PlatformEvent::Paste("data".to_string());
     let debug = format!("{event:?}");
     assert!(debug.contains("Paste"));
 }
@@ -1359,11 +1359,11 @@ fn test_terminal_write_str_unicode() {
 // =========================================================================
 
 struct MockInputSource {
-    events: std::sync::Mutex<Vec<InputEvent>>,
+    events: std::sync::Mutex<Vec<PlatformEvent>>,
 }
 
 impl MockInputSource {
-    fn with_events(events: Vec<InputEvent>) -> Self {
+    fn with_events(events: Vec<PlatformEvent>) -> Self {
         Self {
             events: std::sync::Mutex::new(events),
         }
@@ -1376,7 +1376,7 @@ impl InputSource for MockInputSource {
         Ok(!self.events.lock().unwrap().is_empty())
     }
 
-    fn read_event(&mut self) -> io::Result<InputEvent> {
+    fn read_event(&mut self) -> io::Result<PlatformEvent> {
         let mut events = self.events.lock().unwrap();
         if events.is_empty() {
             Err(io::Error::new(io::ErrorKind::WouldBlock, "no events"))
@@ -1391,15 +1391,15 @@ impl InputSource for MockInputSource {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_input_source_drain_default_with_events() {
     let mut source = MockInputSource::with_events(vec![
-        InputEvent::Key(KeyEvent::new(KeyCode::Char('a'))),
-        InputEvent::Key(KeyEvent::new(KeyCode::Char('b'))),
-        InputEvent::FocusGained,
+        PlatformEvent::Key(KeyEvent::new(KeyCode::Char('a'))),
+        PlatformEvent::Key(KeyEvent::new(KeyCode::Char('b'))),
+        PlatformEvent::FocusGained,
     ]);
     let events = source.drain();
     assert_eq!(events.len(), 3);
-    assert!(matches!(&events[0], InputEvent::Key(k) if k.code == KeyCode::Char('a')));
-    assert!(matches!(&events[1], InputEvent::Key(k) if k.code == KeyCode::Char('b')));
-    assert!(matches!(&events[2], InputEvent::FocusGained));
+    assert!(matches!(&events[0], PlatformEvent::Key(k) if k.code == KeyCode::Char('a')));
+    assert!(matches!(&events[1], PlatformEvent::Key(k) if k.code == KeyCode::Char('b')));
+    assert!(matches!(&events[2], PlatformEvent::FocusGained));
 }
 
 #[test]
@@ -1422,7 +1422,7 @@ impl InputSource for ErrorPollInputSource {
         Err(io::Error::new(io::ErrorKind::BrokenPipe, "poll error"))
     }
 
-    fn read_event(&mut self) -> io::Result<InputEvent> {
+    fn read_event(&mut self) -> io::Result<PlatformEvent> {
         Err(io::Error::new(io::ErrorKind::BrokenPipe, "read error"))
     }
 }
@@ -1457,7 +1457,7 @@ impl InputSource for ErrorReadInputSource {
         Ok(count < 1)
     }
 
-    fn read_event(&mut self) -> io::Result<InputEvent> {
+    fn read_event(&mut self) -> io::Result<PlatformEvent> {
         Err(io::Error::other("read error"))
     }
 }
@@ -1473,10 +1473,10 @@ fn test_input_source_drain_read_error_skips_event() {
 
 #[test]
 fn test_input_source_drain_single_event() {
-    let mut source = MockInputSource::with_events(vec![InputEvent::FocusGained]);
+    let mut source = MockInputSource::with_events(vec![PlatformEvent::FocusGained]);
     let events = source.drain();
     assert_eq!(events.len(), 1);
-    assert!(matches!(&events[0], InputEvent::FocusGained));
+    assert!(matches!(&events[0], PlatformEvent::FocusGained));
 }
 
 #[test]
@@ -1581,14 +1581,14 @@ fn test_mouse_event_different_positions() {
 
 #[test]
 fn test_input_event_resize_debug() {
-    let event = InputEvent::Resize(TerminalSize::new(80, 24));
+    let event = PlatformEvent::Resize(TerminalSize::new(80, 24));
     let debug = format!("{event:?}");
     assert!(debug.contains("Resize"));
 }
 
 #[test]
 fn test_input_event_mouse_debug() {
-    let event = InputEvent::Mouse(MouseEvent {
+    let event = PlatformEvent::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollDown,
         column: 1,
         row: 2,
@@ -1660,18 +1660,18 @@ fn test_mock_terminal_all_methods() {
 
 #[test]
 fn test_input_event_clone_all_variants() {
-    let events: Vec<InputEvent> = vec![
-        InputEvent::Key(KeyEvent::new(KeyCode::Char('a'))),
-        InputEvent::Mouse(MouseEvent {
+    let events: Vec<PlatformEvent> = vec![
+        PlatformEvent::Key(KeyEvent::new(KeyCode::Char('a'))),
+        PlatformEvent::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: 0,
             row: 0,
             modifiers: Modifiers::NONE,
         }),
-        InputEvent::Resize(TerminalSize::new(80, 24)),
-        InputEvent::FocusGained,
-        InputEvent::FocusLost,
-        InputEvent::Paste("hello".to_string()),
+        PlatformEvent::Resize(TerminalSize::new(80, 24)),
+        PlatformEvent::FocusGained,
+        PlatformEvent::FocusLost,
+        PlatformEvent::Paste("hello".to_string()),
     ];
     for event in events {
         let cloned = event.clone();

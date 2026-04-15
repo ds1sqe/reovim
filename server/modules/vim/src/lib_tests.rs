@@ -4,7 +4,7 @@ use {
         KeybindingStore, ModeInfoStore, ModeProviderRegistry, ResolverRegistry,
     },
     reovim_kernel::api::v1::{Module, ModuleContext, OptionScope, OptionValue, ProbeResult},
-    reovim_subsys_annotation::AnnotationSourceRegistry,
+    reovim_driver_annotation::AnnotationSourceRegistry,
 };
 
 use crate::{VimMode, VimModule, bindings, commands, operators, visual};

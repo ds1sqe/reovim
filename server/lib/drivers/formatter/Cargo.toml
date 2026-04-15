@@ -1,10 +1,10 @@
 [package]
-name = "reovim-subsys-completion"
+name = "reovim-driver-formatter"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Completion driver for reovim - defines CompletionSource trait, types, engine, and registry"
+description = "Formatter provider driver for reovim - external formatters and formatting traits"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -14,4 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-nucleo = { workspace = true }
+tracing = { workspace = true }

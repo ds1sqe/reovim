@@ -1,4 +1,4 @@
-use reovim_subsys_completion::CompletionKind;
+use reovim_driver_completion::CompletionKind;
 
 use {super::*, crate::state::CompletionItemSnapshot};
 
