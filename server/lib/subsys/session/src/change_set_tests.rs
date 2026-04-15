@@ -1,6 +1,6 @@
-use reovim_kernel::api::v1::{BufferId, WindowId};
+use reovim_kernel::api::v1::{BufferId, OptionValue, WindowId};
 
-use super::ChangeSet;
+use super::{ChangeSet, option_change::OptionChange};
 
 #[test]
 fn empty_changeset_has_no_changes() {
@@ -53,9 +53,20 @@ fn record_buffer_closed() {
 #[test]
 fn record_cursor_move() {
     let mut cs = ChangeSet::new();
-    cs.record_cursor_move();
+    let id = BufferId::from_raw(10);
+    cs.record_cursor_move(id);
     assert!(cs.has_changes());
     assert!(cs.cursor_moved);
+    assert_eq!(cs.affected_buffers, vec![id]);
+}
+
+#[test]
+fn record_cursor_move_deduplicates_affected_buffers() {
+    let mut cs = ChangeSet::new();
+    let id = BufferId::from_raw(10);
+    cs.record_cursor_move(id);
+    cs.record_cursor_move(id);
+    assert_eq!(cs.affected_buffers, vec![id]);
 }
 
 #[test]
@@ -113,11 +124,62 @@ fn record_scroll_change() {
 }
 
 #[test]
-fn record_options_change() {
+fn record_option_change() {
     let mut cs = ChangeSet::new();
-    cs.record_options_change();
+    let change = OptionChange::global("tabstop", OptionValue::Integer(4));
+    cs.record_option_change(change);
     assert!(cs.has_changes());
     assert!(cs.options_changed);
+    assert_eq!(cs.option_changes.len(), 1);
+    assert_eq!(cs.option_changes[0].name, "tabstop");
+}
+
+#[test]
+fn record_option_change_window_scoped() {
+    let mut cs = ChangeSet::new();
+    let wid = WindowId::from_raw(1);
+    let change = OptionChange::window("wrap", OptionValue::Bool(false), wid);
+    cs.record_option_change(change);
+    assert!(cs.has_changes());
+    assert!(cs.options_changed);
+    assert_eq!(cs.option_changes[0].window_id, Some(wid));
+}
+
+#[test]
+fn record_selection_change() {
+    let mut cs = ChangeSet::new();
+    let id = BufferId::from_raw(5);
+    cs.record_selection_change(id);
+    assert!(cs.has_changes());
+    assert!(cs.selection_changed);
+    assert_eq!(cs.affected_buffers, vec![id]);
+}
+
+#[test]
+fn record_presence_change() {
+    let mut cs = ChangeSet::new();
+    cs.record_presence_change(42);
+    assert!(cs.has_changes());
+    assert!(cs.presence_changed);
+    assert_eq!(cs.presence_updates, vec![42usize]);
+}
+
+#[test]
+fn record_extension_change() {
+    let mut cs = ChangeSet::new();
+    cs.record_extension_change("cmdline".to_string());
+    assert!(cs.has_changes());
+    assert!(cs.extension_changed);
+    assert_eq!(cs.extensions_updated, vec!["cmdline".to_string()]);
+}
+
+#[test]
+fn record_buffer_renamed() {
+    let mut cs = ChangeSet::new();
+    let id = BufferId::from_raw(7);
+    cs.record_buffer_renamed(id, "new_name.txt".to_string());
+    assert!(cs.has_changes());
+    assert_eq!(cs.renamed_buffers, vec![(id, "new_name.txt".to_string())]);
 }
 
 #[test]
@@ -139,7 +201,7 @@ fn record_detach() {
 #[test]
 fn merge_boolean_flags_are_ored() {
     let mut a = ChangeSet::new();
-    a.record_cursor_move();
+    a.record_cursor_move(BufferId::from_raw(1));
 
     let mut b = ChangeSet::new();
     b.record_mode_change();
@@ -182,7 +244,7 @@ fn merge_with_duplicate_ids() {
 #[test]
 fn merge_empty_into_populated() {
     let mut a = ChangeSet::new();
-    a.record_cursor_move();
+    a.record_cursor_move(BufferId::from_raw(1));
     a.record_buffer_modified(BufferId::from_raw(1));
 
     let b = ChangeSet::new();
@@ -231,7 +293,7 @@ fn has_changes_with_only_scrolled_windows() {
 fn clone_preserves_all_fields() {
     let mut cs = ChangeSet::new();
     cs.record_buffer_modified(BufferId::from_raw(1));
-    cs.record_cursor_move();
+    cs.record_cursor_move(BufferId::from_raw(1));
     cs.record_quit();
 
     let cloned = cs.clone();

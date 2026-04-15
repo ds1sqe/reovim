@@ -33,4 +33,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **server**: Server notification pipeline migrated from text-domain `StateChanges` to domain-neutral `ChangeSet` (sub-plan 05 Phase 2). `build_notifications`, `emit_notifications`, `emit_syntax_updates`, and `notify_codec_indices` all accept `ChangeSet` or domain-neutral parameters. `OptionChange` promoted from `reovim-driver-text-session::api` to `reovim-subsys-session`. Driver-text-session re-exports for backward compatibility
+- **subsys**: `ChangeSet` extended with notification-relevant fields: `selection_changed`, `affected_buffers`, `option_changes`, `presence_changed`/`presence_updates`, `extension_changed`/`extensions_updated`, `renamed_buffers`. New `record_*` methods: `record_cursor_move(BufferId)`, `record_selection_change`, `record_option_change`, `record_presence_change`, `record_extension_change`, `record_buffer_renamed`
+- **subsys**: Mode transition types promoted from driver crates to `reovim-subsys-input` (sub-plan 05 Phase 3). `TransitionContext`, `PopResult`, `ModeTransition` now live in subsys-input. Both `reovim-driver-text-session` and `reovim-driver-text-input` re-export for backward compatibility. Server imports repointed to subsys-input
+
 ### Fixed

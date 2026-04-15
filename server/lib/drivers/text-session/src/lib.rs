@@ -96,6 +96,7 @@ pub mod bridges;
 mod buffer_access;
 mod change_bridge;
 mod jumplist;
+mod key_dispatch;
 mod mark;
 mod notification_drain;
 mod operator_state;
@@ -161,8 +162,11 @@ pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
 
 pub use buffer_access::BufferReadAccess;
 
+// Key dispatch provider trait (sub-plan 05 Phase 1)
+pub use key_dispatch::TextKeyDispatchProvider;
+
 // StateChanges → ChangeSet bridge (sub-plan 03)
-pub use change_bridge::state_changes_to_change_set;
+pub use change_bridge::{state_changes_from_change_set, state_changes_to_change_set};
 
 // Text-domain client state bundle (sub-plan 03).
 // Transitional: wired into TextDomainDriver internally. Sub-plan 05 migrates

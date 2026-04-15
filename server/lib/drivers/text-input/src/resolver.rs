@@ -53,8 +53,10 @@ use {
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};
 
-// Re-export transition types and session API from session driver (canonical source)
-pub use reovim_driver_text_session::{PopResult, SessionApi, SessionApiDyn, TransitionContext};
+// Re-export transition types from subsys-input (canonical source)
+pub use reovim_subsys_input::{ModeTransition, PopResult, TransitionContext};
+// Re-export session API from session driver
+pub use reovim_driver_text_session::{SessionApi, SessionApiDyn};
 
 // ============================================================================
 // OperatorArgs - Shared count/register fields (#391)
@@ -1001,47 +1003,7 @@ impl From<Position> for ArgValue {
     }
 }
 
-// ============================================================================
-// ModeTransition
-// ============================================================================
-
-/// Mode transition request.
-///
-/// Resolvers return this to request changes to the mode stack.
-#[derive(Debug, Clone)]
-pub enum ModeTransition {
-    /// Push a mode onto the stack with context.
-    ///
-    /// The new mode becomes current. The previous mode remains on the stack.
-    /// Used for operator-pending, command-line, search, etc.
-    Push {
-        /// The mode to push.
-        mode: ModeId,
-        /// Context to pass to the new mode.
-        context: TransitionContext,
-    },
-
-    /// Pop the current mode, passing result to parent.
-    ///
-    /// The current mode is removed from the stack. The parent mode
-    /// receives the result (e.g., operator range, cancelled).
-    Pop {
-        /// Result to pass to the parent mode.
-        result: Option<PopResult>,
-    },
-
-    /// Replace the current mode (equivalent to pop + push, but atomic).
-    ///
-    /// Used for mode changes that don't stack (normal → insert).
-    Set {
-        /// The mode to switch to.
-        mode: ModeId,
-        /// Context for the new mode.
-        context: TransitionContext,
-    },
-}
-
-// TransitionContext and PopResult are re-exported from session driver above.
+// ModeTransition, TransitionContext, and PopResult are re-exported from subsys-input above.
 
 // ============================================================================
 // ModeState

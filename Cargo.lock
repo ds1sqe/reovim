@@ -3905,6 +3905,7 @@ dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
  "reovim-kernel",
+ "reovim-subsys-command-types",
 ]
 
 [[package]]

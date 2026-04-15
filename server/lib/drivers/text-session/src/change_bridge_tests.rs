@@ -137,35 +137,61 @@ fn test_closed_windows() {
 #[test]
 fn test_text_domain_fields_dropped() {
     let mut sc = StateChanges::new();
-    let buf = BufferId::new();
 
-    // These text-domain fields should NOT appear in ChangeSet
-    sc.selection_changed = true;
-    sc.record_selection_change(buf);
+    // text_buffer_edits and byte_edits have no ChangeSet equivalent —
+    // they are stored separately via pending_text_edits / pending_byte_edits.
     sc.buffer_modified = true;
-    // text_buffer_edits, byte_edits have no ChangeSet equivalent
+    // Don't populate modified_buffers — only the bool flag is set.
 
     let cs = state_changes_to_change_set(&sc);
-    // ChangeSet has no selection field — only cursor_moved (which is false)
-    assert!(!cs.cursor_moved);
-    // buffer_modified only matters if modified_buffers is populated
+    // buffer_modified bool is not mapped; only modified_buffers list matters.
     assert!(cs.modified_buffers.is_empty());
 }
 
 #[test]
-fn test_deferred_fields_not_mapped() {
+fn test_selection_mapped() {
     let mut sc = StateChanges::new();
     let buf = BufferId::new();
+    sc.record_selection_change(buf);
 
-    // These are mechanism fields deferred to sub-plan 05
-    sc.record_buffer_renamed(buf, "new_name".to_owned());
+    let cs = state_changes_to_change_set(&sc);
+    assert!(cs.selection_changed);
+    assert_eq!(cs.affected_buffers.len(), 1);
+    assert_eq!(cs.affected_buffers[0], buf);
+}
+
+#[test]
+fn test_presence_mapped() {
+    let mut sc = StateChanges::new();
     sc.record_presence_change(1);
+    sc.record_presence_change(2);
+
+    let cs = state_changes_to_change_set(&sc);
+    assert!(cs.presence_changed);
+    assert!(cs.presence_updates.contains(&1));
+    assert!(cs.presence_updates.contains(&2));
+}
+
+#[test]
+fn test_extension_mapped() {
+    let mut sc = StateChanges::new();
     sc.record_extension_change("cmdline".to_owned());
 
     let cs = state_changes_to_change_set(&sc);
-    // None of these should create changes in ChangeSet yet
-    // ChangeSet doesn't have renamed_buffers, presence, or extension fields
-    assert!(!cs.has_changes());
+    assert!(cs.extension_changed);
+    assert!(cs.extensions_updated.contains(&"cmdline".to_string()));
+}
+
+#[test]
+fn test_renamed_buffers_mapped() {
+    let mut sc = StateChanges::new();
+    let buf = BufferId::new();
+    sc.record_buffer_renamed(buf, "new_name".to_owned());
+
+    let cs = state_changes_to_change_set(&sc);
+    assert_eq!(cs.renamed_buffers.len(), 1);
+    assert_eq!(cs.renamed_buffers[0].0, buf);
+    assert_eq!(cs.renamed_buffers[0].1, "new_name");
 }
 
 #[test]

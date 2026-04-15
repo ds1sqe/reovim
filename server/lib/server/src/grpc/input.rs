@@ -27,21 +27,18 @@ use std::{
 
 use {
     parking_lot::Mutex,
-    reovim_driver_text_input::{ModeTransition, PopResult, ResolveContext, ResolveResult},
-    reovim_driver_text_session::api::StateChanges,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
         notification,
     },
-    reovim_subsys_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_subsys_input::KeySequence,
-    reovim_subsys_session::bridges::BridgeRegistry,
+    reovim_subsys_session::{ChangeSet, bridges::BridgeRegistry},
     tonic::{Request, Response, Status},
 };
 
 use crate::{
     grpc::{auth::require_client_id, notification_builder},
-    session::{ClientEventType, ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry},
+    session::{ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry},
 };
 
 /// gRPC `InputService` implementation.
@@ -157,7 +154,7 @@ impl InputService for InputServiceImpl {
         // Process each key through the resolver system
         let mut any_handled = false;
         let mut final_status = KeyStatus::NotFound;
-        let mut accumulated_changes = StateChanges::new();
+        let mut accumulated_changes = ChangeSet::new();
 
         for key in keys.as_slice() {
             // Phase #478: Log key to client ring buffer
@@ -166,8 +163,6 @@ impl InputService for InputServiceImpl {
             });
 
             // Debug: Log current mode before resolution
-            // Per-client state (#471): Use per-client mode - client was created above
-            // Phase #479: KERNEL PANIC if client not found (invariant violation)
             let current_mode = session
                 .client_current_mode(client_id)
                 .expect("BUG: client just created but not found - state corruption");
@@ -179,20 +174,12 @@ impl InputService for InputServiceImpl {
                 "Resolving key"
             );
 
-            // Per-client state (#471): Try to resolve with per-client mode stack first
-            // This enables multi-client mode isolation (Client A in INSERT, Client B in NORMAL)
-            let resolve_result = session.resolve_key_for_client(client_id, key).await;
+            // Sub-plan 05 Phase 1: Full dispatch pipeline in one call.
+            // resolve + handle result + mode transitions + command execution +
+            // pending bindings + on_command_complete — all within the runtime scope.
+            let dispatch_result = session.dispatch_key_for_client(client_id, key).await;
 
-            // Debug: Log resolution result
-            tracing::debug!(
-                resolver_found = resolve_result.is_some(),
-                result_type = resolve_result.as_ref().map(|(r, _)| format!("{r:?}")),
-                "Key resolution result"
-            );
-
-            // Per-client state (#471): Resolver MUST exist for the current mode.
-            // If no resolver is found, it's a configuration bug - panic to catch it early.
-            let Some((result, changes)) = resolve_result else {
+            let Some((handled, changes)) = dispatch_result else {
                 panic!(
                     "No resolver found for mode {current_mode:?} (client_id={client_id}). \
                      This is a configuration bug - ensure modules are loaded properly \
@@ -200,14 +187,7 @@ impl InputService for InputServiceImpl {
                 );
             };
 
-            // Accumulate changes from resolution
             accumulated_changes.merge(changes);
-
-            // Key was processed by a resolver
-            // Per-client state (#471): Pass client_id for per-client mode transitions
-            let (handled, result_changes) =
-                Self::handle_resolve_result(&session, result, key, client_id).await;
-            accumulated_changes.merge(result_changes);
 
             if handled {
                 any_handled = true;
@@ -275,7 +255,7 @@ impl InputService for InputServiceImpl {
         }
 
         // Auto-emit presence update on buffer/window change (#471).
-        if accumulated_changes.window_changed || accumulated_changes.focus_changed {
+        if accumulated_changes.layout_changed || accumulated_changes.focus_changed {
             let new_buffer_id = session.clients().with_clients(|clients| {
                 let window = clients.get(&client_id)?.state.windows.active()?;
                 Some(window.buffer_id?.as_usize())
@@ -331,16 +311,20 @@ impl InputService for InputServiceImpl {
             );
         }
 
+        // Take domain-specific edits for syntax/codec (Phase 5 will move these into driver)
+        let pending_text_edits = session.take_pending_text_edits();
+        let pending_byte_edits = session.take_pending_byte_edits();
+
         // Update syntax drivers for modified/deleted buffers (#539, #655)
-        if accumulated_changes.buffer_modified || !accumulated_changes.buffers_deleted.is_empty() {
-            Self::emit_syntax_updates(&session, &accumulated_changes);
+        if !accumulated_changes.modified_buffers.is_empty()
+            || !accumulated_changes.deleted_buffers.is_empty()
+        {
+            Self::emit_syntax_updates(&session, &accumulated_changes, &pending_text_edits);
         }
 
         // Notify codec indices of byte-level edits (#740 D.5)
-        if !accumulated_changes.text_buffer_edits.is_empty()
-            || !accumulated_changes.byte_edits.is_empty()
-        {
-            Self::notify_codec_indices(&session, &accumulated_changes);
+        if !pending_text_edits.is_empty() || !pending_byte_edits.is_empty() {
+            Self::notify_codec_indices(&session, &pending_text_edits, &pending_byte_edits);
         }
 
         // Return result
@@ -399,7 +383,7 @@ impl InputServiceImpl {
         client_id: ClientId,
         bridges: &BridgeRegistry,
         before: &[(&str, bool)],
-        changes: &mut StateChanges,
+        changes: &mut ChangeSet,
     ) {
         for &(kind, was_active) in before {
             let bridge = bridges.get(kind).expect("bridge kind from snapshot");
@@ -441,7 +425,7 @@ impl InputServiceImpl {
         session: &Session,
         client_id: ClientId,
         bridges: &BridgeRegistry,
-        changes: &mut StateChanges,
+        changes: &mut ChangeSet,
     ) {
         let Some((line, col)) = session.clients().with_clients(|clients| {
             let window = clients.get(&client_id)?.state.windows.active()?;
@@ -476,7 +460,7 @@ impl InputServiceImpl {
     /// This catches commands that set `cursor_moved` on `accumulated_changes`
     /// directly (outside `SessionRuntime::record_cursor_move`).
     fn ensure_selection_change_recorded(
-        changes: &mut StateChanges,
+        changes: &mut ChangeSet,
         windows: &reovim_driver_text_session::WindowLayout,
         active_buffer: Option<reovim_kernel::api::v1::BufferId>,
     ) {
@@ -503,7 +487,7 @@ impl InputServiceImpl {
     /// Phase #486: Now passes `&Session` directly to `build_notifications()` for per-client state.
     fn emit_notifications(
         session: &Session,
-        changes: &StateChanges,
+        changes: &ChangeSet,
         client_id: u64,
         bridges: &BridgeRegistry,
         snapshot_cache: &Mutex<HashMap<(String, u64), String>>,
@@ -538,7 +522,7 @@ impl InputServiceImpl {
                 suppressed,
                 mode_changed = changes.mode_changed,
                 cursor_moved = changes.cursor_moved,
-                buffer_modified = changes.buffer_modified,
+                buffer_modified = !changes.modified_buffers.is_empty(),
                 selection_changed = changes.selection_changed,
                 "Emitted notifications"
             );
@@ -554,17 +538,21 @@ impl InputServiceImpl {
     /// The function splits mutable borrows to avoid `ExtensionMap` aliasing:
     /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
     /// 2. Access `SyntaxStreamState`, broadcast the update
-    fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
+    fn emit_syntax_updates(
+        session: &Session,
+        changes: &ChangeSet,
+        text_edits: &[reovim_driver_codec::TextBufferModified],
+    ) {
         use {
             crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update},
             reovim_driver_text_syntax::text_event_to_syntax_edit, // TODO: relocate bridge call (Tier 2 server decoupling)
         };
 
         // Clean up syntax drivers for deleted buffers (#655 Phase 4)
-        if !changes.buffers_deleted.is_empty() {
+        if !changes.deleted_buffers.is_empty() {
             session.with_state_mut_sync(|state| {
                 let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
-                for &buffer_id in &changes.buffers_deleted {
+                for &buffer_id in &changes.deleted_buffers {
                     syntax.remove(buffer_id);
                 }
             });
@@ -596,9 +584,8 @@ impl InputServiceImpl {
                 }
 
                 // Try incremental update if text-domain edit available, fall back to full reparse
-                // (#655, migrated to text_buffer_edits in #740 Plan 09 Phase 7d)
-                let edit_info = changes
-                    .text_buffer_edits
+                // (#655, migrated to pending_text_edits in Phase 2)
+                let edit_info = text_edits
                     .iter()
                     .find(|event| event.buffer_id == buffer_id)
                     .map(text_event_to_syntax_edit);
@@ -630,16 +617,20 @@ impl InputServiceImpl {
 
     /// Notify codec indices of byte-level edits (#740 D.5).
     ///
-    /// Routes `ByteEdit` records from `StateChanges` to
+    /// Routes `TextBufferModified` and `ByteEdit` records to
     /// `CodecSessionState::notify_index()` for incremental index updates.
-    fn notify_codec_indices(session: &Session, changes: &reovim_driver_text_session::StateChanges) {
+    fn notify_codec_indices(
+        session: &Session,
+        text_edits: &[reovim_driver_codec::TextBufferModified],
+        byte_edits: &[(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)],
+    ) {
         use reovim_driver_codec::CodecSessionState;
 
         let mut decoded_buffers = HashSet::new();
 
         session.with_state_mut_sync(|state| {
             if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
-                for event in &changes.text_buffer_edits {
+                for event in text_edits {
                     let decoded_edit = reovim_driver_codec::text_edit_to_decoded_edit(event);
 
                     let view = codec_state
@@ -655,7 +646,7 @@ impl InputServiceImpl {
                     }
                 }
 
-                for (buffer_id, edit) in &changes.byte_edits {
+                for (buffer_id, edit) in byte_edits {
                     if decoded_buffers.contains(buffer_id) {
                         continue;
                     }
@@ -665,397 +656,6 @@ impl InputServiceImpl {
                 }
             }
         });
-    }
-
-    /// Convert `ResolveContext` to `CommandContext`.
-    fn resolve_to_command_context(ctx: &ResolveContext) -> CommandContext {
-        let mut cmd_ctx = CommandContext::new();
-        if let Some(count) = ctx.count {
-            cmd_ctx.set("count", ArgValue::Count(count));
-        }
-        if let Some(reg) = ctx.register {
-            cmd_ctx.set("register", ArgValue::Register(reg));
-        }
-        // Transfer metadata (ResolveContext::ArgValue -> CommandContext::ArgValue)
-        for (key, value) in &ctx.metadata {
-            use reovim_driver_text_input::ArgValue as InputArgValue;
-            let converted = match value {
-                InputArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
-                InputArgValue::String(s) => Some(ArgValue::String(s.clone())),
-                InputArgValue::Char(c) => Some(ArgValue::Char(*c)),
-                InputArgValue::Int(n) => usize::try_from(*n).ok().map(ArgValue::Count),
-                InputArgValue::Uint(n) => usize::try_from(*n).ok().map(ArgValue::Count),
-                InputArgValue::Position(p) => Some(ArgValue::Position(p.line, p.column)),
-                InputArgValue::Float(_) | InputArgValue::Range { .. } => {
-                    tracing::trace!(key, "Skipping unconvertible metadata");
-                    None
-                }
-            };
-            if let Some(arg_value) = converted {
-                cmd_ctx.set(key, arg_value);
-            }
-        }
-        cmd_ctx
-    }
-
-    /// Handle a `ResolveResult` from the resolver system.
-    ///
-    /// Returns `(handled, changes)` where:
-    /// - `handled` is `true` if the key was processed successfully
-    /// - `changes` contains any state changes that need notification (e.g., buffer modifications)
-    ///
-    /// # Arguments
-    ///
-    /// * `session` - The session
-    /// * `result` - The resolve result to handle
-    /// * `key` - The key that was resolved
-    /// * `client_id` - Client ID for per-client mode transitions (#471)
-    ///
-    /// Note: This function uses `Box::pin` for recursive calls to handle
-    /// `InjectKeys` (macro playback) without infinite future sizes.
-    #[allow(clippy::too_many_lines)] // Per-client state (#471) added per-client mode sync
-    fn handle_resolve_result<'a>(
-        session: &'a Session,
-        result: ResolveResult,
-        key: &'a reovim_subsys_input::KeyEvent,
-        client_id: ClientId,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = (bool, StateChanges)> + Send + 'a>>
-    {
-        Box::pin(async move {
-            let mut changes = StateChanges::new();
-
-            match result {
-                ResolveResult::Execute(cmd_id, ctx) => {
-                    // Execute the command with per-client state (Phase #471)
-                    tracing::debug!(?cmd_id, ?ctx.count, "Executing command from resolver");
-                    let cmd_ctx = Self::resolve_to_command_context(&ctx);
-
-                    // Track per-client mode before execution
-                    // Phase #479: KERNEL PANIC if client not found (invariant violation)
-                    let mode_before = session
-                        .client_current_mode(client_id)
-                        .expect("BUG: client just created but not found - state corruption");
-
-                    // Phase #471: Execute command with per-client state directly.
-                    // No sync bandaids needed - command operates on per-client mode/cursor.
-                    let cmd_changes =
-                        session.execute_command_for_client(client_id, &cmd_id, &cmd_ctx);
-
-                    // Call per-client on_command_complete for pending operators
-                    if let Some(transition) =
-                        session.try_on_command_complete_for_client(client_id).await
-                    {
-                        let pop_changes =
-                            Self::apply_mode_transition_for_client(session, client_id, transition)
-                                .await;
-                        changes.merge(pop_changes);
-                    }
-
-                    // Merge command changes and process signals (#547)
-                    if let Some((_, cmd_state_changes, signals)) = cmd_changes {
-                        changes.merge(cmd_state_changes);
-                        for signal in signals {
-                            match signal {
-                                reovim_subsys_command_types::RuntimeSignal::Quit => {
-                                    tracing::info!(
-                                        %client_id,
-                                        "Client requested quit via RuntimeSignal"
-                                    );
-                                    changes.record_quit_requested();
-                                }
-                            }
-                        }
-                    }
-
-                    // Check if per-client mode changed
-                    // Phase #479: KERNEL PANIC if client not found (invariant violation)
-                    let mode_after = session
-                        .client_current_mode(client_id)
-                        .expect("BUG: client just created but not found - state corruption");
-                    if mode_before != mode_after {
-                        tracing::debug!(
-                            ?mode_before,
-                            ?mode_after,
-                            %client_id,
-                            "Mode changed during command execution"
-                        );
-                        changes.record_mode_change();
-                    }
-
-                    (true, changes)
-                }
-
-                ResolveResult::InsertChar { .. } => {
-                    // InsertChar is handled by resolvers via resolve_with_session.
-                    // If we reach here, a resolver returned InsertChar instead of
-                    // using the session API directly. Log an error but don't crash —
-                    // the character is simply dropped (no buffer mutation).
-                    tracing::error!(
-                        "InsertChar reached server dispatch — resolvers must handle insertion via SessionApi"
-                    );
-                    (true, changes)
-                }
-
-                ResolveResult::ModeTransition(transition) => {
-                    // Per-client state (#471): Apply mode transition to per-client mode stack
-                    tracing::debug!(?transition, %client_id, "Applying mode transition");
-                    let pop_changes =
-                        Self::apply_mode_transition_for_client(session, client_id, transition)
-                            .await;
-                    changes.merge(pop_changes);
-                    // Record mode change for notification
-                    changes.record_mode_change();
-                    (true, changes)
-                }
-
-                ResolveResult::Completed => {
-                    // Resolver handled everything via SessionApi
-                    tracing::trace!("Resolver completed action via SessionApi");
-                    (true, changes)
-                }
-
-                ResolveResult::Pending => {
-                    // Key accumulated, waiting for more
-                    tracing::trace!(?key.code, "Key pending, waiting for more input");
-                    (true, changes)
-                }
-
-                ResolveResult::NotHandled => {
-                    // Resolver didn't handle the key
-                    tracing::debug!(?key.code, "Key not handled by resolver");
-                    (false, changes)
-                }
-
-                ResolveResult::InjectKeys {
-                    keys,
-                    exit_macro_playback: _,
-                } => {
-                    // Macro playback - inject keys into session (Epic #465 Phase 8D)
-                    tracing::debug!(key_count = keys.len(), "Injecting macro keys");
-
-                    // Process injected keys through the resolver system
-                    // Per-client state (#471): Use per-client resolution
-                    for injected_key in &keys {
-                        let resolve_result = session
-                            .resolve_key_for_client(client_id, injected_key)
-                            .await;
-
-                        if let Some((result, resolver_changes)) = resolve_result {
-                            // Accumulate changes from resolver
-                            changes.merge(resolver_changes);
-
-                            // Recursively handle the result
-                            // Note: We ignore nested InjectKeys to prevent infinite loops
-                            if !matches!(result, ResolveResult::InjectKeys { .. }) {
-                                let (_, nested_changes) = Self::handle_resolve_result(
-                                    session,
-                                    result,
-                                    injected_key,
-                                    client_id,
-                                )
-                                .await;
-                                changes.merge(nested_changes);
-                            }
-                        }
-                    }
-
-                    // Note: exit_macro_playback handling requires access to VimSessionState
-                    // which is a vim module type. For now, macro depth tracking is approximate.
-                    // TODO(#465): Add trait-based callback mechanism for cross-module state
-
-                    (true, changes)
-                }
-            }
-        })
-    }
-
-    /// Apply a mode transition to per-client mode stack (#471).
-    ///
-    /// This modifies the per-client mode stack instead of the shared session
-    /// mode stack, enabling multi-client mode isolation.
-    ///
-    /// # Arguments
-    ///
-    /// * `session` - The session
-    /// * `client_id` - Client ID whose mode stack to modify
-    /// * `transition` - The mode transition to apply
-    async fn apply_mode_transition_for_client(
-        session: &Session,
-        client_id: ClientId,
-        transition: ModeTransition,
-    ) -> StateChanges {
-        // Update per-client mode stack via session's update_client_state
-        let applied = session.clients().update_client_state(client_id, |editing_state| {
-            match transition.clone() {
-                ModeTransition::Push { mode, context } => {
-                    tracing::debug!(?mode, ?context, %client_id, "Pushing mode (per-client)");
-                    editing_state.mode_stack.push(mode);
-                }
-
-                ModeTransition::Pop { result: _ } => {
-                    if editing_state.mode_stack.depth() > 1 {
-                        let popped = editing_state.mode_stack.pop();
-                        tracing::debug!(?popped, %client_id, "Popped mode (per-client)");
-                        // Note: Pop result handling would need command execution
-                        // which is done separately after mode transition
-                    } else {
-                        tracing::warn!(%client_id, "Cannot pop last mode from stack (per-client)");
-                    }
-                }
-
-                ModeTransition::Set { mode, context } => {
-                    tracing::debug!(?mode, ?context, %client_id, "Setting mode (per-client)");
-                    // Pop to base then set
-                    while editing_state.mode_stack.depth() > 1 {
-                        editing_state.mode_stack.pop();
-                    }
-                    editing_state.mode_stack.set(mode);
-                }
-            }
-        });
-
-        if !applied {
-            tracing::warn!(
-                %client_id,
-                "Failed to apply mode transition (client not found or is follower)"
-            );
-        }
-
-        // Handle pop result if provided (Phase #471: use per-client state)
-        // Returns StateChanges from command execution (e.g., buffer_modified from delete)
-        let mut changes = if let ModeTransition::Pop {
-            result: Some(pop_result),
-        } = transition
-        {
-            Self::handle_pop_result_for_client(session, client_id, pop_result)
-        } else {
-            StateChanges::new()
-        };
-
-        // Deferred motion completion (#663): after a pop-result command (e.g.,
-        // jump-execute) moves the cursor, pending operators (d/c/y) need their
-        // on_command_complete callback invoked.  This mirrors the pattern at
-        // handle_resolve_result lines 684-691.
-        while let Some(complete_transition) =
-            session.try_on_command_complete_for_client(client_id).await
-        {
-            session
-                .clients()
-                .update_client_state(client_id, |editing_state| match &complete_transition {
-                    ModeTransition::Pop { .. } => {
-                        if editing_state.mode_stack.depth() > 1 {
-                            editing_state.mode_stack.pop();
-                        }
-                    }
-                    ModeTransition::Push { mode, .. } => {
-                        editing_state.mode_stack.push(mode.clone());
-                    }
-                    ModeTransition::Set { mode, .. } => {
-                        while editing_state.mode_stack.depth() > 1 {
-                            editing_state.mode_stack.pop();
-                        }
-                        editing_state.mode_stack.set(mode.clone());
-                    }
-                });
-
-            // Pop with a result (e.g., delete operator returning ExecuteCommand for
-            // the actual deletion): execute it and loop to check for further completions.
-            // Push/Set means "wait for more input" — apply and exit the loop.
-            if let ModeTransition::Pop {
-                result: Some(nested_result),
-            } = complete_transition
-            {
-                let nested_changes =
-                    Self::handle_pop_result_for_client(session, client_id, nested_result);
-                changes.merge(nested_changes);
-            } else {
-                break;
-            }
-        }
-
-        changes
-    }
-
-    /// Handle a `PopResult` from a mode transition with per-client state (Phase #471).
-    ///
-    /// This ensures commands executed from pop results (like change operators)
-    /// use per-client state for proper multi-client isolation.
-    ///
-    /// Returns `StateChanges` from command execution so the caller can merge
-    /// them into accumulated changes for notification emission.
-    fn handle_pop_result_for_client(
-        session: &Session,
-        client_id: ClientId,
-        result: PopResult,
-    ) -> StateChanges {
-        let mut changes = StateChanges::new();
-
-        match result {
-            PopResult::ExecuteCommand { command, args } => {
-                tracing::debug!(?command, %client_id, "Executing command from pop result (per-client)");
-                let mut cmd_ctx = CommandContext::new();
-
-                // Transfer all arguments directly (same ArgValue type on both sides)
-                for (key, value) in args {
-                    cmd_ctx.set(&key, value);
-                }
-
-                // Set active buffer ID (required for operators like delete/yank)
-                // Per-client active_buffer (#471)
-                if let Some(buffer_id) = session.clients().with_clients(|clients| {
-                    clients.get(&client_id).and_then(|c| c.state.active_buffer)
-                }) {
-                    cmd_ctx.set_buffer_id(buffer_id);
-                }
-
-                // Phase #471/#479/#547: Execute with per-client state, log errors, process signals
-                match session.execute_command_for_client(client_id, &command, &cmd_ctx) {
-                    Some((CommandResult::Error(ref e), cmd_changes, signals)) => {
-                        changes.merge(cmd_changes);
-                        // Phase #479: Log command failure to ring buffer (visible, not silent)
-                        session.with_client_ring_buffer(client_id, |rb| {
-                            rb.log_event(
-                                ClientEventType::Error,
-                                format!("COMMAND_FAILED: cmd={command:?} error={e}"),
-                            );
-                        });
-                        tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
-                        for signal in signals {
-                            match signal {
-                                reovim_subsys_command_types::RuntimeSignal::Quit => {
-                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
-                                    changes.record_quit_requested();
-                                }
-                            }
-                        }
-                    }
-                    Some((_, cmd_changes, signals)) => {
-                        changes.merge(cmd_changes);
-                        for signal in signals {
-                            match signal {
-                                reovim_subsys_command_types::RuntimeSignal::Quit => {
-                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
-                                    changes.record_quit_requested();
-                                }
-                            }
-                        }
-                    }
-                    None => {}
-                }
-                // None (client not found or following): already logged in execute_command_for_client
-            }
-
-            PopResult::Cancelled => {
-                tracing::trace!("Mode transition cancelled");
-            }
-
-            PopResult::Data { values } => {
-                // Data result from mode - modules handle this via extensions
-                tracing::trace!(?values, "Mode returned data");
-            }
-        }
-
-        changes
     }
 
     // NOTE (#471): `fallback_char_insert()` was REMOVED.
@@ -1069,6 +669,265 @@ impl InputServiceImpl {
     // Now, if no resolver is found for a mode, `send_keys()` panics with a clear
     // error message. This is the correct behavior - a missing resolver is a
     // configuration bug that should be fixed, not worked around.
+}
+
+/// Test-only re-exposures of helper functions that were inlined into
+/// `session/state.rs` dispatch paths during server domain decoupling.
+///
+/// These are kept in a `#[cfg(test)]` block so the test suite can exercise
+/// the logic directly without polluting the production API.
+#[cfg(test)]
+#[allow(unused_imports)]
+use reovim_driver_text_session::api::StateChanges;
+
+#[cfg(test)]
+impl InputServiceImpl {
+    /// Convert a `ResolveContext` into a `CommandContext`.
+    ///
+    /// Mirrors `session::state::resolve_to_command_context_inline`.
+    pub(crate) fn resolve_to_command_context(
+        ctx: &reovim_driver_text_input::ResolveContext,
+    ) -> reovim_subsys_command_types::CommandContext {
+        use reovim_subsys_command_types::ArgValue;
+
+        let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
+        if let Some(count) = ctx.count {
+            cmd_ctx.set("count", ArgValue::Count(count));
+        }
+        if let Some(reg) = ctx.register {
+            cmd_ctx.set("register", ArgValue::Register(reg));
+        }
+        for (key, value) in &ctx.metadata {
+            let converted = match value {
+                reovim_driver_text_input::ArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
+                reovim_driver_text_input::ArgValue::String(s) => Some(ArgValue::String(s.clone())),
+                reovim_driver_text_input::ArgValue::Char(c) => Some(ArgValue::Char(*c)),
+                reovim_driver_text_input::ArgValue::Int(n) => {
+                    usize::try_from(*n).ok().map(ArgValue::Count)
+                }
+                reovim_driver_text_input::ArgValue::Uint(n) => {
+                    usize::try_from(*n).ok().map(ArgValue::Count)
+                }
+                reovim_driver_text_input::ArgValue::Position(p) => {
+                    Some(ArgValue::Position(p.line, p.column))
+                }
+                reovim_driver_text_input::ArgValue::Float(_)
+                | reovim_driver_text_input::ArgValue::Range { .. } => None,
+            };
+            if let Some(arg_value) = converted {
+                cmd_ctx.set(key, arg_value);
+            }
+        }
+        cmd_ctx
+    }
+
+    /// Handle a single `ResolveResult` against a session, returning
+    /// `(handled, StateChanges)`.
+    ///
+    /// This is a test-only wrapper that dispatches through the session's
+    /// execution path.  The `_key` argument is accepted for API compatibility
+    /// with historic callers; it is not used.
+    pub(crate) async fn handle_resolve_result(
+        session: &crate::session::Session,
+        result: reovim_driver_text_input::ResolveResult,
+        _key: &reovim_driver_text_input::KeyEvent,
+        client_id: crate::session::ClientId,
+    ) -> (bool, reovim_driver_text_session::api::StateChanges) {
+        use {
+            reovim_driver_text_input::ResolveResult, reovim_driver_text_session::api::StateChanges,
+            reovim_subsys_command_types::RuntimeSignal,
+        };
+
+        match result {
+            ResolveResult::Completed | ResolveResult::Pending => (true, StateChanges::new()),
+            ResolveResult::NotHandled => (false, StateChanges::new()),
+
+            ResolveResult::InsertChar { .. } => {
+                tracing::error!(
+                    "InsertChar reached test dispatch — resolvers must handle insertion via SessionApi"
+                );
+                (true, StateChanges::new())
+            }
+
+            ResolveResult::ModeTransition(transition) => {
+                let mut changes = StateChanges::new();
+                changes.mode_changed = true;
+                Self::apply_mode_transition_for_client(session, client_id, transition).await;
+                (true, changes)
+            }
+
+            ResolveResult::Execute(cmd_id, ctx) => {
+                let cmd_ctx = Self::resolve_to_command_context(&ctx);
+                let mut changes = StateChanges::new();
+                if let Some((_, cmd_changes, signals)) =
+                    session.execute_command_for_client(client_id, &cmd_id, &cmd_ctx)
+                {
+                    changes.merge(cmd_changes);
+                    for signal in signals {
+                        match signal {
+                            RuntimeSignal::Quit => changes.record_quit_requested(),
+                        }
+                    }
+                }
+                (true, changes)
+            }
+
+            ResolveResult::InjectKeys { keys, .. } => {
+                let mut changes = StateChanges::new();
+                for injected_key in &keys {
+                    // Re-dispatch through session's full key dispatch.
+                    // dispatch_key_for_client returns ChangeSet; convert back to
+                    // StateChanges for the test-only accumulation buffer.
+                    if let Some((handled, key_changes)) = session
+                        .dispatch_key_for_client(client_id, injected_key)
+                        .await
+                    {
+                        changes.merge(reovim_driver_text_session::state_changes_from_change_set(
+                            key_changes,
+                        ));
+                        let _ = handled;
+                    }
+                }
+                (true, changes)
+            }
+        }
+    }
+
+    /// Apply a `ModeTransition` for a client and run the deferred
+    /// `on_command_complete` chain.
+    ///
+    /// This is a test-only wrapper that mirrors the mode-transition logic
+    /// formerly inlined in `InputServiceImpl`.
+    pub(crate) async fn apply_mode_transition_for_client(
+        session: &crate::session::Session,
+        client_id: crate::session::ClientId,
+        transition: reovim_subsys_input::ModeTransition,
+    ) {
+        use reovim_subsys_input::ModeTransition;
+
+        // Apply the initial transition to the client's mode stack.
+        session.clients().with_clients_mut(|clients| {
+            let Some(client) = clients.get_mut(&client_id) else {
+                return;
+            };
+            match &transition {
+                ModeTransition::Push { mode, .. } => {
+                    client.state.mode_stack.push(mode.clone());
+                }
+                ModeTransition::Pop { .. } => {
+                    client.state.mode_stack.pop();
+                }
+                ModeTransition::Set { mode, .. } => {
+                    client.state.mode_stack.set(mode.clone());
+                }
+            }
+        });
+
+        // Handle any pop result from the initial transition.
+        if let ModeTransition::Pop {
+            result: Some(pop_result),
+        } = transition
+        {
+            Self::handle_pop_result_for_client(session, client_id, pop_result);
+        }
+
+        // Deferred completion loop: run on_command_complete and apply the
+        // returned transition. The loop continues only when the resolver
+        // returns `Pop { result: Some(...) }` (i.e. the pop executes a nested
+        // command that may trigger further completions).  All other variants
+        // (Push, Set, or Pop { result: None }) break after being applied.
+        loop {
+            let Some(complete_transition) =
+                session.try_on_command_complete_for_client(client_id).await
+            else {
+                break;
+            };
+
+            match complete_transition {
+                ModeTransition::Push { ref mode, .. } => {
+                    let mode = mode.clone();
+                    session.clients().with_clients_mut(|clients| {
+                        if let Some(client) = clients.get_mut(&client_id) {
+                            client.state.mode_stack.push(mode);
+                        }
+                    });
+                    break;
+                }
+                ModeTransition::Set { ref mode, .. } => {
+                    let mode = mode.clone();
+                    session.clients().with_clients_mut(|clients| {
+                        if let Some(client) = clients.get_mut(&client_id) {
+                            // Pop all non-base modes then set.
+                            while client.state.mode_stack.depth() > 1 {
+                                client.state.mode_stack.pop();
+                            }
+                            client.state.mode_stack.set(mode);
+                        }
+                    });
+                    break;
+                }
+                ModeTransition::Pop { result } => {
+                    // Apply the pop (no-op if already at base depth).
+                    session.clients().with_clients_mut(|clients| {
+                        if let Some(client) = clients.get_mut(&client_id) {
+                            client.state.mode_stack.pop();
+                        }
+                    });
+                    if let Some(pr) = result {
+                        // Execute the nested pop result and continue the loop
+                        // so any further completions are processed.
+                        Self::handle_pop_result_for_client(session, client_id, pr);
+                        // continue
+                    } else {
+                        // Pop { result: None } — no nested command; break.
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handle a `PopResult` for a client.
+    ///
+    /// Returns `StateChanges` reflecting any commands executed (including
+    /// `RuntimeSignal::Quit` translated to `should_quit`).
+    pub(crate) fn handle_pop_result_for_client(
+        session: &crate::session::Session,
+        client_id: crate::session::ClientId,
+        result: reovim_subsys_input::PopResult,
+    ) -> reovim_driver_text_session::api::StateChanges {
+        use {
+            reovim_driver_text_session::api::StateChanges,
+            reovim_subsys_command_types::RuntimeSignal, reovim_subsys_input::PopResult,
+        };
+
+        match result {
+            PopResult::Cancelled | PopResult::Data { .. } => StateChanges::new(),
+            PopResult::ExecuteCommand { command, args } => {
+                let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
+                for (key, value) in args {
+                    cmd_ctx.set(&key, value);
+                }
+                let mut changes = StateChanges::new();
+                if let Some((result, cmd_changes, signals)) =
+                    session.execute_command_for_client(client_id, &command, &cmd_ctx)
+                {
+                    changes.merge(cmd_changes);
+                    for signal in signals {
+                        match signal {
+                            RuntimeSignal::Quit => changes.record_quit_requested(),
+                        }
+                    }
+                    if let reovim_driver_command::CommandResult::Error(msg) = result {
+                        session.with_client_ring_buffer(client_id, |rb| {
+                            rb.log_error(&format!("COMMAND_FAILED: {msg}"));
+                        });
+                    }
+                }
+                changes
+            }
+        }
+    }
 }
 
 #[cfg(test)]

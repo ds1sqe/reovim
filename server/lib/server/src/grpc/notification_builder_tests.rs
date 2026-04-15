@@ -1,4 +1,4 @@
-use {super::*, crate::session::SessionId};
+use {super::*, crate::session::SessionId, reovim_subsys_session::ChangeSet};
 
 #[test]
 fn test_current_timestamp_ms() {
@@ -9,7 +9,7 @@ fn test_current_timestamp_ms() {
 
 #[test]
 fn test_build_notifications_empty_changes() {
-    let changes = StateChanges::new();
+    let changes = ChangeSet::new();
     let session = Session::new(SessionId::new("test"));
     // Use client_id 0 - no client registered, so per-client lookups return None
     // and fallback to shared state (or return empty notifications)
@@ -19,7 +19,7 @@ fn test_build_notifications_empty_changes() {
 
 #[test]
 fn test_build_notifications_mode_changed() {
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_mode_change();
 
     let session = Session::new(SessionId::new("test"));
@@ -134,7 +134,7 @@ fn test_build_buffer_list_notification_removed() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_bool() {
-    let opt_change = reovim_driver_text_session::api::OptionChange {
+    let opt_change = reovim_subsys_session::OptionChange {
         name: "number".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Bool(true),
         window_id: None,
@@ -158,7 +158,7 @@ fn test_build_option_notification_bool() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_integer() {
-    let opt_change = reovim_driver_text_session::api::OptionChange {
+    let opt_change = reovim_subsys_session::OptionChange {
         name: "tabstop".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Integer(4),
         window_id: None,
@@ -179,7 +179,7 @@ fn test_build_option_notification_integer() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_string() {
-    let opt_change = reovim_driver_text_session::api::OptionChange {
+    let opt_change = reovim_subsys_session::OptionChange {
         name: "theme".to_string(),
         value: reovim_kernel::api::v1::OptionValue::String("monokai".to_string()),
         window_id: None,
@@ -202,7 +202,7 @@ fn test_build_option_notification_string() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_option_notification_choice() {
-    let opt_change = reovim_driver_text_session::api::OptionChange {
+    let opt_change = reovim_subsys_session::OptionChange {
         name: "virtualedit".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Choice {
             value: "block".to_string(),
@@ -229,7 +229,7 @@ fn test_build_option_notification_choice() {
 #[test]
 fn test_build_notifications_buffer_modified() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(5);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buffer_id);
 
     let session = Session::new(SessionId::new("buf-mod-test"));
@@ -243,8 +243,8 @@ fn test_build_notifications_buffer_modified() {
 #[test]
 fn test_build_notifications_buffer_created() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(10);
-    let mut changes = StateChanges::new();
-    changes.buffers_created.push(buffer_id);
+    let mut changes = ChangeSet::new();
+    changes.created_buffers.push(buffer_id);
 
     let session = Session::new(SessionId::new("buf-create-test"));
     let notifications = build_notifications(&changes, &session, 0, None);
@@ -264,8 +264,8 @@ fn test_build_notifications_buffer_created() {
 #[test]
 fn test_build_notifications_buffer_deleted() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(20);
-    let mut changes = StateChanges::new();
-    changes.buffers_deleted.push(buffer_id);
+    let mut changes = ChangeSet::new();
+    changes.deleted_buffers.push(buffer_id);
 
     let session = Session::new(SessionId::new("buf-delete-test"));
     let notifications = build_notifications(&changes, &session, 0, None);
@@ -283,10 +283,10 @@ fn test_build_notifications_buffer_deleted() {
 
 #[test]
 fn test_build_notifications_option_changed() {
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes
-        .options_changed
-        .push(reovim_driver_text_session::api::OptionChange {
+        .option_changes
+        .push(reovim_subsys_session::OptionChange {
             name: "number".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(true),
             window_id: None,
@@ -301,8 +301,8 @@ fn test_build_notifications_option_changed() {
 
 #[test]
 fn test_build_notifications_window_changed() {
-    let mut changes = StateChanges::new();
-    changes.window_changed = true;
+    let mut changes = ChangeSet::new();
+    changes.layout_changed = true;
 
     let session = Session::new(SessionId::new("win-test"));
     let notifications = build_notifications(&changes, &session, 0, None);
@@ -313,7 +313,7 @@ fn test_build_notifications_window_changed() {
 
 #[test]
 fn test_build_notifications_focus_changed() {
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.focus_changed = true;
 
     let session = Session::new(SessionId::new("focus-test"));
@@ -326,13 +326,13 @@ fn test_build_notifications_focus_changed() {
 #[test]
 fn test_build_notifications_multiple_changes() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_mode_change();
     changes.record_buffer_modified(buffer_id);
-    changes.buffers_created.push(buffer_id);
+    changes.created_buffers.push(buffer_id);
     changes
-        .options_changed
-        .push(reovim_driver_text_session::api::OptionChange {
+        .option_changes
+        .push(reovim_subsys_session::OptionChange {
             name: "wrap".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(false),
             window_id: None,
@@ -357,7 +357,7 @@ fn test_build_notifications_multiple_changes() {
 #[test]
 fn test_build_notifications_cursor_moved_no_client() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
 
     let session = Session::new(SessionId::new("cursor-test"));
@@ -371,7 +371,7 @@ fn test_build_notifications_cursor_moved_no_client() {
 #[test]
 fn test_build_notifications_selection_changed_no_client() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.selection_changed = true;
     changes.affected_buffers.push(buffer_id);
 
@@ -386,7 +386,7 @@ fn test_build_notifications_selection_changed_no_client() {
 #[test]
 fn test_build_notifications_scroll_changed_no_client() {
     let window_id = reovim_kernel::api::v1::WindowId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.scroll_changed = true;
     changes.scrolled_windows.push(window_id);
 
@@ -435,10 +435,10 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
     let buf2 = reovim_kernel::api::v1::BufferId::from_raw(2);
     let buf3 = reovim_kernel::api::v1::BufferId::from_raw(3);
 
-    let mut changes = StateChanges::new();
-    changes.buffers_created.push(buf1);
-    changes.buffers_created.push(buf2);
-    changes.buffers_deleted.push(buf3);
+    let mut changes = ChangeSet::new();
+    changes.created_buffers.push(buf1);
+    changes.created_buffers.push(buf2);
+    changes.deleted_buffers.push(buf3);
 
     let session = Session::new(SessionId::new("multi-buf-test"));
     let notifications = build_notifications(&changes, &session, 0, None);
@@ -820,7 +820,7 @@ fn test_build_notifications_cursor_moved_with_client() {
     session.clients().add_client_with_state(client);
 
     // Build notifications with cursor_moved
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
     let notifications = build_notifications(&changes, &session, 10, None);
 
@@ -850,7 +850,7 @@ fn test_build_notifications_selection_changed_with_client() {
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.clients().add_client_with_state(client);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.selection_changed = true;
     changes.affected_buffers.push(buffer_id);
     let notifications = build_notifications(&changes, &session, 11, None);
@@ -879,7 +879,7 @@ fn test_build_notifications_scroll_changed_with_client() {
         crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.clients().add_client_with_state(client);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.scroll_changed = true;
     changes.scrolled_windows.push(window_id);
     let notifications = build_notifications(&changes, &session, 12, None);
@@ -1182,17 +1182,17 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
 
 #[test]
 fn test_build_notifications_multiple_option_changes() {
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes
-        .options_changed
-        .push(reovim_driver_text_session::api::OptionChange {
+        .option_changes
+        .push(reovim_subsys_session::OptionChange {
             name: "number".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Bool(true),
             window_id: None,
         });
     changes
-        .options_changed
-        .push(reovim_driver_text_session::api::OptionChange {
+        .option_changes
+        .push(reovim_subsys_session::OptionChange {
             name: "tabstop".to_string(),
             value: reovim_kernel::api::v1::OptionValue::Integer(8),
             window_id: None,
@@ -1213,7 +1213,7 @@ fn test_build_notifications_multiple_option_changes() {
 
 #[test]
 fn test_extension_changed_without_bridges_no_notification() {
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_extension_change("cmdline".into());
 
     let session = Session::new(SessionId::new("test"));
@@ -1229,7 +1229,7 @@ fn test_extension_changed_without_bridges_no_notification() {
 fn test_extension_changed_with_bridges_unknown_kind() {
     use reovim_driver_text_session::bridges::BridgeRegistry;
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_extension_change("unknown".into());
 
     let session = Session::new(SessionId::new("test"));
@@ -1290,7 +1290,7 @@ impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
 fn test_extension_changed_with_bridge() {
     use reovim_driver_text_session::bridges::BridgeRegistry;
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_extension_change("test-ext".into());
 
     let session = Session::new(SessionId::new("test"));
@@ -1321,7 +1321,7 @@ fn test_extension_changed_with_bridge() {
 fn test_extension_not_changed_no_notification() {
     use reovim_driver_text_session::bridges::BridgeRegistry;
 
-    let changes = StateChanges::new(); // No extension changes
+    let changes = ChangeSet::new(); // No extension changes
 
     let session = Session::new(SessionId::new("test"));
     let mut registry = BridgeRegistry::new();
@@ -1431,7 +1431,7 @@ fn test_build_notifications_presence_changed() {
     };
     session.presence().join(presence);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_presence_change(client_id.as_usize());
 
     let notifications = build_notifications(&changes, &session, 12345, None);
@@ -1444,7 +1444,7 @@ fn test_build_notifications_presence_changed() {
 fn test_build_notifications_presence_changed_missing_client() {
     let session = Session::new(SessionId::new("presence-test2"));
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_presence_change(999);
 
     let notifications = build_notifications(&changes, &session, 12345, None);

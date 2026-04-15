@@ -25,7 +25,6 @@ use reovim_kernel::api::v1::{BufferId, WindowId};
 /// Domain-specific change details stay inside the domain driver:
 /// - `TextBufferModified { buffer_id, edits }` → text-domain internal
 /// - `ByteEdit { offset, old, new }` → codec-domain internal
-/// - Presence updates → mechanism handles from cursor state
 /// - Concrete cursor/position values → server re-queries domain
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
@@ -66,6 +65,28 @@ pub struct ChangeSet {
     pub should_quit: bool,
     /// Client should detach (disconnect but server keeps running).
     pub should_detach: bool,
+
+    /// Buffers affected by cursor/selection changes (for per-buffer notifications).
+    pub affected_buffers: Vec<BufferId>,
+
+    /// Selection changed — server should re-query domain for selection state.
+    pub selection_changed: bool,
+
+    /// Detailed option changes (empty list means no change).
+    pub option_changes: Vec<crate::OptionChange>,
+
+    /// Presence state changed (client moved to different buffer/window).
+    pub presence_changed: bool,
+    /// Client IDs whose presence changed.
+    pub presence_updates: Vec<usize>,
+
+    /// Extension state changed (bridge activated/deactivated).
+    pub extension_changed: bool,
+    /// Extension kind names that changed.
+    pub extensions_updated: Vec<String>,
+
+    /// Buffers that were renamed: `(buffer_id, new_name)`.
+    pub renamed_buffers: Vec<(BufferId, String)>,
 }
 
 impl ChangeSet {
@@ -86,6 +107,9 @@ impl ChangeSet {
             || self.options_changed
             || self.should_quit
             || self.should_detach
+            || self.selection_changed
+            || self.presence_changed
+            || self.extension_changed
             || !self.modified_buffers.is_empty()
             || !self.created_buffers.is_empty()
             || !self.deleted_buffers.is_empty()
@@ -93,6 +117,7 @@ impl ChangeSet {
             || !self.created_windows.is_empty()
             || !self.closed_windows.is_empty()
             || !self.scrolled_windows.is_empty()
+            || !self.renamed_buffers.is_empty()
     }
 
     /// Merge another change set into this one.
@@ -119,6 +144,15 @@ impl ChangeSet {
         self.options_changed |= other.options_changed;
         self.should_quit |= other.should_quit;
         self.should_detach |= other.should_detach;
+
+        self.affected_buffers.extend(other.affected_buffers);
+        self.selection_changed |= other.selection_changed;
+        self.option_changes.extend(other.option_changes);
+        self.presence_changed |= other.presence_changed;
+        self.presence_updates.extend(other.presence_updates);
+        self.extension_changed |= other.extension_changed;
+        self.extensions_updated.extend(other.extensions_updated);
+        self.renamed_buffers.extend(other.renamed_buffers);
     }
 
     /// Record that a buffer was modified.
@@ -141,9 +175,12 @@ impl ChangeSet {
         self.closed_buffers.push(buffer_id);
     }
 
-    /// Record that the cursor moved.
-    pub const fn record_cursor_move(&mut self) {
+    /// Record that the cursor moved in a buffer.
+    pub fn record_cursor_move(&mut self, buffer_id: BufferId) {
         self.cursor_moved = true;
+        if !self.affected_buffers.contains(&buffer_id) {
+            self.affected_buffers.push(buffer_id);
+        }
     }
 
     /// Record that the mode changed.
@@ -179,9 +216,10 @@ impl ChangeSet {
         self.scrolled_windows.push(window_id);
     }
 
-    /// Record that options changed.
-    pub const fn record_options_change(&mut self) {
+    /// Record a single option change.
+    pub fn record_option_change(&mut self, change: crate::OptionChange) {
         self.options_changed = true;
+        self.option_changes.push(change);
     }
 
     /// Record that the client should quit.
@@ -192,5 +230,30 @@ impl ChangeSet {
     /// Record that the client should detach.
     pub const fn record_detach(&mut self) {
         self.should_detach = true;
+    }
+
+    /// Record that the selection changed in a buffer.
+    pub fn record_selection_change(&mut self, buffer_id: BufferId) {
+        self.selection_changed = true;
+        if !self.affected_buffers.contains(&buffer_id) {
+            self.affected_buffers.push(buffer_id);
+        }
+    }
+
+    /// Record a presence change for a client.
+    pub fn record_presence_change(&mut self, client_id: usize) {
+        self.presence_changed = true;
+        self.presence_updates.push(client_id);
+    }
+
+    /// Record an extension state change.
+    pub fn record_extension_change(&mut self, kind: String) {
+        self.extension_changed = true;
+        self.extensions_updated.push(kind);
+    }
+
+    /// Record a buffer rename.
+    pub fn record_buffer_renamed(&mut self, buffer_id: BufferId, new_name: String) {
+        self.renamed_buffers.push((buffer_id, new_name));
     }
 }

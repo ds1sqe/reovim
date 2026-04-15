@@ -1289,9 +1289,9 @@ impl reovim_driver_text_input::ModeKeyResolver for CompletingResolver {
         _session: &mut dyn reovim_driver_text_input::SessionApiDyn,
         _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
         _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
-    ) -> Option<reovim_driver_text_input::ModeTransition> {
+    ) -> Option<reovim_subsys_input::ModeTransition> {
         // Return a Pop transition to indicate completion
-        Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
+        Some(reovim_subsys_input::ModeTransition::Pop { result: None })
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1342,7 +1342,7 @@ fn test_try_on_command_complete_for_client_with_resolver() {
 
     assert!(result.is_some(), "Should return ModeTransition from resolver");
     assert!(
-        matches!(result.unwrap(), reovim_driver_text_input::ModeTransition::Pop { result: None }),
+        matches!(result.unwrap(), reovim_subsys_input::ModeTransition::Pop { result: None }),
         "Should be a Pop transition"
     );
 }
@@ -1377,7 +1377,7 @@ impl reovim_driver_text_input::ModeKeyResolver for ExecutingResolver {
         session: &mut dyn reovim_driver_text_input::SessionApiDyn,
         _shared_extensions: &mut reovim_driver_text_input::ExtensionMap,
         _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
-    ) -> Option<reovim_driver_text_input::ModeTransition> {
+    ) -> Option<reovim_subsys_input::ModeTransition> {
         // Call execute_command to exercise the StubExecutor path
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1385,7 +1385,7 @@ impl reovim_driver_text_input::ModeKeyResolver for ExecutingResolver {
         );
         let ctx = reovim_driver_command::CommandContext::new();
         let _result = session.execute_command(cmd_id, ctx);
-        Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
+        Some(reovim_subsys_input::ModeTransition::Pop { result: None })
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -1633,9 +1633,9 @@ impl reovim_driver_text_input::ModeKeyResolver for PushToModeResolver {
         _client_extensions: &mut reovim_driver_text_input::ExtensionMap,
     ) -> reovim_driver_text_input::ResolveResult {
         reovim_driver_text_input::ResolveResult::ModeTransition(
-            reovim_driver_text_input::ModeTransition::Push {
+            reovim_subsys_input::ModeTransition::Push {
                 mode: self.target.clone(),
-                context: reovim_driver_text_input::TransitionContext::new(),
+                context: reovim_subsys_input::TransitionContext::new(),
             },
         )
     }

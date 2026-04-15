@@ -6,8 +6,10 @@ use {
         CodecMetadata, ContentCodec, ContentCodecFactory, ContentCodecFactoryStore, ContentType,
         DecodeResult,
     },
-    reovim_driver_text_input::TransitionContext,
+    reovim_driver_text_input::{ResolveContext, ResolveResult},
     reovim_kernel::api::v1::{BufferId, ByteEdit},
+    reovim_subsys_command_types::{CommandContext, CommandResult},
+    reovim_subsys_input::{ModeTransition, PopResult, TransitionContext},
     std::{
         collections::HashMap,
         sync::{
@@ -383,7 +385,7 @@ async fn test_send_keys_following_client_ignored() {
 #[test]
 fn test_emit_notifications_with_empty_changes() {
     let session = crate::session::Session::new(SessionId::new("emit-test"));
-    let changes = StateChanges::new();
+    let changes = ChangeSet::new();
     // Should not panic even with empty changes
     InputServiceImpl::emit_notifications(
         &session,
@@ -397,7 +399,7 @@ fn test_emit_notifications_with_empty_changes() {
 #[test]
 fn test_emit_notifications_with_mode_change() {
     let session = crate::session::Session::new(SessionId::new("emit-mode-test"));
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_mode_change();
 
     // Should emit mode_changed notification without panic
@@ -414,7 +416,7 @@ fn test_emit_notifications_with_mode_change() {
 fn test_emit_notifications_with_buffer_modified() {
     let session = crate::session::Session::new(SessionId::new("emit-buf-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buffer_id);
 
     // Subscribe to verify notifications are emitted
@@ -436,10 +438,10 @@ fn test_emit_notifications_with_buffer_modified() {
 fn test_emit_notifications_with_multiple_changes() {
     let session = crate::session::Session::new(SessionId::new("emit-multi-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(5);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_mode_change();
     changes.record_buffer_modified(buffer_id);
-    changes.buffers_created.push(buffer_id);
+    changes.created_buffers.push(buffer_id);
 
     let mut rx = session.subscribe_notifications();
     InputServiceImpl::emit_notifications(
@@ -665,7 +667,7 @@ fn test_emit_notifications_with_cursor_moved() {
         state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
 
     let mut rx = session.subscribe_notifications();
@@ -686,7 +688,7 @@ fn test_emit_notifications_with_cursor_moved() {
 fn test_emit_notifications_with_selection_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-sel-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.selection_changed = true;
     changes.affected_buffers.push(buffer_id);
 
@@ -705,8 +707,8 @@ fn test_emit_notifications_with_selection_changed() {
 #[test]
 fn test_emit_notifications_with_window_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-layout-test"));
-    let mut changes = StateChanges::new();
-    changes.window_changed = true;
+    let mut changes = ChangeSet::new();
+    changes.layout_changed = true;
 
     let mut rx = session.subscribe_notifications();
     InputServiceImpl::emit_notifications(
@@ -726,8 +728,8 @@ fn test_emit_notifications_with_window_changed() {
 fn test_emit_notifications_with_buffer_list_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-buflist-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(3);
-    let mut changes = StateChanges::new();
-    changes.buffers_created.push(buffer_id);
+    let mut changes = ChangeSet::new();
+    changes.created_buffers.push(buffer_id);
 
     let mut rx = session.subscribe_notifications();
     InputServiceImpl::emit_notifications(
@@ -745,11 +747,11 @@ fn test_emit_notifications_with_buffer_list_changed() {
 
 #[test]
 fn test_emit_notifications_with_option_changed() {
-    use reovim_driver_text_session::api::OptionChange;
+    use reovim_subsys_session::OptionChange;
 
     let session = crate::session::Session::new(SessionId::new("emit-option-test"));
-    let mut changes = StateChanges::new();
-    changes.options_changed.push(OptionChange {
+    let mut changes = ChangeSet::new();
+    changes.record_option_change(OptionChange {
         name: "virtualedit".to_string(),
         value: reovim_kernel::api::v1::OptionValue::String("all".to_string()),
         window_id: None,
@@ -773,7 +775,7 @@ fn test_emit_notifications_with_option_changed() {
 fn test_emit_notifications_with_scroll_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-viewport-test"));
     let window_id = reovim_kernel::api::v1::WindowId::new();
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.scroll_changed = true;
     changes.scrolled_windows.push(window_id);
 
@@ -790,18 +792,18 @@ fn test_emit_notifications_with_scroll_changed() {
 
 #[test]
 fn test_emit_notifications_all_change_types_at_once() {
-    use reovim_driver_text_session::api::OptionChange;
+    use reovim_subsys_session::OptionChange;
 
     let session = crate::session::Session::new(SessionId::new("emit-all-test"));
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
 
     changes.record_mode_change();
     changes.record_cursor_move(buffer_id);
     changes.record_buffer_modified(buffer_id);
-    changes.window_changed = true;
-    changes.buffers_created.push(buffer_id);
-    changes.options_changed.push(OptionChange {
+    changes.layout_changed = true;
+    changes.created_buffers.push(buffer_id);
+    changes.record_option_change(OptionChange {
         name: "opt".to_string(),
         value: reovim_kernel::api::v1::OptionValue::Bool(true),
         window_id: None,
@@ -1025,7 +1027,7 @@ fn test_input_service_impl_get_session_not_found() {
 #[test]
 fn test_emit_notifications_with_client_id() {
     let session = crate::session::Session::new(SessionId::new("emit-cid-test"));
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_mode_change();
 
     // Should work with any client_id value
@@ -1229,7 +1231,7 @@ async fn test_handle_resolve_result_inject_keys_empty() {
 #[test]
 fn test_emit_notifications_has_changes_check() {
     let session = crate::session::Session::new(SessionId::new("haschanges-test"));
-    let changes = StateChanges::new();
+    let changes = ChangeSet::new();
 
     // Empty changes should not emit
     assert!(!changes.has_changes());
@@ -1253,7 +1255,7 @@ fn test_emit_notifications_multiple_buffers() {
     let buf1 = reovim_kernel::api::v1::BufferId::from_raw(10);
     let buf2 = reovim_kernel::api::v1::BufferId::from_raw(20);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buf1);
     changes.record_buffer_modified(buf2);
 
@@ -1404,7 +1406,7 @@ fn test_emit_notifications_with_affected_buffers() {
         state.windows = reovim_driver_text_session::WindowLayout::single(window);
     });
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.affected_buffers.push(buf1);
     changes.affected_buffers.push(buf2);
     changes.cursor_moved = true;
@@ -1547,7 +1549,7 @@ async fn test_handle_resolve_result_execute_with_changes() {
 fn test_emit_notifications_with_scrolled_windows() {
     let session = crate::session::Session::new(SessionId::new("scroll-test"));
     let window_id = reovim_kernel::api::v1::WindowId::new();
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.scroll_changed = true;
     changes.scrolled_windows.push(window_id);
 
@@ -2324,7 +2326,7 @@ async fn test_handle_resolve_result_inject_keys_no_resolver() {
 #[test]
 fn test_ensure_selection_change_cursor_moved_with_selection() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
     assert!(!changes.selection_changed);
 
@@ -2344,7 +2346,7 @@ fn test_ensure_selection_change_cursor_moved_with_selection() {
 #[test]
 fn test_ensure_selection_change_already_recorded_is_noop() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
     changes.selection_changed = true;
 
@@ -2364,7 +2366,7 @@ fn test_ensure_selection_change_already_recorded_is_noop() {
 #[test]
 fn test_ensure_selection_change_no_selection_is_noop() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_cursor_move(buffer_id);
 
     // Window without selection
@@ -2379,7 +2381,7 @@ fn test_ensure_selection_change_no_selection_is_noop() {
 #[test]
 fn test_ensure_selection_change_no_cursor_moved_is_noop() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     // cursor_moved is false
 
     let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
@@ -2503,7 +2505,7 @@ fn test_detect_bridge_changes_no_change() {
 
     // Before: inactive, After: inactive (TestBridge always false)
     let before = vec![("test", false)];
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     // No toggle and not active → no change recorded
     assert!(!changes.extension_changed);
@@ -2520,7 +2522,7 @@ fn test_detect_bridge_changes_was_active_now_inactive() {
     // Before: active, After: inactive (TestBridge returns false)
     // was_active != is_active → should record change
     let before = vec![("test", true)];
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     assert!(changes.extension_changed);
     assert!(changes.extensions_updated.contains(&"test".into()));
@@ -2533,7 +2535,7 @@ fn test_detect_bridge_changes_empty_before() {
     session.add_client(client_id);
     let bridges = BridgeRegistry::new();
     let before: Vec<(&str, bool)> = vec![];
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     assert!(!changes.extension_changed);
 }
@@ -2609,7 +2611,11 @@ fn test_notify_codec_indices_uses_decoded_route_when_possible() {
         },
     );
 
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 
     let bytes = session.with_state_sync(|state| {
         state
@@ -2720,7 +2726,11 @@ fn test_notify_codec_indices_uses_byte_edits_for_full_replace() {
     changes.record_buffer_modified(buffer_id);
     changes.record_byte_edit(buffer_id, ByteEdit::replace(1, b"b", b"z"));
 
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 
     let bytes = session.with_state_sync(|state| {
         state
@@ -2755,7 +2765,11 @@ fn test_notify_codec_indices_skips_byte_updates_when_decoded_edit_already_applie
     );
     changes.record_byte_edit(buffer_id, ByteEdit::insert(0, b"X"));
 
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 
     let bytes = session.with_state_sync(|state| {
         state
@@ -2782,7 +2796,11 @@ fn test_notify_codec_indices_no_codec_state() {
     changes.record_byte_edit(buffer_id, reovim_kernel::api::v1::ByteEdit::insert(0, b"x"));
 
     // Should not panic and simply skip the inner block.
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 }
 
 // =========================================================================
@@ -2944,7 +2962,7 @@ fn test_notify_bridges_cursor_moved_with_window() {
     let mut bridges = BridgeRegistry::new();
     bridges.register(TestBridge::client("cursor-bridge"));
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
     // No assertions beyond "did not panic".
 }
@@ -2961,7 +2979,7 @@ fn test_notify_bridges_cursor_moved_no_window() {
     let mut bridges = BridgeRegistry::new();
     bridges.register(TestBridge::client("cursor-bridge"));
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
 }
 
@@ -3099,7 +3117,7 @@ async fn test_send_keys_with_mode_change_notifies_bridges() {
             _state: &mut ModeState,
             _input: &ResolveInput<'_>,
         ) -> ResolveResult {
-            ResolveResult::ModeTransition(reovim_driver_text_input::ModeTransition::Push {
+            ResolveResult::ModeTransition(reovim_subsys_input::ModeTransition::Push {
                 mode: self.target.clone(),
                 context: TransitionContext::new(),
             })
@@ -3256,7 +3274,7 @@ fn test_notify_bridges_cursor_moved_bridge_deactivates() {
     let mut bridges = BridgeRegistry::new();
     bridges.register(DeactivatingBridge);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
 
     // The bridge went from active -> inactive, so an extension change must be recorded.
@@ -3357,7 +3375,7 @@ fn test_notify_bridges_cursor_moved_bridge_stays_active() {
     let mut bridges = BridgeRegistry::new();
     bridges.register(StayActiveBridge);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     InputServiceImpl::notify_bridges_cursor_moved(&session, client_id, &bridges, &mut changes);
 
     // Bridge did NOT deactivate, so extension_changed must be false.
@@ -3497,12 +3515,11 @@ fn test_emit_syntax_updates_with_modified_buffer_no_text_edit() {
     // full reparse (no text edit available) runs, build_token_update + broadcast.
     let (session, buffer_id) = session_with_syntax_support("syntax-update-noedit-test");
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buffer_id);
-    changes.modified_buffers.push(buffer_id);
 
     // Should not panic
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 #[test]
@@ -3510,23 +3527,21 @@ fn test_emit_syntax_updates_with_text_edit() {
     // Exercises the incremental-update branch (edit_info is Some).
     let (session, buffer_id) = session_with_syntax_support("syntax-update-edit-test");
 
-    let mut changes = StateChanges::new();
-    changes.record_buffer_modified_with_text_edit(
-        buffer_id,
-        reovim_driver_codec::TextBufferModified {
-            buffer_id,
-            edit: reovim_driver_codec::TextEdit::insert(
-                reovim_driver_codec::TextPosition::new(0, 0),
-                "x".to_string(),
-            ),
-            start_byte: 0,
-            old_end_byte: 0,
-            new_end_byte: 1,
-        },
-    );
-    changes.modified_buffers.push(buffer_id);
+    let mut changes = ChangeSet::new();
+    changes.record_buffer_modified(buffer_id);
 
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    let text_edits = vec![reovim_driver_codec::TextBufferModified {
+        buffer_id,
+        edit: reovim_driver_codec::TextEdit::insert(
+            reovim_driver_codec::TextPosition::new(0, 0),
+            "x".to_string(),
+        ),
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 1,
+    }];
+
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &text_edits);
 }
 
 #[test]
@@ -3535,16 +3550,15 @@ fn test_emit_syntax_updates_deleted_buffers_cleanup() {
     let (session, buffer_id) = session_with_syntax_support("syntax-update-delete-test");
 
     // First create a driver entry for the buffer
-    let mut setup_changes = StateChanges::new();
+    let mut setup_changes = ChangeSet::new();
     setup_changes.record_buffer_modified(buffer_id);
-    setup_changes.modified_buffers.push(buffer_id);
-    InputServiceImpl::emit_syntax_updates(&session, &setup_changes);
+    InputServiceImpl::emit_syntax_updates(&session, &setup_changes, &[]);
 
     // Now delete it
-    let mut changes = StateChanges::new();
-    changes.buffers_deleted.push(buffer_id);
+    let mut changes = ChangeSet::new();
+    changes.deleted_buffers.push(buffer_id);
 
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 #[test]
@@ -3552,11 +3566,10 @@ fn test_emit_syntax_updates_empty_modified_buffers_returns_early() {
     // When modified_buffers is empty, the function returns early (L570-572).
     let (session, _) = session_with_syntax_support("syntax-update-empty-test");
 
-    let mut changes = StateChanges::new();
+    let changes = ChangeSet::new();
     // modified_buffers is empty — covers the early-return branch
-    changes.buffer_modified = true;
 
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 #[test]
@@ -3566,11 +3579,10 @@ fn test_emit_syntax_updates_missing_buffer_in_state() {
     let (session, _) = session_with_syntax_support("syntax-update-nobuf-test");
 
     let phantom_buffer_id = BufferId::from_raw(999);
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(phantom_buffer_id);
-    changes.modified_buffers.push(phantom_buffer_id);
 
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 /// Buffer exists but has no file path and no syntax driver installed.
@@ -3598,12 +3610,11 @@ fn test_emit_syntax_updates_buffer_exists_but_no_driver() {
     // No syntax driver is installed — get_mut(buffer_id) returns None.
     let buffer_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buffer_id);
-    changes.modified_buffers.push(buffer_id);
 
     // Should not panic; the `if let Some(driver)` block is skipped.
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 #[test]
@@ -3620,11 +3631,10 @@ fn test_emit_syntax_updates_with_subscriber_receives_broadcast() {
         let _rx = stream.subscribe();
     });
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_buffer_modified(buffer_id);
-    changes.modified_buffers.push(buffer_id);
 
-    InputServiceImpl::emit_syntax_updates(&session, &changes);
+    InputServiceImpl::emit_syntax_updates(&session, &changes, &[]);
 }
 
 // =========================================================================
@@ -3653,7 +3663,11 @@ fn test_notify_codec_indices_delete_text_edit_single_line() {
         },
     );
 
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 }
 
 #[test]
@@ -3679,7 +3693,11 @@ fn test_notify_codec_indices_delete_text_edit_with_newline() {
         },
     );
 
-    InputServiceImpl::notify_codec_indices(&session, &changes);
+    InputServiceImpl::notify_codec_indices(
+        &session,
+        &changes.text_buffer_edits,
+        &changes.byte_edits,
+    );
 }
 
 // =========================================================================
@@ -3830,7 +3848,7 @@ fn test_emit_notifications_dedup_suppresses_identical_extension_update() {
 
     // Build changes with extension_changed so the ExtensionUpdated notification
     // is generated by build_notifications.
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_extension_change("constant-active".into());
 
     let mut rx = session.subscribe_notifications();
@@ -3893,7 +3911,7 @@ fn test_emit_notifications_dedup_allows_different_extension_data() {
     let mut bridges = BridgeRegistry::new();
     bridges.register(ConstantActiveBridge);
 
-    let mut changes = StateChanges::new();
+    let mut changes = ChangeSet::new();
     changes.record_extension_change("constant-active".into());
 
     let mut rx = session.subscribe_notifications();
@@ -4212,8 +4230,8 @@ fn session_with_push_completion_resolver(
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_text_input::ModeTransition> {
-            Some(reovim_driver_text_input::ModeTransition::Push {
+        ) -> Option<reovim_subsys_input::ModeTransition> {
+            Some(reovim_subsys_input::ModeTransition::Push {
                 mode: self.push_target.clone(),
                 context: TransitionContext::new(),
             })
@@ -4338,8 +4356,8 @@ fn session_with_set_completion_resolver(
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_text_input::ModeTransition> {
-            Some(reovim_driver_text_input::ModeTransition::Set {
+        ) -> Option<reovim_subsys_input::ModeTransition> {
+            Some(reovim_subsys_input::ModeTransition::Set {
                 mode: self.set_target.clone(),
                 context: TransitionContext::new(),
             })
@@ -4500,15 +4518,15 @@ fn session_with_pop_result_completion_resolver(name: &str) -> crate::session::Se
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_text_input::ModeTransition> {
+        ) -> Option<reovim_subsys_input::ModeTransition> {
             let state = client_extensions.get_or_insert::<OnceState>();
             if state.fired {
                 return None;
             }
             state.fired = true;
             // Return Pop with a nested ExecuteCommand — exercises L1007-1012.
-            Some(reovim_driver_text_input::ModeTransition::Pop {
-                result: Some(reovim_driver_text_input::PopResult::ExecuteCommand {
+            Some(reovim_subsys_input::ModeTransition::Pop {
+                result: Some(reovim_subsys_input::PopResult::ExecuteCommand {
                     command: self.nested_cmd.clone(),
                     args: std::collections::HashMap::new(),
                 }),
@@ -4613,8 +4631,8 @@ fn session_with_pop_on_complete_resolver(name: &str) -> crate::session::Session 
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_text_input::ModeTransition> {
-            Some(reovim_driver_text_input::ModeTransition::Pop { result: None })
+        ) -> Option<reovim_subsys_input::ModeTransition> {
+            Some(reovim_subsys_input::ModeTransition::Pop { result: None })
         }
     }
 
@@ -4706,8 +4724,8 @@ fn session_with_set_on_complete_resolver(name: &str) -> crate::session::Session 
             _session: &mut dyn SessionApiDyn,
             _shared_extensions: &mut ExtensionMap,
             _client_extensions: &mut ExtensionMap,
-        ) -> Option<reovim_driver_text_input::ModeTransition> {
-            Some(reovim_driver_text_input::ModeTransition::Set {
+        ) -> Option<reovim_subsys_input::ModeTransition> {
+            Some(reovim_subsys_input::ModeTransition::Set {
                 mode: self.set_target.clone(),
                 context: TransitionContext::new(),
             })

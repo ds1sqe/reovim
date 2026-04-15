@@ -5,6 +5,7 @@
 //! Core input types and traits are in [`reovim_subsys_input`]. This crate
 //! provides the domain-specific resolver system and fallback handlers.
 
+mod dispatch_provider;
 mod fallback;
 mod pending;
 mod resolver;
@@ -23,6 +24,9 @@ pub use resolver::{
 
 // Re-export resolver registry
 pub use resolver_registry::ResolverRegistry;
+
+// Key dispatch provider (sub-plan 05 Phase 1)
+pub use dispatch_provider::ResolverDispatchProvider;
 
 // Re-export pending bindings (moved from subsys-input in sub-plan 02 Phase 0)
 pub use pending::PendingBindings;

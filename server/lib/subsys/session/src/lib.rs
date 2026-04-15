@@ -34,6 +34,7 @@ mod initial_mode;
 mod leader_key;
 mod mode;
 mod notification_queue;
+mod option_change;
 mod stale_check;
 pub mod tick;
 mod types;
@@ -44,6 +45,7 @@ pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
     change_set::ChangeSet,
     domain_driver::{DomainDriver, DomainStateQuery, RegisterInfo},
+    option_change::OptionChange,
     window::Window as DomainWindow,
 };
 

@@ -1,4 +1,4 @@
-//! Notification builder - converts `StateChanges` to gRPC notifications.
+//! Notification builder - converts `ChangeSet` to gRPC notifications.
 //!
 //! This module bridges the session driver's change tracking to gRPC protocol notifications.
 //! Following the data/presentation separation model:
@@ -7,7 +7,7 @@
 //!
 //! # Design
 //!
-//! `StateChanges` tracks WHAT changed during an operation.
+//! `ChangeSet` tracks WHAT changed during an operation.
 //! This module converts those changes to gRPC `Notification` messages.
 //!
 //! # Per-Client State (#486)
@@ -20,7 +20,7 @@
 //! ```ignore
 //! use reovim_server::grpc::notification_builder::build_notifications;
 //!
-//! let changes = runtime.take_changes();
+//! let changes = ChangeSet::new();
 //! let notifications = build_notifications(&changes, &session, client_id, None);
 //!
 //! for notification in notifications {
@@ -31,14 +31,13 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
-    reovim_driver_text_session::api::StateChanges,
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
         ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
         OptionChangedPayload, Position, SelectionChangedPayload, TabPageInfo,
         ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
     },
-    reovim_subsys_session::bridges::BridgeRegistry,
+    reovim_subsys_session::{ChangeSet, bridges::BridgeRegistry},
 };
 
 use crate::session::{ClientId, Session};
@@ -52,14 +51,14 @@ fn current_timestamp_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Build gRPC notifications from state changes.
+/// Build gRPC notifications from a domain-neutral change set.
 ///
-/// Converts `StateChanges` accumulated during an operation into a list of
+/// Converts a [`ChangeSet`] accumulated during an operation into a list of
 /// gRPC `Notification` messages for streaming to connected clients.
 ///
 /// # Arguments
 ///
-/// * `changes` - The state changes to convert
+/// * `changes` - The change set to convert
 /// * `session` - Session for reading per-client and shared state (#486)
 /// * `client_id` - Client ID that originated these changes (for multi-client filtering)
 /// * `bridges` - Optional bridge registry for extension notifications (#514)
@@ -69,7 +68,7 @@ fn current_timestamp_ms() -> u64 {
 /// A vector of notifications to emit. May be empty if no relevant changes.
 #[must_use]
 pub fn build_notifications(
-    changes: &StateChanges,
+    changes: &ChangeSet,
     session: &Session,
     client_id: u64,
     bridges: Option<&BridgeRegistry>,
@@ -97,23 +96,23 @@ pub fn build_notifications(
     }
 
     // Buffer modified notifications (buffers are shared, not per-client)
-    if changes.buffer_modified {
+    if !changes.modified_buffers.is_empty() {
         for buffer_id in &changes.modified_buffers {
             notifications.push(build_buffer_modified_notification(*buffer_id, timestamp));
         }
     }
 
     // Buffer lifecycle notifications (buffers are shared)
-    for buffer_id in &changes.buffers_created {
+    for buffer_id in &changes.created_buffers {
         notifications.push(build_buffer_list_notification("added", *buffer_id, timestamp));
     }
-    for buffer_id in &changes.buffers_deleted {
+    for buffer_id in &changes.deleted_buffers {
         notifications.push(build_buffer_list_notification("removed", *buffer_id, timestamp));
     }
 
     // Window/layout changed notification
     // Layout uses shared state (compositor) but may use per-client focused window
-    if changes.window_changed || changes.focus_changed {
+    if changes.layout_changed || changes.focus_changed {
         notifications.push(build_layout_notification(session, timestamp, client_id));
     }
 
@@ -130,7 +129,7 @@ pub fn build_notifications(
     }
 
     // Option changed notifications (options are shared)
-    for opt_change in &changes.options_changed {
+    for opt_change in &changes.option_changes {
         notifications.push(build_option_notification(opt_change, timestamp));
     }
 
@@ -517,7 +516,7 @@ fn build_viewport_notification(
 
 /// Build an option changed notification.
 fn build_option_notification(
-    opt_change: &reovim_driver_text_session::api::OptionChange,
+    opt_change: &reovim_subsys_session::OptionChange,
     timestamp: u64,
 ) -> Notification {
     use {reovim_kernel::api::v1::OptionValue, reovim_protocol::v2::option_changed_payload::Value};

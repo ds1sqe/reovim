@@ -482,6 +482,48 @@ impl Session {
         state.resolve_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
     }
 
+    /// Dispatch a key through the full pipeline (sub-plan 05 Phase 1).
+    ///
+    /// Replaces `resolve_key_for_client` + `handle_resolve_result` in a single
+    /// call. The dispatch pipeline handles resolution, command execution, mode
+    /// transitions, pending bindings, and `on_command_complete` — all within the
+    /// runtime scope. The server never sees `ResolveResult`.
+    ///
+    /// # Returns
+    ///
+    /// `None` if the client doesn't exist or is a follower.
+    /// `Some((handled, changes))` where `handled` indicates if the key was processed.
+    #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
+    pub async fn dispatch_key_for_client(
+        &self,
+        client_id: ClientId,
+        key: &reovim_subsys_input::KeyEvent,
+    ) -> Option<(bool, reovim_subsys_session::ChangeSet)> {
+        let mut clients = self.clients.write();
+        let mut state = self.state.write();
+
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
+
+        let target_client = clients.get_mut(&target_id)?;
+        let editing_state = &mut target_client.state;
+
+        Self::ensure_client_has_window(editing_state);
+
+        state.dispatch_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
+    }
+
+    /// Take pending text edits from the last dispatch batch (for syntax — Phase 5 stub).
+    pub fn take_pending_text_edits(&self) -> Vec<reovim_driver_codec::TextBufferModified> {
+        self.state.write().take_pending_text_edits()
+    }
+
+    /// Take pending byte edits from the last dispatch batch (for codec — Phase 5 stub).
+    pub fn take_pending_byte_edits(
+        &self,
+    ) -> Vec<(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)> {
+        self.state.write().take_pending_byte_edits()
+    }
+
     /// Try `on_command_complete` with per-client state (#471, #477).
     ///
     /// Like `resolve_key_for_client`, but for post-command mode transitions.
@@ -489,7 +531,7 @@ impl Session {
     pub async fn try_on_command_complete_for_client(
         &self,
         client_id: ClientId,
-    ) -> Option<reovim_driver_text_input::ModeTransition> {
+    ) -> Option<reovim_subsys_input::ModeTransition> {
         // Acquire both locks in consistent order
         let mut clients = self.clients.write();
         let mut state = self.state.write();

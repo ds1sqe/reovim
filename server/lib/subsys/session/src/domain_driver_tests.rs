@@ -185,7 +185,7 @@ impl DomainDriver for MockDomainDriver {
 
         let mut cs = ChangeSet::new();
         if *self.cursor_moves_on_key.lock().unwrap() {
-            cs.record_cursor_move();
+            cs.record_cursor_move(reovim_kernel::api::v1::BufferId::from_raw(0));
         }
         cs
     }

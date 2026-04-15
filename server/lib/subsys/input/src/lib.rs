@@ -41,6 +41,7 @@ mod module_ext;
 mod mouse;
 mod provider;
 mod traits;
+mod transition;
 
 // Re-export error types
 pub use error::{ClipboardError, InputError};
@@ -86,6 +87,9 @@ pub use lookup_policy_store::LookupPolicyStore;
 // Re-export binding metadata
 pub use binding_info::BindingInfo;
 
+// Re-export mode transition types
+pub use transition::{ModeTransition, PopResult, TransitionContext};
+
 #[cfg(test)]
 mod binding_info_tests;
 #[cfg(test)]
@@ -114,3 +118,5 @@ mod mouse_tests;
 mod provider_tests;
 #[cfg(test)]
 mod traits_tests;
+#[cfg(test)]
+mod transition_tests;

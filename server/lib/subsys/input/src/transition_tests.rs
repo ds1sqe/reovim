@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use {
     super::*,
-    reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
     reovim_subsys_command_types::ArgValue,
+    std::collections::HashMap,
 };
 
 fn test_command() -> CommandId {
@@ -182,4 +181,50 @@ fn test_pop_result_data_empty() {
     } else {
         panic!("expected Data");
     }
+}
+
+#[test]
+fn mode_transition_push() {
+    let mode = ModeId::new(ModuleId::new("test"), "insert");
+    let transition = ModeTransition::Push {
+        mode,
+        context: TransitionContext::new(),
+    };
+    assert!(matches!(transition, ModeTransition::Push { .. }));
+}
+
+#[test]
+fn mode_transition_pop() {
+    let transition = ModeTransition::Pop { result: None };
+    assert!(matches!(transition, ModeTransition::Pop { result: None }));
+}
+
+#[test]
+fn mode_transition_set() {
+    let mode = ModeId::new(ModuleId::new("test"), "visual");
+    let transition = ModeTransition::Set {
+        mode,
+        context: TransitionContext::new().count(3),
+    };
+    assert!(matches!(transition, ModeTransition::Set { .. }));
+}
+
+#[test]
+fn mode_transition_clone() {
+    let mode = ModeId::new(ModuleId::new("test"), "insert");
+    let transition = ModeTransition::Push {
+        mode,
+        context: TransitionContext::new(),
+    };
+    #[allow(clippy::redundant_clone)]
+    let cloned = transition.clone();
+    assert!(matches!(cloned, ModeTransition::Push { .. }));
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn mode_transition_debug() {
+    let transition = ModeTransition::Pop { result: None };
+    let debug = format!("{transition:?}");
+    assert!(debug.contains("Pop"));
 }
