@@ -415,15 +415,36 @@ impl DomainDriver for TextDomainDriver {
         .map(|((), changes)| state_changes_to_change_set(&changes))
     }
 
-    fn collect_projections(&self, _client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
-        // B3: TextProjectionEmitter will encode all text state as projections.
-        // For now, return empty — no projections emitted yet.
-        Vec::new()
+    fn collect_projections(&self, client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
+        use reovim_subsys_coordination::{
+            DomainId, Projection, ProjectionDelivery, ProjectionTag,
+        };
+
+        let clients = self.clients.read();
+        let Some(state) = clients.get(&client_id) else {
+            return Vec::new();
+        };
+
+        let domain_id = DomainId(self.domain_id);
+        let mut projections = Vec::new();
+
+        // text.mode — current mode name
+        let mode_name = state.mode_stack.current().name().to_owned();
+        projections.push(Projection {
+            tag: ProjectionTag::from("text.mode"),
+            domain_id,
+            window_id: None,
+            payload: mode_name.as_bytes().to_vec(),
+            display: Some(mode_name),
+            delivery: ProjectionDelivery::Persistent,
+        });
+
+        projections
     }
 
-    fn initial_projections(&self, _client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
-        // B3: TextProjectionEmitter will provide initial state.
-        Vec::new()
+    fn initial_projections(&self, client_id: ClientId) -> Vec<reovim_subsys_coordination::Projection> {
+        // Initial state = same as collect (all persistent, no transient)
+        self.collect_projections(client_id)
     }
 
     fn on_client_added(&self, client_id: ClientId) {

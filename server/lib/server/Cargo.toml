@@ -25,6 +25,7 @@ reovim-subsys-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
 reovim-subsys-input = { workspace = true }
 reovim-subsys-layout = { workspace = true }
+reovim-subsys-coordination = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 

@@ -97,7 +97,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
-- **coordination**: add `Projection`, `ProjectionTag`, `DomainId`, `ProjectionDelivery`, `RegisterKey`, `RegisterName` types; `DomainDriver` gains required `collect_projections`/`initial_projections` methods (#753)
+- **coordination**: add `Projection`, `ProjectionTag`, `DomainId`, `ProjectionDelivery`, `RegisterKey`, `RegisterName` types; `DomainDriver` gains required `collect_projections`/`initial_projections` methods; `ProjectionStore` with version tracking and payload deduplication (#753)
 - **input**: add `InputEvent` opaque envelope with 8-byte frozen header (kind/flags/context) to subsys-input, `shared/input-codec` crate with key/pointer/scroll codecs (#753)
 - **session**: add `DispatchResult`, `BufferChanges`, `Directive`, `CommandResult` types; `DomainDriver` gains `dispatch_input` for domain-neutral input dispatch (#753)
 - **arch**: rename `InputEvent` → `PlatformEvent` to free the name for the new opaque input envelope in subsys-input (#753)

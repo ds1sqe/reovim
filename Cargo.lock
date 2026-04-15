@@ -3871,6 +3871,7 @@ dependencies = [
  "reovim-protocol",
  "reovim-subsys-command",
  "reovim-subsys-command-types",
+ "reovim-subsys-coordination",
  "reovim-subsys-input",
  "reovim-subsys-layout",
  "reovim-subsys-session",

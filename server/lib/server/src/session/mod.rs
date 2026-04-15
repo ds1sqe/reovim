@@ -20,6 +20,9 @@ pub mod crash_dump;
 mod id;
 mod presence;
 mod presence_service;
+pub mod projection_store;
+#[cfg(test)]
+mod projection_store_tests;
 mod registry;
 pub mod ring_buffer;
 #[allow(clippy::module_inception)]
