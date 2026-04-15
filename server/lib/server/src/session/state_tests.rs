@@ -1201,6 +1201,16 @@ impl reovim_subsys_layout::RootCompositor for MockCompositor {
     fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
         Box::new(Self::new())
     }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+        reovim_subsys_layout::LayoutTopology::Single(
+            reovim_subsys_layout::WindowId::from_raw(1),
+        )
+    }
 }
 
 /// Test `with_registries` with `Some(compositor)` to cover line 148.

@@ -434,31 +434,6 @@ fn test_emit_notifications_with_buffer_modified() {
     assert_eq!(received.unwrap().event_type, "buffer_modified");
 }
 
-#[test]
-fn test_emit_notifications_with_multiple_changes() {
-    let session = crate::session::Session::new(SessionId::new("emit-multi-test"));
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(5);
-    let mut changes = ChangeSet::new();
-    changes.record_mode_change();
-    changes.record_buffer_modified(buffer_id);
-    changes.created_buffers.push(buffer_id);
-
-    let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(
-        &session,
-        &changes,
-        0,
-        &BridgeRegistry::new(),
-        &test_cache(),
-    );
-
-    // Should receive multiple notifications
-    let mut count = 0;
-    while rx.try_recv().is_ok() {
-        count += 1;
-    }
-    assert_eq!(count, 3); // mode_changed + buffer_modified + buffer_list_changed
-}
 
 #[tokio::test]
 async fn test_apply_mode_transition_push() {
@@ -654,35 +629,6 @@ fn test_handle_pop_result_execute_command_with_args() {
     );
 }
 
-#[test]
-fn test_emit_notifications_with_cursor_moved() {
-    let session = crate::session::Session::new(SessionId::new("emit-cursor-test"));
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Set up a window displaying the buffer for this client
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_text_session::Window::with_buffer(buffer_id);
-        state.windows = reovim_driver_text_session::WindowLayout::single(window);
-    });
-
-    let mut changes = ChangeSet::new();
-    changes.record_cursor_move(buffer_id);
-
-    let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(
-        &session,
-        &changes,
-        1,
-        &BridgeRegistry::new(),
-        &test_cache(),
-    );
-
-    let received = rx.try_recv();
-    assert!(received.is_ok());
-    assert_eq!(received.unwrap().event_type, "cursor_moved");
-}
 
 #[test]
 fn test_emit_notifications_with_selection_changed() {
@@ -745,31 +691,6 @@ fn test_emit_notifications_with_buffer_list_changed() {
     assert_eq!(received.unwrap().event_type, "buffer_list_changed");
 }
 
-#[test]
-fn test_emit_notifications_with_option_changed() {
-    use reovim_subsys_session::OptionChange;
-
-    let session = crate::session::Session::new(SessionId::new("emit-option-test"));
-    let mut changes = ChangeSet::new();
-    changes.record_option_change(OptionChange {
-        name: "virtualedit".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::String("all".to_string()),
-        window_id: None,
-    });
-
-    let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(
-        &session,
-        &changes,
-        0,
-        &BridgeRegistry::new(),
-        &test_cache(),
-    );
-
-    let received = rx.try_recv();
-    assert!(received.is_ok());
-    assert_eq!(received.unwrap().event_type, "option_changed");
-}
 
 #[test]
 fn test_emit_notifications_with_scroll_changed() {
@@ -790,41 +711,6 @@ fn test_emit_notifications_with_scroll_changed() {
     );
 }
 
-#[test]
-fn test_emit_notifications_all_change_types_at_once() {
-    use reovim_subsys_session::OptionChange;
-
-    let session = crate::session::Session::new(SessionId::new("emit-all-test"));
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = ChangeSet::new();
-
-    changes.record_mode_change();
-    changes.record_cursor_move(buffer_id);
-    changes.record_buffer_modified(buffer_id);
-    changes.layout_changed = true;
-    changes.created_buffers.push(buffer_id);
-    changes.record_option_change(OptionChange {
-        name: "opt".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::Bool(true),
-        window_id: None,
-    });
-
-    let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(
-        &session,
-        &changes,
-        42,
-        &BridgeRegistry::new(),
-        &test_cache(),
-    );
-
-    let mut count = 0;
-    while rx.try_recv().is_ok() {
-        count += 1;
-    }
-    // Should have multiple notifications
-    assert!(count >= 4, "Expected at least 4 notifications, got {count}");
-}
 
 #[tokio::test]
 async fn test_apply_mode_transition_push_multiple_modes() {
@@ -1391,39 +1277,6 @@ async fn test_send_keys_empty_key_sequence() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
 }
 
-#[test]
-fn test_emit_notifications_with_affected_buffers() {
-    let session = crate::session::Session::new(SessionId::new("affected-buf-test"));
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    let buf1 = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let buf2 = reovim_kernel::api::v1::BufferId::from_raw(2);
-
-    // Set up windows displaying the buffers for this client
-    session.clients().update_client_state(client_id, |state| {
-        let window = reovim_driver_text_session::Window::with_buffer(buf1);
-        state.windows = reovim_driver_text_session::WindowLayout::single(window);
-    });
-
-    let mut changes = ChangeSet::new();
-    changes.affected_buffers.push(buf1);
-    changes.affected_buffers.push(buf2);
-    changes.cursor_moved = true;
-
-    let mut rx = session.subscribe_notifications();
-    InputServiceImpl::emit_notifications(
-        &session,
-        &changes,
-        client_id.as_usize() as u64,
-        &BridgeRegistry::new(),
-        &test_cache(),
-    );
-
-    // Should emit cursor_moved notifications
-    let received = rx.try_recv();
-    assert!(received.is_ok());
-}
 
 #[test]
 fn test_input_service_impl_new_const() {

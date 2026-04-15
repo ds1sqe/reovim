@@ -442,13 +442,10 @@ fn test_transition_result_is_ok() {
 }
 
 #[test]
-fn test_transition_result_requires_cursor_sync() {
-    let result = TransitionResult::RequiresCursorSync {
-        current: CursorPosition::default(),
-        target: CursorPosition::new(5, 10),
-    };
-    assert!(result.requires_cursor_sync());
-    assert!(!TransitionResult::Ok.requires_cursor_sync());
+fn test_transition_result_requires_domain_sync() {
+    let result = TransitionResult::RequiresDomainSync;
+    assert!(result.requires_domain_sync());
+    assert!(!TransitionResult::Ok.requires_domain_sync());
 }
 
 #[test]
@@ -545,14 +542,8 @@ fn test_validate_following_to_sharing_requires_cursor_sync() {
         &clients,
     );
 
-    assert!(result.requires_cursor_sync());
-    match result {
-        TransitionResult::RequiresCursorSync { current, target } => {
-            assert_eq!(current, CursorPosition::default());
-            assert_eq!(target, CursorPosition::new(5, 10));
-        }
-        other => panic!("Expected RequiresCursorSync, got {other:?}"),
-    }
+    assert!(result.requires_domain_sync());
+    assert!(matches!(result, TransitionResult::RequiresDomainSync));
 }
 
 #[test]

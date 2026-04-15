@@ -1,4 +1,4 @@
-use {super::*, crate::session::SessionId, reovim_subsys_session::ChangeSet};
+use {super::*, crate::session::SessionId, reovim_subsys_session::change_set::ChangeSet};
 
 #[test]
 fn test_current_timestamp_ms() {
@@ -17,71 +17,7 @@ fn test_build_notifications_empty_changes() {
     assert!(notifications.is_empty());
 }
 
-#[test]
-fn test_build_notifications_mode_changed() {
-    let mut changes = ChangeSet::new();
-    changes.record_mode_change();
 
-    let session = Session::new(SessionId::new("test"));
-    // Use client_id 0 - fallback to shared state for mode
-    let notifications = build_notifications(&changes, &session, 0, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "mode_changed");
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_mode_notification_fallback_uses_shared_state() {
-    // Phase #486: When client_id is not found, should fallback to shared state
-    let session = Session::new(SessionId::new("fallback-test"));
-
-    // Build mode notification for non-existent client
-    let notification = build_mode_notification(&session, 12345, 999);
-
-    // Should still produce a valid notification using shared state
-    assert_eq!(notification.event_type, "mode_changed");
-    if let Some(notification::Payload::ModeChanged(payload)) = notification.payload {
-        // Default shared state mode is "normal"
-        assert_eq!(payload.name, "normal");
-        assert_eq!(payload.client_id, 999);
-    } else {
-        panic!("Expected ModeChangedPayload");
-    }
-}
-
-#[test]
-fn test_cursor_notification_returns_none_for_unknown_client() {
-    // Phase #486: When client_id is not found, cursor notification returns None
-    let session = Session::new(SessionId::new("cursor-test"));
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-
-    // Non-existent client should return None (no cursor to report)
-    let notification = build_cursor_notification(&session, buffer_id, 12345, 999);
-    assert!(notification.is_none());
-}
-
-#[test]
-fn test_selection_notification_returns_none_for_unknown_client() {
-    // Phase #486: When client_id is not found, selection notification returns None
-    let session = Session::new(SessionId::new("selection-test"));
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-
-    // Non-existent client should return None (no selection to report)
-    let notification = build_selection_notification(&session, buffer_id, 12345, 999);
-    assert!(notification.is_none());
-}
-
-#[test]
-fn test_viewport_notification_returns_none_for_unknown_client() {
-    // Phase #486: When client_id is not found, viewport notification returns None
-    let session = Session::new(SessionId::new("viewport-test"));
-    let window_id = reovim_kernel::api::v1::WindowId::from_raw(1);
-
-    // Non-existent client should return None (no viewport to report)
-    let notification = build_viewport_notification(&session, window_id, 12345, 999);
-    assert!(notification.is_none());
-}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -131,100 +67,6 @@ fn test_build_buffer_list_notification_removed() {
     }
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_option_notification_bool() {
-    let opt_change = reovim_subsys_session::OptionChange {
-        name: "number".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::Bool(true),
-        window_id: None,
-    };
-    let notification = build_option_notification(&opt_change, 77777);
-
-    assert_eq!(notification.event_type, "option_changed");
-    assert_eq!(notification.timestamp_ms, 77777);
-
-    if let Some(notification::Payload::OptionChanged(payload)) = notification.payload {
-        assert_eq!(payload.name, "number");
-        assert_eq!(
-            payload.value,
-            Some(reovim_protocol::v2::option_changed_payload::Value::BoolValue(true))
-        );
-    } else {
-        panic!("Expected OptionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_option_notification_integer() {
-    let opt_change = reovim_subsys_session::OptionChange {
-        name: "tabstop".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::Integer(4),
-        window_id: None,
-    };
-    let notification = build_option_notification(&opt_change, 88888);
-
-    if let Some(notification::Payload::OptionChanged(payload)) = notification.payload {
-        assert_eq!(payload.name, "tabstop");
-        assert_eq!(
-            payload.value,
-            Some(reovim_protocol::v2::option_changed_payload::Value::IntValue(4))
-        );
-    } else {
-        panic!("Expected OptionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_option_notification_string() {
-    let opt_change = reovim_subsys_session::OptionChange {
-        name: "theme".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::String("monokai".to_string()),
-        window_id: None,
-    };
-    let notification = build_option_notification(&opt_change, 66666);
-
-    if let Some(notification::Payload::OptionChanged(payload)) = notification.payload {
-        assert_eq!(payload.name, "theme");
-        assert_eq!(
-            payload.value,
-            Some(reovim_protocol::v2::option_changed_payload::Value::StringValue(
-                "monokai".to_string()
-            ))
-        );
-    } else {
-        panic!("Expected OptionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_option_notification_choice() {
-    let opt_change = reovim_subsys_session::OptionChange {
-        name: "virtualedit".to_string(),
-        value: reovim_kernel::api::v1::OptionValue::Choice {
-            value: "block".to_string(),
-            choices: vec!["block".to_string(), "all".to_string()],
-        },
-        window_id: None,
-    };
-    let notification = build_option_notification(&opt_change, 44444);
-
-    if let Some(notification::Payload::OptionChanged(payload)) = notification.payload {
-        assert_eq!(payload.name, "virtualedit");
-        // Choice sends the value as a StringValue
-        assert_eq!(
-            payload.value,
-            Some(reovim_protocol::v2::option_changed_payload::Value::StringValue(
-                "block".to_string()
-            ))
-        );
-    } else {
-        panic!("Expected OptionChangedPayload");
-    }
-}
 
 #[test]
 fn test_build_notifications_buffer_modified() {
@@ -281,23 +123,6 @@ fn test_build_notifications_buffer_deleted() {
     }
 }
 
-#[test]
-fn test_build_notifications_option_changed() {
-    let mut changes = ChangeSet::new();
-    changes
-        .option_changes
-        .push(reovim_subsys_session::OptionChange {
-            name: "number".to_string(),
-            value: reovim_kernel::api::v1::OptionValue::Bool(true),
-            window_id: None,
-        });
-
-    let session = Session::new(SessionId::new("opt-test"));
-    let notifications = build_notifications(&changes, &session, 0, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "option_changed");
-}
 
 #[test]
 fn test_build_notifications_window_changed() {
@@ -323,36 +148,6 @@ fn test_build_notifications_focus_changed() {
     assert_eq!(notifications[0].event_type, "layout_changed");
 }
 
-#[test]
-fn test_build_notifications_multiple_changes() {
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
-    let mut changes = ChangeSet::new();
-    changes.record_mode_change();
-    changes.record_buffer_modified(buffer_id);
-    changes.created_buffers.push(buffer_id);
-    changes
-        .option_changes
-        .push(reovim_subsys_session::OptionChange {
-            name: "wrap".to_string(),
-            value: reovim_kernel::api::v1::OptionValue::Bool(false),
-            window_id: None,
-        });
-
-    let session = Session::new(SessionId::new("multi-test"));
-    let notifications = build_notifications(&changes, &session, 0, None);
-
-    // Should have: mode_changed, buffer_modified, buffer_list_changed (added), option_changed
-    assert_eq!(notifications.len(), 4);
-
-    let event_types: Vec<&str> = notifications
-        .iter()
-        .map(|n| n.event_type.as_str())
-        .collect();
-    assert!(event_types.contains(&"mode_changed"));
-    assert!(event_types.contains(&"buffer_modified"));
-    assert!(event_types.contains(&"buffer_list_changed"));
-    assert!(event_types.contains(&"option_changed"));
-}
 
 #[test]
 fn test_build_notifications_cursor_moved_no_client() {
@@ -397,20 +192,6 @@ fn test_build_notifications_scroll_changed_no_client() {
     assert!(notifications.is_empty());
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_mode_notification_insert_mode_detection() {
-    let session = Session::new(SessionId::new("insert-test"));
-    // Since the default mode is "normal", it won't be insert
-    let notification = build_mode_notification(&session, 12345, 999);
-
-    if let Some(notification::Payload::ModeChanged(payload)) = notification.payload {
-        assert!(!payload.is_insert);
-        assert_eq!(payload.display, "NORMAL");
-    } else {
-        panic!("Expected ModeChangedPayload");
-    }
-}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -461,309 +242,6 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
     assert_eq!(removed_count, 1);
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_cursor_notification_with_client_and_window() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("cursor-client-test"));
-    let client_id = crate::session::ClientId::new(1);
-
-    // Add client with a window that has a buffer
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
-    let window = Window::with_buffer(buffer_id);
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    // Build cursor notification for this client
-    let notification = build_cursor_notification(&session, buffer_id, 99999, 1);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    assert_eq!(n.event_type, "cursor_moved");
-    assert_eq!(n.timestamp_ms, 99999);
-    if let Some(notification::Payload::CursorMoved(payload)) = n.payload {
-        assert_eq!(payload.client_id, 1);
-        assert!(payload.position.is_some());
-        let pos = payload.position.unwrap();
-        assert_eq!(pos.line, 0);
-        assert_eq!(pos.column, 0);
-    } else {
-        panic!("Expected CursorMovedPayload");
-    }
-}
-
-#[test]
-fn test_build_cursor_notification_wrong_buffer_returns_none() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("cursor-wrong-buf"));
-    let client_id = crate::session::ClientId::new(1);
-
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
-    let window = Window::with_buffer(buffer_id);
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    // Ask for a different buffer - should return None
-    let other_buffer = reovim_kernel::api::v1::BufferId::from_raw(99);
-    let notification = build_cursor_notification(&session, other_buffer, 99999, 1);
-    assert!(notification.is_none());
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_selection_notification_with_character_selection() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{CursorPosition, Window, api::Selection},
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("sel-char-test"));
-    let client_id = crate::session::ClientId::new(5);
-
-    let mode = ModeId::new(ModuleId::new("test"), "visual");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(10);
-    let mut window = Window::with_buffer(buffer_id);
-    window.cursor = CursorPosition { line: 0, column: 3 };
-    window.selection =
-        Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let notification = build_selection_notification(&session, buffer_id, 11111, 5);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    assert_eq!(n.event_type, "selection_changed");
-    if let Some(notification::Payload::SelectionChanged(payload)) = n.payload {
-        assert!(payload.has_selection);
-        assert_eq!(payload.visual_mode, Some("char".to_string()));
-        assert_eq!(payload.client_id, 5);
-        let sel = payload.selection.unwrap();
-        assert_eq!(sel.start.as_ref().unwrap().line, 0);
-        assert_eq!(sel.start.as_ref().unwrap().column, 0);
-        assert_eq!(sel.end.as_ref().unwrap().line, 0);
-        assert_eq!(sel.end.as_ref().unwrap().column, 5);
-    } else {
-        panic!("Expected SelectionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_selection_notification_with_line_selection() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Window, api::Selection},
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("sel-line-test"));
-    let client_id = crate::session::ClientId::new(3);
-
-    let mode = ModeId::new(ModuleId::new("test"), "visual-line");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(20);
-    let mut window = Window::with_buffer(buffer_id);
-    window.selection = Some(Selection::line(KernelPosition::new(1, 0), KernelPosition::new(3, 0)));
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let notification = build_selection_notification(&session, buffer_id, 22222, 3);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    if let Some(notification::Payload::SelectionChanged(payload)) = n.payload {
-        assert!(payload.has_selection);
-        assert_eq!(payload.visual_mode, Some("line".to_string()));
-    } else {
-        panic!("Expected SelectionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_selection_notification_with_block_selection() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Window, api::Selection},
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("sel-block-test"));
-    let client_id = crate::session::ClientId::new(7);
-
-    let mode = ModeId::new(ModuleId::new("test"), "visual-block");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(30);
-    let mut window = Window::with_buffer(buffer_id);
-    window.selection = Some(Selection::block(KernelPosition::new(0, 1), KernelPosition::new(2, 4)));
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let notification = build_selection_notification(&session, buffer_id, 33333, 7);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    if let Some(notification::Payload::SelectionChanged(payload)) = n.payload {
-        assert!(payload.has_selection);
-        assert_eq!(payload.visual_mode, Some("block".to_string()));
-    } else {
-        panic!("Expected SelectionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_selection_notification_no_selection() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("sel-none-test"));
-    let client_id = crate::session::ClientId::new(2);
-
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(15);
-    let window = Window::with_buffer(buffer_id);
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    // Window has no selection
-    let notification = build_selection_notification(&session, buffer_id, 44444, 2);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    if let Some(notification::Payload::SelectionChanged(payload)) = n.payload {
-        assert!(!payload.has_selection);
-        assert!(payload.selection.is_none());
-        assert!(payload.visual_mode.is_none());
-    } else {
-        panic!("Expected SelectionChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_viewport_notification_with_client_window() {
-    use {
-        reovim_driver_text_session::{Viewport, Window},
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("viewport-test"));
-    let client_id = crate::session::ClientId::new(4);
-
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(50);
-    let mut window = Window::with_buffer(buffer_id);
-    let window_id = window.id;
-    let mut viewport = Viewport::new(80, 24);
-    viewport.scroll_top = 10;
-    viewport.scroll_left = 5;
-    window.viewport = viewport;
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let notification = build_viewport_notification(&session, window_id, 55555, 4);
-    assert!(notification.is_some());
-
-    let n = notification.unwrap();
-    assert_eq!(n.event_type, "viewport_updated");
-    assert_eq!(n.timestamp_ms, 55555);
-    if let Some(notification::Payload::ViewportUpdated(payload)) = n.payload {
-        assert_eq!(payload.viewport_id, window_id.as_usize() as u64);
-        assert_eq!(payload.top_line, Some(10));
-        assert_eq!(payload.left_col, Some(5));
-        assert_eq!(payload.cursor_line, Some(0));
-        assert_eq!(payload.cursor_col, Some(0));
-    } else {
-        panic!("Expected ViewportUpdatedPayload");
-    }
-}
-
-#[test]
-fn test_build_viewport_notification_wrong_window_returns_none() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("viewport-wrong-win"));
-    let client_id = crate::session::ClientId::new(6);
-
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(60);
-    let window = Window::with_buffer(buffer_id);
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    // Ask for a window that doesn't exist in client's layout
-    let wrong_window_id = reovim_kernel::api::v1::WindowId::from_raw(99999);
-    let notification = build_viewport_notification(&session, wrong_window_id, 66666, 6);
-    assert!(notification.is_none());
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_mode_notification_with_registered_client() {
-    use reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId};
-
-    let session = Session::new(SessionId::new("mode-client-test"));
-    let client_id = crate::session::ClientId::new(8);
-
-    // Register client with "insert" mode
-    let mode = ModeId::new(ModuleId::new("test"), "insert");
-    let mode_stack = ModeStack::new(mode);
-    let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
-    session.clients().add_client_with_state(client);
-
-    let notification = build_mode_notification(&session, 77777, 8);
-    assert_eq!(notification.event_type, "mode_changed");
-    if let Some(notification::Payload::ModeChanged(payload)) = notification.payload {
-        assert_eq!(payload.name, "insert");
-        assert_eq!(payload.display, "INSERT");
-        // DEPRECATED (#753): is_insert is always false — clients use projections
-        assert!(!payload.is_insert);
-        assert_eq!(payload.client_id, 8);
-    } else {
-        panic!("Expected ModeChangedPayload");
-    }
-}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -800,94 +278,6 @@ fn test_build_layout_notification_with_client_windows() {
     }
 }
 
-#[test]
-fn test_build_notifications_cursor_moved_with_client() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("cursor-notify-test"));
-    let client_id = crate::session::ClientId::new(10);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(80);
-
-    // Register client with a window
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let window = Window::with_buffer(buffer_id);
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    // Build notifications with cursor_moved
-    let mut changes = ChangeSet::new();
-    changes.record_cursor_move(buffer_id);
-    let notifications = build_notifications(&changes, &session, 10, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "cursor_moved");
-}
-
-#[test]
-fn test_build_notifications_selection_changed_with_client() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Window, api::Selection},
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("sel-notify-test"));
-    let client_id = crate::session::ClientId::new(11);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(90);
-
-    let mode = ModeId::new(ModuleId::new("test"), "visual");
-    let mode_stack = ModeStack::new(mode);
-    let mut window = Window::with_buffer(buffer_id);
-    window.selection =
-        Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 3)));
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let mut changes = ChangeSet::new();
-    changes.selection_changed = true;
-    changes.affected_buffers.push(buffer_id);
-    let notifications = build_notifications(&changes, &session, 11, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "selection_changed");
-}
-
-#[test]
-fn test_build_notifications_scroll_changed_with_client() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
-
-    let session = Session::new(SessionId::new("scroll-notify-test"));
-    let client_id = crate::session::ClientId::new(12);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(100);
-
-    let mode = ModeId::new(ModuleId::new("test"), "normal");
-    let mode_stack = ModeStack::new(mode);
-    let window = Window::with_buffer(buffer_id);
-    let window_id = window.id;
-    let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
-    session.clients().add_client_with_state(client);
-
-    let mut changes = ChangeSet::new();
-    changes.scroll_changed = true;
-    changes.scrolled_windows.push(window_id);
-    let notifications = build_notifications(&changes, &session, 12, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "viewport_updated");
-}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -967,6 +357,14 @@ fn test_build_layout_notification_with_compositor() {
             Box::new(Self {
                 focused: self.focused,
             })
+        }
+        fn generation(&self) -> u64 {
+            0
+        }
+        fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+            reovim_subsys_layout::LayoutTopology::Single(
+                WindowId::from_raw(1),
+            )
         }
     }
 
@@ -1127,6 +525,14 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         fn boxed_clone(&self) -> Box<dyn RootCompositor> {
             Box::new(Self)
         }
+        fn generation(&self) -> u64 {
+            0
+        }
+        fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+            reovim_subsys_layout::LayoutTopology::Single(
+                WindowId::from_raw(10),
+            )
+        }
     }
 
     // Create a kernel with a real buffer manager so we can create a buffer
@@ -1181,34 +587,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     }
 }
 
-#[test]
-fn test_build_notifications_multiple_option_changes() {
-    let mut changes = ChangeSet::new();
-    changes
-        .option_changes
-        .push(reovim_subsys_session::OptionChange {
-            name: "number".to_string(),
-            value: reovim_kernel::api::v1::OptionValue::Bool(true),
-            window_id: None,
-        });
-    changes
-        .option_changes
-        .push(reovim_subsys_session::OptionChange {
-            name: "tabstop".to_string(),
-            value: reovim_kernel::api::v1::OptionValue::Integer(8),
-            window_id: None,
-        });
-
-    let session = Session::new(SessionId::new("multi-opt-test"));
-    let notifications = build_notifications(&changes, &session, 0, None);
-
-    assert_eq!(notifications.len(), 2);
-    assert!(
-        notifications
-            .iter()
-            .all(|n| n.event_type == "option_changed")
-    );
-}
 
 // === Extension notification tests (#514) ===
 
@@ -1513,8 +891,8 @@ mod projection_tests {
         if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
             assert_eq!(p.tag, "text.mode");
             assert_eq!(p.domain_id, 1);
-            assert_eq!(p.window_id, 0); // None → 0
-            assert_eq!(p.payload, b"NORMAL");
+            assert_eq!(p.window_id, None); // None = session-wide
+            assert_eq!(p.datum.as_ref().unwrap().content, b"NORMAL");
             assert!(!p.transient);
             assert_eq!(p.version, 42);
             assert_eq!(p.client_id, 7);
@@ -1588,7 +966,10 @@ mod projection_tests {
         let notifications = build_projection_notifications(&result, 1, 10000);
 
         if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
-            assert_eq!(p.display, Some("VISUAL".to_string()));
+            assert_eq!(
+                p.datum.as_ref().unwrap().display,
+                Some("VISUAL".to_string())
+            );
         } else {
             panic!("Expected ProjectionUpdatedPayload");
         }
@@ -1609,22 +990,10 @@ mod projection_tests {
         let notifications = build_projection_notifications(&result, 1, 20000);
 
         if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
-            assert_eq!(p.window_id, 42);
+            assert_eq!(p.window_id, Some(42));
         } else {
             panic!("Expected ProjectionUpdatedPayload");
         }
     }
 
-    #[test]
-    fn is_insert_deprecated_to_false() {
-        // B5: is_insert is always false now (domain-specific logic removed)
-        let session = Session::new(SessionId::new("is-insert-test"));
-        let notification = build_mode_notification(&session, 12345, 0);
-
-        if let Some(notification::Payload::ModeChanged(ref p)) = notification.payload {
-            assert!(!p.is_insert, "is_insert should always be false (deprecated)");
-        } else {
-            panic!("Expected ModeChangedPayload");
-        }
-    }
 }

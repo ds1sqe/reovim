@@ -32,12 +32,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
     reovim_protocol::v2::{
-        BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
-        ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
-        OptionChangedPayload, Position, ProjectionUpdatedPayload, SelectionChangedPayload,
-        TabPageInfo, ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
+        BufferListChangedPayload, BufferModifiedPayload, DomainDatum, ExtensionUpdatedPayload,
+        LayoutChangedPayload, Notification, ProjectionUpdatedPayload, TabPageInfo, WindowInfo,
+        WindowRect, notification,
     },
-    reovim_subsys_session::{ChangeSet, bridges::BridgeRegistry},
+    reovim_subsys_session::{change_set::ChangeSet, bridges::BridgeRegistry},
 };
 
 use crate::session::{ClientId, Session};
@@ -76,25 +75,6 @@ pub fn build_notifications(
     let mut notifications = Vec::new();
     let timestamp = current_timestamp_ms();
 
-    // Mode changed notification
-    // Phase 14 (#471): Include client_id for multi-client mode filtering
-    // Phase #486: Uses per-client mode_stack
-    if changes.mode_changed {
-        notifications.push(build_mode_notification(session, timestamp, client_id));
-    }
-
-    // Cursor moved notification (per affected buffer)
-    // Phase #486: Uses per-client cursor position
-    if changes.cursor_moved {
-        for buffer_id in &changes.affected_buffers {
-            if let Some(notification) =
-                build_cursor_notification(session, *buffer_id, timestamp, client_id)
-            {
-                notifications.push(notification);
-            }
-        }
-    }
-
     // Buffer modified notifications (buffers are shared, not per-client)
     if !changes.modified_buffers.is_empty() {
         for buffer_id in &changes.modified_buffers {
@@ -114,35 +94,6 @@ pub fn build_notifications(
     // Layout uses shared state (compositor) but may use per-client focused window
     if changes.layout_changed || changes.focus_changed {
         notifications.push(build_layout_notification(session, timestamp, client_id));
-    }
-
-    // Selection changed notifications
-    // Phase #486: Uses per-client selection
-    if changes.selection_changed {
-        for buffer_id in &changes.affected_buffers {
-            if let Some(notification) =
-                build_selection_notification(session, *buffer_id, timestamp, client_id)
-            {
-                notifications.push(notification);
-            }
-        }
-    }
-
-    // Option changed notifications (options are shared)
-    for opt_change in &changes.option_changes {
-        notifications.push(build_option_notification(opt_change, timestamp));
-    }
-
-    // Viewport updated notifications (Phase 11.1)
-    // Phase #486: Uses per-client viewport
-    if changes.scroll_changed {
-        for window_id in &changes.scrolled_windows {
-            if let Some(notification) =
-                build_viewport_notification(session, *window_id, timestamp, client_id)
-            {
-                notifications.push(notification);
-            }
-        }
     }
 
     // Presence updated notifications (#471)
@@ -168,94 +119,6 @@ pub fn build_notifications(
     }
 
     notifications
-}
-
-/// Build a mode changed notification.
-///
-/// # Arguments
-///
-/// * `session` - Session for reading per-client mode (#486)
-/// * `timestamp` - Notification timestamp
-/// * `client_id` - Client that changed mode (Phase 14 #471: multi-client filtering)
-#[allow(clippy::cast_possible_truncation)] // client_id u64→usize is safe on 64-bit
-fn build_mode_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
-    // Phase #486, #491: Read mode from per-client state
-    let mode_name = session
-        .clients()
-        .client_state(ClientId::new(client_id as usize))
-        .map_or_else(
-            || {
-                // Fallback to home_mode if client not found (#491)
-                tracing::warn!(%client_id, "Client not found for mode notification, using home_mode");
-                session.with_state_sync(|s| s.home_mode().name().to_string())
-            },
-            |s| s.mode_stack.current().name().to_string(),
-        );
-
-    // Derive display name (capitalize first letter, e.g., "normal" -> "NORMAL")
-    let display_name = mode_name.to_uppercase();
-
-    // DEPRECATED (#753): is_insert was domain-specific string matching
-    // (text-domain policy in server mechanism layer). Clients should use
-    // ProjectionUpdated "text.mode" projections instead.
-    let is_insert = false;
-
-    Notification {
-        event_type: "mode_changed".to_string(),
-        timestamp_ms: timestamp,
-        payload: Some(notification::Payload::ModeChanged(ModeChangedPayload {
-            name: mode_name,
-            display: display_name,
-            is_insert,
-            client_id,
-        })),
-    }
-}
-
-/// Build a cursor moved notification for a specific buffer.
-///
-/// Phase #486: Uses per-client cursor position from `session.client_state()`.
-#[allow(clippy::cast_possible_truncation)] // client_id u64→usize is safe on 64-bit
-fn build_cursor_notification(
-    session: &Session,
-    buffer_id: reovim_kernel::api::v1::BufferId,
-    timestamp: u64,
-    client_id: u64,
-) -> Option<Notification> {
-    // Phase #486: Get per-client windows for cursor position
-    let editing_state = session
-        .clients()
-        .client_state(ClientId::new(client_id as usize))?;
-
-    // Find the ACTIVE window displaying this buffer in per-client state.
-    // When multiple windows share the same buffer (splits), prefer the
-    // active window so cursor notifications target the correct pane.
-    let active_id = editing_state.windows.active_id();
-    let window = editing_state
-        .windows
-        .windows
-        .iter()
-        .find(|w| w.buffer_id == Some(buffer_id) && Some(w.id) == active_id)
-        .or_else(|| {
-            editing_state
-                .windows
-                .windows
-                .iter()
-                .find(|w| w.buffer_id == Some(buffer_id))
-        })?;
-
-    Some(Notification {
-        event_type: "cursor_moved".to_string(),
-        timestamp_ms: timestamp,
-        payload: Some(notification::Payload::CursorMoved(CursorMovedPayload {
-            window_id: window.id.as_usize() as u64,
-            position: Some(Position {
-                line: window.cursor.line as u64,
-                column: window.cursor.column as u64,
-            }),
-            client_id,
-        })),
-    })
 }
 
 /// Build a buffer modified notification.
@@ -402,136 +265,6 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
     }
 }
 
-/// Build a selection changed notification.
-///
-/// Phase #486: Uses per-client selection from `session.client_state()`.
-///
-/// # Arguments
-///
-/// * `session` - Session for reading per-client selection
-/// * `buffer_id` - Buffer to find selection for
-/// * `timestamp` - Notification timestamp
-/// * `client_id` - Client whose selection to read
-#[allow(clippy::cast_possible_truncation, clippy::significant_drop_tightening)]
-fn build_selection_notification(
-    session: &Session,
-    buffer_id: reovim_kernel::api::v1::BufferId,
-    timestamp: u64,
-    client_id: u64,
-) -> Option<Notification> {
-    // Phase #486: Get per-client windows for selection
-    let editing_state = session
-        .clients()
-        .client_state(ClientId::new(client_id as usize))?;
-
-    // Find window displaying this buffer in per-client state
-    let window = editing_state
-        .windows
-        .windows
-        .iter()
-        .find(|w| w.buffer_id == Some(buffer_id))?;
-
-    // Phase 8 (#465): Selection now lives in Window with explicit start/end.
-    // Read directly from window.selection - no cursor computation needed.
-    let (has_selection, selection, visual_mode) =
-        window
-            .selection
-            .as_ref()
-            .map_or((false, None, None), |sel| {
-                (
-                    true,
-                    Some(reovim_protocol::v2::Selection {
-                        start: Some(Position {
-                            line: sel.start.line as u64,
-                            column: sel.start.column as u64,
-                        }),
-                        end: Some(Position {
-                            line: sel.end.line as u64,
-                            column: sel.end.column as u64,
-                        }),
-                    }),
-                    Some(sel.mode.as_str().to_string()),
-                )
-            });
-
-    Some(Notification {
-        event_type: "selection_changed".to_string(),
-        timestamp_ms: timestamp,
-        payload: Some(notification::Payload::SelectionChanged(SelectionChangedPayload {
-            window_id: window.id.as_usize() as u64,
-            has_selection,
-            selection,
-            visual_mode,
-            client_id,
-        })),
-    })
-}
-
-/// Build a viewport updated notification (Phase 11.1).
-///
-/// Sent when scroll position changes in a window, enabling clients to
-/// apply incremental updates without re-fetching layout.
-///
-/// Phase #486: Uses per-client viewport scroll position.
-///
-/// # Arguments
-///
-/// * `session` - Session for reading per-client viewport
-/// * `window_id` - Window whose viewport changed
-/// * `timestamp` - Notification timestamp
-/// * `client_id` - Client whose viewport to read
-#[allow(clippy::cast_possible_truncation)]
-fn build_viewport_notification(
-    session: &Session,
-    window_id: reovim_kernel::api::v1::WindowId,
-    timestamp: u64,
-    client_id: u64,
-) -> Option<Notification> {
-    // Phase #486: Get per-client windows for viewport
-    let editing_state = session
-        .clients()
-        .client_state(ClientId::new(client_id as usize))?;
-
-    // Find the window in per-client state
-    let window = editing_state.windows.get(window_id)?;
-
-    Some(Notification {
-        event_type: "viewport_updated".to_string(),
-        timestamp_ms: timestamp,
-        payload: Some(notification::Payload::ViewportUpdated(ViewportUpdatedPayload {
-            viewport_id: window_id.as_usize() as u64,
-            top_line: Some(window.viewport.scroll_top as u32),
-            left_col: Some(window.viewport.scroll_left as u32),
-            cursor_line: Some(window.cursor.line as u32),
-            cursor_col: Some(window.cursor.column as u32),
-        })),
-    })
-}
-
-/// Build an option changed notification.
-fn build_option_notification(
-    opt_change: &reovim_subsys_session::OptionChange,
-    timestamp: u64,
-) -> Notification {
-    use {reovim_kernel::api::v1::OptionValue, reovim_protocol::v2::option_changed_payload::Value};
-
-    let value = match &opt_change.value {
-        OptionValue::Bool(b) => Some(Value::BoolValue(*b)),
-        OptionValue::Integer(i) => Some(Value::IntValue(*i)),
-        OptionValue::String(s) => Some(Value::StringValue(s.clone())),
-        OptionValue::Choice { value, .. } => Some(Value::StringValue(value.clone())),
-    };
-
-    Notification {
-        event_type: "option_changed".to_string(),
-        timestamp_ms: timestamp,
-        payload: Some(notification::Payload::OptionChanged(OptionChangedPayload {
-            name: opt_change.name.clone(),
-            value,
-        })),
-    }
-}
-
 /// Build an extension state updated notification (#514).
 ///
 /// Looks up the bridge by kind, gets the snapshot from the client's `ExtensionMap`,
@@ -604,9 +337,11 @@ pub fn build_projection_notifications(
             payload: Some(notification::Payload::ProjectionUpdated(ProjectionUpdatedPayload {
                 tag: proj.tag.as_str().to_string(),
                 domain_id: proj.domain_id.0,
-                window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
-                payload: proj.payload.clone(),
-                display: proj.display.clone(),
+                window_id: proj.window_id.map(|w| w.as_usize() as u64),
+                datum: Some(DomainDatum {
+                    content: proj.payload.clone(),
+                    display: proj.display.clone(),
+                }),
                 transient: false,
                 version: versioned.version,
                 client_id,
@@ -622,9 +357,11 @@ pub fn build_projection_notifications(
             payload: Some(notification::Payload::ProjectionUpdated(ProjectionUpdatedPayload {
                 tag: proj.tag.as_str().to_string(),
                 domain_id: proj.domain_id.0,
-                window_id: proj.window_id.map_or(0, |w| w.as_usize() as u64),
-                payload: proj.payload.clone(),
-                display: proj.display.clone(),
+                window_id: proj.window_id.map(|w| w.as_usize() as u64),
+                datum: Some(DomainDatum {
+                    content: proj.payload.clone(),
+                    display: proj.display.clone(),
+                }),
                 transient: true,
                 version: 0,
                 client_id,

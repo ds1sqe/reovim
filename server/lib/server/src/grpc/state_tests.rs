@@ -45,121 +45,38 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
     request
 }
 
+/// (#753) get_projections replaces get_mode, get_cursor, get_selection.
 #[tokio::test]
-async fn test_get_mode_returns_current_mode() {
+async fn test_get_projections_returns_empty_stub() {
     let (registry, session) = test_registry_with_session();
     let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
 
-    // Create a client first (client_id=1)
     session.add_client(ClientId::new(1));
 
-    let request = authed_request(GetModeRequest { client_id: 1 }, ClientId::new(1));
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    // Default mode is "normal" from SessionState::default()
-    assert_eq!(resp.name, "normal");
-    assert_eq!(resp.display, "NORMAL");
-    assert!(!resp.is_insert);
-}
-
-#[tokio::test]
-async fn test_get_mode_rejects_unauthenticated() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // No token in extensions → Unauthenticated (#483)
-    let request = Request::new(GetModeRequest { client_id: 0 });
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
-}
-
-#[tokio::test]
-async fn test_get_mode_unknown_client_returns_not_found() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Non-existent client should return NotFound
-    // Authenticated as client 999, targeting self (client_id=999 in body)
-    let request = authed_request(GetModeRequest { client_id: 999 }, ClientId::new(999));
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_get_cursor_rejects_unauthenticated() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // No token in extensions → Unauthenticated (#483)
-    let request = Request::new(GetCursorRequest {
-        window_id: None,
-        client_id: 0,
+    let request = Request::new(GetProjectionsRequest {
+        client_id: 1,
+        tags: vec![],
     });
-    let response = service.get_cursor(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
-}
-
-#[tokio::test]
-async fn test_get_cursor_no_active_window() {
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    // Create a client but don't add any windows
-    session.add_client(ClientId::new(1));
-
-    let request = authed_request(
-        GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_cursor(request).await;
-
-    // Client exists but no active window = NotFound
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_get_cursor_with_buffer() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create a buffer using the real buffer manager
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Create a client - this initializes per-client state with initial window
-    session.add_client(ClientId::new(1));
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_cursor(request).await;
+    let response = service.get_projections(request).await;
 
     assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(resp.position.is_some());
-    let pos = resp.position.unwrap();
-    assert_eq!(pos.line, 0);
-    assert_eq!(pos.column, 0);
+    // Stub returns empty projections
+    assert_eq!(response.unwrap().into_inner().projections.len(), 0);
+}
+
+#[tokio::test]
+async fn test_get_projections_no_session() {
+    let registry = Arc::new(SessionRegistry::new());
+    let service = StateServiceImpl::new(registry, SessionId::new("nonexistent"));
+
+    let request = Request::new(GetProjectionsRequest {
+        client_id: 0,
+        tags: vec![],
+    });
+    let response = service.get_projections(request).await;
+
+    assert!(response.is_err());
+    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
 #[tokio::test]
@@ -359,17 +276,6 @@ async fn test_get_visible_lines_with_scroll() {
     assert_eq!(resp.viewport_height, 24);
 }
 
-#[tokio::test]
-async fn test_get_mode_no_session() {
-    let registry = Arc::new(SessionRegistry::new());
-    let service = StateServiceImpl::new(registry, SessionId::new("nonexistent"));
-
-    let request = Request::new(GetModeRequest { client_id: 0 });
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
 
 #[tokio::test]
 async fn test_get_registers_empty() {
@@ -421,8 +327,11 @@ async fn test_get_registers_with_content() {
     let resp = response.unwrap().into_inner();
     assert_eq!(resp.registers.len(), 1);
     assert_eq!(resp.registers[0].name, "\"");
-    assert_eq!(resp.registers[0].content, "hello");
-    assert_eq!(resp.registers[0].yank_type, "char");
+    // (#753) RegisterEntry.content is now DomainDatum; display field carries the text.
+    assert_eq!(
+        resp.registers[0].content.as_ref().and_then(|d| d.display.as_deref()),
+        Some("hello")
+    );
 }
 
 #[tokio::test]
@@ -463,428 +372,15 @@ async fn test_get_registers_specific_register() {
     let resp = response.unwrap().into_inner();
     assert_eq!(resp.registers.len(), 1);
     assert_eq!(resp.registers[0].name, "a");
-    assert_eq!(resp.registers[0].content, "alpha");
-    assert_eq!(resp.registers[0].yank_type, "line");
-}
-
-// Phase 9.1: GetSelection RPC tests
-
-#[tokio::test]
-async fn test_get_selection_rejects_unauthenticated() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // No token in extensions → Unauthenticated (#483)
-    let request = Request::new(GetSelectionRequest {
-        window_id: None,
-        client_id: 0,
-    });
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
-}
-
-#[tokio::test]
-async fn test_get_selection_no_selection() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create a buffer but don't start selection
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Create a client
-    session.add_client(ClientId::new(1));
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
+    // (#753) RegisterEntry.content is now DomainDatum; display field carries the text.
+    assert_eq!(
+        resp.registers[0].content.as_ref().and_then(|d| d.display.as_deref()),
+        Some("alpha")
     );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(!resp.has_selection);
-    assert!(resp.selection.is_none());
-    assert!(resp.visual_mode.is_none());
 }
 
-#[tokio::test]
-async fn test_get_selection_no_active_window() {
-    // Session with a client but no windows
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    session.add_client(ClientId::new(1));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_selection(request).await;
-
-    // Client exists but no active window = NotFound
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_get_selection_with_char_selection() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Viewport, api::Selection},
-    };
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Create a client - this initializes per-client state
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Modify the CLIENT's per-client state (not shared state)
-    session.clients().update_client_state(client_id, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            // Set selection for "hello" (0,0 to 0,5 exclusive)
-            window.selection =
-                Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
-        }
-    });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(resp.has_selection);
-    assert!(resp.selection.is_some());
-
-    let sel = resp.selection.unwrap();
-    assert_eq!(sel.start.as_ref().unwrap().line, 0);
-    assert_eq!(sel.start.as_ref().unwrap().column, 0);
-    assert_eq!(sel.end.as_ref().unwrap().line, 0);
-    assert_eq!(sel.end.as_ref().unwrap().column, 5); // exclusive end
-    assert_eq!(resp.visual_mode, Some("char".to_string()));
-}
-
-#[tokio::test]
-async fn test_get_selection_line_mode() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Viewport, api::Selection},
-    };
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("line1\nline2\nline3");
-        })
-        .await;
-
-    // Create a client
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Modify the CLIENT's per-client state
-    session.clients().update_client_state(client_id, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            // Line-wise selection for lines 0-1
-            window.selection = Some(Selection::line(
-                KernelPosition::new(0, 0),
-                KernelPosition::new(2, 0), // exclusive end
-            ));
-        }
-    });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(resp.has_selection);
-    assert_eq!(resp.visual_mode, Some("line".to_string()));
-}
-
-#[tokio::test]
-async fn test_get_selection_block_mode() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Viewport, api::Selection},
-    };
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("ABC\nDEF\nGHI");
-        })
-        .await;
-
-    // Create a client
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Modify the CLIENT's per-client state
-    session.clients().update_client_state(client_id, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            // Block selection from (0,0) to (1,2) - a 2x2 block
-            window.selection = Some(Selection::block(
-                KernelPosition::new(0, 0),
-                KernelPosition::new(2, 2), // exclusive end
-            ));
-        }
-    });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(resp.has_selection);
-    assert_eq!(resp.visual_mode, Some("block".to_string()));
-}
-
-#[tokio::test]
-async fn test_get_selection_reverse() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Viewport, api::Selection},
-    };
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Create a client
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Modify the CLIENT's per-client state
-    session.clients().update_client_state(client_id, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            // Selection from column 2 to column 5 (already normalized)
-            window.selection =
-                Some(Selection::character(KernelPosition::new(0, 2), KernelPosition::new(0, 5)));
-        }
-    });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(resp.has_selection);
-
-    let sel = resp.selection.unwrap();
-    // start should be normalized (smaller position comes first)
-    assert!(sel.start.as_ref().unwrap().column < sel.end.as_ref().unwrap().column);
-    assert_eq!(sel.start.as_ref().unwrap().column, 2);
-    assert_eq!(sel.end.as_ref().unwrap().column, 5);
-}
-
-// Per-client state (#471): Per-client mode isolation tests
-
-#[tokio::test]
-async fn test_get_mode_per_client_returns_client_mode() {
-    use reovim_kernel::api::v1::{ModeId, ModuleId};
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Add a client with custom mode stack
-    let client_id = crate::session::ClientId::new(42);
-    session.add_client(client_id);
-
-    // Modify the client's per-client mode stack to INSERT mode
-    let module = ModuleId::new("editor");
-    session
-        .clients()
-        .update_client_state(client_id, |editing_state| {
-            editing_state
-                .mode_stack
-                .push(ModeId::new(module.clone(), "insert"));
-        });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Query with client_id = 42 should return INSERT mode
-    let request = authed_request(GetModeRequest { client_id: 42 }, ClientId::new(42));
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert_eq!(resp.name, "insert");
-    assert_eq!(resp.display, "INSERT");
-    assert!(resp.is_insert);
-}
-
-// Note: test_get_mode_unknown_client_falls_back_to_shared was REMOVED in Phase #479.
-// Unknown clients now return NotFound error (see test_get_mode_unknown_client_returns_not_found).
-// client_id=0 now returns InvalidArgument (see test_get_mode_rejects_client_id_zero).
-
-// =========================================================================
-// Phase #471: Multi-Client Isolation Tests
-// =========================================================================
-
-#[tokio::test]
-async fn test_cursor_isolation_between_clients() {
-    use reovim_driver_text_session::CursorPosition;
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("line1\nline2\nline3\nline4\nline5");
-        })
-        .await;
-
-    // Create two clients
-    let client_a = crate::session::ClientId::new(1);
-    let client_b = crate::session::ClientId::new(2);
-    session.add_client(client_a);
-    session.add_client(client_b);
-
-    // Client A moves cursor to (3, 5)
-    session.clients().update_client_state(client_a, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.cursor = CursorPosition { line: 3, column: 5 };
-        }
-    });
-
-    // Client B's cursor should still be at default (0, 0)
-    let state_b = session.clients().client_state(client_b).unwrap();
-    let cursor_b = state_b.windows.active().unwrap().cursor;
-    assert_eq!(cursor_b.line, 0, "Client B cursor line should be 0");
-    assert_eq!(cursor_b.column, 0, "Client B cursor column should be 0");
-
-    // Verify via gRPC service
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Query Client A's cursor
-    let request = authed_request(
-        GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_cursor(request).await.unwrap().into_inner();
-    let pos = response.position.unwrap();
-    assert_eq!(pos.line, 3, "Client A gRPC cursor line");
-    assert_eq!(pos.column, 5, "Client A gRPC cursor column");
-
-    // Query Client B's cursor - should be independent
-    let request = authed_request(
-        GetCursorRequest {
-            window_id: None,
-            client_id: 2,
-        },
-        ClientId::new(2),
-    );
-    let response = service.get_cursor(request).await.unwrap().into_inner();
-    let pos = response.position.unwrap();
-    assert_eq!(pos.line, 0, "Client B gRPC cursor line");
-    assert_eq!(pos.column, 0, "Client B gRPC cursor column");
-}
-
-#[tokio::test]
-async fn test_mode_isolation_between_clients() {
-    use reovim_kernel::api::v1::{ModeId, ModuleId};
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create two clients
-    let client_a = crate::session::ClientId::new(10);
-    let client_b = crate::session::ClientId::new(20);
-    session.add_client(client_a);
-    session.add_client(client_b);
-
-    // Client A enters INSERT mode
-    let module = ModuleId::new("editor");
-    session.clients().update_client_state(client_a, |state| {
-        state.mode_stack.push(ModeId::new(module.clone(), "insert"));
-    });
-
-    // Client B should still be in NORMAL mode (not affected by A)
-    let mode_b = session.client_current_mode(client_b).unwrap();
-    assert_eq!(mode_b.name(), "normal", "Client B should remain in normal mode");
-
-    // Verify via gRPC service
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Query Client A's mode - should be INSERT
-    let request = authed_request(GetModeRequest { client_id: 10 }, ClientId::new(10));
-    let response = service.get_mode(request).await.unwrap().into_inner();
-    assert_eq!(response.name, "insert", "Client A gRPC mode");
-    assert!(response.is_insert, "Client A should be in insert mode");
-
-    // Query Client B's mode - should still be NORMAL
-    let request = authed_request(GetModeRequest { client_id: 20 }, ClientId::new(20));
-    let response = service.get_mode(request).await.unwrap().into_inner();
-    assert_eq!(response.name, "normal", "Client B gRPC mode");
-    assert!(!response.is_insert, "Client B should NOT be in insert mode");
-}
+// (#753) GetMode/GetCursor/GetSelection replaced by GetProjections.
+// Cursor, mode, and selection state is now domain-neutral (ProjectionUpdated notifications).
 
 #[tokio::test]
 async fn test_layout_isolation_per_client() {
@@ -1104,38 +600,6 @@ async fn test_get_registers_specific_nonexistent_register() {
     assert!(resp.registers.is_empty());
 }
 
-#[tokio::test]
-async fn test_get_registers_linewise() {
-    use reovim_driver_text_session::RegisterContent;
-
-    let (registry, session) = test_registry_with_buffer_manager();
-    session.add_client(ClientId::new(1));
-
-    // Set register on per-client state (#515)
-    session
-        .clients()
-        .update_client_state(ClientId::new(1), |state| {
-            state
-                .registers
-                .set(RegisterContent::linewise("line content\n"));
-        });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetRegistersRequest {
-            names: vec![],
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_registers(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert_eq!(resp.registers.len(), 1);
-    assert_eq!(resp.registers[0].yank_type, "line");
-}
 
 #[tokio::test]
 async fn test_get_screen_content_invalid_format() {
@@ -1186,94 +650,9 @@ async fn test_get_visible_lines_unknown_client() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_get_selection_unknown_client() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 999,
-        },
-        ClientId::new(999),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
 // =========================================================================
 // Coverage: Ring buffer logging for unknown clients (#497)
 // =========================================================================
-
-#[tokio::test]
-async fn test_get_mode_following_client_triggers_ring_buffer_log() {
-    // A Following client returns None from client_current_mode, which triggers
-    // the ok_or_else closure that logs to the ring buffer (lines 109-115).
-    use crate::session::ClientRelation;
-
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    let owner_id = ClientId::new(1);
-    let follower_id = ClientId::new(2);
-    session.add_client(owner_id);
-    session.add_client(follower_id);
-
-    let _ = session
-        .clients()
-        .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
-
-    // Following client -> client_current_mode returns None -> NotFound with ring buffer log
-    let request = authed_request(GetModeRequest { client_id: 2 }, ClientId::new(2));
-    let response = service.get_mode(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_get_cursor_following_client_triggers_ring_buffer_log() {
-    // A Following client returns None from client_state, triggering
-    // the ok_or_else closure with ring buffer logging (lines 153-159).
-    use crate::session::ClientRelation;
-
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    let owner_id = ClientId::new(1);
-    let follower_id = ClientId::new(2);
-    session.add_client(owner_id);
-    session.add_client(follower_id);
-
-    let _ = session
-        .clients()
-        .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
-
-    // Note: client_state for Following returns target's state, so we need a case
-    // where it actually fails. Use an unknown client ID that has a ring buffer.
-    // Actually, Following clients DO return effective state from target.
-    // So let's use a client that IS registered but has some state issue.
-    // The real trigger is when client_state returns None, which happens when
-    // the client is not found at all. But we want ring buffer log which requires
-    // the client to exist.
-    //
-    // In practice, client_state returns None only when the client is not found.
-    // The ring buffer log is best-effort (logs if client has ring buffer).
-    // We just need the NotFound path.
-    let request = authed_request(
-        GetCursorRequest {
-            window_id: None,
-            client_id: 999,
-        },
-        ClientId::new(999),
-    );
-    let response = service.get_cursor(request).await;
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
 
 #[tokio::test]
 async fn test_get_layout_following_client_not_found_logs() {
@@ -1312,26 +691,6 @@ async fn test_get_visible_lines_client_not_found_logs() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_get_selection_client_not_found_logs() {
-    // Test the ring buffer logging path in get_selection (lines 362-368).
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    session.add_client(ClientId::new(1));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 666,
-        },
-        ClientId::new(666),
-    );
-    let response = service.get_selection(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
 
 // =========================================================================
 // Coverage: get_screen_content capture error paths (#497)
@@ -1395,77 +754,6 @@ async fn test_get_screen_content_valid_formats() {
 // =========================================================================
 // Coverage: get_registers specific register with content (#497)
 // =========================================================================
-
-#[tokio::test]
-async fn test_get_registers_specific_register_with_content() {
-    // Test the specific register lookup path where
-    // the register exists and has content.
-    use reovim_driver_text_session::RegisterContent;
-
-    let (registry, session) = test_registry_with_buffer_manager();
-    session.add_client(ClientId::new(1));
-
-    // Set a named register on per-client state (#515)
-    session
-        .clients()
-        .update_client_state(ClientId::new(1), |state| {
-            state
-                .registers
-                .set_named('a', RegisterContent::characterwise("hello world"));
-        });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Query register 'a' by name
-    let request = authed_request(
-        GetRegistersRequest {
-            names: vec!["a".to_string()],
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_registers(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert_eq!(resp.registers.len(), 1);
-    assert_eq!(resp.registers[0].name, "a");
-    assert_eq!(resp.registers[0].content, "hello world");
-    assert_eq!(resp.registers[0].yank_type, "char");
-}
-
-#[tokio::test]
-async fn test_get_registers_specific_linewise_register() {
-    // Test the linewise yank_type path in specific register lookup.
-    use reovim_driver_text_session::RegisterContent;
-
-    let (registry, session) = test_registry_with_buffer_manager();
-    session.add_client(ClientId::new(1));
-
-    session
-        .clients()
-        .update_client_state(ClientId::new(1), |state| {
-            state
-                .registers
-                .set_named('b', RegisterContent::linewise("a full line\n"));
-        });
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetRegistersRequest {
-            names: vec!["b".to_string()],
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_registers(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert_eq!(resp.registers.len(), 1);
-    assert_eq!(resp.registers[0].yank_type, "line");
-}
 
 #[tokio::test]
 async fn test_get_registers_multiple_specific() {
@@ -1560,71 +848,6 @@ async fn test_get_registers_client_not_found() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_selection_isolation_per_client() {
-    use {
-        reovim_driver_text_buffer::Position as KernelPosition,
-        reovim_driver_text_session::{Viewport, api::Selection},
-    };
-
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create buffer first
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Create two clients
-    let client_a = crate::session::ClientId::new(50);
-    let client_b = crate::session::ClientId::new(60);
-    session.add_client(client_a);
-    session.add_client(client_b);
-
-    // Client A has a selection
-    session.clients().update_client_state(client_a, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            window.selection =
-                Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
-        }
-    });
-
-    // Client B has no selection (just viewport)
-    session.clients().update_client_state(client_b, |state| {
-        if let Some(window) = state.windows.active_mut() {
-            window.viewport = Viewport::new(80, 24);
-            window.selection = None;
-        }
-    });
-
-    // Verify via gRPC service
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // Query Client A's selection - should have selection
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 50,
-        },
-        ClientId::new(50),
-    );
-    let response = service.get_selection(request).await.unwrap().into_inner();
-    assert!(response.has_selection, "Client A should have selection");
-    assert_eq!(response.visual_mode, Some("char".to_string()), "Client A selection mode");
-
-    // Query Client B's selection - should have NO selection
-    let request = authed_request(
-        GetSelectionRequest {
-            window_id: None,
-            client_id: 60,
-        },
-        ClientId::new(60),
-    );
-    let response = service.get_selection(request).await.unwrap().into_inner();
-    assert!(!response.has_selection, "Client B should NOT have selection");
-}
 
 // =========================================================================
 // Tests: CLIENT_NOT_FOUND error paths with ring buffer logging
@@ -1655,22 +878,6 @@ fn test_registry_with_dangling_follower(client_id: ClientId) -> Arc<SessionRegis
     registry
 }
 
-#[tokio::test]
-async fn test_get_cursor_dangling_follower_not_found() {
-    let cid = ClientId::new(50);
-    let registry = test_registry_with_dangling_follower(cid);
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetCursorRequest {
-            client_id: cid.as_usize() as u64,
-            window_id: None,
-        },
-        cid,
-    );
-    let err = service.get_cursor(request).await.unwrap_err();
-    assert_eq!(err.code(), tonic::Code::NotFound);
-}
 
 #[tokio::test]
 async fn test_get_layout_dangling_follower_not_found() {
@@ -1705,22 +912,6 @@ async fn test_get_visible_lines_dangling_follower_not_found() {
     assert_eq!(err.code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_get_selection_dangling_follower_not_found() {
-    let cid = ClientId::new(53);
-    let registry = test_registry_with_dangling_follower(cid);
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetSelectionRequest {
-            client_id: cid.as_usize() as u64,
-            window_id: None,
-        },
-        cid,
-    );
-    let err = service.get_selection(request).await.unwrap_err();
-    assert_eq!(err.code(), tonic::Code::NotFound);
-}
 
 // =========================================================================
 // Coverage: kernel_to_proto_option() all variants (L62-77)

@@ -32,7 +32,7 @@ use {
         notification,
     },
     reovim_subsys_input::KeySequence,
-    reovim_subsys_session::{ChangeSet, bridges::BridgeRegistry},
+    reovim_subsys_session::{change_set::ChangeSet, bridges::BridgeRegistry},
     tonic::{Request, Response, Status},
 };
 
@@ -224,26 +224,10 @@ impl InputService for InputServiceImpl {
             }
         }
 
-        // #664: Update cursor snapshot for bridge tick consumption.
-        // Bridges (illuminate, etc.) read this in tick() to detect cursor movement.
-        if accumulated_changes.cursor_moved {
-            session.clients().with_clients_mut(|clients| {
-                let client = clients.get_mut(&client_id)?;
-                let window = client.state.windows.active()?;
-                let buffer_id = window.buffer_id?;
-                #[allow(clippy::cast_possible_truncation)]
-                {
-                    let snap = client
-                        .state
-                        .extensions
-                        .get_or_insert::<reovim_subsys_session::CursorSnapshot>();
-                    snap.line = window.cursor.line as u32;
-                    snap.col = window.cursor.column as u32;
-                    snap.buffer_id = buffer_id.as_usize() as u64;
-                }
-                Some(())
-            });
-        }
+        // #664/#753: CursorSnapshot is now an opaque [u8; 8] identity token.
+        // The text-domain driver encodes cursor position into the snapshot via the
+        // coordination codec. The server no longer writes raw line/col/buffer_id here.
+        // Bridges read cursor state via projections instead.
 
         // #474: Auto-detect selection changes (defense-in-depth).
         if let Some(state) = session.clients().client_state(client_id) {

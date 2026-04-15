@@ -9,11 +9,10 @@ use std::sync::Arc;
 
 use {
     reovim_protocol::v2::{
-        CaptureRequestPayload, GetCursorRequest, GetCursorResponse, GetLayoutRequest,
-        GetLayoutResponse, GetModeRequest, GetModeResponse, GetOptionsRequest, GetOptionsResponse,
-        GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
-        GetScreenContentResponse, GetSelectionRequest, GetSelectionResponse,
-        GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, Position, RegisterEntry,
+        CaptureRequestPayload, DomainDatum, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
+        GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest,
+        GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse,
+        GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, RegisterEntry,
         SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, TabPageInfo, WindowLeaf,
         WindowNode, WindowRect, WindowSplit, notification::Payload,
         state_service_server::StateService, window_node::Node,
@@ -107,98 +106,21 @@ impl StateServiceImpl {
 
 #[tonic::async_trait]
 impl StateService for StateServiceImpl {
-    /// Get the current editor mode.
+    /// Get domain-neutral projection state (#753).
     ///
-    /// Returns the mode from the client's per-client mode stack.
+    /// Replaces `GetMode`, `GetCursor`, `GetSelection`. Domain state is now
+    /// queried via projection tags (e.g., "text.mode", "text.cursor").
     ///
-    /// # Per-client state (#471): Per-client mode isolation
-    ///
-    /// Each client has its own mode stack. This method returns the mode
-    /// for the specified client only.
-    ///
-    /// # Errors
-    ///
-    /// - `Unauthenticated`: No session token (#483)
-    /// - `NotFound`: Client with given ID not found in session
-    async fn get_mode(
+    /// Stub: returns empty projections until the projection store query is wired.
+    async fn get_projections(
         &self,
-        request: Request<GetModeRequest>,
-    ) -> Result<Response<GetModeResponse>, Status> {
-        // #483 Phase 5: Token for auth, body client_id for targeting
-        let token_client_id = request.extensions().get::<ClientId>().copied();
-        let req = request.into_inner();
-        let session = self.get_session()?;
-
-        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
-
-        // Per-client mode lookup - now required (no fallback to shared state)
-        let mode = session.client_current_mode(client_id).ok_or_else(|| {
-            // Log to ring buffer before returning error
-            session.with_client_ring_buffer(client_id, |rb| {
-                rb.log_event(
-                    ClientEventType::Error,
-                    format!("CLIENT_NOT_FOUND: get_mode client_id={}", req.client_id),
-                );
-            });
-            Status::not_found(format!("Client {} not found", req.client_id))
-        })?;
-
-        let name = mode.name().to_string();
-        let display = name.to_uppercase();
-        let is_insert = name.contains("insert") || name.contains("cmdline");
-
-        Ok(Response::new(GetModeResponse {
-            name,
-            display,
-            is_insert,
-        }))
-    }
-
-    /// Get cursor position in the active window/buffer.
-    ///
-    /// # Phase #471: Per-client cursor isolation
-    ///
-    /// Returns the cursor from the client's per-client window layout.
-    ///
-    /// # Errors
-    ///
-    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
-    /// - `NotFound`: Client with given ID not found, or no active window
-    #[allow(clippy::cast_possible_truncation)]
-    async fn get_cursor(
-        &self,
-        request: Request<GetCursorRequest>,
-    ) -> Result<Response<GetCursorResponse>, Status> {
-        // #483 Phase 5: Token for auth, body client_id for targeting
-        let token_client_id = request.extensions().get::<ClientId>().copied();
-        let req = request.into_inner();
-        let session = self.get_session()?;
-
-        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
-
-        // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.clients().client_state(client_id).ok_or_else(|| {
-            session.with_client_ring_buffer(client_id, |rb| {
-                rb.log_event(
-                    ClientEventType::Error,
-                    format!("CLIENT_NOT_FOUND: get_cursor client_id={}", req.client_id),
-                );
-            });
-            Status::not_found(format!("Client {} not found", req.client_id))
-        })?;
-
-        let window = state
-            .windows
-            .active()
-            .ok_or_else(|| Status::not_found("No active window"))?;
-
-        let cursor = &window.cursor;
-        Ok(Response::new(GetCursorResponse {
-            window_id: window.id.as_usize() as u64,
-            position: Some(Position {
-                line: cursor.line as u64,
-                column: cursor.column as u64,
-            }),
+        request: Request<GetProjectionsRequest>,
+    ) -> Result<Response<GetProjectionsResponse>, Status> {
+        let _req = request.into_inner();
+        self.get_session()?;
+        // Stub: return empty projections until projection store query is wired.
+        Ok(Response::new(GetProjectionsResponse {
+            projections: vec![],
         }))
     }
 
@@ -406,77 +328,6 @@ impl StateService for StateServiceImpl {
         }))
     }
 
-    /// Get selection state.
-    ///
-    /// Returns the current visual selection bounds and mode if active.
-    /// Selection is active when in visual mode (character, line, or block).
-    ///
-    /// # Phase #471: Per-client selection isolation
-    ///
-    /// Returns the selection from the client's per-client window layout.
-    ///
-    /// # Errors
-    ///
-    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
-    /// - `NotFound`: Client with given ID not found, or no active window
-    #[allow(clippy::cast_possible_truncation)]
-    async fn get_selection(
-        &self,
-        request: Request<GetSelectionRequest>,
-    ) -> Result<Response<GetSelectionResponse>, Status> {
-        use reovim_protocol::v2::Selection;
-
-        // #483 Phase 5: Token for auth, body client_id for targeting
-        let token_client_id = request.extensions().get::<ClientId>().copied();
-        let req = request.into_inner();
-        let session = self.get_session()?;
-
-        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
-
-        // Per-client state lookup - now required (no fallback to shared state)
-        let state = session.clients().client_state(client_id).ok_or_else(|| {
-            session.with_client_ring_buffer(client_id, |rb| {
-                rb.log_event(
-                    ClientEventType::Error,
-                    format!("CLIENT_NOT_FOUND: get_selection client_id={}", req.client_id),
-                );
-            });
-            Status::not_found(format!("Client {} not found", req.client_id))
-        })?;
-
-        // Get selection from per-client windows
-        let layout = &state.windows;
-
-        // Get active window from per-client layout
-        let window = layout
-            .active()
-            .ok_or_else(|| Status::not_found("No active window"))?;
-
-        if let Some(ref sel) = window.selection {
-            return Ok(Response::new(GetSelectionResponse {
-                has_selection: true,
-                selection: Some(Selection {
-                    start: Some(Position {
-                        line: sel.start.line as u64,
-                        column: sel.start.column as u64,
-                    }),
-                    end: Some(Position {
-                        line: sel.end.line as u64,
-                        column: sel.end.column as u64,
-                    }),
-                }),
-                visual_mode: Some(sel.mode.as_str().to_string()),
-            }));
-        }
-
-        // Window exists but no selection
-        Ok(Response::new(GetSelectionResponse {
-            has_selection: false,
-            selection: None,
-            visual_mode: None,
-        }))
-    }
-
     /// Get screen content via TUI capture relay.
     ///
     /// This implements the CLI→Server→TUI→Server→CLI capture flow:
@@ -602,14 +453,18 @@ impl StateService for StateServiceImpl {
 
         let bank = &client_state.registers;
 
+        // (#753) RegisterEntry is now domain-neutral: no content_type/yank_type fields.
+        // Text register content is serialized as DomainDatum with the text as the display string.
         let registers = if req.names.is_empty() {
             // Return all non-empty registers
             bank.iter_non_empty()
                 .map(|(name, content)| RegisterEntry {
                     name: name.to_string(),
-                    content_type: "text".to_string(),
-                    content: content.text.clone(),
-                    yank_type: content.yank_type_str().to_string(),
+                    domain_id: None, // text domain registers leave domain_id unset
+                    content: Some(DomainDatum {
+                        content: content.text.as_bytes().to_vec(),
+                        display: Some(content.text.clone()),
+                    }),
                 })
                 .collect::<Vec<_>>()
         } else {
@@ -624,9 +479,11 @@ impl StateService for StateServiceImpl {
                     }
                     Some(RegisterEntry {
                         name: name_char.to_string(),
-                        content_type: "text".to_string(),
-                        content: content.text.clone(),
-                        yank_type: content.yank_type_str().to_string(),
+                        domain_id: None,
+                        content: Some(DomainDatum {
+                            content: content.text.as_bytes().to_vec(),
+                            display: Some(content.text.clone()),
+                        }),
                     })
                 })
                 .collect()

@@ -254,41 +254,67 @@ impl StepTest {
             .get_buffer_content(None)
             .await
             .expect("Failed to get buffer content");
-        let cursor_response = client.get_cursor().await.expect("Failed to get cursor");
-        let mode_response = client.get_mode().await.expect("Failed to get mode");
+        // (#753) get_cursor/get_mode removed; use get_projections with tag filters.
+        // client_id=0 means "authenticated client" (token-resolved on server).
+        let projections_response = client
+            .get_projections(0, vec![])
+            .await
+            .expect("Failed to get projections");
         let register_response = client
             .get_registers(vec![])
             .await
             .expect("Failed to get registers");
 
-        // Extract cursor position from nested Position message
-        let (cursor_line, cursor_column) = cursor_response
-            .position
-            .map_or((0, 0), |pos| (pos.line, pos.column));
+        // Extract cursor and mode from domain-neutral projections.
+        let mut cursor_line: u16 = 0;
+        let mut cursor_column: u16 = 0;
+        let mut mode_display = String::new();
+        let mut edit_mode = String::new();
+        for p in &projections_response.projections {
+            let display = p
+                .datum
+                .as_ref()
+                .and_then(|d| d.display.as_deref())
+                .unwrap_or("");
+            if p.tag == "text.cursor" {
+                if let Some((l, c)) = display.split_once(':') {
+                    cursor_line = l.parse().unwrap_or(0);
+                    cursor_column = c.parse().unwrap_or(0);
+                }
+            } else if p.tag == "text.mode" {
+                mode_display = display.to_string();
+                edit_mode = display.to_string();
+            }
+        }
 
-        // Populate registers from gRPC response
+        // (#753) RegisterEntry.content is now Option<DomainDatum>; extract display string.
+        // yank_type field is removed; stub as empty string.
         let registers = register_response
             .registers
             .into_iter()
             .map(|entry| {
+                let content = entry
+                    .content
+                    .as_ref()
+                    .and_then(|d| d.display.clone())
+                    .unwrap_or_default();
                 (
                     entry.name,
                     RegisterInfo {
-                        content: entry.content,
-                        yank_type: entry.yank_type,
+                        content,
+                        yank_type: String::new(),
                     },
                 )
             })
             .collect();
 
-        #[allow(clippy::cast_possible_truncation)]
         StateSnapshot {
             key: key.to_string(),
             buffer: buffer_response.lines.join("\n"),
-            cursor_line: cursor_line as u16,
-            cursor_column: cursor_column as u16,
-            mode_display: mode_response.display,
-            edit_mode: mode_response.name,
+            cursor_line,
+            cursor_column,
+            mode_display,
+            edit_mode,
             registers,
         }
     }

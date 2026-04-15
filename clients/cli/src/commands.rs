@@ -94,25 +94,52 @@ pub async fn mode(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails or target client doesn't exist.
+/// Get domain-neutral projection state for a client (#753).
+///
+/// Replaces `cursor` command — domain state is now in projections.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn cursor(
     client: &mut GrpcClient,
     target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.debug_get_cursor(target_client_id).await?;
-
-    let (line, column) = response
-        .position
-        .map_or((0, 0), |pos| (pos.line, pos.column));
+    // (#753) Cursor state is now a domain projection; query all projections.
+    let response = client
+        .debug_get_projections(target_client_id, vec![])
+        .await?;
 
     match format {
-        OutputFormat::Plain => Ok(format!("{}:{}", line + 1, column + 1)), // 1-indexed for display
+        OutputFormat::Plain => {
+            if response.projections.is_empty() {
+                return Ok(format!("No projections for client {target_client_id}"));
+            }
+            let mut output = String::new();
+            for p in &response.projections {
+                let display = p
+                    .datum
+                    .as_ref()
+                    .and_then(|d| d.display.as_deref())
+                    .unwrap_or("");
+                let _ = std::fmt::Write::write_fmt(
+                    &mut output,
+                    format_args!("{}: {}\n", p.tag, display),
+                );
+            }
+            Ok(output.trim_end().to_string())
+        }
         OutputFormat::Json => {
             let json = serde_json::json!({
-                "window_id": response.window_id,
-                "line": line,
-                "column": column,
+                "projections": response.projections.iter().map(|p| serde_json::json!({
+                    "tag": p.tag,
+                    "domain_id": p.domain_id,
+                    "window_id": p.window_id,
+                    "display": p.datum.as_ref().and_then(|d| d.display.as_deref()),
+                    "version": p.version,
+                })).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -300,26 +327,34 @@ pub async fn registers(
 
             let mut output = String::new();
             for reg in &response.registers {
+                // content is opaque DomainDatum — use display string if available
+                let raw = reg
+                    .content
+                    .as_ref()
+                    .and_then(|d| d.display.as_deref())
+                    .unwrap_or("(opaque)");
                 // Truncate content for display (max 50 chars)
-                let display_content = if reg.content.len() > 50 {
-                    format!("{}...", &reg.content[..47])
+                let display_content = if raw.len() > 50 {
+                    format!("{}...", &raw[..47])
                 } else {
-                    reg.content.clone()
+                    raw.to_string()
                 };
                 // Escape newlines for single-line display
                 let escaped = display_content.replace('\n', "\\n");
-                let _ = writeln!(output, "\"{}: {} [{}]", reg.name, escaped, reg.yank_type);
+                let _ = writeln!(output, "\"{}: {}", reg.name, escaped);
             }
             Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
-                "registers": response.registers.iter().map(|r| serde_json::json!({
-                    "name": r.name,
-                    "content_type": r.content_type,
-                    "content": r.content,
-                    "yank_type": r.yank_type,
-                })).collect::<Vec<_>>(),
+                "registers": response.registers.iter().map(|r| {
+                    let display = r.content.as_ref().and_then(|d| d.display.as_deref());
+                    serde_json::json!({
+                        "name": r.name,
+                        "domain_id": r.domain_id,
+                        "content": display,
+                    })
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -982,7 +1017,7 @@ pub async fn clients(
                         "client_type": meta.map_or("", |m| m.client_type.as_str()),
                         "display_name": meta.map_or("", |m| m.display_name.as_str()),
                         "joined_at_ms": meta.map_or(0, |m| m.joined_at_ms),
-                        "mode": view.map_or("", |v| v.mode.as_str()),
+                        "domain_state": view.and_then(|v| v.domain_state.as_ref().and_then(|d| d.display.as_deref())),
                         "buffer_id": view.and_then(|v| v.buffer_id),
                         "relation": c.relation.as_ref().map(|r| serde_json::json!({
                             "type": r.r#type,
@@ -1107,7 +1142,7 @@ pub async fn presence_list(
                     "client_type": c.client_type,
                     "display_name": c.display_name,
                     "buffer_id": c.buffer_id,
-                    "mode": c.mode,
+                    "viewport_state": c.viewport_state.as_ref().and_then(|d| d.display.as_deref()),
                     "sync_mode": c.sync_mode,
                     "follow_target": c.follow_target,
                     "joined_at_ms": c.joined_at_ms,

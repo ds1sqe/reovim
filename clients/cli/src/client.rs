@@ -7,22 +7,20 @@ use {
         // Debug service types (#468: CLI uses DebugService for client-targeting ops)
         DebugCaptureRequest,
         DebugCaptureResponse,
-        DebugGetCursorRequest,
-        DebugGetCursorResponse,
         DebugGetExtensionStateRequest,
         DebugGetExtensionStateResponse,
         DebugGetModeRequest,
         DebugGetModeResponse,
+        DebugGetProjectionsRequest,
+        DebugGetProjectionsResponse,
         DebugListClientsRequest,
         DebugListClientsResponse,
         DebugListExtensionsRequest,
         DebugListExtensionsResponse,
         DebugSendKeysRequest,
         DebugSendKeysResponse,
-        GetCursorRequest,
-        GetCursorResponse,
-        GetModeRequest,
-        GetModeResponse,
+        GetProjectionsRequest,
+        GetProjectionsResponse,
         GetRawContentRequest,
         GetRawContentResponse,
         GetRegistersRequest,
@@ -317,78 +315,22 @@ impl GrpcClient {
     /// Get the current editor mode.
     ///
     /// # Phase #479: Auto-join and per-client state
+    /// Get domain-neutral projection state for this client (#753).
     ///
-    /// The client auto-joins on first call and queries its per-client mode.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
-        self.ensure_joined().await;
-        let request = self.make_request(GetModeRequest { client_id: 0 });
-        let response = self.state.get_mode(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the mode for a specific client.
-    ///
-    /// # Per-client state (#471): Per-client mode isolation
-    ///
-    /// Returns the mode from the specified client's per-client mode stack.
+    /// Replaces `get_mode` and `get_cursor` — domain state is now queried
+    /// via projection tags (e.g., "text.mode", "text.cursor").
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn get_mode_for_client(
+    pub async fn get_projections(
         &mut self,
         client_id: u64,
-    ) -> Result<GetModeResponse, GrpcClientError> {
-        let request = self.make_request(GetModeRequest { client_id });
-        let response = self.state.get_mode(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the cursor position.
-    ///
-    /// # Phase #479: Auto-join and per-client state
-    ///
-    /// The client auto-joins on first call and queries its per-client cursor.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
-        self.ensure_joined().await;
-        let request = self.make_request(GetCursorRequest {
-            window_id: None,
-            client_id: 0,
-        });
-        let response = self.state.get_cursor(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the cursor position for a specific client.
-    ///
-    /// # Per-client state (#471): Per-client cursor isolation
-    ///
-    /// Returns the cursor from the specified client's per-client editing state.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn get_cursor_for_client(
-        &mut self,
-        client_id: u64,
-    ) -> Result<GetCursorResponse, GrpcClientError> {
-        let request = self.make_request(GetCursorRequest {
-            window_id: None,
-            client_id,
-        });
-        let response = self.state.get_cursor(request).await?;
+        tags: Vec<String>,
+    ) -> Result<GetProjectionsResponse, GrpcClientError> {
+        let request = self.make_request(GetProjectionsRequest { client_id, tags });
+        let response = self.state.get_projections(request).await?;
         Ok(response.into_inner())
     }
 
@@ -592,12 +534,11 @@ impl GrpcClient {
     pub async fn presence_update(
         &mut self,
         buffer_id: Option<u64>,
-        mode: Option<String>,
+        _mode: Option<String>,
     ) -> Result<UpdatePresenceResponse, GrpcClientError> {
         let request = self.make_request(UpdatePresenceRequest {
             buffer_id,
-            visible_lines: None,
-            mode,
+            viewport_state: None,
         });
         let response = self.presence.update_presence(request).await?;
         Ok(response.into_inner())
@@ -736,12 +677,16 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails or target client doesn't exist.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn debug_get_cursor(
+    pub async fn debug_get_projections(
         &mut self,
         target_client_id: u64,
-    ) -> Result<DebugGetCursorResponse, GrpcClientError> {
-        let request = Request::new(DebugGetCursorRequest { target_client_id });
-        let response = self.debug.debug_get_cursor(request).await?;
+        tags: Vec<String>,
+    ) -> Result<DebugGetProjectionsResponse, GrpcClientError> {
+        let request = Request::new(DebugGetProjectionsRequest {
+            target_client_id,
+            tags,
+        });
+        let response = self.debug.debug_get_projections(request).await?;
         Ok(response.into_inner())
     }
 

@@ -218,33 +218,49 @@ impl PresenceTestClient {
         Ok(())
     }
 
-    /// Get the current mode for this client.
+    /// Get the current mode display string for this client.
     ///
-    /// # Per-client state (#471): Per-client mode isolation
-    ///
-    /// Returns the mode from this client's per-client mode stack.
-    pub async fn get_mode(&mut self) -> Result<reovim_protocol::v2::GetModeResponse, String> {
-        let id = self.client_id();
-        self.client
-            .get_mode_for_client(id)
+    /// (#753) `get_mode_for_client` removed; extracted from `get_projections` "text.mode" tag.
+    pub async fn get_mode(&mut self) -> Result<String, String> {
+        let result = self
+            .client
+            .get_projections(0, vec!["text.mode".to_string()])
             .await
-            .map_err(|e| format!("Get mode failed: {e}"))
+            .map_err(|e| format!("Get mode failed: {e}"))?;
+        let display = result
+            .projections
+            .iter()
+            .find(|p| p.tag == "text.mode")
+            .and_then(|p| p.datum.as_ref())
+            .and_then(|d| d.display.clone())
+            .unwrap_or_default();
+        Ok(display)
     }
 
     /// Get cursor position for this client.
     ///
-    /// # Per-client state (#471): Per-client cursor isolation
-    ///
-    /// Returns the cursor from this client's per-client editing state.
+    /// (#753) `get_cursor_for_client` removed; extracted from `get_projections` "text.cursor" tag.
     pub async fn get_cursor(&mut self) -> Result<(u64, u64), String> {
-        let id = self.client_id();
-        let response = self
+        let result = self
             .client
-            .get_cursor_for_client(id)
+            .get_projections(0, vec!["text.cursor".to_string()])
             .await
             .map_err(|e| format!("Get cursor failed: {e}"))?;
-        let pos = response.position.ok_or("No position in response")?;
-        Ok((pos.line, pos.column))
+        for p in &result.projections {
+            if p.tag == "text.cursor" {
+                let display = p
+                    .datum
+                    .as_ref()
+                    .and_then(|d| d.display.as_deref())
+                    .unwrap_or("");
+                if let Some((l, c)) = display.split_once(':') {
+                    let line: u64 = l.parse().unwrap_or(0);
+                    let col: u64 = c.parse().unwrap_or(0);
+                    return Ok((line, col));
+                }
+            }
+        }
+        Ok((0, 0))
     }
 
     /// Get buffer content.

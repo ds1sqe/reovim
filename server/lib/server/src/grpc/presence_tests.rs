@@ -130,8 +130,7 @@ async fn test_update_presence_success() {
     let update_req = authed_request(
         UpdatePresenceRequest {
             buffer_id: Some(42),
-            visible_lines: Some(LineRange { start: 5, end: 30 }),
-            mode: Some("INSERT".to_string()),
+            viewport_state: None,
         },
         cid,
     );
@@ -149,8 +148,7 @@ async fn test_update_presence_unknown_client() {
     let request = authed_request(
         UpdatePresenceRequest {
             buffer_id: Some(42),
-            visible_lines: None,
-            mode: None,
+            viewport_state: None,
         },
         ClientId::new(999),
     );
@@ -427,7 +425,7 @@ fn test_to_proto_client_info_independent() {
     assert_eq!(info.id, 42);
     assert!(info.relation.is_none()); // Independent
     assert!(info.view.is_some());
-    assert_eq!(info.view.as_ref().unwrap().mode, "normal");
+    // (#753) ClientViewState no longer has a mode field — mode is domain-neutral.
     assert!(info.metadata.is_some());
 }
 

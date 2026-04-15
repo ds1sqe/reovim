@@ -67,12 +67,30 @@ impl TestClient {
     }
 
     /// Get cursor position (line, col).
-    #[allow(clippy::cast_possible_truncation, clippy::significant_drop_tightening)]
+    ///
+    /// (#753) `get_cursor` removed; extracted from `get_projections` "text.cursor" tag.
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn get_cursor(&mut self) -> Result<(u16, u16), String> {
         let client = self.get_client().await?;
-        let result = client.get_cursor().await.map_err(|e| e.to_string())?;
-        let (line, col) = result.position.map_or((0, 0), |pos| (pos.line, pos.column));
-        Ok((line as u16, col as u16))
+        let result = client
+            .get_projections(0, vec!["text.cursor".to_string()])
+            .await
+            .map_err(|e| e.to_string())?;
+        for p in &result.projections {
+            if p.tag == "text.cursor" {
+                let display = p
+                    .datum
+                    .as_ref()
+                    .and_then(|d| d.display.as_deref())
+                    .unwrap_or("");
+                if let Some((l, c)) = display.split_once(':') {
+                    let line: u16 = l.parse().unwrap_or(0);
+                    let col: u16 = c.parse().unwrap_or(0);
+                    return Ok((line, col));
+                }
+            }
+        }
+        Ok((0, 0))
     }
 
     /// Get buffer content.

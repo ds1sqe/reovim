@@ -1303,6 +1303,16 @@ impl reovim_subsys_layout::RootCompositor for TestPlacementCompositor {
     fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
         Box::new(Self)
     }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+        reovim_subsys_layout::LayoutTopology::Single(
+            reovim_subsys_layout::WindowId::from_raw(1),
+        )
+    }
 }
 
 #[test]

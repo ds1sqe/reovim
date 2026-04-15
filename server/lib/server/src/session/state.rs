@@ -396,7 +396,7 @@ impl SessionState {
         client_id: usize,
         client: reovim_driver_text_session::ClientContext<'_>,
         key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(bool, reovim_subsys_session::ChangeSet)> {
+    ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
         use {
             reovim_driver_text_session::SessionRuntime,
             reovim_subsys_session::ClientId as DriverClientId,
@@ -457,7 +457,7 @@ impl SessionState {
         );
 
         let Some(result) = resolve_result else {
-            return Some((false, reovim_subsys_session::ChangeSet::new()));
+            return Some((false, reovim_subsys_session::change_set::ChangeSet::new()));
         };
 
         // Populate PendingBindings

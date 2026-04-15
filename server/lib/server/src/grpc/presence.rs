@@ -33,7 +33,7 @@ use {
         ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
         ClientRelationType as ProtoRelationType, ClientRole as ProtoRole,
         ClientViewState as ProtoViewState, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse,
-        LineRange, ListClientsRequest, ListClientsResponse, Notification, Position, PresenceUpdate,
+        ListClientsRequest, ListClientsResponse, Notification, PresenceUpdate,
         SetRelationRequest, SetRelationResponse, SetRoleRequest, SetRoleResponse,
         SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         TransitionError as ProtoTransitionError, UpdatePresenceRequest, UpdatePresenceResponse,
@@ -75,25 +75,13 @@ pub fn to_proto_client_info(client: &Client) -> ProtoClientInfo {
         },
     });
 
-    // Get cursor from active window
-    let cursor = client
-        .state
-        .windows
-        .active()
-        .map(|w| Position {
-            line: w.cursor.line as u64,
-            column: w.cursor.column as u64,
-        })
-        .unwrap_or_default();
-
     // Get buffer_id from active window
     let buffer_id = client.state.windows.active().and_then(|w| w.buffer_id);
 
+    // (#753) ClientViewState: cursor/selection/mode replaced by domain_state (opaque DomainDatum).
     let view = ProtoViewState {
-        mode: client.state.mode_stack.current().name().to_string(),
-        cursor: Some(cursor),
         buffer_id: buffer_id.map(|id| id.as_usize() as u64),
-        selection: None, // TODO: convert selection if present
+        domain_state: None, // domain state populated by text-domain driver projections
     };
 
     let metadata = ProtoClientMetadata {
@@ -129,12 +117,8 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         display_name: presence.display_name.clone(),
         // Phase #479: Use optional field to eliminate ID ambiguity
         buffer_id: presence.buffer_id.map(|id| id as u64),
-        // cursor field removed - now tracked via CursorMoved with client_id
-        visible_lines: Some(LineRange {
-            start: presence.visible_lines.0 as u64,
-            end: presence.visible_lines.1 as u64,
-        }),
-        mode: presence.mode.clone(),
+        // (#753) visible_lines/mode replaced by opaque viewport_state (DomainDatum).
+        viewport_state: None, // populated by text-domain driver projections
         sync_mode,
         follow_target,
         joined_at_ms: presence.joined_at_ms(),
@@ -417,19 +401,13 @@ impl PresenceService for PresenceServiceImpl {
         // #483 Phase 5: Token-only authentication
         let client_id = require_client_id(token_client_id)?;
 
-        // Update presence via closure
-        // Note: cursor field removed from request (Phase 14, #471) - now tracked via CursorMoved
+        // (#753) Update presence via closure.
+        // visible_lines and mode fields replaced by opaque viewport_state (DomainDatum).
         let updated = session.presence().update(client_id, |presence| {
             if let Some(buffer_id) = req.buffer_id {
                 presence.buffer_id = Some(buffer_id as usize);
             }
-            // cursor field removed - tracked via CursorMoved with client_id
-            if let Some(visible_lines) = &req.visible_lines {
-                presence.visible_lines = (visible_lines.start as usize, visible_lines.end as usize);
-            }
-            if let Some(mode) = &req.mode {
-                presence.mode.clone_from(mode);
-            }
+            // viewport_state is opaque; text-domain specific visible_lines/mode removed.
         });
 
         updated.map_or_else(
@@ -587,8 +565,8 @@ impl PresenceService for PresenceServiceImpl {
                         "Cannot set relation: would create a cycle".to_string()
                     }
                     TransitionResult::CannotTargetSelf => "Cannot target self".to_string(),
-                    TransitionResult::RequiresCursorSync { .. } => {
-                        "Cursor sync required for this transition".to_string()
+                    TransitionResult::RequiresDomainSync => {
+                        "Domain sync required for this transition".to_string()
                     }
                     TransitionResult::Ok => unreachable!(),
                 };
@@ -648,8 +626,8 @@ impl PresenceService for PresenceServiceImpl {
                     TransitionResult::TargetNotFound(_) => ProtoTransitionError::TargetNotFound,
                     TransitionResult::WouldCreateCycle => ProtoTransitionError::WouldCreateCycle,
                     TransitionResult::CannotTargetSelf => ProtoTransitionError::CannotTargetSelf,
-                    TransitionResult::RequiresCursorSync { .. } => {
-                        ProtoTransitionError::RequiresCursorSync
+                    TransitionResult::RequiresDomainSync => {
+                        ProtoTransitionError::RequiresDomainSync
                     }
                     TransitionResult::Ok => unreachable!(),
                 };

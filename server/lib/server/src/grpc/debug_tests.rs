@@ -400,12 +400,13 @@ async fn test_debug_get_mode_no_sessions() {
 }
 
 #[tokio::test]
-async fn test_debug_get_cursor_no_sessions() {
+async fn test_debug_get_projections_no_sessions() {
     let service = DebugServiceImpl::new();
-    let request = Request::new(DebugGetCursorRequest {
+    let request = Request::new(DebugGetProjectionsRequest {
         target_client_id: 1,
+        tags: vec![],
     });
-    let result = service.debug_get_cursor(request).await;
+    let result = service.debug_get_projections(request).await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), tonic::Code::Unavailable);
 }
@@ -455,12 +456,13 @@ async fn test_debug_get_mode_target_zero() {
 }
 
 #[tokio::test]
-async fn test_debug_get_cursor_target_zero() {
+async fn test_debug_get_projections_target_zero() {
     let service = DebugServiceImpl::new();
-    let request = Request::new(DebugGetCursorRequest {
+    let request = Request::new(DebugGetProjectionsRequest {
         target_client_id: 0,
+        tags: vec![],
     });
-    let result = service.debug_get_cursor(request).await;
+    let result = service.debug_get_projections(request).await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), tonic::Code::InvalidArgument);
 }
@@ -575,29 +577,18 @@ async fn test_debug_get_mode_client_not_found() {
 }
 
 #[tokio::test]
-async fn test_debug_get_cursor_client_not_found() {
-    let (service, _) = test_debug_service_with_session();
-
-    let request = Request::new(DebugGetCursorRequest {
-        target_client_id: 999,
-    });
-    let result = service.debug_get_cursor(request).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_debug_get_cursor_no_active_window() {
+async fn test_debug_get_projections_with_session() {
     let (service, session) = test_debug_service_with_session();
     session.add_client(crate::session::ClientId::new(1));
 
-    let request = Request::new(DebugGetCursorRequest {
+    let request = Request::new(DebugGetProjectionsRequest {
         target_client_id: 1,
+        tags: vec![],
     });
-    let result = service.debug_get_cursor(request).await;
-    // Client exists but has no active window (empty WindowLayout)
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    let result = service.debug_get_projections(request).await;
+    // Stub returns empty projections
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().into_inner().projections.len(), 0);
 }
 
 #[tokio::test]

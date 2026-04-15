@@ -557,7 +557,7 @@ impl Session {
         &self,
         client_id: ClientId,
         key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(bool, reovim_subsys_session::ChangeSet)> {
+    ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
         // Check for domain driver first (no lock needed — read is cheap).
         let driver = self.domain_driver.read().clone();
 
@@ -581,7 +581,7 @@ impl Session {
             let mut state = self.state.write();
             let shared_ext = &mut state.app.extensions;
 
-            let cs =
+            let dispatch =
                 driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
 
             // Pending text/byte edits for syntax/codec bridge: currently not
@@ -590,6 +590,17 @@ impl Session {
             // updates into the domain driver entirely, making this unnecessary.
             // Until Phase 5, the runner does not call `set_domain_driver`, so
             // the fallback path below handles all actual dispatch.
+
+            // Convert DispatchResult → ChangeSet for the server notification pipeline.
+            let mut cs = reovim_subsys_session::change_set::ChangeSet::new();
+            cs.modified_buffers = dispatch.buffers.modified;
+            cs.created_buffers = dispatch.buffers.created;
+            cs.deleted_buffers = dispatch.buffers.closed;
+            match dispatch.directive {
+                reovim_subsys_session::Directive::Quit => cs.should_quit = true,
+                reovim_subsys_session::Directive::Detach => cs.should_detach = true,
+                _ => {}
+            }
 
             return Some((true, cs));
         }

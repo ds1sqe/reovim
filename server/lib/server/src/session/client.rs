@@ -48,7 +48,8 @@ use {
     },
     reovim_kernel::api::v1::{BufferId, ModeStack},
     reovim_subsys_layout::RootCompositor,
-    reovim_subsys_session::{ExtensionMap, KeySequence, Viewport},
+    reovim_driver_text_session::Viewport,
+    reovim_subsys_session::{ExtensionMap, KeySequence},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};
@@ -114,15 +115,11 @@ impl ClientRelation {
 pub enum TransitionResult {
     /// Transition succeeded.
     Ok,
-    /// Transition requires cursor sync first (for Following → Sharing upgrade).
+    /// Transition requires domain sync first (for Following → Sharing upgrade).
     ///
-    /// The caller should sync the cursor to the target position, then retry.
-    RequiresCursorSync {
-        /// Current cursor position.
-        current: CursorPosition,
-        /// Target cursor position to sync to.
-        target: CursorPosition,
-    },
+    /// The caller should sync domain state, then retry. Cursor positions are
+    /// domain-specific and handled via projection polling (#753).
+    RequiresDomainSync,
     /// Target client not found.
     TargetNotFound(ClientId),
     /// Cannot create cycle (A → B → A transitively).
@@ -138,10 +135,10 @@ impl TransitionResult {
         matches!(self, Self::Ok)
     }
 
-    /// Check if the transition requires cursor sync.
+    /// Check if the transition requires domain sync.
     #[must_use]
-    pub const fn requires_cursor_sync(&self) -> bool {
-        matches!(self, Self::RequiresCursorSync { .. })
+    pub const fn requires_domain_sync(&self) -> bool {
+        matches!(self, Self::RequiresDomainSync)
     }
 }
 
@@ -400,10 +397,7 @@ impl Client {
                         .active()
                         .map_or_else(CursorPosition::default, |w| w.cursor);
                     if my_cursor != target_cursor {
-                        return TransitionResult::RequiresCursorSync {
-                            current: my_cursor,
-                            target: target_cursor,
-                        };
+                        return TransitionResult::RequiresDomainSync;
                     }
                 }
             }

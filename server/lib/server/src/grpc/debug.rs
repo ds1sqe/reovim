@@ -15,7 +15,7 @@
 //! - `debug_send_keys`: Send keys to a specific client (no auth)
 //! - `debug_capture`: Capture a client's screen via TUI relay (no auth)
 //! - `debug_get_mode`: Get a client's editor mode (no auth)
-//! - `debug_get_cursor`: Get a client's cursor position (no auth)
+//! - `debug_get_projections`: Get a client's projection state (no auth)
 //! - `debug_list_clients`: List connected clients (no auth)
 
 // `Status` is tonic's standard error type - size is inherent to the library
@@ -29,11 +29,11 @@ use std::sync::Arc;
 use {
     reovim_protocol::v2::{
         CaptureRequestPayload, DebugCaptureRequest, DebugCaptureResponse, DebugExtensionInfo,
-        DebugGetCursorRequest, DebugGetCursorResponse, DebugGetExtensionStateRequest,
-        DebugGetExtensionStateResponse, DebugGetModeRequest, DebugGetModeResponse,
+        DebugGetExtensionStateRequest, DebugGetExtensionStateResponse, DebugGetModeRequest,
+        DebugGetModeResponse, DebugGetProjectionsRequest, DebugGetProjectionsResponse,
         DebugListClientsRequest, DebugListClientsResponse, DebugListExtensionsRequest,
         DebugListExtensionsResponse, DebugSendKeysRequest, DebugSendKeysResponse, LogEntry,
-        LogLevelRequest, LogLevelResponse, LogTailRequest, LogTailResponse, Notification, Position,
+        LogLevelRequest, LogLevelResponse, LogTailRequest, LogTailResponse, Notification,
         SendKeysRequest, debug_service_server::DebugService, input_service_server::InputService,
         notification::Payload,
     },
@@ -351,31 +351,20 @@ impl DebugService for DebugServiceImpl {
         }))
     }
 
-    /// Get a client's cursor position (direct server-side lookup).
-    async fn debug_get_cursor(
+    /// Get a client's domain-neutral projection state (direct server-side lookup).
+    ///
+    /// Replaces `debug_get_cursor` (#753): cursor state is now a domain projection.
+    /// Returns empty projections until the domain driver populates the store.
+    async fn debug_get_projections(
         &self,
-        request: Request<DebugGetCursorRequest>,
-    ) -> Result<Response<DebugGetCursorResponse>, Status> {
+        request: Request<DebugGetProjectionsRequest>,
+    ) -> Result<Response<DebugGetProjectionsResponse>, Status> {
         let req = request.into_inner();
-        let client_id = Self::resolve_target(req.target_client_id)?;
-        let session = self.get_session()?;
-
-        let state = session.clients().client_state(client_id).ok_or_else(|| {
-            Status::not_found(format!("Client {} not found", req.target_client_id))
-        })?;
-
-        let window = state
-            .windows
-            .active()
-            .ok_or_else(|| Status::not_found("No active window"))?;
-
-        let cursor = &window.cursor;
-        Ok(Response::new(DebugGetCursorResponse {
-            window_id: window.id.as_usize() as u64,
-            position: Some(Position {
-                line: cursor.line as u64,
-                column: cursor.column as u64,
-            }),
+        Self::resolve_target(req.target_client_id)?;
+        self.get_session()?;
+        // Stub: return empty projections until projection store query is wired.
+        Ok(Response::new(DebugGetProjectionsResponse {
+            projections: vec![],
         }))
     }
 
