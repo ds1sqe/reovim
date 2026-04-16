@@ -84,6 +84,12 @@ pub struct Server<M = DefaultModuleService> {
     /// `SessionFactory` contract for future session creation paths.
     initial_session_state: Option<Mutex<Option<SessionState>>>,
 
+    /// Optional domain driver for domain-neutral dispatch (#753 E1).
+    ///
+    /// When set, the default session is wired with this driver on startup.
+    /// Dispatch stays on the fallback path until `enable_driver_dispatch` is called.
+    domain_driver: Option<Arc<dyn reovim_subsys_session::DomainDriver>>,
+
     /// Extension bridge registry for gRPC notification emission (#468).
     ///
     /// Bridges are collected from `BridgeProvider` in bootstrap.
@@ -111,6 +117,7 @@ impl Server<DefaultModuleService> {
             services: None,
             session_factory: None,
             initial_session_state: None,
+            domain_driver: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -148,6 +155,7 @@ impl Server<DefaultModuleService> {
             services: Some(services),
             session_factory: None,
             initial_session_state: None,
+            domain_driver: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -186,6 +194,7 @@ impl Server<DefaultModuleService> {
             services: None,
             session_factory: Some(factory),
             initial_session_state: None,
+            domain_driver: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -220,6 +229,7 @@ impl<M: Send + Sync> Server<M> {
             services: self.services,
             session_factory: self.session_factory,
             initial_session_state: self.initial_session_state,
+            domain_driver: self.domain_driver,
             bridge_registry: self.bridge_registry,
             module_service,
         }
@@ -229,6 +239,20 @@ impl<M: Send + Sync> Server<M> {
     #[must_use]
     pub fn with_initial_session_state(mut self, session_state: SessionState) -> Self {
         self.initial_session_state = Some(Mutex::new(Some(session_state)));
+        self
+    }
+
+    /// Inject a domain driver for domain-neutral dispatch (#753 E1).
+    ///
+    /// The driver is wired into the default session at startup.
+    /// Dispatch stays on the fallback path until `Session::enable_driver_dispatch`
+    /// is called explicitly.
+    #[must_use]
+    pub fn with_domain_driver(
+        mut self,
+        driver: Arc<dyn reovim_subsys_session::DomainDriver>,
+    ) -> Self {
+        self.domain_driver = Some(driver);
         self
     }
 
@@ -266,6 +290,13 @@ impl<M: Send + Sync> Server<M> {
             SessionId::new(&*self.config.default_session_name),
             session_state,
         ));
+
+        // Wire domain driver into the default session (#753 E1).
+        // Dispatch remains on the fallback path until enable_driver_dispatch() is called.
+        if let Some(ref driver) = self.domain_driver {
+            default_session.set_domain_driver(Arc::clone(driver));
+        }
+
         self.sessions.insert(&default_session);
 
         tracing::info!(
@@ -559,6 +590,13 @@ impl<M: Send + Sync> Server<M> {
             SessionId::new(&*self.config.default_session_name),
             session_state,
         ));
+
+        // Wire domain driver into the default session (#753 E1).
+        // Dispatch remains on the fallback path until enable_driver_dispatch() is called.
+        if let Some(ref driver) = self.domain_driver {
+            default_session.set_domain_driver(Arc::clone(driver));
+        }
+
         self.sessions.insert(&default_session);
 
         tracing::info!(

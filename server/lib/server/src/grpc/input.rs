@@ -201,9 +201,7 @@ impl InputService for InputServiceImpl {
         // even when InsertChar already recorded cursor_move is safe (#505).
         // Per-client active_buffer (#471)
         if any_handled
-            && let Some(buffer_id) = session
-                .clients()
-                .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
+            && let Some(buffer_id) = session.active_buffer_for_client(client_id)
         {
             accumulated_changes.record_cursor_move(buffer_id);
         }

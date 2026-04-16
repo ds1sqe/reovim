@@ -50,7 +50,9 @@ mod window;
 pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
     dispatch_result::{BufferChanges, CommandResult, Directive, DispatchResult},
-    domain_driver::DomainDriver,
+    domain_driver::{
+        DomainDriver, RegisterEntry as DomainRegisterEntry, SelectionInfo, TabInfo, ViewportInfo,
+    },
     option_change::OptionChange,
     window::Window as DomainWindow,
 };

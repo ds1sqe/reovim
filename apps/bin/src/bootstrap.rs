@@ -98,6 +98,11 @@ pub struct BootstrapResult {
     pub module_ctx: Arc<ModuleContext>,
     /// Extension bridges collected during the same bootstrap pass.
     pub bridges: reovim_driver_text_session::bridges::BridgeRegistry,
+    /// Domain driver for the default session (#753 E1).
+    ///
+    /// Wired into the server's default session at startup.
+    /// Dispatch stays on the fallback path — `enable_driver_dispatch` is not called.
+    pub domain_driver: Option<Arc<dyn reovim_subsys_session::DomainDriver>>,
 }
 
 /// Load user module configuration from `~/.config/reovim/modules.toml`.
@@ -344,11 +349,18 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     trigger_empty_session_handlers(&mut session_state, &services);
     session_state.ensure_initial_compositor_window();
 
+    // Build TextDomainDriver for domain-neutral dispatch (#753 E1).
+    //
+    // Dispatch stays on the fallback path — `enable_driver_dispatch` is not called here.
+    // The driver is wired so the server can use it for state queries and projections.
+    let domain_driver = build_text_domain_driver(&session_state, &services);
+
     BootstrapResult {
         session_state,
         module_registry,
         module_ctx,
         bridges,
+        domain_driver,
     }
 }
 
@@ -483,6 +495,80 @@ fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Opti
         tracing::warn!(mode = mode_str, "Mode string missing module prefix");
         None
     }
+}
+
+/// Build a `TextDomainDriver` for domain-neutral dispatch (#753 E1).
+///
+/// Constructs the driver from registries already in `session_state` and the
+/// `TextBufferRegistry` from `services`. The driver is wired with a resolver
+/// dispatch provider so it can handle key dispatch when activated.
+///
+/// The driver is returned as `Some(Arc<dyn DomainDriver>)`. The server wires
+/// it into the default session but does NOT call `enable_driver_dispatch` —
+/// dispatch stays on the fallback path during E1.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn build_text_domain_driver(
+    session_state: &SessionState,
+    services: &Arc<ServiceRegistry>,
+) -> Option<Arc<dyn reovim_subsys_session::DomainDriver>> {
+    use std::sync::Arc;
+
+    use {
+        reovim_driver_text_input::ResolverDispatchProvider,
+        reovim_driver_text_session::TextDomainDriver,
+        reovim_subsys_input::KeymapQuery,
+    };
+
+    // Get TextBufferRegistry from services (registered earlier in bootstrap).
+    let text_buffers = services.get::<reovim_provider_text::TextBufferRegistry>()?;
+
+    // Clone the command registry from session_state (CommandRegistry: Clone).
+    let command_registry: Arc<dyn reovim_driver_text_session::api::CommandExecutor> =
+        Arc::new(session_state.command_registry.clone());
+
+    // Clone the kernel context from session_state (KernelContext: Clone).
+    let kernel = session_state.app.kernel.clone();
+
+    // Clone the home mode from session_state.
+    let home_mode = session_state.home_mode().clone();
+
+    // Build a second ResolverRegistry for the dispatch provider by cloning
+    // resolvers from session_state.resolver_registry (read-only access).
+    let driver_resolver_registry = {
+        let reg = ResolverRegistry::new();
+        for mode_id in session_state.resolver_registry.modes() {
+            if let Some(resolver) = session_state.resolver_registry.get(&mode_id) {
+                reg.register_arc(resolver);
+            }
+        }
+        reg
+    };
+
+    // Clone the keymap registry (KeymapRegistry: Clone) for the dispatch provider.
+    let keymap_arc: Arc<dyn KeymapQuery> = Arc::new(session_state.keymap_registry.clone());
+
+    // Construct TextDomainDriver with domain_id=1 (canonical text domain).
+    let mut driver = TextDomainDriver::new(
+        1,
+        home_mode,
+        Arc::new(kernel),
+        command_registry,
+        text_buffers,
+    );
+
+    // Wire dispatch provider.
+    let provider = Arc::new(ResolverDispatchProvider::new(
+        driver_resolver_registry,
+        keymap_arc,
+    ));
+    let shared_ext = Arc::new(parking_lot::RwLock::new(
+        reovim_subsys_session::ExtensionMap::new(),
+    ));
+    driver.set_dispatch_provider(provider, shared_ext);
+
+    tracing::info!("TextDomainDriver constructed for default session (#753 E1)");
+
+    Some(Arc::new(driver) as Arc<dyn reovim_subsys_session::DomainDriver>)
 }
 
 /// Trigger empty session handlers to create initial buffer.

@@ -10,7 +10,7 @@
 //! The `presence` service tracks display preferences and sync awareness.
 //! The `clients` directory tracks editing roles and state ownership.
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use reovim_kernel::api::v1::ServiceRegistry;
 
@@ -60,6 +60,14 @@ pub struct Session {
     /// Set by the runner at session creation via [`Session::set_domain_driver`].
     domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
 
+    /// Controls whether the domain driver path is active for dispatch (#753 E1).
+    ///
+    /// When `false` (default), `dispatch_key_for_client` uses the inline
+    /// `SessionState` fallback path even if a domain driver is wired.
+    /// Call [`Session::enable_driver_dispatch`] to activate the driver path.
+    #[allow(dead_code)]
+    use_driver_dispatch: AtomicBool,
+
     /// Server-side projection cache (#753).
     ///
     /// Stores versioned domain projections per (ClientId, ProjectionTag).
@@ -105,6 +113,7 @@ impl Session {
             state: RwLock::new(SessionState::default()),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            use_driver_dispatch: AtomicBool::new(false),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -145,6 +154,7 @@ impl Session {
             state: RwLock::new(state),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            use_driver_dispatch: AtomicBool::new(false),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -201,10 +211,44 @@ impl Session {
         *self.domain_driver.write() = Some(driver);
     }
 
+    /// Enable the domain driver dispatch path (#753 E1).
+    ///
+    /// After this is called, `dispatch_key_for_client` routes through the
+    /// domain driver (if one is wired) instead of the inline fallback path.
+    ///
+    /// Not called during E1 bootstrap — the driver is wired but dispatch
+    /// stays on the fallback path until a later phase activates this.
+    pub fn enable_driver_dispatch(&self) {
+        self.use_driver_dispatch
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Get the domain driver (if wired).
     #[must_use]
     pub fn domain_driver(&self) -> Option<Arc<dyn DomainDriver>> {
         self.domain_driver.read().clone()
+    }
+
+    // =========================================================================
+    // Domain Driver Queries (#753 E2)
+    // =========================================================================
+
+    /// Get the active buffer for a client via domain driver, falling back to EditingState.
+    #[must_use]
+    pub fn active_buffer_for_client(
+        &self,
+        client_id: ClientId,
+    ) -> Option<reovim_kernel::api::v1::BufferId> {
+        // Try domain driver first
+        if let Some(ref driver) = *self.domain_driver.read() {
+            let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
+            if let Some(buf) = driver.active_buffer(subsys_id) {
+                return Some(buf);
+            }
+        }
+        // Fall back to EditingState
+        self.clients
+            .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
     }
 
     // =========================================================================
@@ -561,7 +605,11 @@ impl Session {
         // Check for domain driver first (no lock needed — read is cheap).
         let driver = self.domain_driver.read().clone();
 
-        if let Some(ref driver) = driver {
+        if let Some(ref driver) = driver
+            && self
+                .use_driver_dispatch
+                .load(std::sync::atomic::Ordering::Relaxed)
+        {
             // Domain driver path: delegate entirely to the driver.
             // Lock ordering: clients (write) → state (write). Domain driver's
             // internal locks are disjoint — no deadlock risk.

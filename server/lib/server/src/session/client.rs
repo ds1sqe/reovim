@@ -370,35 +370,25 @@ impl Client {
                 return TransitionResult::CannotTargetSelf;
             }
             // Check target exists
-            let Some(target_client) = clients.get(&target) else {
+            if !clients.contains_key(&target) {
                 return TransitionResult::TargetNotFound(target);
-            };
+            }
             // Check for cycles
             if would_create_cycle(client.id, target, clients) {
                 return TransitionResult::WouldCreateCycle;
             }
 
-            // Edge case: Following → Sharing with same target requires cursor sync
+            // Following → Sharing with same target always requires domain sync (#753).
+            // Cursor comparison is domain-specific — the server cannot compare
+            // domain-owned cursor positions. Always return RequiresDomainSync and
+            // let the projection pipeline handle cursor alignment.
             if let (
                 Some(ClientRelation::Following { target: old_target }),
                 Some(ClientRelation::Sharing { with: new_target }),
             ) = (&client.relation, &new_relation)
             {
-                // Only check cursor sync when upgrading from Follow to Share with same target
                 if old_target == new_target {
-                    let target_cursor = target_client
-                        .state
-                        .windows
-                        .active()
-                        .map_or_else(CursorPosition::default, |w| w.cursor);
-                    let my_cursor = client
-                        .state
-                        .windows
-                        .active()
-                        .map_or_else(CursorPosition::default, |w| w.cursor);
-                    if my_cursor != target_cursor {
-                        return TransitionResult::RequiresDomainSync;
-                    }
+                    return TransitionResult::RequiresDomainSync;
                 }
             }
         }

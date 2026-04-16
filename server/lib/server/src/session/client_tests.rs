@@ -548,7 +548,9 @@ fn test_validate_following_to_sharing_requires_cursor_sync() {
 
 #[test]
 fn test_validate_following_to_sharing_same_cursor_ok() {
-    // Same target, cursors already match -> Ok
+    // #753: Following → Sharing with same target always returns RequiresDomainSync.
+    // Cursor comparison is domain-specific — the server cannot compare
+    // domain-owned cursor positions. Projection pipeline handles alignment.
     let id1 = ClientId::new(1);
     let id2 = ClientId::new(2);
 
@@ -570,13 +572,13 @@ fn test_validate_following_to_sharing_same_cursor_ok() {
     );
     follower.relation = Some(ClientRelation::Following { target: id2 });
 
-    // Cursors both at default (0,0) -> should succeed
+    // #753: Always RequiresDomainSync — cursor positions are domain-specific
     let result = Client::validate_relation_change(
         &follower,
         Some(ClientRelation::Sharing { with: id2 }),
         &clients,
     );
-    assert!(result.is_ok());
+    assert!(result.requires_domain_sync());
 }
 
 #[test]

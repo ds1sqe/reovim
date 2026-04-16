@@ -388,10 +388,13 @@ async fn run(cli: Cli) -> std::io::Result<()> {
                 Arc::clone(&bootstrap.module_registry),
                 Arc::clone(&bootstrap.module_ctx),
             );
-            let server = Server::new(config)
+            let mut server = Server::new(config)
                 .with_initial_session_state(bootstrap.session_state)
                 .with_bridges(bootstrap.bridges)
                 .with_module_service(runner_module_service);
+            if let Some(driver) = bootstrap.domain_driver {
+                server = server.with_domain_driver(driver);
+            }
             server.run().await
         }
 

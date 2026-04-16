@@ -168,14 +168,10 @@ impl EditorService for EditorServiceImpl {
         let client_id = request.extensions().get::<ClientId>().copied();
         let session = self.get_session()?;
 
-        // Per-client active_buffer (#471)
-        let buffer_id = client_id.and_then(|cid| {
-            session.clients().with_clients(|clients| {
-                clients
-                    .get(&cid)
-                    .and_then(|c| c.state.active_buffer.map(|id| id.as_usize() as u64))
-            })
-        });
+        // Per-client active_buffer (#471, #753 E2: domain driver query)
+        let buffer_id = client_id
+            .and_then(|cid| session.active_buffer_for_client(cid))
+            .map(|id| id.as_usize() as u64);
 
         Ok(Response::new(GetActiveBufferResponse { buffer_id }))
     }

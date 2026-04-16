@@ -255,4 +255,90 @@ pub trait DomainDriver: Send + Sync {
     fn window_count(&self, _client_id: ClientId) -> usize {
         0
     }
+
+    /// Active buffer for a client (the buffer in the focused window).
+    ///
+    /// Returns `None` if client not found or no buffer is active.
+    fn active_buffer(&self, _client_id: ClientId) -> Option<BufferId> {
+        None
+    }
+
+    /// Viewport info for a client's window (scroll position, dimensions).
+    fn viewport_info(&self, _client_id: ClientId, _window_id: WindowId) -> Option<ViewportInfo> {
+        None
+    }
+
+    /// Selection state for a client.
+    fn selection_info(&self, _client_id: ClientId) -> Option<SelectionInfo> {
+        None
+    }
+
+    /// Tab page info for a client.
+    fn tab_info(&self, _client_id: ClientId) -> Vec<TabInfo> {
+        Vec::new()
+    }
+
+    /// Register entries for a client (name, opaque content, display string).
+    fn register_entries(&self, _client_id: ClientId) -> Vec<RegisterEntry> {
+        Vec::new()
+    }
+
+    /// Single register entry by name.
+    fn register_entry(&self, _client_id: ClientId, _name: &str) -> Option<RegisterEntry> {
+        None
+    }
+
+    /// Clipboard history entry at index.
+    fn clipboard_history_entry(&self, _client_id: ClientId, _index: usize) -> Option<Vec<u8>> {
+        None
+    }
+}
+
+// ==========================================================================
+// Domain-neutral query result types
+// ==========================================================================
+
+/// Viewport information for a client's window (domain-neutral).
+#[derive(Debug, Clone)]
+pub struct ViewportInfo {
+    /// Scroll offset (top line visible).
+    pub scroll_top: u64,
+    /// Viewport width in cells.
+    pub width: u16,
+    /// Viewport height in cells.
+    pub height: u16,
+}
+
+/// Selection state for a client (domain-neutral).
+///
+/// Selection coordinates are opaque bytes — the server transports them
+/// without interpreting line/column values.
+#[derive(Debug, Clone)]
+pub struct SelectionInfo {
+    /// Selection mode as string (e.g., "char", "line", "block").
+    pub mode: String,
+    /// Display representation of selection bounds.
+    pub display: String,
+}
+
+/// Tab page info (domain-neutral).
+#[derive(Debug, Clone)]
+pub struct TabInfo {
+    /// Tab page ID.
+    pub id: u64,
+    /// Display label.
+    pub label: String,
+    /// Whether this tab is active.
+    pub is_active: bool,
+}
+
+/// Register entry (domain-neutral).
+#[derive(Debug, Clone)]
+pub struct RegisterEntry {
+    /// Register name (e.g., `"\"\"`, `"a"`, `"+"`).
+    pub name: String,
+    /// Opaque content bytes.
+    pub content: Vec<u8>,
+    /// Human-readable display string.
+    pub display: Option<String>,
 }
