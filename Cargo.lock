@@ -2361,6 +2361,8 @@ dependencies = [
  "libloading",
  "reovim-arch",
  "reovim-depgraph",
+ "reovim-protocol",
+ "reovim-subsys-coordination",
  "serde",
  "serde_json",
  "tracing",
@@ -3849,6 +3851,10 @@ dependencies = [
  "reovim-kernel",
  "reovim-subsys-vfs",
 ]
+
+[[package]]
+name = "reovim-render-codec"
+version = "0.15.0-dev"
 
 [[package]]
 name = "reovim-server"

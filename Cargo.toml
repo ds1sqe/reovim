@@ -152,6 +152,7 @@ members = [
     "shared/protocol",
     "shared/arch",
     "shared/input-codec",
+    "shared/render-codec",
     "shared/net",
     "shared/log",
     "shared/trace",
@@ -253,6 +254,7 @@ reovim-domain = { path = "./shared/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./shared/domains/text", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./shared/domains/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./shared/input-codec", version = "0.15.0-dev" }
+reovim-render-codec = { path = "./shared/render-codec", version = "0.15.0-dev" }
 reovim-net = { path = "./shared/net", version = "0.15.0-dev" }
 reovim-log = { path = "./shared/log", version = "0.15.0-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.15.0-dev" }

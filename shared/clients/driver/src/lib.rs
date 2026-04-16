@@ -17,6 +17,7 @@ pub mod services;
 // crate being tested, not its dependencies.
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod projection;
 pub mod traits;
 pub mod types;
 pub mod ui;

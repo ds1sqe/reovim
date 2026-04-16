@@ -1,0 +1,15 @@
+[package]
+name = "reovim-render-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Render codec crate — domain-neutral CommandBuffer types for cell_grid, pixel, vr, and volumetric rendering"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

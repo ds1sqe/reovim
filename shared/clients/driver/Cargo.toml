@@ -15,15 +15,20 @@ workspace = true
 [features]
 default = []
 serde = ["dep:serde", "dep:serde_json"]
+proto = ["dep:reovim-protocol"]
 testing = []
 
 [dependencies]
 libloading = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
+reovim-subsys-coordination = { workspace = true }
 tracing = { workspace = true }
 unicode-width = { workspace = true }
 
 # Optional: notification parsing helpers
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+
+# Optional: proto boundary transpilation
+reovim-protocol = { workspace = true, features = ["grpc"], optional = true }
