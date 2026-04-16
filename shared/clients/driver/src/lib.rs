@@ -4,6 +4,7 @@
 pub mod chrome_utils;
 pub mod conceal;
 pub mod discovery;
+pub mod domain;
 pub mod ffi;
 pub mod handle;
 pub mod loader;
@@ -18,6 +19,7 @@ pub mod services;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod projection;
+pub mod render;
 pub mod traits;
 pub mod types;
 pub mod ui;

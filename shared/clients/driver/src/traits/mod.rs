@@ -1,3 +1,7 @@
+mod cell_grid;
+
+pub use cell_grid::CellGridClientModule;
+
 use std::sync::Arc;
 
 use crate::{

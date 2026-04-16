@@ -40,4 +40,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **drivers**: `TextDomainDriver` implements all 7 new `DomainDriver` methods plus `selection_info`. `dispatch_key_with_extensions` passes server-owned `ExtensionMap` refs through to `TextKeyDispatchProvider`, solving the dual-ownership borrow problem
 - **server**: `Session` stores optional `Arc<dyn DomainDriver>` via `set_domain_driver`/`domain_driver()`. `dispatch_key_for_client` delegates to domain driver when wired, falls back to inline `SessionState` path when not wired
 
+- **client**: `CellGridClientModule` extension trait — TUI-specific `ClientModule` extension with `domain_gutter_width()` for domain-aware gutter layout in cell-grid clients
+- **client**: `RenderTarget` trait — opaque `submit(bytes)` interface for platform-agnostic render command submission with `RenderError` enum
+- **client**: `TextDomainView` domain view module — implements `ClientModule` + `CellGridClientModule`, receives text domain projections, delegates viewport rendering to `DefaultViewportRenderer`
+- **client**: `render_unknown_domain_placeholder()` — fallback renderer for unrecognized domains with warning log
+
 ### Fixed
