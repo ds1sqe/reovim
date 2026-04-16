@@ -27,6 +27,8 @@ use {
     reovim_subsys_session::{DomainDriver, ExtensionMap},
 };
 
+// active_buffer is now domain-owned; only reachable via domain driver (#753).
+
 use super::{Client, ClientDirectory, ClientId, SessionId, SessionState};
 
 /// Default channel capacity for notifications.
@@ -233,22 +235,19 @@ impl Session {
     // Domain Driver Queries (#753 E2)
     // =========================================================================
 
-    /// Get the active buffer for a client via domain driver, falling back to EditingState.
+    /// Get the active buffer for a client via domain driver (#753 E3).
+    ///
+    /// active_buffer is now exclusively owned by the domain driver.
+    /// Returns `None` when no domain driver is wired or driver has no buffer.
     #[must_use]
     pub fn active_buffer_for_client(
         &self,
         client_id: ClientId,
     ) -> Option<reovim_kernel::api::v1::BufferId> {
-        // Try domain driver first
-        if let Some(ref driver) = *self.domain_driver.read() {
-            let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
-            if let Some(buf) = driver.active_buffer(subsys_id) {
-                return Some(buf);
-            }
-        }
-        // Fall back to EditingState
-        self.clients
-            .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
+        let driver = self.domain_driver.read();
+        let driver = driver.as_ref()?;
+        let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
+        driver.active_buffer(subsys_id)
     }
 
     // =========================================================================
@@ -285,65 +284,44 @@ impl Session {
     /// Add a client with metadata.
     ///
     /// Creates an independent client with the given metadata.
-    /// This is the preferred method for gRPC handlers that have client info.
+    /// Text-domain state (windows, active_buffer, etc.) is managed by the
+    /// domain driver via `on_client_added` (#753 E3).
     pub fn add_client_with_metadata(&self, client_id: ClientId, metadata: super::ClientMetadata) {
-        use {reovim_driver_text_session::Window, reovim_kernel::api::v1::ModeStack};
+        use reovim_kernel::api::v1::ModeStack;
 
-        // Per-client state (#471, #491): Initialize new clients with session's home mode
-        // stored in SessionShared. After this, the client's per-client mode stack is used.
-        // active_buffer: new clients get the first kernel buffer (scratch buffer).
+        // Initialize with session's home mode. After this the per-client mode stack is used.
         let state = self.state.read();
         let home_mode = state.home_mode().clone();
-        let active_buffer = state.app.kernel.buffers.list().first().copied();
-        // #474: Clone shared compositor for per-client ownership
+        // #474: Clone shared compositor for per-client layout notifications.
         let compositor = state
             .driver_session
             .shared
             .compositor
             .as_ref()
             .map(|c| c.boxed_clone());
-        drop(state); // Release lock before acquiring clients lock
+        drop(state);
 
         tracing::debug!(
             %client_id,
             mode_module = %home_mode.module(),
             mode_name = %home_mode.name(),
-            ?active_buffer,
             has_compositor = compositor.is_some(),
-            "Initializing client with home mode and per-client windows"
+            "Initializing client with home mode"
         );
 
         let mode_stack = ModeStack::new(home_mode);
         let mut client = Client::with_mode_stack(client_id, metadata, mode_stack);
 
-        // Per-client active_buffer: initialize with first kernel buffer
-        client.state.active_buffer = active_buffer;
-
-        // #474: Set per-client compositor and create windows with matching IDs.
-        // The compositor's window IDs must match the per-client WindowLayout IDs
-        // so that cursor notifications (which use WindowLayout IDs) align with
-        // layout notifications (which use compositor IDs).
-        if let Some(compositor) = compositor {
-            if let Some(buffer_id) = active_buffer {
-                let (tw, th) = client.state.terminal_size;
-                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
-                let result = compositor.composite(screen);
-                for p in &result.placements {
-                    let window = Window::with_id_and_buffer(p.window_id, buffer_id);
-                    client.state.windows.add(window);
-                }
-                if let Some(focused) = result.focused {
-                    client.state.windows.set_active(focused);
-                }
-            }
-            client.state.compositor = Some(compositor);
-        } else if let Some(buffer_id) = active_buffer {
-            // No compositor — create window with new ID (fallback)
-            let window = Window::with_buffer(buffer_id);
-            client.state.windows.add(window);
-        }
+        // #474: Set per-client compositor for layout notification generation.
+        client.state.compositor = compositor;
 
         self.clients.add_client_with_state(client);
+
+        // Notify domain driver so it can initialize its per-client text-domain state.
+        if let Some(ref driver) = *self.domain_driver.read() {
+            let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
+            driver.on_client_added(subsys_id);
+        }
     }
 
     /// Remove a client from the session.
@@ -489,47 +467,6 @@ impl Session {
     // Per-Client Key Resolution (#471)
     // =========================================================================
 
-    /// Ensure a client's per-client windows are populated.
-    ///
-    /// When a client joins before any buffers exist, their windows are empty.
-    /// Later, when a buffer is created (e.g., via `:e`), only the shared session
-    /// windows are updated. This helper syncs per-client windows with the session's
-    /// active buffer when needed.
-    ///
-    /// # When this matters
-    ///
-    /// 1. Client connects (no buffers yet) → empty windows
-    /// 2. `:e filename` creates buffer → shared windows updated
-    /// 3. Client tries to move cursor → per-client windows still empty!
-    ///
-    /// This helper fixes step 3 by creating a window for the active buffer.
-    fn ensure_client_has_window(editing_state: &mut super::EditingState) {
-        use reovim_driver_text_session::Window;
-
-        // Only sync if per-client windows are empty AND client has an active buffer
-        if editing_state.windows.is_empty()
-            && let Some(buffer_id) = editing_state.active_buffer
-        {
-            // #474: If per-client compositor exists, create windows with matching IDs
-            if let Some(ref compositor) = editing_state.compositor {
-                let (tw, th) = editing_state.terminal_size;
-                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
-                let result = compositor.composite(screen);
-                for p in &result.placements {
-                    let window = Window::with_id_and_buffer(p.window_id, buffer_id);
-                    editing_state.windows.add(window);
-                }
-                if let Some(focused) = result.focused {
-                    editing_state.windows.set_active(focused);
-                }
-            } else {
-                let window = Window::with_buffer(buffer_id);
-                editing_state.windows.add(window);
-            }
-            tracing::debug!(?buffer_id, "Synced per-client windows with active buffer");
-        }
-    }
-
     /// Resolve a key with per-client mode stack (#471).
     ///
     /// This method provides access to both session state AND per-client mode stack,
@@ -555,27 +492,13 @@ impl Session {
     pub async fn resolve_key_for_client(
         &self,
         client_id: ClientId,
-        key: &reovim_subsys_input::KeyEvent,
+        _key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(
         reovim_driver_text_input::ResolveResult,
         reovim_driver_text_session::api::StateChanges,
     )> {
-        // Acquire both locks in consistent order to avoid deadlocks
-        let mut clients = self.clients.write();
-        let mut state = self.state.write();
-
-        // Find the target client ID based on relation
-        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-
-        // Phase #471/#477/#480: Get mutable references to per-client state
-        let target_client = clients.get_mut(&target_id)?;
-        let editing_state = &mut target_client.state;
-
-        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state);
-
-        // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
-        state.resolve_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
+        tracing::warn!(%client_id, "resolve_key_for_client: no domain driver path — fallback disabled (#753 E3)");
+        None
     }
 
     /// Dispatch a key through the full pipeline (sub-plan 05 Phase 4A).
@@ -602,7 +525,7 @@ impl Session {
         client_id: ClientId,
         key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
-        // Check for domain driver first (no lock needed — read is cheap).
+        // Domain driver path (active when use_driver_dispatch is true).
         let driver = self.domain_driver.read().clone();
 
         if let Some(ref driver) = driver
@@ -610,36 +533,18 @@ impl Session {
                 .use_driver_dispatch
                 .load(std::sync::atomic::Ordering::Relaxed)
         {
-            // Domain driver path: delegate entirely to the driver.
-            // Lock ordering: clients (write) → state (write). Domain driver's
-            // internal locks are disjoint — no deadlock risk.
             let mut clients = self.clients.write();
             let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-
             let target_client = clients.get_mut(&target_id)?;
-            let editing_state = &mut target_client.state;
-
-            // Ensure per-client windows are populated (fixes buffer-after-client-join).
-            Self::ensure_client_has_window(editing_state);
+            let client_ext = &mut target_client.state.extensions;
 
             let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
-            let client_ext = &mut editing_state.extensions;
-
-            // Acquire state lock for shared extensions.
             let mut state = self.state.write();
             let shared_ext = &mut state.app.extensions;
 
             let dispatch =
                 driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
 
-            // Pending text/byte edits for syntax/codec bridge: currently not
-            // extracted from the domain driver path. `DispatchResult` carries
-            // only buffer lifecycle + directive. Phase 5 moves syntax/codec
-            // updates into the domain driver entirely, making this unnecessary.
-            // Until Phase 5, the runner does not call `set_domain_driver`, so
-            // the fallback path below handles all actual dispatch.
-
-            // Convert DispatchResult → ChangeSet for the server notification pipeline.
             let mut cs = reovim_subsys_session::change_set::ChangeSet::new();
             cs.modified_buffers = dispatch.buffers.modified;
             cs.created_buffers = dispatch.buffers.created;
@@ -653,19 +558,9 @@ impl Session {
             return Some((true, cs));
         }
 
-        // Fallback: no domain driver wired — use inline SessionState dispatch.
-        // Expected during Phase 4A (runner does not call set_domain_driver yet).
-        tracing::debug!("dispatch_key_for_client: no domain driver wired, using fallback path");
-        let mut clients = self.clients.write();
-        let mut state = self.state.write();
-
-        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-        let target_client = clients.get_mut(&target_id)?;
-        let editing_state = &mut target_client.state;
-
-        Self::ensure_client_has_window(editing_state);
-
-        state.dispatch_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
+        // Fallback: domain driver not active — stub (#753 E3, client_context removed).
+        tracing::warn!(%client_id, "dispatch_key_for_client: no domain driver active, key dropped");
+        None
     }
 
     /// Dispatch an opaque InputEvent for a client (domain-neutral path).
@@ -683,12 +578,9 @@ impl Session {
         let mut clients = self.clients.write();
         let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
         let target_client = clients.get_mut(&target_id)?;
-        let editing_state = &mut target_client.state;
-
-        Self::ensure_client_has_window(editing_state);
+        let client_ext = &mut target_client.state.extensions;
 
         let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
-        let client_ext = &mut editing_state.extensions;
 
         let mut state = self.state.write();
         let shared_ext = &mut state.app.extensions;
@@ -716,24 +608,10 @@ impl Session {
         &self,
         client_id: ClientId,
     ) -> Option<reovim_subsys_input::ModeTransition> {
-        // Acquire both locks in consistent order
-        let mut clients = self.clients.write();
-        let mut state = self.state.write();
-
-        // Find the target client ID based on relation
-        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-
-        // Phase #471/#477/#480: Get mutable references to per-client state
-        let target_client = clients.get_mut(&target_id)?;
-        let editing_state = &mut target_client.state;
-
-        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state);
-
-        state.try_on_command_complete_for_client(
-            target_id.as_usize(),
-            editing_state.client_context(),
-        )
+        // Stubbed: client_context removed (#753 E3). Domain driver handles mode
+        // transitions internally via dispatch_key_with_extensions.
+        tracing::warn!(%client_id, "try_on_command_complete_for_client: stubbed (#753 E3)");
+        None
     }
 
     /// Execute a command with per-client state (Phase #471).
@@ -762,33 +640,16 @@ impl Session {
         &self,
         client_id: ClientId,
         cmd_id: &reovim_kernel::api::v1::CommandId,
-        args: &reovim_subsys_command_types::CommandContext,
+        _args: &reovim_subsys_command_types::CommandContext,
     ) -> Option<(
         reovim_driver_command::CommandResult,
         reovim_driver_text_session::api::StateChanges,
         Vec<reovim_subsys_command_types::RuntimeSignal>,
     )> {
-        // Acquire both locks in consistent order to avoid deadlocks
-        let mut clients = self.clients.write();
-        let mut state = self.state.write();
-
-        // Find the target client ID based on relation
-        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-
-        // Phase #471/#477/#480: Get mutable references to per-client state
-        let target_client = clients.get_mut(&target_id)?;
-        let editing_state = &mut target_client.state;
-
-        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state);
-
-        // Execute command with per-client state, passing client_id for per-client undo (#471, #515)
-        state.execute_command_for_client(
-            target_id.as_usize(),
-            editing_state.client_context(),
-            cmd_id,
-            args,
-        )
+        // Stubbed: client_context removed (#753 E3). Command execution routes
+        // through the domain driver (E5/E6).
+        tracing::warn!(%client_id, cmd_id = %cmd_id, "execute_command_for_client: stubbed (#753 E3)");
+        None
     }
 
     /// Get the current mode for a specific client (#471).
@@ -854,15 +715,11 @@ impl Session {
 
     /// Read another client's history ring entry (`PeerHistory`).
     ///
-    /// Returns `None` if the client doesn't exist or the index is out of range.
-    /// This is a read-only operation - you cannot modify another client's history.
+    /// clipboard_history is now domain-owned (#753 E3).
+    /// Returns `None` — use domain driver projections instead.
     #[must_use]
-    pub fn get_peer_history(&self, client_id: ClientId, index: u8) -> Option<RegisterContent> {
-        let clients = self.clients.read();
-        clients
-            .get(&client_id)
-            .and_then(|client| client.state.clipboard_history.get_by_index(index))
-            .cloned()
+    pub fn get_peer_history(&self, _client_id: ClientId, _index: u8) -> Option<RegisterContent> {
+        None
     }
 }
 

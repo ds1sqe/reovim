@@ -147,11 +147,11 @@ impl EditorService for EditorServiceImpl {
             return Err(Status::not_found(format!("Buffer {} not found", req.buffer_id)));
         }
 
-        // Set per-client active_buffer (#471)
+        // active_buffer is domain-owned (#753 E3).
+        // The domain driver manages active_buffer internally.
+        // Log the intent so future E5/E6 work can wire domain driver routing.
         if let Some(cid) = client_id {
-            session.clients().update_client_state(cid, |state| {
-                state.active_buffer = Some(buffer_id);
-            });
+            tracing::debug!(%cid, buffer_id = %buffer_id, "set_active_buffer: forwarding to domain driver (stub #753 E3)");
         }
 
         Ok(Response::new(SetActiveBufferResponse { ok: true }))

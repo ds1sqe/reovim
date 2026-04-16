@@ -36,7 +36,7 @@ pub(crate) use {client_directory::ClientDirectory, presence_service::PresenceSer
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
     client::{
-        Client, ClientMetadata, ClientRelation, ClientSelection, EditingState, TransitionResult,
+        Client, ClientMetadata, ClientRelation, EditingState, TransitionResult,
     },
     id::{ClientId, SessionId},
     // DEPRECATED: These will be removed in a future version.

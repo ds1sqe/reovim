@@ -179,12 +179,14 @@ impl InputService for InputServiceImpl {
             // pending bindings + on_command_complete — all within the runtime scope.
             let dispatch_result = session.dispatch_key_for_client(client_id, key).await;
 
+            // None means no domain driver active (stub, #753 E3) — key is dropped.
             let Some((handled, changes)) = dispatch_result else {
-                panic!(
-                    "No resolver found for mode {current_mode:?} (client_id={client_id}). \
-                     This is a configuration bug - ensure modules are loaded properly \
-                     and the client's mode stack is initialized with the correct ModeId."
+                tracing::warn!(
+                    ?current_mode,
+                    %client_id,
+                    "dispatch_key_for_client: no domain driver active, key dropped (#753 E3)"
                 );
+                continue;
             };
 
             accumulated_changes.merge(changes);
@@ -206,42 +208,15 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
-        // Viewport scroll tracking: adjust scroll_top so cursor stays visible.
-        if any_handled {
-            let scrolled_window = session.clients().with_clients_mut(|clients| {
-                let client = clients.get_mut(&client_id)?;
-                let window = client.state.windows.active_mut()?;
-                if window.viewport.ensure_cursor_visible(window.cursor.line) {
-                    Some(window.id)
-                } else {
-                    None
-                }
-            });
-            if let Some(window_id) = scrolled_window {
-                accumulated_changes.record_scroll_change(window_id);
-            }
-        }
-
         // #664/#753: CursorSnapshot is now an opaque [u8; 8] identity token.
-        // The text-domain driver encodes cursor position into the snapshot via the
-        // coordination codec. The server no longer writes raw line/col/buffer_id here.
-        // Bridges read cursor state via projections instead.
-
-        // #474: Auto-detect selection changes (defense-in-depth).
-        if let Some(state) = session.clients().client_state(client_id) {
-            Self::ensure_selection_change_recorded(
-                &mut accumulated_changes,
-                &state.windows,
-                state.active_buffer,
-            );
-        }
+        // Viewport scroll and selection tracking are domain-owned (#753 E3).
+        // Bridges read cursor/selection state via projections instead.
 
         // Auto-emit presence update on buffer/window change (#471).
+        // buffer_id comes from domain driver (#753 E3).
         if accumulated_changes.layout_changed || accumulated_changes.focus_changed {
-            let new_buffer_id = session.clients().with_clients(|clients| {
-                let window = clients.get(&client_id)?.state.windows.active()?;
-                Some(window.buffer_id?.as_usize())
-            });
+            let new_buffer_id =
+                session.active_buffer_for_client(client_id).map(|b| b.as_usize());
             session.presence().update(client_id, |p| {
                 p.buffer_id = new_buffer_id;
             });
@@ -406,20 +381,16 @@ impl InputServiceImpl {
 
     /// Notify all client-scoped bridges of a cursor movement (#662).
     ///
-    /// Gives bridges a chance to self-dismiss overlays (e.g., hover popup)
-    /// when the cursor moves away from the trigger position.
+    /// Cursor position is domain-owned (#753 E3); use (0, 0) as placeholder
+    /// until projections supply cursor coordinates.
     fn notify_bridges_cursor_moved(
         session: &Session,
         client_id: ClientId,
         bridges: &BridgeRegistry,
         changes: &mut ChangeSet,
     ) {
-        let Some((line, col)) = session.clients().with_clients(|clients| {
-            let window = clients.get(&client_id)?.state.windows.active()?;
-            Some((window.cursor.line, window.cursor.column))
-        }) else {
-            return;
-        };
+        // Cursor position is domain-owned. Pass (0, 0) as placeholder (#753 E3).
+        let (line, col) = (0usize, 0usize);
 
         session
             .clients()
@@ -431,33 +402,11 @@ impl InputServiceImpl {
                     let was_active = bridge.is_active(ext);
                     bridge.on_cursor_moved(line, col, ext);
                     let is_active = bridge.is_active(ext);
-                    // If the bridge deactivated, record an extension change
-                    // so the notification pipeline sends the updated state.
                     if was_active && !is_active {
                         changes.record_extension_change(bridge.kind().into());
                     }
                 }
             });
-    }
-
-    /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
-    /// the resolver pipeline, check whether the client has an active selection and
-    /// record `selection_changed` so the notification pipeline picks it up.
-    ///
-    /// This catches commands that set `cursor_moved` on `accumulated_changes`
-    /// directly (outside `SessionRuntime::record_cursor_move`).
-    fn ensure_selection_change_recorded(
-        changes: &mut ChangeSet,
-        windows: &reovim_driver_text_session::WindowLayout,
-        active_buffer: Option<reovim_kernel::api::v1::BufferId>,
-    ) {
-        if !changes.cursor_moved || changes.selection_changed {
-            return;
-        }
-        let has_selection = windows.active().is_some_and(|w| w.selection.is_some());
-        if has_selection && let Some(buffer_id) = active_buffer {
-            changes.record_selection_change(buffer_id);
-        }
     }
 
     /// Emit notifications for state changes.

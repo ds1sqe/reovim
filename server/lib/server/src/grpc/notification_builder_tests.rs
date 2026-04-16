@@ -243,36 +243,29 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
 }
 
 
+// test_build_layout_notification_with_client_windows removed:
+// per-client windows fallback is domain-owned (#753 E3).
+// Without compositor, build_layout_notification returns empty windows list.
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
-fn test_build_layout_notification_with_client_windows() {
-    use {
-        reovim_driver_text_session::Window,
-        reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-    };
+fn test_build_layout_notification_no_compositor_empty_windows() {
+    use reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId};
 
     let session = Session::new(SessionId::new("layout-client-test"));
     let client_id = crate::session::ClientId::new(9);
 
     let mode = ModeId::new(ModuleId::new("test"), "normal");
     let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(70);
-    let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
+    // No compositor set; windows are domain-owned (#753 E3)
+    let client = crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
     session.clients().add_client_with_state(client);
 
     let notification = build_layout_notification(&session, 88888, 9);
     assert_eq!(notification.event_type, "layout_changed");
     if let Some(notification::Payload::LayoutChanged(payload)) = notification.payload {
-        // No compositor, so fallback to per-client windows
-        assert_eq!(payload.windows.len(), 1);
-        let win = &payload.windows[0];
-        assert_eq!(win.buffer_id, Some(70));
-        // Default window rect values
-        assert_eq!(win.rect.as_ref().unwrap().width, 80);
-        assert_eq!(win.rect.as_ref().unwrap().height, 24);
+        // No compositor -> empty windows (domain driver provides layout, #753 E3)
+        assert_eq!(payload.windows.len(), 0);
     } else {
         panic!("Expected LayoutChangedPayload");
     }
@@ -373,20 +366,16 @@ fn test_build_layout_notification_with_compositor() {
 
     let session = Session::from_state(SessionId::new("compositor-test"), state);
 
-    // Add a client with a window matching the compositor's window_id
+    // Add a client with compositor; windows are domain-owned (#753 E3)
     let client_id = crate::session::ClientId::new(1);
     let mode = reovim_kernel::api::v1::ModeId::new(
         reovim_kernel::api::v1::ModuleId::new("test"),
         "normal",
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
-    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
-    // Override the window id to match the compositor placement
-    window.id = reovim_kernel::api::v1::WindowId::from_raw(1);
     let metadata = crate::session::ClientMetadata::default();
     let mut client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
+        crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositor {
         focused: Some(WindowId::from_raw(1)),
@@ -403,7 +392,9 @@ fn test_build_layout_notification_with_compositor() {
         assert_eq!(payload.windows.len(), 1);
         let win = &payload.windows[0];
         assert_eq!(win.window_id, 1);
-        assert_eq!(win.buffer_id, Some(42));
+        // buffer_id comes from active_buffer_for_client (domain driver, #753 E3)
+        // No domain driver wired in this unit test -> None
+        assert!(win.buffer_id.is_none());
         assert!(win.focused);
         // Verify rect from compositor (default terminal is 80x24)
         let rect = win.rect.as_ref().expect("rect should be present");
@@ -446,13 +437,10 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     // Test compositor branch where client_windows has no matching window
     // but active_buffer is set as fallback
     use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
         reovim_subsys_layout::{
             CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
             WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
         },
-        std::sync::Arc,
     };
 
     struct TestCompositorTwoWindows;
@@ -535,37 +523,23 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         }
     }
 
-    // Create a kernel with a real buffer manager so we can create a buffer
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let mut state = crate::session::SessionState::with_kernel(kernel);
-
-    // Create a buffer so active_buffer is set
-    let buffer_id = state.create_buffer("test content");
-
+    // Create session with compositor that returns two windows
+    let state = crate::session::SessionState::default();
     let session = Session::from_state(SessionId::new("compositor-fallback"), state);
 
-    // Add a client with a window for window_id=10 but NOT for window_id=20
+    // Add a client with compositor; windows are domain-owned (#753 E3)
     let client_id = crate::session::ClientId::new(1);
     let mode = reovim_kernel::api::v1::ModeId::new(
         reovim_kernel::api::v1::ModuleId::new("test"),
         "normal",
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut window = reovim_driver_text_session::Window::with_buffer(buffer_id);
-    window.id = reovim_kernel::api::v1::WindowId::from_raw(10);
     let metadata = crate::session::ClientMetadata::default();
     let mut client =
-        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
+        crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
-    // Per-client active_buffer (#471): set so fallback for unmapped windows works
-    client.state.active_buffer = Some(buffer_id);
+    // active_buffer is domain-owned (#753 E3) — not set here
     session.clients().add_client_with_state(client);
 
     let notification = build_layout_notification(&session, 99999, 1);
@@ -573,14 +547,14 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     if let Some(notification::Payload::LayoutChanged(payload)) = notification.payload {
         assert_eq!(payload.windows.len(), 2);
 
-        // Window 10: client has a window for it -> gets buffer_id from client window
+        // Both windows: buffer_id from active_buffer_for_client (domain driver, #753 E3)
+        // No domain driver wired in this unit test -> None
         let win10 = payload.windows.iter().find(|w| w.window_id == 10).unwrap();
-        assert_eq!(win10.buffer_id, Some(buffer_id.as_usize() as u64));
+        assert!(win10.buffer_id.is_none());
         assert!(win10.focused); // focused_id is WindowId(10)
 
-        // Window 20: client doesn't have this window, falls back to active_buffer
         let win20 = payload.windows.iter().find(|w| w.window_id == 20).unwrap();
-        assert_eq!(win20.buffer_id, Some(buffer_id.as_usize() as u64));
+        assert!(win20.buffer_id.is_none());
         assert!(!win20.focused);
     } else {
         panic!("Expected LayoutChangedPayload");

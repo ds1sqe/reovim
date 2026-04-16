@@ -105,24 +105,18 @@ impl ClientDirectory {
     }
 
     /// Sync cursor and set relation.
+    ///
+    /// Cursor sync is domain-owned (#753 E3). The relation is still set;
+    /// cursor alignment is handled by the domain driver's projection pipeline.
     pub fn sync_and_set_relation(
         &self,
         client_id: ClientId,
-        target_id: ClientId,
+        _target_id: ClientId,
         relation: Option<ClientRelation>,
     ) -> Result<(), TransitionResult> {
         let mut clients = self.clients.write();
 
-        let target_cursor = clients
-            .get(&target_id)
-            .and_then(|c| c.state.windows.active())
-            .map(|w| w.cursor);
-
-        if let (Some(cursor), Some(client)) = (target_cursor, clients.get_mut(&client_id))
-            && let Some(window) = client.state.windows.active_mut()
-        {
-            window.cursor = cursor;
-        }
+        // cursor sync removed (#753 E3) — domain driver handles cursor alignment
 
         let validation_result = {
             let Some(client) = clients.get(&client_id) else {

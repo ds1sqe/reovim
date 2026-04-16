@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use {
     reovim_protocol::v2::{
-        CaptureRequestPayload, DomainDatum, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
+        CaptureRequestPayload, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
         GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest,
         GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse,
         GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, RegisterEntry,
@@ -38,21 +38,22 @@ fn capture_error_to_status(e: CaptureError) -> Status {
     }
 }
 
-/// Convert a driver-layer `Window` to a proto `WindowLeaf`.
+/// Convert a compositor placement to a proto `WindowLeaf`.
 ///
-/// This conversion happens in the gRPC layer to keep the driver crate
-/// free of protocol dependencies.
+/// buffer_id is domain-owned (#753 E3) — not available here.
 #[allow(clippy::cast_possible_truncation)]
-fn window_to_leaf(window: &reovim_driver_text_session::Window) -> WindowLeaf {
+fn placement_to_leaf(
+    placement: &reovim_subsys_layout::WindowPlacement,
+    buffer_id: Option<u64>,
+) -> WindowLeaf {
     WindowLeaf {
-        window_id: window.id.as_usize() as u64,
-        // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer")
-        buffer_id: window.buffer_id.map(|id| id.as_usize() as u64),
+        window_id: placement.window_id.as_usize() as u64,
+        buffer_id,
         rect: Some(WindowRect {
-            x: 0, // Position calculated by client based on layout
-            y: 0,
-            width: u64::from(window.viewport.width),
-            height: u64::from(window.viewport.height),
+            x: u64::from(placement.bounds.x),
+            y: u64::from(placement.bounds.y),
+            width: u64::from(placement.bounds.width),
+            height: u64::from(placement.bounds.height),
         }),
     }
 }
@@ -214,45 +215,46 @@ impl StateService for StateServiceImpl {
             Status::not_found(format!("Client {} not found", req.client_id))
         })?;
 
-        let layout = &state.windows;
-        // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus")
-        let focused_id = layout.active_id().map(|id| id.as_usize() as u64);
+        // Build layout from per-client compositor (#474).
+        // buffer_id and tabs are domain-owned (#753 E3) — return None/empty until E5/E6.
+        let active_buffer =
+            session.active_buffer_for_client(client_id).map(|id| id.as_usize() as u64);
 
-        let root = match layout.len() {
-            0 => None,
-            1 => layout.active().map(|w| WindowNode {
-                node: Some(Node::Leaf(window_to_leaf(w))),
-            }),
-            _ => {
-                let children: Vec<WindowNode> = layout
-                    .windows
-                    .iter()
-                    .map(|w| WindowNode {
-                        node: Some(Node::Leaf(window_to_leaf(w))),
+        let (root, focused_id) = if let Some(ref compositor) = state.compositor {
+            let (tw, th) = state.terminal_size;
+            let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
+            let composite = compositor.composite(screen);
+            let focused_id = composite.focused.map(|id| id.as_usize() as u64);
+
+            let root = match composite.placements.len() {
+                0 => None,
+                1 => Some(WindowNode {
+                    node: Some(Node::Leaf(placement_to_leaf(&composite.placements[0], active_buffer))),
+                }),
+                _ => {
+                    let children: Vec<WindowNode> = composite
+                        .placements
+                        .iter()
+                        .map(|p| WindowNode {
+                            node: Some(Node::Leaf(placement_to_leaf(p, active_buffer))),
+                        })
+                        .collect();
+                    Some(WindowNode {
+                        node: Some(Node::Split(WindowSplit {
+                            direction: SplitDirection::Vertical.into(),
+                            children,
+                        })),
                     })
-                    .collect();
-
-                Some(WindowNode {
-                    node: Some(Node::Split(WindowSplit {
-                        direction: SplitDirection::Vertical.into(),
-                        children,
-                    })),
-                })
-            }
+                }
+            };
+            (root, focused_id)
+        } else {
+            (None, None)
         };
 
-        // #401 Phase 5: Populate tab info from per-client TabPageSet
-        let tab_set = &state.tabs;
-        let active_tab_id = Some(tab_set.active_tab_id().as_usize() as u64);
-        let tabs_info: Vec<TabPageInfo> = tab_set
-            .tab_info()
-            .into_iter()
-            .map(|(id, label, is_active)| TabPageInfo {
-                tab_id: id.as_usize() as u64,
-                label: label.to_string(),
-                active: is_active,
-            })
-            .collect();
+        // tabs: domain-owned — return empty (#753 E3)
+        let active_tab_id = None;
+        let tabs_info: Vec<TabPageInfo> = Vec::new();
 
         Ok(Response::new(GetLayoutResponse {
             root,
@@ -299,7 +301,7 @@ impl StateService for StateServiceImpl {
 
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
-        // Per-client state lookup - now required (no fallback to shared state)
+        // Per-client state lookup
         let state = session.clients().client_state(client_id).ok_or_else(|| {
             session.with_client_ring_buffer(client_id, |rb| {
                 rb.log_event(
@@ -310,21 +312,25 @@ impl StateService for StateServiceImpl {
             Status::not_found(format!("Client {} not found", req.client_id))
         })?;
 
-        let layout = &state.windows;
+        // viewport is domain-owned (#753 E3). Use compositor to determine window geometry.
+        // Return terminal_size as viewport dimensions (best effort until E5/E6).
+        let (tw, th) = state.terminal_size;
 
-        let window = requested_window_id.map_or_else(
-            || layout.active(),
-            |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
-        );
-
-        let w = window.ok_or_else(|| Status::not_found("Window not found"))?;
-        let viewport = &w.viewport;
+        let window_id = requested_window_id.unwrap_or_else(|| {
+            // Use focused window from compositor, or window_id 0 as fallback
+            state.compositor.as_ref().map_or(0, |c| {
+                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
+                c.composite(screen)
+                    .focused
+                    .map_or(0, |id| id.as_usize() as u64)
+            })
+        });
 
         Ok(Response::new(GetVisibleLinesResponse {
-            window_id: w.id.as_usize() as u64,
-            first_line: viewport.scroll_top as u64,
-            last_line: viewport.last_visible_line() as u64,
-            viewport_height: u64::from(viewport.height),
+            window_id,
+            first_line: 0,
+            last_line: u64::from(th).saturating_sub(1),
+            viewport_height: u64::from(th),
         }))
     }
 
@@ -447,47 +453,14 @@ impl StateService for StateServiceImpl {
 
         let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
-        let client_state = session.clients().client_state(client_id).ok_or_else(|| {
+        // Verify client exists
+        let _state = session.clients().client_state(client_id).ok_or_else(|| {
             Status::not_found(format!("Client {} not found", client_id.as_usize()))
         })?;
 
-        let bank = &client_state.registers;
-
-        // (#753) RegisterEntry is now domain-neutral: no content_type/yank_type fields.
-        // Text register content is serialized as DomainDatum with the text as the display string.
-        let registers = if req.names.is_empty() {
-            // Return all non-empty registers
-            bank.iter_non_empty()
-                .map(|(name, content)| RegisterEntry {
-                    name: name.to_string(),
-                    domain_id: None, // text domain registers leave domain_id unset
-                    content: Some(DomainDatum {
-                        content: content.text.as_bytes().to_vec(),
-                        display: Some(content.text.clone()),
-                    }),
-                })
-                .collect::<Vec<_>>()
-        } else {
-            // Return only requested registers
-            req.names
-                .iter()
-                .filter_map(|name| {
-                    let name_char = name.chars().next()?;
-                    let content = bank.get_by_name(Some(name_char))?;
-                    if content.is_empty() {
-                        return None;
-                    }
-                    Some(RegisterEntry {
-                        name: name_char.to_string(),
-                        domain_id: None,
-                        content: Some(DomainDatum {
-                            content: content.text.as_bytes().to_vec(),
-                            display: Some(content.text.clone()),
-                        }),
-                    })
-                })
-                .collect()
-        };
+        // registers are domain-owned (#753 E3) — return empty until E5/E6 wires domain query.
+        // The domain driver will provide register contents via projections.
+        let registers: Vec<RegisterEntry> = Vec::new();
 
         Ok(Response::new(GetRegistersResponse { registers }))
     }

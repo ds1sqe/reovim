@@ -83,31 +83,19 @@ async fn test_get_active_buffer_none() {
 
 #[tokio::test]
 async fn test_get_active_buffer_with_buffer() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create a buffer
-    let buf_id = session
-        .with_state_mut(|state| state.create_buffer("test content"))
-        .await;
-
-    // Per-client active_buffer (#471): add a client and set their active buffer
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-    session.clients().with_clients_mut(|clients| {
-        if let Some(client) = clients.get_mut(&client_id) {
-            client.state.active_buffer = Some(buf_id);
-        }
-    });
-
+    // active_buffer is domain-owned (#753 E3); without a wired domain driver,
+    // get_active_buffer returns None regardless of buffers created.
+    let (registry, _session) = test_registry_with_buffer_manager();
     let service = EditorServiceImpl::new(registry, SessionId::new("test"));
 
     let mut request = Request::new(GetActiveBufferRequest {});
-    request.extensions_mut().insert(client_id);
+    request.extensions_mut().insert(ClientId::new(1));
     let response = service.get_active_buffer(request).await;
 
     assert!(response.is_ok());
     let resp = response.unwrap().into_inner();
-    assert!(resp.buffer_id.is_some());
+    // No domain driver wired in unit test -> None
+    assert!(resp.buffer_id.is_none());
 }
 
 #[tokio::test]
@@ -207,12 +195,10 @@ async fn test_resize_updates_terminal_size_for_existing_client() {
     assert_eq!(updated, Some((120u16, 40u16)));
 }
 
-/// Cover lines 152-154: the closure body inside `update_client_state` for
-/// `set_active_buffer`.
+/// Cover the stub path in set_active_buffer with an authenticated client.
 ///
-/// Same pattern as resize: the existing `test_set_active_buffer_success` calls
-/// the handler without a `ClientId` in extensions, so the closure never runs.
-/// Here we add the client and inject its ID.
+/// active_buffer is now domain-owned (#753 E3); the RPC logs a debug stub
+/// and returns ok. Verify the handler succeeds with a client_id in extensions.
 #[tokio::test]
 async fn test_set_active_buffer_updates_per_client_state() {
     let (registry, session) = test_registry_with_buffer_manager();
@@ -235,10 +221,5 @@ async fn test_set_active_buffer_updates_per_client_state() {
     let response = service.set_active_buffer(request).await;
     assert!(response.is_ok());
     assert!(response.unwrap().into_inner().ok);
-
-    // Verify the closure body ran: active_buffer was set for this client.
-    let active = session
-        .clients()
-        .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer));
-    assert_eq!(active, Some(buffer_id));
+    // active_buffer is domain-owned (#753 E3) — no EditingState field to verify
 }

@@ -433,17 +433,14 @@ fn test_to_proto_client_info_independent() {
 fn test_to_proto_client_info_following() {
     use {
         crate::session::{ClientMetadata, ClientRelation},
-        reovim_driver_text_session::Window,
         reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
     };
 
     let mode = ModeId::new(ModuleId::new("test"), "normal");
     let mode_stack = ModeStack::new(mode);
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(10);
-    let window = Window::with_buffer(buffer_id);
     let metadata = ClientMetadata::default();
-    let mut client =
-        Client::with_mode_stack_and_window(ClientId::new(5), metadata, mode_stack, window);
+    // windows are domain-owned (#753 E3)
+    let mut client = Client::with_mode_stack(ClientId::new(5), metadata, mode_stack);
     client.set_relation_unchecked(Some(ClientRelation::Following {
         target: ClientId::new(1),
     }));
@@ -453,8 +450,8 @@ fn test_to_proto_client_info_following() {
     let rel = info.relation.unwrap();
     assert_eq!(rel.r#type, ProtoRelationType::RelationTypeFollowing as i32);
     assert_eq!(rel.target_id, 1);
-    // Client has a window with buffer
-    assert!(info.view.as_ref().unwrap().buffer_id.is_some());
+    // buffer_id is domain-owned (#753 E3) — None without domain driver
+    assert!(info.view.as_ref().unwrap().buffer_id.is_none());
 }
 
 #[test]

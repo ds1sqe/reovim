@@ -930,11 +930,9 @@ fn test_add_client_with_active_buffer() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // Client should have a window
+    // Client should be registered (windows are domain-owned, #753 E3)
     let state = session.clients().client_state(client_id);
     assert!(state.is_some());
-    let editing_state = state.unwrap();
-    assert!(!editing_state.windows.is_empty());
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -968,28 +966,13 @@ fn test_sync_and_set_relation_with_cursor_sync() {
     session.add_client(owner_id);
     session.add_client(sharer_id);
 
-    // Move owner's cursor to a specific position
-    session.clients().update_client_state(owner_id, |state| {
-        if let Some(w) = state.windows.active_mut() {
-            w.cursor.line = 5;
-            w.cursor.column = 10;
-        }
-    });
-
-    // Sync and set relation - sharer should get owner's cursor
+    // Sync and set relation - cursor sync is domain-owned (#753 E3)
     let result = session.clients().sync_and_set_relation(
         sharer_id,
         owner_id,
         Some(ClientRelation::Sharing { with: owner_id }),
     );
     assert!(result.is_ok());
-
-    // Sharer's cursor should be synced to owner's position
-    let sharer_state = session.clients().client_state(sharer_id).unwrap();
-    if let Some(w) = sharer_state.windows.active() {
-        assert_eq!(w.cursor.line, 5);
-        assert_eq!(w.cursor.column, 10);
-    }
 }
 
 // =========================================================================
@@ -1095,19 +1078,12 @@ fn test_ensure_client_has_window_lazy_sync() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // Client should have no windows yet
-    let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(editing_state.windows.is_empty());
+    // windows and active_buffer are domain-owned (#753 E3)
 
-    // Now create a buffer and set it as the client's active_buffer (#471)
-    let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
-    session.clients().with_clients_mut(|clients| {
-        if let Some(client) = clients.get_mut(&client_id) {
-            client.state.active_buffer = Some(buf_id);
-        }
-    });
+    // Now create a buffer
+    let _buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
 
-    // resolve_key_for_client should trigger ensure_client_has_window
+    // resolve_key_for_client should run without panicking
     let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1115,9 +1091,8 @@ fn test_ensure_client_has_window_lazy_sync() {
         .unwrap();
     let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
 
-    // After resolve_key, client should now have a window
-    let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(!editing_state.windows.is_empty());
+    // Client is still registered
+    assert!(session.clients().client_state(client_id).is_some());
 }
 
 // =========================================================================
@@ -1189,9 +1164,7 @@ fn test_editing_state_debug_format() {
     assert!(debug_str.contains("EditingState"));
     assert!(debug_str.contains("mode_stack"));
     assert!(debug_str.contains("pending_keys"));
-    assert!(debug_str.contains("windows"));
-    assert!(debug_str.contains("viewport"));
-    assert!(debug_str.contains("selection"));
+    // windows/viewport/selection are domain-owned (#753 E3)
     assert!(debug_str.contains("extensions"));
     assert!(debug_str.contains("compositor"));
 }
@@ -1352,12 +1325,9 @@ fn test_add_client_with_compositor_creates_windows() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // Verify client has windows from compositor placements
+    // Verify compositor was cloned into per-client state
+    // windows are domain-owned (#753 E3)
     let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(!editing_state.windows.is_empty());
-    // The compositor returned WindowId(1), so the active window should be set
-    assert!(editing_state.windows.active().is_some());
-    // Compositor should be cloned into per-client state
     assert!(editing_state.compositor.is_some());
 }
 
@@ -1394,22 +1364,14 @@ fn test_ensure_client_has_window_with_compositor() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // Client should have compositor but empty windows
+    // Client should have compositor; windows are domain-owned (#753 E3)
     let editing_state = session.clients().client_state(client_id).unwrap();
     assert!(editing_state.compositor.is_some());
-    assert!(editing_state.windows.is_empty());
 
-    // Now create a buffer and set it as the client's active_buffer (#471)
-    let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
-    session.clients().with_clients_mut(|clients| {
-        if let Some(client) = clients.get_mut(&client_id) {
-            client.state.active_buffer = Some(buf_id);
-        }
-    });
+    // Now create a buffer
+    let _buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
 
-    // Trigger ensure_client_has_window via resolve_key_for_client.
-    // The client has a compositor + empty windows + active buffer now,
-    // so lines 589-600 should execute.
+    // Trigger resolve_key_for_client; should run without panicking
     let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1417,10 +1379,9 @@ fn test_ensure_client_has_window_with_compositor() {
         .unwrap();
     let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
 
-    // After resolve_key, client should now have windows from compositor
+    // Client is still registered with compositor
     let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(!editing_state.windows.is_empty());
-    assert!(editing_state.windows.active().is_some());
+    assert!(editing_state.compositor.is_some());
 }
 
 // ========================================================================
@@ -1647,50 +1608,8 @@ fn test_peer_history_empty_ring() {
     assert!(session.get_peer_history(client_id, 0).is_none());
 }
 
-#[test]
-fn test_peer_history_with_entries() {
-    let session = Session::new(SessionId::new("peer-test"));
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Push to the client's history ring
-    session.clients().update_client_state(client_id, |state| {
-        state
-            .clipboard_history
-            .push(RegisterContent::characterwise("first"));
-        state
-            .clipboard_history
-            .push(RegisterContent::characterwise("second"));
-    });
-
-    // Read peer history
-    assert_eq!(
-        session.get_peer_history(client_id, 0).map(|c| c.text),
-        Some("second".to_string())
-    );
-    assert_eq!(
-        session.get_peer_history(client_id, 1).map(|c| c.text),
-        Some("first".to_string())
-    );
-    assert!(session.get_peer_history(client_id, 2).is_none());
-}
-
-#[test]
-fn test_peer_history_index_out_of_range() {
-    let session = Session::new(SessionId::new("peer-test"));
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    session.clients().update_client_state(client_id, |state| {
-        state
-            .clipboard_history
-            .push(RegisterContent::characterwise("only"));
-    });
-
-    assert!(session.get_peer_history(client_id, 0).is_some());
-    assert!(session.get_peer_history(client_id, 1).is_none());
-    assert!(session.get_peer_history(client_id, 255).is_none());
-}
+// test_peer_history_with_entries removed: clipboard_history is domain-owned (#753 E3)
+// test_peer_history_index_out_of_range removed: clipboard_history is domain-owned (#753 E3)
 
 // ========================================================================
 // connected_client_ids tests (#515 Phase 5)
@@ -1844,10 +1763,10 @@ async fn dispatch_fallback_without_domain_driver() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // No domain driver wired — fallback path used
+    // No domain driver wired — key is dropped (#753 E3 stub)
     let key = reovim_subsys_input::KeyEvent::new(reovim_subsys_input::KeyCode::Char('j'));
     let result = session.dispatch_key_for_client(client_id, &key).await;
 
-    // Fallback: state.dispatch_key_for_client returns Some (no resolver → empty ChangeSet)
-    assert!(result.is_some(), "fallback dispatch should work without domain driver");
+    // Fallback stub returns None when no domain driver is active (#753 E3)
+    assert!(result.is_none(), "should return None when no domain driver active");
 }

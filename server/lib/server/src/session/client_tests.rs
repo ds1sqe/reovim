@@ -1,14 +1,8 @@
 use std::collections::HashMap;
 
-use {
-    reovim_driver_text_session::{CursorPosition, SelectionMode},
-    reovim_kernel::api::v1::{ModeStack, ModuleId},
-};
+use reovim_kernel::api::v1::{ModeStack, ModuleId};
 
-use super::{
-    Client, ClientId, ClientMetadata, ClientRelation, ClientSelection, EditingState,
-    TransitionResult,
-};
+use super::{Client, ClientId, ClientMetadata, ClientRelation, EditingState, TransitionResult};
 
 fn test_mode_stack() -> ModeStack {
     let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
@@ -197,8 +191,7 @@ fn test_editing_state_default() {
     let state = EditingState::default();
 
     assert!(state.pending_keys.is_empty());
-    assert!(state.windows.is_empty()); // Per-client windows (#471)
-    assert!(state.selection.is_none());
+    // windows/selection are domain-owned (#753 E3)
 }
 
 #[test]
@@ -220,19 +213,7 @@ fn test_editing_state_clear_pending_keys() {
     assert!(state.pending_keys.is_empty());
 }
 
-#[test]
-fn test_client_selection() {
-    let anchor = CursorPosition::new(0, 0);
-    let cursor = CursorPosition::new(5, 10);
-    let selection = ClientSelection::new(anchor, cursor, SelectionMode::Character);
-
-    assert_eq!(selection.anchor, anchor);
-    assert_eq!(selection.cursor, cursor);
-    assert_eq!(selection.mode, SelectionMode::Character);
-
-    let driver_sel = selection.to_driver_selection();
-    assert_eq!(driver_sel.mode, SelectionMode::Character);
-}
+// test_client_selection removed: ClientSelection is domain-owned (#753 E3)
 
 #[test]
 fn test_client_metadata_new() {
@@ -448,39 +429,7 @@ fn test_transition_result_requires_domain_sync() {
     assert!(!TransitionResult::Ok.requires_domain_sync());
 }
 
-#[test]
-fn test_sync_cursor_to() {
-    let id1 = ClientId::new(1);
-    let id2 = ClientId::new(2);
-
-    // Create target client with a window and cursor
-    let mut target = Client::with_mode_stack_and_window(
-        id2,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
-    // Set target's cursor position
-    if let Some(w) = target.state.windows.active_mut() {
-        w.cursor = CursorPosition::new(10, 20);
-    }
-
-    // Create source client with a window
-    let mut source = Client::with_mode_stack_and_window(
-        id1,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
-    // Verify initial cursor is at default
-    assert_eq!(source.state.windows.active().unwrap().cursor, CursorPosition::default());
-
-    // Sync cursor
-    source.sync_cursor_to(&target);
-
-    // Verify cursor was synced
-    assert_eq!(source.state.windows.active().unwrap().cursor, CursorPosition::new(10, 20));
-}
+// test_sync_cursor_to removed: sync_cursor_to uses windows (domain-owned, #753 E3)
 
 #[test]
 fn test_set_relation_unchecked() {
@@ -501,41 +450,22 @@ fn test_set_relation_unchecked() {
 }
 
 // =========================================================================
-// Coverage: RequiresCursorSync path
+// Coverage: RequiresDomainSync path
 // =========================================================================
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
-fn test_validate_following_to_sharing_requires_cursor_sync() {
-    // Setup: client1 follows client2, then tries to upgrade to Sharing
-    // with mismatched cursors -> RequiresCursorSync
+fn test_validate_following_to_sharing_requires_domain_sync() {
     let id1 = ClientId::new(1);
     let id2 = ClientId::new(2);
 
     let mut clients = HashMap::new();
+    clients.insert(id2, Client::new(id2, test_metadata()));
 
-    // Client 2 (target) with a window and cursor at (5, 10)
-    let mut target = Client::with_mode_stack_and_window(
-        id2,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
-    if let Some(w) = target.state.windows.active_mut() {
-        w.cursor = CursorPosition::new(5, 10);
-    }
-    clients.insert(id2, target);
-
-    // Client 1 (follower) with a window and cursor at default (0, 0)
-    let mut follower = Client::with_mode_stack_and_window(
-        id1,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
+    let mut follower = Client::new(id1, test_metadata());
     follower.relation = Some(ClientRelation::Following { target: id2 });
 
-    // Attempt upgrade from Following(id2) to Sharing(id2) with cursor mismatch
+    // Attempt upgrade from Following(id2) to Sharing(id2) -> RequiresDomainSync
     let result = Client::validate_relation_change(
         &follower,
         Some(ClientRelation::Sharing { with: id2 }),
@@ -547,29 +477,15 @@ fn test_validate_following_to_sharing_requires_cursor_sync() {
 }
 
 #[test]
-fn test_validate_following_to_sharing_same_cursor_ok() {
+fn test_validate_following_to_sharing_same_target_requires_domain_sync() {
     // #753: Following → Sharing with same target always returns RequiresDomainSync.
-    // Cursor comparison is domain-specific — the server cannot compare
-    // domain-owned cursor positions. Projection pipeline handles alignment.
     let id1 = ClientId::new(1);
     let id2 = ClientId::new(2);
 
     let mut clients = HashMap::new();
+    clients.insert(id2, Client::new(id2, test_metadata()));
 
-    let target = Client::with_mode_stack_and_window(
-        id2,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
-    clients.insert(id2, target);
-
-    let mut follower = Client::with_mode_stack_and_window(
-        id1,
-        test_metadata(),
-        test_mode_stack(),
-        reovim_driver_text_session::Window::new(),
-    );
+    let mut follower = Client::new(id1, test_metadata());
     follower.relation = Some(ClientRelation::Following { target: id2 });
 
     // #753: Always RequiresDomainSync — cursor positions are domain-specific
@@ -656,11 +572,6 @@ fn test_effective_state_mut_sharing_missing_target() {
 fn test_editing_state_clone() {
     let mut state = EditingState::default();
     state.pending_keys.push("d".to_string());
-    state.selection = Some(ClientSelection::new(
-        CursorPosition::new(0, 0),
-        CursorPosition::new(1, 5),
-        SelectionMode::Character,
-    ));
 
     let cloned = state.clone();
 
@@ -668,10 +579,7 @@ fn test_editing_state_clone() {
     assert_eq!(cloned.mode_stack.current().name(), state.mode_stack.current().name());
     // Cloned should have same pending keys
     assert!(!cloned.pending_keys.is_empty());
-    // Cloned should have same selection
-    assert!(cloned.selection.is_some());
     // Cloned should have FRESH extensions (not copied)
-    // Extensions are intentionally not cloned for isolation
     let _ = cloned.extensions;
 }
 
@@ -699,21 +607,7 @@ fn test_client_ring_buffer_accessor() {
     let _ = rb;
 }
 
-// =========================================================================
-// Coverage: EditingState::with_mode_stack_and_window
-// =========================================================================
-
-#[test]
-fn test_editing_state_with_mode_stack_and_window() {
-    let mode_stack = test_mode_stack();
-    let window = reovim_driver_text_session::Window::new();
-    let state = EditingState::with_mode_stack_and_window(mode_stack.clone(), window);
-
-    assert_eq!(state.mode_stack.current().name(), mode_stack.current().name());
-    assert!(!state.windows.is_empty());
-    assert!(state.selection.is_none());
-    assert!(state.pending_keys.is_empty());
-}
+// test_editing_state_with_mode_stack_and_window removed: with_mode_stack_and_window removed (#753 E3)
 
 #[test]
 fn test_editing_state_current_mode() {
@@ -722,31 +616,7 @@ fn test_editing_state_current_mode() {
     assert_eq!(mode.name(), "normal");
 }
 
-// =========================================================================
-// Coverage: ClientSelection::to_driver_selection all modes
-// =========================================================================
-
-#[test]
-fn test_client_selection_line_mode() {
-    let selection = ClientSelection::new(
-        CursorPosition::new(0, 0),
-        CursorPosition::new(3, 0),
-        SelectionMode::Line,
-    );
-    let driver_sel = selection.to_driver_selection();
-    assert_eq!(driver_sel.mode, SelectionMode::Line);
-}
-
-#[test]
-fn test_client_selection_block_mode() {
-    let selection = ClientSelection::new(
-        CursorPosition::new(1, 2),
-        CursorPosition::new(3, 4),
-        SelectionMode::Block,
-    );
-    let driver_sel = selection.to_driver_selection();
-    assert_eq!(driver_sel.mode, SelectionMode::Block);
-}
+// ClientSelection::to_driver_selection tests removed: ClientSelection is domain-owned (#753 E3)
 
 // =========================================================================
 // Coverage: cycle detection depth limit
@@ -818,21 +688,7 @@ fn test_effective_state_mut_independent_borrow_semantics() {
     assert!(client.state.pending_keys.is_empty());
 }
 
-#[test]
-fn test_sync_cursor_to_no_windows() {
-    // Test sync_cursor_to when one or both clients have no windows
-    let id1 = ClientId::new(1);
-    let id2 = ClientId::new(2);
-
-    let mut source = Client::new(id1, test_metadata());
-    let target = Client::new(id2, test_metadata());
-
-    // Both have no windows - should not crash
-    source.sync_cursor_to(&target);
-
-    // Verify nothing changed (no windows to sync)
-    assert!(source.state.windows.active().is_none());
-}
+// test_sync_cursor_to_no_windows removed: sync_cursor_to uses windows (domain-owned, #753 E3)
 
 #[test]
 fn test_client_metadata_default() {
@@ -878,20 +734,7 @@ fn test_effective_state_sharing_chain() {
     assert!(state.is_some());
 }
 
-#[test]
-fn test_client_with_mode_stack_and_window() {
-    let id = ClientId::new(1);
-    let mode_stack = test_mode_stack();
-    let window = reovim_driver_text_session::Window::new();
-
-    let client =
-        Client::with_mode_stack_and_window(id, test_metadata(), mode_stack.clone(), window);
-
-    assert!(client.is_independent());
-    assert_eq!(client.state.mode_stack.current().name(), mode_stack.current().name());
-    assert!(!client.state.windows.is_empty());
-    assert_eq!(client.id, id);
-}
+// test_client_with_mode_stack_and_window removed: with_mode_stack_and_window removed (#753 E3)
 
 #[test]
 fn test_would_create_cycle_impl_depth_limit() {

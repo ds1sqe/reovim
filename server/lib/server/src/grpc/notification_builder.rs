@@ -154,47 +154,36 @@ fn build_buffer_list_notification(
 
 /// Build a layout changed notification.
 ///
-/// Layout is session-wide (shared compositor), but focused window may be per-client.
+/// Uses the per-client compositor for geometry (#474).
+/// Window buffer_id and tabs are domain-owned (#753 E3) — queried via domain driver.
 ///
 /// # Arguments
 ///
-/// * `session` - Session for reading shared layout and per-client focus (#486)
+/// * `session` - Session for reading per-client compositor and terminal_size
 /// * `timestamp` - Notification timestamp
-/// * `client_id` - Client for per-client focused window
+/// * `client_id` - Client for per-client compositor lookup
 #[allow(clippy::cast_possible_truncation, clippy::option_if_let_else)]
 fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
-    // #474: Use per-client compositor and windows (same ID namespace).
-    // Each client owns a cloned compositor — window IDs from compositor.composite()
-    // match the per-client WindowLayout IDs, fixing the cross-namespace mismatch.
-    let editing_state = session
-        .clients()
-        .client_state(ClientId::new(client_id as usize));
+    let cid = ClientId::new(client_id as usize);
+    let editing_state = session.clients().client_state(cid);
 
-    let focused_id = editing_state.as_ref().and_then(|s| s.windows.active_id());
-
-    // Build window info list from per-client compositor (#474)
+    // Build window info list from per-client compositor (#474).
+    // buffer_id is queried from the domain driver (domain-owned, #753 E3).
     let windows: Vec<WindowInfo> = if let Some(ref state) = editing_state {
         if let Some(ref compositor) = state.compositor {
-            // Per-client compositor: IDs match per-client windows
-            // Per-client terminal_size and active_buffer (#471)
             let (tw, th) = state.terminal_size;
             let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
             let composite = compositor.composite(screen);
+            let focused_id = composite.focused;
 
-            let active_buffer = state.active_buffer;
+            // buffer_id: query domain driver; fall back to None (domain not yet wired)
+            let active_buffer = session.active_buffer_for_client(cid);
 
             composite
                 .placements
                 .iter()
                 .map(|p| {
-                    // #474: w.get(p.window_id) now works — both use same ID namespace
-                    let buffer_id = state
-                        .windows
-                        .get(p.window_id)
-                        .and_then(|w| w.buffer_id)
-                        .or(active_buffer)
-                        .map(|id| id.as_usize() as u64);
-
+                    let buffer_id = active_buffer.map(|id| id.as_usize() as u64);
                     WindowInfo {
                         window_id: p.window_id.as_usize() as u64,
                         buffer_id,
@@ -205,58 +194,35 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                             height: u64::from(p.bounds.height),
                         }),
                         focused: focused_id == Some(p.window_id),
-                        // #400: Always send explicit opacity from compositor placement
                         opacity: Some(p.opacity),
                     }
                 })
                 .collect()
         } else {
-            // No compositor — use per-client windows with default geometry
-            state
-                .windows
-                .windows
-                .iter()
-                .map(|w| WindowInfo {
-                    window_id: w.id.as_usize() as u64,
-                    buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
-                    rect: Some(WindowRect {
-                        x: 0,
-                        y: 0,
-                        width: 80,
-                        height: 24,
-                    }),
-                    focused: focused_id == Some(w.id),
-                    opacity: None, // No compositor → default opaque
-                })
-                .collect()
+            // No compositor — empty window list (domain driver provides layout)
+            Vec::new()
         }
     } else {
         Vec::new()
     };
 
-    // #401 Phase 5: Populate tab info from per-client TabPageSet
-    let (active_tab_id, tabs_info) = if let Some(ref state) = editing_state {
-        let tab_set = &state.tabs;
-        let active_id = Some(tab_set.active_tab_id().as_usize() as u64);
-        let info: Vec<TabPageInfo> = tab_set
-            .tab_info()
-            .into_iter()
-            .map(|(id, label, is_active)| TabPageInfo {
-                tab_id: id.as_usize() as u64,
-                label: label.to_string(),
-                active: is_active,
-            })
-            .collect();
-        (active_id, info)
-    } else {
-        (None, Vec::new())
-    };
+    // Focused window: from compositor if available
+    let focused_window_id = editing_state.as_ref().and_then(|state| {
+        let compositor = state.compositor.as_ref()?;
+        let (tw, th) = state.terminal_size;
+        let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
+        compositor.composite(screen).focused.map(|id| id.as_usize() as u64)
+    });
+
+    // tabs: domain-owned — return empty (#753 E3, wired in E5/E6)
+    let active_tab_id = None;
+    let tabs_info: Vec<TabPageInfo> = Vec::new();
 
     Notification {
         event_type: "layout_changed".to_string(),
         timestamp_ms: timestamp,
         payload: Some(notification::Payload::LayoutChanged(LayoutChangedPayload {
-            focused_window_id: focused_id.map(|id| id.as_usize() as u64),
+            focused_window_id,
             windows,
             client_id,
             active_tab_id,

@@ -75,8 +75,8 @@ pub fn to_proto_client_info(client: &Client) -> ProtoClientInfo {
         },
     });
 
-    // Get buffer_id from active window
-    let buffer_id = client.state.windows.active().and_then(|w| w.buffer_id);
+    // buffer_id is domain-owned (#753 E3) — not available from EditingState
+    let buffer_id: Option<reovim_kernel::api::v1::BufferId> = None;
 
     // (#753) ClientViewState: cursor/selection/mode replaced by domain_state (opaque DomainDatum).
     let view = ProtoViewState {
@@ -252,14 +252,9 @@ impl PresenceService for PresenceServiceImpl {
         // Without this, PresenceJoined notifications carry buffer_id: None,
         // and existing clients skip rendering the new cursor (different-buffer filter).
         let mut presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);
-        presence.buffer_id = session.clients().with_clients(|clients| {
-            clients.get(&client_id).and_then(|c| {
-                c.state
-                    .windows
-                    .active()
-                    .and_then(|w| w.buffer_id.map(BufferId::as_usize))
-            })
-        });
+        // buffer_id is domain-owned (#753 E3) — query via domain driver
+        presence.buffer_id =
+            session.active_buffer_for_client(client_id).map(BufferId::as_usize);
 
         // Add to presence map, get existing peers
         let peers = session.presence().join(presence.clone());
