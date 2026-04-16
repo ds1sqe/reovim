@@ -33,9 +33,9 @@ use {
         ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
         ClientRelationType as ProtoRelationType, ClientRole as ProtoRole,
         ClientViewState as ProtoViewState, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse,
-        ListClientsRequest, ListClientsResponse, Notification, PresenceUpdate,
-        SetRelationRequest, SetRelationResponse, SetRoleRequest, SetRoleResponse,
-        SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
+        ListClientsRequest, ListClientsResponse, Notification, PresenceUpdate, SetRelationRequest,
+        SetRelationResponse, SetRoleRequest, SetRoleResponse, SetSyncModeRequest,
+        SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         TransitionError as ProtoTransitionError, UpdatePresenceRequest, UpdatePresenceResponse,
         notification::Payload, presence_service_server::PresenceService, presence_update::Update,
     },
@@ -253,8 +253,9 @@ impl PresenceService for PresenceServiceImpl {
         // and existing clients skip rendering the new cursor (different-buffer filter).
         let mut presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);
         // buffer_id is domain-owned (#753 E3) — query via domain driver
-        presence.buffer_id =
-            session.active_buffer_for_client(client_id).map(BufferId::as_usize);
+        presence.buffer_id = session
+            .active_buffer_for_client(client_id)
+            .map(BufferId::as_usize);
 
         // Add to presence map, get existing peers
         let peers = session.presence().join(presence.clone());

@@ -588,7 +588,6 @@ impl EditingState {
     pub fn clear_pending_keys(&mut self) {
         self.pending_keys.clear();
     }
-
 }
 
 // ============================================================================

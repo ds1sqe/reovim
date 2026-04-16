@@ -341,7 +341,6 @@ pub fn bootstrap_runtime() -> BootstrapResult {
         mode_registry,
         command_registry,
         keymap_registry,
-        resolver_registry,
         compositor,
     );
 
@@ -511,8 +510,7 @@ fn build_text_domain_driver(
 
     use {
         reovim_driver_text_input::ResolverDispatchProvider,
-        reovim_driver_text_session::TextDomainDriver,
-        reovim_subsys_input::KeymapQuery,
+        reovim_driver_text_session::TextDomainDriver, reovim_subsys_input::KeymapQuery,
     };
 
     // Get TextBufferRegistry from services (registered earlier in bootstrap).
@@ -528,38 +526,20 @@ fn build_text_domain_driver(
     // Clone the home mode from session_state.
     let home_mode = session_state.home_mode().clone();
 
-    // Build a second ResolverRegistry for the dispatch provider by cloning
-    // resolvers from session_state.resolver_registry (read-only access).
-    let driver_resolver_registry = {
-        let reg = ResolverRegistry::new();
-        for mode_id in session_state.resolver_registry.modes() {
-            if let Some(resolver) = session_state.resolver_registry.get(&mode_id) {
-                reg.register_arc(resolver);
-            }
-        }
-        reg
-    };
+    // The resolver_registry was extracted from modules above and is used
+    // directly by the domain driver — it is no longer stored on SessionState.
+    let driver_resolver_registry = resolver_registry;
 
     // Clone the keymap registry (KeymapRegistry: Clone) for the dispatch provider.
     let keymap_arc: Arc<dyn KeymapQuery> = Arc::new(session_state.keymap_registry.clone());
 
     // Construct TextDomainDriver with domain_id=1 (canonical text domain).
-    let mut driver = TextDomainDriver::new(
-        1,
-        home_mode,
-        Arc::new(kernel),
-        command_registry,
-        text_buffers,
-    );
+    let mut driver =
+        TextDomainDriver::new(1, home_mode, Arc::new(kernel), command_registry, text_buffers);
 
     // Wire dispatch provider.
-    let provider = Arc::new(ResolverDispatchProvider::new(
-        driver_resolver_registry,
-        keymap_arc,
-    ));
-    let shared_ext = Arc::new(parking_lot::RwLock::new(
-        reovim_subsys_session::ExtensionMap::new(),
-    ));
+    let provider = Arc::new(ResolverDispatchProvider::new(driver_resolver_registry, keymap_arc));
+    let shared_ext = Arc::new(parking_lot::RwLock::new(reovim_subsys_session::ExtensionMap::new()));
     driver.set_dispatch_provider(provider, shared_ext);
 
     tracing::info!("TextDomainDriver constructed for default session (#753 E1)");

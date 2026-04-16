@@ -434,7 +434,6 @@ fn test_emit_notifications_with_buffer_modified() {
     assert_eq!(received.unwrap().event_type, "buffer_modified");
 }
 
-
 #[tokio::test]
 async fn test_apply_mode_transition_push() {
     use reovim_kernel::api::v1::{ModeId, ModuleId};
@@ -629,7 +628,6 @@ fn test_handle_pop_result_execute_command_with_args() {
     );
 }
 
-
 #[test]
 fn test_emit_notifications_with_selection_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-sel-test"));
@@ -691,7 +689,6 @@ fn test_emit_notifications_with_buffer_list_changed() {
     assert_eq!(received.unwrap().event_type, "buffer_list_changed");
 }
 
-
 #[test]
 fn test_emit_notifications_with_scroll_changed() {
     let session = crate::session::Session::new(SessionId::new("emit-viewport-test"));
@@ -710,7 +707,6 @@ fn test_emit_notifications_with_scroll_changed() {
         &test_cache(),
     );
 }
-
 
 #[tokio::test]
 async fn test_apply_mode_transition_push_multiple_modes() {
@@ -1272,7 +1268,6 @@ async fn test_send_keys_empty_key_sequence() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
 }
 
-
 #[test]
 fn test_input_service_impl_new_const() {
     // Test that new() is const
@@ -1623,7 +1618,10 @@ async fn test_handle_resolve_result_execute_mode_changes_during_command() {
     // execute_command_for_client is stubbed (#753 E3) -> returns None.
     // Execute arm still returns handled=true but no mode change occurs.
     assert!(handled);
-    assert!(!changes.mode_changed, "No mode change expected with stubbed command execution (#753 E3)");
+    assert!(
+        !changes.mode_changed,
+        "No mode change expected with stubbed command execution (#753 E3)"
+    );
 }
 
 // =========================================================================

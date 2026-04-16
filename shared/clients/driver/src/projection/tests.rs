@@ -16,8 +16,12 @@ fn domain_projection_new() {
 
 #[test]
 fn domain_projection_windowed() {
-    let mut proj =
-        DomainProjection::new(ProjectionTag::new("text.cursor"), DomainId(1), vec![], String::new());
+    let mut proj = DomainProjection::new(
+        ProjectionTag::new("text.cursor"),
+        DomainId(1),
+        vec![],
+        String::new(),
+    );
     assert!(!proj.is_windowed());
 
     proj.window_id = Some(42);
@@ -26,12 +30,18 @@ fn domain_projection_windowed() {
 
 #[cfg(feature = "proto")]
 mod proto_tests {
-    use reovim_protocol::v2::{DomainDatum, ProjectionUpdatedPayload};
-    use reovim_subsys_coordination::{DomainId, ProjectionTag};
+    use {
+        reovim_protocol::v2::{DomainDatum, ProjectionUpdatedPayload},
+        reovim_subsys_coordination::{DomainId, ProjectionTag},
+    };
 
     use super::super::{TranspileError, from_proto, transpiler::try_from_proto};
 
-    fn make_payload(tag: &str, domain_id: u32, datum: Option<DomainDatum>) -> ProjectionUpdatedPayload {
+    fn make_payload(
+        tag: &str,
+        domain_id: u32,
+        datum: Option<DomainDatum>,
+    ) -> ProjectionUpdatedPayload {
         ProjectionUpdatedPayload {
             tag: tag.to_string(),
             domain_id,

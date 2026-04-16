@@ -261,7 +261,6 @@ async fn test_get_visible_lines_with_scroll() {
     assert_eq!(resp.viewport_height, 24); // default terminal height
 }
 
-
 #[tokio::test]
 async fn test_get_registers_empty() {
     let (registry, session) = test_registry_with_session();
@@ -486,7 +485,6 @@ async fn test_get_registers_specific_nonexistent_register() {
     assert!(resp.registers.is_empty());
 }
 
-
 #[tokio::test]
 async fn test_get_screen_content_invalid_format() {
     let registry = test_registry();
@@ -577,7 +575,6 @@ async fn test_get_visible_lines_client_not_found_logs() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-
 // =========================================================================
 // Coverage: get_screen_content capture error paths (#497)
 // =========================================================================
@@ -659,7 +656,6 @@ async fn test_get_registers_client_not_found() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-
 // =========================================================================
 // Tests: CLIENT_NOT_FOUND error paths with ring buffer logging
 // Client exists in session (has ring buffer) but effective_state() returns
@@ -688,7 +684,6 @@ fn test_registry_with_dangling_follower(client_id: ClientId) -> Arc<SessionRegis
     session.clients().add_client_with_state(client);
     registry
 }
-
 
 #[tokio::test]
 async fn test_get_layout_dangling_follower_not_found() {
@@ -722,7 +717,6 @@ async fn test_get_visible_lines_dangling_follower_not_found() {
     let err = service.get_visible_lines(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::NotFound);
 }
-
 
 // =========================================================================
 // Coverage: kernel_to_proto_option() all variants (L62-77)

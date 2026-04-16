@@ -4,14 +4,16 @@
 //! It receives text domain projections and delegates buffer rendering to
 //! [`DefaultViewportRenderer`].
 
-use crate::{
-    ClientModule, ClientModuleError, PlatformCapabilities, ProbeResult, Rect, RenderSurface,
-    Style, ThemeProvider, TokenProvider, Version, ViewportContext, ViewportRenderer,
-    projection::DomainProjection,
-    traits::{CellGridClientModule, LocalInputResult, ModuleContext},
-    viewport::DefaultViewportRenderer,
+use {
+    crate::{
+        ClientModule, ClientModuleError, PlatformCapabilities, ProbeResult, Rect, RenderSurface,
+        Style, ThemeProvider, TokenProvider, Version, ViewportContext, ViewportRenderer,
+        projection::DomainProjection,
+        traits::{CellGridClientModule, LocalInputResult, ModuleContext},
+        viewport::DefaultViewportRenderer,
+    },
+    reovim_subsys_coordination::DomainId,
 };
-use reovim_subsys_coordination::DomainId;
 
 /// Text domain view module.
 ///
@@ -146,13 +148,15 @@ impl CellGridClientModule for TextDomainView {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        Rect,
-        projection::DomainProjection,
-        testing::{MockPlatformCapabilities, RecordingSurface, TestModuleContext},
+    use {
+        super::*,
+        crate::{
+            Rect,
+            projection::DomainProjection,
+            testing::{MockPlatformCapabilities, RecordingSurface, TestModuleContext},
+        },
+        reovim_subsys_coordination::ProjectionTag,
     };
-    use reovim_subsys_coordination::ProjectionTag;
 
     fn text_domain() -> DomainId {
         DomainId(1)

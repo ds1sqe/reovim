@@ -36,7 +36,7 @@ use {
         LayoutChangedPayload, Notification, ProjectionUpdatedPayload, TabPageInfo, WindowInfo,
         WindowRect, notification,
     },
-    reovim_subsys_session::{change_set::ChangeSet, bridges::BridgeRegistry},
+    reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
 };
 
 use crate::session::{ClientId, Session};
@@ -211,7 +211,10 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
         let compositor = state.compositor.as_ref()?;
         let (tw, th) = state.terminal_size;
         let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
-        compositor.composite(screen).focused.map(|id| id.as_usize() as u64)
+        compositor
+            .composite(screen)
+            .focused
+            .map(|id| id.as_usize() as u64)
     });
 
     // tabs: domain-owned — return empty (#753 E3, wired in E5/E6)

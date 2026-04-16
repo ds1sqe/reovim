@@ -31,8 +31,7 @@ pub fn render_unknown_domain_placeholder(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::testing::RecordingSurface;
+    use {super::*, crate::testing::RecordingSurface};
 
     #[test]
     fn unknown_domain_placeholder_renders_label() {

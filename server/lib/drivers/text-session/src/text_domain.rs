@@ -656,7 +656,10 @@ impl DomainDriver for TextDomainDriver {
         tabs
     }
 
-    fn register_entries(&self, client_id: ClientId) -> Vec<reovim_subsys_session::DomainRegisterEntry> {
+    fn register_entries(
+        &self,
+        client_id: ClientId,
+    ) -> Vec<reovim_subsys_session::DomainRegisterEntry> {
         let clients = self.clients.read();
         let state = match clients.get(&client_id) {
             Some(s) => s,

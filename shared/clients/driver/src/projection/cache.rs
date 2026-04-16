@@ -166,7 +166,11 @@ mod tests {
     #[test]
     fn cache_miss_returns_none() {
         let cache = ProjectionDisplayCache::new();
-        assert!(cache.get(DomainId(1), &ProjectionTag::new("text.mode")).is_none());
+        assert!(
+            cache
+                .get(DomainId(1), &ProjectionTag::new("text.mode"))
+                .is_none()
+        );
     }
 
     #[test]
@@ -223,7 +227,11 @@ mod tests {
         assert_eq!(cache.len(), 3);
         cache.evict_domain(DomainId(1));
         assert_eq!(cache.len(), 1);
-        assert!(cache.get(DomainId(1), &ProjectionTag::new("text.mode")).is_none());
+        assert!(
+            cache
+                .get(DomainId(1), &ProjectionTag::new("text.mode"))
+                .is_none()
+        );
         assert_eq!(cache.get(DomainId(2), &ProjectionTag::new("3d.transform")), Some("xyz"));
     }
 

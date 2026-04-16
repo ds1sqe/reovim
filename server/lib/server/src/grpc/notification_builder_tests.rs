@@ -17,8 +17,6 @@ fn test_build_notifications_empty_changes() {
     assert!(notifications.is_empty());
 }
 
-
-
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_buffer_modified_notification() {
@@ -66,7 +64,6 @@ fn test_build_buffer_list_notification_removed() {
         panic!("Expected BufferListChangedPayload");
     }
 }
-
 
 #[test]
 fn test_build_notifications_buffer_modified() {
@@ -123,7 +120,6 @@ fn test_build_notifications_buffer_deleted() {
     }
 }
 
-
 #[test]
 fn test_build_notifications_window_changed() {
     let mut changes = ChangeSet::new();
@@ -147,7 +143,6 @@ fn test_build_notifications_focus_changed() {
     assert_eq!(notifications.len(), 1);
     assert_eq!(notifications[0].event_type, "layout_changed");
 }
-
 
 #[test]
 fn test_build_notifications_cursor_moved_no_client() {
@@ -191,7 +186,6 @@ fn test_build_notifications_scroll_changed_no_client() {
     // No viewport notification because client doesn't exist
     assert!(notifications.is_empty());
 }
-
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -242,7 +236,6 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
     assert_eq!(removed_count, 1);
 }
 
-
 // test_build_layout_notification_with_client_windows removed:
 // per-client windows fallback is domain-owned (#753 E3).
 // Without compositor, build_layout_notification returns empty windows list.
@@ -270,7 +263,6 @@ fn test_build_layout_notification_no_compositor_empty_windows() {
         panic!("Expected LayoutChangedPayload");
     }
 }
-
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -355,9 +347,7 @@ fn test_build_layout_notification_with_compositor() {
             0
         }
         fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-            reovim_subsys_layout::LayoutTopology::Single(
-                WindowId::from_raw(1),
-            )
+            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(1))
         }
     }
 
@@ -374,8 +364,7 @@ fn test_build_layout_notification_with_compositor() {
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
     let metadata = crate::session::ClientMetadata::default();
-    let mut client =
-        crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
+    let mut client = crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositor {
         focused: Some(WindowId::from_raw(1)),
@@ -436,11 +425,9 @@ fn test_build_layout_notification_compositor_no_client() {
 fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     // Test compositor branch where client_windows has no matching window
     // but active_buffer is set as fallback
-    use {
-        reovim_subsys_layout::{
-            CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
-            WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
-        },
+    use reovim_subsys_layout::{
+        CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
+        WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
     };
 
     struct TestCompositorTwoWindows;
@@ -517,9 +504,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
             0
         }
         fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-            reovim_subsys_layout::LayoutTopology::Single(
-                WindowId::from_raw(10),
-            )
+            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(10))
         }
     }
 
@@ -535,8 +520,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     );
     let mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
     let metadata = crate::session::ClientMetadata::default();
-    let mut client =
-        crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
+    let mut client = crate::session::Client::with_mode_stack(client_id, metadata, mode_stack);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
     // active_buffer is domain-owned (#753 E3) — not set here
@@ -560,7 +544,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         panic!("Expected LayoutChangedPayload");
     }
 }
-
 
 // === Extension notification tests (#514) ===
 
@@ -940,10 +923,7 @@ mod projection_tests {
         let notifications = build_projection_notifications(&result, 1, 10000);
 
         if let Some(notification::Payload::ProjectionUpdated(ref p)) = notifications[0].payload {
-            assert_eq!(
-                p.datum.as_ref().unwrap().display,
-                Some("VISUAL".to_string())
-            );
+            assert_eq!(p.datum.as_ref().unwrap().display, Some("VISUAL".to_string()));
         } else {
             panic!("Expected ProjectionUpdatedPayload");
         }
@@ -969,5 +949,4 @@ mod projection_tests {
             panic!("Expected ProjectionUpdatedPayload");
         }
     }
-
 }

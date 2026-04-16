@@ -51,7 +51,9 @@ pub enum TranspileError {
 impl std::fmt::Display for TranspileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingDatum => write!(f, "ProjectionUpdatedPayload missing required datum field"),
+            Self::MissingDatum => {
+                write!(f, "ProjectionUpdatedPayload missing required datum field")
+            }
         }
     }
 }
@@ -61,12 +63,7 @@ impl std::error::Error for TranspileError {}
 impl DomainProjection {
     /// Create a new domain projection directly (for testing and non-proto paths).
     #[must_use]
-    pub fn new(
-        tag: ProjectionTag,
-        domain_id: DomainId,
-        content: Vec<u8>,
-        display: String,
-    ) -> Self {
+    pub fn new(tag: ProjectionTag, domain_id: DomainId, content: Vec<u8>, display: String) -> Self {
         Self {
             tag,
             domain_id,

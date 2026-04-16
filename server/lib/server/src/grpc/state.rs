@@ -217,8 +217,9 @@ impl StateService for StateServiceImpl {
 
         // Build layout from per-client compositor (#474).
         // buffer_id and tabs are domain-owned (#753 E3) — return None/empty until E5/E6.
-        let active_buffer =
-            session.active_buffer_for_client(client_id).map(|id| id.as_usize() as u64);
+        let active_buffer = session
+            .active_buffer_for_client(client_id)
+            .map(|id| id.as_usize() as u64);
 
         let (root, focused_id) = if let Some(ref compositor) = state.compositor {
             let (tw, th) = state.terminal_size;
@@ -229,7 +230,10 @@ impl StateService for StateServiceImpl {
             let root = match composite.placements.len() {
                 0 => None,
                 1 => Some(WindowNode {
-                    node: Some(Node::Leaf(placement_to_leaf(&composite.placements[0], active_buffer))),
+                    node: Some(Node::Leaf(placement_to_leaf(
+                        &composite.placements[0],
+                        active_buffer,
+                    ))),
                 }),
                 _ => {
                     let children: Vec<WindowNode> = composite

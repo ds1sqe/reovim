@@ -4,8 +4,10 @@
 //! `DomainProjection`. After this function, no proto types exist in the
 //! caller's scope. This is the D21 design: fail loud on invalid input.
 
-use reovim_protocol::v2::ProjectionUpdatedPayload;
-use reovim_subsys_coordination::{DomainId, ProjectionTag};
+use {
+    reovim_protocol::v2::ProjectionUpdatedPayload,
+    reovim_subsys_coordination::{DomainId, ProjectionTag},
+};
 
 use super::{DomainProjection, TranspileError};
 
@@ -23,7 +25,9 @@ pub fn from_proto(payload: ProjectionUpdatedPayload) -> DomainProjection {
     match try_from_proto(payload) {
         Ok(proj) => proj,
         Err(TranspileError::MissingDatum) => {
-            panic!("BUG: ProjectionUpdatedPayload missing required datum — server contract violation (D21)")
+            panic!(
+                "BUG: ProjectionUpdatedPayload missing required datum — server contract violation (D21)"
+            )
         }
     }
 }

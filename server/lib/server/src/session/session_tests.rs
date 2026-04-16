@@ -1282,9 +1282,7 @@ impl reovim_subsys_layout::RootCompositor for TestPlacementCompositor {
     }
 
     fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        reovim_subsys_layout::LayoutTopology::Single(
-            reovim_subsys_layout::WindowId::from_raw(1),
-        )
+        reovim_subsys_layout::LayoutTopology::Single(reovim_subsys_layout::WindowId::from_raw(1))
     }
 }
 

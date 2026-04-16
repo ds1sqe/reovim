@@ -31,8 +31,10 @@ pub trait CellGridClientModule: ClientModule {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{ClientModuleError, ProbeResult, Version, traits::ModuleContext};
+    use {
+        super::*,
+        crate::{ClientModuleError, ProbeResult, Version, traits::ModuleContext},
+    };
 
     struct MinimalModule;
 
