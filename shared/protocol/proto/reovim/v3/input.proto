@@ -1,0 +1,31 @@
+// Input service for domain-neutral input dispatch.
+//
+// One RPC for all input. Server passes payload to domain driver unchanged.
+
+syntax = "proto3";
+package reovim.v3;
+
+service InputService {
+  // Send input to the editor (domain-neutral opaque payload).
+  //
+  // Payload: 8-byte header + kind-specific body. Server validates
+  // payload.len() >= 8 before dispatch. Domain driver decodes the rest.
+  rpc SendInput(SendInputRequest) returns (SendInputResponse);
+}
+
+message SendInputRequest {
+  // Opaque input payload: 8-byte header + kind-specific body.
+  // Server never decodes — passes to domain driver unchanged.
+  bytes payload = 1;
+  // Client-resolved window ID (from hit testing).
+  // Server uses this when present, falls back to routing state when absent.
+  optional uint64 window_id = 2;
+  // Client-side timestamp (nanoseconds).
+  uint64 timestamp_ns = 3;
+}
+
+message SendInputResponse {
+  bool ok = 1;
+  // Server signals client should disconnect (e.g., :q command).
+  bool should_quit = 2;
+}

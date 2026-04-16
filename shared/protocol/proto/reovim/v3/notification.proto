@@ -1,0 +1,184 @@
+// Notification service for server-to-client streaming.
+//
+// Domain state flows through ProjectionUpdatedPayload (generic).
+// Server-owned lifecycle notifications remain typed:
+//   LayoutChanged, BufferOpened, BufferClosed, client membership.
+// No BufferChange, BufferModified, BufferListChanged (text-domain).
+
+syntax = "proto3";
+package reovim.v3;
+
+import "reovim/v3/common.proto";
+import "reovim/v3/presence.proto";
+
+service NotificationService {
+  // Subscribe to notifications (server streaming).
+  rpc Subscribe(SubscribeRequest) returns (stream Notification);
+}
+
+message SubscribeRequest {
+  // Event types to subscribe to (empty = all events).
+  repeated string event_types = 1;
+}
+
+message Notification {
+  string event_type = 1;
+  uint64 timestamp_ms = 2;
+
+  oneof payload {
+    // Domain-neutral projection update (generic).
+    ProjectionUpdatedPayload projection_updated = 10;
+
+    // Server-owned lifecycle notifications (typed).
+    BufferOpenedPayload buffer_opened = 11;
+    BufferClosedPayload buffer_closed = 12;
+    LayoutChangedPayload layout_changed = 13;
+    RenderCompletePayload render_complete = 14;
+    DetachPayload detach = 15;
+
+    // Capture relay.
+    CaptureRequestPayload capture_request = 16;
+    CaptureResponsePayload capture_response = 17;
+
+    // Surface change relay (replaces resize_request).
+    SurfaceChangedPayload surface_changed = 18;
+
+    // Multi-client presence updates.
+    PresenceJoinedPayload presence_joined = 19;
+    PresenceLeftPayload presence_left = 20;
+    PresenceUpdatedPayload presence_updated = 21;
+
+    // Extension state updates.
+    ExtensionUpdatedPayload extension_updated = 22;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Projection updates (generic domain state)
+// ---------------------------------------------------------------------------
+
+message ProjectionUpdatedPayload {
+  // Projection tag (e.g., "text.cursor", "mesh.camera").
+  string tag = 1;
+  // Domain that produced this projection.
+  uint32 domain_id = 2;
+  // Window scope (absent = session-wide).
+  optional uint64 window_id = 3;
+  // Opaque domain datum — SERVER CONTRACT: always populated.
+  optional DomainDatum datum = 4;
+  // True if transient (fire-and-forget), false if persistent (cached).
+  bool transient = 5;
+  // Monotonic version for persistent projections (0 for transient).
+  uint64 version = 6;
+  // Client that owns this projection state.
+  uint64 client_id = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Buffer lifecycle (server-owned)
+// ---------------------------------------------------------------------------
+
+message BufferOpenedPayload {
+  uint64 buffer_id = 1;
+  optional string path = 2;
+  string name = 3;
+}
+
+message BufferClosedPayload {
+  uint64 buffer_id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Layout changed (server-owned)
+// ---------------------------------------------------------------------------
+
+message LayoutChangedPayload {
+  optional uint64 focused_window_id = 1;
+  repeated WindowInfo windows = 2;
+  uint64 client_id = 3;
+  optional uint64 active_tab_id = 4;
+  repeated TabPageInfo tabs = 5;
+}
+
+message WindowInfo {
+  uint64 window_id = 1;
+  optional uint64 buffer_id = 2;
+  WindowRect rect = 3;
+  bool focused = 4;
+  optional float opacity = 5;
+  // Domain fields (master plan Section 6).
+  uint32 primary_domain_id = 6;
+  repeated uint32 embedded_domain_ids = 7;
+  // Opaque spatial placement (platform codec defines layout).
+  optional bytes spatial_placement = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Render complete
+// ---------------------------------------------------------------------------
+
+message RenderCompletePayload {
+  uint64 frame_id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Detach
+// ---------------------------------------------------------------------------
+
+message DetachPayload {
+  string reason = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Capture relay
+// ---------------------------------------------------------------------------
+
+message CaptureRequestPayload {
+  uint64 request_id = 1;
+  string format = 2;
+  uint64 target_client_id = 3;
+}
+
+message CaptureResponsePayload {
+  uint64 request_id = 1;
+  uint64 width = 2;
+  uint64 height = 3;
+  string format = 4;
+  string content = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Surface change (replaces resize relay)
+// ---------------------------------------------------------------------------
+
+message SurfaceChangedPayload {
+  SurfaceDescriptorProto surface = 1;
+  uint64 target_client_id = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Presence notifications
+// ---------------------------------------------------------------------------
+
+message PresenceJoinedPayload {
+  ClientPresence client = 1;
+}
+
+message PresenceLeftPayload {
+  uint64 client_id = 1;
+  string display_name = 2;
+}
+
+message PresenceUpdatedPayload {
+  ClientPresence client = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Extension state updates
+// ---------------------------------------------------------------------------
+
+message ExtensionUpdatedPayload {
+  string kind = 1;
+  string data = 2;
+  uint64 client_id = 3;
+}

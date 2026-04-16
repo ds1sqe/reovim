@@ -53,7 +53,7 @@
     clippy::return_self_not_must_use
 )]
 mod proto {
-    tonic::include_proto!("reovim.v2");
+    tonic::include_proto!("reovim.v3");
 }
 
 pub use proto::*;

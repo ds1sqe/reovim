@@ -1,0 +1,57 @@
+// Editor service for editor-level operations.
+//
+// SurfaceChanged replaces Resize (opaque SurfaceDescriptorProto).
+
+syntax = "proto3";
+package reovim.v3;
+
+import "reovim/v3/common.proto";
+
+service EditorService {
+  // Notify server of client surface change (replaces Resize).
+  //
+  // Client sends SurfaceDescriptorProto describing its rendering surface.
+  // Server stores it for layout computation. Opaque body — server reads
+  // only the kind field for routing.
+  rpc SurfaceChanged(SurfaceChangedRequest) returns (SurfaceChangedResponse);
+
+  // Quit the editor.
+  rpc Quit(QuitRequest) returns (QuitResponse);
+
+  // Set active buffer.
+  rpc SetActiveBuffer(SetActiveBufferRequest) returns (SetActiveBufferResponse);
+
+  // Get active buffer.
+  rpc GetActiveBuffer(GetActiveBufferRequest) returns (GetActiveBufferResponse);
+}
+
+message SurfaceChangedRequest {
+  SurfaceDescriptorProto surface = 1;
+}
+
+message SurfaceChangedResponse {
+  bool ok = 1;
+}
+
+message QuitRequest {
+  bool force = 1;
+}
+
+message QuitResponse {
+  bool ok = 1;
+  optional string error = 2;
+}
+
+message SetActiveBufferRequest {
+  uint64 buffer_id = 1;
+}
+
+message SetActiveBufferResponse {
+  bool ok = 1;
+}
+
+message GetActiveBufferRequest {}
+
+message GetActiveBufferResponse {
+  optional uint64 buffer_id = 1;
+}

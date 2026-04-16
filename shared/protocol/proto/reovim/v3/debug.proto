@@ -1,0 +1,135 @@
+// Debug service for server debugging, log access, and client-targeting.
+//
+// CLI uses this service for stateless operations (no auth required).
+// No DebugGetMode — removed entirely in v3. Use DebugGetProjections
+// with tag filter ["text.mode"] instead.
+
+syntax = "proto3";
+package reovim.v3;
+
+import "reovim/v3/common.proto";
+import "reovim/v3/presence.proto";
+
+service DebugService {
+  // Get recent log entries from the server ring buffer.
+  rpc LogTail(LogTailRequest) returns (LogTailResponse);
+
+  // Get or set the current log level.
+  rpc LogLevel(LogLevelRequest) returns (LogLevelResponse);
+
+  // Send input to a specific client's state (no auth required).
+  rpc DebugSendInput(DebugSendInputRequest) returns (DebugSendInputResponse);
+
+  // Capture a client's screen content (no auth required).
+  rpc DebugCapture(DebugCaptureRequest) returns (DebugCaptureResponse);
+
+  // Get a client's projection state (no auth required).
+  rpc DebugGetProjections(DebugGetProjectionsRequest) returns (DebugGetProjectionsResponse);
+
+  // List connected clients (no auth required).
+  rpc DebugListClients(DebugListClientsRequest) returns (DebugListClientsResponse);
+
+  // Query extension state for a specific client (no auth required).
+  rpc DebugGetExtensionState(DebugGetExtensionStateRequest) returns (DebugGetExtensionStateResponse);
+
+  // List all registered extensions (no auth required).
+  rpc DebugListExtensions(DebugListExtensionsRequest) returns (DebugListExtensionsResponse);
+}
+
+// Logging
+
+message LogTailRequest {
+  uint32 count = 1;
+  optional string level = 2;
+  optional string target = 3;
+  optional string grep = 4;
+}
+
+message LogTailResponse {
+  repeated LogEntry entries = 1;
+}
+
+message LogEntry {
+  uint64 seq = 1;
+  uint64 timestamp_us = 2;
+  string level = 3;
+  string target = 4;
+  string message = 5;
+}
+
+message LogLevelRequest {
+  optional string level = 1;
+}
+
+message LogLevelResponse {
+  string level = 1;
+}
+
+// Client-targeting debug operations
+
+message DebugSendInputRequest {
+  bytes payload = 1;
+  uint64 target_client_id = 2;
+}
+
+message DebugSendInputResponse {
+  bool ok = 1;
+}
+
+message DebugCaptureRequest {
+  uint64 target_client_id = 1;
+  string format = 2;
+}
+
+message DebugCaptureResponse {
+  uint32 width = 1;
+  uint32 height = 2;
+  string format = 3;
+  string content = 4;
+}
+
+message DebugGetProjectionsRequest {
+  uint64 target_client_id = 1;
+  repeated string tags = 2;
+}
+
+message DebugGetProjectionsResponse {
+  repeated DebugProjectionEntry projections = 1;
+}
+
+message DebugProjectionEntry {
+  string tag = 1;
+  uint32 domain_id = 2;
+  optional uint64 window_id = 3;
+  optional DomainDatum datum = 4;
+  uint64 version = 5;
+}
+
+message DebugListClientsRequest {}
+
+message DebugListClientsResponse {
+  repeated ClientInfo clients = 1;
+}
+
+// Extension state queries
+
+message DebugGetExtensionStateRequest {
+  string kind = 1;
+  uint64 target_client_id = 2;
+}
+
+message DebugGetExtensionStateResponse {
+  bool active = 1;
+  string data = 2;
+}
+
+message DebugListExtensionsRequest {}
+
+message DebugListExtensionsResponse {
+  repeated DebugExtensionInfo extensions = 1;
+}
+
+message DebugExtensionInfo {
+  string kind = 1;
+  string scope = 2;
+}

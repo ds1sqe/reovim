@@ -1,0 +1,71 @@
+// Buffer service for buffer metadata and lifecycle.
+//
+// Content access routes through projections, not typed RPCs.
+// No GetRawContent, GetLineCount, GetAnnotations, codec RPCs.
+// Server owns buffer metadata via kernel — List returns it.
+
+syntax = "proto3";
+package reovim.v3;
+
+service BufferService {
+  // List all open buffers (kernel metadata).
+  rpc List(ListBuffersRequest) returns (ListBuffersResponse);
+
+  // Open a file into a buffer.
+  rpc OpenFile(OpenFileRequest) returns (OpenFileResponse);
+
+  // Write buffer to file.
+  rpc WriteFile(WriteFileRequest) returns (WriteFileResponse);
+
+  // Set buffer content.
+  rpc SetContent(SetContentRequest) returns (SetContentResponse);
+}
+
+// Buffer list
+
+message ListBuffersRequest {}
+
+message ListBuffersResponse {
+  repeated BufferInfo buffers = 1;
+}
+
+message BufferInfo {
+  uint64 id = 1;
+  optional string path = 2;          // file path (if file-backed)
+  string name = 3;                   // display name
+  bool modified = 4;                 // has unsaved changes
+  optional string content_type = 5;  // MIME-like type (e.g., "text/utf-8")
+  optional bool readonly = 6;
+  uint32 capabilities = 7;           // BufferCapabilities bitflags
+}
+
+// File operations
+
+message OpenFileRequest {
+  string path = 1;
+}
+
+message OpenFileResponse {
+  uint64 buffer_id = 1;
+  bool ok = 2;
+  optional string error = 3;
+}
+
+message WriteFileRequest {
+  optional uint64 buffer_id = 1;
+  optional string path = 2;
+}
+
+message WriteFileResponse {
+  bool ok = 1;
+  optional string error = 2;
+}
+
+message SetContentRequest {
+  optional uint64 buffer_id = 1;
+  string content = 2;
+}
+
+message SetContentResponse {
+  bool ok = 1;
+}
