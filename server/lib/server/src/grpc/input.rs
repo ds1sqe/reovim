@@ -25,7 +25,7 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::Mutex,
     reovim_protocol::v2::{
-        KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
+        SendInputRequest, SendInputResponse, input_service_server::InputService,
         notification,
     },
     reovim_subsys_input::KeySequence,
@@ -101,10 +101,10 @@ impl InputService for InputServiceImpl {
     ///
     /// When modules are NOT loaded (empty registries), falls back to character insertion.
     #[allow(clippy::too_many_lines)]
-    async fn send_keys(
+    async fn send_input(
         &self,
-        request: Request<SendKeysRequest>,
-    ) -> Result<Response<SendKeysResponse>, Status> {
+        request: Request<SendInputRequest>,
+    ) -> Result<Response<SendInputResponse>, Status> {
         // #483 Phase 5: Token-only authentication (no body fallback)
         let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
@@ -116,7 +116,7 @@ impl InputService for InputServiceImpl {
         // Client must exist (created via Join())
         if !session.clients().has_client(client_id) {
             return Err(Status::failed_precondition(format!(
-                "Client {client_id} not found — call Join() before sending keys"
+                "Client {client_id} not found — call Join() before sending input"
             )));
         }
 
@@ -126,9 +126,8 @@ impl InputService for InputServiceImpl {
         {
             // Following: input is ignored (read-only spectator)
             tracing::debug!(%client_id, "Input ignored for Following client");
-            return Ok(Response::new(SendKeysResponse {
+            return Ok(Response::new(SendInputResponse {
                 ok: false,
-                status: KeyStatus::NotFound.into(),
                 should_quit: false,
             }));
         }
@@ -136,9 +135,11 @@ impl InputService for InputServiceImpl {
         // Note: For Sharing, input goes to target's state - handled by
         // session.resolve_key_for_client() and session.execute_command_for_client()
 
-        // Parse vim notation keys
-        let keys = KeySequence::parse(&req.keys).ok_or_else(|| {
-            Status::invalid_argument(format!("Invalid key notation: {}", req.keys))
+        // Parse vim notation keys from opaque payload (v3: bytes, interpreted as UTF-8 keys)
+        let keys_str = std::str::from_utf8(&req.payload)
+            .map_err(|_| Status::invalid_argument("Payload is not valid UTF-8 key notation"))?;
+        let keys = KeySequence::parse(keys_str).ok_or_else(|| {
+            Status::invalid_argument(format!("Invalid key notation: {keys_str}"))
         })?;
 
         // #514/#468: Snapshot ALL bridge active states before key resolution.
@@ -152,7 +153,6 @@ impl InputService for InputServiceImpl {
 
         // Process each key through the resolver system
         let mut any_handled = false;
-        let mut final_status = KeyStatus::NotFound;
         let mut accumulated_changes = ChangeSet::new();
 
         for key in keys.as_slice() {
@@ -192,7 +192,6 @@ impl InputService for InputServiceImpl {
 
             if handled {
                 any_handled = true;
-                final_status = KeyStatus::Executed;
             }
         }
 
@@ -285,9 +284,8 @@ impl InputService for InputServiceImpl {
         // The server no longer touches driver types directly.
 
         // Return result
-        Ok(Response::new(SendKeysResponse {
+        Ok(Response::new(SendInputResponse {
             ok: any_handled,
-            status: final_status.into(),
             should_quit: accumulated_changes.should_quit,
         }))
     }

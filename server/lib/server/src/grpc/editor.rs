@@ -18,9 +18,9 @@ use std::sync::Arc;
 use {
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
-        GetActiveBufferRequest, GetActiveBufferResponse, QuitRequest, QuitResponse, ResizeRequest,
-        ResizeResponse, SetActiveBufferRequest, SetActiveBufferResponse,
-        editor_service_server::EditorService,
+        GetActiveBufferRequest, GetActiveBufferResponse, QuitRequest, QuitResponse,
+        SetActiveBufferRequest, SetActiveBufferResponse, SurfaceChangedRequest,
+        SurfaceChangedResponse, editor_service_server::EditorService,
     },
     tonic::{Request, Response, Status},
 };
@@ -57,61 +57,41 @@ impl EditorServiceImpl {
 
 #[tonic::async_trait]
 impl EditorService for EditorServiceImpl {
-    /// Resize the viewport.
+    /// Notify server of client surface change (replaces Resize).
     ///
-    /// Relays resize request to connected TUI clients via notification.
-    /// The server has no screen - this is purely a relay:
-    ///
-    /// ```text
-    /// CLI (debug) ──► Server (relay) ──► TUI (resizes frame buffer)
-    /// ```
-    ///
-    /// # Arguments
-    ///
-    /// * `request` - Contains `width` and `height` for the TUI viewport.
-    async fn resize(
+    /// Receives an opaque `SurfaceDescriptorProto` — server reads only the
+    /// `kind` field for routing. Relays to TUI via notification.
+    async fn surface_changed(
         &self,
-        request: Request<ResizeRequest>,
-    ) -> Result<Response<ResizeResponse>, Status> {
-        use reovim_protocol::v2::{Notification, ResizeRequestPayload, notification::Payload};
+        request: Request<SurfaceChangedRequest>,
+    ) -> Result<Response<SurfaceChangedResponse>, Status> {
+        use reovim_protocol::v2::{Notification, SurfaceChangedPayload, notification::Payload};
 
-        // Extract caller's client_id from token (if authenticated).
-        // Used to target the resize notification to a specific TUI.
         let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
+        let surface = req.surface;
+
         // Relay to TUI via notification
         #[allow(clippy::cast_possible_truncation)]
         let notification = Notification {
-            event_type: "resize_request".to_string(),
+            event_type: "surface_changed".to_string(),
             timestamp_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("system time before UNIX_EPOCH")
                 .as_millis() as u64,
-            payload: Some(Payload::ResizeRequest(ResizeRequestPayload {
-                width: req.width,
-                height: req.height,
+            payload: Some(Payload::SurfaceChanged(SurfaceChangedPayload {
+                surface,
                 target_client_id: client_id.map_or(0, |id| id.as_usize() as u64),
             })),
         };
 
         session.emit_notification(notification);
 
-        // Store terminal size in per-client state so compositor.composite()
-        // uses correct geometry for layout notifications.
-        #[allow(clippy::cast_possible_truncation)]
-        if let Some(cid) = client_id {
-            let w = req.width as u16;
-            let h = req.height as u16;
-            session.clients().update_client_state(cid, |state| {
-                state.terminal_size = (w, h);
-            });
-        }
+        tracing::debug!("SurfaceChanged relayed to TUI");
 
-        tracing::debug!(width = req.width, height = req.height, "Resize relayed to TUI");
-
-        Ok(Response::new(ResizeResponse { ok: true }))
+        Ok(Response::new(SurfaceChangedResponse { ok: true }))
     }
 
     /// Quit the editor.

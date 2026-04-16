@@ -10,11 +10,18 @@
 //! `SyntaxStreamState` (token subscriber management) remains as it
 //! depends on server-side infrastructure (tokio channels, gRPC protocol).
 
-use {
-    reovim_protocol::v2::TokenUpdate,
-    reovim_subsys_session::SessionExtension,
-    tokio::sync::mpsc,
-};
+use {reovim_subsys_session::SessionExtension, tokio::sync::mpsc};
+
+/// Opaque token update payload (domain-owned, #753 E6).
+///
+/// `TokenUpdate` was removed from protocol v3. Domain drivers push token
+/// updates through projections. This placeholder keeps channel infrastructure
+/// alive until domain driver wiring is complete.
+#[derive(Clone, Debug, Default)]
+pub struct TokenUpdate {
+    /// Buffer identifier.
+    pub buffer_id: u64,
+}
 
 /// Subscription handle for token update streams.
 pub type TokenSubscriber = mpsc::Sender<TokenUpdate>;

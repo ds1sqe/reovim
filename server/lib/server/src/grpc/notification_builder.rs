@@ -32,7 +32,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
     reovim_protocol::v2::{
-        BufferListChangedPayload, BufferModifiedPayload, DomainDatum, ExtensionUpdatedPayload,
+        BufferClosedPayload, BufferOpenedPayload, DomainDatum, ExtensionUpdatedPayload,
         LayoutChangedPayload, Notification, ProjectionUpdatedPayload, TabPageInfo, WindowInfo,
         WindowRect, notification,
     },
@@ -75,19 +75,12 @@ pub fn build_notifications(
     let mut notifications = Vec::new();
     let timestamp = current_timestamp_ms();
 
-    // Buffer modified notifications (buffers are shared, not per-client)
-    if !changes.modified_buffers.is_empty() {
-        for buffer_id in &changes.modified_buffers {
-            notifications.push(build_buffer_modified_notification(*buffer_id, timestamp));
-        }
-    }
-
-    // Buffer lifecycle notifications (buffers are shared)
+    // Buffer lifecycle notifications (v3: Opened/Closed replace Modified+ListChanged)
     for buffer_id in &changes.created_buffers {
-        notifications.push(build_buffer_list_notification("added", *buffer_id, timestamp));
+        notifications.push(build_buffer_opened_notification(*buffer_id, timestamp));
     }
     for buffer_id in &changes.deleted_buffers {
-        notifications.push(build_buffer_list_notification("removed", *buffer_id, timestamp));
+        notifications.push(build_buffer_closed_notification(*buffer_id, timestamp));
     }
 
     // Window/layout changed notification
@@ -121,32 +114,31 @@ pub fn build_notifications(
     notifications
 }
 
-/// Build a buffer modified notification.
-fn build_buffer_modified_notification(
+/// Build a buffer opened notification.
+fn build_buffer_opened_notification(
     buffer_id: reovim_kernel::api::v1::BufferId,
     timestamp: u64,
 ) -> Notification {
     Notification {
-        event_type: "buffer_modified".to_string(),
+        event_type: "buffer_opened".to_string(),
         timestamp_ms: timestamp,
-        payload: Some(notification::Payload::BufferModified(BufferModifiedPayload {
+        payload: Some(notification::Payload::BufferOpened(BufferOpenedPayload {
             buffer_id: buffer_id.as_usize() as u64,
-            change: None, // Full content refresh for now
+            path: None,
+            name: String::new(),
         })),
     }
 }
 
-/// Build a buffer list changed notification.
-fn build_buffer_list_notification(
-    action: &str,
+/// Build a buffer closed notification.
+fn build_buffer_closed_notification(
     buffer_id: reovim_kernel::api::v1::BufferId,
     timestamp: u64,
 ) -> Notification {
     Notification {
-        event_type: "buffer_list_changed".to_string(),
+        event_type: "buffer_closed".to_string(),
         timestamp_ms: timestamp,
-        payload: Some(notification::Payload::BufferListChanged(BufferListChangedPayload {
-            action: action.to_string(),
+        payload: Some(notification::Payload::BufferClosed(BufferClosedPayload {
             buffer_id: buffer_id.as_usize() as u64,
         })),
     }
@@ -195,6 +187,9 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                         }),
                         focused: focused_id == Some(p.window_id),
                         opacity: Some(p.opacity),
+                        primary_domain_id: 0,
+                        embedded_domain_ids: vec![],
+                        spatial_placement: None,
                     }
                 })
                 .collect()

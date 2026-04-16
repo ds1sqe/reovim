@@ -40,11 +40,15 @@ pub mod codec;
 pub mod instance;
 pub mod v1;
 
-/// Protocol v2: gRPC-based raw-data model.
+/// Protocol v3: gRPC-based domain-neutral model.
 ///
 /// Requires the `grpc` feature to be enabled.
 #[cfg(feature = "grpc")]
-pub mod v2;
+pub mod v3;
+
+/// Backward-compatible alias during migration.
+#[cfg(feature = "grpc")]
+pub use v3 as v2;
 
 // Re-export v1 as the default API (backward compatibility)
 pub use v1::*;

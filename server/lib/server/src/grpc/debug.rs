@@ -29,12 +29,12 @@ use std::sync::Arc;
 use {
     reovim_protocol::v2::{
         CaptureRequestPayload, DebugCaptureRequest, DebugCaptureResponse, DebugExtensionInfo,
-        DebugGetExtensionStateRequest, DebugGetExtensionStateResponse, DebugGetModeRequest,
-        DebugGetModeResponse, DebugGetProjectionsRequest, DebugGetProjectionsResponse,
+        DebugGetExtensionStateRequest, DebugGetExtensionStateResponse,
+        DebugGetProjectionsRequest, DebugGetProjectionsResponse,
         DebugListClientsRequest, DebugListClientsResponse, DebugListExtensionsRequest,
-        DebugListExtensionsResponse, DebugSendKeysRequest, DebugSendKeysResponse, LogEntry,
+        DebugListExtensionsResponse, DebugSendInputRequest, DebugSendInputResponse, LogEntry,
         LogLevelRequest, LogLevelResponse, LogTailRequest, LogTailResponse, Notification,
-        SendKeysRequest, debug_service_server::DebugService, input_service_server::InputService,
+        SendInputRequest, debug_service_server::DebugService, input_service_server::InputService,
         notification::Payload,
     },
     tonic::{Request, Response, Status},
@@ -226,10 +226,10 @@ impl DebugService for DebugServiceImpl {
     /// standard key processing pipeline. All server-side state (resolvers,
     /// mode stack, commands) is accessed directly.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    async fn debug_send_keys(
+    async fn debug_send_input(
         &self,
-        request: Request<DebugSendKeysRequest>,
-    ) -> Result<Response<DebugSendKeysResponse>, Status> {
+        request: Request<DebugSendInputRequest>,
+    ) -> Result<Response<DebugSendInputResponse>, Status> {
         let req = request.into_inner();
         let client_id = Self::resolve_target(req.target_client_id)?;
 
@@ -250,16 +250,17 @@ impl DebugService for DebugServiceImpl {
         let input_service =
             InputServiceImpl::new(Arc::clone(sessions), session_id.clone(), Arc::clone(bridges));
 
-        let mut send_request = Request::new(SendKeysRequest { keys: req.keys });
+        let mut send_request = Request::new(SendInputRequest {
+            payload: req.payload,
+            window_id: None,
+            timestamp_ns: 0,
+        });
         send_request.extensions_mut().insert(client_id);
 
-        let response = InputService::send_keys(&input_service, send_request).await?;
+        let response = InputService::send_input(&input_service, send_request).await?;
         let inner = response.into_inner();
 
-        Ok(Response::new(DebugSendKeysResponse {
-            ok: inner.ok,
-            status: inner.status,
-        }))
+        Ok(Response::new(DebugSendInputResponse { ok: inner.ok }))
     }
 
     /// Capture a client's screen content via TUI relay.
@@ -324,30 +325,6 @@ impl DebugService for DebugServiceImpl {
             height: result.height as u32,
             format: result.format,
             content: result.content,
-        }))
-    }
-
-    /// Get a client's current editor mode (direct server-side lookup).
-    async fn debug_get_mode(
-        &self,
-        request: Request<DebugGetModeRequest>,
-    ) -> Result<Response<DebugGetModeResponse>, Status> {
-        let req = request.into_inner();
-        let client_id = Self::resolve_target(req.target_client_id)?;
-        let session = self.get_session()?;
-
-        let mode = session.client_current_mode(client_id).ok_or_else(|| {
-            Status::not_found(format!("Client {} not found", req.target_client_id))
-        })?;
-
-        let name = mode.name().to_string();
-        let display = name.to_uppercase();
-        let is_insert = name.contains("insert") || name.contains("cmdline");
-
-        Ok(Response::new(DebugGetModeResponse {
-            name,
-            display,
-            is_insert,
         }))
     }
 

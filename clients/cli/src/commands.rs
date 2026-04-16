@@ -29,25 +29,17 @@ pub async fn keys(
 ) -> Result<String, GrpcClientError> {
     let response = client.debug_send_keys(keys, target_client_id).await?;
 
-    let status_str = match response.status {
-        1 => "executed",
-        2 => "pending",
-        3 => "not_found",
-        _ => "unknown",
-    };
-
     match format {
         OutputFormat::Plain => {
             if response.ok {
-                Ok(format!("OK (status: {status_str})"))
+                Ok("OK".to_string())
             } else {
-                Ok(format!("Failed (status: {status_str})"))
+                Ok("Failed".to_string())
             }
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
                 "ok": response.ok,
-                "status": status_str,
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -63,28 +55,14 @@ pub async fn keys(
 /// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn mode(
-    client: &mut GrpcClient,
-    target_client_id: u64,
-    format: OutputFormat,
+    _client: &mut GrpcClient,
+    _target_client_id: u64,
+    _format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.debug_get_mode(target_client_id).await?;
-
-    match format {
-        OutputFormat::Plain => Ok(format!(
-            "{} ({}{})",
-            response.display,
-            response.name,
-            if response.is_insert { ", insert" } else { "" }
-        )),
-        OutputFormat::Json => {
-            let json = serde_json::json!({
-                "name": response.name,
-                "display": response.display,
-                "is_insert": response.is_insert,
-            });
-            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
-        }
-    }
+    Err(GrpcClientError::OperationFailed(
+        "debug-get-mode removed in proto v3; use 'cursor' to query projections instead"
+            .to_string(),
+    ))
 }
 
 /// Get a specific client's cursor position via `DebugService`.
@@ -167,44 +145,20 @@ pub async fn buffers(
             let mut output = String::new();
             for buf in &response.buffers {
                 let modified = if buf.modified { " [+]" } else { "" };
-                let codec_info = buf.codec_metadata.as_ref().map_or_else(String::new, |m| {
-                    let mut parts = vec![m.codec_name.clone()];
-                    if let Some(le) = &m.line_ending {
-                        parts.push(le.clone());
-                    }
-                    if m.has_bom {
-                        parts.push("BOM".to_string());
-                    }
-                    format!(" [{}]", parts.join(", "))
-                });
-                let _ = writeln!(
-                    output,
-                    "{}: {} ({} lines){}{}",
-                    buf.id, buf.name, buf.line_count, codec_info, modified
-                );
+                let _ = writeln!(output, "{}: {}{}", buf.id, buf.name, modified);
             }
             Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
                 "buffers": response.buffers.iter().map(|b| {
-                    let mut entry = serde_json::json!({
+                    serde_json::json!({
                         "id": b.id,
                         "name": b.name,
                         "path": b.path,
-                        "line_count": b.line_count,
                         "modified": b.modified,
-                    });
-                    if let Some(m) = &b.codec_metadata {
-                        entry["codec"] = serde_json::json!(m.codec_name);
-                        if let Some(le) = &m.line_ending {
-                            entry["line_ending"] = serde_json::json!(le);
-                        }
-                        if m.has_bom {
-                            entry["has_bom"] = serde_json::json!(true);
-                        }
-                    }
-                    entry
+                        "content_type": b.content_type,
+                    })
                 }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
@@ -223,25 +177,11 @@ pub async fn buffer(
     id: Option<u64>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_buffer_content(id).await?;
-
-    match format {
-        OutputFormat::Plain => {
-            if response.lines.is_empty() {
-                return Ok("(empty buffer)".to_string());
-            }
-            Ok(response.lines.join("\n"))
-        }
-        OutputFormat::Json => {
-            let json = serde_json::json!({
-                "buffer_id": response.buffer_id,
-                "lines": response.lines,
-                "start_line": response.start_line,
-                "total_lines": response.total_lines,
-            });
-            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
-        }
-    }
+    let _ = (client, id, format);
+    Err(GrpcClientError::OperationFailed(
+        "get-raw-content removed in proto v3; buffer content routes through projections"
+            .to_string(),
+    ))
 }
 
 /// Ping the server.
@@ -1059,12 +999,14 @@ pub async fn presence_join(
         OutputFormat::Json => {
             let json = serde_json::json!({
                 "client_id": response.client_id,
-                "peers": response.peers.iter().map(|p| serde_json::json!({
-                    "client_id": p.client_id,
-                    "client_type": p.client_type,
-                    "display_name": p.display_name,
-                    "sync_mode": p.sync_mode,
-                })).collect::<Vec<_>>(),
+                "peers": response.peers.iter().map(|p| {
+                    let meta = p.metadata.as_ref();
+                    serde_json::json!({
+                        "client_id": p.id,
+                        "client_type": meta.map_or("", |m| m.client_type.as_str()),
+                        "display_name": meta.map_or("", |m| m.display_name.as_str()),
+                    })
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -1119,34 +1061,26 @@ pub async fn presence_list(
 
             let mut output = format!("Connected clients: {}\n", response.clients.len());
             for c in &response.clients {
-                let sync_mode_str = match c.sync_mode {
-                    0 => "independent",
-                    1 => "follow",
-                    2 => "present",
-                    _ => "unknown",
-                };
-                // Phase 14 (#471): cursor removed from presence, shown via separate mechanism
-                let _ = writeln!(
-                    output,
-                    "  {} ({}) - {} [{}]",
-                    c.client_id, c.display_name, c.client_type, sync_mode_str
-                );
+                let meta = c.metadata.as_ref();
+                let display_name = meta.map_or("?", |m| m.display_name.as_str());
+                let client_type = meta.map_or("?", |m| m.client_type.as_str());
+                let _ = writeln!(output, "  {} ({}) - {}", c.id, display_name, client_type);
             }
             Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
-            // Phase 14 (#471): cursor removed from presence
             let json = serde_json::json!({
-                "clients": response.clients.iter().map(|c| serde_json::json!({
-                    "client_id": c.client_id,
-                    "client_type": c.client_type,
-                    "display_name": c.display_name,
-                    "buffer_id": c.buffer_id,
-                    "viewport_state": c.viewport_state.as_ref().and_then(|d| d.display.as_deref()),
-                    "sync_mode": c.sync_mode,
-                    "follow_target": c.follow_target,
-                    "joined_at_ms": c.joined_at_ms,
-                })).collect::<Vec<_>>(),
+                "clients": response.clients.iter().map(|c| {
+                    let meta = c.metadata.as_ref();
+                    let view = c.view.as_ref();
+                    serde_json::json!({
+                        "client_id": c.id,
+                        "client_type": meta.map_or("", |m| m.client_type.as_str()),
+                        "display_name": meta.map_or("", |m| m.display_name.as_str()),
+                        "joined_at_ms": meta.map_or(0, |m| m.joined_at_ms),
+                        "buffer_id": view.and_then(|v| v.buffer_id),
+                    })
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }

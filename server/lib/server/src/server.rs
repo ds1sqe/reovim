@@ -15,7 +15,6 @@ use {
         AuthInterceptor, BufferServiceImpl, CommandServiceImpl, DebugServiceImpl,
         EditorServiceImpl, ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl,
         NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
-        SyntaxServiceImpl,
     },
     reovim_protocol::v2::{
         buffer_service_server::BufferServiceServer,
@@ -29,7 +28,6 @@ use {
         presence_service_server::PresenceServiceServer,
         server_service_server::ServerServiceServer,
         state_service_server::StateServiceServer,
-        syntax_service_server::SyntaxServiceServer,
     },
     reovim_subsys_session::bridges::BridgeRegistry,
 };
@@ -440,10 +438,6 @@ impl<M: Send + Sync> Server<M> {
 
         let module_service = self.module_service.clone();
 
-        // SyntaxService provides token data for syntax highlighting
-        let syntax_service =
-            SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
-
         // PresenceService for multi-client awareness (Phase 14)
         let presence_service = PresenceServiceImpl::new(
             Arc::clone(&self.sessions),
@@ -509,7 +503,7 @@ impl<M: Send + Sync> Server<M> {
                 .add_service(svc!(StateServiceServer, state_service, i.clone()))
                 .add_service(svc!(ServerServiceServer, server_service, i.clone()))
                 .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
-                .add_service(svc!(SyntaxServiceServer, syntax_service, i.clone()))
+
                 .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
                 .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
                 .add_service(svc!(CommandServiceServer, command_service, i.clone()))
@@ -540,7 +534,7 @@ impl<M: Send + Sync> Server<M> {
                 .add_service(svc!(StateServiceServer, state_service, i.clone()))
                 .add_service(svc!(ServerServiceServer, server_service, i.clone()))
                 .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
-                .add_service(svc!(SyntaxServiceServer, syntax_service, i.clone()))
+
                 .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
                 .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
                 .add_service(svc!(CommandServiceServer, command_service, i.clone()))

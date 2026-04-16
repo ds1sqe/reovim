@@ -4,32 +4,26 @@
 
 use {
     reovim_protocol::v2::{
-        // Debug service types (#468: CLI uses DebugService for client-targeting ops)
         DebugCaptureRequest,
         DebugCaptureResponse,
         DebugGetExtensionStateRequest,
         DebugGetExtensionStateResponse,
-        DebugGetModeRequest,
-        DebugGetModeResponse,
         DebugGetProjectionsRequest,
         DebugGetProjectionsResponse,
         DebugListClientsRequest,
         DebugListClientsResponse,
         DebugListExtensionsRequest,
         DebugListExtensionsResponse,
-        DebugSendKeysRequest,
-        DebugSendKeysResponse,
+        DebugSendInputRequest,
+        DebugSendInputResponse,
         GetProjectionsRequest,
         GetProjectionsResponse,
-        GetRawContentRequest,
-        GetRawContentResponse,
         GetRegistersRequest,
         GetRegistersResponse,
         GetScreenContentRequest,
         GetScreenContentResponse,
         InfoRequest,
         InfoResponse,
-        // Phase 15: Presence types
         JoinRequest,
         JoinResponse,
         LeaveRequest,
@@ -40,13 +34,12 @@ use {
         ListClientsResponse,
         ListModulesRequest,
         ListModulesResponse,
-        // Phase 17 (#481): Debug types
         LogTailRequest,
         LogTailResponse,
         PingRequest,
         PingResponse,
-        SendKeysRequest,
-        SendKeysResponse,
+        SendInputRequest,
+        SendInputResponse,
         SetSyncModeRequest,
         SetSyncModeResponse,
         UpdatePresenceRequest,
@@ -303,13 +296,21 @@ impl GrpcClient {
     /// The client auto-joins the presence session on first call.
     /// Panics if joining fails or if the server returns a fatal error.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
+    pub async fn send_input(&mut self, keys: &str) -> Result<SendInputResponse, GrpcClientError> {
         self.ensure_joined().await;
-        let request = self.make_request(SendKeysRequest {
-            keys: keys.to_string(),
+        let request = self.make_request(SendInputRequest {
+            payload: keys.as_bytes().to_vec(),
+            window_id: None,
+            timestamp_ns: 0,
         });
-        let response = self.input.send_keys(request).await?;
+        let response = self.input.send_input(request).await?;
         Ok(response.into_inner())
+    }
+
+    /// Backward-compatible alias for `send_input`.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn send_keys(&mut self, keys: &str) -> Result<SendInputResponse, GrpcClientError> {
+        self.send_input(keys).await
     }
 
     /// Get the current editor mode.
@@ -343,29 +344,6 @@ impl GrpcClient {
     pub async fn list_buffers(&mut self) -> Result<ListBuffersResponse, GrpcClientError> {
         let request = self.make_request(ListBuffersRequest {});
         let response = self.buffer.list(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get raw buffer content.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer_id` - Optional buffer ID. Uses active buffer if None.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn get_buffer_content(
-        &mut self,
-        buffer_id: Option<u64>,
-    ) -> Result<GetRawContentResponse, GrpcClientError> {
-        let request = self.make_request(GetRawContentRequest {
-            buffer_id,
-            start_line: None,
-            end_line: None,
-        });
-        let response = self.buffer.get_raw_content(request).await?;
         Ok(response.into_inner())
     }
 
@@ -483,6 +461,7 @@ impl GrpcClient {
         let request = JoinRequest {
             client_type: client_type.to_string(),
             display_name: display_name.to_string(),
+            surface: None,
         };
         let response = self.presence.join(request).await?.into_inner();
         // Store client ID and session token for subsequent requests (#483)
@@ -539,6 +518,7 @@ impl GrpcClient {
         let request = self.make_request(UpdatePresenceRequest {
             buffer_id,
             viewport_state: None,
+            spatial_state: None,
         });
         let response = self.presence.update_presence(request).await?;
         Ok(response.into_inner())
@@ -618,17 +598,27 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails or target client doesn't exist.
     #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_send_input(
+        &mut self,
+        keys: &str,
+        target_client_id: u64,
+    ) -> Result<DebugSendInputResponse, GrpcClientError> {
+        let request = Request::new(DebugSendInputRequest {
+            payload: keys.as_bytes().to_vec(),
+            target_client_id,
+        });
+        let response = self.debug.debug_send_input(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Backward-compatible alias.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn debug_send_keys(
         &mut self,
         keys: &str,
         target_client_id: u64,
-    ) -> Result<DebugSendKeysResponse, GrpcClientError> {
-        let request = Request::new(DebugSendKeysRequest {
-            keys: keys.to_string(),
-            target_client_id,
-        });
-        let response = self.debug.debug_send_keys(request).await?;
-        Ok(response.into_inner())
+    ) -> Result<DebugSendInputResponse, GrpcClientError> {
+        self.debug_send_input(keys, target_client_id).await
     }
 
     /// Capture a specific client's screen content via `DebugService`.
@@ -649,23 +639,6 @@ impl GrpcClient {
             format: format.to_string(),
         });
         let response = self.debug.debug_capture(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get a specific client's current editor mode via `DebugService`.
-    ///
-    /// No auth required — CLI targets the client by ID directly.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails or target client doesn't exist.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn debug_get_mode(
-        &mut self,
-        target_client_id: u64,
-    ) -> Result<DebugGetModeResponse, GrpcClientError> {
-        let request = Request::new(DebugGetModeRequest { target_client_id });
-        let response = self.debug.debug_get_mode(request).await?;
         Ok(response.into_inner())
     }
 

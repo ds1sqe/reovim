@@ -12,7 +12,7 @@ use {
         CaptureRequestPayload, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
         GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest,
         GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse,
-        GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, RegisterEntry,
+        Notification, RegisterEntry,
         SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, TabPageInfo, WindowLeaf,
         WindowNode, WindowRect, WindowSplit, notification::Payload,
         state_service_server::StateService, window_node::Node,
@@ -287,57 +287,6 @@ impl StateService for StateServiceImpl {
     /// # Phase #471: Per-client viewport isolation
     ///
     /// Returns visible lines from the client's per-client window layout.
-    ///
-    /// # Errors
-    ///
-    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
-    /// - `NotFound`: Client with given ID not found, or window not found
-    #[allow(clippy::cast_possible_truncation)]
-    async fn get_visible_lines(
-        &self,
-        request: Request<GetVisibleLinesRequest>,
-    ) -> Result<Response<GetVisibleLinesResponse>, Status> {
-        // #483 Phase 5: Token for auth, body client_id for targeting
-        let token_client_id = request.extensions().get::<ClientId>().copied();
-        let req = request.into_inner();
-        let requested_window_id = req.window_id;
-        let session = self.get_session()?;
-
-        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
-
-        // Per-client state lookup
-        let state = session.clients().client_state(client_id).ok_or_else(|| {
-            session.with_client_ring_buffer(client_id, |rb| {
-                rb.log_event(
-                    ClientEventType::Error,
-                    format!("CLIENT_NOT_FOUND: get_visible_lines client_id={}", req.client_id),
-                );
-            });
-            Status::not_found(format!("Client {} not found", req.client_id))
-        })?;
-
-        // viewport is domain-owned (#753 E3). Use compositor to determine window geometry.
-        // Return terminal_size as viewport dimensions (best effort until E5/E6).
-        let (tw, th) = state.terminal_size;
-
-        let window_id = requested_window_id.unwrap_or_else(|| {
-            // Use focused window from compositor, or window_id 0 as fallback
-            state.compositor.as_ref().map_or(0, |c| {
-                let screen = reovim_subsys_layout::Rect::new(0, 0, tw, th);
-                c.composite(screen)
-                    .focused
-                    .map_or(0, |id| id.as_usize() as u64)
-            })
-        });
-
-        Ok(Response::new(GetVisibleLinesResponse {
-            window_id,
-            first_line: 0,
-            last_line: u64::from(th).saturating_sub(1),
-            viewport_height: u64::from(th),
-        }))
-    }
-
     /// Get screen content via TUI capture relay.
     ///
     /// This implements the CLI→Server→TUI→Server→CLI capture flow:

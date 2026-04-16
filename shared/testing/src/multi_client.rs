@@ -96,12 +96,9 @@ impl TestClient {
     /// Get buffer content.
     #[allow(clippy::significant_drop_tightening)]
     pub async fn get_buffer(&mut self) -> Result<String, String> {
-        let client = self.get_client().await?;
-        let result = client
-            .get_buffer_content(None)
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(result.lines.join("\n"))
+        // v3: buffer content routes through projections, not GetRawContent
+        Err("get_buffer_content removed in proto v3; buffer content routes through projections"
+            .to_string())
     }
 
     /// Open a new buffer with optional content.

@@ -27,12 +27,10 @@ pub mod notification_builder;
 mod presence;
 mod server_service;
 mod state;
-mod syntax;
 
 pub use {
     auth::AuthInterceptor, buffer::BufferServiceImpl, command::CommandServiceImpl,
     debug::DebugServiceImpl, editor::EditorServiceImpl, extension::ExtensionServiceImpl,
     input::InputServiceImpl, module::ModuleServiceImpl, notification::NotificationServiceImpl,
     presence::PresenceServiceImpl, server_service::ServerServiceImpl, state::StateServiceImpl,
-    syntax::SyntaxServiceImpl,
 };

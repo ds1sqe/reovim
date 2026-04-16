@@ -28,7 +28,7 @@
 
 use std::time::Duration;
 
-use {reovim_client_cli::GrpcClient, reovim_protocol::v2::ClientPresence};
+use {reovim_client_cli::GrpcClient, reovim_protocol::v2::ClientInfo};
 
 use super::harness::TestServerHarness;
 
@@ -169,7 +169,7 @@ impl PresenceTestClient {
     }
 
     /// Get all peers (excludes self).
-    pub async fn peers(&mut self) -> Result<Vec<ClientPresence>, String> {
+    pub async fn peers(&mut self) -> Result<Vec<ClientInfo>, String> {
         let response = self
             .client
             .presence_list()
@@ -179,12 +179,12 @@ impl PresenceTestClient {
         Ok(response
             .clients
             .into_iter()
-            .filter(|c| Some(c.client_id) != my_id)
+            .filter(|c| Some(c.id) != my_id)
             .collect())
     }
 
     /// Get all clients including self.
-    pub async fn all_clients(&mut self) -> Result<Vec<ClientPresence>, String> {
+    pub async fn all_clients(&mut self) -> Result<Vec<ClientInfo>, String> {
         let response = self
             .client
             .presence_list()
@@ -267,12 +267,8 @@ impl PresenceTestClient {
     ///
     /// Returns the content of the active buffer.
     pub async fn get_buffer(&mut self) -> Result<String, String> {
-        let response = self
-            .client
-            .get_buffer_content(None)
-            .await
-            .map_err(|e| format!("Get buffer failed: {e}"))?;
-        Ok(response.lines.join("\n"))
+        Err("get_buffer_content removed in proto v3; buffer content routes through projections"
+            .to_string())
     }
 }
 

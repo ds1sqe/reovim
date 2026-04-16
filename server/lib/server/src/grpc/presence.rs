@@ -31,10 +31,10 @@ use {
     reovim_protocol::v2::{
         ClientInfo as ProtoClientInfo, ClientMetadata as ProtoClientMetadata,
         ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
-        ClientRelationType as ProtoRelationType, ClientRole as ProtoRole,
+        ClientRelationType as ProtoRelationType,
         ClientViewState as ProtoViewState, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse,
         ListClientsRequest, ListClientsResponse, Notification, PresenceUpdate, SetRelationRequest,
-        SetRelationResponse, SetRoleRequest, SetRoleResponse, SetSyncModeRequest,
+        SetRelationResponse, SetSyncModeRequest,
         SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         TransitionError as ProtoTransitionError, UpdatePresenceRequest, UpdatePresenceResponse,
         notification::Payload, presence_service_server::PresenceService, presence_update::Update,
@@ -115,10 +115,9 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         client_id: presence.client_id.as_usize() as u64,
         client_type: presence.client_type.clone(),
         display_name: presence.display_name.clone(),
-        // Phase #479: Use optional field to eliminate ID ambiguity
         buffer_id: presence.buffer_id.map(|id| id as u64),
-        // (#753) visible_lines/mode replaced by opaque viewport_state (DomainDatum).
-        viewport_state: None, // populated by text-domain driver projections
+        viewport_state: None,
+        spatial_state: None,
         sync_mode,
         follow_target,
         joined_at_ms: presence.joined_at_ms(),
@@ -257,17 +256,14 @@ impl PresenceService for PresenceServiceImpl {
             .active_buffer_for_client(client_id)
             .map(BufferId::as_usize);
 
-        // Add to presence map, get existing peers
-        let peers = session.presence().join(presence.clone());
+        // Add to presence map
+        let _existing_peers = session.presence().join(presence.clone());
 
         // Emit notification to all subscribers
         session.emit_notification(build_presence_joined_notification(&presence));
 
-        // Convert peers to protobuf format (legacy)
-        let proto_peers: Vec<ProtoClientPresence> = peers.iter().map(to_proto_presence).collect();
-
-        // Convert clients to new ClientInfo format (#480)
-        let peers_v2: Vec<ProtoClientInfo> = session.clients().with_clients(|clients| {
+        // Convert clients to ClientInfo format (#480 / v3)
+        let peers: Vec<ProtoClientInfo> = session.clients().with_clients(|clients| {
             clients
                 .values()
                 .filter(|c| c.id != client_id) // Exclude self
@@ -293,9 +289,10 @@ impl PresenceService for PresenceServiceImpl {
 
         Ok(Response::new(JoinResponse {
             client_id: client_id.as_usize() as u64,
-            peers: proto_peers,
-            peers_v2,
+            peers,
             session_token: token.to_string(),
+            domains: vec![], // populated when domain registry is wired
+            surface: None,
         }))
     }
 
@@ -474,103 +471,16 @@ impl PresenceService for PresenceServiceImpl {
     ) -> Result<Response<ListClientsResponse>, Status> {
         let session = self.get_session()?;
 
-        // Legacy format
-        let clients: Vec<ProtoClientPresence> = session
-            .presence()
-            .list()
-            .iter()
-            .map(to_proto_presence)
-            .collect();
-
-        // New unified format (#480)
-        let clients_v2: Vec<ProtoClientInfo> = session
+        // v3: clients is Vec<ClientInfo> (unified format)
+        let clients: Vec<ProtoClientInfo> = session
             .clients()
             .with_clients(|c| c.values().map(to_proto_client_info).collect());
 
-        Ok(Response::new(ListClientsResponse {
-            clients,
-            clients_v2,
-        }))
+        Ok(Response::new(ListClientsResponse { clients }))
     }
 
     /// Set a client's editing role (Phase 11.2, Epic #465).
     ///
-    /// Controls input routing:
-    /// - Owner: Input goes to own state (independent)
-    /// - Follow: Input is ignored (read-only spectator)
-    /// - Share: Input goes to owner's state
-    ///
-    /// **Note**: This RPC uses the old `ClientRole` enum. For new code,
-    /// prefer using `set_client_relation()` with `ClientRelation` directly.
-    async fn set_role(
-        &self,
-        request: Request<SetRoleRequest>,
-    ) -> Result<Response<SetRoleResponse>, Status> {
-        use crate::session::ClientRelation;
-
-        // #483 Phase 5: Token-only authentication
-        let token_client_id = request.extensions().get::<ClientId>().copied();
-        let req = request.into_inner();
-        let session = self.get_session()?;
-
-        // #483 Phase 5: Token-only authentication
-        let client_id = require_client_id(token_client_id)?;
-
-        // Validate client exists
-        if !session.clients().has_client(client_id) {
-            return Ok(Response::new(SetRoleResponse {
-                ok: false,
-                error: Some(format!("Client {client_id} not found")),
-            }));
-        }
-
-        // Map proto role to ClientRelation (#480: unified model)
-        let relation = match req.role() {
-            ProtoRole::Owner => None, // Independent
-            ProtoRole::Follow => {
-                let target_id = req.target_id.ok_or_else(|| {
-                    Status::invalid_argument("target_id required for FOLLOW role")
-                })?;
-                Some(ClientRelation::Following {
-                    target: ClientId::new(target_id as usize),
-                })
-            }
-            ProtoRole::Share => {
-                let owner_id = req.target_id.ok_or_else(|| {
-                    Status::invalid_argument("target_id (owner) required for SHARE role")
-                })?;
-                Some(ClientRelation::Sharing {
-                    with: ClientId::new(owner_id as usize),
-                })
-            }
-        };
-
-        // Set the relation with validation
-        match session.clients().set_client_relation(client_id, relation) {
-            Ok(()) => Ok(Response::new(SetRoleResponse {
-                ok: true,
-                error: None,
-            })),
-            Err(err) => {
-                use crate::session::TransitionResult;
-                let error_msg = match err {
-                    TransitionResult::TargetNotFound(id) => {
-                        format!("Target client {} not found", id.as_usize())
-                    }
-                    TransitionResult::WouldCreateCycle => {
-                        "Cannot set relation: would create a cycle".to_string()
-                    }
-                    TransitionResult::CannotTargetSelf => "Cannot target self".to_string(),
-                    TransitionResult::RequiresDomainSync => {
-                        "Domain sync required for this transition".to_string()
-                    }
-                    TransitionResult::Ok => unreachable!(),
-                };
-                Err(Status::failed_precondition(error_msg))
-            }
-        }
-    }
-
     /// Set client's relation (#480 Client Architecture Unification).
     ///
     /// Unified API for managing client relationships. Replaces the separate

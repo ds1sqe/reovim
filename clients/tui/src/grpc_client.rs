@@ -16,23 +16,21 @@
 
 use {
     reovim_protocol::v2::{
-        GetActiveBufferRequest, GetActiveBufferResponse, GetCursorRequest, GetCursorResponse,
-        GetLayoutRequest, GetLayoutResponse, GetModeRequest, GetModeResponse, GetOptionsRequest,
-        GetOptionsResponse, GetRawContentRequest, GetRawContentResponse, GetSelectionRequest,
-        GetSelectionResponse, GetTokensRequest, GetTokensResponse, GetVisibleLinesRequest,
-        GetVisibleLinesResponse, InfoRequest, InfoResponse, JoinRequest, JoinResponse, KillRequest,
-        KillResponse, LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse,
-        ListClientsRequest, ListClientsResponse, ListModulesRequest, ListModulesResponse,
-        Notification, OpenFileRequest, OpenFileResponse, PingRequest, PingResponse, QuitRequest,
-        QuitResponse, ResizeRequest, ResizeResponse, SendKeysRequest, SendKeysResponse,
-        SetActiveBufferRequest, SetActiveBufferResponse, StreamTokensRequest, SubmitCaptureRequest,
-        SubmitCaptureResponseReply, SubscribeRequest, TokenUpdate, WriteFileRequest,
-        WriteFileResponse, buffer_service_client::BufferServiceClient,
+        GetActiveBufferRequest, GetActiveBufferResponse, GetLayoutRequest, GetLayoutResponse,
+        GetOptionsRequest, GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse,
+        InfoRequest, InfoResponse, JoinRequest, JoinResponse, KillRequest, KillResponse,
+        LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse, ListClientsRequest,
+        ListClientsResponse, ListModulesRequest, ListModulesResponse, Notification,
+        OpenFileRequest, OpenFileResponse, PingRequest, PingResponse, QuitRequest, QuitResponse,
+        SendInputRequest, SendInputResponse, SetActiveBufferRequest, SetActiveBufferResponse,
+        SubmitCaptureRequest, SubmitCaptureResponseReply, SubscribeRequest,
+        SurfaceChangedRequest, SurfaceChangedResponse, WriteFileRequest, WriteFileResponse,
+        buffer_service_client::BufferServiceClient,
         editor_service_client::EditorServiceClient, input_service_client::InputServiceClient,
         module_service_client::ModuleServiceClient,
         notification_service_client::NotificationServiceClient,
         presence_service_client::PresenceServiceClient, server_service_client::ServerServiceClient,
-        state_service_client::StateServiceClient, syntax_service_client::SyntaxServiceClient,
+        state_service_client::StateServiceClient,
     },
     tonic::{Code, Request, Streaming, transport::Channel},
 };
@@ -148,7 +146,6 @@ pub struct TuiGrpcClient {
     server: ServerServiceClient<Channel>,
     editor: EditorServiceClient<Channel>,
     module: ModuleServiceClient<Channel>,
-    syntax: SyntaxServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
     /// Session token for token-based authentication (#483).
     ///
@@ -197,9 +194,6 @@ impl TuiGrpcClient {
             module: ModuleServiceClient::new(channel.clone())
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
-            syntax: SyntaxServiceClient::new(channel.clone())
-                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
-                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             presence: PresenceServiceClient::new(channel)
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
@@ -235,11 +229,13 @@ impl TuiGrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
-    pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, TuiGrpcError> {
-        let request = self.make_request(SendKeysRequest {
-            keys: keys.to_string(),
+    pub async fn send_keys(&mut self, keys: &str) -> Result<SendInputResponse, TuiGrpcError> {
+        let request = self.make_request(SendInputRequest {
+            payload: keys.as_bytes().to_vec(),
+            window_id: None,
+            timestamp_ns: 0,
         });
-        let response = self.input.send_keys(request).await?;
+        let response = self.input.send_input(request).await?;
         Ok(response.into_inner())
     }
 

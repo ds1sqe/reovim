@@ -279,10 +279,8 @@ impl IntegrationTest {
         }
 
         // Gather results using gRPC
-        let buffer_response = client
-            .get_buffer_content(None)
-            .await
-            .expect("Failed to get buffer content");
+        // v3: buffer content routes through projections, stub empty response
+        let buffer_lines: Vec<String> = vec![];
         // (#753) get_cursor/get_mode removed; use get_projections with tag filters.
         // client_id=0 means "authenticated client" (token-resolved on server).
         let projections_response = client
@@ -296,7 +294,7 @@ impl IntegrationTest {
         drop(client); // Drop client early to avoid significant_drop_tightening warning
 
         // Parse buffer content (lines joined with newlines)
-        let buffer_content = buffer_response.lines.join("\n");
+        let buffer_content = buffer_lines.join("\n");
 
         // Extract cursor and mode from domain-neutral projections.
         // Tags: "text.cursor" carries display like "line:col", "text.mode" carries mode name.

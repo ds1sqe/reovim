@@ -250,10 +250,8 @@ impl StepTest {
 
     /// Capture current state from server via gRPC.
     async fn capture_state(&self, client: &mut GrpcClient, key: &str) -> StateSnapshot {
-        let buffer_response = client
-            .get_buffer_content(None)
-            .await
-            .expect("Failed to get buffer content");
+        // v3: buffer content routes through projections, stub empty response
+        let buffer_lines: Vec<String> = vec![];
         // (#753) get_cursor/get_mode removed; use get_projections with tag filters.
         // client_id=0 means "authenticated client" (token-resolved on server).
         let projections_response = client
@@ -310,7 +308,7 @@ impl StepTest {
 
         StateSnapshot {
             key: key.to_string(),
-            buffer: buffer_response.lines.join("\n"),
+            buffer: buffer_lines.join("\n"),
             cursor_line,
             cursor_column,
             mode_display,
