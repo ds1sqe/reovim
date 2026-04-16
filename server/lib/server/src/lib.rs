@@ -50,6 +50,6 @@ pub use {
     },
     server::{Server, SessionFactory},
     session::{
-        Session, SessionId, SessionRegistry, SessionState, SyntaxSessionState, SyntaxStreamState,
+        Session, SessionId, SessionRegistry, SessionState, SyntaxStreamState,
     },
 };

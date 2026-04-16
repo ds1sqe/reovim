@@ -35,9 +35,7 @@ pub(crate) use {client_directory::ClientDirectory, presence_service::PresenceSer
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
-    client::{
-        Client, ClientMetadata, ClientRelation, EditingState, TransitionResult,
-    },
+    client::{Client, ClientMetadata, ClientRelation, EditingState, TransitionResult},
     id::{ClientId, SessionId},
     // DEPRECATED: These will be removed in a future version.
     // Use Client struct with relation field instead.
@@ -46,6 +44,6 @@ pub use {
     ring_buffer::{ClientEventType, ClientRingBuffer},
     session::Session,
     state::SessionState,
-    syntax_state::{SyntaxSessionState, SyntaxStreamState, build_token_update},
+    syntax_state::SyntaxStreamState,
     token_registry::{SessionToken, TokenRegistry},
 };

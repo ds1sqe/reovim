@@ -1,8 +1,8 @@
-//! Command registry for storing and executing commands.
+//! Command registry for storing and querying command metadata.
 //!
-//! Commands are stored by their [`CommandId`] and executed through
-//! the [`CommandHandler`] trait. The registry provides lookup and
-//! execution services to the server.
+//! Commands are stored by their [`CommandId`] as `Arc<dyn Command>` (subsys trait,
+//! metadata-only). Command execution routes through `DomainDriver` — the server
+//! never calls command handlers directly (#753 E6).
 //!
 //! # Module Ownership
 //!
@@ -13,36 +13,26 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_command::CommandHandler,
-    reovim_driver_text_session::{
-        Session as DriverSession, SessionRuntime,
-        api::{CommandExecutor, CommandHandle},
-    },
-    reovim_kernel::{
-        api::v1::{CommandId, KernelContext, ModuleId, Service},
-        profile_scope,
-    },
-    reovim_subsys_command::{
-        CommandContext, CommandInfo, CommandPriority, CommandQueryService, CommandResult,
-    },
-    reovim_subsys_vfs::VfsDriver,
+    reovim_kernel::api::v1::{CommandId, ModuleId, Service},
+    reovim_subsys_command::{Command, CommandInfo, CommandPriority, CommandQueryService},
 };
 
 /// Entry in the command registry with optional ownership tracking.
 #[derive(Clone)]
 struct CommandEntry {
-    /// The command handler.
-    handler: Arc<dyn CommandHandler>,
+    /// The command (metadata-only, execution via DomainDriver).
+    handler: Arc<dyn Command>,
     /// The module that owns this command (if any).
     owner: Option<ModuleId>,
     /// Registration priority (#545). Higher priority wins on conflict.
     priority: CommandPriority,
 }
 
-/// Registry for command handlers.
+/// Registry for command metadata.
 ///
-/// Stores [`CommandHandler`] implementations keyed by [`CommandId`].
-/// The server uses this to execute commands when keybindings match.
+/// Stores [`Command`] implementations keyed by [`CommandId`].
+/// The server uses this for metadata queries (names, descriptions, args).
+/// Command execution routes through `DomainDriver` (#753 E6).
 ///
 /// # Module Ownership
 ///
@@ -60,16 +50,15 @@ impl CommandRegistry {
         Self::default()
     }
 
-    /// Register a command handler (without module ownership).
+    /// Register a command (without module ownership).
     ///
-    /// The command's ID is obtained from the handler via its `id()` method.
+    /// The command's ID is obtained via its `id()` method.
     /// If a command with the same ID already exists, the higher priority
     /// handler wins. Equal priority uses last-wins semantics (#545).
-    pub fn register(&mut self, handler: Arc<dyn CommandHandler>) {
+    pub fn register(&mut self, handler: Arc<dyn Command>) {
         let id = handler.id();
         let new_priority = handler.priority();
 
-        // Only replace if new handler has >= priority (#545)
         if self
             .entries
             .get(&id)
@@ -88,15 +77,11 @@ impl CommandRegistry {
         );
     }
 
-    /// Register a command handler with module ownership.
-    ///
-    /// The command's ID is obtained from the handler via its `id()` method.
-    /// If a command with the same ID already exists, the higher priority
-    /// handler wins. Equal priority uses last-wins semantics (#545).
+    /// Register a command with module ownership.
     ///
     /// When the owning module is unloaded, this command will be automatically
     /// deregistered via [`Self::unregister_for_module`].
-    pub fn register_for_module(&mut self, handler: Arc<dyn CommandHandler>, owner: ModuleId) {
+    pub fn register_for_module(&mut self, handler: Arc<dyn Command>, owner: ModuleId) {
         let id = handler.id();
         let new_priority = handler.priority();
 
@@ -130,9 +115,9 @@ impl CommandRegistry {
         before - self.entries.len()
     }
 
-    /// Get a command handler by ID.
+    /// Get a command by ID.
     #[must_use]
-    pub fn get(&self, id: &CommandId) -> Option<&Arc<dyn CommandHandler>> {
+    pub fn get(&self, id: &CommandId) -> Option<&Arc<dyn Command>> {
         self.entries.get(id).map(|entry| &entry.handler)
     }
 
@@ -142,74 +127,8 @@ impl CommandRegistry {
         self.entries.contains_key(id)
     }
 
-    /// Execute a command with per-client state (#471, #477).
-    ///
-    /// This uses [`SessionRuntime::new`] to ensure commands operate
-    /// on per-client mode, cursor, and extension state, enabling multi-client isolation.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The command ID to execute
-    /// * `driver_session` - Driver session (for shared state like buffers)
-    /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
-    /// * `kernel` - Kernel context (buffers, event bus, options)
-    /// * `vfs` - VFS driver for file operations
-    /// * `args` - Command arguments (count, register, etc.)
-    /// * `shared_extensions` - Optional shared extension map for cross-client state (#543)
-    #[must_use]
-    #[allow(clippy::too_many_arguments)] // bundled via ClientContext, remaining are distinct concerns
-    pub fn execute_for_client(
-        &self,
-        client_id: usize,
-        id: &CommandId,
-        driver_session: &mut DriverSession,
-        client: reovim_driver_text_session::ClientContext<'_>,
-        kernel: &KernelContext,
-        vfs: &Arc<dyn VfsDriver>,
-        args: &CommandContext,
-        shared_extensions: Option<&mut reovim_subsys_session::ExtensionMap>,
-    ) -> Option<(
-        CommandResult,
-        reovim_driver_text_session::api::StateChanges,
-        Vec<reovim_subsys_command_types::RuntimeSignal>,
-    )> {
-        use {
-            reovim_driver_text_session::api::ChangeTracker,
-            reovim_subsys_session::ClientId as DriverClientId,
-        };
-        profile_scope!("command_execute_for_client", "server::command");
-
-        self.entries.get(id).map(|entry| {
-            // Single clone point for context enrichment (Epic #415)
-            let mut ctx = args.clone();
-            // Per-client active_buffer (#471)
-            if let Some(buffer_id) = *client.active_buffer {
-                ctx.set_buffer_id(buffer_id);
-            }
-            ctx.set_vfs(Arc::clone(vfs));
-
-            // Create SessionRuntime with per-client state and real executor (#471, #477, #515, #547)
-            // The owner enables undo_mine()/redo_mine() for per-client undo
-            // Passing `self` (CommandRegistry) enables re-entrant command execution
-            let driver_client_id = DriverClientId::new(client_id);
-            let mut runtime =
-                SessionRuntime::with_owner(driver_client_id, driver_session, client, kernel, self);
-
-            // Wire up session-wide shared extensions (#543)
-            if let Some(ext) = shared_extensions {
-                runtime = runtime.with_shared_extensions(ext);
-            }
-
-            // Execute command
-            let result = entry.handler.execute(&mut runtime, &ctx);
-
-            // Take accumulated changes and signals (#547)
-            let changes = runtime.take_changes();
-            let signals = runtime.take_signals();
-
-            (result, changes, signals)
-        })
-    }
+    // execute_for_client: REMOVED (#753 E6).
+    // Command execution routes through DomainDriver.
 
     /// Get all registered command IDs.
     pub fn ids(&self) -> impl Iterator<Item = &CommandId> {
@@ -229,27 +148,20 @@ impl CommandRegistry {
     }
 
     /// Build a [`CommandNameIndex`] from this registry.
-    ///
-    /// Iterates all registered handlers and maps each name alias to
-    /// the command's ID and `Command` trait object. The resulting index
-    /// is stored in `ServiceRegistry` for vim dispatch (#547).
     #[must_use]
     pub fn build_name_index(&self) -> reovim_subsys_command::CommandNameIndex {
         let mut index = reovim_subsys_command::CommandNameIndex::new();
         for entry in self.entries.values() {
             let id = entry.handler.id();
             let handler = Arc::clone(&entry.handler);
-            let cmd: Arc<dyn reovim_subsys_command::Command> = handler;
-            for &name in cmd.names() {
-                index.insert(name.to_string(), id.clone(), Arc::clone(&cmd));
+            for &name in handler.names() {
+                index.insert(name.to_string(), id.clone(), Arc::clone(&handler));
             }
         }
         index
     }
 
     /// Get all command infos for query service.
-    ///
-    /// Used by [`CommandQuerySnapshot`] to capture command metadata.
     #[must_use]
     pub fn all_command_infos(&self) -> Vec<CommandInfo> {
         self.entries
@@ -273,9 +185,6 @@ impl std::fmt::Debug for CommandRegistry {
 // ============================================================================
 
 /// Snapshot of command metadata for query service.
-///
-/// Captures all command info at bootstrap time for module queries.
-/// Commands are static after module loading, so snapshot is sufficient.
 pub struct CommandQuerySnapshot {
     commands: Vec<CommandInfo>,
 }
@@ -284,8 +193,6 @@ impl Service for CommandQuerySnapshot {}
 
 impl CommandQuerySnapshot {
     /// Create snapshot from `CommandRegistry`.
-    ///
-    /// Captures all command metadata at the time of creation.
     #[must_use]
     pub fn from_registry(registry: &CommandRegistry) -> Self {
         Self {
@@ -327,30 +234,8 @@ impl CommandQueryService for CommandQuerySnapshot {
     }
 }
 
-// === HandlerBridge: CommandHandler -> CommandHandle (#547) ===
-
-/// Bridge from `CommandHandler` (command crate) to `CommandHandle` (session crate).
-///
-/// Wraps an `Arc<dyn CommandHandler>` so it can be returned from
-/// `CommandExecutor::get_handle()`. This breaks the session -> command
-/// dependency cycle while enabling re-entrant command execution.
-struct HandlerBridge(Arc<dyn CommandHandler>);
-
-impl CommandHandle for HandlerBridge {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
-        self.0.execute(runtime, ctx)
-    }
-}
-
-// === CommandExecutor implementation for CommandRegistry ===
-
-impl CommandExecutor for CommandRegistry {
-    fn get_handle(&self, id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
-        self.entries.get(id).map(|entry| {
-            Arc::new(HandlerBridge(Arc::clone(&entry.handler))) as Arc<dyn CommandHandle>
-        })
-    }
-}
+// HandlerBridge and CommandExecutor impl: REMOVED (#753 E6).
+// The app layer (bootstrap.rs) creates the bridge to TextDomainDriver.
 
 #[cfg(test)]
 #[path = "command_tests.rs"]

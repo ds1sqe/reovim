@@ -127,7 +127,7 @@ impl Session {
     /// // Create state with populated registries from modules
     /// let state = SessionState::with_registries(
     ///     kernel, initial_mode, vfs,
-    ///     mode_registry, command_registry, keymap_registry, resolver_registry,
+    ///     mode_registry, command_registry, keymap_registry,
     ///     compositor,
     /// );
     ///
@@ -281,10 +281,8 @@ impl Session {
         // Initialize with session's home mode. After this the per-client mode stack is used.
         let state = self.state.read();
         let home_mode = state.home_mode().clone();
-        // #474: Clone shared compositor for per-client layout notifications.
+        // #474/#753 E6: Clone shared compositor for per-client layout notifications.
         let compositor = state
-            .driver_session
-            .shared
             .compositor
             .as_ref()
             .map(|c| c.boxed_clone());
@@ -332,7 +330,7 @@ impl Session {
     /// Execute a tick closure with mutable access to client + shared extensions (#546).
     ///
     /// Lock order: clients (write) → state (write). Same order as
-    /// [`resolve_key_for_client`](Self::resolve_key_for_client).
+    /// `dispatch_key_for_client`.
     /// Returns `None` if client not connected or input is ignored (Following).
     ///
     /// Used by `TokioTickScheduler` for periodic state advancement.
@@ -456,39 +454,8 @@ impl Session {
     // Per-Client Key Resolution (#471)
     // =========================================================================
 
-    /// Resolve a key with per-client mode stack (#471).
-    ///
-    /// This method provides access to both session state AND per-client mode stack,
-    /// enabling multi-client mode isolation. The key is resolved using the client's
-    /// mode stack instead of the shared session mode stack.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_id` - Client ID to resolve for
-    /// * `key` - Key event to resolve
-    ///
-    /// # Returns
-    ///
-    /// - `Some((ResolveResult, StateChanges))` - if key was resolved
-    /// - `None` - if client not found, client is Following, or no resolver
-    ///
-    /// # Relation Behavior
-    ///
-    /// - **Independent**: Uses own mode stack and windows
-    /// - **Following**: Returns `None` (input ignored)
-    /// - **Sharing**: Uses target's mode stack and windows
-    #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
-    pub async fn resolve_key_for_client(
-        &self,
-        client_id: ClientId,
-        _key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(
-        reovim_driver_text_input::ResolveResult,
-        reovim_driver_text_session::api::StateChanges,
-    )> {
-        tracing::warn!(%client_id, "resolve_key_for_client: no domain driver path — fallback disabled (#753 E3)");
-        None
-    }
+    // resolve_key_for_client: REMOVED (#753 E6).
+    // Key resolution routes through DomainDriver via dispatch_key_for_client.
 
     /// Dispatch a key through the domain driver (#753).
     ///
@@ -569,18 +536,6 @@ impl Session {
         Some(driver.dispatch_input(subsys_client_id, event, client_ext, shared_ext))
     }
 
-    /// Take pending text edits from the last dispatch batch (for syntax — Phase 5 stub).
-    pub fn take_pending_text_edits(&self) -> Vec<reovim_driver_codec::TextBufferModified> {
-        self.state.write().take_pending_text_edits()
-    }
-
-    /// Take pending byte edits from the last dispatch batch (for codec — Phase 5 stub).
-    pub fn take_pending_byte_edits(
-        &self,
-    ) -> Vec<(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)> {
-        self.state.write().take_pending_byte_edits()
-    }
-
     /// Try `on_command_complete` with per-client state (#471, #477).
     ///
     /// Like `resolve_key_for_client`, but for post-command mode transitions.
@@ -595,43 +550,8 @@ impl Session {
         None
     }
 
-    /// Execute a command with per-client state (Phase #471).
-    ///
-    /// This enables multi-client mode isolation by operating on per-client
-    /// mode and cursor state instead of shared session state.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_id` - Client ID to execute for
-    /// * `cmd_id` - Command ID to execute
-    /// * `args` - Command arguments (count, register, etc.)
-    ///
-    /// # Returns
-    ///
-    /// - `Some((CommandResult, StateChanges))` - if command executed
-    /// - `None` - if client not found, client is Following, or command not registered
-    ///
-    /// # Relation Behavior
-    ///
-    /// - **Independent**: Uses own mode stack, windows, and extensions
-    /// - **Following**: Returns `None` (input ignored)
-    /// - **Sharing**: Uses target's state
-    #[allow(clippy::significant_drop_tightening)]
-    pub fn execute_command_for_client(
-        &self,
-        client_id: ClientId,
-        cmd_id: &reovim_kernel::api::v1::CommandId,
-        _args: &reovim_subsys_command_types::CommandContext,
-    ) -> Option<(
-        reovim_driver_command::CommandResult,
-        reovim_driver_text_session::api::StateChanges,
-        Vec<reovim_subsys_command_types::RuntimeSignal>,
-    )> {
-        // Stubbed: client_context removed (#753 E3). Command execution routes
-        // through the domain driver (E5/E6).
-        tracing::warn!(%client_id, cmd_id = %cmd_id, "execute_command_for_client: stubbed (#753 E3)");
-        None
-    }
+    // execute_command_for_client: REMOVED (#753 E6).
+    // Command execution routes through DomainDriver via dispatch_key_for_client.
 
     /// Get the current mode for a specific client (#471).
     ///

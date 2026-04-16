@@ -3,32 +3,20 @@
 //! `SessionState` bundles the runtime application state with the registries
 //! needed for key processing. Each session has its own isolated state.
 //!
-//! # SSOT Architecture
+//! # Architecture (#753 E6)
 //!
-//! `driver_session` is the Single Source of Truth (SSOT) for per-session state:
-//! - `mode_stack` - current editing mode
-//! - `pending_keys` - accumulated key sequence
-//! - `extensions` - module-provided policy state
-//! - `active_buffer` - currently active buffer ID
-//! - `terminal_size` - session-level terminal dimensions
-//!
-//! The `AppState` within this struct provides server-specific state (kernel,
-//! windows, cmdline) that doesn't belong in the driver layer.
+//! The server is a domain-neutral topological router. It does NOT import any
+//! driver crate. Per-session shared state that formerly lived inside
+//! `DriverSession` (compositor, home_mode) is now directly owned here.
+//! Per-client state (mode_stack, cursor, extensions) lives in `EditingState`.
+//! Buffer access, command execution, and key dispatch all route through
+//! `DomainDriver` — the server never touches driver types directly.
 
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    parking_lot::RwLock,
-    reovim_driver_text_buffer::{Buffer, BufferOps},
-    reovim_driver_text_input::{PendingBindings, ResolverRegistry},
-    reovim_driver_text_session::{
-        Session as DriverSession,
-        api::{CommandExecutor as _, ModeApi as _},
-    },
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
-    reovim_subsys_command::{CommandContext, CommandResult},
+    reovim_kernel::api::v1::{KernelContext, ModeId},
     reovim_subsys_layout::RootCompositor,
-    reovim_subsys_session::ClientId,
     reovim_subsys_vfs::VfsDriver,
 };
 
@@ -37,140 +25,72 @@ use crate::{
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
-/// No-op command executor for key resolution and mode transition paths.
-///
-/// Resolvers only need `SessionApiDyn` (excludes `CommandExecutor`), so
-/// this stub satisfies the `SessionRuntime::with_owner` constructor without
-/// pulling in the full command registry.
-struct StubExecutor;
-
-impl reovim_driver_text_session::api::CommandExecutor for StubExecutor {
-    fn get_handle(
-        &self,
-        _id: &reovim_kernel::api::v1::CommandId,
-    ) -> Option<std::sync::Arc<dyn reovim_driver_text_session::api::CommandHandle>> {
-        None
-    }
-}
-
 /// Session state combining application state with registries.
 ///
 /// This is the complete state for a single editing session. Each session
 /// (like tmux sessions) has its own `SessionState` with independent:
-/// - Driver-layer session (SSOT for `mode_stack`, `pending_keys`, `extensions`, etc.)
+/// - Compositor (shared layout, cloned per-client on join)
+/// - Home mode (initial mode for new clients)
 /// - Kernel context (buffers, events, options)
 /// - Mode/command/keymap registries
 ///
-/// # SSOT Architecture
+/// # Domain-Neutral (#753 E6)
 ///
-/// `driver_session` is the Single Source of Truth for per-session state.
-/// `AppState` provides server-specific state that doesn't belong in the driver.
+/// Zero driver imports. Buffer access, command execution, and key dispatch
+/// all route through `DomainDriver` (via `Session`).
 ///
 /// # Thread Safety
 ///
 /// `SessionState` is NOT `Sync` by itself. The `Session` wrapper provides
 /// thread-safe access via `RwLock<SessionState>`.
 pub struct SessionState {
-    /// Driver-layer session state (SSOT for buffers and shared resources).
+    /// Shared compositor for layout (dissolved from DriverSession #753 E6).
     ///
-    /// # Multi-Client Warning (#471)
+    /// Cloned per-client on join for independent layout notifications.
+    pub compositor: Option<Box<dyn RootCompositor>>,
+
+    /// Home mode for initializing new clients (#491).
     ///
-    /// This contains SHARED state used by ALL clients. In multi-client scenarios:
-    ///
-    /// | Field | Status | Use Instead |
-    /// |-------|--------|-------------|
-    /// | `mode_stack` | **DEPRECATED** | `Client::Owner.state.mode_stack` |
-    /// | `pending_keys` | **DEPRECATED** | `Client::Owner.state.pending_keys` |
-    /// | `windows` | Shared (layout) | Per-client cursor in `EditingState.cursor` |
-    /// | `extensions` | Shared | Module state is inherently shared |
-    /// | `active_buffer` | Shared | All clients see same buffers |
-    ///
-    /// **DO NOT** access `driver_session.mode_stack` directly for key resolution.
-    /// Use `Session::resolve_key_for_client()` which routes through per-client state.
-    pub driver_session: DriverSession,
+    /// When a new client connects, their mode stack starts with this mode.
+    pub home_mode: ModeId,
 
     /// Application state (kernel + server-specific state).
     ///
-    /// Contains: kernel context, running flag, windows, cmdline.
-    /// NOTE: `mode_stack`, `pending_keys`, `extensions`, `active_buffer`, and
-    /// `terminal_size` in `AppState` are DEPRECATED - use `driver_session` instead.
+    /// Contains: kernel context, running flag, extensions.
     pub app: AppState,
 
     /// Virtual filesystem driver for file operations.
-    ///
-    /// Commands access files through this VFS abstraction rather than
-    /// using `std::fs` directly.
     pub vfs: Arc<dyn VfsDriver>,
 
     /// Registry of mode metadata and behavior.
     pub mode_registry: ModeRegistry,
 
-    /// Registry of command handlers.
+    /// Registry of command handlers (metadata-only in server, execution via DomainDriver).
     pub command_registry: CommandRegistry,
 
     /// Registry of keybindings.
     pub keymap_registry: KeymapRegistry,
-
-    /// Registry of mode key resolvers.
-    ///
-    /// Resolvers implement mode-specific key handling policy:
-    /// - Operator interception (keys that enter operator-pending mode)
-    /// - Motion handling (keys that compute cursor ranges)
-    /// - Line-operator detection (repeated operator keys)
-    pub resolver_registry: ResolverRegistry,
 
     /// Session-scoped shared registers (A-Z) (#515 Phase 5).
     ///
     /// All clients in the session read/write from this shared storage.
     /// Content is stored as opaque bytes — the domain driver interprets the format.
     pub session_registers: HashMap<char, Vec<u8>>,
-
-    /// Text buffer edits from the last dispatch batch (for syntax until Phase 5).
-    ///
-    /// Populated by `dispatch_key_for_client`, consumed by server's `emit_syntax_updates`.
-    /// Phase 5 will move syntax updates into the domain driver.
-    pub(crate) pending_text_edits: Vec<reovim_driver_codec::TextBufferModified>,
-
-    /// Byte edits from the last dispatch batch (for codec index until Phase 5).
-    ///
-    /// Populated by `dispatch_key_for_client`, consumed by server's `notify_codec_indices`.
-    /// Phase 5 will move codec index into the domain driver.
-    pub(crate) pending_byte_edits:
-        Vec<(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)>,
 }
 
 impl SessionState {
     /// Create a new session state.
-    ///
-    /// # Arguments
-    ///
-    /// * `kernel` - The kernel context for this session
-    /// * `initial_mode` - The home mode for new clients joining this session
-    /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
-        // Create driver session with home_mode in SessionShared (#491)
-        // ClientId(0) is a placeholder - real clients get IDs from server layer
-        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
-
-        // #740 Plan 06 Phase 5 sub-commit 5e: install the codec-side
-        // StaleCheck hook so BufferApi::buffer_content can consult the
-        // re-decode trigger before returning text content.
-        driver_session
-            .shared
-            .install_stale_check(reovim_driver_codec::install_stale_check());
-
         Self {
-            driver_session,
+            compositor: None,
+            home_mode: initial_mode,
             app: AppState::new(kernel),
             vfs,
             mode_registry: ModeRegistry::new(),
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
-            resolver_registry: ResolverRegistry::new(),
             session_registers: HashMap::new(),
-            pending_text_edits: Vec::new(),
-            pending_byte_edits: Vec::new(),
         }
     }
 
@@ -187,52 +107,23 @@ impl SessionState {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
-        resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
-        // Create driver session with home_mode in SessionShared (#491)
-        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
-
-        // #740 Plan 06 Phase 5 sub-commit 5e: install the codec-side
-        // StaleCheck hook at session init so the re-decode trigger is
-        // available as soon as any BufferApi::buffer_content call
-        // lands.
-        driver_session
-            .shared
-            .install_stale_check(reovim_driver_codec::install_stale_check());
-
-        // Set compositor if provided by a module
-        if let Some(c) = compositor {
-            driver_session.set_compositor(c);
-        }
-
-        // Create initial window in compositor if kernel has any buffers.
-        // Per-client active_buffer is set in EditingState when clients connect.
-        let buffer_ids = kernel.buffers.list();
-        if !buffer_ids.is_empty()
-            && let Some(compositor) = driver_session.compositor_mut()
-            && let Some(active_layer) = compositor.active_layer()
-            && let Some(layer) = compositor.layer_compositor_mut(active_layer)
-            && layer
-                .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
-                .is_empty()
-        {
-            let _window_id = layer.add_tiled();
-            tracing::debug!("Created initial window in compositor");
-        }
-
-        Self {
-            driver_session,
+        let mut state = Self {
+            compositor,
+            home_mode: initial_mode,
             app: AppState::new(kernel),
             vfs,
             mode_registry,
             command_registry,
             keymap_registry,
-            resolver_registry,
             session_registers: HashMap::new(),
-            pending_text_edits: Vec::new(),
-            pending_byte_edits: Vec::new(),
-        }
+        };
+
+        // Create initial window in compositor if kernel has any buffers.
+        state.ensure_initial_compositor_window();
+
+        state
     }
 
     /// Ensure the compositor has at least one tiled window.
@@ -243,7 +134,7 @@ impl SessionState {
         if self.app.kernel.buffers.list().is_empty() {
             return;
         }
-        let Some(compositor) = self.driver_session.compositor_mut() else {
+        let Some(compositor) = self.compositor.as_mut() else {
             return;
         };
         if let Some(active) = compositor.active_layer()
@@ -256,41 +147,15 @@ impl SessionState {
         }
     }
 
-    /// Get a reference to the driver session (SSOT for session state).
-    #[must_use]
-    pub const fn driver_session(&self) -> &DriverSession {
-        &self.driver_session
-    }
-
-    /// Get a mutable reference to the driver session.
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn driver_session_mut(&mut self) -> &mut DriverSession {
-        &mut self.driver_session
-    }
-
     // ========================================================================
-    // Delegation Methods (SSOT in driver_session.shared)
+    // Accessors
     // ========================================================================
-    //
-    // NOTE (#491/#471): mode_stack, extensions, active_buffer, terminal_size
-    // are all per-client state now. Access via Session::client_state().
-    // Only compositor and home_mode remain in SessionShared.
 
     /// Get the home mode for initializing new clients (#491).
-    ///
-    /// When a new client connects, their mode stack is initialized with
-    /// this mode at the bottom. This is stored in `SessionShared`.
     #[must_use]
     pub const fn home_mode(&self) -> &ModeId {
-        self.driver_session.shared.home_mode()
+        &self.home_mode
     }
-
-    // ========================================================================
-    // Registry Accessors
-    // ========================================================================
-
-    // NOTE (#491): current_mode() removed. Per-client mode lives in EditingState.
-    // Use Session::client_current_mode(client_id) or home_mode() instead.
 
     /// Look up a key sequence in the current mode's keymap.
     #[must_use]
@@ -302,52 +167,7 @@ impl SessionState {
         self.keymap_registry.lookup(mode, keys)
     }
 
-    /// Execute a command with per-client state (#471, #477).
-    ///
-    /// This enables multi-client isolation by operating on per-client
-    /// mode, cursor, and extension state instead of shared session state.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
-    /// * `client_windows` - Per-client window layout (source of truth for cursor)
-    /// * `client_extensions` - Per-client module extensions (#477)
-    /// * `id` - The command ID to execute
-    /// * `args` - Command arguments (count, register, etc.)
-    #[must_use]
-    pub fn execute_command_for_client(
-        &mut self,
-        client_id: usize,
-        client: reovim_driver_text_session::ClientContext<'_>,
-        id: &CommandId,
-        args: &CommandContext,
-    ) -> Option<(
-        CommandResult,
-        reovim_driver_text_session::api::StateChanges,
-        Vec<reovim_subsys_command_types::RuntimeSignal>,
-    )> {
-        // No flush needed — edits are recorded immediately via undo provider.
-        // Use per-client state (#471, #477, #515)
-        // Pass client_id for per-client undo support
-        // Pass shared extensions for session-wide state (#543)
-        let kernel = &self.app.kernel;
-        let shared_ext = &mut self.app.extensions;
-        self.command_registry.execute_for_client(
-            client_id,
-            id,
-            &mut self.driver_session,
-            client,
-            kernel,
-            &self.vfs,
-            args,
-            Some(shared_ext),
-        )
-    }
-
     /// Check if the home mode accepts character input.
-    ///
-    /// NOTE (#491): This uses `home_mode()` since per-client mode lives in `EditingState`.
-    /// For per-client mode checking, use the per-client state directly.
     #[must_use]
     pub fn mode_accepts_char_input(&self) -> bool {
         self.mode_registry.accepts_char_input(self.home_mode())
@@ -368,438 +188,10 @@ impl SessionState {
     pub fn request_detach(&mut self) {
         self.app.request_detach();
     }
-
-    /// Get the resolver registry.
-    #[must_use]
-    pub const fn resolver_registry(&self) -> &ResolverRegistry {
-        &self.resolver_registry
-    }
-
-    /// Dispatch a key through the full pipeline (sub-plan 05 Phase 1).
-    ///
-    /// Replaces `resolve_key_for_client` + `handle_resolve_result` in a
-    /// single call. The dispatch provider handles:
-    /// - Key resolution (via `ResolverRegistry`)
-    /// - Result handling (command execution, mode transitions, inject keys)
-    /// - `PendingBindings` population (for whichkey hints)
-    /// - `on_command_complete` chain (for pending operators)
-    ///
-    /// The server never sees `ResolveResult` — it gets back `(bool, StateChanges)`
-    /// where `bool` indicates if the key was handled.
-    ///
-    /// # Returns
-    ///
-    /// `None` if the client doesn't exist, `Some((handled, changes))` otherwise.
-    pub fn dispatch_key_for_client(
-        &mut self,
-        client_id: usize,
-        client: reovim_driver_text_session::ClientContext<'_>,
-        key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
-        use {
-            reovim_driver_text_session::SessionRuntime,
-            reovim_subsys_session::ClientId as DriverClientId,
-        };
-
-        let reovim_driver_text_session::ClientContext {
-            mode_stack: client_mode_stack,
-            windows: client_windows,
-            extensions: client_extensions,
-            compositor: client_compositor,
-            tabs: client_tabs,
-            registers: client_registers,
-            clipboard_history: client_clipboard_history,
-            local_marks: client_local_marks,
-            jumplist: client_jumplist,
-            active_buffer: client_active_buffer,
-            terminal_size: client_terminal_size,
-        } = client;
-
-        // Placeholder extensions for the runtime (same pattern as resolve_key_for_client).
-        // Real client_extensions are passed separately to the dispatch provider.
-        let stub_executor = StubExecutor;
-        let driver_client_id = DriverClientId::new(client_id);
-        let mut runtime_ext = reovim_subsys_session::ExtensionMap::new();
-        let mut runtime = SessionRuntime::with_owner(
-            driver_client_id,
-            &mut self.driver_session,
-            reovim_driver_text_session::ClientContext {
-                mode_stack: client_mode_stack,
-                windows: client_windows,
-                extensions: &mut runtime_ext,
-                compositor: client_compositor,
-                tabs: client_tabs,
-                registers: client_registers,
-                clipboard_history: client_clipboard_history,
-                local_marks: client_local_marks,
-                jumplist: client_jumplist,
-                active_buffer: client_active_buffer,
-                terminal_size: client_terminal_size,
-            },
-            &self.app.kernel,
-            &stub_executor,
-        );
-
-        // Use ResolverDispatchProvider logic directly (inline, since we can't
-        // easily own the provider alongside the registries in SessionState).
-        let mode = runtime.current_mode().clone();
-        let mut mode_state = reovim_driver_text_input::ModeState::new(mode.clone());
-
-        let resolve_result = self.resolver_registry.resolve_with_session(
-            &mode,
-            key,
-            &mut mode_state,
-            &self.keymap_registry,
-            &mut runtime,
-            &mut self.app.extensions,
-            client_extensions,
-        );
-
-        let Some(result) = resolve_result else {
-            return Some((false, reovim_subsys_session::change_set::ChangeSet::new()));
-        };
-
-        // Populate PendingBindings
-        populate_pending_bindings(
-            &result,
-            key,
-            &mode,
-            client_extensions,
-            &self.resolver_registry,
-            &self.keymap_registry,
-        );
-
-        // Handle the result (commands, transitions, inject keys) — all within
-        // the runtime scope. No separate handle_resolve_result needed.
-        let handled = handle_resolve_result_inline(
-            result,
-            key,
-            &mut runtime,
-            &mut self.app.extensions,
-            client_extensions,
-            &self.command_registry,
-            &self.resolver_registry,
-            &self.keymap_registry,
-        );
-
-        // Take accumulated changes (includes resolver + command + transition changes)
-        let mut changes =
-            reovim_driver_text_session::api::ChangeTracker::take_changes(&mut runtime);
-
-        // Translate runtime signals to change flags
-        for signal in runtime.take_signals() {
-            match signal {
-                reovim_subsys_command_types::RuntimeSignal::Quit => {
-                    changes.record_quit_requested();
-                }
-            }
-        }
-
-        // Store domain-specific edits for syntax/codec (Phase 5 will move these into driver)
-        self.pending_text_edits
-            .extend(changes.text_buffer_edits.iter().cloned());
-        self.pending_byte_edits.extend(
-            changes
-                .byte_edits
-                .iter()
-                .map(|(id, edit)| (*id, edit.clone())),
-        );
-
-        // Convert to domain-neutral ChangeSet for server notification pipeline
-        let cs = reovim_driver_text_session::state_changes_to_change_set(&changes);
-        Some((handled, cs))
-    }
-
-    /// Take accumulated text buffer edits (for syntax driver — Phase 5 will remove this).
-    pub fn take_pending_text_edits(&mut self) -> Vec<reovim_driver_codec::TextBufferModified> {
-        std::mem::take(&mut self.pending_text_edits)
-    }
-
-    /// Take accumulated byte edits (for codec index — Phase 5 will remove this).
-    pub fn take_pending_byte_edits(
-        &mut self,
-    ) -> Vec<(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)> {
-        std::mem::take(&mut self.pending_byte_edits)
-    }
-
-    // ========================================================================
-    // Buffer Methods (delegated to kernel)
-    // ========================================================================
-
-    /// Get a text buffer by ID from the `TextBufferRegistry` (#740).
-    ///
-    /// The kernel's `BufferManager` stores `dyn KernelBuffer` (byte-only).
-    /// All text-specific access goes through `TextBufferRegistry`.
-    #[must_use]
-    pub fn buffer(&self, id: BufferId) -> Option<Arc<RwLock<dyn BufferOps>>> {
-        self.app
-            .kernel
-            .services
-            .get::<reovim_driver_text_buffer::TextBufferRegistry>()
-            .and_then(|reg| reg.get(id))
-    }
-
-    /// Create a new buffer with the given content.
-    ///
-    /// Returns the buffer ID. Per-client `active_buffer` is managed by
-    /// `EditingState` — callers must set it there if needed.
-    ///
-    /// Uses `Buffer::from_string` so buffers start with `modified = false`.
-    pub fn create_buffer(&mut self, content: &str) -> BufferId {
-        let buffer = Buffer::from_string(content);
-        let arc = Arc::new(RwLock::new(buffer));
-        // Register in text buffer registry (#740).
-        if let Some(reg) = self
-            .app
-            .kernel
-            .services
-            .get::<reovim_driver_text_buffer::TextBufferRegistry>()
-        {
-            reg.register(arc.clone());
-        }
-        self.app.kernel.buffers.register(arc)
-    }
-
-    /// Resolve a key event with explicit per-client state (#471).
-    ///
-    /// Uses the caller-provided per-client mode stack instead of any shared
-    /// compatibility path. This enables multi-client mode isolation where each
-    /// client has independent mode state.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_id` - The client ID for undo origin tracking (#471 Phase 5)
-    /// * `client_mode_stack` - Per-client mode stack (from server-level `EditingState`)
-    /// * `client_windows` - Per-client window layout
-    /// * `client_extensions` - Per-client extensions
-    /// * `key` - The key event to resolve
-    ///
-    /// # Returns
-    ///
-    /// - `Some((ResolveResult, StateChanges))` - if a resolver handled the key
-    /// - `None` - if no resolver is registered for the current mode
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Get per-client EditingState
-    /// let editing_state = session.client_state_mut(client_id)?;
-    ///
-    /// // Resolve key with per-client state
-    /// let client = editing_state.client_context();
-    /// let result = session_state.resolve_key_for_client(client_id, client, &key);
-    /// ```
-    #[allow(clippy::too_many_lines)] // PendingBindings population requires match arms
-    pub fn resolve_key_for_client(
-        &mut self,
-        client_id: usize,
-        client: reovim_driver_text_session::ClientContext<'_>,
-        key: &reovim_subsys_input::KeyEvent,
-    ) -> Option<(
-        reovim_driver_text_input::ResolveResult,
-        reovim_driver_text_session::api::StateChanges,
-    )> {
-        use {
-            reovim_driver_text_input::ModeState, reovim_driver_text_session::SessionRuntime,
-            reovim_subsys_session::ClientId as DriverClientId,
-        };
-
-        let reovim_driver_text_session::ClientContext {
-            mode_stack: client_mode_stack,
-            windows: client_windows,
-            extensions: client_extensions,
-            compositor: client_compositor,
-            tabs: client_tabs,
-            registers: client_registers,
-            clipboard_history: client_clipboard_history,
-            local_marks: client_local_marks,
-            jumplist: client_jumplist,
-            active_buffer: client_active_buffer,
-            terminal_size: client_terminal_size,
-        } = client;
-
-        // Phase #471, #477: Use per-client state for resolution
-        let mode = client_mode_stack.current().clone();
-        let mut mode_state = ModeState::new(mode.clone());
-
-        // Create SessionRuntime with per-client state and owner (#471 Phase 5)
-        // The owner enables undo_mine()/redo_mine() for per-client undo
-        //
-        // Use placeholder extensions in runtime - resolvers access session only
-        // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
-        let stub_executor = StubExecutor;
-        let driver_client_id = DriverClientId::new(client_id);
-        let mut runtime_ext = reovim_subsys_session::ExtensionMap::new();
-        let mut runtime = SessionRuntime::with_owner(
-            driver_client_id,
-            &mut self.driver_session,
-            reovim_driver_text_session::ClientContext {
-                mode_stack: client_mode_stack,
-                windows: client_windows,
-                extensions: &mut runtime_ext,
-                compositor: client_compositor,
-                tabs: client_tabs,
-                registers: client_registers,
-                clipboard_history: client_clipboard_history,
-                local_marks: client_local_marks,
-                jumplist: client_jumplist,
-                active_buffer: client_active_buffer,
-                terminal_size: client_terminal_size,
-            },
-            &self.app.kernel,
-            &stub_executor,
-        );
-
-        // Call resolver - mode operations will use client_mode_stack
-        let result = self.resolver_registry.resolve_with_session(
-            &mode,
-            key,
-            &mut mode_state,
-            &self.keymap_registry,
-            &mut runtime,
-            &mut self.app.extensions,
-            client_extensions,
-        );
-
-        // Generic PendingBindings population for bridge consumers (#468).
-        // After resolution, populate PendingBindings so bridges (e.g., WhichKeyBridge)
-        // can produce UI hints without knowing about specific resolvers.
-        match &result {
-            Some(reovim_driver_text_input::ResolveResult::Pending) => {
-                let pending = self.resolver_registry.pending_keys_for(&mode);
-                if !pending.is_empty() {
-                    let mut continuations =
-                        self.keymap_registry.bindings_with_prefix(&mode, &pending);
-                    // Include parent mode bindings (consistent with Push arm)
-                    if let Some(resolver) = self.resolver_registry.get(&mode)
-                        && let Some(parent) = resolver.inherits_from()
-                    {
-                        let parent_bindings =
-                            self.keymap_registry.bindings_with_prefix(parent, &pending);
-                        continuations.extend(parent_bindings);
-                    }
-                    let pb = client_extensions.get_or_insert::<PendingBindings>();
-                    // Preserve mode_prefix from Push (e.g., trigger key for operator mode)
-                    pb.pending_keys = pending;
-                    pb.mode = mode;
-                    pb.continuations = continuations;
-                }
-            }
-            Some(reovim_driver_text_input::ResolveResult::ModeTransition(
-                reovim_subsys_input::ModeTransition::Push {
-                    mode: target_mode, ..
-                },
-            )) => {
-                // On mode push (e.g., entering an operator-pending mode),
-                // populate PendingBindings with the new mode's available bindings
-                // so which-key can show hints immediately on mode entry.
-                let trigger_key = reovim_subsys_input::KeySequence::from_keys(&[*key]);
-                let empty = reovim_subsys_input::KeySequence::new();
-                let mut continuations = self
-                    .keymap_registry
-                    .bindings_with_prefix(target_mode, &empty);
-                // Include parent mode bindings (operator modes inherit motions)
-                if let Some(resolver) = self.resolver_registry.get(target_mode)
-                    && let Some(parent) = resolver.inherits_from()
-                {
-                    let parent_bindings = self.keymap_registry.bindings_with_prefix(parent, &empty);
-                    continuations.extend(parent_bindings);
-                }
-                if !continuations.is_empty() {
-                    let pb = client_extensions.get_or_insert::<PendingBindings>();
-                    pb.mode_prefix = trigger_key;
-                    pb.pending_keys = reovim_subsys_input::KeySequence::new();
-                    pb.mode = target_mode.clone();
-                    pb.continuations = continuations;
-                }
-            }
-            Some(_) => {
-                // Non-pending, non-push: clear any previous pending bindings
-                if let Some(pb) = client_extensions.get_mut::<PendingBindings>() {
-                    pb.clear();
-                }
-            }
-            None => {}
-        }
-
-        // Take accumulated changes
-        let changes = reovim_driver_text_session::api::ChangeTracker::take_changes(&mut runtime);
-
-        result.map(|r| (r, changes))
-    }
-
-    /// Try to call `on_command_complete` with per-client state (#471, #477).
-    ///
-    /// Uses per-client mode stack, windows, and extensions from the caller's
-    /// explicit client context.
-    ///
-    /// # Arguments
-    ///
-    /// * `client` - Per-client state bundle (from server-level `EditingState`)
-    ///
-    /// # Returns
-    ///
-    /// A `ModeTransition` if the resolver wants to change modes.
-    pub fn try_on_command_complete_for_client(
-        &mut self,
-        client_id: usize,
-        client: reovim_driver_text_session::ClientContext<'_>,
-    ) -> Option<reovim_subsys_input::ModeTransition> {
-        use {
-            reovim_driver_text_session::SessionRuntime,
-            reovim_subsys_session::ClientId as DriverClientId,
-        };
-
-        let reovim_driver_text_session::ClientContext {
-            mode_stack: client_mode_stack,
-            windows: client_windows,
-            extensions: client_extensions,
-            compositor: client_compositor,
-            tabs: client_tabs,
-            registers: client_registers,
-            clipboard_history: client_clipboard_history,
-            local_marks: client_local_marks,
-            jumplist: client_jumplist,
-            active_buffer: client_active_buffer,
-            terminal_size: client_terminal_size,
-        } = client;
-
-        // Phase #471, #477, #515: Use per-client state with owner for per-client undo
-        //
-        // Use placeholder extensions in runtime - resolvers access session only
-        // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
-        let mode = client_mode_stack.current().clone();
-        let resolver = self.resolver_registry.get(&mode)?;
-        let stub_executor = StubExecutor;
-        let driver_client_id = DriverClientId::new(client_id);
-        let mut runtime_ext = reovim_subsys_session::ExtensionMap::new();
-        let mut runtime = SessionRuntime::with_owner(
-            driver_client_id,
-            &mut self.driver_session,
-            reovim_driver_text_session::ClientContext {
-                mode_stack: client_mode_stack,
-                windows: client_windows,
-                extensions: &mut runtime_ext,
-                compositor: client_compositor,
-                tabs: client_tabs,
-                registers: client_registers,
-                clipboard_history: client_clipboard_history,
-                local_marks: client_local_marks,
-                jumplist: client_jumplist,
-                active_buffer: client_active_buffer,
-                terminal_size: client_terminal_size,
-            },
-            &self.app.kernel,
-            &stub_executor,
-        );
-
-        resolver.on_command_complete(&mut runtime, &mut self.app.extensions, client_extensions)
-    }
 }
 
 impl Default for SessionState {
     fn default() -> Self {
-        // Create with default mode (will be overwritten by modules)
         let mode = ModeId::new(reovim_kernel::api::v1::ModuleId::new("default"), "normal");
         let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_subsys_vfs::MockVfs::new());
         Self::new(KernelContext::default(), mode, vfs)
@@ -808,305 +200,12 @@ impl Default for SessionState {
 
 impl SessionState {
     /// Create a session state with a custom kernel context.
-    ///
-    /// Useful for testing with non-default buffer managers.
     #[must_use]
     pub fn with_kernel(kernel: KernelContext) -> Self {
         let mode = ModeId::new(reovim_kernel::api::v1::ModuleId::new("default"), "normal");
         let vfs: Arc<dyn VfsDriver> = Arc::new(reovim_subsys_vfs::MockVfs::new());
         Self::new(kernel, mode, vfs)
     }
-}
-
-// ============================================================================
-// Dispatch helper functions (sub-plan 05 Phase 1)
-// ============================================================================
-
-/// Populate `PendingBindings` in client extensions for whichkey hints.
-///
-/// Moved from `SessionState::resolve_key_for_client` `PendingBindings` handling.
-fn populate_pending_bindings(
-    result: &reovim_driver_text_input::ResolveResult,
-    key: &reovim_subsys_input::KeyEvent,
-    mode: &ModeId,
-    client_ext: &mut reovim_subsys_session::ExtensionMap,
-    resolver_registry: &ResolverRegistry,
-    keymap: &dyn reovim_subsys_input::KeymapQuery,
-) {
-    use {
-        reovim_driver_text_input::ResolveResult,
-        reovim_subsys_input::{KeySequence, ModeTransition},
-    };
-
-    match result {
-        ResolveResult::Pending => {
-            let pending = resolver_registry.pending_keys_for(mode);
-            if !pending.is_empty() {
-                let mut continuations = keymap.bindings_with_prefix(mode, &pending);
-                if let Some(resolver) = resolver_registry.get(mode)
-                    && let Some(parent) = resolver.inherits_from()
-                {
-                    let parent_bindings = keymap.bindings_with_prefix(parent, &pending);
-                    continuations.extend(parent_bindings);
-                }
-                let pb = client_ext.get_or_insert::<PendingBindings>();
-                pb.pending_keys = pending;
-                pb.mode = mode.clone();
-                pb.continuations = continuations;
-            }
-        }
-        ResolveResult::ModeTransition(ModeTransition::Push {
-            mode: target_mode, ..
-        }) => {
-            let trigger_key = KeySequence::from_keys(&[*key]);
-            let empty = KeySequence::new();
-            let mut continuations = keymap.bindings_with_prefix(target_mode, &empty);
-            if let Some(resolver) = resolver_registry.get(target_mode)
-                && let Some(parent) = resolver.inherits_from()
-            {
-                let parent_bindings = keymap.bindings_with_prefix(parent, &empty);
-                continuations.extend(parent_bindings);
-            }
-            if !continuations.is_empty() {
-                let pb = client_ext.get_or_insert::<PendingBindings>();
-                pb.mode_prefix = trigger_key;
-                pb.pending_keys = KeySequence::new();
-                pb.mode = target_mode.clone();
-                pb.continuations = continuations;
-            }
-        }
-        _ => {
-            if let Some(pb) = client_ext.get_mut::<PendingBindings>() {
-                pb.clear();
-            }
-        }
-    }
-}
-
-/// Handle a `ResolveResult` inline — execute commands, apply mode transitions.
-///
-/// Moved from `InputServiceImpl::handle_resolve_result`. All result handling
-/// happens within the runtime scope, so changes accumulate in the runtime's
-/// `ChangeTracker`. Returns `true` if the key was handled.
-#[allow(clippy::too_many_arguments)]
-fn handle_resolve_result_inline(
-    result: reovim_driver_text_input::ResolveResult,
-    _key: &reovim_subsys_input::KeyEvent,
-    runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
-    shared_ext: &mut reovim_subsys_session::ExtensionMap,
-    client_ext: &mut reovim_subsys_session::ExtensionMap,
-    command_registry: &CommandRegistry,
-    resolver_registry: &ResolverRegistry,
-    keymap: &dyn reovim_subsys_input::KeymapQuery,
-) -> bool {
-    use {
-        reovim_driver_text_input::ResolveResult, reovim_driver_text_session::api::ModeApi,
-        reovim_subsys_input::ModeTransition,
-    };
-
-    match result {
-        ResolveResult::Execute(cmd_id, ctx) => {
-            let cmd_ctx = resolve_to_command_context_inline(&ctx);
-
-            // Execute command via CommandRegistry's CommandExecutor implementation
-            if let Some(handle) = command_registry.get_handle(&cmd_id) {
-                let _cmd_result = handle.execute(runtime, &cmd_ctx);
-            }
-
-            // on_command_complete chain for pending operators
-            handle_command_complete_chain(
-                runtime,
-                shared_ext,
-                client_ext,
-                command_registry,
-                resolver_registry,
-            );
-
-            true
-        }
-
-        ResolveResult::InsertChar { .. } => {
-            tracing::error!(
-                "InsertChar reached dispatch — resolvers must handle insertion via SessionApi"
-            );
-            true
-        }
-
-        ResolveResult::ModeTransition(transition) => {
-            apply_mode_transition_inline(&transition, runtime);
-
-            // Handle pop result
-            if let ModeTransition::Pop {
-                result: Some(pop_result),
-            } = transition
-            {
-                handle_pop_result_inline(pop_result, runtime, command_registry);
-            }
-
-            // Deferred motion completion
-            handle_command_complete_chain(
-                runtime,
-                shared_ext,
-                client_ext,
-                command_registry,
-                resolver_registry,
-            );
-
-            true
-        }
-
-        ResolveResult::Completed | ResolveResult::Pending => true,
-        ResolveResult::NotHandled => false,
-
-        ResolveResult::InjectKeys {
-            keys,
-            exit_macro_playback: _,
-        } => {
-            for injected_key in &keys {
-                let mode = runtime.current_mode().clone();
-                let mut mode_state = reovim_driver_text_input::ModeState::new(mode.clone());
-
-                let resolve_result = resolver_registry.resolve_with_session(
-                    &mode,
-                    injected_key,
-                    &mut mode_state,
-                    keymap,
-                    runtime,
-                    shared_ext,
-                    client_ext,
-                );
-
-                if let Some(result) = resolve_result
-                    && !matches!(result, ResolveResult::InjectKeys { .. })
-                {
-                    handle_resolve_result_inline(
-                        result,
-                        injected_key,
-                        runtime,
-                        shared_ext,
-                        client_ext,
-                        command_registry,
-                        resolver_registry,
-                        keymap,
-                    );
-                }
-            }
-            true
-        }
-    }
-}
-
-/// Apply a mode transition to the runtime's mode stack.
-fn apply_mode_transition_inline(
-    transition: &reovim_subsys_input::ModeTransition,
-    runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
-) {
-    use {reovim_driver_text_session::api::ModeApi, reovim_subsys_input::ModeTransition};
-
-    match transition {
-        ModeTransition::Push { mode, context } => {
-            runtime.push_mode(mode.clone(), context.clone());
-        }
-        ModeTransition::Pop { .. } => {
-            let _ = runtime.pop_mode(None);
-        }
-        ModeTransition::Set { mode, context } => {
-            runtime.set_mode(mode.clone(), context.clone());
-        }
-    }
-}
-
-/// Handle a `PopResult` — execute command or no-op.
-fn handle_pop_result_inline(
-    result: reovim_subsys_input::PopResult,
-    runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
-    command_registry: &CommandRegistry,
-) {
-    use reovim_subsys_input::PopResult;
-
-    match result {
-        PopResult::ExecuteCommand { command, args } => {
-            let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
-            for (key, value) in args {
-                cmd_ctx.set(&key, value);
-            }
-
-            if let Some(handle) = command_registry.get_handle(&command) {
-                let _cmd_result = handle.execute(runtime, &cmd_ctx);
-            }
-        }
-        PopResult::Cancelled | PopResult::Data { .. } => {}
-    }
-}
-
-/// Chain of `on_command_complete` calls for nested operator-pending modes.
-fn handle_command_complete_chain(
-    runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
-    shared_ext: &mut reovim_subsys_session::ExtensionMap,
-    client_ext: &mut reovim_subsys_session::ExtensionMap,
-    command_registry: &CommandRegistry,
-    resolver_registry: &ResolverRegistry,
-) {
-    use {reovim_driver_text_session::api::ModeApi, reovim_subsys_input::ModeTransition};
-
-    let mode = runtime.current_mode().clone();
-    if let Some(resolver) = resolver_registry.get(&mode)
-        && let Some(complete_transition) =
-            resolver.on_command_complete(runtime, shared_ext, client_ext)
-    {
-        apply_mode_transition_inline(&complete_transition, runtime);
-
-        if let ModeTransition::Pop {
-            result: Some(nested_result),
-        } = complete_transition
-        {
-            handle_pop_result_inline(nested_result, runtime, command_registry);
-            handle_command_complete_chain(
-                runtime,
-                shared_ext,
-                client_ext,
-                command_registry,
-                resolver_registry,
-            );
-        }
-    }
-}
-
-/// Convert `ResolveContext` to `CommandContext` (inline version for server).
-fn resolve_to_command_context_inline(
-    ctx: &reovim_driver_text_input::ResolveContext,
-) -> reovim_subsys_command_types::CommandContext {
-    use reovim_subsys_command_types::ArgValue;
-
-    let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
-    if let Some(count) = ctx.count {
-        cmd_ctx.set("count", ArgValue::Count(count));
-    }
-    if let Some(reg) = ctx.register {
-        cmd_ctx.set("register", ArgValue::Register(reg));
-    }
-    for (key, value) in &ctx.metadata {
-        let converted = match value {
-            reovim_driver_text_input::ArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
-            reovim_driver_text_input::ArgValue::String(s) => Some(ArgValue::String(s.clone())),
-            reovim_driver_text_input::ArgValue::Char(c) => Some(ArgValue::Char(*c)),
-            reovim_driver_text_input::ArgValue::Int(n) => {
-                usize::try_from(*n).ok().map(ArgValue::Count)
-            }
-            reovim_driver_text_input::ArgValue::Uint(n) => {
-                usize::try_from(*n).ok().map(ArgValue::Count)
-            }
-            reovim_driver_text_input::ArgValue::Position(p) => {
-                Some(ArgValue::Position(p.line, p.column))
-            }
-            reovim_driver_text_input::ArgValue::Float(_)
-            | reovim_driver_text_input::ArgValue::Range { .. } => None,
-        };
-        if let Some(arg_value) = converted {
-            cmd_ctx.set(key, arg_value);
-        }
-    }
-    cmd_ctx
 }
 
 #[cfg(test)]

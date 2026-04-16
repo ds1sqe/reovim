@@ -58,6 +58,10 @@ pub enum SyncMode {
 }
 
 /// Presence state for a single connected client.
+///
+/// Domain-neutral (#753 E6): cursor, visible_lines, and mode are domain-owned
+/// state — they live in the domain driver's per-client `EditingState`, not here.
+/// The server presence layer only tracks connection identity and sync topology.
 #[derive(Debug, Clone)]
 pub struct ClientPresence {
     /// Unique client ID (assigned by server on Join).
@@ -69,17 +73,8 @@ pub struct ClientPresence {
     /// User-friendly display name ("laptop", "phone", "tablet").
     pub display_name: String,
 
-    /// Current buffer being viewed.
+    /// Current buffer being viewed (domain-neutral buffer ID).
     pub buffer_id: Option<usize>,
-
-    /// Cursor position in buffer (line, column).
-    pub cursor: (usize, usize),
-
-    /// Visible line range (start, end exclusive).
-    pub visible_lines: (usize, usize),
-
-    /// Current mode name ("NORMAL", "INSERT", etc.).
-    pub mode: String,
 
     /// Sync mode.
     pub sync_mode: SyncMode,
@@ -101,9 +96,6 @@ impl ClientPresence {
             client_type: client_type.into(),
             display_name: display_name.into(),
             buffer_id: None,
-            cursor: (0, 0),
-            visible_lines: (0, 24),
-            mode: "NORMAL".to_string(),
             sync_mode: SyncMode::default(),
             joined_at: SystemTime::now(),
         }

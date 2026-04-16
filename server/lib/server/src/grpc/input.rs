@@ -20,10 +20,7 @@
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
@@ -32,7 +29,7 @@ use {
         notification,
     },
     reovim_subsys_input::KeySequence,
-    reovim_subsys_session::{change_set::ChangeSet, bridges::BridgeRegistry},
+    reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
     tonic::{Request, Response, Status},
 };
 
@@ -204,9 +201,7 @@ impl InputService for InputServiceImpl {
         // `record_cursor_move` is idempotent on `affected_buffers`, so calling it
         // even when InsertChar already recorded cursor_move is safe (#505).
         // Per-client active_buffer (#471)
-        if any_handled
-            && let Some(buffer_id) = session.active_buffer_for_client(client_id)
-        {
+        if any_handled && let Some(buffer_id) = session.active_buffer_for_client(client_id) {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
@@ -226,8 +221,9 @@ impl InputService for InputServiceImpl {
         // Auto-emit presence update on buffer/window change (#471).
         // buffer_id comes from domain driver (#753 E3).
         if accumulated_changes.layout_changed || accumulated_changes.focus_changed {
-            let new_buffer_id =
-                session.active_buffer_for_client(client_id).map(|b| b.as_usize());
+            let new_buffer_id = session
+                .active_buffer_for_client(client_id)
+                .map(|b| b.as_usize());
             session.presence().update(client_id, |p| {
                 p.buffer_id = new_buffer_id;
             });
@@ -285,21 +281,8 @@ impl InputService for InputServiceImpl {
         // its own state; ProjectionStore acquires its own disjoint lock.
         Self::emit_projection_updates(&session, client_id);
 
-        // Take domain-specific edits for syntax/codec (Phase 5 will move these into driver)
-        let pending_text_edits = session.take_pending_text_edits();
-        let pending_byte_edits = session.take_pending_byte_edits();
-
-        // Update syntax drivers for modified/deleted buffers (#539, #655)
-        if !accumulated_changes.modified_buffers.is_empty()
-            || !accumulated_changes.deleted_buffers.is_empty()
-        {
-            Self::emit_syntax_updates(&session, &accumulated_changes, &pending_text_edits);
-        }
-
-        // Notify codec indices of byte-level edits (#740 D.5)
-        if !pending_text_edits.is_empty() || !pending_byte_edits.is_empty() {
-            Self::notify_codec_indices(&session, &pending_text_edits, &pending_byte_edits);
-        }
+        // #753 E6: Syntax/codec updates route through domain driver post-dispatch hooks.
+        // The server no longer touches driver types directly.
 
         // Return result
         Ok(Response::new(SendKeysResponse {
@@ -511,406 +494,20 @@ impl InputServiceImpl {
         }
     }
 
-    /// Update syntax drivers and broadcast token updates for modified buffers.
-    ///
-    /// Called after key processing when `buffer_modified` is true. Uses
-    /// incremental `driver.update()` when edit info is available, falls back
-    /// to full `driver.parse()` otherwise (#655).
-    ///
-    /// The function splits mutable borrows to avoid `ExtensionMap` aliasing:
-    /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
-    /// 2. Access `SyntaxStreamState`, broadcast the update
-    fn emit_syntax_updates(
-        session: &Session,
-        changes: &ChangeSet,
-        text_edits: &[reovim_driver_codec::TextBufferModified],
-    ) {
-        use {
-            crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update},
-            reovim_driver_text_syntax::text_event_to_syntax_edit, // TODO: relocate bridge call (Tier 2 server decoupling)
-        };
+    // emit_syntax_updates: REMOVED (#753 E6).
+    // Syntax updates route through domain driver post-dispatch hooks.
 
-        // Clean up syntax drivers for deleted buffers (#655 Phase 4)
-        if !changes.deleted_buffers.is_empty() {
-            session.with_state_mut_sync(|state| {
-                let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
-                for &buffer_id in &changes.deleted_buffers {
-                    syntax.remove(buffer_id);
-                }
-            });
-        }
-
-        if changes.modified_buffers.is_empty() {
-            return;
-        }
-
-        session.with_state_mut_sync(|state| {
-            for &buffer_id in &changes.modified_buffers {
-                // Get buffer content and file path
-                let Some(buffer_arc) = state.buffer(buffer_id) else {
-                    continue;
-                };
-                let (content, file_path, total_lines) = {
-                    let buffer = buffer_arc.read();
-                    (
-                        buffer.content(),
-                        buffer.file_path().map(String::from),
-                        buffer.line_count() as u64,
-                    )
-                };
-
-                // Step 1: Update driver (mutable borrow of SyntaxSessionState)
-                let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
-                if let Some(ref path) = file_path {
-                    syntax.ensure_driver_from_path(buffer_id, path, &content);
-                }
-
-                // Try incremental update if text-domain edit available, fall back to full reparse
-                // (#655, migrated to pending_text_edits in Phase 2)
-                let edit_info = text_edits
-                    .iter()
-                    .find(|event| event.buffer_id == buffer_id)
-                    .map(text_event_to_syntax_edit);
-
-                if let Some(driver) = syntax.get_mut(buffer_id) {
-                    match edit_info {
-                        Some(ref edit) => driver.update(&content, edit),
-                        None => driver.parse(&content),
-                    }
-                }
-
-                // Build token update from the driver (immutable borrow)
-                let full_refresh = edit_info.is_none();
-                let update = build_token_update(
-                    state.app.extensions.get_or_insert::<SyntaxSessionState>(),
-                    buffer_id,
-                    total_lines,
-                    full_refresh,
-                );
-
-                // Step 2: Broadcast to subscribers (mutable borrow of SyntaxStreamState)
-                if let Some(update) = update {
-                    let stream = state.app.extensions.get_or_insert::<SyntaxStreamState>();
-                    stream.broadcast(&update);
-                }
-            }
-        });
-    }
-
-    /// Notify codec indices of byte-level edits (#740 D.5).
-    ///
-    /// Routes `TextBufferModified` and `ByteEdit` records to
-    /// `CodecSessionState::notify_index()` for incremental index updates.
-    fn notify_codec_indices(
-        session: &Session,
-        text_edits: &[reovim_driver_codec::TextBufferModified],
-        byte_edits: &[(reovim_kernel::api::v1::BufferId, reovim_kernel::api::v1::ByteEdit)],
-    ) {
-        use reovim_driver_codec::CodecSessionState;
-
-        let mut decoded_buffers = HashSet::new();
-
-        session.with_state_mut_sync(|state| {
-            if let Some(codec_state) = state.app.extensions.get_mut::<CodecSessionState>() {
-                for event in text_edits {
-                    let decoded_edit = reovim_driver_codec::text_edit_to_decoded_edit(event);
-
-                    let view = codec_state
-                        .active_view(event.buffer_id)
-                        .unwrap_or("default")
-                        .to_string();
-
-                    if let Some(byte_edit) =
-                        codec_state.apply_decoded_edit(event.buffer_id, &view, &decoded_edit)
-                    {
-                        decoded_buffers.insert(event.buffer_id);
-                        codec_state.notify_index(event.buffer_id, &byte_edit);
-                    }
-                }
-
-                for (buffer_id, edit) in byte_edits {
-                    if decoded_buffers.contains(buffer_id) {
-                        continue;
-                    }
-
-                    codec_state.apply_byte_edit(*buffer_id, edit);
-                    codec_state.notify_index(*buffer_id, edit);
-                }
-            }
-        });
-    }
-
-    // NOTE (#471): `fallback_char_insert()` was REMOVED.
-    // NOTE (#477): `insert_char_by_target()` removed (server domain decoupling).
-    //
-    // The fallback was a design mistake that masked configuration bugs by silently
-    // inserting characters when no resolver was found. This caused:
-    // 1. Characters appearing in Normal mode (should be commands)
-    // 2. ModeId mismatches going undetected (e.g., "default/normal" vs "vim/normal")
-    //
-    // Now, if no resolver is found for a mode, `send_keys()` panics with a clear
-    // error message. This is the correct behavior - a missing resolver is a
-    // configuration bug that should be fixed, not worked around.
+    // notify_codec_indices: REMOVED (#753 E6).
+    // Codec index updates route through domain driver post-dispatch hooks.
 }
 
-/// Test-only re-exposures of helper functions that were inlined into
-/// `session/state.rs` dispatch paths during server domain decoupling.
-///
-/// These are kept in a `#[cfg(test)]` block so the test suite can exercise
-/// the logic directly without polluting the production API.
-#[cfg(test)]
-#[allow(unused_imports)]
-use reovim_driver_text_session::api::StateChanges;
+// Test-only helpers (resolve_to_command_context, handle_resolve_result,
+// apply_mode_transition_for_client, handle_pop_result_for_client):
+// REMOVED (#753 E6). These used driver types (ResolveResult, StateChanges,
+// CommandResult) that no longer exist in the server crate. Tests that depend
+// on these helpers need to be rewritten to use DomainDriver dispatch.
 
-#[cfg(test)]
-impl InputServiceImpl {
-    /// Convert a `ResolveContext` into a `CommandContext`.
-    ///
-    /// Mirrors `session::state::resolve_to_command_context_inline`.
-    pub(crate) fn resolve_to_command_context(
-        ctx: &reovim_driver_text_input::ResolveContext,
-    ) -> reovim_subsys_command_types::CommandContext {
-        use reovim_subsys_command_types::ArgValue;
-
-        let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
-        if let Some(count) = ctx.count {
-            cmd_ctx.set("count", ArgValue::Count(count));
-        }
-        if let Some(reg) = ctx.register {
-            cmd_ctx.set("register", ArgValue::Register(reg));
-        }
-        for (key, value) in &ctx.metadata {
-            let converted = match value {
-                reovim_driver_text_input::ArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
-                reovim_driver_text_input::ArgValue::String(s) => Some(ArgValue::String(s.clone())),
-                reovim_driver_text_input::ArgValue::Char(c) => Some(ArgValue::Char(*c)),
-                reovim_driver_text_input::ArgValue::Int(n) => {
-                    usize::try_from(*n).ok().map(ArgValue::Count)
-                }
-                reovim_driver_text_input::ArgValue::Uint(n) => {
-                    usize::try_from(*n).ok().map(ArgValue::Count)
-                }
-                reovim_driver_text_input::ArgValue::Position(p) => {
-                    Some(ArgValue::Position(p.line, p.column))
-                }
-                reovim_driver_text_input::ArgValue::Float(_)
-                | reovim_driver_text_input::ArgValue::Range { .. } => None,
-            };
-            if let Some(arg_value) = converted {
-                cmd_ctx.set(key, arg_value);
-            }
-        }
-        cmd_ctx
-    }
-
-    /// Handle a single `ResolveResult` against a session, returning
-    /// `(handled, StateChanges)`.
-    ///
-    /// This is a test-only wrapper that dispatches through the session's
-    /// execution path.  The `_key` argument is accepted for API compatibility
-    /// with historic callers; it is not used.
-    pub(crate) async fn handle_resolve_result(
-        session: &crate::session::Session,
-        result: reovim_driver_text_input::ResolveResult,
-        _key: &reovim_driver_text_input::KeyEvent,
-        client_id: crate::session::ClientId,
-    ) -> (bool, reovim_driver_text_session::api::StateChanges) {
-        use {
-            reovim_driver_text_input::ResolveResult, reovim_driver_text_session::api::StateChanges,
-            reovim_subsys_command_types::RuntimeSignal,
-        };
-
-        match result {
-            ResolveResult::Completed | ResolveResult::Pending => (true, StateChanges::new()),
-            ResolveResult::NotHandled => (false, StateChanges::new()),
-
-            ResolveResult::InsertChar { .. } => {
-                tracing::error!(
-                    "InsertChar reached test dispatch — resolvers must handle insertion via SessionApi"
-                );
-                (true, StateChanges::new())
-            }
-
-            ResolveResult::ModeTransition(transition) => {
-                let mut changes = StateChanges::new();
-                changes.mode_changed = true;
-                Self::apply_mode_transition_for_client(session, client_id, transition).await;
-                (true, changes)
-            }
-
-            ResolveResult::Execute(cmd_id, ctx) => {
-                let cmd_ctx = Self::resolve_to_command_context(&ctx);
-                let mut changes = StateChanges::new();
-                if let Some((_, cmd_changes, signals)) =
-                    session.execute_command_for_client(client_id, &cmd_id, &cmd_ctx)
-                {
-                    changes.merge(cmd_changes);
-                    for signal in signals {
-                        match signal {
-                            RuntimeSignal::Quit => changes.record_quit_requested(),
-                        }
-                    }
-                }
-                (true, changes)
-            }
-
-            ResolveResult::InjectKeys { keys, .. } => {
-                let mut changes = StateChanges::new();
-                for injected_key in &keys {
-                    // Re-dispatch through session's full key dispatch.
-                    // dispatch_key_for_client returns ChangeSet; convert back to
-                    // StateChanges for the test-only accumulation buffer.
-                    if let Some((handled, key_changes)) = session
-                        .dispatch_key_for_client(client_id, injected_key)
-                        .await
-                    {
-                        changes.merge(reovim_driver_text_session::state_changes_from_change_set(
-                            key_changes,
-                        ));
-                        let _ = handled;
-                    }
-                }
-                (true, changes)
-            }
-        }
-    }
-
-    /// Apply a `ModeTransition` for a client and run the deferred
-    /// `on_command_complete` chain.
-    ///
-    /// This is a test-only wrapper that mirrors the mode-transition logic
-    /// formerly inlined in `InputServiceImpl`.
-    pub(crate) async fn apply_mode_transition_for_client(
-        session: &crate::session::Session,
-        client_id: crate::session::ClientId,
-        transition: reovim_subsys_input::ModeTransition,
-    ) {
-        use reovim_subsys_input::ModeTransition;
-
-        // Apply the initial transition to the client's mode stack.
-        session.clients().with_clients_mut(|clients| {
-            let Some(client) = clients.get_mut(&client_id) else {
-                return;
-            };
-            match &transition {
-                ModeTransition::Push { mode, .. } => {
-                    client.state.mode_stack.push(mode.clone());
-                }
-                ModeTransition::Pop { .. } => {
-                    client.state.mode_stack.pop();
-                }
-                ModeTransition::Set { mode, .. } => {
-                    client.state.mode_stack.set(mode.clone());
-                }
-            }
-        });
-
-        // Handle any pop result from the initial transition.
-        if let ModeTransition::Pop {
-            result: Some(pop_result),
-        } = transition
-        {
-            Self::handle_pop_result_for_client(session, client_id, pop_result);
-        }
-
-        // Deferred completion loop: run on_command_complete and apply the
-        // returned transition. The loop continues only when the resolver
-        // returns `Pop { result: Some(...) }` (i.e. the pop executes a nested
-        // command that may trigger further completions).  All other variants
-        // (Push, Set, or Pop { result: None }) break after being applied.
-        loop {
-            let Some(complete_transition) =
-                session.try_on_command_complete_for_client(client_id).await
-            else {
-                break;
-            };
-
-            match complete_transition {
-                ModeTransition::Push { ref mode, .. } => {
-                    let mode = mode.clone();
-                    session.clients().with_clients_mut(|clients| {
-                        if let Some(client) = clients.get_mut(&client_id) {
-                            client.state.mode_stack.push(mode);
-                        }
-                    });
-                    break;
-                }
-                ModeTransition::Set { ref mode, .. } => {
-                    let mode = mode.clone();
-                    session.clients().with_clients_mut(|clients| {
-                        if let Some(client) = clients.get_mut(&client_id) {
-                            // Pop all non-base modes then set.
-                            while client.state.mode_stack.depth() > 1 {
-                                client.state.mode_stack.pop();
-                            }
-                            client.state.mode_stack.set(mode);
-                        }
-                    });
-                    break;
-                }
-                ModeTransition::Pop { result } => {
-                    // Apply the pop (no-op if already at base depth).
-                    session.clients().with_clients_mut(|clients| {
-                        if let Some(client) = clients.get_mut(&client_id) {
-                            client.state.mode_stack.pop();
-                        }
-                    });
-                    if let Some(pr) = result {
-                        // Execute the nested pop result and continue the loop
-                        // so any further completions are processed.
-                        Self::handle_pop_result_for_client(session, client_id, pr);
-                        // continue
-                    } else {
-                        // Pop { result: None } — no nested command; break.
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Handle a `PopResult` for a client.
-    ///
-    /// Returns `StateChanges` reflecting any commands executed (including
-    /// `RuntimeSignal::Quit` translated to `should_quit`).
-    pub(crate) fn handle_pop_result_for_client(
-        session: &crate::session::Session,
-        client_id: crate::session::ClientId,
-        result: reovim_subsys_input::PopResult,
-    ) -> reovim_driver_text_session::api::StateChanges {
-        use {
-            reovim_driver_text_session::api::StateChanges,
-            reovim_subsys_command_types::RuntimeSignal, reovim_subsys_input::PopResult,
-        };
-
-        match result {
-            PopResult::Cancelled | PopResult::Data { .. } => StateChanges::new(),
-            PopResult::ExecuteCommand { command, args } => {
-                let mut cmd_ctx = reovim_subsys_command_types::CommandContext::new();
-                for (key, value) in args {
-                    cmd_ctx.set(&key, value);
-                }
-                let mut changes = StateChanges::new();
-                if let Some((result, cmd_changes, signals)) =
-                    session.execute_command_for_client(client_id, &command, &cmd_ctx)
-                {
-                    changes.merge(cmd_changes);
-                    for signal in signals {
-                        match signal {
-                            RuntimeSignal::Quit => changes.record_quit_requested(),
-                        }
-                    }
-                    if let reovim_driver_command::CommandResult::Error(msg) = result {
-                        session.with_client_ring_buffer(client_id, |rb| {
-                            rb.log_error(&format!("COMMAND_FAILED: {msg}"));
-                        });
-                    }
-                }
-                changes
-            }
-        }
-    }
-}
+// All test-only helpers removed (#753 E6). Tests need rewrite.
 
 #[cfg(test)]
 #[path = "input_tests.rs"]

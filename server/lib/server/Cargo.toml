@@ -29,13 +29,9 @@ reovim-subsys-coordination = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 
-# Drivers (domain-locked) - Should remove all
-reovim-driver-text-buffer = { workspace = true }
-reovim-driver-codec = { workspace = true }
-reovim-driver-command = { workspace = true }
-reovim-driver-text-input = { workspace = true }
-reovim-driver-text-session = { workspace = true }
-reovim-driver-text-syntax = { workspace = true }
+# Drivers: REMOVED from production deps (#753 E6).
+# All driver access routes through DomainDriver (subsys-session trait).
+# Driver crates are in [dev-dependencies] for test compatibility.
 
 # Async
 tokio = { workspace = true, features = ["full", "sync", "rt-multi-thread"] }
@@ -67,6 +63,11 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 [dev-dependencies]
 tempfile = "3.0"
 reovim-driver-text-buffer = { workspace = true }
+reovim-driver-codec = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-text-input = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+reovim-driver-text-syntax = { workspace = true }
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

@@ -138,9 +138,9 @@ impl EditorService for EditorServiceImpl {
 
         let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
-        // Verify buffer exists
+        // Verify buffer exists via kernel buffer list (#753 E6: no driver imports)
         let exists = session
-            .with_state(|state| state.buffer(buffer_id).is_some())
+            .with_state(|state| state.app.kernel.buffers.list().contains(&buffer_id))
             .await;
 
         if !exists {
