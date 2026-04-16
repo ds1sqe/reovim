@@ -61,6 +61,10 @@ impl std::error::Error for InputPayloadError {}
 impl InputEvent {
     /// Construct with validation. Returns `Err` with diagnostics if payload
     /// is shorter than `INPUT_HEADER_SIZE`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputPayloadError::TooShort`] if `payload.len() < INPUT_HEADER_SIZE`.
     pub fn new(
         payload: Vec<u8>,
         window_id: Option<WindowId>,
@@ -80,6 +84,7 @@ impl InputEvent {
     }
 
     /// Access the raw payload bytes (header + body).
+    #[must_use]
     pub fn payload(&self) -> &[u8] {
         &self.payload
     }
@@ -91,6 +96,7 @@ impl InputEvent {
 ///
 /// Panics if `payload.len() < INPUT_HEADER_SIZE`. Only call on a validated
 /// `InputEvent`'s payload.
+#[must_use]
 pub fn input_kind(payload: &[u8]) -> u16 {
     u16::from_le_bytes([payload[0], payload[1]])
 }
@@ -100,6 +106,7 @@ pub fn input_kind(payload: &[u8]) -> u16 {
 /// # Panics
 ///
 /// Panics if `payload.len() < INPUT_HEADER_SIZE`.
+#[must_use]
 pub fn input_flags(payload: &[u8]) -> InputFlags {
     InputFlags::from_bits_truncate(u16::from_le_bytes([payload[2], payload[3]]))
 }
@@ -109,6 +116,7 @@ pub fn input_flags(payload: &[u8]) -> InputFlags {
 /// # Panics
 ///
 /// Panics if `payload.len() < INPUT_HEADER_SIZE`.
+#[must_use]
 pub fn input_context(payload: &[u8]) -> u32 {
     u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]])
 }

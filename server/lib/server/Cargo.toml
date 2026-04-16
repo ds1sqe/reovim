@@ -62,12 +62,8 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
-reovim-driver-text-buffer = { workspace = true }
-reovim-driver-codec = { workspace = true }
-reovim-driver-command = { workspace = true }
-reovim-driver-text-input = { workspace = true }
-reovim-driver-text-session = { workspace = true }
-reovim-driver-text-syntax = { workspace = true }
+# All driver crates removed from dev-dependencies (#753 G-chain).
+# Server tests must not import driver types even for test setup.
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

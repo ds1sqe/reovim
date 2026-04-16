@@ -16,15 +16,12 @@ fn test_registry_with_session() -> (Arc<SessionRegistry>, Arc<Session>) {
 
 /// Create a registry with a session that has a real buffer manager.
 fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-    };
+    use reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry};
 
     // Create a KernelContext with a real buffer manager
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
+        Arc::new(reovim_kernel::testing::TestBufferManager::new()),
         Arc::new(OptionRegistry::new()),
         Arc::new(ServiceRegistry::new()),
     );
@@ -481,11 +478,8 @@ fn test_kernel_to_proto_option_choice() {
 
 #[tokio::test]
 async fn test_get_options_with_specific_names_registered() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
-        },
+    use reovim_kernel::api::v1::{
+        EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
     };
 
     // Build a session with a real OptionRegistry that has a registered option.
@@ -496,7 +490,7 @@ async fn test_get_options_with_specific_names_registered() {
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
+        Arc::new(reovim_kernel::testing::TestBufferManager::new()),
         option_registry,
         Arc::new(ServiceRegistry::new()),
     );
@@ -524,11 +518,8 @@ async fn test_get_options_with_specific_names_registered() {
 
 #[tokio::test]
 async fn test_get_options_with_alias_resolves() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
-        },
+    use reovim_kernel::api::v1::{
+        EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
     };
 
     let option_registry = Arc::new(OptionRegistry::new());
@@ -541,7 +532,7 @@ async fn test_get_options_with_alias_resolves() {
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
+        Arc::new(reovim_kernel::testing::TestBufferManager::new()),
         option_registry,
         Arc::new(ServiceRegistry::new()),
     );
@@ -567,11 +558,8 @@ async fn test_get_options_with_alias_resolves() {
 
 #[tokio::test]
 async fn test_get_options_with_unknown_name_omitted() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
-        },
+    use reovim_kernel::api::v1::{
+        EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
     };
 
     let option_registry = Arc::new(OptionRegistry::new());
@@ -585,7 +573,7 @@ async fn test_get_options_with_unknown_name_omitted() {
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
+        Arc::new(reovim_kernel::testing::TestBufferManager::new()),
         option_registry,
         Arc::new(ServiceRegistry::new()),
     );
@@ -611,11 +599,8 @@ async fn test_get_options_with_unknown_name_omitted() {
 
 #[tokio::test]
 async fn test_get_options_empty_names_returns_all() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{
-            EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
-        },
+    use reovim_kernel::api::v1::{
+        EventBus, KernelContext, OptionRegistry, OptionSpec, OptionValue, ServiceRegistry,
     };
 
     let option_registry = Arc::new(OptionRegistry::new());
@@ -628,7 +613,7 @@ async fn test_get_options_empty_names_returns_all() {
 
     let kernel = KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
+        Arc::new(reovim_kernel::testing::TestBufferManager::new()),
         option_registry,
         Arc::new(ServiceRegistry::new()),
     );

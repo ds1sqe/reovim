@@ -486,7 +486,7 @@ async fn test_debug_list_extensions_no_bridges() {
 
 // ── Tests with real sessions (covers `with_sessions()` paths) ────────
 
-use reovim_driver_text_session::{
+use reovim_subsys_session::{
     ExtensionMap,
     bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
 };

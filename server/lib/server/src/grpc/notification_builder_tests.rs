@@ -505,7 +505,7 @@ fn test_extension_changed_without_bridges_no_notification() {
 
 #[test]
 fn test_extension_changed_with_bridges_unknown_kind() {
-    use reovim_driver_text_session::bridges::BridgeRegistry;
+    use reovim_subsys_session::bridges::BridgeRegistry;
 
     let mut changes = ChangeSet::new();
     changes.record_extension_change("unknown".into());
@@ -521,7 +521,7 @@ struct TestBridgeExtension {
     active: bool,
 }
 
-impl reovim_driver_text_session::SessionExtension for TestBridgeExtension {
+impl reovim_subsys_session::SessionExtension for TestBridgeExtension {
     fn create() -> Self {
         Self { active: false }
     }
@@ -530,18 +530,18 @@ impl reovim_driver_text_session::SessionExtension for TestBridgeExtension {
 /// Test bridge that serializes `TestBridgeExtension` to JSON.
 struct TestBridge;
 
-impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
+impl reovim_subsys_session::bridges::ExtensionStateBridge for TestBridge {
     fn kind(&self) -> &'static str {
         "test-ext"
     }
 
-    fn scope(&self) -> reovim_driver_text_session::bridges::ExtensionScope {
-        reovim_driver_text_session::bridges::ExtensionScope::Client
+    fn scope(&self) -> reovim_subsys_session::bridges::ExtensionScope {
+        reovim_subsys_session::bridges::ExtensionScope::Client
     }
 
     fn snapshot(
         &self,
-        extensions: &reovim_driver_text_session::ExtensionMap,
+        extensions: &reovim_subsys_session::ExtensionMap,
     ) -> Option<serde_json::Value> {
         let ext = extensions.get::<TestBridgeExtension>()?;
         Some(serde_json::json!({
@@ -549,7 +549,7 @@ impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
         }))
     }
 
-    fn is_active(&self, extensions: &reovim_driver_text_session::ExtensionMap) -> bool {
+    fn is_active(&self, extensions: &reovim_subsys_session::ExtensionMap) -> bool {
         extensions
             .get::<TestBridgeExtension>()
             .is_some_and(|e| e.active)
@@ -559,14 +559,14 @@ impl reovim_driver_text_session::bridges::ExtensionStateBridge for TestBridge {
         &self,
         _from: &str,
         _to: &str,
-        _extensions: &mut reovim_driver_text_session::ExtensionMap,
+        _extensions: &mut reovim_subsys_session::ExtensionMap,
     ) {
     }
 }
 
 #[test]
 fn test_extension_changed_with_bridge() {
-    use reovim_driver_text_session::bridges::BridgeRegistry;
+    use reovim_subsys_session::bridges::BridgeRegistry;
 
     let mut changes = ChangeSet::new();
     changes.record_extension_change("test-ext".into());
@@ -597,7 +597,7 @@ fn test_extension_changed_with_bridge() {
 
 #[test]
 fn test_extension_not_changed_no_notification() {
-    use reovim_driver_text_session::bridges::BridgeRegistry;
+    use reovim_subsys_session::bridges::BridgeRegistry;
 
     let changes = ChangeSet::new(); // No extension changes
 
@@ -611,7 +611,7 @@ fn test_extension_not_changed_no_notification() {
 
 #[test]
 fn test_build_extension_notification_shared_scope_returns_notification() {
-    use reovim_driver_text_session::{
+    use reovim_subsys_session::{
         ExtensionMap,
         bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
     };
@@ -654,7 +654,7 @@ fn test_build_extension_notification_shared_scope_returns_notification() {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_build_extension_notification_shared_scope_empty_returns_none() {
-    use reovim_driver_text_session::{
+    use reovim_subsys_session::{
         ExtensionMap,
         bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
     };

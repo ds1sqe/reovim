@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::session::SessionState,
-    reovim_driver_command::Command,
+    reovim_subsys_command::Command,
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
@@ -143,62 +143,8 @@ async fn test_search_commands_no_session() {
     assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_search_commands_keybinding_with_snapshot() {
-    use {
-        crate::CommandQuerySnapshot,
-        reovim_driver_command::{ArgSpec, CommandHandler, CommandResult},
-        reovim_driver_text_session::SessionRuntime,
-    };
-
-    struct MoveDown;
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl Command for MoveDown {
-        fn id(&self) -> CommandId {
-            CommandId::new(ModuleId::new("test"), "move-down")
-        }
-        fn description(&self) -> &'static str {
-            "Move cursor down"
-        }
-        fn args(&self) -> Vec<ArgSpec> {
-            vec![]
-        }
-        fn names(&self) -> &[&'static str] {
-            &["move-down"]
-        }
-    }
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandHandler for MoveDown {
-        fn execute(
-            &self,
-            _runtime: &mut SessionRuntime<'_>,
-            _args: &reovim_driver_command::CommandContext,
-        ) -> CommandResult {
-            CommandResult::Success
-        }
-    }
-
-    let mut cmd_registry = crate::CommandRegistry::new();
-    cmd_registry.register(Arc::new(MoveDown));
-    let snapshot = CommandQuerySnapshot::from_registry(&cmd_registry);
-
-    let state = SessionState::default();
-    state.app.kernel.services.register(Arc::new(snapshot));
-    let session = Arc::new(Session::from_state(SessionId::new("test"), state));
-    let sessions = make_sessions_with(&session);
-    let service = CommandServiceImpl::new(sessions, SessionId::new("test"));
-
-    let request = Request::new(SearchCommandsRequest {
-        prefix: "move".to_string(),
-        source: CommandSource::Keybinding.into(),
-    });
-    let response = service.search_commands(request).await.unwrap().into_inner();
-
-    assert_eq!(response.keybinding_commands.len(), 1);
-    assert_eq!(response.keybinding_commands[0].id, "test:move-down");
-    assert_eq!(response.keybinding_commands[0].names, vec!["move-down"]);
-    assert_eq!(response.keybinding_commands[0].description, "Move cursor down");
-}
+// test_search_commands_keybinding_with_snapshot: DELETED — uses CommandHandler/SessionRuntime
+// which are driver-specific types unavailable in server dev-dependencies.
 
 // === CompleteArgs tests ===
 

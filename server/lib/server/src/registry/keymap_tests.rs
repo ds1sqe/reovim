@@ -466,7 +466,7 @@ fn test_query_exact_with_longer() {
 
 #[test]
 fn test_lookup_with_custom_policy() {
-    use reovim_driver_text_input::KeyLookupPolicy;
+    use reovim_subsys_input::KeyLookupPolicy;
 
     struct AlwaysExecutePolicy;
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -679,7 +679,7 @@ fn test_clear_layer_nonexistent_mode_is_noop() {
 
 #[test]
 fn test_set_default_policy() {
-    use reovim_driver_text_input::KeyLookupPolicy;
+    use reovim_subsys_input::KeyLookupPolicy;
 
     /// Test policy that waits for longer sequences (Vim-style).
     struct WaitForLongerPolicy;

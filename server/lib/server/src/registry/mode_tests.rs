@@ -229,7 +229,7 @@ fn test_mode_registry_unregister_for_module() {
 
 #[test]
 fn test_mode_entry_from_info() {
-    let info = reovim_driver_text_input::ModeInfo {
+    let info = reovim_subsys_input::ModeInfo {
         id: TestMode::Command.id(),
         display_name: "TEST",
         cursor_style: CursorStyle::Underline,

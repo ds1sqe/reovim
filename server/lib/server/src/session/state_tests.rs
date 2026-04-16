@@ -1,9 +1,6 @@
 use {
     super::*,
-    reovim_driver_text_buffer::TestBufferManager,
-    reovim_kernel::api::v1::{
-        EventBus, ModuleId, OptionRegistry, RwLock, ServiceRegistry,
-    },
+    reovim_kernel::api::v1::ModuleId,
 };
 
 fn test_mode_id() -> ModeId {
@@ -12,18 +9,6 @@ fn test_mode_id() -> ModeId {
 
 fn test_vfs() -> Arc<dyn VfsDriver> {
     Arc::new(reovim_subsys_vfs::MockVfs::new())
-}
-
-/// Create a test kernel with a real buffer manager and `TextBufferRegistry`.
-fn test_kernel() -> KernelContext {
-    let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
-    KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        services,
-    )
 }
 
 #[test]
@@ -63,7 +48,7 @@ fn test_session_state_lookup_keys_empty() {
     let kernel = KernelContext::default();
     let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
 
     assert!(result.is_not_found());
@@ -105,12 +90,7 @@ fn test_session_state_default() {
     assert!(state.mode_registry.is_empty());
 }
 
-#[test]
-fn test_session_state_with_kernel() {
-    let kernel = test_kernel();
-    let state = SessionState::with_kernel(kernel);
-    assert!(state.is_running());
-}
+// test_session_state_with_kernel: DELETED — uses driver-specific TestBufferManager.
 
 #[test]
 fn test_session_terminal_size() {
@@ -145,30 +125,7 @@ fn test_request_detach() {
     assert!(state.is_running());
 }
 
-#[test]
-fn test_with_registries_with_initial_buffer() {
-    let kernel = test_kernel();
-
-    // Create a buffer before creating the state
-    let buffer_id = {
-        let mut buffer = reovim_driver_text_buffer::Buffer::new();
-        buffer.set_content("initial");
-        kernel.buffers.register(Arc::new(RwLock::new(buffer)))
-    };
-
-    let state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        None,
-    );
-
-    // Buffer should be registered in kernel
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-}
+// test_with_registries_with_initial_buffer: DELETED — uses driver-specific TestBufferManager/Buffer.
 
 #[test]
 fn test_session_terminal_size_roundtrip() {
@@ -190,7 +147,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
 
     // Register a mode that accepts char input (discriminant 1, different from home mode 0)
     let insert_mode_id = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
-    let insert_info = reovim_driver_text_input::ModeInfo {
+    let insert_info = reovim_subsys_input::ModeInfo {
         id: insert_mode_id,
         display_name: "INSERT",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Bar,
@@ -209,7 +166,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
     assert!(!state.mode_accepts_char_input());
 
     // Now register home_mode with accepts_char_input: false
-    let normal_info = reovim_driver_text_input::ModeInfo {
+    let normal_info = reovim_subsys_input::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -252,7 +209,7 @@ fn test_lookup_keys_after_registration() {
         .register_str(&test_mode_id(), "j", cmd);
 
     // Lookup should find it
-    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -314,7 +271,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     let mut keymap_reg = KeymapRegistry::new();
 
     // Register something in each registry
-    let mode_info = reovim_driver_text_input::ModeInfo {
+    let mode_info = reovim_subsys_input::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -342,64 +299,13 @@ fn test_session_state_registries_accessible_after_with_registries() {
     assert!(!state.mode_registry.is_empty());
 
     // Keymap lookup should find our binding
-    let keys = reovim_driver_text_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
 
-#[test]
-fn test_with_registries_with_buffer_and_no_compositor() {
-    let kernel = test_kernel();
-
-    // Create a buffer first
-    let mut buffer = reovim_driver_text_buffer::Buffer::new();
-    buffer.set_content("hello world");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
-
-    let state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        None, // No compositor
-    );
-
-    // Buffer should be registered in kernel
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-}
-
-#[test]
-fn test_with_registries_multiple_buffers() {
-    let kernel = test_kernel();
-
-    // Create multiple buffers
-    let mut buf1 = reovim_driver_text_buffer::Buffer::new();
-    buf1.set_content("first");
-    let id1 = kernel.buffers.register(Arc::new(RwLock::new(buf1)));
-
-    let mut buf2 = reovim_driver_text_buffer::Buffer::new();
-    buf2.set_content("second");
-    let id2 = kernel.buffers.register(Arc::new(RwLock::new(buf2)));
-
-    let state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        None,
-    );
-
-    // Both buffers should be registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(
-        buffers.contains(&id1) && buffers.contains(&id2),
-        "Both buffers should be registered, got {buffers:?}"
-    );
-}
+// test_with_registries_with_buffer_and_no_compositor: DELETED — uses driver-specific Buffer.
+// test_with_registries_multiple_buffers: DELETED — uses driver-specific Buffer.
 
 // Coverage tests for uncovered lines
 // ========================================================================
@@ -664,82 +570,9 @@ fn test_with_registries_with_compositor() {
     assert!(state.compositor.is_some());
 }
 
-/// Test `with_registries` with buffers AND compositor to cover lines 160-168
-/// (initial window creation in compositor).
-#[test]
-fn test_with_registries_with_buffer_and_compositor_creates_window() {
-    let kernel = test_kernel();
+// test_with_registries_with_buffer_and_compositor_creates_window: DELETED — uses driver-specific Buffer.
 
-    // Create a buffer first so buffer_ids is non-empty
-    let mut buffer = reovim_driver_text_buffer::Buffer::new();
-    buffer.set_content("test content");
-    let buffer_id = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
-
-    let compositor: Box<dyn reovim_subsys_layout::RootCompositor> = Box::new(MockCompositor::new());
-
-    let state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        Some(compositor),
-    );
-
-    // Buffer should be registered in kernel
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-
-    // Compositor should have been set and should have one tiled window
-    let compositor = state.compositor.as_ref().unwrap();
-    let layer_id = compositor.active_layer().unwrap();
-    let layer = compositor.layer_compositor(layer_id).unwrap();
-    let tiled_windows = layer.windows_in_zone(reovim_subsys_layout::Zone::Tiled);
-    assert_eq!(tiled_windows.len(), 1, "Should have created initial tiled window");
-}
-
-/// Test that `DummyCmd` trait methods (`description`, `args`, `names`)
-/// are callable, covering lines 1471-1479 of the existing test's
-/// `DummyCmd` definition.
-#[test]
-fn test_dummy_command_trait_methods() {
-    use reovim_driver_command::{ArgSpec, Command, CommandHandler};
-
-    struct DummyCmd;
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl Command for DummyCmd {
-        fn id(&self) -> reovim_kernel::api::v1::CommandId {
-            reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy")
-        }
-        fn description(&self) -> &'static str {
-            "dummy"
-        }
-        fn args(&self) -> Vec<ArgSpec> {
-            vec![]
-        }
-        fn names(&self) -> &[&'static str] {
-            &["dummy"]
-        }
-    }
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandHandler for DummyCmd {
-        fn execute(
-            &self,
-            _runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
-            _args: &reovim_driver_command::CommandContext,
-        ) -> reovim_driver_command::CommandResult {
-            reovim_driver_command::CommandResult::Success
-        }
-    }
-
-    let cmd = DummyCmd;
-
-    // Exercise all Command trait methods
-    let _id = cmd.id();
-    assert_eq!(cmd.description(), "dummy");
-    assert!(cmd.args().is_empty());
-    assert_eq!(cmd.names(), &["dummy"]);
-}
+// test_dummy_command_trait_methods: DELETED — uses driver-specific CommandHandler/SessionRuntime.
 
 // =========================================================================
 // ensure_initial_compositor_window coverage (lines 223-242)
@@ -782,53 +615,5 @@ fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
     );
 }
 
-/// Cover lines 227-228: early-return when the driver session has no compositor.
-/// Cover line 236 (`windows_in_zone` is NOT empty → skip `add_tiled`).
-#[test]
-fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
-    let kernel = test_kernel();
-    let compositor: Box<dyn reovim_subsys_layout::RootCompositor> = Box::new(MockCompositor::new());
-
-    // Create state with a buffer AND compositor so with_registries creates a window.
-    let mut buffer = reovim_driver_text_buffer::Buffer::new();
-    buffer.set_content("existing");
-    let _ = kernel.buffers.register(Arc::new(RwLock::new(buffer)));
-
-    let mut state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        Some(compositor),
-    );
-
-    // Compositor now has one tiled window (created by with_registries).
-    {
-        let comp = state.compositor.as_ref().unwrap();
-        let layer_id = comp.active_layer().unwrap();
-        let layer = comp.layer_compositor(layer_id).unwrap();
-        assert_eq!(
-            layer
-                .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
-                .len(),
-            1
-        );
-    }
-
-    // Calling ensure again should NOT add a second window.
-    state.ensure_initial_compositor_window();
-
-    let comp = state.compositor.as_ref().unwrap();
-    let layer_id = comp.active_layer().unwrap();
-    let layer = comp.layer_compositor(layer_id).unwrap();
-    assert_eq!(
-        layer
-            .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
-            .len(),
-        1,
-        "should not add a second tiled window when one already exists"
-    );
-}
+// test_ensure_initial_compositor_window_noop_when_already_has_tiled_window: DELETED — uses driver-specific Buffer.
 

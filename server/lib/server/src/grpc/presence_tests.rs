@@ -838,7 +838,7 @@ async fn test_each_client_gets_unique_token() {
 /// are counted by the coverage tool.
 #[tokio::test]
 async fn test_join_starts_illuminate_tick_when_handle_present() {
-    use reovim_driver_text_session::TickSchedulerHandle;
+    use reovim_subsys_session::TickSchedulerHandle;
 
     let state = crate::session::SessionState::default();
     state

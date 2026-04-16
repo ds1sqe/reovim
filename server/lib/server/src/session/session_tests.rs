@@ -937,120 +937,8 @@ fn test_editing_state_debug_format() {
 // Coverage: compositor-driven window creation (#497 lines 239-251, 590-600)
 // =========================================================================
 
-/// Mock compositor that returns one tiled placement with a focused window.
-///
-/// Unlike `MockRootCompositor` in `runtime.rs` which returns empty results,
-/// this compositor provides actual placements so the session code at
-/// lines 239-251 and 590-600 can create windows from them.
-#[allow(dead_code)]
-struct TestPlacementCompositor;
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_subsys_layout::RootCompositor for TestPlacementCompositor {
-    fn composite(
-        &self,
-        screen: reovim_subsys_layout::Rect,
-    ) -> reovim_subsys_layout::CompositeResult {
-        use reovim_subsys_layout::{
-            CompositeResult, LayerId, WindowId, WindowPlacement, ZOrder, Zone,
-        };
-
-        CompositeResult {
-            placements: vec![WindowPlacement {
-                window_id: WindowId::from_raw(1),
-                layer_id: LayerId::new(0),
-                zone: Zone::Tiled,
-                bounds: reovim_subsys_layout::Rect::new(0, 0, 80, 24),
-                z_order: ZOrder::new(0),
-                visible: true,
-                focusable: true,
-                opacity: 1.0,
-            }],
-            focused: Some(WindowId::from_raw(1)),
-            active_layer: Some(LayerId::new(0)),
-            screen,
-        }
-    }
-
-    fn create_layer(
-        &mut self,
-        _config: reovim_subsys_layout::LayerConfig,
-    ) -> reovim_subsys_layout::LayerId {
-        reovim_subsys_layout::LayerId::new(0)
-    }
-
-    fn remove_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
-
-    fn layer_by_label(&self, _label: &str) -> Option<reovim_subsys_layout::LayerId> {
-        None
-    }
-
-    fn layers(&self) -> Vec<&reovim_subsys_layout::Layer> {
-        Vec::new()
-    }
-
-    fn set_layer_visible(&mut self, _layer: reovim_subsys_layout::LayerId, _visible: bool) {}
-
-    fn set_layer_opacity(&mut self, _layer: reovim_subsys_layout::LayerId, _opacity: f32) {}
-
-    fn reorder_layer(&mut self, _layer: reovim_subsys_layout::LayerId, _new_z: u16) {}
-
-    fn set_active_layer(&mut self, _layer: reovim_subsys_layout::LayerId) {}
-
-    fn active_layer(&self) -> Option<reovim_subsys_layout::LayerId> {
-        Some(reovim_subsys_layout::LayerId::new(0))
-    }
-
-    fn set_focus(&mut self, _window: reovim_subsys_layout::WindowId) {}
-
-    fn focused(&self) -> Option<reovim_subsys_layout::WindowId> {
-        Some(reovim_subsys_layout::WindowId::from_raw(1))
-    }
-
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<reovim_subsys_layout::WindowId> {
-        None
-    }
-
-    fn layer_compositor(
-        &self,
-        _layer: reovim_subsys_layout::LayerId,
-    ) -> Option<&dyn reovim_subsys_layout::WindowLayerCompositor> {
-        None
-    }
-
-    fn layer_compositor_mut(
-        &mut self,
-        _layer: reovim_subsys_layout::LayerId,
-    ) -> Option<&mut dyn reovim_subsys_layout::WindowLayerCompositor> {
-        None
-    }
-
-    fn window_count(&self) -> usize {
-        1
-    }
-
-    fn set_screen(&mut self, _screen: reovim_subsys_layout::Rect) {}
-
-    fn layer_of(
-        &self,
-        _window: reovim_subsys_layout::WindowId,
-    ) -> Option<reovim_subsys_layout::LayerId> {
-        Some(reovim_subsys_layout::LayerId::new(0))
-    }
-
-    fn boxed_clone(&self) -> Box<dyn reovim_subsys_layout::RootCompositor> {
-        Box::new(Self)
-    }
-
-    fn generation(&self) -> u64 {
-        0
-    }
-
-    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        reovim_subsys_layout::LayoutTopology::Single(reovim_subsys_layout::WindowId::from_raw(1))
-    }
-}
-// #[test]: DELETED (#753 E6) — uses removed methods
+// TestPlacementCompositor + RootCompositor impl: DELETED (#753 G-chain)
+// Compositor tests: DELETED (#753 E6) — uses removed methods
 
 // #[test]: DELETED (#753 E6) — uses removed methods
 
@@ -1071,7 +959,7 @@ fn test_with_client_extensions_returns_none_for_unknown_client() {
 /// Test extension replacing module-cmdline dev-dependency.
 struct TestSessionExtension;
 
-impl reovim_driver_text_session::SessionExtension for TestSessionExtension {
+impl reovim_subsys_session::SessionExtension for TestSessionExtension {
     fn create() -> Self {
         Self
     }
@@ -1331,7 +1219,7 @@ fn with_tick_mut_returns_none_for_unknown_client() {
 
 #[test]
 fn with_tick_mut_calls_closure() {
-    use reovim_driver_text_session::SessionExtension;
+    use reovim_subsys_session::SessionExtension;
 
     #[derive(Default)]
     struct Counter {
@@ -1364,7 +1252,7 @@ fn with_tick_mut_calls_closure() {
 
 #[test]
 fn with_tick_mut_accesses_shared_extensions() {
-    use reovim_driver_text_session::SessionExtension;
+    use reovim_subsys_session::SessionExtension;
 
     #[derive(Default)]
     struct SharedData {
