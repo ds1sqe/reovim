@@ -4,8 +4,30 @@ use crate::{
     AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError, ColumnWidth,
     GutterCell, Insets, OptionValue, ProbeResult, Rect, RenderBehavior, RenderingModel, Style,
     SyntaxToken, TransformedLine, Version, ViewportContext, VirtualLine, WindowId, WindowLayout,
+    projection::DomainProjection,
     types::{Color, ColorDepth, InlineDecoration},
 };
+
+use reovim_subsys_coordination::DomainId;
+
+// =============================================================================
+// LocalInputResult (#753 F4)
+// =============================================================================
+
+/// Result of local input handling by a domain view module.
+///
+/// Returned by [`ClientModule::on_local_input`] to indicate how the input
+/// was processed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalInputResult {
+    /// The input was consumed locally (e.g., scrolling, selection).
+    /// Do not send to the server.
+    Consumed,
+    /// The input was not handled. Send it to the server as usual.
+    Unhandled,
+    /// The input should be sent to the server (module transformed it).
+    SendToServer,
+}
 
 // =============================================================================
 // ClientModule — the single trait CORE interacts with
@@ -113,6 +135,52 @@ pub trait ClientModule: Send + Sync + 'static {
     /// Periodic tick. Returns `true` if state changed and a redraw is needed.
     fn tick(&mut self) -> bool {
         false
+    }
+
+    // ---- Domain view (#753 F4) ----
+
+    /// The domain this module belongs to, if any.
+    ///
+    /// Domain view modules return `Some(domain_id)` to receive projections
+    /// from that domain. Chrome-only modules return `None` (default).
+    fn domain_id(&self) -> Option<DomainId> {
+        None
+    }
+
+    /// Handle a domain projection update.
+    ///
+    /// Called when a projection matching this module's `domain_id()` arrives.
+    /// Modules update their internal state from the projection's content bytes.
+    /// Transient projections are also delivered (check `projection.transient`).
+    fn on_projection(&mut self, projection: &DomainProjection) {}
+
+    /// Render domain content into the given surface region.
+    ///
+    /// Called by the compositor for domain view modules. The module decodes
+    /// its cached projection data and renders into the surface.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn render_domain_surface(
+        &self,
+        surface: &mut dyn RenderSurface,
+        bounds: Rect,
+        caps: &dyn PlatformCapabilities,
+    ) {
+    }
+
+    /// Whether this module wants to handle input locally before sending to server.
+    ///
+    /// When `true`, the compositor calls `on_local_input()` first. The module
+    /// can consume the input (e.g., scrolling) or pass it through to the server.
+    fn wants_local_input(&self) -> bool {
+        false
+    }
+
+    /// Handle local input before it reaches the server.
+    ///
+    /// Only called when `wants_local_input()` returns `true`.
+    /// Returns a `LocalInputResult` indicating how the input was handled.
+    fn on_local_input(&mut self, input: &[u8]) -> LocalInputResult {
+        LocalInputResult::Unhandled
     }
 
     // ---- Chrome ----

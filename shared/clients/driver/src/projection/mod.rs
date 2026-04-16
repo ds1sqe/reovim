@@ -4,9 +4,11 @@
 //! `ProjectionUpdatedPayload` proto message. The `from_proto()` function is
 //! the single proto boundary crossing — after it, no proto types exist.
 
+mod cache;
 #[cfg(feature = "proto")]
 mod transpiler;
 
+pub use cache::ProjectionDisplayCache;
 #[cfg(feature = "proto")]
 pub use transpiler::from_proto;
 
