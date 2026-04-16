@@ -388,16 +388,7 @@ fn test_resolve_target_valid() {
     assert_eq!(client_id.as_usize(), 42);
 }
 
-#[tokio::test]
-async fn test_debug_get_mode_no_sessions() {
-    let service = DebugServiceImpl::new();
-    let request = Request::new(DebugGetModeRequest {
-        target_client_id: 1,
-    });
-    let result = service.debug_get_mode(request).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::Unavailable);
-}
+// test_debug_get_mode_no_sessions: DELETED (#753 D-chain) — DebugGetMode removed from v3
 
 #[tokio::test]
 async fn test_debug_get_projections_no_sessions() {
@@ -444,16 +435,7 @@ fn test_capture_error_to_status_invalid() {
     assert_eq!(status.code(), tonic::Code::Internal);
 }
 
-#[tokio::test]
-async fn test_debug_get_mode_target_zero() {
-    let service = DebugServiceImpl::new();
-    let request = Request::new(DebugGetModeRequest {
-        target_client_id: 0,
-    });
-    let result = service.debug_get_mode(request).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::InvalidArgument);
-}
+// test_debug_get_mode_target_zero: DELETED (#753 D-chain) — DebugGetMode removed from v3
 
 #[tokio::test]
 async fn test_debug_get_projections_target_zero() {
@@ -550,31 +532,8 @@ fn test_debug_service_with_session() -> (DebugServiceImpl, Arc<crate::session::S
     (service, session)
 }
 
-#[tokio::test]
-async fn test_debug_get_mode_with_session() {
-    let (service, session) = test_debug_service_with_session();
-    session.add_client(crate::session::ClientId::new(1));
-
-    let request = Request::new(DebugGetModeRequest {
-        target_client_id: 1,
-    });
-    let response = service.debug_get_mode(request).await.unwrap().into_inner();
-    // Default mode is "normal" (from session home mode)
-    assert_eq!(response.name, "normal");
-    assert!(!response.is_insert);
-}
-
-#[tokio::test]
-async fn test_debug_get_mode_client_not_found() {
-    let (service, _) = test_debug_service_with_session();
-
-    let request = Request::new(DebugGetModeRequest {
-        target_client_id: 999,
-    });
-    let result = service.debug_get_mode(request).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
-}
+// test_debug_get_mode_with_session: DELETED (#753 D-chain) — DebugGetMode removed from v3
+// test_debug_get_mode_client_not_found: DELETED (#753 D-chain) — DebugGetMode removed from v3
 
 #[tokio::test]
 async fn test_debug_get_projections_with_session() {

@@ -20,14 +20,14 @@ async fn test_mode_isolation() {
             let mode0 = clients[0].get_mode().await.expect("get mode 0");
             let mode1 = clients[1].get_mode().await.expect("get mode 1");
             assert!(
-                mode0.display.to_uppercase().contains("NORMAL"),
+                mode0.to_uppercase().contains("NORMAL"),
                 "Client 0 should start in NORMAL, got: {}",
-                mode0.display
+                mode0
             );
             assert!(
-                mode1.display.to_uppercase().contains("NORMAL"),
+                mode1.to_uppercase().contains("NORMAL"),
                 "Client 1 should start in NORMAL, got: {}",
-                mode1.display
+                mode1
             );
 
             // Client 0 enters insert mode
@@ -43,9 +43,9 @@ async fn test_mode_isolation() {
                 .await
                 .expect("get mode 0 after insert");
             assert!(
-                mode0.display.to_uppercase().contains("INSERT"),
+                mode0.to_uppercase().contains("INSERT"),
                 "Client 0 should be in INSERT, got: {}",
-                mode0.display
+                mode0
             );
 
             // Client 1 should STILL be in NORMAL mode (isolated)
@@ -54,9 +54,9 @@ async fn test_mode_isolation() {
                 .await
                 .expect("get mode 1 after client 0 insert");
             assert!(
-                mode1.display.to_uppercase().contains("NORMAL"),
+                mode1.to_uppercase().contains("NORMAL"),
                 "Client 1 mode should be NORMAL after Client 0 enters INSERT, got: {}",
-                mode1.display
+                mode1
             );
 
             // Cleanup: Client 0 exits insert mode
@@ -124,9 +124,9 @@ async fn test_selection_isolation() {
                 .await
                 .expect("get mode 0 after visual");
             assert!(
-                mode0.display.to_uppercase().contains("VISUAL"),
+                mode0.to_uppercase().contains("VISUAL"),
                 "Client 0 should be in VISUAL, got: {}",
-                mode0.display
+                mode0
             );
 
             // Client 1 should still be in NORMAL mode (no selection)
@@ -135,9 +135,9 @@ async fn test_selection_isolation() {
                 .await
                 .expect("get mode 1 after client 0 visual");
             assert!(
-                mode1.display.to_uppercase().contains("NORMAL"),
+                mode1.to_uppercase().contains("NORMAL"),
                 "Client 1 should not enter visual mode when Client 0 does, got: {}",
-                mode1.display
+                mode1
             );
 
             // Cleanup: Client 0 exits visual mode
@@ -165,17 +165,17 @@ async fn test_independent_editing() {
             // Verify Client 0 is in INSERT mode
             let mode0 = clients[0].get_mode().await.expect("get mode 0");
             assert!(
-                mode0.display.to_uppercase().contains("INSERT"),
+                mode0.to_uppercase().contains("INSERT"),
                 "Client 0 should be in INSERT, got: {}",
-                mode0.display
+                mode0
             );
 
             // Verify Client 1 is still in NORMAL mode
             let mode1 = clients[1].get_mode().await.expect("get mode 1");
             assert!(
-                mode1.display.to_uppercase().contains("NORMAL"),
+                mode1.to_uppercase().contains("NORMAL"),
                 "Client 1 should remain in NORMAL, got: {}",
-                mode1.display
+                mode1
             );
 
             // Client 1 should be able to send normal mode commands
@@ -189,9 +189,9 @@ async fn test_independent_editing() {
                 .await
                 .expect("get mode 0 after client 1 j");
             assert!(
-                mode0_after.display.to_uppercase().contains("INSERT"),
+                mode0_after.to_uppercase().contains("INSERT"),
                 "Client 0 should still be in INSERT after Client 1's j command, got: {}",
-                mode0_after.display
+                mode0_after
             );
 
             // Cleanup

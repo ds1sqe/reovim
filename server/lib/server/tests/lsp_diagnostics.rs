@@ -385,14 +385,10 @@ async fn test_hover_on_documented_symbol() {
         eprintln!("WARN: Hover did not activate within timeout.{log_hint}");
     }
 
-    // Verify server is still alive
+    // Verify server is still alive (get_mode removed in v3; use ping)
     client.send_keys("<Esc>").await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let mode = client
-        .get_mode()
-        .await
-        .expect("Server should be alive after K");
-    eprintln!("Mode after hover: {}", mode.display);
+    client.ping().await.expect("Server should be alive after K");
 
     drop(client);
     drop(harness);
@@ -435,29 +431,15 @@ async fn test_goto_definition_on_symbol() {
         .expect("Failed to navigate");
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Record position before gd
-    let cursor_before = client
-        .get_cursor()
-        .await
-        .expect("Failed to get cursor before gd");
-    eprintln!("Cursor before gd: {cursor_before:?}");
+    // Record position before gd (get_cursor removed in v3; use ping to check liveness)
+    client.ping().await.expect("Server should be alive before gd");
 
     // Send gd (goto definition)
     client.send_keys("gd").await.expect("Failed to send gd");
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // Verify server is still alive after gd
-    let mode = client
-        .get_mode()
-        .await
-        .expect("Server should be alive after gd");
-    eprintln!("Mode after gd: {}", mode.display);
-
-    let cursor_after = client
-        .get_cursor()
-        .await
-        .expect("Failed to get cursor after gd");
-    eprintln!("Cursor after gd: {cursor_after:?}");
+    // Verify server is still alive after gd (get_mode/get_cursor removed in v3)
+    client.ping().await.expect("Server should be alive after gd");
 
     eprintln!("PASS: gd completed without crash");
 

@@ -8,8 +8,6 @@ pub use reovim_subsys_layout::{
     // Layer types
     Anchor,
     CLICK_THROUGH_THRESHOLD,
-    // View management and index types
-    ColIndex,
     // Compositor traits and types
     CompositeResult,
     CompositorKey,
@@ -20,17 +18,13 @@ pub use reovim_subsys_layout::{
     Layer,
     LayerConfig,
     LayerId,
-    LineIndex,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
     OverlayConstraints,
     OverlayLayer,
     OverlayWindow,
-    Position,
     RootCompositor,
     TiledLayer,
-    View,
-    ViewManager,
     WindowError,
     WindowLayerCompositor,
     WindowPlacement,

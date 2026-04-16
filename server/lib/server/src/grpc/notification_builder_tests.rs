@@ -17,66 +17,12 @@ fn test_build_notifications_empty_changes() {
     assert!(notifications.is_empty());
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_buffer_modified_notification() {
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
-    let notification = build_buffer_modified_notification(buffer_id, 99999);
+// test_build_buffer_modified_notification: REMOVED — build_buffer_modified_notification deleted in v3 (#753).
 
-    assert_eq!(notification.event_type, "buffer_modified");
-    assert_eq!(notification.timestamp_ms, 99999);
+// test_build_buffer_list_notification_added: REMOVED — build_buffer_list_notification deleted in v3 (#753).
+// test_build_buffer_list_notification_removed: REMOVED — build_buffer_list_notification deleted in v3 (#753).
 
-    if let Some(notification::Payload::BufferModified(payload)) = notification.payload {
-        assert_eq!(payload.buffer_id, 42);
-        assert!(payload.change.is_none());
-    } else {
-        panic!("Expected BufferModifiedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_buffer_list_notification_added() {
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(7);
-    let notification = build_buffer_list_notification("added", buffer_id, 55555);
-
-    assert_eq!(notification.event_type, "buffer_list_changed");
-    assert_eq!(notification.timestamp_ms, 55555);
-
-    if let Some(notification::Payload::BufferListChanged(payload)) = notification.payload {
-        assert_eq!(payload.action, "added");
-        assert_eq!(payload.buffer_id, 7);
-    } else {
-        panic!("Expected BufferListChangedPayload");
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_build_buffer_list_notification_removed() {
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(3);
-    let notification = build_buffer_list_notification("removed", buffer_id, 11111);
-
-    if let Some(notification::Payload::BufferListChanged(payload)) = notification.payload {
-        assert_eq!(payload.action, "removed");
-        assert_eq!(payload.buffer_id, 3);
-    } else {
-        panic!("Expected BufferListChangedPayload");
-    }
-}
-
-#[test]
-fn test_build_notifications_buffer_modified() {
-    let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(5);
-    let mut changes = ChangeSet::new();
-    changes.record_buffer_modified(buffer_id);
-
-    let session = Session::new(SessionId::new("buf-mod-test"));
-    let notifications = build_notifications(&changes, &session, 0, None);
-
-    assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "buffer_modified");
-}
+// test_build_notifications_buffer_modified: REMOVED — BufferModified notification deleted in v3 (#753).
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -89,13 +35,12 @@ fn test_build_notifications_buffer_created() {
     let notifications = build_notifications(&changes, &session, 0, None);
 
     assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "buffer_list_changed");
+    assert_eq!(notifications[0].event_type, "buffer_opened");
 
-    if let Some(notification::Payload::BufferListChanged(payload)) = &notifications[0].payload {
-        assert_eq!(payload.action, "added");
+    if let Some(notification::Payload::BufferOpened(payload)) = &notifications[0].payload {
         assert_eq!(payload.buffer_id, 10);
     } else {
-        panic!("Expected BufferListChangedPayload");
+        panic!("Expected BufferOpenedPayload");
     }
 }
 
@@ -110,13 +55,12 @@ fn test_build_notifications_buffer_deleted() {
     let notifications = build_notifications(&changes, &session, 0, None);
 
     assert_eq!(notifications.len(), 1);
-    assert_eq!(notifications[0].event_type, "buffer_list_changed");
+    assert_eq!(notifications[0].event_type, "buffer_closed");
 
-    if let Some(notification::Payload::BufferListChanged(payload)) = &notifications[0].payload {
-        assert_eq!(payload.action, "removed");
+    if let Some(notification::Payload::BufferClosed(payload)) = &notifications[0].payload {
         assert_eq!(payload.buffer_id, 20);
     } else {
-        panic!("Expected BufferListChangedPayload");
+        panic!("Expected BufferClosedPayload");
     }
 }
 
@@ -218,22 +162,20 @@ fn test_build_notifications_multiple_buffers_created_and_deleted() {
     let session = Session::new(SessionId::new("multi-buf-test"));
     let notifications = build_notifications(&changes, &session, 0, None);
 
-    // 2 created + 1 deleted = 3 buffer_list_changed notifications
+    // 2 created + 1 deleted = 3 notifications (buffer_opened / buffer_closed)
     assert_eq!(notifications.len(), 3);
 
-    let mut added_count = 0;
-    let mut removed_count = 0;
+    let mut opened_count = 0;
+    let mut closed_count = 0;
     for n in &notifications {
-        if let Some(notification::Payload::BufferListChanged(payload)) = &n.payload {
-            match payload.action.as_str() {
-                "added" => added_count += 1,
-                "removed" => removed_count += 1,
-                _ => panic!("Unexpected action"),
-            }
+        match &n.payload {
+            Some(notification::Payload::BufferOpened(_)) => opened_count += 1,
+            Some(notification::Payload::BufferClosed(_)) => closed_count += 1,
+            _ => {}
         }
     }
-    assert_eq!(added_count, 2);
-    assert_eq!(removed_count, 1);
+    assert_eq!(opened_count, 2);
+    assert_eq!(closed_count, 1);
 }
 
 // test_build_layout_notification_with_client_windows removed:
@@ -759,9 +701,6 @@ fn test_build_notifications_presence_changed() {
         client_type: "tui".to_string(),
         display_name: "test".to_string(),
         buffer_id: Some(1),
-        cursor: (0, 0),
-        visible_lines: (0, 24),
-        mode: "NORMAL".to_string(),
         sync_mode: SyncMode::Independent,
         joined_at: SystemTime::now(),
     };

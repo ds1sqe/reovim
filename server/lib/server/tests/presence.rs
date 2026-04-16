@@ -70,7 +70,11 @@ async fn test_multi_client_second_sees_first_peer() {
             // Client 1 (index 1) should see client 0 as peer
             let peers = clients[1].peers().await.expect("Failed to get peers");
             assert_eq!(peers.len(), 1, "Second client should see one peer");
-            assert_eq!(peers[0].display_name, "client_0", "Peer should be client_0");
+            assert_eq!(
+                peers[0].metadata.as_ref().unwrap().display_name,
+                "client_0",
+                "Peer should be client_0"
+            );
         })
         .await;
 }
@@ -136,10 +140,13 @@ async fn test_set_sync_mode_follow() {
                 .expect("Failed to list clients");
             let follower = all
                 .iter()
-                .find(|c| c.display_name == "client_1")
+                .find(|c| c.metadata.as_ref().map_or(false, |m| m.display_name == "client_1"))
                 .expect("Follower not found");
-            assert_eq!(follower.sync_mode, 1, "Should be in FOLLOW mode");
-            assert_eq!(follower.follow_target, Some(target_id), "Should follow client_0");
+            // In v3, following is indicated by relation.type == RelationTypeFollowing (0)
+            // and relation.target_id == target client id.
+            let relation = follower.relation.as_ref().expect("Follower should have relation");
+            assert_eq!(relation.r#type, 0, "Should be in FOLLOW mode (RelationTypeFollowing=0)");
+            assert_eq!(relation.target_id, target_id, "Should follow client_0");
         })
         .await;
 }
@@ -212,10 +219,14 @@ async fn test_update_cursor() {
                 .expect("Failed to list clients");
             let me = all
                 .iter()
-                .find(|c| c.display_name == "client_0")
+                .find(|c| {
+                    c.metadata
+                        .as_ref()
+                        .map_or(false, |m| m.display_name == "client_0")
+                })
                 .expect("Self not found");
             // Cursor field no longer exists in presence - just verify client exists
-            assert_eq!(me.display_name, "client_0");
+            assert_eq!(me.metadata.as_ref().unwrap().display_name, "client_0");
         })
         .await;
 }
@@ -239,9 +250,14 @@ async fn test_update_mode() {
                 .expect("Failed to list clients");
             let me = all
                 .iter()
-                .find(|c| c.display_name == "client_0")
+                .find(|c| {
+                    c.metadata
+                        .as_ref()
+                        .map_or(false, |m| m.display_name == "client_0")
+                })
                 .expect("Self not found");
-            assert_eq!(me.mode, "INSERT", "Mode should be INSERT");
+            // mode is domain-owned in v3; verify client is present with correct display_name
+            assert_eq!(me.metadata.as_ref().unwrap().display_name, "client_0");
         })
         .await;
 }
@@ -313,9 +329,10 @@ async fn test_high_frequency_updates() {
     let all = client.all_clients().await.expect("Failed to list clients");
     let me = all
         .iter()
-        .find(|c| c.display_name == "rapid")
+        .find(|c| c.metadata.as_ref().map_or(false, |m| m.display_name == "rapid"))
         .expect("Self not found");
-    assert_eq!(me.mode, "MODE_49", "Final mode should be MODE_49");
+    // mode is domain-owned in v3; verify client is present
+    assert!(me.metadata.is_some(), "Client should have metadata");
 
     client.leave().await.ok();
 }

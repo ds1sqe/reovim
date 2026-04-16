@@ -79,31 +79,6 @@ fn test_session_state_mode_accepts_char_input_default() {
 }
 
 #[test]
-fn test_session_state_create_buffer() {
-    // Use test_kernel() which has a real buffer manager
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id = state.create_buffer("hello world");
-    assert!(state.buffer(id).is_some());
-    assert!(state.app.kernel.buffers.list().contains(&id));
-
-    // Freshly created buffer must NOT be modified (fixes :q on scratch buffer)
-    let not_modified = state.buffer(id).unwrap().read().is_modified();
-    assert!(!not_modified, "create_buffer must produce unmodified buffer");
-}
-
-#[test]
-fn test_create_buffer_empty_not_modified() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id = state.create_buffer("");
-    let not_modified = state.buffer(id).unwrap().read().is_modified();
-    assert!(!not_modified, "empty scratch buffer must not be modified");
-}
-
-#[test]
 fn test_session_state_with_registries() {
     let kernel = KernelContext::default();
     let mode_reg = ModeRegistry::new();
@@ -138,36 +113,6 @@ fn test_session_state_with_kernel() {
 }
 
 #[test]
-fn test_driver_session_accessors() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let _driver = state.driver_session();
-    let _driver_mut = state.driver_session_mut();
-}
-
-#[test]
-fn test_session_active_buffer() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    assert!(state.app.kernel.buffers.list().is_empty());
-
-    let buffer_id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-}
-
-#[test]
-fn test_set_session_active_buffer() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // active_buffer is now per-client; verify buffer list instead
-    let buffer_id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-}
-
-#[test]
 fn test_session_terminal_size() {
     // terminal_size is now per-client; verify default VT100 dimensions
     let default_size = (80u16, 24u16);
@@ -190,40 +135,6 @@ fn test_home_mode() {
 }
 
 #[test]
-fn test_buffer_operations() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id = state.create_buffer("hello");
-    let buffer = state.buffer(id);
-    assert!(buffer.is_some());
-
-    let content = buffer.unwrap().read().content();
-    assert_eq!(content, "hello");
-}
-
-#[test]
-fn test_active_buffer() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    assert!(state.app.kernel.buffers.list().is_empty());
-
-    let id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&id));
-}
-
-#[test]
-fn test_set_active_buffer() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // active_buffer is now per-client; verify buffer registration instead
-    let buffer_id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&buffer_id));
-}
-
-#[test]
 fn test_request_detach() {
     let kernel = KernelContext::default();
     let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
@@ -232,35 +143,6 @@ fn test_request_detach() {
     // After detach, server continues running but clients disconnect
     // The is_running() check is for quit, not detach
     assert!(state.is_running());
-}
-
-#[test]
-fn test_buffer_nonexistent() {
-    use reovim_kernel::api::v1::BufferId;
-
-    let kernel = test_kernel();
-    let state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let buffer = state.buffer(BufferId::new());
-    assert!(buffer.is_none());
-}
-
-#[test]
-fn test_create_buffer_registers_buffers() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    assert!(state.app.kernel.buffers.list().is_empty());
-
-    let id1 = state.create_buffer("first");
-    assert!(state.app.kernel.buffers.list().contains(&id1));
-
-    let id2 = state.create_buffer("second");
-    // Both buffers should be registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(buffers.contains(&id1));
-    assert!(buffers.contains(&id2));
-    assert_ne!(id1, id2);
 }
 
 #[test]
@@ -289,43 +171,6 @@ fn test_with_registries_with_initial_buffer() {
 }
 
 #[test]
-fn test_session_state_multiple_buffers() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // Create multiple buffers
-    let id1 = state.create_buffer("first");
-    let id2 = state.create_buffer("second");
-    let id3 = state.create_buffer("third");
-
-    // All buffers should be registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(buffers.contains(&id1));
-    assert!(buffers.contains(&id2));
-    assert!(buffers.contains(&id3));
-
-    // All buffers should exist
-    assert!(state.buffer(id1).is_some());
-    assert!(state.buffer(id2).is_some());
-    assert!(state.buffer(id3).is_some());
-
-    // Verify contents
-    assert_eq!(state.buffer(id1).unwrap().read().content(), "first");
-    assert_eq!(state.buffer(id2).unwrap().read().content(), "second");
-    assert_eq!(state.buffer(id3).unwrap().read().content(), "third");
-}
-
-#[test]
-fn test_session_state_buffer_created_and_accessible() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id = state.create_buffer("content");
-    assert!(!state.app.kernel.buffers.list().is_empty());
-    assert!(state.buffer(id).is_some());
-}
-
-#[test]
 fn test_session_terminal_size_roundtrip() {
     // terminal_size is now per-client; verify tuple storage works
     let mut terminal_size = (80u16, 24u16);
@@ -336,16 +181,6 @@ fn test_session_terminal_size_roundtrip() {
 
     terminal_size = (1, 1);
     assert_eq!(terminal_size, (1, 1));
-}
-
-#[test]
-fn test_session_state_driver_session_accessors() {
-    let kernel = KernelContext::default();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // Verify driver_session() and driver_session_mut() work
-    let _ds = state.driver_session();
-    let _ds_mut = state.driver_session_mut();
 }
 
 #[test]
@@ -423,28 +258,6 @@ fn test_lookup_keys_after_registration() {
 }
 
 #[test]
-fn test_session_active_buffer_delegation() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // active_buffer is now per-client; verify buffer list
-    assert!(state.app.kernel.buffers.list().is_empty());
-
-    let id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&id));
-}
-
-#[test]
-fn test_set_session_active_buffer_delegation() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    // active_buffer is now per-client; verify buffer creation instead
-    let buf_id = state.create_buffer("test");
-    assert!(state.app.kernel.buffers.list().contains(&buf_id));
-}
-
-#[test]
 fn test_with_registries_custom_mode() {
     let custom_mode = ModeId::new(ModuleId::new("custom"), "visual");
     let kernel = KernelContext::default();
@@ -491,20 +304,6 @@ fn test_session_state_new_with_custom_vfs() {
 
     // Verify VFS is accessible
     assert!(!state.vfs.exists(Path::new("/some/file")));
-}
-
-#[test]
-fn test_create_buffer_second_also_registered() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let first_id = state.create_buffer("first buffer");
-    let second_id = state.create_buffer("second buffer");
-
-    // Both buffers should be registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(buffers.contains(&first_id));
-    assert!(buffers.contains(&second_id));
 }
 
 #[test]
@@ -602,51 +401,6 @@ fn test_with_registries_multiple_buffers() {
     );
 }
 
-#[test]
-fn test_session_state_create_multiple_buffers_verify_contents() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id1 = state.create_buffer("alpha");
-    let id2 = state.create_buffer("beta");
-    let id3 = state.create_buffer("gamma");
-
-    assert_eq!(state.buffer(id1).unwrap().read().content(), "alpha");
-    assert_eq!(state.buffer(id2).unwrap().read().content(), "beta");
-    assert_eq!(state.buffer(id3).unwrap().read().content(), "gamma");
-
-    // All buffers should be registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(buffers.contains(&id1));
-    assert!(buffers.contains(&id2));
-    assert!(buffers.contains(&id3));
-}
-
-#[test]
-fn test_session_state_buffer_switch_per_client() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    let id1 = state.create_buffer("first");
-    let id2 = state.create_buffer("second");
-
-    // active_buffer is now per-client; verify both buffers are registered
-    let buffers = state.app.kernel.buffers.list();
-    assert!(buffers.contains(&id1));
-    assert!(buffers.contains(&id2));
-
-    // Per-client active_buffer can be tracked independently
-    let mut client_active_buffer: Option<BufferId> = Some(id1);
-    assert_eq!(client_active_buffer, Some(id1));
-
-    client_active_buffer = Some(id2);
-    assert_eq!(client_active_buffer, Some(id2));
-
-    client_active_buffer = Some(id1);
-    assert_eq!(client_active_buffer, Some(id1));
-}
-
-// ========================================================================
 // Coverage tests for uncovered lines
 // ========================================================================
 
@@ -907,7 +661,7 @@ fn test_with_registries_with_compositor() {
     );
 
     // Compositor should have been set
-    assert!(state.driver_session.compositor().is_some());
+    assert!(state.compositor.is_some());
 }
 
 /// Test `with_registries` with buffers AND compositor to cover lines 160-168
@@ -937,7 +691,7 @@ fn test_with_registries_with_buffer_and_compositor_creates_window() {
     assert!(state.app.kernel.buffers.list().contains(&buffer_id));
 
     // Compositor should have been set and should have one tiled window
-    let compositor = state.driver_session.compositor().unwrap();
+    let compositor = state.compositor.as_ref().unwrap();
     let layer_id = compositor.active_layer().unwrap();
     let layer = compositor.layer_compositor(layer_id).unwrap();
     let tiled_windows = layer.windows_in_zone(reovim_subsys_layout::Zone::Tiled);
@@ -999,54 +753,6 @@ fn test_dummy_command_trait_methods() {
 /// guard in `with_registries` was false) and we later need to ensure the
 /// compositor has a window.
 #[test]
-fn test_ensure_initial_compositor_window_adds_tiled_when_no_windows() {
-    let kernel = test_kernel();
-
-    let compositor: Box<dyn reovim_subsys_layout::RootCompositor> = Box::new(MockCompositor::new());
-
-    // Create a state with a compositor but NO buffers yet so the inline guard
-    // in with_registries() does NOT create a window.
-    let mut state = SessionState::with_registries(
-        kernel,
-        test_mode_id(),
-        test_vfs(),
-        ModeRegistry::new(),
-        CommandRegistry::new(),
-        KeymapRegistry::new(),
-        Some(compositor),
-    );
-
-    // Sanity: compositor has no tiled windows yet.
-    {
-        let comp = state.driver_session.compositor().unwrap();
-        let layer_id = comp.active_layer().unwrap();
-        let layer = comp.layer_compositor(layer_id).unwrap();
-        assert!(
-            layer
-                .windows_in_zone(reovim_subsys_layout::Zone::Tiled)
-                .is_empty(),
-            "should have no tiled windows before buffer creation"
-        );
-    }
-
-    // Now add a buffer — this is what the server does when creating the
-    // scratch buffer.
-    state.create_buffer("scratch");
-
-    // Calling ensure_initial_compositor_window should now add a tiled window
-    // (lines 223-242).
-    state.ensure_initial_compositor_window();
-
-    // Verify a tiled window was added.
-    let comp = state.driver_session.compositor().unwrap();
-    let layer_id = comp.active_layer().unwrap();
-    let layer = comp.layer_compositor(layer_id).unwrap();
-    let tiled = layer.windows_in_zone(reovim_subsys_layout::Zone::Tiled);
-    assert_eq!(tiled.len(), 1, "ensure_initial_compositor_window should add one tiled window");
-}
-
-/// Cover line 224: early-return branch when buffer list is empty.
-#[test]
 fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
     let kernel = KernelContext::default(); // no buffer manager → empty list
     let compositor: Box<dyn reovim_subsys_layout::RootCompositor> = Box::new(MockCompositor::new());
@@ -1065,7 +771,7 @@ fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
     state.ensure_initial_compositor_window();
 
     // Compositor should still have no tiled windows.
-    let comp = state.driver_session.compositor().unwrap();
+    let comp = state.compositor.as_ref().unwrap();
     let layer_id = comp.active_layer().unwrap();
     let layer = comp.layer_compositor(layer_id).unwrap();
     assert!(
@@ -1077,17 +783,6 @@ fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
 }
 
 /// Cover lines 227-228: early-return when the driver session has no compositor.
-#[test]
-fn test_ensure_initial_compositor_window_noop_when_no_compositor() {
-    let kernel = test_kernel();
-    let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-    state.create_buffer("some buffer");
-
-    // No compositor set → should return early without panicking.
-    state.ensure_initial_compositor_window(); // must not panic
-}
-
 /// Cover line 236 (`windows_in_zone` is NOT empty → skip `add_tiled`).
 #[test]
 fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
@@ -1111,7 +806,7 @@ fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
 
     // Compositor now has one tiled window (created by with_registries).
     {
-        let comp = state.driver_session.compositor().unwrap();
+        let comp = state.compositor.as_ref().unwrap();
         let layer_id = comp.active_layer().unwrap();
         let layer = comp.layer_compositor(layer_id).unwrap();
         assert_eq!(
@@ -1125,7 +820,7 @@ fn test_ensure_initial_compositor_window_noop_when_already_has_tiled_window() {
     // Calling ensure again should NOT add a second window.
     state.ensure_initial_compositor_window();
 
-    let comp = state.driver_session.compositor().unwrap();
+    let comp = state.compositor.as_ref().unwrap();
     let layer_id = comp.active_layer().unwrap();
     let layer = comp.layer_compositor(layer_id).unwrap();
     assert_eq!(

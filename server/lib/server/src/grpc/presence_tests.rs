@@ -26,6 +26,7 @@ async fn test_join_no_session() {
     let request = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "laptop".to_string(),
+        surface: None,
     });
     let response = service.join(request).await;
 
@@ -42,6 +43,7 @@ async fn test_join_success() {
     let request = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "laptop".to_string(),
+        surface: None,
     });
     let response = service.join(request).await;
 
@@ -63,6 +65,7 @@ async fn test_join_returns_peers() {
     let request1 = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "laptop".to_string(),
+        surface: None,
     });
     let _ = service.join(request1).await.unwrap();
 
@@ -70,13 +73,14 @@ async fn test_join_returns_peers() {
     let request2 = Request::new(JoinRequest {
         client_type: "android".to_string(),
         display_name: "phone".to_string(),
+        surface: None,
     });
     let response = service.join(request2).await;
 
     assert!(response.is_ok());
     let resp = response.unwrap().into_inner();
     assert_eq!(resp.peers.len(), 1);
-    assert_eq!(resp.peers[0].display_name, "laptop");
+    assert_eq!(resp.peers[0].metadata.as_ref().unwrap().display_name, "laptop");
 }
 
 #[tokio::test]
@@ -88,6 +92,7 @@ async fn test_leave_success() {
     let join_req = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "laptop".to_string(),
+        surface: None,
     });
     let join_resp = service.join(join_req).await.unwrap().into_inner();
     let cid = ClientId::new(join_resp.client_id as usize);
@@ -122,6 +127,7 @@ async fn test_update_presence_success() {
     let join_req = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "laptop".to_string(),
+        surface: None,
     });
     let join_resp = service.join(join_req).await.unwrap().into_inner();
     let cid = ClientId::new(join_resp.client_id as usize);
@@ -131,6 +137,7 @@ async fn test_update_presence_success() {
         UpdatePresenceRequest {
             buffer_id: Some(42),
             viewport_state: None,
+            spatial_state: None,
         },
         cid,
     );
@@ -149,6 +156,7 @@ async fn test_update_presence_unknown_client() {
         UpdatePresenceRequest {
             buffer_id: Some(42),
             viewport_state: None,
+            spatial_state: None,
         },
         ClientId::new(999),
     );
@@ -167,6 +175,7 @@ async fn test_set_sync_mode_independent() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -195,6 +204,7 @@ async fn test_set_sync_mode_present() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -223,6 +233,7 @@ async fn test_set_sync_mode_follow_success() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "presenter".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -233,6 +244,7 @@ async fn test_set_sync_mode_follow_success() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "follower".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -261,6 +273,7 @@ async fn test_set_sync_mode_follow_missing_target() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -289,6 +302,7 @@ async fn test_set_sync_mode_follow_invalid_target() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -324,6 +338,7 @@ async fn test_list_clients() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
+            surface: None,
         }))
         .await
         .unwrap();
@@ -331,6 +346,7 @@ async fn test_list_clients() {
         .join(Request::new(JoinRequest {
             client_type: "android".to_string(),
             display_name: "phone".to_string(),
+            surface: None,
         }))
         .await
         .unwrap();
@@ -367,6 +383,7 @@ async fn test_join_returns_session_token() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "test".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -390,6 +407,7 @@ async fn test_leave_revokes_token() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "test".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -555,178 +573,6 @@ fn test_notification_to_presence_update_non_presence() {
 }
 
 #[tokio::test]
-async fn test_set_role_owner() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let join_resp = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "laptop".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let cid = ClientId::new(join_resp.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Owner as i32,
-            target_id: None,
-        },
-        cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_ok());
-    assert!(response.unwrap().into_inner().ok);
-}
-
-#[tokio::test]
-async fn test_set_role_follow() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let r1 = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "owner".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-
-    let r2 = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "follower".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let follower_cid = ClientId::new(r2.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Follow as i32,
-            target_id: Some(r1.client_id),
-        },
-        follower_cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_ok());
-    assert!(response.unwrap().into_inner().ok);
-}
-
-#[tokio::test]
-async fn test_set_role_share() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let r1 = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "owner".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-
-    let r2 = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "sharer".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let sharer_cid = ClientId::new(r2.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Share as i32,
-            target_id: Some(r1.client_id),
-        },
-        sharer_cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_ok());
-    assert!(response.unwrap().into_inner().ok);
-}
-
-#[tokio::test]
-async fn test_set_role_follow_missing_target_id() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let join_resp = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "test".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let cid = ClientId::new(join_resp.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Follow as i32,
-            target_id: None, // Missing target!
-        },
-        cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
-}
-
-#[tokio::test]
-async fn test_set_role_client_not_found() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Owner as i32,
-            target_id: None,
-        },
-        ClientId::new(999),
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert!(!resp.ok);
-    assert!(resp.error.is_some());
-}
-
-#[tokio::test]
-async fn test_set_role_follow_target_not_found() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let join_resp = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "test".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let cid = ClientId::new(join_resp.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Follow as i32,
-            target_id: Some(9999), // Non-existent target
-        },
-        cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::FailedPrecondition);
-}
-
-#[tokio::test]
 async fn test_set_relation_following() {
     let registry = test_registry();
     let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
@@ -735,6 +581,7 @@ async fn test_set_relation_following() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "target".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -744,6 +591,7 @@ async fn test_set_relation_following() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "follower".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -773,6 +621,7 @@ async fn test_set_relation_sharing() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "owner".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -782,6 +631,7 @@ async fn test_set_relation_sharing() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "sharer".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -811,6 +661,7 @@ async fn test_set_relation_independent() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "test".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -833,6 +684,7 @@ async fn test_set_relation_target_not_found() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "test".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -864,6 +716,7 @@ async fn test_set_relation_self_target() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "test".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -908,33 +761,6 @@ async fn test_set_sync_mode_client_not_in_presence_map() {
 }
 
 #[tokio::test]
-async fn test_set_role_share_missing_target_id() {
-    let registry = test_registry();
-    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
-
-    let join_resp = service
-        .join(Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "test".to_string(),
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-    let cid = ClientId::new(join_resp.client_id as usize);
-
-    let request = authed_request(
-        SetRoleRequest {
-            role: ProtoRole::Share as i32,
-            target_id: None, // Missing target!
-        },
-        cid,
-    );
-    let response = service.set_role(request).await;
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
-}
-
-#[tokio::test]
 async fn test_set_relation_invalid_type_defaults_to_following() {
     let registry = test_registry();
     let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
@@ -943,6 +769,7 @@ async fn test_set_relation_invalid_type_defaults_to_following() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "target".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -952,6 +779,7 @@ async fn test_set_relation_invalid_type_defaults_to_following() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "follower".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -983,6 +811,7 @@ async fn test_each_client_gets_unique_token() {
         .join(Request::new(JoinRequest {
             client_type: "tui".to_string(),
             display_name: "a".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -991,6 +820,7 @@ async fn test_each_client_gets_unique_token() {
         .join(Request::new(JoinRequest {
             client_type: "cli".to_string(),
             display_name: "b".to_string(),
+            surface: None,
         }))
         .await
         .unwrap()
@@ -1023,6 +853,7 @@ async fn test_join_starts_illuminate_tick_when_handle_present() {
     let request = Request::new(JoinRequest {
         client_type: "tui".to_string(),
         display_name: "test-tick".to_string(),
+        surface: None,
     });
     let response = service.join(request).await;
     // Join should succeed; tick_handle.start() is a no-op without an inner

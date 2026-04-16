@@ -2,12 +2,9 @@
 //!
 //! # Architecture (#753 E6)
 //!
-//! Buffer content access and codec operations are domain-owned. The server
-//! no longer imports driver crates directly. Buffer queries route through
-//! `DomainDriver` or subsystem contracts.
-//!
-//! Codec RPCs (mount, unmount, switch_view, list_mounts, list_available_codecs)
-//! are stubbed pending domain driver wiring.
+//! Buffer metadata access is domain-neutral. The server no longer imports
+//! driver crates directly. Proto v3 provides: List, OpenFile, WriteFile,
+//! SetContent. Content access routes through projections, not typed RPCs.
 
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
@@ -27,7 +24,7 @@ use crate::session::{Session, SessionId, SessionRegistry};
 
 /// gRPC `BufferService` implementation.
 ///
-/// Bridges v2 protocol requests to the session/buffer system.
+/// Bridges v3 protocol requests to the session/buffer system.
 pub struct BufferServiceImpl {
     /// Shared session registry (used when RPCs are wired to domain driver).
     #[allow(dead_code)]

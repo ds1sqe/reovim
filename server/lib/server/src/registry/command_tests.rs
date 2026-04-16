@@ -1,16 +1,10 @@
 use {
     super::*,
-    reovim_driver_command::{ArgSpec, Command},
-    reovim_driver_text_session::{ClientId, HistoryRing, Jumplist, MarkBank, RegisterBank},
-    reovim_kernel::api::v1::{KernelContext, ModuleId},
-    reovim_subsys_vfs::MockVfs,
+    reovim_kernel::api::v1::ModuleId,
+    reovim_subsys_command::Command,
 };
 
-fn test_vfs() -> Arc<dyn VfsDriver> {
-    Arc::new(MockVfs::new())
-}
-
-// Test command implementation
+// Test command implementation (metadata-only, no CommandHandler)
 struct TestCommand {
     id: CommandId,
     name: &'static str,
@@ -36,19 +30,8 @@ impl Command for TestCommand {
         "Test command"
     }
 
-    fn args(&self) -> Vec<ArgSpec> {
-        vec![]
-    }
-
     fn names(&self) -> &[&'static str] {
         std::slice::from_ref(&self.name)
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl CommandHandler for TestCommand {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        CommandResult::Success
     }
 }
 
@@ -84,75 +67,20 @@ fn test_command_registry_get() {
     assert_eq!(handler.unwrap().description(), "Test command");
 }
 
-#[test]
-fn test_command_registry_execute_for_client() {
-    let mut registry = CommandRegistry::new();
-    let cmd = TestCommand::new("exec-cmd");
-    let id = cmd.id.clone();
-
-    registry.register(Arc::new(cmd));
-
-    let kernel = KernelContext::default();
-    let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-    let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone()); // #491
-    let vfs = test_vfs();
-    let args = CommandContext::new();
-
-    // Per-client state
-    let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
-    let mut client_compositor = None;
-    let mut tabs = reovim_driver_text_session::TabPageSet::new();
-    let mut registers = RegisterBank::new();
-    let mut clipboard_history = HistoryRing::new();
-    let mut local_marks = MarkBank::new();
-    let mut jumplist = Jumplist::new();
-    let mut active_buffer = None;
-    let mut terminal_size = (80u16, 24u16);
-
-    let result = registry.execute_for_client(
-        1, // test client_id for per-client undo (#471)
-        &id,
-        &mut driver_session,
-        reovim_driver_text_session::ClientContext {
-            mode_stack: &mut client_mode_stack,
-            windows: &mut client_windows,
-            extensions: &mut client_extensions,
-            compositor: &mut client_compositor,
-            tabs: &mut tabs,
-            registers: &mut registers,
-            clipboard_history: &mut clipboard_history,
-            local_marks: &mut local_marks,
-            jumplist: &mut jumplist,
-            active_buffer: &mut active_buffer,
-            terminal_size: &mut terminal_size,
-        },
-        &kernel,
-        &vfs,
-        &args,
-        None,
-    );
-    assert!(result.is_some());
-    let (cmd_result, _changes, _signals) = result.unwrap();
-    assert_eq!(cmd_result, CommandResult::Success);
-}
+// execute_for_client: REMOVED (#753 E6). Command execution routes through DomainDriver.
+// get_handle / HandlerBridge: REMOVED (#753 E6). No longer in CommandRegistry.
 
 #[test]
 fn test_command_registry_unregister_for_module() {
     let mut registry = CommandRegistry::new();
     let owner = ModuleId::new("my-module");
 
-    // Register two commands for the module
     registry.register_for_module(Arc::new(TestCommand::new("cmd1")), owner.clone());
     registry.register_for_module(Arc::new(TestCommand::new("cmd2")), owner.clone());
-
-    // Register one command without owner
     registry.register(Arc::new(TestCommand::new("cmd3")));
 
     assert_eq!(registry.len(), 3);
 
-    // Unregister module's commands
     let removed = registry.unregister_for_module(&owner);
 
     assert_eq!(removed, 2);
@@ -164,11 +92,9 @@ fn test_command_registry_replace_existing() {
     let mut registry = CommandRegistry::new();
     let id = CommandId::new(ModuleId::new("test"), "same-cmd");
 
-    // Register first command
     registry.register(Arc::new(TestCommand::new("same-cmd")));
     assert_eq!(registry.len(), 1);
 
-    // Register again - should replace (same priority, last wins)
     registry.register(Arc::new(TestCommand::new("same-cmd")));
     assert_eq!(registry.len(), 1);
     assert!(registry.contains(&id));
@@ -178,11 +104,10 @@ fn test_command_registry_replace_existing() {
 // CommandPriority tests (#545)
 // ========================================================================
 
-/// Test command with configurable priority.
 struct PriorityTestCommand {
     id: CommandId,
     name: &'static str,
-    priority: reovim_driver_command::CommandPriority,
+    priority: CommandPriority,
     desc: &'static str,
 }
 
@@ -192,7 +117,7 @@ impl PriorityTestCommand {
         Self {
             id: CommandId::new(ModuleId::new("test"), name),
             name,
-            priority: reovim_driver_command::CommandPriority::Normal,
+            priority: CommandPriority::Normal,
             desc: "Normal priority",
         }
     }
@@ -201,7 +126,7 @@ impl PriorityTestCommand {
         Self {
             id: CommandId::new(ModuleId::new("test"), name),
             name,
-            priority: reovim_driver_command::CommandPriority::Override,
+            priority: CommandPriority::Override,
             desc: "Override priority",
         }
     }
@@ -218,15 +143,8 @@ impl Command for PriorityTestCommand {
     fn names(&self) -> &[&'static str] {
         std::slice::from_ref(&self.name)
     }
-    fn priority(&self) -> reovim_driver_command::CommandPriority {
+    fn priority(&self) -> CommandPriority {
         self.priority
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl CommandHandler for PriorityTestCommand {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        CommandResult::Success
     }
 }
 
@@ -235,11 +153,9 @@ fn test_override_priority_wins_over_normal() {
     let mut registry = CommandRegistry::new();
     let id = CommandId::new(ModuleId::new("test"), "cmd");
 
-    // Register normal first
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
     assert_eq!(registry.get(&id).unwrap().description(), "Normal priority");
 
-    // Register override second - should replace
     registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
 }
@@ -249,11 +165,9 @@ fn test_normal_cannot_replace_override() {
     let mut registry = CommandRegistry::new();
     let id = CommandId::new(ModuleId::new("test"), "cmd");
 
-    // Register override first
     registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
 
-    // Register normal second - should NOT replace
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
     assert_eq!(registry.len(), 1);
@@ -264,7 +178,6 @@ fn test_equal_priority_last_wins() {
     let mut registry = CommandRegistry::new();
     let id = CommandId::new(ModuleId::new("test"), "cmd");
 
-    // Two normal-priority commands: last one wins
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
     assert_eq!(registry.len(), 1);
@@ -277,14 +190,11 @@ fn test_priority_with_register_for_module() {
     let id = CommandId::new(ModuleId::new("test"), "cmd");
     let owner = ModuleId::new("adapter");
 
-    // Register normal first (no owner)
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
 
-    // Register override with module ownership - should replace
     registry.register_for_module(Arc::new(PriorityTestCommand::override_priority("cmd")), owner);
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
 
-    // Try to replace with normal + different owner - should NOT replace
     registry
         .register_for_module(Arc::new(PriorityTestCommand::normal("cmd")), ModuleId::new("other"));
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
@@ -379,169 +289,6 @@ fn test_command_query_snapshot_list_all() {
 }
 
 #[test]
-fn test_command_registry_get_handle_found() {
-    let mut registry = CommandRegistry::new();
-    let cmd = TestCommand::new("handle-cmd");
-    let id = cmd.id.clone();
-    registry.register(Arc::new(cmd));
-
-    let handle = registry.get_handle(&id);
-    assert!(handle.is_some());
-}
-
-#[test]
-fn test_command_registry_get_handle_not_found() {
-    let registry = CommandRegistry::new();
-    let id = CommandId::new(ModuleId::new("test"), "nonexistent");
-
-    let handle = registry.get_handle(&id);
-    assert!(handle.is_none());
-}
-
-#[test]
-fn test_command_registry_execute_for_client_not_found() {
-    let registry = CommandRegistry::new();
-    let kernel = KernelContext::default();
-    let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-    let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
-    let vfs = test_vfs();
-    let args = CommandContext::new();
-    let id = CommandId::new(ModuleId::new("test"), "nonexistent");
-
-    let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
-    let mut client_compositor = None;
-    let mut tabs = reovim_driver_text_session::TabPageSet::new();
-    let mut registers = RegisterBank::new();
-    let mut clipboard_history = HistoryRing::new();
-    let mut local_marks = MarkBank::new();
-    let mut jumplist = Jumplist::new();
-    let mut active_buffer = None;
-    let mut terminal_size = (80u16, 24u16);
-
-    let result = registry.execute_for_client(
-        1,
-        &id,
-        &mut driver_session,
-        reovim_driver_text_session::ClientContext {
-            mode_stack: &mut client_mode_stack,
-            windows: &mut client_windows,
-            extensions: &mut client_extensions,
-            compositor: &mut client_compositor,
-            tabs: &mut tabs,
-            registers: &mut registers,
-            clipboard_history: &mut clipboard_history,
-            local_marks: &mut local_marks,
-            jumplist: &mut jumplist,
-            active_buffer: &mut active_buffer,
-            terminal_size: &mut terminal_size,
-        },
-        &kernel,
-        &vfs,
-        &args,
-        None,
-    );
-    assert!(result.is_none());
-}
-
-// Test command with buffer context
-struct BufferTestCommand {
-    id: CommandId,
-    name: &'static str,
-}
-
-impl BufferTestCommand {
-    fn new(name: &'static str) -> Self {
-        Self {
-            id: CommandId::new(ModuleId::new("test"), name),
-            name,
-        }
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl Command for BufferTestCommand {
-    fn id(&self) -> CommandId {
-        self.id.clone()
-    }
-
-    fn description(&self) -> &'static str {
-        "Buffer test command"
-    }
-
-    fn args(&self) -> Vec<ArgSpec> {
-        vec![]
-    }
-
-    fn names(&self) -> &[&'static str] {
-        std::slice::from_ref(&self.name)
-    }
-}
-
-impl CommandHandler for BufferTestCommand {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        CommandResult::Success
-    }
-}
-
-#[test]
-fn test_command_registry_execute_with_buffer() {
-    use reovim_kernel::api::v1::BufferId;
-
-    let mut registry = CommandRegistry::new();
-    let cmd = BufferTestCommand::new("buffer-cmd");
-    let id = cmd.id.clone();
-
-    registry.register(Arc::new(cmd));
-
-    let kernel = KernelContext::default();
-    let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-    let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
-
-    let buffer_id = BufferId::from_raw(1);
-
-    let vfs = test_vfs();
-    let args = CommandContext::new();
-
-    let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
-    let mut client_compositor = None;
-    let mut tabs = reovim_driver_text_session::TabPageSet::new();
-    let mut registers = RegisterBank::new();
-    let mut clipboard_history = HistoryRing::new();
-    let mut local_marks = MarkBank::new();
-    let mut jumplist = Jumplist::new();
-    let mut active_buffer = Some(buffer_id); // Per-client active_buffer (#471)
-    let mut terminal_size = (80u16, 24u16);
-
-    let result = registry.execute_for_client(
-        1,
-        &id,
-        &mut driver_session,
-        reovim_driver_text_session::ClientContext {
-            mode_stack: &mut client_mode_stack,
-            windows: &mut client_windows,
-            extensions: &mut client_extensions,
-            compositor: &mut client_compositor,
-            tabs: &mut tabs,
-            registers: &mut registers,
-            clipboard_history: &mut clipboard_history,
-            local_marks: &mut local_marks,
-            jumplist: &mut jumplist,
-            active_buffer: &mut active_buffer,
-            terminal_size: &mut terminal_size,
-        },
-        &kernel,
-        &vfs,
-        &args,
-        None,
-    );
-    assert!(result.is_some());
-}
-
-#[test]
 fn test_command_registry_get_nonexistent() {
     let registry = CommandRegistry::new();
     let id = CommandId::new(ModuleId::new("test"), "nonexistent");
@@ -564,7 +311,6 @@ fn test_command_query_snapshot_search_by_prefix_empty_string() {
     registry.register(Arc::new(TestCommand::new("beta")));
 
     let snapshot = CommandQuerySnapshot::from_registry(&registry);
-    // Empty prefix should return all commands
     let results = snapshot.search_by_prefix("");
     assert_eq!(results.len(), 2);
 }
@@ -583,7 +329,6 @@ fn test_command_query_snapshot_search_by_prefix_partial() {
 
 #[test]
 fn test_command_query_snapshot_list_user_commands_excludes_internal() {
-    // TestCommand always has a name, so create an internal-only command
     struct InternalCommand;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -595,18 +340,7 @@ fn test_command_query_snapshot_list_user_commands_excludes_internal() {
             "Internal command"
         }
         fn names(&self) -> &[&'static str] {
-            &[] // No ex-names → internal only
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandHandler for InternalCommand {
-        fn execute(
-            &self,
-            _runtime: &mut SessionRuntime<'_>,
-            _args: &CommandContext,
-        ) -> CommandResult {
-            CommandResult::Success
+            &[]
         }
     }
 
@@ -615,9 +349,7 @@ fn test_command_query_snapshot_list_user_commands_excludes_internal() {
     registry.register(Arc::new(InternalCommand));
 
     let snapshot = CommandQuerySnapshot::from_registry(&registry);
-    // list_all includes internal
     assert_eq!(snapshot.count(), 2);
-    // list_user_commands excludes internal (no names)
     let user_cmds = snapshot.list_user_commands();
     assert_eq!(user_cmds.len(), 1);
     assert_eq!(user_cmds[0].names[0], "visible");
@@ -638,7 +370,6 @@ fn test_command_registry_unregister_nonexistent_module() {
 // build_name_index() tests (#547 Phase 8)
 // ========================================================================
 
-/// Test command with multiple name aliases for name index tests.
 struct MultiNameCommand {
     id: CommandId,
     names: &'static [&'static str],
@@ -667,13 +398,6 @@ impl Command for MultiNameCommand {
     }
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl CommandHandler for MultiNameCommand {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        CommandResult::Success
-    }
-}
-
 #[test]
 fn test_build_name_index_from_registry() {
     let mut registry = CommandRegistry::new();
@@ -681,9 +405,8 @@ fn test_build_name_index_from_registry() {
     registry.register(Arc::new(MultiNameCommand::new("quit", &["q", "quit"])));
 
     let index = registry.build_name_index();
-    assert_eq!(index.count(), 2); // 2 unique commands
+    assert_eq!(index.count(), 2);
 
-    // All aliases resolve
     assert!(index.resolve("w").is_some());
     assert!(index.resolve("write").is_some());
     assert!(index.resolve("q").is_some());
@@ -710,72 +433,9 @@ fn test_build_name_index_empty_registry() {
 
 #[test]
 fn test_build_name_index_commands_without_names() {
-    // Commands without names (internal-only) should not appear in index
     let mut registry = CommandRegistry::new();
     registry.register(Arc::new(TestCommand::new("internal-cmd")));
 
     let index = registry.build_name_index();
-    // TestCommand has one name (its name field), so it appears
     assert!(index.resolve("internal-cmd").is_some());
-}
-
-// ========================================================================
-// HandlerBridge::execute coverage (#547)
-// ========================================================================
-
-/// Exercise `HandlerBridge::execute` via `get_handle()` + `handle.execute()`.
-///
-/// `HandlerBridge` is only reachable through `CommandExecutor::get_handle` — the
-/// existing `execute_for_client` tests go through a different code path.  This
-/// test calls the bridge directly so the three lines that form its body are
-/// counted by the coverage tool.
-#[test]
-fn test_handler_bridge_execute_via_get_handle() {
-    use reovim_driver_text_session::api::CommandExecutor;
-
-    let mut registry = CommandRegistry::new();
-    let cmd = TestCommand::new("bridge-cmd");
-    let id = cmd.id.clone();
-    registry.register(Arc::new(cmd));
-
-    let handle = registry.get_handle(&id).expect("handle exists");
-
-    let kernel = KernelContext::default();
-    let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-    let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
-    let args = CommandContext::new();
-
-    let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
-    let mut client_windows = reovim_driver_text_session::WindowLayout::empty();
-    let mut client_extensions = reovim_driver_text_session::ExtensionMap::new();
-    let mut client_compositor = None;
-    let mut tabs = reovim_driver_text_session::TabPageSet::new();
-    let mut registers = RegisterBank::new();
-    let mut clipboard_history = HistoryRing::new();
-    let mut local_marks = MarkBank::new();
-    let mut jumplist = Jumplist::new();
-    let mut active_buffer = None;
-    let mut terminal_size = (80u16, 24u16);
-
-    let mut runtime = SessionRuntime::new(
-        &mut driver_session,
-        reovim_driver_text_session::ClientContext {
-            mode_stack: &mut client_mode_stack,
-            windows: &mut client_windows,
-            extensions: &mut client_extensions,
-            compositor: &mut client_compositor,
-            tabs: &mut tabs,
-            registers: &mut registers,
-            clipboard_history: &mut clipboard_history,
-            local_marks: &mut local_marks,
-            jumplist: &mut jumplist,
-            active_buffer: &mut active_buffer,
-            terminal_size: &mut terminal_size,
-        },
-        &kernel,
-        &registry,
-    );
-
-    let result = handle.execute(&mut runtime, &args);
-    assert_eq!(result, CommandResult::Success);
 }

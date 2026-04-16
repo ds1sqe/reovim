@@ -63,7 +63,7 @@ impl std::error::Error for TranspileError {}
 impl DomainProjection {
     /// Create a new domain projection directly (for testing and non-proto paths).
     #[must_use]
-    pub fn new(tag: ProjectionTag, domain_id: DomainId, content: Vec<u8>, display: String) -> Self {
+    pub const fn new(tag: ProjectionTag, domain_id: DomainId, content: Vec<u8>, display: String) -> Self {
         Self {
             tag,
             domain_id,
@@ -78,7 +78,7 @@ impl DomainProjection {
 
     /// The projection tag.
     #[must_use]
-    pub fn tag(&self) -> &ProjectionTag {
+    pub const fn tag(&self) -> &ProjectionTag {
         &self.tag
     }
 

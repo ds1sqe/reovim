@@ -34,7 +34,7 @@ pub struct TextDomainView {
 impl TextDomainView {
     /// Create a new text domain view for the given domain.
     #[must_use]
-    pub fn new(domain_id: DomainId) -> Self {
+    pub const fn new(domain_id: DomainId) -> Self {
         Self {
             domain_id,
             renderer: DefaultViewportRenderer,

@@ -1,4 +1,4 @@
-//! Projection display cache — keyed by (DomainId, ProjectionTag).
+//! Projection display cache — keyed by (`DomainId`, `ProjectionTag`).
 //!
 //! Stores the display string from persistent projections for chrome modules
 //! (statusline, tab bar, etc.) that need the latest value without re-parsing
@@ -83,7 +83,7 @@ impl ProjectionDisplayCache {
         }
     }
 
-    /// Get the cached display string for a (domain_id, tag) pair.
+    /// Get the cached display string for a (`domain_id`, tag) pair.
     #[must_use]
     pub fn get(&self, domain_id: DomainId, tag: &ProjectionTag) -> Option<&str> {
         let key = CacheKey {

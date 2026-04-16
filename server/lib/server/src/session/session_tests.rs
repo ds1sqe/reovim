@@ -116,43 +116,8 @@ fn test_remove_sharing_client_also_dumps() {
     // Clean up owner
     session.remove_client(owner_id);
 }
+// #[tokio::test]: DELETED (#753 E6) — uses removed methods
 
-#[tokio::test]
-async fn test_session_with_state() {
-    use std::sync::Arc;
-
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-    };
-
-    // Create a kernel context with a real buffer manager and TextBufferRegistry
-    let services = Arc::new(ServiceRegistry::new());
-    services.register(Arc::new(reovim_driver_text_buffer::TextBufferRegistry::new()));
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        services,
-    );
-
-    let state = SessionState::with_kernel(kernel);
-    let session = Session::from_state(SessionId::default(), state);
-
-    // Create a buffer
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("hello world");
-        })
-        .await;
-
-    // Read it back
-    let has_buffer = session
-        .with_state(|state| !state.app.kernel.buffers.list().is_empty())
-        .await;
-
-    assert!(has_buffer);
-}
 
 #[test]
 fn test_session_from_state() {
@@ -405,32 +370,8 @@ async fn test_with_state_sync() {
     let running = session.with_state_sync(SessionState::is_running);
     assert!(running);
 }
+// #[tokio::test]: DELETED (#753 E6) — uses removed methods
 
-#[tokio::test]
-async fn test_with_state_mut_sync() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
-
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let state = SessionState::with_kernel(kernel);
-    let session = Session::from_state(SessionId::new("test"), state);
-
-    session.with_state_mut_sync(|state| {
-        state.create_buffer("test content");
-    });
-
-    let has_buffer = session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
-    assert!(has_buffer);
-}
 
 #[tokio::test]
 async fn test_client_current_mode() {
@@ -820,160 +761,20 @@ fn test_emit_notification_no_subscribers() {
 
     session.emit_notification(notification);
 }
+// #[tokio::test]: DELETED (#753 E6) — uses removed methods
 
-#[tokio::test]
-async fn test_resolve_key_for_client_nonexistent() {
-    let session = Session::new(SessionId::new("test"));
-    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
+// #[tokio::test]: DELETED (#753 E6) — uses removed methods
 
-    // Non-existent client should return None
-    let result = session
-        .resolve_key_for_client(ClientId::new(999), &key)
-        .await;
-    assert!(result.is_none());
-}
+// #[tokio::test]: DELETED (#753 E6) — uses removed methods
 
-#[tokio::test]
-async fn test_resolve_key_for_client_following_ignored() {
-    use crate::session::ClientRelation;
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-    let session = Session::new(SessionId::new("test"));
-    let owner_id = ClientId::new(1);
-    let follower_id = ClientId::new(2);
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-    session.add_client(owner_id);
-    session.add_client(follower_id);
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-    let _ = session
-        .clients()
-        .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
+// #[cfg_attr(coverage_nightly, coverage(off))]: DELETED (#753 E6) — uses removed methods
 
-    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
-    let result = session.resolve_key_for_client(follower_id, &key).await;
-
-    // Following clients should return None (input ignored)
-    assert!(result.is_none());
-}
-
-#[tokio::test]
-async fn test_try_on_command_complete_for_client_nonexistent() {
-    let session = Session::new(SessionId::new("test"));
-    let result = session
-        .try_on_command_complete_for_client(ClientId::new(999))
-        .await;
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_execute_command_for_client_nonexistent() {
-    let session = Session::new(SessionId::new("test"));
-    let cmd_id = reovim_kernel::api::v1::CommandId::new(
-        reovim_kernel::api::v1::ModuleId::new("test"),
-        "noop",
-    );
-    let ctx = reovim_subsys_command_types::CommandContext::new();
-
-    let result = session.execute_command_for_client(ClientId::new(999), &cmd_id, &ctx);
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_execute_command_for_client_following_ignored() {
-    use crate::session::ClientRelation;
-
-    let session = Session::new(SessionId::new("test"));
-    let owner_id = ClientId::new(1);
-    let follower_id = ClientId::new(2);
-
-    session.add_client(owner_id);
-    session.add_client(follower_id);
-
-    let _ = session
-        .clients()
-        .set_client_relation(follower_id, Some(ClientRelation::Following { target: owner_id }));
-
-    let cmd_id = reovim_kernel::api::v1::CommandId::new(
-        reovim_kernel::api::v1::ModuleId::new("test"),
-        "noop",
-    );
-    let ctx = reovim_subsys_command_types::CommandContext::new();
-
-    let result = session.execute_command_for_client(follower_id, &cmd_id, &ctx);
-    // Following clients should return None (input ignored)
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_add_client_with_active_buffer() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
-
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let state = SessionState::with_kernel(kernel);
-    let session = Session::from_state(SessionId::new("buf-test"), state);
-
-    // Create a buffer so session has an active buffer
-    session.with_state_mut_sync(|state| {
-        state.create_buffer("hello");
-    });
-
-    // Adding a client now should give it a window with the active buffer
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Client should be registered (windows are domain-owned, #753 E3)
-    let state = session.clients().client_state(client_id);
-    assert!(state.is_some());
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_sync_and_set_relation_with_cursor_sync() {
-    use {
-        crate::session::ClientRelation,
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
-
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let state = SessionState::with_kernel(kernel);
-    let session = Session::from_state(SessionId::new("sync-cursor-test"), state);
-
-    // Create a buffer so clients get windows
-    session.with_state_mut_sync(|state| {
-        state.create_buffer("test content");
-    });
-
-    let owner_id = ClientId::new(1);
-    let sharer_id = ClientId::new(2);
-
-    session.add_client(owner_id);
-    session.add_client(sharer_id);
-
-    // Sync and set relation - cursor sync is domain-owned (#753 E3)
-    let result = session.clients().sync_and_set_relation(
-        sharer_id,
-        owner_id,
-        Some(ClientRelation::Sharing { with: owner_id }),
-    );
-    assert!(result.is_ok());
-}
 
 // =========================================================================
 // Coverage: sync_and_set_relation validation failure (#497)
@@ -1055,45 +856,8 @@ fn test_update_client_state_sharing_target_removed() {
         .update_client_state(sharer_id, |_state| {});
     assert!(!updated);
 }
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-#[test]
-fn test_ensure_client_has_window_lazy_sync() {
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
-
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let state = SessionState::with_kernel(kernel);
-    let session = Session::from_state(SessionId::new("lazy-sync"), state);
-
-    // Add a client BEFORE any buffer exists
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // windows and active_buffer are domain-owned (#753 E3)
-
-    // Now create a buffer
-    let _buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
-
-    // resolve_key_for_client should run without panicking
-    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
-
-    // Client is still registered
-    assert!(session.clients().client_state(client_id).is_some());
-}
 
 // =========================================================================
 // Coverage: tracing::debug closures in add_client_with_metadata (lines 202-203)
@@ -1178,6 +942,7 @@ fn test_editing_state_debug_format() {
 /// Unlike `MockRootCompositor` in `runtime.rs` which returns empty results,
 /// this compositor provides actual placements so the session code at
 /// lines 239-251 and 590-600 can create windows from them.
+#[allow(dead_code)]
 struct TestPlacementCompositor;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -1285,102 +1050,10 @@ impl reovim_subsys_layout::RootCompositor for TestPlacementCompositor {
         reovim_subsys_layout::LayoutTopology::Single(reovim_subsys_layout::WindowId::from_raw(1))
     }
 }
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-#[test]
-fn test_add_client_with_compositor_creates_windows() {
-    // Exercise lines 239-251: compositor-driven window creation in
-    // add_client_with_metadata() when shared compositor is set and
-    // an active buffer exists.
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
+// #[test]: DELETED (#753 E6) — uses removed methods
 
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let mut state = SessionState::with_kernel(kernel);
-
-    // Set the compositor on the shared session state BEFORE creating the session
-    state
-        .driver_session
-        .shared
-        .set_compositor(Box::new(TestPlacementCompositor));
-
-    let session = Session::from_state(SessionId::new("compositor-add-test"), state);
-
-    // Create a buffer so there is an active buffer
-    session.with_state_mut_sync(|state| {
-        state.create_buffer("hello compositor");
-    });
-
-    // Add a client - should use compositor for window creation
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Verify compositor was cloned into per-client state
-    // windows are domain-owned (#753 E3)
-    let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(editing_state.compositor.is_some());
-}
-
-#[test]
-fn test_ensure_client_has_window_with_compositor() {
-    // Exercise lines 590-600: compositor-driven window sync in
-    // ensure_client_has_window() when a client has a compositor but
-    // empty windows, and the session acquires an active buffer later.
-    use {
-        reovim_driver_text_buffer::TestBufferManager,
-        reovim_kernel::api::v1::{EventBus, KernelContext, OptionRegistry, ServiceRegistry},
-        std::sync::Arc,
-    };
-
-    let kernel = KernelContext::new(
-        Arc::new(EventBus::new()),
-        Arc::new(TestBufferManager::new()),
-        Arc::new(OptionRegistry::new()),
-        Arc::new(ServiceRegistry::new()),
-    );
-
-    let mut state = SessionState::with_kernel(kernel);
-
-    // Set compositor on shared state
-    state
-        .driver_session
-        .shared
-        .set_compositor(Box::new(TestPlacementCompositor));
-
-    let session = Session::from_state(SessionId::new("compositor-ensure-test"), state);
-
-    // Add client BEFORE any buffer exists. The compositor is cloned into
-    // per-client state but no windows are created yet (no active buffer).
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // Client should have compositor; windows are domain-owned (#753 E3)
-    let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(editing_state.compositor.is_some());
-
-    // Now create a buffer
-    let _buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
-
-    // Trigger resolve_key_for_client; should run without panicking
-    let key = reovim_driver_text_input::KeyEvent::new(reovim_driver_text_input::KeyCode::Char('a'));
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
-
-    // Client is still registered with compositor
-    let editing_state = session.clients().client_state(client_id).unwrap();
-    assert!(editing_state.compositor.is_some());
-}
 
 // ========================================================================
 // with_client_extensions tests (#514)

@@ -21,6 +21,7 @@ pub struct HybridCompositor {
     focused: Option<WindowId>,
     next_layer_id: u16,
     screen: Rect,
+    generation: u64,
 }
 
 impl HybridCompositor {
@@ -37,6 +38,7 @@ impl HybridCompositor {
             focused: None,
             next_layer_id: 1,
             screen: Rect::default(),
+            generation: 0,
         }
     }
 
@@ -223,6 +225,36 @@ impl RootCompositor for HybridCompositor {
 
     fn boxed_clone(&self) -> Box<dyn RootCompositor> {
         Box::new(self.clone())
+    }
+
+    fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+        // Return topology for active layer, or Single window if no active layer
+        if let Some(active_id) = self.active_layer {
+            if let Some((_, comp)) = self.get_layer(active_id) {
+                // For now, return a simple single-window topology.
+                // Full topology construction would require more state tracking in HybridLayerCompositor.
+                if let Some(focused) = self.focused {
+                    reovim_subsys_layout::LayoutTopology::Single(focused)
+                } else {
+                    // Get first tiled window from active layer
+                    let windows = comp.windows_in_zone(reovim_subsys_layout::Zone::Tiled);
+                    if let Some(&window) = windows.first() {
+                        reovim_subsys_layout::LayoutTopology::Single(window)
+                    } else {
+                        // No windows at all; return placeholder
+                        reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
+                    }
+                }
+            } else {
+                reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
+            }
+        } else {
+            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
+        }
     }
 }
 

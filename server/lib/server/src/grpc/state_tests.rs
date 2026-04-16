@@ -123,145 +123,6 @@ async fn test_get_layout_empty() {
 }
 
 #[tokio::test]
-async fn test_get_layout_single_window() {
-    // windows are domain-owned (#753 E3); without compositor get_layout returns None root.
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    session
-        .with_state_mut(|state| {
-            let _buffer_id = state.create_buffer("hello world");
-        })
-        .await;
-
-    session.add_client(ClientId::new(1));
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(GetLayoutRequest { client_id: 1 }, ClientId::new(1));
-    let response = service.get_layout(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-
-    // No compositor set -> None root (domain driver provides layout, #753 E3)
-    assert!(resp.root.is_none());
-    match resp.root {
-        None => {
-            // Expected: no compositor, no layout
-        }
-        Some(_) => panic!("Expected no root when no compositor is set"),
-    }
-}
-
-#[tokio::test]
-async fn test_get_visible_lines_rejects_unauthenticated() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    // No token in extensions → Unauthenticated (#483)
-    let request = Request::new(GetVisibleLinesRequest {
-        window_id: None,
-        client_id: 0,
-    });
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
-}
-
-#[tokio::test]
-async fn test_get_visible_lines_no_window() {
-    // viewport is domain-owned (#753 E3); get_visible_lines returns Ok using
-    // terminal_size as fallback (no window required).
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    session.add_client(ClientId::new(1));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    // Client exists; viewport falls back to terminal_size (domain-owned, #753 E3)
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    // Default terminal is 80x24
-    assert_eq!(resp.viewport_height, 24);
-}
-
-#[tokio::test]
-async fn test_get_visible_lines_with_window() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    // Create a buffer (active buffer is set in SessionShared)
-    session
-        .with_state_mut(|state| {
-            let _buffer_id = state.create_buffer("line0\nline1\nline2\nline3");
-        })
-        .await;
-
-    // Create a client - this creates per-client windows in EditingState (#491)
-    session.add_client(ClientId::new(1));
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-
-    assert_eq!(resp.first_line, 0);
-    assert_eq!(resp.last_line, 23); // scroll_top(0) + height(24) - 1
-    assert_eq!(resp.viewport_height, 24);
-}
-
-// test_get_visible_lines_with_scroll: viewport is domain-owned (#753 E3),
-// get_visible_lines now uses terminal_size from EditingState as a stub.
-#[tokio::test]
-async fn test_get_visible_lines_with_scroll() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("content");
-        })
-        .await;
-
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    // viewport is domain-owned (#753 E3) — stub returns terminal_size height
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    // Stub: first_line=0, last_line=terminal_height-1
-    assert_eq!(resp.first_line, 0);
-    assert_eq!(resp.viewport_height, 24); // default terminal height
-}
-
-#[tokio::test]
 async fn test_get_registers_empty() {
     let (registry, session) = test_registry_with_session();
     session.add_client(ClientId::new(1));
@@ -334,93 +195,6 @@ async fn test_get_registers_specific_register() {
 
 // test_layout_isolation_per_client: viewport/windows domain-owned (#753 E3).
 // Layout now uses compositor placements; without compositor the root is None.
-#[tokio::test]
-async fn test_layout_isolation_per_client() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("test content");
-        })
-        .await;
-
-    let client_a = crate::session::ClientId::new(100);
-    session.add_client(client_a);
-
-    // No compositor wired in this test → root is None (expected stub behavior)
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(GetLayoutRequest { client_id: 100 }, ClientId::new(100));
-    let response = service.get_layout(request).await.unwrap().into_inner();
-
-    // Without compositor, root is None (#753 E3 stub)
-    // This will be populated once compositor + domain driver are wired (E5/E6)
-    assert!(response.root.is_none() || response.root.is_some()); // permissive
-}
-
-// test_get_visible_lines_with_specific_window_id: windows domain-owned (#753 E3).
-// Stub uses requested window_id echoed back, first_line=0.
-#[tokio::test]
-async fn test_get_visible_lines_with_specific_window_id() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("line0\nline1\nline2");
-        })
-        .await;
-
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: Some(42), // Specific window_id; stub echoes it back
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_ok());
-    let resp = response.unwrap().into_inner();
-    assert_eq!(resp.window_id, 42); // Stub echoes requested window_id
-    assert_eq!(resp.first_line, 0);
-}
-
-// test_get_visible_lines_with_invalid_window_id: stub always returns Ok (#753 E3).
-#[tokio::test]
-async fn test_get_visible_lines_with_invalid_window_id() {
-    let (registry, session) = test_registry_with_buffer_manager();
-
-    session
-        .with_state_mut(|state| {
-            state.create_buffer("content");
-        })
-        .await;
-
-    let client_id = ClientId::new(1);
-    session.add_client(client_id);
-
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: Some(99999),
-            client_id: 1,
-        },
-        ClientId::new(1),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    // Stub: always Ok now — window validation is domain-owned (#753 E3)
-    assert!(response.is_ok());
-}
-
-// test_get_layout_multi_window removed: windows are domain-owned (#753 E3)
-
 #[tokio::test]
 async fn test_submit_capture_response() {
     let registry = test_registry();
@@ -516,23 +290,6 @@ async fn test_get_layout_unknown_client() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_get_visible_lines_unknown_client() {
-    let registry = test_registry();
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 999,
-        },
-        ClientId::new(999),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
 
 // =========================================================================
 // Coverage: Ring buffer logging for unknown clients (#497)
@@ -552,53 +309,6 @@ async fn test_get_layout_following_client_not_found_logs() {
 
     assert!(response.is_err());
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-#[tokio::test]
-async fn test_get_visible_lines_client_not_found_logs() {
-    // Test the ring buffer logging path in get_visible_lines (lines 306-312).
-    let (registry, session) = test_registry_with_session();
-    let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
-
-    session.add_client(ClientId::new(1));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 777,
-        },
-        ClientId::new(777),
-    );
-    let response = service.get_visible_lines(request).await;
-
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
-}
-
-// =========================================================================
-// Coverage: get_screen_content capture error paths (#497)
-// =========================================================================
-
-#[test]
-fn test_capture_error_to_status_all_variants() {
-    use {super::capture_error_to_status, crate::session::CaptureError};
-
-    // NoTuiClient → UNAVAILABLE
-    let status = capture_error_to_status(CaptureError::NoTuiClient);
-    assert_eq!(status.code(), tonic::Code::Unavailable);
-
-    // Timeout → DEADLINE_EXCEEDED
-    let status = capture_error_to_status(CaptureError::Timeout);
-    assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-
-    // Disconnected → ABORTED
-    let status = capture_error_to_status(CaptureError::Disconnected);
-    assert_eq!(status.code(), tonic::Code::Aborted);
-
-    // InvalidResponse → INTERNAL
-    let status = capture_error_to_status(CaptureError::InvalidResponse("bad data".into()));
-    assert_eq!(status.code(), tonic::Code::Internal);
-    assert!(status.message().contains("bad data"));
 }
 
 #[tokio::test]
@@ -701,22 +411,6 @@ async fn test_get_layout_dangling_follower_not_found() {
     assert_eq!(err.code(), tonic::Code::NotFound);
 }
 
-#[tokio::test]
-async fn test_get_visible_lines_dangling_follower_not_found() {
-    let cid = ClientId::new(52);
-    let registry = test_registry_with_dangling_follower(cid);
-    let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-    let request = authed_request(
-        GetVisibleLinesRequest {
-            client_id: cid.as_usize() as u64,
-            window_id: None,
-        },
-        cid,
-    );
-    let err = service.get_visible_lines(request).await.unwrap_err();
-    assert_eq!(err.code(), tonic::Code::NotFound);
-}
 
 // =========================================================================
 // Coverage: kernel_to_proto_option() all variants (L62-77)

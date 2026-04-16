@@ -69,39 +69,6 @@ fn test_leave_returns_none_for_unknown() {
 }
 
 #[test]
-fn test_update_modifies_presence() {
-    let map = PresenceMap::new();
-    let client_id = ClientId::new(1);
-
-    map.join(make_presence(1, "laptop"));
-    let updated = map.update(client_id, |p| {
-        p.cursor = (10, 5);
-        p.mode = "INSERT".to_string();
-    });
-
-    assert!(updated.is_some());
-    let presence = updated.unwrap();
-    assert_eq!(presence.cursor, (10, 5));
-    assert_eq!(presence.mode, "INSERT");
-
-    // Verify it was actually persisted
-    let stored = map.get(client_id).unwrap();
-    assert_eq!(stored.cursor, (10, 5));
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[test]
-fn test_update_returns_none_for_unknown() {
-    let map = PresenceMap::new();
-
-    let updated = map.update(ClientId::new(999), |p| {
-        p.cursor = (10, 5);
-    });
-
-    assert!(updated.is_none());
-}
-
-#[test]
 fn test_get_returns_presence() {
     let map = PresenceMap::new();
     let client_id = ClientId::new(1);
@@ -210,9 +177,6 @@ fn test_client_presence_new() {
     assert_eq!(presence.client_type, "android");
     assert_eq!(presence.display_name, "phone");
     assert_eq!(presence.buffer_id, None);
-    assert_eq!(presence.cursor, (0, 0));
-    assert_eq!(presence.visible_lines, (0, 24));
-    assert_eq!(presence.mode, "NORMAL");
     assert_eq!(presence.sync_mode, SyncMode::Independent);
 }
 
@@ -241,7 +205,6 @@ fn test_concurrent_join_leave() {
 
             // Do some operations
             let _ = map_clone.get(ClientId::new(i));
-            let _ = map_clone.update(ClientId::new(i), |p| p.cursor = (i, i));
             let _ = map_clone.list();
 
             // Leave
