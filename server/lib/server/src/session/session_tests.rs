@@ -1565,27 +1565,27 @@ fn test_session_register_get_empty() {
 #[test]
 fn test_session_register_set_and_get() {
     let session = Session::new(SessionId::new("reg-test"));
-    session.set_session_register('A', RegisterContent::characterwise("shared"));
+    session.set_session_register('A', b"shared".to_vec());
     let content = session.get_session_register('A');
-    assert_eq!(content.as_ref().map(|c| c.text.as_str()), Some("shared"));
+    assert_eq!(content.as_deref(), Some(b"shared".as_slice()));
 }
 
 #[test]
 fn test_session_register_overwrite() {
     let session = Session::new(SessionId::new("reg-test"));
-    session.set_session_register('B', RegisterContent::characterwise("first"));
-    session.set_session_register('B', RegisterContent::characterwise("second"));
-    assert_eq!(session.get_session_register('B').map(|c| c.text), Some("second".to_string()));
+    session.set_session_register('B', b"first".to_vec());
+    session.set_session_register('B', b"second".to_vec());
+    assert_eq!(session.get_session_register('B').as_deref(), Some(b"second".as_slice()));
 }
 
 #[test]
 fn test_session_register_multiple_keys() {
     let session = Session::new(SessionId::new("reg-test"));
-    session.set_session_register('A', RegisterContent::characterwise("alpha"));
-    session.set_session_register('Z', RegisterContent::linewise("zulu\n"));
+    session.set_session_register('A', b"alpha".to_vec());
+    session.set_session_register('Z', b"zulu\n".to_vec());
 
-    assert_eq!(session.get_session_register('A').map(|c| c.text), Some("alpha".to_string()));
-    assert_eq!(session.get_session_register('Z').map(|c| c.text), Some("zulu\n".to_string()));
+    assert_eq!(session.get_session_register('A').as_deref(), Some(b"alpha".as_slice()));
+    assert_eq!(session.get_session_register('Z').as_deref(), Some(b"zulu\n".as_slice()));
     assert!(session.get_session_register('M').is_none());
 }
 

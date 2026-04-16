@@ -10,7 +10,7 @@
 //! The `presence` service tracks display preferences and sync awareness.
 //! The `clients` directory tracks editing roles and state ownership.
 
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::Arc;
 
 use reovim_kernel::api::v1::ServiceRegistry;
 
@@ -22,10 +22,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use {
-    reovim_driver_text_session::RegisterContent,
-    reovim_subsys_session::{DomainDriver, ExtensionMap},
-};
+use reovim_subsys_session::{DomainDriver, ExtensionMap};
 
 // active_buffer is now domain-owned; only reachable via domain driver (#753).
 
@@ -55,20 +52,12 @@ pub struct Session {
     /// Per-client membership and editing-relation authority.
     clients: ClientDirectory,
 
-    /// Domain driver for key dispatch and state queries (Phase 4A).
+    /// Domain driver for key dispatch and state queries (#753).
     ///
     /// When `Some`, `dispatch_key_for_client` delegates to the domain driver.
-    /// When `None`, falls back to the inline dispatch path in `SessionState`.
+    /// When `None`, keys are dropped with a warning.
     /// Set by the runner at session creation via [`Session::set_domain_driver`].
     domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
-
-    /// Controls whether the domain driver path is active for dispatch (#753 E1).
-    ///
-    /// When `false` (default), `dispatch_key_for_client` uses the inline
-    /// `SessionState` fallback path even if a domain driver is wired.
-    /// Call [`Session::enable_driver_dispatch`] to activate the driver path.
-    #[allow(dead_code)]
-    use_driver_dispatch: AtomicBool,
 
     /// Server-side projection cache (#753).
     ///
@@ -115,7 +104,6 @@ impl Session {
             state: RwLock::new(SessionState::default()),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
-            use_driver_dispatch: AtomicBool::new(false),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -156,7 +144,6 @@ impl Session {
             state: RwLock::new(state),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
-            use_driver_dispatch: AtomicBool::new(false),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -213,18 +200,6 @@ impl Session {
         *self.domain_driver.write() = Some(driver);
     }
 
-    /// Enable the domain driver dispatch path (#753 E1).
-    ///
-    /// After this is called, `dispatch_key_for_client` routes through the
-    /// domain driver (if one is wired) instead of the inline fallback path.
-    ///
-    /// Not called during E1 bootstrap — the driver is wired but dispatch
-    /// stays on the fallback path until a later phase activates this.
-    pub fn enable_driver_dispatch(&self) {
-        self.use_driver_dispatch
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
     /// Get the domain driver (if wired).
     #[must_use]
     pub fn domain_driver(&self) -> Option<Arc<dyn DomainDriver>> {
@@ -248,6 +223,20 @@ impl Session {
         let driver = driver.as_ref()?;
         let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
         driver.active_buffer(subsys_id)
+    }
+
+    /// Get the compositor generation for a client (#753 E5).
+    ///
+    /// Returns the monotonic generation counter from the client's compositor.
+    /// Used for poll-based layout change detection after dispatch.
+    #[must_use]
+    pub fn client_compositor_generation(&self, client_id: ClientId) -> u64 {
+        let clients = self.clients.read();
+        clients
+            .get(&client_id)
+            .and_then(|c| c.state.compositor.as_ref())
+            .map(|c| c.generation())
+            .unwrap_or(0)
     }
 
     // =========================================================================
@@ -501,14 +490,13 @@ impl Session {
         None
     }
 
-    /// Dispatch a key through the full pipeline (sub-plan 05 Phase 4A).
+    /// Dispatch a key through the domain driver (#753).
     ///
-    /// Delegates to the domain driver when wired. The domain driver internally
-    /// handles resolver lookup, command execution, mode transitions, pending
-    /// bindings, and `on_command_complete`. The server never sees `ResolveResult`.
+    /// Delegates to the domain driver which internally handles resolver lookup,
+    /// command execution, mode transitions, pending bindings, and
+    /// `on_command_complete`. The server never sees `ResolveResult`.
     ///
-    /// Falls back to the inline `SessionState::dispatch_key_for_client` path
-    /// when no domain driver is wired (log a warning in that case).
+    /// Returns `None` when no domain driver is wired (logs a warning).
     ///
     /// # Lock ordering
     ///
@@ -525,42 +513,35 @@ impl Session {
         client_id: ClientId,
         key: &reovim_subsys_input::KeyEvent,
     ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
-        // Domain driver path (active when use_driver_dispatch is true).
         let driver = self.domain_driver.read().clone();
+        let Some(ref driver) = driver else {
+            tracing::warn!(%client_id, "dispatch_key_for_client: no domain driver wired, key dropped");
+            return None;
+        };
 
-        if let Some(ref driver) = driver
-            && self
-                .use_driver_dispatch
-                .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let mut clients = self.clients.write();
-            let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-            let target_client = clients.get_mut(&target_id)?;
-            let client_ext = &mut target_client.state.extensions;
+        let mut clients = self.clients.write();
+        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+        let client_ext = &mut target_client.state.extensions;
 
-            let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
-            let mut state = self.state.write();
-            let shared_ext = &mut state.app.extensions;
+        let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
+        let mut state = self.state.write();
+        let shared_ext = &mut state.app.extensions;
 
-            let dispatch =
-                driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
+        let dispatch =
+            driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
 
-            let mut cs = reovim_subsys_session::change_set::ChangeSet::new();
-            cs.modified_buffers = dispatch.buffers.modified;
-            cs.created_buffers = dispatch.buffers.created;
-            cs.deleted_buffers = dispatch.buffers.closed;
-            match dispatch.directive {
-                reovim_subsys_session::Directive::Quit => cs.should_quit = true,
-                reovim_subsys_session::Directive::Detach => cs.should_detach = true,
-                _ => {}
-            }
-
-            return Some((true, cs));
+        let mut cs = reovim_subsys_session::change_set::ChangeSet::new();
+        cs.modified_buffers = dispatch.buffers.modified;
+        cs.created_buffers = dispatch.buffers.created;
+        cs.deleted_buffers = dispatch.buffers.closed;
+        match dispatch.directive {
+            reovim_subsys_session::Directive::Quit => cs.should_quit = true,
+            reovim_subsys_session::Directive::Detach => cs.should_detach = true,
+            _ => {}
         }
 
-        // Fallback: domain driver not active — stub (#753 E3, client_context removed).
-        tracing::warn!(%client_id, "dispatch_key_for_client: no domain driver active, key dropped");
-        None
+        Some((true, cs))
     }
 
     /// Dispatch an opaque InputEvent for a client (domain-neutral path).
@@ -699,8 +680,9 @@ impl Session {
     ///
     /// Returns `None` if the register has not been set. Session registers
     /// are shared across all clients in this session.
+    /// Content is stored as opaque bytes — the domain driver interprets the format.
     #[must_use]
-    pub fn get_session_register(&self, key: char) -> Option<RegisterContent> {
+    pub fn get_session_register(&self, key: char) -> Option<Vec<u8>> {
         let state = self.state.read();
         state.session_registers.get(&key).cloned()
     }
@@ -708,7 +690,8 @@ impl Session {
     /// Set a session-shared register.
     ///
     /// The content is immediately visible to all clients in this session.
-    pub fn set_session_register(&self, key: char, content: RegisterContent) {
+    /// Content is stored as opaque bytes — the domain driver interprets the format.
+    pub fn set_session_register(&self, key: char, content: Vec<u8>) {
         let mut state = self.state.write();
         state.session_registers.insert(key, content);
     }
@@ -718,7 +701,7 @@ impl Session {
     /// clipboard_history is now domain-owned (#753 E3).
     /// Returns `None` — use domain driver projections instead.
     #[must_use]
-    pub fn get_peer_history(&self, _client_id: ClientId, _index: u8) -> Option<RegisterContent> {
+    pub fn get_peer_history(&self, _client_id: ClientId, _index: u8) -> Option<Vec<u8>> {
         None
     }
 }

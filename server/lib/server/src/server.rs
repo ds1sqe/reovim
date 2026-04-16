@@ -84,10 +84,10 @@ pub struct Server<M = DefaultModuleService> {
     /// `SessionFactory` contract for future session creation paths.
     initial_session_state: Option<Mutex<Option<SessionState>>>,
 
-    /// Optional domain driver for domain-neutral dispatch (#753 E1).
+    /// Optional domain driver for domain-neutral dispatch (#753).
     ///
     /// When set, the default session is wired with this driver on startup.
-    /// Dispatch stays on the fallback path until `enable_driver_dispatch` is called.
+    /// Dispatch routes through the domain driver when wired.
     domain_driver: Option<Arc<dyn reovim_subsys_session::DomainDriver>>,
 
     /// Extension bridge registry for gRPC notification emission (#468).
@@ -242,11 +242,10 @@ impl<M: Send + Sync> Server<M> {
         self
     }
 
-    /// Inject a domain driver for domain-neutral dispatch (#753 E1).
+    /// Inject a domain driver for domain-neutral dispatch (#753).
     ///
     /// The driver is wired into the default session at startup.
-    /// Dispatch stays on the fallback path until `Session::enable_driver_dispatch`
-    /// is called explicitly.
+    /// Dispatch routes through the domain driver automatically.
     #[must_use]
     pub fn with_domain_driver(
         mut self,
@@ -291,8 +290,7 @@ impl<M: Send + Sync> Server<M> {
             session_state,
         ));
 
-        // Wire domain driver into the default session (#753 E1).
-        // Dispatch remains on the fallback path until enable_driver_dispatch() is called.
+        // Wire domain driver into the default session (#753).
         if let Some(ref driver) = self.domain_driver {
             default_session.set_domain_driver(Arc::clone(driver));
         }
@@ -591,8 +589,7 @@ impl<M: Send + Sync> Server<M> {
             session_state,
         ));
 
-        // Wire domain driver into the default session (#753 E1).
-        // Dispatch remains on the fallback path until enable_driver_dispatch() is called.
+        // Wire domain driver into the default session (#753).
         if let Some(ref driver) = self.domain_driver {
             default_session.set_domain_driver(Arc::clone(driver));
         }

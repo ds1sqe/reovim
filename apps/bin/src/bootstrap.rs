@@ -98,10 +98,10 @@ pub struct BootstrapResult {
     pub module_ctx: Arc<ModuleContext>,
     /// Extension bridges collected during the same bootstrap pass.
     pub bridges: reovim_driver_text_session::bridges::BridgeRegistry,
-    /// Domain driver for the default session (#753 E1).
+    /// Domain driver for the default session (#753).
     ///
     /// Wired into the server's default session at startup.
-    /// Dispatch stays on the fallback path — `enable_driver_dispatch` is not called.
+    /// Dispatch routes through the domain driver when wired.
     pub domain_driver: Option<Arc<dyn reovim_subsys_session::DomainDriver>>,
 }
 
@@ -349,10 +349,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     trigger_empty_session_handlers(&mut session_state, &services);
     session_state.ensure_initial_compositor_window();
 
-    // Build TextDomainDriver for domain-neutral dispatch (#753 E1).
-    //
-    // Dispatch stays on the fallback path — `enable_driver_dispatch` is not called here.
-    // The driver is wired so the server can use it for state queries and projections.
+    // Build TextDomainDriver for domain-neutral dispatch (#753).
     let domain_driver = build_text_domain_driver(&session_state, &services);
 
     BootstrapResult {
@@ -504,8 +501,7 @@ fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Opti
 /// dispatch provider so it can handle key dispatch when activated.
 ///
 /// The driver is returned as `Some(Arc<dyn DomainDriver>)`. The server wires
-/// it into the default session but does NOT call `enable_driver_dispatch` —
-/// dispatch stays on the fallback path during E1.
+/// it into the default session for dispatch and state queries.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn build_text_domain_driver(
     session_state: &SessionState,

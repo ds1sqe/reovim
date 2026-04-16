@@ -22,7 +22,7 @@ use {
     reovim_driver_text_buffer::{Buffer, BufferOps},
     reovim_driver_text_input::{PendingBindings, ResolverRegistry},
     reovim_driver_text_session::{
-        RegisterContent, Session as DriverSession,
+        Session as DriverSession,
         api::{CommandExecutor as _, ModeApi as _},
     },
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId},
@@ -122,9 +122,8 @@ pub struct SessionState {
     /// Session-scoped shared registers (A-Z) (#515 Phase 5).
     ///
     /// All clients in the session read/write from this shared storage.
-    /// Accessed via `Register::Session('A')` through `Register::Session('Z')`.
-    /// Provides cross-client register sharing within a single session.
-    pub session_registers: HashMap<char, RegisterContent>,
+    /// Content is stored as opaque bytes — the domain driver interprets the format.
+    pub session_registers: HashMap<char, Vec<u8>>,
 
     /// Text buffer edits from the last dispatch batch (for syntax until Phase 5).
     ///

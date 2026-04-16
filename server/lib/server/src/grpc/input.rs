@@ -148,8 +148,10 @@ impl InputService for InputServiceImpl {
         // Generic detection replaces hardcoded cmdline check.
         let bridge_states_before = Self::snapshot_bridge_states(&session, client_id, &self.bridges);
 
-        // #521: Track mode before key processing for bridge lifecycle hooks.
+        // #521/#753 E5: Track mode and compositor generation before key processing
+        // for bridge lifecycle hooks and poll-based change detection.
         let mode_before_keys = session.client_current_mode(client_id);
+        let compositor_gen_before = session.client_compositor_generation(client_id);
 
         // Process each key through the resolver system
         let mut any_handled = false;
@@ -208,6 +210,15 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
+        // #753 E5: Poll-based change detection — compare compositor generation
+        // and mode with pre-dispatch values to set ChangeSet flags accurately.
+        // The domain driver handles state internally; the server detects changes
+        // by comparing before/after snapshots.
+        let compositor_gen_after = session.client_compositor_generation(client_id);
+        if compositor_gen_after != compositor_gen_before {
+            accumulated_changes.layout_changed = true;
+        }
+
         // #664/#753: CursorSnapshot is now an opaque [u8; 8] identity token.
         // Viewport scroll and selection tracking are domain-owned (#753 E3).
         // Bridges read cursor/selection state via projections instead.
@@ -223,11 +234,12 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_presence_change(client_id.as_usize());
         }
 
-        // #521: Notify bridges of mode changes so they can self-dismiss.
+        // #521/#753 E5: Detect mode changes for bridge hooks and ChangeSet flags.
         let mode_after_keys = session.client_current_mode(client_id);
         if let (Some(before), Some(after)) = (&mode_before_keys, &mode_after_keys)
             && before != after
         {
+            accumulated_changes.mode_changed = true;
             let from = before.to_string();
             let to = after.to_string();
             Self::notify_bridges_mode_changed(&session, client_id, &self.bridges, &from, &to);
