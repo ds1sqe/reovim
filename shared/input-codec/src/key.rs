@@ -9,10 +9,8 @@
 //! Flags field: PRESS, RELEASE, REPEAT from InputFlags
 
 use {
-    reovim_arch::KeyCode as ArchKeyCode,
-    reovim_subsys_input::{
-        InputFlags, KeyCode, KeyEvent, KeyEventKind, Modifiers, input_event::INPUT_HEADER_SIZE,
-    },
+    crate::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
+    reovim_subsys_input::{INPUT_HEADER_SIZE, InputFlags},
 };
 
 /// Well-known kind for keyboard input.
@@ -197,63 +195,5 @@ fn u32_to_keycode(value: u32) -> KeyCode {
             KeyCode::Char(c)
         }
         _ => KeyCode::Null,
-    }
-}
-
-/// Convert an arch-level `KeyCode` to the subsys-input `KeyCode`.
-pub fn arch_keycode_to_subsys(code: &ArchKeyCode) -> KeyCode {
-    match code {
-        ArchKeyCode::Backspace => KeyCode::Backspace,
-        ArchKeyCode::Enter => KeyCode::Enter,
-        ArchKeyCode::Left => KeyCode::Left,
-        ArchKeyCode::Right => KeyCode::Right,
-        ArchKeyCode::Up => KeyCode::Up,
-        ArchKeyCode::Down => KeyCode::Down,
-        ArchKeyCode::Home => KeyCode::Home,
-        ArchKeyCode::End => KeyCode::End,
-        ArchKeyCode::PageUp => KeyCode::PageUp,
-        ArchKeyCode::PageDown => KeyCode::PageDown,
-        ArchKeyCode::Tab => KeyCode::Tab,
-        ArchKeyCode::BackTab => KeyCode::BackTab,
-        ArchKeyCode::Delete => KeyCode::Delete,
-        ArchKeyCode::Insert => KeyCode::Insert,
-        ArchKeyCode::Escape => KeyCode::Escape,
-        ArchKeyCode::Char(c) => KeyCode::Char(*c),
-        ArchKeyCode::F(n) => KeyCode::F(*n),
-        ArchKeyCode::Null => KeyCode::Null,
-        ArchKeyCode::CapsLock => KeyCode::CapsLock,
-        ArchKeyCode::ScrollLock => KeyCode::ScrollLock,
-        ArchKeyCode::NumLock => KeyCode::NumLock,
-        ArchKeyCode::PrintScreen => KeyCode::PrintScreen,
-        ArchKeyCode::Pause => KeyCode::Pause,
-        ArchKeyCode::Menu => KeyCode::Menu,
-        ArchKeyCode::KeypadBegin => KeyCode::KeypadBegin,
-        ArchKeyCode::MediaPlay => KeyCode::MediaPlay,
-        ArchKeyCode::MediaPause => KeyCode::MediaPause,
-        ArchKeyCode::MediaPlayPause => KeyCode::MediaPlayPause,
-        ArchKeyCode::MediaStop => KeyCode::MediaStop,
-        ArchKeyCode::MediaReverse => KeyCode::MediaReverse,
-        ArchKeyCode::MediaFastForward => KeyCode::MediaFastForward,
-        ArchKeyCode::MediaRewind => KeyCode::MediaRewind,
-        ArchKeyCode::MediaNext => KeyCode::MediaNext,
-        ArchKeyCode::MediaPrevious => KeyCode::MediaPrevious,
-        ArchKeyCode::MediaRecord => KeyCode::MediaRecord,
-        ArchKeyCode::MediaLowerVolume => KeyCode::MediaLowerVolume,
-        ArchKeyCode::MediaRaiseVolume => KeyCode::MediaRaiseVolume,
-        ArchKeyCode::MediaMuteVolume => KeyCode::MediaMuteVolume,
-        ArchKeyCode::LeftShift => KeyCode::LeftShift,
-        ArchKeyCode::RightShift => KeyCode::RightShift,
-        ArchKeyCode::LeftCtrl => KeyCode::LeftCtrl,
-        ArchKeyCode::RightCtrl => KeyCode::RightCtrl,
-        ArchKeyCode::LeftAlt => KeyCode::LeftAlt,
-        ArchKeyCode::RightAlt => KeyCode::RightAlt,
-        ArchKeyCode::LeftSuper => KeyCode::LeftSuper,
-        ArchKeyCode::RightSuper => KeyCode::RightSuper,
-        ArchKeyCode::LeftHyper => KeyCode::LeftHyper,
-        ArchKeyCode::RightHyper => KeyCode::RightHyper,
-        ArchKeyCode::LeftMeta => KeyCode::LeftMeta,
-        ArchKeyCode::RightMeta => KeyCode::RightMeta,
-        ArchKeyCode::IsoLevel3Shift => KeyCode::IsoLevel3Shift,
-        ArchKeyCode::IsoLevel5Shift => KeyCode::IsoLevel5Shift,
     }
 }

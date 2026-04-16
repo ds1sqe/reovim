@@ -372,7 +372,13 @@ impl DomainDriver for TextDomainDriver {
         match kind {
             reovim_input_codec::key::KIND_KEY => {
                 if let Some(key) = reovim_input_codec::key::decode(payload) {
-                    self.dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext)
+                    let legacy_key: KeyEvent = key.into();
+                    self.dispatch_key_with_extensions(
+                        client_id,
+                        &legacy_key,
+                        client_ext,
+                        shared_ext,
+                    )
                 } else {
                     DispatchResult::default()
                 }

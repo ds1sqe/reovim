@@ -1,10 +1,7 @@
-//! Temporary legacy keyboard input overlap.
+//! Canonical keyboard input vocabulary owned by `reovim-input-codec`.
 //!
-//! Mission #753 Plan 10 Phase 1 moves canonical typed keyboard ownership to
-//! `reovim-input-codec`. These definitions remain here only so legacy consumers
-//! continue compiling until later phases repoint or delete them.
-//!
-//! Linux equivalent: `include/uapi/linux/input-event-codes.h`
+//! Mission #753 Plan 10 Phase 1 keeps temporary overlap with the legacy typed
+//! definitions in `reovim-subsys-input`, but long-term ownership lives here.
 
 use bitflags::bitflags;
 
@@ -16,7 +13,7 @@ bitflags! {
     /// # Example
     ///
     /// ```
-    /// use reovim_subsys_input::Modifiers;
+    /// use reovim_input_codec::Modifiers;
     ///
     /// let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
     /// assert!(ctrl_shift.contains(Modifiers::CTRL));
@@ -263,7 +260,7 @@ impl KeyEvent {
 /// # Example
 ///
 /// ```
-/// use reovim_subsys_input::KeymapResult;
+/// use reovim_input_codec::KeymapResult;
 ///
 /// let result: KeymapResult<&str> = KeymapResult::Match("delete_line");
 /// assert!(result.is_match());

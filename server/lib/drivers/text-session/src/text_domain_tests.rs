@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use {
+    reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
-    reovim_subsys_input::{KeyCode, KeyEvent},
+    reovim_subsys_input::{INPUT_HEADER_SIZE, InputEvent, KeyCode, KeyEvent},
     reovim_subsys_session::{ClientId, CommandResult, Directive, DomainDriver},
 };
 
@@ -34,6 +35,33 @@ impl CommandExecutor for StubExecutor {
     }
 }
 
+struct RecordingDispatchProvider {
+    seen: Arc<Mutex<Vec<KeyEvent>>>,
+}
+
+impl RecordingDispatchProvider {
+    fn new(seen: Arc<Mutex<Vec<KeyEvent>>>) -> Self {
+        Self { seen }
+    }
+}
+
+impl crate::TextKeyDispatchProvider for RecordingDispatchProvider {
+    fn dispatch_key(
+        &self,
+        _runtime: &mut crate::SessionRuntime<'_>,
+        key: &KeyEvent,
+        _shared_ext: &mut reovim_subsys_session::ExtensionMap,
+        _client_ext: &mut reovim_subsys_session::ExtensionMap,
+        _executor: &dyn CommandExecutor,
+    ) -> (bool, crate::api::StateChanges) {
+        self.seen
+            .lock()
+            .expect("recording mutex poisoned")
+            .push(*key);
+        (true, crate::api::StateChanges::default())
+    }
+}
+
 fn make_driver() -> TextDomainDriver {
     let kernel = make_test_kernel();
     let text_buffers = kernel
@@ -47,6 +75,16 @@ fn make_driver_with_buffer(content: &str) -> (TextDomainDriver, BufferId) {
     let driver = make_driver();
     let buffer_id = driver.create_buffer(content.as_bytes());
     (driver, buffer_id)
+}
+
+fn make_driver_with_dispatch_recorder() -> (TextDomainDriver, Arc<Mutex<Vec<KeyEvent>>>) {
+    let mut driver = make_driver();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    driver.set_dispatch_provider(
+        Arc::new(RecordingDispatchProvider::new(Arc::clone(&seen))),
+        Arc::new(RwLock::new(reovim_subsys_session::ExtensionMap::new())),
+    );
+    (driver, seen)
 }
 
 // ============================================================================
@@ -265,6 +303,77 @@ fn test_dispatch_key_with_client() {
     // The infrastructure (lock → SessionRuntime → bridge) is exercised
     assert!(!result.buffers.has_changes());
     assert_eq!(result.directive, Directive::Continue);
+}
+
+#[test]
+fn dispatch_input_valid_key_decodes_and_forwards() {
+    let (driver, seen) = make_driver_with_dispatch_recorder();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    let payload = reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::full(
+        reovim_input_codec::KeyCode::Char('x'),
+        reovim_input_codec::Modifiers::CTRL | reovim_input_codec::Modifiers::SHIFT,
+        reovim_input_codec::KeyEventKind::Repeat,
+    ));
+    let event = InputEvent::new(payload, None, 0).expect("key payload should be valid");
+    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
+    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
+
+    let result = driver.dispatch_input(client, &event, &mut client_ext, &mut shared_ext);
+
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
+    assert_eq!(
+        *seen.lock().expect("recording mutex poisoned"),
+        vec![KeyEvent::full(
+            KeyCode::Char('x'),
+            reovim_subsys_input::Modifiers::CTRL | reovim_subsys_input::Modifiers::SHIFT,
+            reovim_subsys_input::KeyEventKind::Repeat,
+        )]
+    );
+}
+
+#[test]
+fn dispatch_input_malformed_key_payload_is_noop() {
+    let (driver, seen) = make_driver_with_dispatch_recorder();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    let mut payload = vec![0_u8; INPUT_HEADER_SIZE];
+    payload[..2].copy_from_slice(&reovim_input_codec::key::KIND_KEY.to_le_bytes());
+    let event = InputEvent::new(payload, None, 0).expect("header-sized payload should be valid");
+    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
+    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
+
+    let result = driver.dispatch_input(client, &event, &mut client_ext, &mut shared_ext);
+
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
+    assert!(seen.lock().expect("recording mutex poisoned").is_empty());
+}
+
+#[test]
+fn dispatch_input_unsupported_payload_is_noop() {
+    let (driver, seen) = make_driver_with_dispatch_recorder();
+    let client = ClientId::new(1);
+    driver.on_client_added(client);
+
+    let payload = reovim_input_codec::pointer::encode(&reovim_input_codec::pointer::PointerEvent {
+        x: 3,
+        y: 7,
+        button_mask: 1,
+        flags: reovim_subsys_input::InputFlags::PRESS,
+    });
+    let event = InputEvent::new(payload, None, 0).expect("pointer payload should be valid");
+    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
+    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
+
+    let result = driver.dispatch_input(client, &event, &mut client_ext, &mut shared_ext);
+
+    assert!(!result.buffers.has_changes());
+    assert_eq!(result.directive, Directive::Continue);
+    assert!(seen.lock().expect("recording mutex poisoned").is_empty());
 }
 
 #[test]

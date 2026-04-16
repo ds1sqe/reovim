@@ -1,10 +1,9 @@
-//! Temporary legacy mouse input overlap.
+//! Canonical mouse input vocabulary owned by `reovim-input-codec`.
 //!
-//! Mission #753 Plan 10 Phase 1 moves canonical typed mouse ownership to
-//! `reovim-input-codec`. These definitions remain here only so legacy consumers
-//! continue compiling until later phases repoint or delete them.
+//! Mission #753 Plan 10 Phase 1 keeps temporary overlap with the legacy typed
+//! definitions in `reovim-subsys-input`, but long-term ownership lives here.
 
-use crate::key::Modifiers;
+use crate::Modifiers;
 
 /// Mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

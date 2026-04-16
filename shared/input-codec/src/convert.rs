@@ -1,17 +1,6 @@
-//! Temporary legacy arch↔typed-input conversions.
-//!
-//! Mission #753 Plan 10 Phase 1 moves canonical typed ownership and the primary
-//! arch conversion home to `reovim-input-codec`. These legacy conversions remain
-//! here only until the remaining consumers are repointed or removed.
+//! Conversions between arch types and input-codec typed input vocabulary.
 
-use crate::{
-    key::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
-    mouse::{MouseButton, MouseEvent, MouseEventKind},
-};
-
-// =============================================================================
-// Modifiers conversion
-// =============================================================================
+use crate::{KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 impl From<reovim_arch::Modifiers> for Modifiers {
     fn from(m: reovim_arch::Modifiers) -> Self {
@@ -63,66 +52,63 @@ impl From<Modifiers> for reovim_arch::Modifiers {
     }
 }
 
-// =============================================================================
-// KeyCode conversion
-// =============================================================================
-
 impl From<reovim_arch::KeyCode> for KeyCode {
     fn from(k: reovim_arch::KeyCode) -> Self {
-        use reovim_arch::KeyCode as AK;
+        use reovim_arch::KeyCode as ArchKeyCode;
+
         match k {
-            AK::Char(c) => Self::Char(c),
-            AK::F(n) => Self::F(n),
-            AK::Backspace => Self::Backspace,
-            AK::Enter => Self::Enter,
-            AK::Tab => Self::Tab,
-            AK::BackTab => Self::BackTab,
-            AK::Escape => Self::Escape,
-            AK::Up => Self::Up,
-            AK::Down => Self::Down,
-            AK::Left => Self::Left,
-            AK::Right => Self::Right,
-            AK::Home => Self::Home,
-            AK::End => Self::End,
-            AK::PageUp => Self::PageUp,
-            AK::PageDown => Self::PageDown,
-            AK::Insert => Self::Insert,
-            AK::Delete => Self::Delete,
-            AK::Null => Self::Null,
-            AK::CapsLock => Self::CapsLock,
-            AK::ScrollLock => Self::ScrollLock,
-            AK::NumLock => Self::NumLock,
-            AK::PrintScreen => Self::PrintScreen,
-            AK::Pause => Self::Pause,
-            AK::Menu => Self::Menu,
-            AK::KeypadBegin => Self::KeypadBegin,
-            AK::MediaPlay => Self::MediaPlay,
-            AK::MediaPause => Self::MediaPause,
-            AK::MediaPlayPause => Self::MediaPlayPause,
-            AK::MediaStop => Self::MediaStop,
-            AK::MediaReverse => Self::MediaReverse,
-            AK::MediaFastForward => Self::MediaFastForward,
-            AK::MediaRewind => Self::MediaRewind,
-            AK::MediaNext => Self::MediaNext,
-            AK::MediaPrevious => Self::MediaPrevious,
-            AK::MediaRecord => Self::MediaRecord,
-            AK::MediaLowerVolume => Self::MediaLowerVolume,
-            AK::MediaRaiseVolume => Self::MediaRaiseVolume,
-            AK::MediaMuteVolume => Self::MediaMuteVolume,
-            AK::LeftShift => Self::LeftShift,
-            AK::RightShift => Self::RightShift,
-            AK::LeftCtrl => Self::LeftCtrl,
-            AK::RightCtrl => Self::RightCtrl,
-            AK::LeftAlt => Self::LeftAlt,
-            AK::RightAlt => Self::RightAlt,
-            AK::LeftSuper => Self::LeftSuper,
-            AK::RightSuper => Self::RightSuper,
-            AK::LeftHyper => Self::LeftHyper,
-            AK::RightHyper => Self::RightHyper,
-            AK::LeftMeta => Self::LeftMeta,
-            AK::RightMeta => Self::RightMeta,
-            AK::IsoLevel3Shift => Self::IsoLevel3Shift,
-            AK::IsoLevel5Shift => Self::IsoLevel5Shift,
+            ArchKeyCode::Char(c) => Self::Char(c),
+            ArchKeyCode::F(n) => Self::F(n),
+            ArchKeyCode::Backspace => Self::Backspace,
+            ArchKeyCode::Enter => Self::Enter,
+            ArchKeyCode::Tab => Self::Tab,
+            ArchKeyCode::BackTab => Self::BackTab,
+            ArchKeyCode::Escape => Self::Escape,
+            ArchKeyCode::Up => Self::Up,
+            ArchKeyCode::Down => Self::Down,
+            ArchKeyCode::Left => Self::Left,
+            ArchKeyCode::Right => Self::Right,
+            ArchKeyCode::Home => Self::Home,
+            ArchKeyCode::End => Self::End,
+            ArchKeyCode::PageUp => Self::PageUp,
+            ArchKeyCode::PageDown => Self::PageDown,
+            ArchKeyCode::Insert => Self::Insert,
+            ArchKeyCode::Delete => Self::Delete,
+            ArchKeyCode::Null => Self::Null,
+            ArchKeyCode::CapsLock => Self::CapsLock,
+            ArchKeyCode::ScrollLock => Self::ScrollLock,
+            ArchKeyCode::NumLock => Self::NumLock,
+            ArchKeyCode::PrintScreen => Self::PrintScreen,
+            ArchKeyCode::Pause => Self::Pause,
+            ArchKeyCode::Menu => Self::Menu,
+            ArchKeyCode::KeypadBegin => Self::KeypadBegin,
+            ArchKeyCode::MediaPlay => Self::MediaPlay,
+            ArchKeyCode::MediaPause => Self::MediaPause,
+            ArchKeyCode::MediaPlayPause => Self::MediaPlayPause,
+            ArchKeyCode::MediaStop => Self::MediaStop,
+            ArchKeyCode::MediaReverse => Self::MediaReverse,
+            ArchKeyCode::MediaFastForward => Self::MediaFastForward,
+            ArchKeyCode::MediaRewind => Self::MediaRewind,
+            ArchKeyCode::MediaNext => Self::MediaNext,
+            ArchKeyCode::MediaPrevious => Self::MediaPrevious,
+            ArchKeyCode::MediaRecord => Self::MediaRecord,
+            ArchKeyCode::MediaLowerVolume => Self::MediaLowerVolume,
+            ArchKeyCode::MediaRaiseVolume => Self::MediaRaiseVolume,
+            ArchKeyCode::MediaMuteVolume => Self::MediaMuteVolume,
+            ArchKeyCode::LeftShift => Self::LeftShift,
+            ArchKeyCode::RightShift => Self::RightShift,
+            ArchKeyCode::LeftCtrl => Self::LeftCtrl,
+            ArchKeyCode::RightCtrl => Self::RightCtrl,
+            ArchKeyCode::LeftAlt => Self::LeftAlt,
+            ArchKeyCode::RightAlt => Self::RightAlt,
+            ArchKeyCode::LeftSuper => Self::LeftSuper,
+            ArchKeyCode::RightSuper => Self::RightSuper,
+            ArchKeyCode::LeftHyper => Self::LeftHyper,
+            ArchKeyCode::RightHyper => Self::RightHyper,
+            ArchKeyCode::LeftMeta => Self::LeftMeta,
+            ArchKeyCode::RightMeta => Self::RightMeta,
+            ArchKeyCode::IsoLevel3Shift => Self::IsoLevel3Shift,
+            ArchKeyCode::IsoLevel5Shift => Self::IsoLevel5Shift,
         }
     }
 }
@@ -186,10 +172,6 @@ impl From<KeyCode> for reovim_arch::KeyCode {
     }
 }
 
-// =============================================================================
-// KeyEventKind conversion
-// =============================================================================
-
 impl From<reovim_arch::KeyEventKind> for KeyEventKind {
     fn from(k: reovim_arch::KeyEventKind) -> Self {
         match k {
@@ -209,10 +191,6 @@ impl From<KeyEventKind> for reovim_arch::KeyEventKind {
         }
     }
 }
-
-// =============================================================================
-// KeyEvent conversion
-// =============================================================================
 
 impl From<reovim_arch::KeyEvent> for KeyEvent {
     fn from(e: reovim_arch::KeyEvent) -> Self {
@@ -235,10 +213,6 @@ impl From<KeyEvent> for reovim_arch::KeyEvent {
     }
 }
 
-// =============================================================================
-// MouseButton conversion
-// =============================================================================
-
 impl From<reovim_arch::MouseButton> for MouseButton {
     fn from(b: reovim_arch::MouseButton) -> Self {
         match b {
@@ -259,22 +233,19 @@ impl From<MouseButton> for reovim_arch::MouseButton {
     }
 }
 
-// =============================================================================
-// MouseEventKind conversion
-// =============================================================================
-
 impl From<reovim_arch::MouseEventKind> for MouseEventKind {
     fn from(k: reovim_arch::MouseEventKind) -> Self {
-        use reovim_arch::MouseEventKind as AMK;
+        use reovim_arch::MouseEventKind as ArchMouseEventKind;
+
         match k {
-            AMK::Down(b) => Self::Down(b.into()),
-            AMK::Up(b) => Self::Up(b.into()),
-            AMK::Drag(b) => Self::Drag(b.into()),
-            AMK::Moved => Self::Moved,
-            AMK::ScrollUp => Self::ScrollUp,
-            AMK::ScrollDown => Self::ScrollDown,
-            AMK::ScrollLeft => Self::ScrollLeft,
-            AMK::ScrollRight => Self::ScrollRight,
+            ArchMouseEventKind::Down(b) => Self::Down(b.into()),
+            ArchMouseEventKind::Up(b) => Self::Up(b.into()),
+            ArchMouseEventKind::Drag(b) => Self::Drag(b.into()),
+            ArchMouseEventKind::Moved => Self::Moved,
+            ArchMouseEventKind::ScrollUp => Self::ScrollUp,
+            ArchMouseEventKind::ScrollDown => Self::ScrollDown,
+            ArchMouseEventKind::ScrollLeft => Self::ScrollLeft,
+            ArchMouseEventKind::ScrollRight => Self::ScrollRight,
         }
     }
 }
@@ -293,10 +264,6 @@ impl From<MouseEventKind> for reovim_arch::MouseEventKind {
         }
     }
 }
-
-// =============================================================================
-// MouseEvent conversion
-// =============================================================================
 
 impl From<reovim_arch::MouseEvent> for MouseEvent {
     fn from(e: reovim_arch::MouseEvent) -> Self {

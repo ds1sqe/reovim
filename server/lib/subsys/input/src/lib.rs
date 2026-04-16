@@ -1,27 +1,31 @@
 #![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-//! Input subsystem contracts for reovim — canonical input types and traits.
+//! Input subsystem contracts for reovim.
 //!
 //! Linux equivalent: `drivers/input/` + `include/linux/input.h`
 //!
 //! # Architecture
 //!
-//! This crate defines the **canonical input vocabulary** for all platforms.
-//! Platform-specific code converts native events to these types.
+//! Long-term, this crate owns only the opaque `InputEvent` envelope and frozen
+//! header helpers. Mission #753 Plan 10 Phase 1 keeps the older typed key/mouse
+//! and mode infrastructure definitions here temporarily for legacy consumers,
+//! but they are compatibility overlap only — not canonical ownership.
 //!
 //! ```text
-//! server/lib/subsys/input/  <-- Canonical types (this crate)
+//! server/lib/subsys/input/   <-- Opaque InputEvent envelope + temporary legacy overlap
+//! shared/input-codec/        <-- Canonical typed key/mouse vocab + arch conversions
 //!        ^
-//!        |  (platform code converts to canonical types)
+//!        |  (platform code converts to canonical typed input here)
 //!        |
-//! shared/arch/unix/          <-- crossterm → canonical
-//! shared/arch/wasm/          <-- JS events → canonical [future]
-//! shared/arch/android/       <-- Android events → canonical [future]
+//! shared/arch/unix/          <-- crossterm → typed input-codec types
+//! shared/arch/wasm/          <-- JS events → typed input-codec types [future]
+//! shared/arch/android/       <-- Android events → typed input-codec types [future]
 //! ```
 //!
 //! # Components
 //!
-//! - **Types**: [`KeyCode`], [`KeyEvent`], [`Modifiers`], [`MouseEvent`]
+//! - **Envelope**: [`InputEvent`], [`InputFlags`], header accessors
+//! - **Temporary legacy overlap**: typed key/mouse + mode infrastructure
 //! - **Traits**: [`ClipboardProvider`], [`ModeLifecycleHandler`]
 //! - **Conversions**: `From` impls between arch types and driver types
 
@@ -55,10 +59,10 @@ pub use input_event::{
 // Re-export error types
 pub use error::{ClipboardError, InputError};
 
-// Re-export key types
+// Temporary legacy overlap re-exports (Phase 1 compatibility only)
 pub use key::{KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers};
 
-// Re-export mouse types
+// Temporary legacy overlap re-exports (Phase 1 compatibility only)
 pub use mouse::{MouseButton, MouseEvent, MouseEventKind};
 
 // Re-export traits
