@@ -258,7 +258,7 @@ impl WindowPlacement {
 /// Anchor point for positioning overlays.
 ///
 /// Overlays can be anchored to various reference points.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anchor {
     /// Relative to the cursor in a window.
     ///
