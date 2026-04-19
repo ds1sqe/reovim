@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **depgraph**: Plan 12 Phase 8 adds `layout_no_client` to keep `reovim-subsys-layout` free of direct `reovim-client-model`, `reovim-driver-*`, and `reovim-module-*` manifest dependencies
 - **subsys/layout**: Plan 12 Phase 6 removes the `NavigateDirection` alias workspace-wide, switching layout, session, driver, module, and display-facing APIs to the canonical `Direction` type, including `WindowError::NoNeighbor(Direction)` and mirrored compositor errors
 - **subsys/layout**: Plan 12 Phase 5 adds raw `set_surface(kind, body)` to `RootCompositor`, keeping surface payloads out of the subsys-layout type boundary while updating only direct compositor implementations and test mocks
 - **subsys/layout**: Plan 12 Phase 4 reshapes topology reporting from a single recursive `LayoutTopology` enum into `TiledTree` + `LayerTree` + a struct `LayoutTopology`, adds `RootCompositor::tiled_tree(layer)`, and removes the old sentinel-window topology fallback from the layout module
