@@ -32,7 +32,9 @@
 mod compositor;
 mod compositor_key;
 mod compositor_registry;
+mod direction;
 mod floating;
+mod geometry;
 mod layer;
 mod overlay;
 mod tiled;
@@ -62,8 +64,11 @@ pub use {compositor_key::CompositorKey, compositor_registry::CompositorRegistry}
 // Layout topology types
 pub use topology::{LayoutTopology, Permil, SplitError};
 
-// Re-export geometry and direction types from common client model
-pub use reovim_client_model::{Direction, Rect, Size, SplitDirection};
+// Geometry and direction types
+pub use {
+    direction::{Direction, SplitDirection},
+    geometry::{Rect, Size},
+};
 
 // Re-export kernel ID types
 pub use reovim_kernel::api::v1::WindowId;

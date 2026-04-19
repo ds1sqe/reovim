@@ -3947,7 +3947,6 @@ dependencies = [
 name = "reovim-subsys-layout"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-client-model",
  "reovim-kernel",
 ]
 

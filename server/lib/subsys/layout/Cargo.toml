@@ -15,6 +15,3 @@ workspace = true
 [dependencies]
 # Kernel layer (WindowId, BufferId, ServiceKey, MultiServiceRegistry)
 reovim-kernel = { workspace = true }
-
-# Common client model (Rect, Size, Direction, SplitDirection)
-reovim-client-model = { workspace = true }

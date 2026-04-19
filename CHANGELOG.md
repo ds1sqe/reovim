@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **subsys/layout**: Plan 12 Phase 1 inlines `Rect`, `Size`, `Direction`, and `SplitDirection` into `reovim-subsys-layout`, removing its `reovim-client-model` dependency while preserving the crate-level re-export API for downstream users
 - **subsys/session**: Plan 11 Phase 7 extracts `SurfaceDescriptor` and its kind constants from `types.rs` into a dedicated `surface.rs` module, keeping the crate-level re-export stable and leaving the final subsys-session type audit clean
 - **server/session**: Plan 11 Phase 6B moves `ChangeSet` ownership out of `reovim-subsys-session` and into `reovim-server`. Server-side gRPC notification/input paths now import `ChangeSet` from `server::session`, while the subsys-session change_set module and tests are removed
 - **drivers/text-session**: Plan 11 Phase 6A removes production `ChangeSet` usage from `reovim-driver-text-session`. The transitional bridge now converts `StateChanges` directly into `DispatchResult` / `CommandResult`, eliminating driver dependence on `reovim_subsys_session::change_set::ChangeSet` ahead of the later server ownership move
