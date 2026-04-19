@@ -21,13 +21,15 @@ use {
     },
     reovim_subsys_input::InputEvent,
     reovim_subsys_input_contracts::KeySequence,
-    reovim_subsys_session::{CursorSnapshot, bridges::BridgeRegistry, change_set::ChangeSet},
+    reovim_subsys_session::{CursorSnapshot, bridges::BridgeRegistry},
     tonic::{Request, Response, Status},
 };
 
 use crate::{
     grpc::{auth::require_client_id, notification_builder},
-    session::{ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry},
+    session::{
+        ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry, change_set::ChangeSet,
+    },
 };
 
 /// gRPC `InputService` implementation.

@@ -24,10 +24,6 @@
 pub mod api;
 pub mod bridges;
 mod buffer_content;
-/// Internal change-set type. Not part of the public driver API.
-/// Drivers that are mid-migration may access this via `change_set::ChangeSet`.
-#[doc(hidden)]
-pub mod change_set;
 pub mod dispatch_result;
 #[cfg(test)]
 mod dispatch_result_tests;
@@ -99,8 +95,6 @@ pub use bridges::{
 
 #[cfg(test)]
 mod buffer_content_tests;
-#[cfg(test)]
-mod change_set_tests;
 #[cfg(test)]
 mod domain_driver_tests;
 #[cfg(test)]

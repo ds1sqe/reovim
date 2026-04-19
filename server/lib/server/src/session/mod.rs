@@ -14,6 +14,9 @@
 //! See the [`Client`] struct for details.
 
 pub(crate) mod capture;
+pub(crate) mod change_set;
+#[cfg(test)]
+mod change_set_tests;
 mod client;
 mod client_directory;
 pub mod crash_dump;

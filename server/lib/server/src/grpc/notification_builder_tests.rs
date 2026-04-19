@@ -1,4 +1,7 @@
-use {super::*, crate::session::SessionId, reovim_subsys_session::change_set::ChangeSet};
+use {
+    super::*,
+    crate::session::{SessionId, change_set::ChangeSet},
+};
 
 #[test]
 fn test_current_timestamp_ms() {

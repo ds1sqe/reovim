@@ -1,6 +1,9 @@
-use reovim_kernel::api::v1::{BufferId, OptionValue, WindowId};
+use {
+    reovim_kernel::api::v1::{BufferId, OptionValue, WindowId},
+    reovim_subsys_session::OptionChange,
+};
 
-use super::{change_set::ChangeSet, option_change::OptionChange};
+use super::change_set::ChangeSet;
 
 #[test]
 fn empty_changeset_has_no_changes() {
@@ -237,7 +240,6 @@ fn merge_with_duplicate_ids() {
     b.record_buffer_modified(buf);
 
     a.merge(b);
-    // No deduplication — documented behavior
     assert_eq!(a.modified_buffers, vec![buf, buf]);
 }
 

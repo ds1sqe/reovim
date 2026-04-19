@@ -36,10 +36,10 @@ use {
         LayoutChangedPayload, Notification, ProjectionUpdatedPayload, TabPageInfo, WindowInfo,
         WindowRect, notification,
     },
-    reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
+    reovim_subsys_session::bridges::BridgeRegistry,
 };
 
-use crate::session::{ClientId, Session};
+use crate::session::{ClientId, Session, change_set::ChangeSet};
 
 /// Get current timestamp in milliseconds since Unix epoch.
 #[allow(clippy::cast_possible_truncation)]
@@ -66,7 +66,7 @@ pub(crate) fn current_timestamp_ms() -> u64 {
 ///
 /// A vector of notifications to emit. May be empty if no relevant changes.
 #[must_use]
-pub fn build_notifications(
+pub(crate) fn build_notifications(
     changes: &ChangeSet,
     session: &Session,
     client_id: u64,
