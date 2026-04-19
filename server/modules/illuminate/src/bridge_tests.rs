@@ -2,7 +2,7 @@ use {
     super::*,
     crate::state::{HighlightRange, IlluminateState},
     reovim_driver_text_session::{
-        BufferReadAccess, CursorSnapshot, ExtensionMap, bridges::ExtensionStateBridge,
+        BufferReadAccess, ExtensionMap, TextCursorShadow, bridges::ExtensionStateBridge,
     },
     reovim_kernel::api::v1::{BufferId, RwLock, ServiceRegistry},
     reovim_provider_text::Buffer,
@@ -14,6 +14,11 @@ fn make_extensions_with_state(state_fn: impl FnOnce(&mut IlluminateState)) -> Ex
     let state = ext.get_or_insert::<IlluminateState>();
     state_fn(state);
     ext
+}
+
+fn set_cursor_shadow(ext: &mut ExtensionMap, buffer_id: BufferId, line: u32, col: u32) {
+    let shadow = ext.get_or_insert::<TextCursorShadow>();
+    shadow.update(buffer_id, line as usize, col as usize);
 }
 
 // ========================================================================
@@ -223,6 +228,8 @@ fn test_tick_increments_idle() {
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
 
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 0, 0);
+
     // First tick — idle_ticks becomes 1
     let changed = IlluminateBridge.tick(&mut ext, &mut shared, &services);
     assert!(!changed);
@@ -236,6 +243,8 @@ fn test_tick_marks_computed_after_hold() {
     let mut ext = ExtensionMap::new();
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
+
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 0, 0);
 
     // Tick 3 times to reach HOLD_TICKS
     for _ in 0..3 {
@@ -267,6 +276,8 @@ fn test_tick_below_threshold_returns_false() {
     let mut ext = ExtensionMap::new();
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
+
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 0, 0);
 
     let changed = IlluminateBridge.tick(&mut ext, &mut shared, &services);
     assert!(!changed);
@@ -307,7 +318,7 @@ fn test_from_lsp_kind_write() {
 }
 
 // ========================================================================
-// tick with CursorSnapshot (#664)
+// tick with TextCursorShadow (#664)
 // ========================================================================
 
 #[test]
@@ -317,10 +328,7 @@ fn test_tick_reads_cursor_snapshot() {
     let services = ServiceRegistry::new();
 
     // Set cursor snapshot to a specific position
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 5;
-    snap.col = 10;
-    snap.buffer_id = 1;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(1), 5, 10);
 
     // First tick — cursor_moved detects new position, resets idle_ticks to 0, then tick adds 1
     IlluminateBridge.tick(&mut ext, &mut shared, &services);
@@ -338,9 +346,7 @@ fn test_tick_cursor_move_resets_idle() {
     let services = ServiceRegistry::new();
 
     // Set initial cursor position
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 5;
-    snap.col = 10;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 5, 10);
 
     // Tick twice to build up idle_ticks
     IlluminateBridge.tick(&mut ext, &mut shared, &services);
@@ -348,9 +354,7 @@ fn test_tick_cursor_move_resets_idle() {
     assert_eq!(ext.get::<IlluminateState>().unwrap().idle_ticks, 2);
 
     // Move cursor to new position
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 8;
-    snap.col = 3;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 8, 3);
 
     // Next tick should reset idle_ticks (cursor_moved detects change, then tick adds 1)
     IlluminateBridge.tick(&mut ext, &mut shared, &services);
@@ -369,9 +373,7 @@ fn test_tick_hold_then_move_resets() {
     let services = ServiceRegistry::new();
 
     // Set cursor position
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 1;
-    snap.col = 1;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 1, 1);
 
     // Reach HOLD_TICKS threshold
     for _ in 0..3 {
@@ -380,9 +382,7 @@ fn test_tick_hold_then_move_resets() {
     assert!(ext.get::<IlluminateState>().unwrap().computed);
 
     // Move cursor — should reset computed flag on next tick
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 2;
-    snap.col = 2;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 2, 2);
 
     // cursor_moved resets computed via shadow change
     IlluminateBridge.tick(&mut ext, &mut shared, &services);
@@ -427,10 +427,7 @@ fn test_tick_produces_word_highlights() {
     let (services, bid) = services_with_buffer("let foo = bar\nlet foo = baz");
 
     let mut ext = ExtensionMap::new();
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 0;
-    snap.col = 4; // on "foo"
-    snap.buffer_id = bid.as_usize() as u64;
+    set_cursor_shadow(&mut ext, bid, 0, 4); // on "foo"
 
     let mut shared = ExtensionMap::new();
     let changed = tick_until_hold(&mut ext, &mut shared, &services);
@@ -471,10 +468,7 @@ fn test_tick_cursor_on_non_word_clears() {
         0,
     );
 
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 0;
-    snap.col = 5; // on space between "hello" and "world"
-    snap.buffer_id = bid.as_usize() as u64;
+    set_cursor_shadow(&mut ext, bid, 0, 5); // on space between "hello" and "world"
 
     let mut shared = ExtensionMap::new();
     let changed = tick_until_hold(&mut ext, &mut shared, &services);
@@ -490,10 +484,7 @@ fn test_tick_single_occurrence_no_highlight() {
     let (services, bid) = services_with_buffer("unique word here");
 
     let mut ext = ExtensionMap::new();
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 0;
-    snap.col = 0; // on "unique" (appears only once)
-    snap.buffer_id = bid.as_usize() as u64;
+    set_cursor_shadow(&mut ext, bid, 0, 0); // on "unique" (appears only once)
 
     let mut shared = ExtensionMap::new();
     let changed = tick_until_hold(&mut ext, &mut shared, &services);
@@ -508,10 +499,7 @@ fn test_tick_same_word_optimization() {
     let (services, bid) = services_with_buffer("foo bar foo");
 
     let mut ext = ExtensionMap::new();
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 0;
-    snap.col = 0; // on first "foo"
-    snap.buffer_id = bid.as_usize() as u64;
+    set_cursor_shadow(&mut ext, bid, 0, 0); // on first "foo"
 
     let mut shared = ExtensionMap::new();
     let changed = tick_until_hold(&mut ext, &mut shared, &services);
@@ -519,8 +507,7 @@ fn test_tick_same_word_optimization() {
     assert!(ext.get::<IlluminateState>().unwrap().active);
 
     // Move cursor to the other "foo" — same word, same buffer
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.col = 8; // second "foo"
+    set_cursor_shadow(&mut ext, bid, 0, 8); // second "foo"
 
     // Tick again — should detect same word and skip
     let changed2 = tick_until_hold(&mut ext, &mut shared, &services);
@@ -533,10 +520,7 @@ fn test_tick_no_buffer_access_degrades_gracefully() {
     let services = ServiceRegistry::new(); // no BufferReadAccess registered
 
     let mut ext = ExtensionMap::new();
-    let snap = ext.get_or_insert::<CursorSnapshot>();
-    snap.line = 0;
-    snap.col = 0;
-    snap.buffer_id = 0;
+    set_cursor_shadow(&mut ext, BufferId::from_raw(0), 0, 0);
 
     let mut shared = ExtensionMap::new();
     let changed = tick_until_hold(&mut ext, &mut shared, &services);

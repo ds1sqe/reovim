@@ -65,6 +65,7 @@ fn test_state_create_defaults() {
     assert_eq!(state.origin_col, 0);
     assert_eq!(state.shadow_line, u32::MAX);
     assert_eq!(state.shadow_col, u32::MAX);
+    assert_eq!(state.shadow_buffer_id, BufferId::from_raw(0));
     assert_eq!(state.idle_ticks, 0);
     assert!(!state.computed);
 }
@@ -145,8 +146,9 @@ fn test_cursor_moved_resets_idle() {
     state.idle_ticks = 5;
     state.computed = true;
 
-    state.cursor_moved(10, 3);
+    state.cursor_moved(BufferId::from_raw(7), 10, 3);
 
+    assert_eq!(state.shadow_buffer_id, BufferId::from_raw(7));
     assert_eq!(state.shadow_line, 10);
     assert_eq!(state.shadow_col, 3);
     assert_eq!(state.idle_ticks, 0);
@@ -154,14 +156,31 @@ fn test_cursor_moved_resets_idle() {
 }
 
 #[test]
-fn test_cursor_moved_same_position_no_reset() {
+fn test_cursor_moved_buffer_change_resets_idle() {
     let mut state = IlluminateState::create();
+    state.shadow_buffer_id = BufferId::from_raw(1);
     state.shadow_line = 10;
     state.shadow_col = 3;
     state.idle_ticks = 5;
     state.computed = true;
 
-    state.cursor_moved(10, 3);
+    state.cursor_moved(BufferId::from_raw(2), 10, 3);
+
+    assert_eq!(state.shadow_buffer_id, BufferId::from_raw(2));
+    assert_eq!(state.idle_ticks, 0);
+    assert!(!state.computed);
+}
+
+#[test]
+fn test_cursor_moved_same_position_no_reset() {
+    let mut state = IlluminateState::create();
+    state.shadow_buffer_id = BufferId::from_raw(1);
+    state.shadow_line = 10;
+    state.shadow_col = 3;
+    state.idle_ticks = 5;
+    state.computed = true;
+
+    state.cursor_moved(BufferId::from_raw(1), 10, 3);
 
     // Should not reset — same position
     assert_eq!(state.idle_ticks, 5);

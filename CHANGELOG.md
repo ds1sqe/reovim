@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **drivers/modules**: Phase 10.6 compile fallout now uses a driver-owned `TextCursorShadow` in `reovim-driver-text-session` for text-only bridge consumers. `reovim-module-illuminate` and `reovim-module-lsp-navigation` no longer read text fields from opaque `CursorSnapshot`, and illuminate hold tracking now resets on same-position buffer changes as well as line/column moves
 - **subsys/server**: `DomainDriver` now uses `dispatch_input` as its sole dispatch entry. The legacy `dispatch_key`, `dispatch_key_with_extensions`, and `decode_key_fallback` paths were removed, `Session::dispatch_key_for_client` was folded into `dispatch_input_for_client`, and gRPC input now reaches domain drivers only through opaque `InputEvent` dispatch
 - **server**: Plan 10 Phase 4 import normalization leaves `reovim-server` with only the envelope `InputEvent` sourced from `reovim-subsys-input`; key types stay on `reovim-input-codec` and shared mode/keybinding contracts stay on `reovim-subsys-input-contracts`
 - **subsys**: `reovim-subsys-input` is now envelope/header-only. Legacy typed key/mouse defs, clipboard/error compatibility, shared-contract forwards, and their tests were removed; remaining typed consumers now import `KeyEvent`/`KeyCode` from `reovim-input-codec`, while `DomainDriver` keeps its current method shapes for later Plan 11 cleanup

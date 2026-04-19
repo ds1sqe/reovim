@@ -62,6 +62,8 @@ pub struct IlluminateState {
     pub origin_col: u32,
     /// Sequence counter for change detection.
     pub sequence: u64,
+    /// Last known buffer for hold detection.
+    pub shadow_buffer_id: BufferId,
     /// Last known cursor position for hold detection (line).
     pub shadow_line: u32,
     /// Last known cursor position for hold detection (col).
@@ -82,6 +84,7 @@ impl SessionExtension for IlluminateState {
             origin_line: 0,
             origin_col: 0,
             sequence: 0,
+            shadow_buffer_id: BufferId::from_raw(0),
             shadow_line: u32::MAX,
             shadow_col: u32::MAX,
             idle_ticks: 0,
@@ -123,8 +126,10 @@ impl IlluminateState {
 
     /// Record a cursor movement, resetting idle tracking.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub const fn cursor_moved(&mut self, line: u32, col: u32) {
-        if self.shadow_line != line || self.shadow_col != col {
+    pub fn cursor_moved(&mut self, buffer_id: BufferId, line: u32, col: u32) {
+        if self.shadow_buffer_id != buffer_id || self.shadow_line != line || self.shadow_col != col
+        {
+            self.shadow_buffer_id = buffer_id;
             self.shadow_line = line;
             self.shadow_col = col;
             self.idle_ticks = 0;

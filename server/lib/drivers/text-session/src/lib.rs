@@ -107,6 +107,7 @@ pub mod testing;
 mod text_client_state;
 mod text_content;
 mod text_cursor;
+mod text_cursor_shadow;
 mod text_domain;
 pub mod tick;
 mod transition;
@@ -184,5 +185,7 @@ pub use text_cursor::{
     SelectionData, TEXT_CURSOR_INNER_ID, TEXT_POSITION_INNER_ID, TextCursor, TextCursorCodec,
     TextPosition, TextPositionCodec,
 };
+
+pub use text_cursor_shadow::TextCursorShadow;
 
 // Text buffer registry for session-layer text access (#740)

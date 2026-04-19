@@ -6,10 +6,10 @@
 use {
     reovim_domain_text::{CharKind, TextGeometry, WordType, char_kind, word_bounds},
     reovim_driver_text_session::{
-        BufferReadAccess, CursorSnapshot, ExtensionMap,
+        BufferReadAccess, ExtensionMap, TextCursorShadow,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_kernel::api::v1::{BufferId, ServiceRegistry},
+    reovim_kernel::api::v1::ServiceRegistry,
     serde_json::json,
 };
 
@@ -87,17 +87,22 @@ impl ExtensionStateBridge for IlluminateBridge {
         _shared_extensions: &mut ExtensionMap,
         services: &ServiceRegistry,
     ) -> bool {
-        // Read cursor position from snapshot (written by runner after each key event).
-        let (cursor_line, cursor_col, raw_buffer_id) = {
-            let snap = client_extensions.get_or_insert::<CursorSnapshot>();
-            (snap.line, snap.col, snap.buffer_id)
+        // Read text cursor shadow maintained by the text driver after dispatch.
+        let Some(cursor) = client_extensions
+            .get::<TextCursorShadow>()
+            .filter(|shadow| shadow.valid)
+        else {
+            return false;
         };
+        let cursor_line = cursor.line;
+        let cursor_col = cursor.col;
+        let buffer_id = cursor.buffer_id;
 
         let state = client_extensions.get_or_insert::<IlluminateState>();
 
         // Feed cursor position into shadow tracking.
         // This resets idle_ticks when the cursor moves to a new position.
-        state.cursor_moved(cursor_line, cursor_col);
+        state.cursor_moved(buffer_id, cursor_line, cursor_col);
 
         // If highlights are already computed for this position, nothing to do
         if state.computed {
@@ -117,8 +122,6 @@ impl ExtensionStateBridge for IlluminateBridge {
             return false;
         };
 
-        #[allow(clippy::cast_possible_truncation)]
-        let buffer_id = BufferId::from_raw(raw_buffer_id as usize);
         let Some(buffer_lock) = buffer_access.get(buffer_id) else {
             state.computed = true;
             return false;

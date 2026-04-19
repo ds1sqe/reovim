@@ -1,7 +1,16 @@
 use {
-    super::*, crate::hover_state::HoverSnapshot, reovim_driver_text_session::CursorSnapshot,
+    super::*, crate::hover_state::HoverSnapshot, reovim_driver_text_session::TextCursorShadow,
     std::sync::Arc,
 };
+
+fn set_cursor_shadow(map: &mut ExtensionMap, buffer_id: u64, line: u32, col: u32) {
+    let shadow = map.get_or_insert::<TextCursorShadow>();
+    shadow.update(
+        reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize),
+        line as usize,
+        col as usize,
+    );
+}
 
 #[test]
 fn bridge_kind() {
@@ -195,10 +204,7 @@ fn tick_with_data_populates_hover_state() {
     let services = ServiceRegistry::new();
 
     // Set cursor at the same position as the hover origin.
-    let snap = client.get_or_insert::<CursorSnapshot>();
-    snap.line = 10;
-    snap.col = 5;
-    snap.buffer_id = 42;
+    set_cursor_shadow(&mut client, 42, 10, 5);
 
     let cache = services.get_or_create::<HoverCache>();
     cache.shared().store(Arc::new(Some(HoverSnapshot {
@@ -232,10 +238,7 @@ fn tick_discards_stale_snapshot_when_cursor_moved() {
     let services = ServiceRegistry::new();
 
     // Cursor has moved away from hover origin.
-    let snap = client.get_or_insert::<CursorSnapshot>();
-    snap.line = 20;
-    snap.col = 0;
-    snap.buffer_id = 42;
+    set_cursor_shadow(&mut client, 42, 20, 0);
 
     let cache = services.get_or_create::<HoverCache>();
     cache.shared().store(Arc::new(Some(HoverSnapshot {
@@ -262,7 +265,7 @@ fn tick_delivers_when_no_cursor_snapshot() {
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
 
-    // No CursorSnapshot in extensions (first tick before any cursor move).
+    // No text cursor shadow in extensions (first tick before any cursor move).
     let cache = services.get_or_create::<HoverCache>();
     cache.shared().store(Arc::new(Some(HoverSnapshot {
         content: "hello".to_owned(),
@@ -309,10 +312,7 @@ fn regression_cache_consumed_by_tick_on_first_press() {
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
 
-    let snap = client.get_or_insert::<CursorSnapshot>();
-    snap.line = 10;
-    snap.col = 5;
-    snap.buffer_id = 42;
+    set_cursor_shadow(&mut client, 42, 10, 5);
 
     let cache = services.get_or_create::<HoverCache>();
 
@@ -351,10 +351,7 @@ fn regression_second_press_overwrites_stale_cache() {
     let mut shared = ExtensionMap::new();
     let services = ServiceRegistry::new();
 
-    let snap = client.get_or_insert::<CursorSnapshot>();
-    snap.line = 10;
-    snap.col = 5;
-    snap.buffer_id = 42;
+    set_cursor_shadow(&mut client, 42, 10, 5);
 
     let cache = services.get_or_create::<HoverCache>();
     let shared_cache = cache.shared();

@@ -5,7 +5,7 @@
 
 use {
     reovim_driver_text_session::{
-        CursorSnapshot, ExtensionMap,
+        ExtensionMap, TextCursorShadow,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::ServiceRegistry,
@@ -104,8 +104,12 @@ impl ExtensionStateBridge for HoverBridge {
         // Guard: suppress delivery if cursor has moved away from the
         // hover origin since the request was sent (#662). Without this,
         // a slow LSP response could show hover at a stale position.
-        if let Some(cursor) = client_extensions.get::<CursorSnapshot>()
-            && (cursor.line != snapshot.line || cursor.col != snapshot.col)
+        if let Some(cursor) = client_extensions
+            .get::<TextCursorShadow>()
+            .filter(|shadow| shadow.valid)
+            && (cursor.buffer_id.as_usize() as u64 != snapshot.buffer_id
+                || cursor.line != snapshot.line
+                || cursor.col != snapshot.col)
         {
             debug!("hover tick: cursor moved, discarding stale snapshot");
             return false;

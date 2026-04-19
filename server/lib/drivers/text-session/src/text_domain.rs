@@ -64,6 +64,7 @@ use crate::{
     tab::TabPageSet,
     text_content::TextContentProvider,
     text_cursor::TextCursor,
+    text_cursor_shadow::TextCursorShadow,
 };
 
 // ============================================================================
@@ -154,6 +155,19 @@ pub struct TextDomainDriver {
 }
 
 impl TextDomainDriver {
+    fn sync_text_cursor_shadow(client_state: &PerClientState, client_ext: &mut ExtensionMap) {
+        let shadow = client_ext.get_or_insert::<TextCursorShadow>();
+        let Some(window) = client_state.windows.active() else {
+            shadow.clear();
+            return;
+        };
+        let Some(buffer_id) = window.buffer_id else {
+            shadow.clear();
+            return;
+        };
+        shadow.update(buffer_id, window.cursor.line, window.cursor.column);
+    }
+
     /// Create a new text domain driver.
     ///
     /// # Arguments
@@ -253,6 +267,9 @@ impl TextDomainDriver {
             provider.dispatch_key(&mut runtime, key, shared_ext, client_ext, &*self.executor);
 
         drop(runtime);
+
+        Self::sync_text_cursor_shadow(client_state, client_ext);
+
         drop(session_guard);
         drop(clients_guard);
 
