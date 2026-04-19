@@ -57,8 +57,6 @@ pub use {
 
 // Types
 pub use types::{ClientId, CursorSnapshot, KeySequence, SurfaceDescriptor};
-// Viewport is domain-specific (text layout); kept crate-internal for window.rs.
-pub(crate) use types::Viewport;
 
 // Extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};

@@ -1,7 +1,7 @@
 //! Domain-neutral window managed by `SessionRuntime`.
 //!
-//! [`Window`] tracks which buffer is in which window, the viewport, and
-//! caches opaque cursor handles from the domain driver.
+//! [`Window`] tracks which buffer is in which window and caches opaque cursor
+//! handles from the domain driver.
 //!
 //! # Cursor Model
 //!
@@ -23,8 +23,6 @@ use {
     reovim_subsys_coordination::Cursor,
 };
 
-use super::Viewport;
-
 /// Domain-neutral window managed by the session mechanism.
 ///
 /// The server creates, arranges, and destroys windows. Each window references
@@ -34,7 +32,6 @@ use super::Viewport;
 pub struct Window {
     id: WindowId,
     buffer_id: BufferId,
-    viewport: Viewport,
     domain_id: u32,
     cursors: Vec<Box<dyn Cursor>>,
 }
@@ -45,14 +42,12 @@ impl Window {
     pub fn new(
         id: WindowId,
         buffer_id: BufferId,
-        viewport: Viewport,
         domain_id: u32,
         initial_cursor: Box<dyn Cursor>,
     ) -> Self {
         Self {
             id,
             buffer_id,
-            viewport,
             domain_id,
             cursors: vec![initial_cursor],
         }
@@ -68,17 +63,6 @@ impl Window {
     #[must_use]
     pub const fn buffer_id(&self) -> BufferId {
         self.buffer_id
-    }
-
-    /// Current viewport.
-    #[must_use]
-    pub const fn viewport(&self) -> &Viewport {
-        &self.viewport
-    }
-
-    /// Mutable viewport access (for scroll updates).
-    pub const fn viewport_mut(&mut self) -> &mut Viewport {
-        &mut self.viewport
     }
 
     /// Domain ID of the buffer in this window.

@@ -523,8 +523,9 @@ impl TextObjRange {
     }
 }
 
-// ClientId, Viewport, CursorPosition, KeySequence are now defined in reovim-subsys-session.
-// CursorSnapshot is also in reovim-subsys-session but is now an opaque [u8; 8] identity (C2 #753).
+// ClientId and KeySequence are defined in reovim-subsys-session.
+// CursorSnapshot is also in reovim-subsys-session and is an opaque [u8; 8]
+// identity (C2 #753). Viewport remains driver-owned in text-session.
 
 /// Window within a session.
 ///
