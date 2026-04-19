@@ -8,7 +8,7 @@
 //!
 //! # Contents
 //!
-//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`KeySequence`]
+//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`KeySequence`], [`SurfaceDescriptor`]
 //! - **Extension system**: [`SessionExtension`], [`ExtensionMap`], [`TextInputSink`]
 //! - **Mode lifecycle**: [`SessionMode`], [`ModeError`]
 //! - **Empty session handling**: [`EmptySessionHandler`], [`EmptySessionContext`], [`EmptySessionAction`]
@@ -38,6 +38,7 @@ mod mode;
 mod notification_queue;
 mod option_change;
 mod stale_check;
+mod surface;
 pub mod tick;
 mod types;
 mod window;
@@ -52,7 +53,10 @@ pub use {
 };
 
 // Types
-pub use types::{ClientId, CursorSnapshot, KeySequence, SurfaceDescriptor};
+pub use {
+    surface::SurfaceDescriptor,
+    types::{ClientId, CursorSnapshot, KeySequence},
+};
 
 // Extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};
