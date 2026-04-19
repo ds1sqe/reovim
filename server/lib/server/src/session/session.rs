@@ -24,6 +24,7 @@ use super::CaptureTracker;
 use super::PresenceService;
 use {
     reovim_input_codec::KeyEvent,
+    reovim_subsys_input::InputEvent,
     reovim_subsys_input_contracts::ModeTransition,
     reovim_subsys_session::{DomainDriver, ExtensionMap},
 };
@@ -519,7 +520,7 @@ impl Session {
     pub async fn dispatch_input_for_client(
         &self,
         client_id: ClientId,
-        event: &reovim_subsys_input::InputEvent,
+        event: &InputEvent,
     ) -> Option<reovim_subsys_session::DispatchResult> {
         let driver = self.domain_driver.read().clone();
         let driver = driver.as_ref()?;

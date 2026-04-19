@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **server**: Plan 10 Phase 4 import normalization leaves `reovim-server` with only the envelope `InputEvent` sourced from `reovim-subsys-input`; key types stay on `reovim-input-codec` and shared mode/keybinding contracts stay on `reovim-subsys-input-contracts`
 - **subsys**: `reovim-subsys-input` is now envelope/header-only. Legacy typed key/mouse defs, clipboard/error compatibility, shared-contract forwards, and their tests were removed; remaining typed consumers now import `KeyEvent`/`KeyCode` from `reovim-input-codec`, while `DomainDriver` keeps its current method shapes for later Plan 11 cleanup
 - **drivers**: `reovim-driver-text-input` now owns the driver-private mode/keybinding implementation previously kept in `reovim-subsys-input` (`Keybinding`, lifecycle/provider/store helpers, mode registry/key helpers, and related tests). The driver crate now exposes an explicit façade over driver-private types, `reovim-subsys-input-contracts`, `reovim-input-codec`, and the envelope/header-only `reovim-subsys-input` surface
 - **subsys**: New `reovim-subsys-input-contracts` crate now owns the shared driver-free key-sequence, lookup, mode-info, binding-info, and transition contracts used across server/session seams. `reovim-subsys-session` drops its duplicate `KeySequence`, the temporary gRPC notation adapter now lives at a narrow `reovim-input-codec` boundary, and `reovim-depgraph` now enforces zero production `reovim-driver-*` dependencies for `reovim-server`
