@@ -12,7 +12,7 @@
 //!
 //! # Dispatch vs Resolution
 //!
-//! `dispatch_key` and `dispatch_command` are routing entry points from the
+//! `dispatch_input` and `dispatch_command` are routing entry points from the
 //! server. The domain driver internally delegates to its resolver registry
 //! and command registry (populated by modules at startup). The server never
 //! sees `ResolveResult`, mode transitions, or pending bindings — those are
@@ -21,7 +21,6 @@
 use std::sync::Arc;
 
 use {
-    reovim_input_codec::KeyEvent,
     reovim_kernel::api::v1::{BufferId, ModeId, WindowId},
     reovim_subsys_coordination::{Cursor, Projection},
     reovim_subsys_input::InputEvent,
@@ -62,20 +61,6 @@ pub trait DomainDriver: Send + Sync {
     ///
     /// `Arc`'d for async safety — server holds across `.await` boundaries.
     fn content_provider(&self) -> Arc<dyn BufferContentProvider>;
-
-    // --- Key dispatch ---
-
-    /// Dispatch a key event for a client editing a buffer of this domain.
-    ///
-    /// The domain driver internally:
-    /// 1. Looks up the active mode's resolver (from its resolver registry)
-    /// 2. Resolves the key (module policy)
-    /// 3. Executes the resulting action (command, insert, mode transition)
-    /// 4. Updates internal state (cursors, undo, syntax)
-    /// 5. Returns a [`DispatchResult`] describing what changed
-    ///
-    /// The server never sees `ResolveResult` or mode transitions.
-    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> DispatchResult;
 
     /// Dispatch a command for a client.
     ///
@@ -131,40 +116,16 @@ pub trait DomainDriver: Send + Sync {
 
     /// Dispatch an opaque input event with access to extension maps.
     ///
-    /// This is the new domain-neutral dispatch path. The domain driver decodes
+    /// This is the sole domain-neutral dispatch path. The domain driver decodes
     /// the InputEvent payload via codec crates and dispatches accordingly.
     /// Returns `DispatchResult` — the server polls for all other state changes.
-    ///
-    /// Default: decodes as KeyEvent via input-codec fallback to dispatch_key.
-    /// Domains should override this to handle all input modalities.
     fn dispatch_input(
         &self,
         client_id: ClientId,
         event: &InputEvent,
         client_ext: &mut ExtensionMap,
         shared_ext: &mut ExtensionMap,
-    ) -> DispatchResult {
-        // Fallback: try to decode as key event for backward compatibility
-        let payload = event.payload();
-        if payload.len() >= 12 {
-            let kind = u16::from_le_bytes([payload[0], payload[1]]);
-            if kind == 0x0001 {
-                // KIND_KEY — delegate to dispatch_key_with_extensions
-                let key_event = self.decode_key_fallback(payload);
-                if let Some(key) = key_event {
-                    return self
-                        .dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext);
-                }
-            }
-        }
-        DispatchResult::default()
-    }
-
-    /// Decode a key event from InputEvent payload (fallback helper).
-    /// Override not needed — this is only for the default dispatch_input impl.
-    fn decode_key_fallback(&self, _payload: &[u8]) -> Option<KeyEvent> {
-        None
-    }
+    ) -> DispatchResult;
 
     /// Dispatch a command for a client (domain-neutral).
     ///
@@ -180,34 +141,6 @@ pub trait DomainDriver: Send + Sync {
     ) -> CommandResult {
         // Delegate to dispatch_command (same contract, v2 is now the canonical path)
         self.dispatch_command(client_id, command, args)
-    }
-
-    // --- Extension-aware dispatch ---
-
-    /// Dispatch a key with access to the server's extension maps.
-    ///
-    /// The server owns `client_ext` (per-client module state: `PendingBindings`,
-    /// `VimSessionState`, etc.) and `shared_ext` (session-scoped state). The
-    /// domain driver borrows them for the duration of dispatch so that modules
-    /// and bridges can read/write extension state during key resolution.
-    ///
-    /// # Lock ordering
-    ///
-    /// The caller (`Session::dispatch_key_for_client`) acquires locks in order:
-    /// `clients` (write) → `state` (write). The domain driver's internal locks
-    /// (`TextDomainDriver::session`, `TextDomainDriver::clients`) are disjoint
-    /// from these. No deadlock risk.
-    ///
-    /// Default implementation delegates to [`dispatch_key`](Self::dispatch_key),
-    /// ignoring the extension maps.
-    fn dispatch_key_with_extensions(
-        &self,
-        client_id: ClientId,
-        key: &KeyEvent,
-        _client_ext: &mut ExtensionMap,
-        _shared_ext: &mut ExtensionMap,
-    ) -> DispatchResult {
-        self.dispatch_key(client_id, key)
     }
 
     // --- Projections (domain-neutral state transport) ---

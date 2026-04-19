@@ -117,20 +117,25 @@ impl BufferContentProvider for TestContentProvider {
 }
 
 struct CapturedKeyDriver {
-    keys: Mutex<Vec<KeyEvent>>,
+    payloads: Mutex<Vec<Vec<u8>>>,
     content_provider: Arc<dyn BufferContentProvider>,
 }
 
 impl CapturedKeyDriver {
     fn new() -> Self {
         Self {
-            keys: Mutex::new(Vec::new()),
+            payloads: Mutex::new(Vec::new()),
             content_provider: Arc::new(TestContentProvider),
         }
     }
 
     fn captured_keys(&self) -> Vec<KeyEvent> {
-        self.keys.lock().unwrap().clone()
+        self.payloads
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|payload| reovim_input_codec::key::decode(payload))
+            .collect()
     }
 }
 
@@ -153,8 +158,14 @@ impl DomainDriver for CapturedKeyDriver {
         Arc::clone(&self.content_provider)
     }
 
-    fn dispatch_key(&self, _client_id: SubsysClientId, key: &KeyEvent) -> DispatchResult {
-        self.keys.lock().unwrap().push(*key);
+    fn dispatch_input(
+        &self,
+        _client_id: SubsysClientId,
+        event: &reovim_subsys_input::InputEvent,
+        _client_ext: &mut reovim_subsys_session::ExtensionMap,
+        _shared_ext: &mut reovim_subsys_session::ExtensionMap,
+    ) -> DispatchResult {
+        self.payloads.lock().unwrap().push(event.payload().to_vec());
         DispatchResult::default()
     }
 
@@ -345,7 +356,7 @@ async fn test_send_input_empty_key_sequence() {
 }
 
 #[tokio::test]
-async fn test_send_input_adapts_single_key_notation_before_dispatch() {
+async fn test_send_input_adapts_single_key_notation_before_dispatch_input() {
     let registry = test_registry();
     let session = registry.get(&SessionId::new("test")).unwrap();
     let client_id = ClientId::new(1);
@@ -365,7 +376,7 @@ async fn test_send_input_adapts_single_key_notation_before_dispatch() {
 }
 
 #[tokio::test]
-async fn test_send_input_adapts_multi_token_special_notation_before_dispatch() {
+async fn test_send_input_adapts_multi_token_special_notation_before_dispatch_input() {
     let registry = test_registry();
     let session = registry.get(&SessionId::new("test")).unwrap();
     let client_id = ClientId::new(1);

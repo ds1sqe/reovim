@@ -1,7 +1,4 @@
-use {
-    super::*,
-    reovim_input_codec::{KeyCode, KeyEvent},
-};
+use {super::*, reovim_subsys_input::InputEvent};
 
 #[test]
 fn test_session_new() {
@@ -1306,7 +1303,188 @@ fn with_tick_mut_returns_none_for_following_client() {
 // delegation verification) live in driver-text-session/src/text_domain_tests.rs
 // where Cursor types are available without leaking domain deps into the server.
 //
-// Server-level tests verify: getter/setter, fallback behavior only.
+// Server-level tests verify: getter/setter, fallback behavior, and the direct
+// dispatch_input entry seam.
+
+#[derive(Clone)]
+struct SessionDispatchTestCursor {
+    header: reovim_subsys_coordination::CursorHeader,
+}
+
+impl SessionDispatchTestCursor {
+    fn new() -> Self {
+        Self {
+            header: reovim_subsys_coordination::CursorHeader::new(1, 0, 0),
+        }
+    }
+}
+
+impl reovim_subsys_coordination::Cursor for SessionDispatchTestCursor {
+    fn header(&self) -> &reovim_subsys_coordination::CursorHeader {
+        &self.header
+    }
+
+    fn content(&self) -> &[u8] {
+        &[]
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        self.header.as_bytes().to_vec()
+    }
+
+    fn display(&self) -> String {
+        String::new()
+    }
+
+    fn clone_box(&self) -> Box<dyn reovim_subsys_coordination::Cursor> {
+        Box::new(self.clone())
+    }
+}
+
+struct SessionDispatchTestContentProvider;
+
+impl reovim_subsys_session::BufferContentProvider for SessionDispatchTestContentProvider {
+    fn content_bytes(&self, _buffer_id: reovim_kernel::api::v1::BufferId) -> Option<Vec<u8>> {
+        Some(Vec::new())
+    }
+
+    fn content_size(&self, _buffer_id: reovim_kernel::api::v1::BufferId) -> Option<u64> {
+        Some(0)
+    }
+
+    fn content_unit_count(&self, _buffer_id: reovim_kernel::api::v1::BufferId) -> Option<usize> {
+        Some(0)
+    }
+
+    fn display_lines(
+        &self,
+        _buffer_id: reovim_kernel::api::v1::BufferId,
+        _offset: usize,
+        _count: usize,
+    ) -> Option<Vec<reovim_subsys_session::DisplayLine>> {
+        Some(Vec::new())
+    }
+
+    fn is_modified(&self, _buffer_id: reovim_kernel::api::v1::BufferId) -> bool {
+        false
+    }
+
+    fn write_to(
+        &self,
+        _buffer_id: reovim_kernel::api::v1::BufferId,
+        _writer: &mut dyn std::io::Write,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+struct SessionDispatchTestDriver {
+    inputs: std::sync::Mutex<Vec<Vec<u8>>>,
+    content_provider: std::sync::Arc<dyn reovim_subsys_session::BufferContentProvider>,
+}
+
+impl SessionDispatchTestDriver {
+    fn new() -> Self {
+        Self {
+            inputs: std::sync::Mutex::new(Vec::new()),
+            content_provider: std::sync::Arc::new(SessionDispatchTestContentProvider),
+        }
+    }
+
+    fn payloads(&self) -> Vec<Vec<u8>> {
+        self.inputs.lock().unwrap().clone()
+    }
+}
+
+impl reovim_subsys_session::DomainDriver for SessionDispatchTestDriver {
+    fn domain_name(&self) -> &'static str {
+        "test"
+    }
+
+    fn domain_id(&self) -> u32 {
+        1
+    }
+
+    fn create_buffer(&self, _content: &[u8]) -> reovim_kernel::api::v1::BufferId {
+        reovim_kernel::api::v1::BufferId::new()
+    }
+
+    fn close_buffer(&self, _buffer_id: reovim_kernel::api::v1::BufferId) {}
+
+    fn content_provider(&self) -> std::sync::Arc<dyn reovim_subsys_session::BufferContentProvider> {
+        std::sync::Arc::clone(&self.content_provider)
+    }
+
+    fn dispatch_input(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        event: &InputEvent,
+        _client_ext: &mut reovim_subsys_session::ExtensionMap,
+        _shared_ext: &mut reovim_subsys_session::ExtensionMap,
+    ) -> reovim_subsys_session::DispatchResult {
+        self.inputs.lock().unwrap().push(event.payload().to_vec());
+        reovim_subsys_session::DispatchResult::default()
+    }
+
+    fn dispatch_command(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        _command: &str,
+        _args: &[String],
+    ) -> reovim_subsys_session::CommandResult {
+        reovim_subsys_session::CommandResult::NotHandled
+    }
+
+    fn on_client_added(&self, _client_id: reovim_subsys_session::ClientId) {}
+
+    fn on_client_removed(&self, _client_id: reovim_subsys_session::ClientId) {}
+
+    fn on_focus_gained(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        _window_id: reovim_kernel::api::v1::WindowId,
+        _buffer_id: reovim_kernel::api::v1::BufferId,
+    ) {
+    }
+
+    fn on_focus_lost(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        _window_id: reovim_kernel::api::v1::WindowId,
+        _buffer_id: reovim_kernel::api::v1::BufferId,
+    ) {
+    }
+
+    fn cursors(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        _window_id: reovim_kernel::api::v1::WindowId,
+    ) -> Vec<Box<dyn reovim_subsys_coordination::Cursor>> {
+        vec![Box::new(SessionDispatchTestCursor::new())]
+    }
+
+    fn initial_cursor(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+        _buffer_id: reovim_kernel::api::v1::BufferId,
+    ) -> Box<dyn reovim_subsys_coordination::Cursor> {
+        Box::new(SessionDispatchTestCursor::new())
+    }
+
+    fn collect_projections(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
+        Vec::new()
+    }
+
+    fn initial_projections(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+    ) -> Vec<reovim_subsys_coordination::Projection> {
+        Vec::new()
+    }
+}
 
 #[test]
 fn domain_driver_getter_returns_none_by_default() {
@@ -1315,14 +1493,42 @@ fn domain_driver_getter_returns_none_by_default() {
 }
 
 #[tokio::test]
-async fn dispatch_fallback_without_domain_driver() {
+async fn dispatch_input_for_client_happy_path_uses_domain_driver() {
+    let session = Session::new(SessionId::new("dispatch-input-test"));
+    let client_id = ClientId::new(1);
+    session.add_client(client_id);
+    let driver = std::sync::Arc::new(SessionDispatchTestDriver::new());
+    session.set_domain_driver(driver.clone());
+
+    let payload = reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::new(
+        reovim_input_codec::KeyCode::Char('j'),
+    ));
+    let event = InputEvent::new(payload.clone(), None, 0).expect("encoded key payload valid");
+
+    let result = session.dispatch_input_for_client(client_id, &event).await;
+
+    assert!(result.is_some());
+    let dispatch = result.unwrap();
+    assert!(!dispatch.buffers.has_changes());
+    assert_eq!(dispatch.directive, reovim_subsys_session::Directive::Continue);
+    assert_eq!(driver.payloads(), vec![payload]);
+}
+
+#[tokio::test]
+async fn dispatch_input_fallback_without_domain_driver() {
     let session = Session::new(SessionId::new("fallback-test"));
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    // No domain driver wired — key is dropped (#753 E3 stub)
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    let result = session.dispatch_key_for_client(client_id, &key).await;
+    let event = InputEvent::new(
+        reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::new(
+            reovim_input_codec::KeyCode::Char('j'),
+        )),
+        None,
+        0,
+    )
+    .expect("encoded key payload valid");
+    let result = session.dispatch_input_for_client(client_id, &event).await;
 
     // Fallback stub returns None when no domain driver is active (#753 E3)
     assert!(result.is_none(), "should return None when no domain driver active");

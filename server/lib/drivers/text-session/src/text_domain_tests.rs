@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use {
-    reovim_arch::sync::RwLock,
     reovim_input_codec::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
@@ -81,10 +80,7 @@ fn make_driver_with_buffer(content: &str) -> (TextDomainDriver, BufferId) {
 fn make_driver_with_dispatch_recorder() -> (TextDomainDriver, Arc<Mutex<Vec<KeyEvent>>>) {
     let mut driver = make_driver();
     let seen = Arc::new(Mutex::new(Vec::new()));
-    driver.set_dispatch_provider(
-        Arc::new(RecordingDispatchProvider::new(Arc::clone(&seen))),
-        Arc::new(RwLock::new(reovim_subsys_session::ExtensionMap::new())),
-    );
+    driver.set_dispatch_provider(Arc::new(RecordingDispatchProvider::new(Arc::clone(&seen))));
     (driver, seen)
 }
 
@@ -278,30 +274,42 @@ fn test_cursors_with_window() {
 // Dispatch
 // ============================================================================
 
+fn key_input_event(key: KeyEvent) -> InputEvent {
+    InputEvent::new(reovim_input_codec::key::encode(&key), None, 0)
+        .expect("encoded key payload should be valid")
+}
+
 #[test]
-fn test_dispatch_key_no_client() {
+fn test_dispatch_input_no_client() {
     let driver = make_driver();
     let client = ClientId::new(99);
-    let key = KeyEvent::new(KeyCode::Char('l'));
+    let event = key_input_event(KeyEvent::new(KeyCode::Char('l')));
 
-    let result = driver.dispatch_key(client, &key);
-    // No client → default empty DispatchResult
+    let result = driver.dispatch_input(
+        client,
+        &event,
+        &mut reovim_subsys_session::ExtensionMap::new(),
+        &mut reovim_subsys_session::ExtensionMap::new(),
+    );
     assert!(!result.buffers.has_changes());
     assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
-fn test_dispatch_key_with_client() {
+fn test_dispatch_input_with_client_without_provider() {
     let driver = make_driver();
     let client = ClientId::new(1);
 
     driver.on_client_added(client);
 
-    let key = KeyEvent::new(KeyCode::Char('l'));
-    let result = driver.dispatch_key(client, &key);
+    let event = key_input_event(KeyEvent::new(KeyCode::Char('l')));
+    let result = driver.dispatch_input(
+        client,
+        &event,
+        &mut reovim_subsys_session::ExtensionMap::new(),
+        &mut reovim_subsys_session::ExtensionMap::new(),
+    );
 
-    // Without resolver wired, dispatch_key returns empty DispatchResult
-    // The infrastructure (lock → SessionRuntime → bridge) is exercised
     assert!(!result.buffers.has_changes());
     assert_eq!(result.directive, Directive::Continue);
 }
@@ -397,44 +405,6 @@ fn test_dispatch_command_with_client() {
     let result = driver.dispatch_command(client, "test:cmd", &[]);
     // Client exists → Handled even if no command runs
     assert!(matches!(result, CommandResult::Handled(_)));
-}
-
-// ============================================================================
-// Phase 4A: dispatch_key_with_extensions tests
-// ============================================================================
-
-#[test]
-fn dispatch_with_extensions_returns_dispatch_result() {
-    let driver = make_driver();
-    let client = ClientId::new(1);
-    driver.on_client_added(client);
-
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
-    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
-
-    // No dispatch provider wired → falls back to dispatch_key (no-op)
-    let result =
-        driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
-    // Should not panic, and should return a valid DispatchResult
-    assert_eq!(result.directive, Directive::Continue);
-}
-
-#[test]
-fn dispatch_with_extensions_unknown_client_returns_empty() {
-    let driver = make_driver();
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    let mut client_ext = reovim_subsys_session::ExtensionMap::new();
-    let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
-
-    let result = driver.dispatch_key_with_extensions(
-        ClientId::new(999),
-        &key,
-        &mut client_ext,
-        &mut shared_ext,
-    );
-    assert!(!result.buffers.has_changes());
-    assert_eq!(result.directive, Directive::Continue);
 }
 
 // ============================================================================

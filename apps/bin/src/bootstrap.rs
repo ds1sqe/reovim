@@ -539,8 +539,7 @@ fn build_text_domain_driver(
 
     // Wire dispatch provider.
     let provider = Arc::new(ResolverDispatchProvider::new(driver_resolver_registry, keymap_arc));
-    let shared_ext = Arc::new(parking_lot::RwLock::new(reovim_subsys_session::ExtensionMap::new()));
-    driver.set_dispatch_provider(provider, shared_ext);
+    driver.set_dispatch_provider(provider);
 
     tracing::info!("TextDomainDriver constructed for default session (#753 E1)");
 

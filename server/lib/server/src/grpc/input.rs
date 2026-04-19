@@ -2,20 +2,11 @@
 //!
 //! Provides key input processing for v2 protocol clients.
 //!
-//! # Key Resolution
+//! # Input Dispatch
 //!
-//! When modules are loaded (via `Server::with_session_factory`), keys are resolved
-//! through the full resolver system:
-//! 1. Parse vim notation keys (e.g., `iHello<Esc>`, `<C-w>h`)
-//! 2. For each key, call `SessionState::resolve_key_for_client()` which uses:
-//!    - `ResolverRegistry` to find the mode's resolver
-//!    - `KeymapRegistry` for keybinding lookup
-//!    - `CommandRegistry` for command execution
-//! 3. Handle the `ResolveResult` (execute command, insert char, mode transition, etc.)
-//! 4. Emit notifications for state changes (mode, cursor, buffer modifications)
-//!
-//! When modules are NOT loaded (empty registries), the service falls back to
-//! basic character insertion for insert-mode-like behavior.
+//! v2 clients still send vim key notation strings. The server adapts each parsed
+//! key into an opaque `InputEvent`, then routes it through
+//! `Session::dispatch_input_for_client()` and `DomainDriver::dispatch_input()`.
 
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
@@ -24,10 +15,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
-    reovim_input_codec::key_sequence_to_key_events,
+    reovim_input_codec::{key, key_sequence_to_key_events},
     reovim_protocol::v2::{
         SendInputRequest, SendInputResponse, input_service_server::InputService, notification,
     },
+    reovim_subsys_input::InputEvent,
     reovim_subsys_input_contracts::KeySequence,
     reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
     tonic::{Request, Response, Status},
@@ -41,9 +33,8 @@ use crate::{
 /// gRPC `InputService` implementation.
 ///
 /// Bridges v2 protocol key input requests to the session system.
-/// Provides basic character insertion. Full vim-style key resolution
-/// (resolvers, operator-pending modes, etc.) requires modules to be
-/// loaded by the runner.
+/// Parses vim key notation, wraps each adapted key in `InputEvent`, and routes
+/// it through the domain driver's unified dispatch path.
 pub struct InputServiceImpl {
     /// Shared session registry.
     sessions: Arc<SessionRegistry>,
@@ -83,6 +74,19 @@ impl InputServiceImpl {
             .get(&self.default_session_id)
             .ok_or_else(|| Status::not_found("No active session"))
     }
+
+    fn dispatch_result_to_change_set(dispatch: reovim_subsys_session::DispatchResult) -> ChangeSet {
+        let mut cs = ChangeSet::new();
+        cs.modified_buffers = dispatch.buffers.modified;
+        cs.created_buffers = dispatch.buffers.created;
+        cs.deleted_buffers = dispatch.buffers.closed;
+        match dispatch.directive {
+            reovim_subsys_session::Directive::Quit => cs.should_quit = true,
+            reovim_subsys_session::Directive::Detach => cs.should_detach = true,
+            _ => {}
+        }
+        cs
+    }
 }
 
 #[tonic::async_trait]
@@ -91,15 +95,10 @@ impl InputService for InputServiceImpl {
     ///
     /// Parses vim notation keys (e.g., `iHello<Esc>`, `<C-w>h`) and processes them.
     ///
-    /// # Key Resolution
-    ///
-    /// When modules are loaded, keys go through the full resolver system:
-    /// - `SessionState::resolve_key_for_client()` finds the appropriate mode resolver
-    /// - The resolver returns a `ResolveResult` (execute, insert, transition, etc.)
-    /// - This method handles each result type appropriately
-    /// - State changes are accumulated and emitted as notifications
-    ///
-    /// When modules are NOT loaded (empty registries), falls back to character insertion.
+    /// Each adapted key is encoded as an opaque `InputEvent` and dispatched via
+    /// `Session::dispatch_input_for_client()`. The domain driver owns decode,
+    /// resolution, command execution, mode transitions, and no-op behavior for
+    /// unsupported payloads.
     #[allow(clippy::too_many_lines)]
     async fn send_input(
         &self,
@@ -133,7 +132,7 @@ impl InputService for InputServiceImpl {
         }
         // Independent/Sharing: proceed with normal input processing
         // Note: For Sharing, input goes to target's state - handled by
-        // session.resolve_key_for_client() and session.execute_command_for_client()
+        // session.dispatch_input_for_client() and domain-owned dispatch logic.
 
         // Parse vim notation keys from opaque payload (v3: bytes, interpreted as UTF-8 keys)
         let keys_str = std::str::from_utf8(&req.payload)
@@ -153,7 +152,7 @@ impl InputService for InputServiceImpl {
         let mode_before_keys = session.client_current_mode(client_id);
         let compositor_gen_before = session.client_compositor_generation(client_id);
 
-        // Process each key through the resolver system
+        // Process each adapted key through the opaque input seam.
         let mut any_handled = false;
         let mut accumulated_changes = ChangeSet::new();
 
@@ -175,26 +174,22 @@ impl InputService for InputServiceImpl {
                 "Resolving key"
             );
 
-            // Sub-plan 05 Phase 1: Full dispatch pipeline in one call.
-            // resolve + handle result + mode transitions + command execution +
-            // pending bindings + on_command_complete — all within the runtime scope.
-            let dispatch_result = session.dispatch_key_for_client(client_id, key).await;
+            let event = InputEvent::new(key::encode(key), None, req.timestamp_ns)
+                .map_err(|err| Status::internal(format!("failed to encode key input: {err}")))?;
+            let dispatch_result = session.dispatch_input_for_client(client_id, &event).await;
 
-            // None means no domain driver active (stub, #753 E3) — key is dropped.
-            let Some((handled, changes)) = dispatch_result else {
+            // None means no domain driver active (stub, #753 E3) — input is dropped.
+            let Some(dispatch) = dispatch_result else {
                 tracing::warn!(
                     ?current_mode,
                     %client_id,
-                    "dispatch_key_for_client: no domain driver active, key dropped (#753 E3)"
+                    "dispatch_input_for_client: no domain driver active, input dropped (#753 E3)"
                 );
                 continue;
             };
 
-            accumulated_changes.merge(changes);
-
-            if handled {
-                any_handled = true;
-            }
+            accumulated_changes.merge(Self::dispatch_result_to_change_set(dispatch));
+            any_handled = true;
         }
 
         // Record cursor movement for active buffer whenever any key was handled.

@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use {
-    reovim_input_codec::{KeyCode, KeyEvent},
     reovim_kernel::api::v1::{BufferId, WindowId},
     reovim_subsys_coordination::{Cursor, CursorHeader},
+    reovim_subsys_input::InputEvent,
 };
 
 use super::{
@@ -103,7 +103,7 @@ enum Event {
     ClientRemoved(ClientId),
     FocusGained(ClientId, WindowId, BufferId),
     FocusLost(ClientId, WindowId, BufferId),
-    DispatchKey(ClientId),
+    DispatchInput(ClientId),
     DispatchCommand(ClientId, String),
     BufferCreated,
     BufferClosed(BufferId),
@@ -179,11 +179,17 @@ impl DomainDriver for MockDomainDriver {
         Arc::clone(&self.content_provider)
     }
 
-    fn dispatch_key(&self, client_id: ClientId, _key: &KeyEvent) -> DispatchResult {
+    fn dispatch_input(
+        &self,
+        client_id: ClientId,
+        _event: &InputEvent,
+        _client_ext: &mut ExtensionMap,
+        _shared_ext: &mut ExtensionMap,
+    ) -> DispatchResult {
         self.events
             .lock()
             .unwrap()
-            .push(Event::DispatchKey(client_id));
+            .push(Event::DispatchInput(client_id));
 
         // cursor_moves_on_key is tracked internally but DispatchResult does not
         // carry cursor_moved (the server polls). We record the flag for test
@@ -300,27 +306,30 @@ fn content_provider_returns_arc() {
 }
 
 #[test]
-fn dispatch_key_returns_dispatch_result() {
+fn dispatch_input_returns_dispatch_result() {
     let driver = MockDomainDriver::new("text", 1);
     let client = ClientId(0);
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    let result = driver.dispatch_key(client, &key);
+    let event = InputEvent::new(vec![0; reovim_subsys_input::INPUT_HEADER_SIZE], None, 0)
+        .expect("header-sized payload should be valid");
+    let result =
+        driver.dispatch_input(client, &event, &mut ExtensionMap::new(), &mut ExtensionMap::new());
     // Default: no buffer changes, Continue directive
     assert!(!result.buffers.has_changes());
     assert_eq!(result.directive, Directive::Continue);
 }
 
 #[test]
-fn dispatch_key_records_event() {
+fn dispatch_input_records_event() {
     let driver = MockDomainDriver::new("text", 1);
     driver.set_cursor_moves_on_key(true);
     let client = ClientId(0);
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    driver.dispatch_key(client, &key);
+    let event = InputEvent::new(vec![0; reovim_subsys_input::INPUT_HEADER_SIZE], None, 0)
+        .expect("header-sized payload should be valid");
+    driver.dispatch_input(client, &event, &mut ExtensionMap::new(), &mut ExtensionMap::new());
     // cursor_moved is no longer in DispatchResult — server polls via
     // collect_projections. Verify the dispatch event was recorded.
     let events = driver.events();
-    assert!(matches!(events.last(), Some(Event::DispatchKey(c)) if *c == client));
+    assert!(matches!(events.last(), Some(Event::DispatchInput(c)) if *c == client));
 }
 
 #[test]
@@ -401,7 +410,9 @@ fn multiple_domains_independent_state() {
     assert_eq!(text_driver.events().len(), 1);
     assert_eq!(mesh_driver.events().len(), 1);
 
-    text_driver.dispatch_key(client, &KeyEvent::new(KeyCode::Char('j')));
+    let event = InputEvent::new(vec![0; reovim_subsys_input::INPUT_HEADER_SIZE], None, 0)
+        .expect("header-sized payload should be valid");
+    text_driver.dispatch_input(client, &event, &mut ExtensionMap::new(), &mut ExtensionMap::new());
     assert_eq!(text_driver.events().len(), 2);
     assert_eq!(mesh_driver.events().len(), 1);
 }
@@ -422,26 +433,6 @@ fn broadcast_client_lifecycle_to_all_domains() {
     // Both domains received the event
     assert_eq!(text.domain_name(), "text");
     assert_eq!(mesh.domain_name(), "mesh");
-}
-
-// --- Phase 4A tests: dispatch_key_with_extensions ---
-
-#[test]
-fn dispatch_key_with_extensions_default_delegates_to_dispatch_key() {
-    let driver = MockDomainDriver::new("text", 1);
-    driver.set_cursor_moves_on_key(true);
-    let client = ClientId(0);
-    let key = KeyEvent::new(KeyCode::Char('j'));
-    let mut client_ext = ExtensionMap::new();
-    let mut shared_ext = ExtensionMap::new();
-
-    let result =
-        driver.dispatch_key_with_extensions(client, &key, &mut client_ext, &mut shared_ext);
-    // DispatchResult carries no cursor_moved flag; server polls via collect_projections.
-    assert_eq!(result.directive, Directive::Continue);
-    // Verify dispatch_key was called (event recorded)
-    let events = driver.events();
-    assert!(matches!(events.last(), Some(Event::DispatchKey(c)) if *c == client));
 }
 
 // --- Phase 4A tests: query method defaults ---

@@ -23,7 +23,6 @@ use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
 use {
-    reovim_input_codec::KeyEvent,
     reovim_subsys_input::InputEvent,
     reovim_subsys_input_contracts::ModeTransition,
     reovim_subsys_session::{DomainDriver, ExtensionMap},
@@ -57,10 +56,10 @@ pub struct Session {
     /// Per-client membership and editing-relation authority.
     clients: ClientDirectory,
 
-    /// Domain driver for key dispatch and state queries (#753).
+    /// Domain driver for input dispatch and state queries (#753).
     ///
-    /// When `Some`, `dispatch_key_for_client` delegates to the domain driver.
-    /// When `None`, keys are dropped with a warning.
+    /// When `Some`, `dispatch_input_for_client` delegates to the domain driver.
+    /// When `None`, input is dropped with a warning.
     /// Set by the runner at session creation via [`Session::set_domain_driver`].
     domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
 
@@ -199,7 +198,7 @@ impl Session {
 
     /// Set the domain driver for this session.
     ///
-    /// After this is called, `dispatch_key_for_client` delegates to the domain
+    /// After this is called, `dispatch_input_for_client` delegates to the domain
     /// driver instead of using the inline dispatch path in `SessionState`.
     pub fn set_domain_driver(&self, driver: Arc<dyn DomainDriver>) {
         *self.domain_driver.write() = Some(driver);
@@ -332,7 +331,7 @@ impl Session {
     /// Execute a tick closure with mutable access to client + shared extensions (#546).
     ///
     /// Lock order: clients (write) → state (write). Same order as
-    /// `dispatch_key_for_client`.
+    /// `dispatch_input_for_client`.
     /// Returns `None` if client not connected or input is ignored (Following).
     ///
     /// Used by `TokioTickScheduler` for periodic state advancement.
@@ -457,73 +456,29 @@ impl Session {
     // =========================================================================
 
     // resolve_key_for_client: REMOVED (#753 E6).
-    // Key resolution routes through DomainDriver via dispatch_key_for_client.
+    // Key resolution routes through DomainDriver via dispatch_input_for_client.
 
-    /// Dispatch a key through the domain driver (#753).
+    /// Dispatch an opaque InputEvent for a client (domain-neutral path).
     ///
-    /// Delegates to the domain driver which internally handles resolver lookup,
-    /// command execution, mode transitions, pending bindings, and
-    /// `on_command_complete`. The server never sees `ResolveResult`.
-    ///
-    /// Returns `None` when no domain driver is wired (logs a warning).
+    /// This is the sole server-side dispatch entry point. The caller encodes its
+    /// input source into `InputEvent`, then this method routes it to
+    /// `driver.dispatch_input()`.
     ///
     /// # Lock ordering
     ///
     /// Acquires `clients` (write) → `state` (write). The domain driver's
     /// internal locks are disjoint from these — no deadlock risk.
-    ///
-    /// # Returns
-    ///
-    /// `None` if the client doesn't exist or is a follower.
-    /// `Some((handled, changes))` where `handled` indicates if the key was processed.
     #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
-    pub async fn dispatch_key_for_client(
-        &self,
-        client_id: ClientId,
-        key: &KeyEvent,
-    ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
-        let driver = self.domain_driver.read().clone();
-        let Some(ref driver) = driver else {
-            tracing::warn!(%client_id, "dispatch_key_for_client: no domain driver wired, key dropped");
-            return None;
-        };
-
-        let mut clients = self.clients.write();
-        let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
-        let target_client = clients.get_mut(&target_id)?;
-        let client_ext = &mut target_client.state.extensions;
-
-        let subsys_client_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
-        let mut state = self.state.write();
-        let shared_ext = &mut state.app.extensions;
-
-        let dispatch =
-            driver.dispatch_key_with_extensions(subsys_client_id, key, client_ext, shared_ext);
-
-        let mut cs = reovim_subsys_session::change_set::ChangeSet::new();
-        cs.modified_buffers = dispatch.buffers.modified;
-        cs.created_buffers = dispatch.buffers.created;
-        cs.deleted_buffers = dispatch.buffers.closed;
-        match dispatch.directive {
-            reovim_subsys_session::Directive::Quit => cs.should_quit = true,
-            reovim_subsys_session::Directive::Detach => cs.should_detach = true,
-            _ => {}
-        }
-
-        Some((true, cs))
-    }
-
-    /// Dispatch an opaque InputEvent for a client (domain-neutral path).
-    ///
-    /// This is the A4 entry point — encodes PlatformEvent → InputEvent and calls
-    /// `driver.dispatch_input()`. Returns `DispatchResult` instead of `ChangeSet`.
     pub async fn dispatch_input_for_client(
         &self,
         client_id: ClientId,
         event: &InputEvent,
     ) -> Option<reovim_subsys_session::DispatchResult> {
         let driver = self.domain_driver.read().clone();
-        let driver = driver.as_ref()?;
+        let Some(driver) = driver else {
+            tracing::warn!(%client_id, "dispatch_input_for_client: no domain driver wired, input dropped");
+            return None;
+        };
 
         let mut clients = self.clients.write();
         let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
@@ -547,13 +502,13 @@ impl Session {
         client_id: ClientId,
     ) -> Option<ModeTransition> {
         // Stubbed: client_context removed (#753 E3). Domain driver handles mode
-        // transitions internally via dispatch_key_with_extensions.
+        // transitions internally via dispatch_input.
         tracing::warn!(%client_id, "try_on_command_complete_for_client: stubbed (#753 E3)");
         None
     }
 
     // execute_command_for_client: REMOVED (#753 E6).
-    // Command execution routes through DomainDriver via dispatch_key_for_client.
+    // Command execution routes through DomainDriver via dispatch_input_for_client.
 
     /// Get the current mode for a specific client (#471).
     ///

@@ -11,7 +11,7 @@
 //!
 //! | Method | Lock type | Rationale |
 //! |--------|-----------|-----------|
-//! | `dispatch_key` | Write on clients + session | Mutates mode, cursor |
+//! | `dispatch_input` | Write on clients + session | Mutates mode, cursor |
 //! | `dispatch_command` | Write on clients + session | Same |
 //! | `on_client_added` | Write on clients | Adds entry |
 //! | `on_client_removed` | Write on clients | Removes entry |
@@ -22,7 +22,7 @@
 //!
 //! # `RwLock` → `SessionRuntime` Lifetime Safety
 //!
-//! `dispatch_key` acquires write locks on `session` and `clients`, then creates
+//! `dispatch_input` acquires write locks on `session` and `clients`, then creates
 //! `SessionRuntime` borrowing from the lock guards. The key invariant:
 //!
 //! **The borrow must not cross any async yield.** All dispatch is synchronous
@@ -30,7 +30,7 @@
 //! borrows from them, and both are dropped before the function returns.
 //!
 //! This is safe because:
-//! 1. `DomainDriver::dispatch_key` is not async
+//! 1. `DomainDriver::dispatch_input` is not async
 //! 2. `SessionRuntime` does not escape the function
 //! 3. All state mutations happen within the lock scope
 //!
@@ -52,7 +52,6 @@ use {
     reovim_subsys_input::InputEvent,
     reovim_subsys_session::{
         BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver, ExtensionMap,
-        change_set::ChangeSet,
     },
 };
 
@@ -152,11 +151,6 @@ pub struct TextDomainDriver {
     /// Injected at construction so `TextDomainDriver` can dispatch keys
     /// without depending on driver-text-input directly.
     dispatch_provider: Option<Arc<dyn crate::TextKeyDispatchProvider>>,
-    /// Shared session extensions for dispatch (bridges, module state).
-    ///
-    /// Passed from the server at construction. Needed by the dispatch
-    /// provider for bridge state access during key resolution.
-    shared_extensions: Option<Arc<RwLock<ExtensionMap>>>,
 }
 
 impl TextDomainDriver {
@@ -190,21 +184,15 @@ impl TextDomainDriver {
             executor,
             text_buffers,
             dispatch_provider: None,
-            shared_extensions: None,
         }
     }
 
     /// Set the key dispatch provider (sub-plan 05 Phase 1).
     ///
-    /// Must be called after construction, before `dispatch_key` is used.
+    /// Must be called after construction, before `dispatch_input` is used.
     /// The provider wraps `ResolverRegistry` + `KeymapQuery` from driver-text-input.
-    pub fn set_dispatch_provider(
-        &mut self,
-        provider: Arc<dyn crate::TextKeyDispatchProvider>,
-        shared_ext: Arc<RwLock<ExtensionMap>>,
-    ) {
+    pub fn set_dispatch_provider(&mut self, provider: Arc<dyn crate::TextKeyDispatchProvider>) {
         self.dispatch_provider = Some(provider);
-        self.shared_extensions = Some(shared_ext);
     }
 
     /// Borrow the home mode from the session.
@@ -212,22 +200,29 @@ impl TextDomainDriver {
         self.session.read().shared.home_mode().clone()
     }
 
-    /// Dispatch a key through the injected `TextKeyDispatchProvider`.
-    ///
-    /// Uses the placeholder-ExtensionMap pattern (same as server's
-    /// `resolve_key_for_client`): the runtime gets an empty `ExtensionMap`,
-    /// while the real client extensions are passed separately to the dispatch
-    /// provider. This avoids borrow conflicts.
-    fn dispatch_key_via_provider(
+    /// Dispatch a decoded key event through the injected dispatch provider.
+    fn dispatch_decoded_key(
         &self,
         client_id: ClientId,
         key: &KeyEvent,
-        provider: &Arc<dyn crate::TextKeyDispatchProvider>,
-    ) -> Option<ChangeSet> {
+        client_ext: &mut ExtensionMap,
+        shared_ext: &mut ExtensionMap,
+    ) -> DispatchResult {
+        let Some(ref provider) = self.dispatch_provider else {
+            return self
+                .with_client_runtime(client_id, |_runtime| {})
+                .map(|((), changes)| {
+                    changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
+                })
+                .unwrap_or_default();
+        };
+
         let mut session_guard = self.session.write();
         let mut clients_guard = self.clients.write();
 
-        let client_state = clients_guard.get_mut(&client_id)?;
+        let Some(client_state) = clients_guard.get_mut(&client_id) else {
+            return DispatchResult::default();
+        };
 
         // Destructure to get extensions separately (placeholder pattern).
         // The runtime gets a placeholder; real client_ext goes to the provider.
@@ -254,42 +249,14 @@ impl TextDomainDriver {
             &*self.executor,
         );
 
-        // Get shared extensions; use empty fallback if not provided
-        let mut empty_shared = ExtensionMap::new();
-        let shared_ext = match self.shared_extensions.as_ref() {
-            Some(arc) => {
-                // We need to hold the write guard for the duration of dispatch.
-                // Since TextKeyDispatchProvider::dispatch_key is synchronous,
-                // there's no risk of async yield while holding the lock.
-                let mut guard = arc.write();
-                let (_handled, changes) = provider.dispatch_key(
-                    &mut runtime,
-                    key,
-                    &mut guard,
-                    &mut client_state.extensions,
-                    &*self.executor,
-                );
-                drop(runtime);
-                drop(session_guard);
-                drop(clients_guard);
-                return Some(state_changes_to_change_set(&changes));
-            }
-            None => &mut empty_shared,
-        };
-
-        let (_handled, changes) = provider.dispatch_key(
-            &mut runtime,
-            key,
-            shared_ext,
-            &mut client_state.extensions,
-            &*self.executor,
-        );
+        let (_handled, changes) =
+            provider.dispatch_key(&mut runtime, key, shared_ext, client_ext, &*self.executor);
 
         drop(runtime);
         drop(session_guard);
         drop(clients_guard);
 
-        Some(state_changes_to_change_set(&changes))
+        changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
     }
 
     /// Internal dispatch: lock state, create `SessionRuntime`, take changes.
@@ -373,7 +340,7 @@ impl DomainDriver for TextDomainDriver {
         match kind {
             reovim_input_codec::key::KIND_KEY => {
                 if let Some(key) = reovim_input_codec::key::decode(payload) {
-                    self.dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext)
+                    self.dispatch_decoded_key(client_id, &key, client_ext, shared_ext)
                 } else {
                     DispatchResult::default()
                 }
@@ -381,23 +348,6 @@ impl DomainDriver for TextDomainDriver {
             // Pointer and scroll events not handled by text domain yet
             _ => DispatchResult::default(),
         }
-    }
-
-    fn dispatch_key(&self, client_id: ClientId, key: &KeyEvent) -> DispatchResult {
-        // Sub-plan 05 Phase 1: dispatch via injected TextKeyDispatchProvider.
-        if let Some(ref provider) = self.dispatch_provider {
-            return self
-                .dispatch_key_via_provider(client_id, key, provider)
-                .map(|cs| changeset_to_dispatch_result(&cs))
-                .unwrap_or_default();
-        }
-
-        // Fallback: no dispatch provider wired (sub-plan 03 infrastructure only)
-        self.with_client_runtime(client_id, |_runtime| {})
-            .map(|((), changes)| {
-                changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
-            })
-            .unwrap_or_default()
     }
 
     fn dispatch_command(
@@ -500,60 +450,6 @@ impl DomainDriver for TextDomainDriver {
 
     fn initial_cursor(&self, _client_id: ClientId, _buffer_id: BufferId) -> Box<dyn Cursor> {
         Box::new(TextCursor::new(self.domain_id, 0, 0))
-    }
-
-    fn dispatch_key_with_extensions(
-        &self,
-        client_id: ClientId,
-        key: &KeyEvent,
-        client_ext: &mut ExtensionMap,
-        shared_ext: &mut ExtensionMap,
-    ) -> DispatchResult {
-        let Some(ref provider) = self.dispatch_provider else {
-            // No dispatch provider: fallback to basic dispatch (no extension access)
-            return self.dispatch_key(client_id, key);
-        };
-
-        let mut session_guard = self.session.write();
-        let mut clients_guard = self.clients.write();
-
-        let Some(client_state) = clients_guard.get_mut(&client_id) else {
-            return DispatchResult::default();
-        };
-
-        // Build ClientContext with a placeholder ExtensionMap for the runtime.
-        // The real client_ext and shared_ext are passed directly to the provider.
-        let mut placeholder_ext = ExtensionMap::new();
-        let client_ctx = crate::ClientContext {
-            mode_stack: &mut client_state.mode_stack,
-            windows: &mut client_state.windows,
-            extensions: &mut placeholder_ext,
-            compositor: &mut client_state.compositor,
-            tabs: &mut client_state.tabs,
-            registers: &mut client_state.registers,
-            clipboard_history: &mut client_state.clipboard_history,
-            local_marks: &mut client_state.local_marks,
-            jumplist: &mut client_state.jumplist,
-            active_buffer: &mut client_state.active_buffer,
-            terminal_size: &mut client_state.terminal_size,
-        };
-
-        let mut runtime = crate::SessionRuntime::with_owner(
-            client_id,
-            &mut session_guard,
-            client_ctx,
-            &self.kernel,
-            &*self.executor,
-        );
-
-        let (_handled, changes) =
-            provider.dispatch_key(&mut runtime, key, shared_ext, client_ext, &*self.executor);
-
-        drop(runtime);
-        drop(session_guard);
-        drop(clients_guard);
-
-        changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
     }
 
     fn current_mode(&self, client_id: ClientId) -> Option<ModeId> {
