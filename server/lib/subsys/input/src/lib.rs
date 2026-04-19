@@ -25,9 +25,11 @@
 //! # Components
 //!
 //! - **Envelope**: [`InputEvent`], [`InputFlags`], header accessors
-//! - **Temporary legacy overlap**: typed key/mouse + mode infrastructure
-//! - **Traits**: [`ClipboardProvider`], [`ModeLifecycleHandler`]
-//! - **Conversions**: `From` impls between arch types and driver types
+//! - **Temporary legacy overlap**: typed key/mouse definitions only
+//! - **Legacy auxiliary traits/errors**: clipboard/input compatibility while later
+//!   purification phases are still in flight
+//! - **Shared contract compatibility re-exports**: thin forwards into
+//!   `reovim-subsys-input-contracts`
 
 mod binding_info;
 mod convert;
@@ -36,17 +38,8 @@ pub mod input_event;
 #[cfg(test)]
 mod input_event_tests;
 mod key;
-mod keybinding_store;
-mod lifecycle;
 mod lookup;
-mod lookup_policy_store;
-mod mode;
-mod mode_key;
-mod mode_registry;
-mod mode_store;
-mod module_ext;
 mod mouse;
-mod provider;
 mod traits;
 mod transition;
 
@@ -68,34 +61,10 @@ pub use mouse::{MouseButton, MouseEvent, MouseEventKind};
 // Re-export traits
 pub use traits::ClipboardProvider;
 
-// Re-export mode types
-pub use mode::{KeySequence, Keybinding, KeybindingTarget};
-
 // Re-export lookup types
 pub use lookup::{
     BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
 };
-
-// Re-export lifecycle types
-pub use lifecycle::{ModeLifecycleHandler, NopLifecycleHandler};
-
-// Re-export provider types
-pub use {
-    module_ext::DefaultModeProviderModule,
-    provider::{DefaultModeProvider, ProviderPriority},
-};
-
-// Re-export typed key and registry
-pub use {mode_key::ModeProviderKey, mode_registry::ModeProviderRegistry};
-
-// Re-export mode store
-pub use mode_store::{ModeInfo, ModeInfoStore};
-
-// Re-export keybinding store
-pub use keybinding_store::KeybindingStore;
-
-// Re-export lookup policy store
-pub use lookup_policy_store::LookupPolicyStore;
 
 // Re-export binding metadata
 pub use binding_info::BindingInfo;
@@ -112,23 +81,9 @@ mod error_tests;
 #[cfg(test)]
 mod key_tests;
 #[cfg(test)]
-mod keybinding_store_tests;
-#[cfg(test)]
-mod lifecycle_tests;
-#[cfg(test)]
 mod lookup_tests;
 #[cfg(test)]
-mod mode_key_tests;
-#[cfg(test)]
-mod mode_registry_tests;
-#[cfg(test)]
-mod mode_store_tests;
-#[cfg(test)]
-mod mode_tests;
-#[cfg(test)]
 mod mouse_tests;
-#[cfg(test)]
-mod provider_tests;
 #[cfg(test)]
 mod traits_tests;
 #[cfg(test)]

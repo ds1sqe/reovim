@@ -49,12 +49,10 @@ use {
     reovim_domain_text::Position,
     reovim_driver_text_session::{ExtensionMap, SessionExtension, TextInputSink},
     reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack},
+    reovim_subsys_input_contracts::{ModeTransition, TransitionContext},
 };
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};
-
-// Re-export transition types from subsys-input (canonical source)
-pub use reovim_subsys_input::{ModeTransition, PopResult, TransitionContext};
 // Re-export session API from session driver
 pub use reovim_driver_text_session::{SessionApi, SessionApiDyn};
 
@@ -1003,7 +1001,7 @@ impl From<Position> for ArgValue {
     }
 }
 
-// ModeTransition, TransitionContext, and PopResult are re-exported from subsys-input above.
+// Shared transition contracts are re-exported from the crate root.
 
 // ============================================================================
 // ModeState

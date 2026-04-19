@@ -49,7 +49,7 @@ fn test_store_take_keybindings() {
 
     let bindings = store.take_keybindings();
     assert_eq!(bindings.len(), 2);
-    assert!(store.is_empty()); // Store should be empty after take
+    assert!(store.is_empty());
 }
 
 #[test]
@@ -80,7 +80,6 @@ fn test_store_take_keybindings_twice() {
     let bindings1 = store.take_keybindings();
     assert_eq!(bindings1.len(), 1);
 
-    // Second take should return empty
     let bindings2 = store.take_keybindings();
     assert!(bindings2.is_empty());
 }
@@ -93,7 +92,6 @@ fn test_store_add_after_take() {
     let _ = store.take_keybindings();
     assert!(store.is_empty());
 
-    // Can add after take
     store.add(test_binding("k"));
     assert_eq!(store.len(), 1);
 }

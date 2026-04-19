@@ -2638,10 +2638,12 @@ dependencies = [
  "reovim-arch",
  "reovim-domain-text",
  "reovim-driver-text-session",
+ "reovim-input-codec",
  "reovim-kernel",
  "reovim-provider-text",
  "reovim-subsys-command-types",
  "reovim-subsys-input",
+ "reovim-subsys-input-contracts",
  "tracing",
 ]
 

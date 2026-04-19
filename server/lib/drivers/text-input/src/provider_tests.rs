@@ -40,10 +40,6 @@ fn test_provider_priority_hash() {
     assert_eq!(set.len(), 2);
 }
 
-// ========================================================================
-// DefaultModeProvider trait tests
-// ========================================================================
-
 struct TestProvider {
     id: ModuleId,
     mode: ModeId,
@@ -70,7 +66,6 @@ impl DefaultModeProvider for TestProvider {
 #[test]
 fn test_default_mode_provider_default_priority() {
     let provider = TestProvider::new();
-    // Default implementation returns ProviderPriority::Default
     assert_eq!(provider.priority(), ProviderPriority::Default);
 }
 
@@ -95,7 +90,6 @@ fn test_default_mode_provider_is_object_safe() {
     fn _accepts_arc(_: std::sync::Arc<dyn DefaultModeProvider>) {}
 }
 
-/// Provider with custom priority to test override behavior.
 struct OverrideProvider;
 
 impl DefaultModeProvider for OverrideProvider {

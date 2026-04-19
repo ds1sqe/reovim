@@ -4,7 +4,6 @@ use reovim_kernel::api::v1::ModeId;
 
 use crate::{DefaultModeProvider, ModeProviderKey, ModeProviderRegistry, ProviderPriority};
 
-// Mock provider for testing
 struct MockModeProvider;
 
 impl DefaultModeProvider for MockModeProvider {

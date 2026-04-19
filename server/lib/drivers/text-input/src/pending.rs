@@ -20,7 +20,7 @@ use {
     reovim_kernel::api::v1::{ModeId, ModuleId},
 };
 
-use reovim_subsys_input::{BindingInfo, KeySequence};
+use crate::{BindingInfo, KeySequence};
 
 /// Sentinel module used for uninitialized `PendingBindings`.
 const PENDING_MODULE: ModuleId = ModuleId::new("__pending__");

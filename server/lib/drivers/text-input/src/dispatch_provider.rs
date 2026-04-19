@@ -12,12 +12,13 @@ use {
         ExtensionMap, PopResult, SessionRuntime, TextKeyDispatchProvider,
         api::{ChangeTracker, CommandExecutor, ModeApi, StateChanges},
     },
+    reovim_input_codec::KeyEvent as CodecKeyEvent,
     reovim_kernel::api::v1::ModeId,
     reovim_subsys_command_types::{ArgValue, CommandContext, RuntimeSignal},
-    reovim_subsys_input::{KeyEvent, KeySequence, KeymapQuery},
+    reovim_subsys_input::KeyEvent as LegacyKeyEvent,
 };
 
-use crate::{ModeState, ModeTransition, PendingBindings, ResolveResult};
+use crate::{KeySequence, KeymapQuery, ModeState, ModeTransition, PendingBindings, ResolveResult};
 
 /// Implementation of `TextKeyDispatchProvider` wrapping `ResolverRegistry`.
 ///
@@ -62,7 +63,7 @@ impl ResolverDispatchProvider {
     fn handle_result(
         &self,
         result: ResolveResult,
-        _key: &KeyEvent,
+        _key: &CodecKeyEvent,
         runtime: &mut SessionRuntime<'_>,
         shared_ext: &mut ExtensionMap,
         client_ext: &mut ExtensionMap,
@@ -239,7 +240,7 @@ impl ResolverDispatchProvider {
     fn populate_pending_bindings(
         &self,
         result: &ResolveResult,
-        key: &KeyEvent,
+        key: &CodecKeyEvent,
         mode: &ModeId,
         client_ext: &mut ExtensionMap,
     ) {
@@ -294,18 +295,19 @@ impl TextKeyDispatchProvider for ResolverDispatchProvider {
     fn dispatch_key(
         &self,
         runtime: &mut SessionRuntime<'_>,
-        key: &KeyEvent,
+        key: &LegacyKeyEvent,
         shared_ext: &mut ExtensionMap,
         client_ext: &mut ExtensionMap,
         executor: &dyn CommandExecutor,
     ) -> (bool, StateChanges) {
         let mode = runtime.current_mode().clone();
         let mut mode_state = ModeState::new(mode.clone());
+        let key: CodecKeyEvent = key.clone().into();
 
         // Step 1: Resolve the key
         let resolve_result = self.resolver_registry.resolve_with_session(
             &mode,
-            key,
+            &key,
             &mut mode_state,
             &*self.keymap,
             runtime,
@@ -319,11 +321,11 @@ impl TextKeyDispatchProvider for ResolverDispatchProvider {
         };
 
         // Step 2: Populate PendingBindings (before handling, to capture state)
-        self.populate_pending_bindings(&result, key, &mode, client_ext);
+        self.populate_pending_bindings(&result, &key, &mode, client_ext);
 
         // Step 3: Handle the resolve result (commands, transitions, inject keys)
         // All state changes accumulate in the runtime's ChangeTracker.
-        let handled = self.handle_result(result, key, runtime, shared_ext, client_ext, executor);
+        let handled = self.handle_result(result, &key, runtime, shared_ext, client_ext, executor);
 
         // Step 4: Take accumulated changes from the runtime
         let mut changes = ChangeTracker::take_changes(runtime);

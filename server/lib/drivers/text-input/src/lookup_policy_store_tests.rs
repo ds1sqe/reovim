@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use {
-    super::*,
+    super::lookup_policy_store::LookupPolicyStore,
     crate::{EagerLookupPolicy, KeyLookupResult, KeyLookupState},
 };
 
@@ -30,7 +30,6 @@ fn test_take_returns_policy() {
     store.set(Arc::new(EagerLookupPolicy));
     let policy = store.take();
     assert!(policy.is_some());
-    // After take, store is empty
     assert!(!store.has_policy());
 }
 
@@ -45,7 +44,6 @@ fn test_taken_policy_works() {
     let store = LookupPolicyStore::new();
     store.set(Arc::new(EagerLookupPolicy));
     let policy = store.take().unwrap();
-    // EagerLookupPolicy resolves ExactOnly to Found
     let cmd = reovim_kernel::api::v1::CommandId::new(
         reovim_kernel::api::v1::ModuleId::new("test"),
         "cmd",
@@ -60,7 +58,6 @@ fn test_set_replaces_existing_policy() {
     store.set(Arc::new(EagerLookupPolicy));
     store.set(Arc::new(EagerLookupPolicy));
     assert!(store.has_policy());
-    // Only one policy stored (replaced, not accumulated)
     let _ = store.take();
     assert!(!store.has_policy());
 }
@@ -80,7 +77,6 @@ fn test_service_impl() {
     fn assert_service<T: Service>() {}
     assert_service::<LookupPolicyStore>();
 
-    // Can be stored in ServiceRegistry
     let registry = ServiceRegistry::new();
     registry.register(Arc::new(LookupPolicyStore::new()));
     let store = registry.get::<LookupPolicyStore>();

@@ -8,7 +8,6 @@ fn test_nop_lifecycle_handler() {
     let mut handler = NopLifecycleHandler;
     let mode = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
 
-    // Should not panic
     handler.on_input_mode_enter(&mode);
     handler.on_input_mode_exit(&mode);
     handler.on_mode_change(&mode, &mode);
@@ -18,12 +17,10 @@ fn test_nop_lifecycle_handler() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_lifecycle_handler_object_safe() {
-    // Verify the trait is object-safe
     fn _accepts_ref(_: &dyn ModeLifecycleHandler) {}
     fn _accepts_box(_: Box<dyn ModeLifecycleHandler>) {}
 }
 
-// Test implementation to verify trait works
 #[allow(clippy::struct_field_names)]
 struct TestLifecycleHandler {
     enter_count: usize,

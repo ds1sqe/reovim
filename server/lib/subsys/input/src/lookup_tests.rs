@@ -1,8 +1,10 @@
-use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId};
+use {
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
+    reovim_subsys_input_contracts::KeySequence,
+};
 
 use crate::{
-    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence,
-    KeymapQuery,
+    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
 };
 
 fn test_module() -> ModuleId {
