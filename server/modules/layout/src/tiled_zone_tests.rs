@@ -665,12 +665,12 @@ fn resize_horizontal_second_child_down() {
 #[test]
 fn split_too_small_bounds_returns_none() {
     // The split method uses 1000x1000 internal bounds, but split_at itself
-    // checks meets_minimum_size. We test split_at directly via the SplitNode.
+    // checks meets_minimum_size. We test split_at directly via the stored tree.
     // Create a zone, then split_at on a tiny rect that would fail minimum size.
-    let mut node = super::SplitNode::Leaf(WindowId::new());
+    let mut node = TiledTree::Window(WindowId::new());
     let target = match &node {
-        super::SplitNode::Leaf(id) => *id,
-        super::SplitNode::Split { .. } => unreachable!(),
+        TiledTree::Window(id) => *id,
+        TiledTree::Split { .. } => unreachable!(),
     };
     // Tiny rect: 4x2 -> splitting vertically gives 2x2 each, below MIN_WINDOW_WIDTH=10
     let tiny = Rect::new(0, 0, 4, 2);
@@ -839,18 +839,18 @@ fn resize_at_zero_width_bounds_is_noop() {
     // axis matches, target found, but total dimension is zero.
     let id_a = WindowId::new();
     let id_b = WindowId::new();
-    let mut node = super::SplitNode::Split {
+    let mut node = TiledTree::Split {
         direction: SplitDirection::Vertical,
-        ratio: 0.5,
-        first: Box::new(super::SplitNode::Leaf(id_a)),
-        second: Box::new(super::SplitNode::Leaf(id_b)),
+        ratio: Permil::HALF,
+        first: Box::new(TiledTree::Window(id_a)),
+        second: Box::new(TiledTree::Window(id_b)),
     };
     // Zero-width bounds: vertical split total = 0.0
     let zero_bounds = Rect::new(0, 0, 0, 10);
     node.resize_at(id_a, NavigateDirection::Right, 10, zero_bounds);
     // Ratio should remain unchanged at 0.5
-    if let super::SplitNode::Split { ratio, .. } = &node {
-        assert!((ratio - 0.5).abs() < f32::EPSILON);
+    if let TiledTree::Split { ratio, .. } = &node {
+        assert_eq!(*ratio, Permil::HALF);
     }
 }
 
@@ -859,15 +859,15 @@ fn resize_at_zero_height_bounds_is_noop() {
     // Same test for horizontal split with zero height.
     let id_a = WindowId::new();
     let id_b = WindowId::new();
-    let mut node = super::SplitNode::Split {
+    let mut node = TiledTree::Split {
         direction: SplitDirection::Horizontal,
-        ratio: 0.5,
-        first: Box::new(super::SplitNode::Leaf(id_a)),
-        second: Box::new(super::SplitNode::Leaf(id_b)),
+        ratio: Permil::HALF,
+        first: Box::new(TiledTree::Window(id_a)),
+        second: Box::new(TiledTree::Window(id_b)),
     };
     let zero_bounds = Rect::new(0, 0, 10, 0);
     node.resize_at(id_a, NavigateDirection::Down, 10, zero_bounds);
-    if let super::SplitNode::Split { ratio, .. } = &node {
-        assert!((ratio - 0.5).abs() < f32::EPSILON);
+    if let TiledTree::Split { ratio, .. } = &node {
+        assert_eq!(*ratio, Permil::HALF);
     }
 }

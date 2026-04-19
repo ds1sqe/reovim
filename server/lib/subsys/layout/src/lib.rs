@@ -62,7 +62,7 @@ pub use {
 pub use {compositor_key::CompositorKey, compositor_registry::CompositorRegistry};
 
 // Layout topology types
-pub use topology::{LayoutTopology, Permil, SplitError};
+pub use topology::{LayerTree, LayoutTopology, Permil, SplitError, TiledTree};
 
 // Geometry and direction types
 pub use {

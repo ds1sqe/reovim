@@ -51,25 +51,25 @@ fn permil_half_constant() {
 }
 
 // ---------------------------------------------------------------------------
-// LayoutTopology::Single
+// TiledTree::Window
 // ---------------------------------------------------------------------------
 
 #[test]
-fn layout_single() {
+fn tiled_tree_window() {
     let id = WindowId::from_raw(1);
-    let topo = LayoutTopology::Single(id);
-    let LayoutTopology::Single(got) = topo else {
-        panic!("expected Single variant");
+    let topo = TiledTree::Window(id);
+    let TiledTree::Window(got) = topo else {
+        panic!("expected Window variant");
     };
     assert_eq!(got, id);
 }
 
 // ---------------------------------------------------------------------------
-// LayoutTopology::Split nested
+// TiledTree::Split nested
 // ---------------------------------------------------------------------------
 
 #[test]
-fn layout_split_nested() {
+fn tiled_tree_split_nested() {
     use crate::SplitDirection;
 
     let id_a = WindowId::from_raw(101);
@@ -77,22 +77,22 @@ fn layout_split_nested() {
     let id_c = WindowId::from_raw(103);
 
     // Build: Vertical split with A on the left and (Horizontal B|C) on the right.
-    let inner = LayoutTopology::Split {
+    let inner = TiledTree::Split {
         direction: SplitDirection::Horizontal,
         ratio: Permil::HALF,
-        first: Box::new(LayoutTopology::Single(id_b)),
-        second: Box::new(LayoutTopology::Single(id_c)),
+        first: Box::new(TiledTree::Window(id_b)),
+        second: Box::new(TiledTree::Window(id_c)),
     };
 
-    let outer = LayoutTopology::Split {
+    let outer = TiledTree::Split {
         direction: SplitDirection::Vertical,
         ratio: Permil::new(400).expect("valid"),
-        first: Box::new(LayoutTopology::Single(id_a)),
+        first: Box::new(TiledTree::Window(id_a)),
         second: Box::new(inner),
     };
 
     // Verify outer variant and ratio.
-    let LayoutTopology::Split {
+    let TiledTree::Split {
         direction,
         ratio,
         first,
@@ -106,13 +106,13 @@ fn layout_split_nested() {
     assert_eq!(ratio.value(), 400);
 
     // Verify first leaf.
-    let LayoutTopology::Single(got_a) = *first else {
-        panic!("expected Single in first");
+    let TiledTree::Window(got_a) = *first else {
+        panic!("expected Window in first");
     };
     assert_eq!(got_a, id_a);
 
     // Verify inner split.
-    let LayoutTopology::Split {
+    let TiledTree::Split {
         direction: inner_dir,
         first: inner_first,
         second: inner_second,
@@ -123,14 +123,59 @@ fn layout_split_nested() {
     };
     assert_eq!(inner_dir, SplitDirection::Horizontal);
 
-    let LayoutTopology::Single(got_b) = *inner_first else {
-        panic!("expected Single b");
+    let TiledTree::Window(got_b) = *inner_first else {
+        panic!("expected Window b");
     };
-    let LayoutTopology::Single(got_c) = *inner_second else {
-        panic!("expected Single c");
+    let TiledTree::Window(got_c) = *inner_second else {
+        panic!("expected Window c");
     };
     assert_eq!(got_b, id_b);
     assert_eq!(got_c, id_c);
+}
+
+#[test]
+fn layer_tree_holds_layer_and_tree() {
+    let layer_id = LayerId::new(7);
+    let window_id = WindowId::from_raw(2);
+    let tree = TiledTree::Window(window_id);
+    let layer_tree = LayerTree { layer_id, tree };
+    assert_eq!(layer_tree.layer_id, layer_id);
+    match layer_tree.tree {
+        TiledTree::Window(got) => assert_eq!(got, window_id),
+        TiledTree::Split { .. } => panic!("expected Window variant"),
+    }
+}
+
+#[test]
+fn layout_topology_struct_fields() {
+    let focused = Some(WindowId::from_raw(10));
+    let active_layer = Some(LayerId::new(3));
+    let tiled_trees = vec![LayerTree {
+        layer_id: LayerId::new(3),
+        tree: TiledTree::Window(WindowId::from_raw(10)),
+    }];
+    let overlay_anchors = vec![(WindowId::from_raw(20), crate::Anchor::Center)];
+
+    let topology = LayoutTopology {
+        focused,
+        active_layer,
+        tiled_trees: tiled_trees.clone(),
+        overlay_anchors: overlay_anchors.clone(),
+    };
+
+    assert_eq!(topology.focused, focused);
+    assert_eq!(topology.active_layer, active_layer);
+    assert_eq!(topology.tiled_trees, tiled_trees);
+    assert_eq!(topology.overlay_anchors, overlay_anchors);
+}
+
+#[test]
+fn layout_topology_default_is_empty() {
+    let topology = LayoutTopology::default();
+    assert_eq!(topology.focused, None);
+    assert_eq!(topology.active_layer, None);
+    assert!(topology.tiled_trees.is_empty());
+    assert!(topology.overlay_anchors.is_empty());
 }
 
 // ---------------------------------------------------------------------------

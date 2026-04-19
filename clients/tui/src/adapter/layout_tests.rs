@@ -98,7 +98,11 @@ impl RootCompositor for MockCompositor {
     }
 
     fn topology(&self) -> LayoutTopology {
-        LayoutTopology::Single(WindowId::from_raw(0))
+        LayoutTopology::default()
+    }
+
+    fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
+        None
     }
 }
 

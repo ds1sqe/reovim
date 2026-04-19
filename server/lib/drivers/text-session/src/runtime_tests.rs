@@ -4076,9 +4076,24 @@ impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
     }
 
     fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        reovim_subsys_layout::LayoutTopology::Single(
-            self.focused.unwrap_or_else(|| WindowId::from_raw(0)),
-        )
+        reovim_subsys_layout::LayoutTopology {
+            focused: self.focused,
+            active_layer: Some(reovim_subsys_layout::LayerId::new(0)),
+            tiled_trees: self.focused.map_or_else(Vec::new, |window| {
+                vec![reovim_subsys_layout::LayerTree {
+                    layer_id: reovim_subsys_layout::LayerId::new(0),
+                    tree: reovim_subsys_layout::TiledTree::Window(window),
+                }]
+            }),
+            overlay_anchors: Vec::new(),
+        }
+    }
+
+    fn tiled_tree(
+        &self,
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&reovim_subsys_layout::TiledTree> {
+        None
     }
 }
 
@@ -5278,7 +5293,22 @@ impl reovim_subsys_layout::RootCompositor for SingleWindowRootCompositor {
     }
 
     fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        reovim_subsys_layout::LayoutTopology::Single(self.layer.window)
+        reovim_subsys_layout::LayoutTopology {
+            focused: Some(self.layer.window),
+            active_layer: Some(reovim_subsys_layout::LayerId::new(0)),
+            tiled_trees: vec![reovim_subsys_layout::LayerTree {
+                layer_id: reovim_subsys_layout::LayerId::new(0),
+                tree: reovim_subsys_layout::TiledTree::Window(self.layer.window),
+            }],
+            overlay_anchors: Vec::new(),
+        }
+    }
+
+    fn tiled_tree(
+        &self,
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&reovim_subsys_layout::TiledTree> {
+        None
     }
 }
 

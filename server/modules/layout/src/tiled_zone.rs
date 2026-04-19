@@ -5,30 +5,43 @@
 //! splits and leaves represent windows.
 
 use reovim_subsys_layout::{
-    LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Rect, SplitDirection,
-    TiledLayer, WindowId, WindowPlacement, ZOrder, Zone,
+    LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Permil, Rect, SplitDirection,
+    TiledLayer, TiledTree, WindowId, WindowPlacement, ZOrder, Zone,
 };
 
-/// A node in the binary split tree.
-#[derive(Debug, Clone)]
-enum SplitNode {
-    /// A window (leaf node).
-    Leaf(WindowId),
-    /// A split dividing space between two children.
-    Split {
+trait SplitTreeExt {
+    fn collect_windows(&self, out: &mut Vec<WindowId>);
+    fn contains(&self, target: WindowId) -> bool;
+    fn arrange(
+        &self,
+        bounds: Rect,
+        layer_id: LayerId,
+        z_base: ZOrder,
+        placements: &mut Vec<WindowPlacement>,
+    );
+    fn split_at(
+        &mut self,
+        target: WindowId,
         direction: SplitDirection,
-        /// Proportion of space given to the first (left/top) child (0.0..1.0).
-        ratio: f32,
-        first: Box<Self>,
-        second: Box<Self>,
-    },
+        bounds: Rect,
+    ) -> Option<WindowId>;
+    fn close_leaf(&mut self, target: WindowId) -> Option<WindowId>;
+    fn first_leaf(&self) -> WindowId;
+    fn resize_at(
+        &mut self,
+        target: WindowId,
+        direction: NavigateDirection,
+        delta: i16,
+        bounds: Rect,
+    );
+    fn equalize(&mut self);
 }
 
-impl SplitNode {
+impl SplitTreeExt for TiledTree {
     /// Collect all window IDs in this subtree.
     fn collect_windows(&self, out: &mut Vec<WindowId>) {
         match self {
-            Self::Leaf(id) => out.push(*id),
+            Self::Window(id) => out.push(*id),
             Self::Split { first, second, .. } => {
                 first.collect_windows(out);
                 second.collect_windows(out);
@@ -39,7 +52,7 @@ impl SplitNode {
     /// Find a leaf by window ID and return whether it exists.
     fn contains(&self, target: WindowId) -> bool {
         match self {
-            Self::Leaf(id) => *id == target,
+            Self::Window(id) => *id == target,
             Self::Split { first, second, .. } => first.contains(target) || second.contains(target),
         }
     }
@@ -53,7 +66,7 @@ impl SplitNode {
         placements: &mut Vec<WindowPlacement>,
     ) {
         match self {
-            Self::Leaf(id) => {
+            Self::Window(id) => {
                 placements.push(WindowPlacement::new(*id, layer_id, Zone::Tiled, bounds, z_base));
             }
             Self::Split {
@@ -62,7 +75,8 @@ impl SplitNode {
                 first,
                 second,
             } => {
-                let (first_bounds, second_bounds) = split_rect(bounds, *direction, *ratio);
+                let (first_bounds, second_bounds) =
+                    split_rect(bounds, *direction, ratio_to_f32(*ratio));
                 first.arrange(first_bounds, layer_id, z_base, placements);
                 second.arrange(second_bounds, layer_id, z_base, placements);
             }
@@ -79,31 +93,31 @@ impl SplitNode {
         bounds: Rect,
     ) -> Option<WindowId> {
         match self {
-            Self::Leaf(id) if *id == target => {
+            Self::Window(id) if *id == target => {
                 // Check minimum size after split
                 let (first_bounds, second_bounds) = split_rect(bounds, direction, 0.5);
                 if !meets_minimum_size(first_bounds) || !meets_minimum_size(second_bounds) {
                     return None;
                 }
                 let new_id = WindowId::new();
-                let old_leaf = Box::new(Self::Leaf(*id));
-                let new_leaf = Box::new(Self::Leaf(new_id));
+                let old_leaf = Box::new(Self::Window(*id));
+                let new_leaf = Box::new(Self::Window(new_id));
                 *self = Self::Split {
                     direction,
-                    ratio: 0.5,
+                    ratio: Permil::HALF,
                     first: old_leaf,
                     second: new_leaf,
                 };
                 Some(new_id)
             }
-            Self::Leaf(_) => None,
+            Self::Window(_) => None,
             &mut Self::Split {
                 direction: sd,
                 ratio,
                 ref mut first,
                 ref mut second,
             } => {
-                let (first_bounds, second_bounds) = split_rect(bounds, sd, ratio);
+                let (first_bounds, second_bounds) = split_rect(bounds, sd, ratio_to_f32(ratio));
                 if first.contains(target) {
                     first.split_at(target, direction, first_bounds)
                 } else {
@@ -118,10 +132,10 @@ impl SplitNode {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_leaf(&mut self, target: WindowId) -> Option<WindowId> {
         match self {
-            Self::Leaf(_) => None, // Can't close root leaf from within
+            Self::Window(_) => None, // Can't close root leaf from within
             Self::Split { first, second, .. } => {
                 // Check if first child is the target leaf
-                if let Self::Leaf(id) = first.as_ref()
+                if let Self::Window(id) = first.as_ref()
                     && *id == target
                 {
                     let sibling = *second.clone();
@@ -130,7 +144,7 @@ impl SplitNode {
                     return Some(focus);
                 }
                 // Check if second child is the target leaf
-                if let Self::Leaf(id) = second.as_ref()
+                if let Self::Window(id) = second.as_ref()
                     && *id == target
                 {
                     let sibling = *first.clone();
@@ -153,7 +167,7 @@ impl SplitNode {
     /// Get the first leaf in depth-first order.
     fn first_leaf(&self) -> WindowId {
         match self {
-            Self::Leaf(id) => *id,
+            Self::Window(id) => *id,
             Self::Split { first, .. } => first.first_leaf(),
         }
     }
@@ -181,7 +195,7 @@ impl SplitNode {
                 | (SplitDirection::Horizontal, NavigateDirection::Up | NavigateDirection::Down)
         );
 
-        let (fb, sb) = split_rect(bounds, sd, *ratio);
+        let (fb, sb) = split_rect(bounds, sd, ratio_to_f32(*ratio));
 
         if axis_matches && (first.contains(target) || second.contains(target)) {
             let total = match sd {
@@ -200,9 +214,14 @@ impl SplitNode {
                         _ => -1.0,
                     }
                 };
-                let new_ratio =
-                    (*ratio + sign * f32::from(delta.unsigned_abs()) / total).clamp(0.1, 0.9);
-                *ratio = new_ratio;
+                let new_ratio = (ratio_to_f32(*ratio)
+                    + sign * f32::from(delta.unsigned_abs()) / total)
+                    .clamp(0.1, 0.9);
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                {
+                    *ratio = Permil::new((new_ratio * 1000.0).round() as u16)
+                        .expect("ratio clamped into valid permil range");
+                }
             }
         } else {
             // Recurse into the child that contains the target
@@ -223,7 +242,7 @@ impl SplitNode {
             ..
         } = self
         {
-            *ratio = 0.5;
+            *ratio = Permil::HALF;
             first.equalize();
             second.equalize();
         }
@@ -233,7 +252,7 @@ impl SplitNode {
 /// Tiled zone managing a binary split tree of windows.
 #[derive(Debug, Clone)]
 pub struct TiledZone {
-    root: Option<SplitNode>,
+    root: Option<TiledTree>,
     layer_id: LayerId,
 }
 
@@ -245,6 +264,11 @@ impl TiledZone {
             root: None,
             layer_id,
         }
+    }
+
+    #[must_use]
+    pub const fn tree(&self) -> Option<&TiledTree> {
+        self.root.as_ref()
     }
 }
 
@@ -261,7 +285,7 @@ impl TiledLayer for TiledZone {
 
     fn add_first(&mut self) -> WindowId {
         let id = WindowId::new();
-        self.root = Some(SplitNode::Leaf(id));
+        self.root = Some(TiledTree::Window(id));
         id
     }
 
@@ -278,7 +302,7 @@ impl TiledLayer for TiledZone {
     fn close(&mut self, window: WindowId) -> Option<WindowId> {
         let root = self.root.as_mut()?;
         // If root is a single leaf matching target, clear the tree
-        if let SplitNode::Leaf(id) = root {
+        if let TiledTree::Window(id) = root {
             if *id == window {
                 return None; // Last window — can't close
             }
@@ -409,6 +433,10 @@ fn rect_center(r: Rect) -> (f32, f32) {
         f32::from(r.x) + f32::from(r.width) / 2.0,
         f32::from(r.y) + f32::from(r.height) / 2.0,
     )
+}
+
+const fn ratio_to_f32(ratio: Permil) -> f32 {
+    ratio.value() as f32 / 1000.0
 }
 
 #[cfg(test)]

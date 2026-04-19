@@ -4,8 +4,8 @@
 //! `TiledZone` and stubbing float/overlay zones for MVP.
 
 use reovim_subsys_layout::{
-    LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, TiledLayer, WindowId,
-    WindowLayerCompositor, WindowPlacement, Zone,
+    LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, TiledLayer, TiledTree,
+    WindowId, WindowLayerCompositor, WindowPlacement, Zone,
 };
 
 use crate::tiled_zone::TiledZone;
@@ -26,6 +26,11 @@ impl HybridLayerCompositor {
             tiled: TiledZone::new(layer_id),
             focused: None,
         }
+    }
+
+    #[must_use]
+    pub const fn tiled_tree(&self) -> Option<&TiledTree> {
+        self.tiled.tree()
     }
 }
 

@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **subsys/layout**: Plan 12 Phase 4 reshapes topology reporting from a single recursive `LayoutTopology` enum into `TiledTree` + `LayerTree` + a struct `LayoutTopology`, adds `RootCompositor::tiled_tree(layer)`, and removes the old sentinel-window topology fallback from the layout module
 - **subsys/layout**: Plan 12 Phase 2 removes `focus_at(x, y)` from `RootCompositor`, keeping hit-testing out of the subsys-layout trait surface and limiting fallout to direct compositor implementations, mocks, and tests
 - **subsys/layout**: Plan 12 Phase 1 inlines `Rect`, `Size`, `Direction`, and `SplitDirection` into `reovim-subsys-layout`, removing its `reovim-client-model` dependency while preserving the crate-level re-export API for downstream users
 - **subsys/session**: Plan 11 Phase 7 extracts `SurfaceDescriptor` and its kind constants from `types.rs` into a dedicated `surface.rs` module, keeping the crate-level re-export stable and leaving the final subsys-session type audit clean

@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_subsys_layout::{LayerConfig, Rect, RootCompositor, SplitDirection},
+    reovim_subsys_layout::{LayerConfig, Rect, RootCompositor, SplitDirection, TiledTree},
 };
 
 fn screen() -> Rect {
@@ -213,4 +213,40 @@ fn layer_compositor_read() {
     layer.add_tiled();
     let read = c.layer_compositor(id).unwrap();
     assert!(read.focused().is_some());
+}
+
+#[test]
+fn topology_empty_has_no_sentinel_windows() {
+    let c = HybridCompositor::new();
+    let topo = c.topology();
+    assert_eq!(topo.focused, None);
+    assert_eq!(topo.active_layer, Some(LayerId::new(0)));
+    assert!(topo.tiled_trees.is_empty());
+}
+
+#[test]
+fn topology_includes_active_layer_tree() {
+    let mut c = HybridCompositor::new();
+    let layer_id = c.active_layer().unwrap();
+    let layer = c.layer_compositor_mut(layer_id).unwrap();
+    let a = layer.add_tiled();
+    let b = layer.split_tiled(a, SplitDirection::Vertical).unwrap();
+
+    let topo = c.topology();
+    assert_eq!(topo.active_layer, Some(layer_id));
+    assert_eq!(topo.tiled_trees.len(), 1);
+    assert_eq!(topo.tiled_trees[0].layer_id, layer_id);
+    match &topo.tiled_trees[0].tree {
+        TiledTree::Split { first, second, .. } => {
+            assert!(matches!(first.as_ref(), TiledTree::Window(id) if *id == a));
+            assert!(matches!(second.as_ref(), TiledTree::Window(id) if *id == b));
+        }
+        TiledTree::Window(_) => panic!("expected split tree"),
+    }
+}
+
+#[test]
+fn tiled_tree_returns_none_for_unknown_layer() {
+    let c = HybridCompositor::new();
+    assert!(c.tiled_tree(LayerId::new(99)).is_none());
 }

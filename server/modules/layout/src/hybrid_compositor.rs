@@ -4,8 +4,8 @@
 //! Implements `RootCompositor` from `reovim-subsys-layout`.
 
 use reovim_subsys_layout::{
-    CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
-    WindowLayerCompositor, WindowPlacement, ZOrder,
+    CompositeResult, Layer, LayerConfig, LayerId, LayerTree, LayoutTopology, Rect, RootCompositor,
+    TiledTree, WindowId, WindowLayerCompositor, WindowPlacement, ZOrder,
 };
 
 use crate::hybrid_layer::HybridLayerCompositor;
@@ -227,29 +227,28 @@ impl RootCompositor for HybridCompositor {
     }
 
     fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        // Return topology for active layer, or Single window if no active layer
-        if let Some(active_id) = self.active_layer {
-            if let Some((_, comp)) = self.get_layer(active_id) {
-                // For now, return a simple single-window topology.
-                // Full topology construction would require more state tracking in HybridLayerCompositor.
-                if let Some(focused) = self.focused {
-                    reovim_subsys_layout::LayoutTopology::Single(focused)
-                } else {
-                    // Get first tiled window from active layer
-                    let windows = comp.windows_in_zone(reovim_subsys_layout::Zone::Tiled);
-                    if let Some(&window) = windows.first() {
-                        reovim_subsys_layout::LayoutTopology::Single(window)
-                    } else {
-                        // No windows at all; return placeholder
-                        reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
-                    }
-                }
-            } else {
-                reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
-            }
-        } else {
-            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
+        let tiled_trees = self
+            .layers
+            .iter()
+            .filter_map(|(layer, comp)| {
+                comp.tiled_tree().cloned().map(|tree| LayerTree {
+                    layer_id: layer.id,
+                    tree,
+                })
+            })
+            .collect();
+
+        LayoutTopology {
+            focused: self.focused,
+            active_layer: self.active_layer,
+            tiled_trees,
+            overlay_anchors: Vec::new(),
         }
+    }
+
+    fn tiled_tree(&self, layer: LayerId) -> Option<&TiledTree> {
+        self.get_layer(layer)
+            .and_then(|(_, comp)| comp.tiled_tree())
     }
 }
 

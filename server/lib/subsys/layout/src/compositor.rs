@@ -191,10 +191,11 @@ pub trait RootCompositor: Send + Sync {
     fn generation(&self) -> u64;
 
     /// Current window arrangement as a domain-neutral topology.
-    ///
-    /// Returns the tiled tree structure for the active layer.
     /// Used by the server for layout polling and by proto serialization.
     fn topology(&self) -> crate::LayoutTopology;
+
+    /// Tiled tree for a specific layer, if any.
+    fn tiled_tree(&self, layer: LayerId) -> Option<&crate::TiledTree>;
 }
 
 /// Window layer compositor manages windows within a single layer.

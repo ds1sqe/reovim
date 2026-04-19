@@ -289,7 +289,18 @@ fn test_build_layout_notification_with_compositor() {
             0
         }
         fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(1))
+            reovim_subsys_layout::LayoutTopology {
+                focused: Some(WindowId::from_raw(1)),
+                active_layer: Some(LayerId::new(0)),
+                tiled_trees: vec![reovim_subsys_layout::LayerTree {
+                    layer_id: LayerId::new(0),
+                    tree: reovim_subsys_layout::TiledTree::Window(WindowId::from_raw(1)),
+                }],
+                overlay_anchors: Vec::new(),
+            }
+        }
+        fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
+            None
         }
     }
 
@@ -443,7 +454,18 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
             0
         }
         fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-            reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(10))
+            reovim_subsys_layout::LayoutTopology {
+                focused: Some(WindowId::from_raw(10)),
+                active_layer: Some(LayerId::new(0)),
+                tiled_trees: vec![reovim_subsys_layout::LayerTree {
+                    layer_id: LayerId::new(0),
+                    tree: reovim_subsys_layout::TiledTree::Window(WindowId::from_raw(10)),
+                }],
+                overlay_anchors: Vec::new(),
+            }
+        }
+        fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
+            None
         }
     }
 

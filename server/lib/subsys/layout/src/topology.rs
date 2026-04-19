@@ -6,7 +6,7 @@
 //! actually display.
 
 use {
-    crate::{SplitDirection, WindowId},
+    crate::{Anchor, LayerId, SplitDirection, WindowId},
     std::fmt,
 };
 
@@ -73,17 +73,17 @@ impl Permil {
 }
 
 // ---------------------------------------------------------------------------
-// LayoutTopology
+// TiledTree / LayoutTopology
 // ---------------------------------------------------------------------------
 
-/// Domain-neutral window arrangement topology.
+/// Recursive tiled split tree for a single layer.
 ///
 /// A recursive binary split tree where leaves are individual windows and
 /// interior nodes describe how space is divided between two sub-trees.
-#[derive(Debug, Clone)]
-pub enum LayoutTopology {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TiledTree {
     /// A single window occupying the full available space.
-    Single(WindowId),
+    Window(WindowId),
 
     /// Two sub-topologies separated by a split.
     Split {
@@ -92,10 +92,32 @@ pub enum LayoutTopology {
         /// Proportion assigned to `first`, in parts per thousand.
         ratio: Permil,
         /// The sub-topology that receives the leading portion of the space.
-        first: Box<Self>,
+        first: Box<TiledTree>,
         /// The sub-topology that receives the trailing portion of the space.
-        second: Box<Self>,
+        second: Box<TiledTree>,
     },
+}
+
+/// One layer's tiled tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayerTree {
+    /// Layer identifier.
+    pub layer_id: LayerId,
+    /// Tiled tree for that layer.
+    pub tree: TiledTree,
+}
+
+/// Domain-neutral layout topology snapshot.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LayoutTopology {
+    /// Focused window if any.
+    pub focused: Option<WindowId>,
+    /// Active layer if any.
+    pub active_layer: Option<LayerId>,
+    /// Tiled trees for layers that currently contain tiled windows.
+    pub tiled_trees: Vec<LayerTree>,
+    /// Overlay anchor descriptors by window.
+    pub overlay_anchors: Vec<(WindowId, Anchor)>,
 }
 
 // ---------------------------------------------------------------------------

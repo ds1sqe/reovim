@@ -539,7 +539,24 @@ impl reovim_subsys_layout::RootCompositor for MockCompositor {
     }
 
     fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
-        reovim_subsys_layout::LayoutTopology::Single(reovim_subsys_layout::WindowId::from_raw(1))
+        reovim_subsys_layout::LayoutTopology {
+            focused: Some(reovim_subsys_layout::WindowId::from_raw(1)),
+            active_layer: Some(reovim_subsys_layout::LayerId::new(0)),
+            tiled_trees: vec![reovim_subsys_layout::LayerTree {
+                layer_id: reovim_subsys_layout::LayerId::new(0),
+                tree: reovim_subsys_layout::TiledTree::Window(
+                    reovim_subsys_layout::WindowId::from_raw(1),
+                ),
+            }],
+            overlay_anchors: Vec::new(),
+        }
+    }
+
+    fn tiled_tree(
+        &self,
+        _layer: reovim_subsys_layout::LayerId,
+    ) -> Option<&reovim_subsys_layout::TiledTree> {
+        None
     }
 }
 
