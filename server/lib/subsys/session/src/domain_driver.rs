@@ -21,9 +21,10 @@
 use std::sync::Arc;
 
 use {
+    reovim_input_codec::KeyEvent,
     reovim_kernel::api::v1::{BufferId, ModeId, WindowId},
     reovim_subsys_coordination::{Cursor, Projection},
-    reovim_subsys_input::{InputEvent, KeyEvent},
+    reovim_subsys_input::InputEvent,
 };
 
 use super::{BufferContentProvider, ClientId, CommandResult, DispatchResult, ExtensionMap};

@@ -44,8 +44,8 @@
 //! ```
 
 use {
-    reovim_driver_text_input::{KeyCode, KeyEvent, KeySequence, Modifiers},
-    reovim_input_codec::key_sequence_to_legacy_key_events,
+    reovim_driver_text_input::KeySequence,
+    reovim_input_codec::{KeyCode, KeyEvent, Modifiers, key_sequence_to_key_events},
 };
 
 /// Convert a single `KeyEvent` to vim notation string.
@@ -140,7 +140,7 @@ pub fn keys_to_notation(keys: &[KeyEvent]) -> String {
 #[must_use]
 pub fn notation_to_keys(notation: &str) -> Option<Vec<KeyEvent>> {
     let seq = KeySequence::parse(notation)?;
-    key_sequence_to_legacy_key_events(&seq)
+    key_sequence_to_key_events(&seq)
 }
 
 /// Content stored in a register that represents a macro.

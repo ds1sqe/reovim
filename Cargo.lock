@@ -3932,10 +3932,7 @@ name = "reovim-subsys-input"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
- "reovim-arch",
  "reovim-kernel",
- "reovim-subsys-command-types",
- "reovim-subsys-input-contracts",
 ]
 
 [[package]]
@@ -4008,6 +4005,7 @@ name = "reovim-subsys-session"
 version = "0.15.0-dev"
 dependencies = [
  "parking_lot",
+ "reovim-input-codec",
  "reovim-kernel",
  "reovim-subsys-coordination",
  "reovim-subsys-input",

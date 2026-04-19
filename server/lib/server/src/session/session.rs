@@ -23,6 +23,7 @@ use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
 use {
+    reovim_input_codec::KeyEvent,
     reovim_subsys_input_contracts::ModeTransition,
     reovim_subsys_session::{DomainDriver, ExtensionMap},
 };
@@ -478,7 +479,7 @@ impl Session {
     pub async fn dispatch_key_for_client(
         &self,
         client_id: ClientId,
-        key: &reovim_subsys_input::KeyEvent,
+        key: &KeyEvent,
     ) -> Option<(bool, reovim_subsys_session::change_set::ChangeSet)> {
         let driver = self.domain_driver.read().clone();
         let Some(ref driver) = driver else {

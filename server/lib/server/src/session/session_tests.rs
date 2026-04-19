@@ -1,4 +1,7 @@
-use super::*;
+use {
+    super::*,
+    reovim_input_codec::{KeyCode, KeyEvent},
+};
 
 #[test]
 fn test_session_new() {
@@ -117,7 +120,6 @@ fn test_remove_sharing_client_also_dumps() {
     session.remove_client(owner_id);
 }
 // #[tokio::test]: DELETED (#753 E6) — uses removed methods
-
 
 #[test]
 fn test_session_from_state() {
@@ -371,7 +373,6 @@ async fn test_with_state_sync() {
     assert!(running);
 }
 // #[tokio::test]: DELETED (#753 E6) — uses removed methods
-
 
 #[tokio::test]
 async fn test_client_current_mode() {
@@ -775,7 +776,6 @@ fn test_emit_notification_no_subscribers() {
 
 // #[cfg_attr(coverage_nightly, coverage(off))]: DELETED (#753 E6) — uses removed methods
 
-
 // =========================================================================
 // Coverage: sync_and_set_relation validation failure (#497)
 // =========================================================================
@@ -857,7 +857,6 @@ fn test_update_client_state_sharing_target_removed() {
     assert!(!updated);
 }
 // #[test]: DELETED (#753 E6) — uses removed methods
-
 
 // =========================================================================
 // Coverage: tracing::debug closures in add_client_with_metadata (lines 202-203)
@@ -941,7 +940,6 @@ fn test_editing_state_debug_format() {
 // Compositor tests: DELETED (#753 E6) — uses removed methods
 
 // #[test]: DELETED (#753 E6) — uses removed methods
-
 
 // ========================================================================
 // with_client_extensions tests (#514)
@@ -1323,7 +1321,7 @@ async fn dispatch_fallback_without_domain_driver() {
     session.add_client(client_id);
 
     // No domain driver wired — key is dropped (#753 E3 stub)
-    let key = reovim_subsys_input::KeyEvent::new(reovim_subsys_input::KeyCode::Char('j'));
+    let key = KeyEvent::new(KeyCode::Char('j'));
     let result = session.dispatch_key_for_client(client_id, &key).await;
 
     // Fallback stub returns None when no domain driver is active (#753 E3)

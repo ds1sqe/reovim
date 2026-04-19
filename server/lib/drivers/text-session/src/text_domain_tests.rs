@@ -2,9 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_input_codec::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
-    reovim_subsys_input::{INPUT_HEADER_SIZE, InputEvent, KeyCode, KeyEvent},
+    reovim_subsys_input::{INPUT_HEADER_SIZE, InputEvent},
     reovim_subsys_session::{ClientId, CommandResult, Directive, DomainDriver},
 };
 
@@ -328,8 +329,8 @@ fn dispatch_input_valid_key_decodes_and_forwards() {
         *seen.lock().expect("recording mutex poisoned"),
         vec![KeyEvent::full(
             KeyCode::Char('x'),
-            reovim_subsys_input::Modifiers::CTRL | reovim_subsys_input::Modifiers::SHIFT,
-            reovim_subsys_input::KeyEventKind::Repeat,
+            Modifiers::CTRL | Modifiers::SHIFT,
+            KeyEventKind::Repeat,
         )]
     );
 }

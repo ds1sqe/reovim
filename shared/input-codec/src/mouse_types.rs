@@ -1,7 +1,4 @@
 //! Canonical mouse input vocabulary owned by `reovim-input-codec`.
-//!
-//! Mission #753 Plan 10 Phase 1 keeps temporary overlap with the legacy typed
-//! definitions in `reovim-subsys-input`, but long-term ownership lives here.
 
 use crate::Modifiers;
 

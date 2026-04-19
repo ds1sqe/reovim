@@ -45,10 +45,11 @@ use std::{collections::HashMap, sync::Arc};
 use {
     reovim_arch::sync::RwLock,
     reovim_domain_text::{HistoryRing, RegisterBank},
+    reovim_input_codec::KeyEvent,
     reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ModeStack, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_coordination::Cursor,
-    reovim_subsys_input::{InputEvent, KeyEvent},
+    reovim_subsys_input::InputEvent,
     reovim_subsys_session::{
         BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver, ExtensionMap,
         change_set::ChangeSet,
@@ -372,13 +373,7 @@ impl DomainDriver for TextDomainDriver {
         match kind {
             reovim_input_codec::key::KIND_KEY => {
                 if let Some(key) = reovim_input_codec::key::decode(payload) {
-                    let legacy_key: KeyEvent = key.into();
-                    self.dispatch_key_with_extensions(
-                        client_id,
-                        &legacy_key,
-                        client_ext,
-                        shared_ext,
-                    )
+                    self.dispatch_key_with_extensions(client_id, &key, client_ext, shared_ext)
                 } else {
                     DispatchResult::default()
                 }

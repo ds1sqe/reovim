@@ -12,10 +12,9 @@ use {
         ExtensionMap, PopResult, SessionRuntime, TextKeyDispatchProvider,
         api::{ChangeTracker, CommandExecutor, ModeApi, StateChanges},
     },
-    reovim_input_codec::KeyEvent as CodecKeyEvent,
+    reovim_input_codec::KeyEvent,
     reovim_kernel::api::v1::ModeId,
     reovim_subsys_command_types::{ArgValue, CommandContext, RuntimeSignal},
-    reovim_subsys_input::KeyEvent as LegacyKeyEvent,
 };
 
 use crate::{KeySequence, KeymapQuery, ModeState, ModeTransition, PendingBindings, ResolveResult};
@@ -63,7 +62,7 @@ impl ResolverDispatchProvider {
     fn handle_result(
         &self,
         result: ResolveResult,
-        _key: &CodecKeyEvent,
+        _key: &KeyEvent,
         runtime: &mut SessionRuntime<'_>,
         shared_ext: &mut ExtensionMap,
         client_ext: &mut ExtensionMap,
@@ -240,7 +239,7 @@ impl ResolverDispatchProvider {
     fn populate_pending_bindings(
         &self,
         result: &ResolveResult,
-        key: &CodecKeyEvent,
+        key: &KeyEvent,
         mode: &ModeId,
         client_ext: &mut ExtensionMap,
     ) {
@@ -295,14 +294,13 @@ impl TextKeyDispatchProvider for ResolverDispatchProvider {
     fn dispatch_key(
         &self,
         runtime: &mut SessionRuntime<'_>,
-        key: &LegacyKeyEvent,
+        key: &KeyEvent,
         shared_ext: &mut ExtensionMap,
         client_ext: &mut ExtensionMap,
         executor: &dyn CommandExecutor,
     ) -> (bool, StateChanges) {
         let mode = runtime.current_mode().clone();
         let mut mode_state = ModeState::new(mode.clone());
-        let key: CodecKeyEvent = key.clone().into();
 
         // Step 1: Resolve the key
         let resolve_result = self.resolver_registry.resolve_with_session(

@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use {
+    reovim_input_codec::{KeyCode, KeyEvent},
     reovim_kernel::api::v1::{BufferId, WindowId},
     reovim_subsys_coordination::{Cursor, CursorHeader},
-    reovim_subsys_input::{KeyCode, KeyEvent},
 };
 
 use super::{

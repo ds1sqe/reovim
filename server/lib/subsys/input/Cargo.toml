@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Input subsystem contracts for reovim (key types, mode infrastructure)"
+description = "Input subsystem envelope/header contracts for reovim"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -14,7 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-arch = { workspace = true }
-reovim-subsys-command-types = { workspace = true }
-reovim-subsys-input-contracts = { workspace = true }
 bitflags = "2.4"

@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
+reovim-input-codec = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
 reovim-subsys-input = { workspace = true }
 reovim-subsys-input-contracts = { workspace = true }

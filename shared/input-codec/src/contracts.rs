@@ -74,14 +74,6 @@ pub fn key_sequence_to_key_events(sequence: &KeySequence) -> Option<Vec<KeyEvent
         .collect()
 }
 
-/// Adapt a contract-owned key sequence into legacy typed key events.
-#[must_use]
-pub fn key_sequence_to_legacy_key_events(
-    sequence: &KeySequence,
-) -> Option<Vec<reovim_subsys_input::KeyEvent>> {
-    key_sequence_to_key_events(sequence).map(|events| events.into_iter().map(Into::into).collect())
-}
-
 fn contract_token_to_key_event(token: &str) -> Option<KeyEvent> {
     if let Some(spec) = token
         .strip_prefix('<')
@@ -165,23 +157,12 @@ mod tests {
                 KeyEvent::new(KeyCode::Char('h')),
             ]
         );
-
-        let legacy = key_sequence_to_legacy_key_events(&multi).unwrap();
-        assert_eq!(legacy.len(), 2);
-        assert_eq!(legacy[0].code, reovim_subsys_input::KeyCode::Char('w'));
-        assert!(
-            legacy[0]
-                .modifiers
-                .contains(reovim_subsys_input::Modifiers::CTRL)
-        );
-        assert_eq!(legacy[1].code, reovim_subsys_input::KeyCode::Char('h'));
     }
 
     #[test]
     fn contract_sequence_adapter_rejects_unknown_tokens() {
         let sequence = KeySequence::from_keys(&["<InvalidKey>"]);
         assert!(key_sequence_to_key_events(&sequence).is_none());
-        assert!(key_sequence_to_legacy_key_events(&sequence).is_none());
     }
 
     #[test]

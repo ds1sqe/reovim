@@ -7,11 +7,6 @@
 //! `reovim-subsys-input` remains the home of the opaque `InputEvent` envelope
 //! and frozen 8-byte header only.
 //!
-//! Mission #753 Plan 10 Phase 1 keeps temporary compatibility overlap with
-//! `reovim-subsys-input`'s legacy typed definitions. This crate provides the
-//! explicit local↔legacy adapters needed for that overlap while the remaining
-//! consumers are repointed in later phases.
-//!
 //! # Kind Registry
 //!
 //! | Range | Owner | Purpose |
@@ -23,15 +18,12 @@ mod contracts;
 mod convert;
 pub mod key;
 pub mod key_types;
-mod legacy;
 pub mod mouse_types;
 pub mod pointer;
 pub mod scroll;
 
 pub use {
-    contracts::{
-        key_event_to_contract_token, key_sequence_to_key_events, key_sequence_to_legacy_key_events,
-    },
+    contracts::{key_event_to_contract_token, key_sequence_to_key_events},
     key_types::{KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers},
     mouse_types::{MouseButton, MouseEvent, MouseEventKind},
 };
@@ -40,8 +32,6 @@ pub use {
 mod convert_tests;
 #[cfg(test)]
 mod key_tests;
-#[cfg(test)]
-mod legacy_tests;
 #[cfg(test)]
 mod mouse_tests;
 #[cfg(test)]

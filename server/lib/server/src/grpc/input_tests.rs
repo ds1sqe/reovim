@@ -12,6 +12,7 @@ use {
 };
 
 use {
+    reovim_input_codec::{KeyCode, KeyEvent, Modifiers},
     reovim_kernel::api::v1::{BufferId, WindowId},
     reovim_subsys_coordination::{Cursor, CursorHeader, Projection},
     reovim_subsys_session::{
@@ -116,7 +117,7 @@ impl BufferContentProvider for TestContentProvider {
 }
 
 struct CapturedKeyDriver {
-    keys: Mutex<Vec<reovim_subsys_input::KeyEvent>>,
+    keys: Mutex<Vec<KeyEvent>>,
     content_provider: Arc<dyn BufferContentProvider>,
 }
 
@@ -128,7 +129,7 @@ impl CapturedKeyDriver {
         }
     }
 
-    fn captured_keys(&self) -> Vec<reovim_subsys_input::KeyEvent> {
+    fn captured_keys(&self) -> Vec<KeyEvent> {
         self.keys.lock().unwrap().clone()
     }
 }
@@ -152,11 +153,7 @@ impl DomainDriver for CapturedKeyDriver {
         Arc::clone(&self.content_provider)
     }
 
-    fn dispatch_key(
-        &self,
-        _client_id: SubsysClientId,
-        key: &reovim_subsys_input::KeyEvent,
-    ) -> DispatchResult {
+    fn dispatch_key(&self, _client_id: SubsysClientId, key: &KeyEvent) -> DispatchResult {
         self.keys.lock().unwrap().push(*key);
         DispatchResult::default()
     }
@@ -364,12 +361,7 @@ async fn test_send_input_adapts_single_key_notation_before_dispatch() {
         .await;
 
     assert!(response.is_ok());
-    assert_eq!(
-        driver.captured_keys(),
-        vec![reovim_subsys_input::KeyEvent::new(
-            reovim_subsys_input::KeyCode::Char('j')
-        )]
-    );
+    assert_eq!(driver.captured_keys(), vec![KeyEvent::new(KeyCode::Char('j'))]);
 }
 
 #[tokio::test]
@@ -392,11 +384,8 @@ async fn test_send_input_adapts_multi_token_special_notation_before_dispatch() {
     assert_eq!(
         driver.captured_keys(),
         vec![
-            reovim_subsys_input::KeyEvent::with_modifiers(
-                reovim_subsys_input::KeyCode::Char('w'),
-                reovim_subsys_input::Modifiers::CTRL,
-            ),
-            reovim_subsys_input::KeyEvent::new(reovim_subsys_input::KeyCode::Char('h')),
+            KeyEvent::with_modifiers(KeyCode::Char('w'), Modifiers::CTRL),
+            KeyEvent::new(KeyCode::Char('h')),
         ]
     );
 }

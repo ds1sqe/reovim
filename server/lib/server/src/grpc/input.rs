@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
-    reovim_input_codec::key_sequence_to_legacy_key_events,
+    reovim_input_codec::key_sequence_to_key_events,
     reovim_protocol::v2::{
         SendInputRequest, SendInputResponse, input_service_server::InputService, notification,
     },
@@ -140,7 +140,7 @@ impl InputService for InputServiceImpl {
             .map_err(|_| Status::invalid_argument("Payload is not valid UTF-8 key notation"))?;
         let keys = KeySequence::parse(keys_str)
             .ok_or_else(|| Status::invalid_argument(format!("Invalid key notation: {keys_str}")))?;
-        let adapted_keys = key_sequence_to_legacy_key_events(&keys).ok_or_else(|| {
+        let adapted_keys = key_sequence_to_key_events(&keys).ok_or_else(|| {
             Status::invalid_argument(format!("Unsupported key notation: {keys_str}"))
         })?;
 
