@@ -37,7 +37,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 use reovim_kernel::api::v1::{Service, ServiceRegistry};
 
-use crate::{ClientId, ExtensionMap};
+use crate::{ClientId, CursorSnapshot, ExtensionMap};
 
 /// Scope of an extension bridge — determines which `ExtensionMap` to read from.
 ///
@@ -152,7 +152,7 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     ///
     /// Only called for [`ExtensionScope::Client`] bridges.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn on_cursor_moved(&self, _line: usize, _col: usize, _extensions: &mut ExtensionMap) {}
+    fn on_cursor_moved(&self, _cursor: &CursorSnapshot, _extensions: &mut ExtensionMap) {}
 
     /// Snapshot with cross-client context (multiplayer support, #543).
     ///

@@ -51,8 +51,8 @@ use {
     reovim_subsys_coordination::Cursor,
     reovim_subsys_input::InputEvent,
     reovim_subsys_session::{
-        BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver,
-        DomainRouting, ExtensionMap,
+        BufferContentProvider, ClientId, CommandResult, CursorSnapshot, DispatchResult,
+        DomainDriver, DomainRouting, ExtensionMap,
     },
 };
 
@@ -160,13 +160,16 @@ impl TextDomainDriver {
         let shadow = client_ext.get_or_insert::<TextCursorShadow>();
         let Some(window) = client_state.windows.active() else {
             shadow.clear();
+            *client_ext.get_or_insert::<CursorSnapshot>() = CursorSnapshot::SENTINEL;
             return;
         };
         let Some(buffer_id) = window.buffer_id else {
             shadow.clear();
+            *client_ext.get_or_insert::<CursorSnapshot>() = CursorSnapshot::SENTINEL;
             return;
         };
         shadow.update(buffer_id, window.cursor.line, window.cursor.column);
+        *client_ext.get_or_insert::<CursorSnapshot>() = shadow.cursor_snapshot();
     }
 
     /// Create a new text domain driver.

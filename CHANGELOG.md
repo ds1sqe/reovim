@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **subsys/session + modules**: Plan 11 Phase 5 changes `ExtensionStateBridge::on_cursor_moved` to consume opaque `CursorSnapshot` identity instead of text `(line, col)`. The server now forwards `CursorSnapshot` through bridge hooks, text-session maintains that snapshot alongside its driver-owned text cursor shadow, and `reovim-module-lsp-navigation` hover dismissal now compares opaque cursor bytes instead of text coordinates
 - **subsys/session**: Plan 11 Phase 4 removes `Viewport` from the subsys-session `Window` contract. `reovim-subsys-session::Window` now carries only `{ id, buffer_id, domain_id, cursors }`, while text/layout viewport state remains driver-owned in `reovim-driver-text-session`
 - **subsys/session**: Plan 11 Phase 3 splits `DomainRouting` out of `DomainDriver`, moving read-only routing queries (`current_mode`, `active_window`, `window_buffer`, `windows`, `window_count`, `active_buffer`) behind the new supertrait while preserving `Arc<dyn DomainDriver>` storage and adding default `cursor_generation()`
 - **subsys/session**: Plan 11 Phase 2 removes the remaining text-domain query surface from `reovim-subsys-session`. `DomainDriver` no longer exposes viewport/selection/tab/register/clipboard query methods or their query structs, and `TextDomainDriver` no longer implements that text-specific API

@@ -4,7 +4,10 @@
 //! `CursorSnapshot` while still giving text modules a current `(buffer, line,
 //! col)` view for tick-time behavior.
 
-use {reovim_kernel::api::v1::BufferId, reovim_subsys_session::SessionExtension};
+use {
+    reovim_kernel::api::v1::BufferId,
+    reovim_subsys_session::{CursorSnapshot, SessionExtension},
+};
 
 /// Text-domain cursor shadow stored in the client extension map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +23,9 @@ pub struct TextCursorShadow {
 }
 
 impl TextCursorShadow {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x00000100000001B3;
+
     /// Invalid sentinel value.
     #[must_use]
     pub const fn invalid() -> Self {
@@ -43,6 +49,31 @@ impl TextCursorShadow {
     /// Clear the shadow back to an invalid sentinel.
     pub const fn clear(&mut self) {
         *self = Self::invalid();
+    }
+
+    /// Build an opaque cursor snapshot token from the current shadow state.
+    #[must_use]
+    pub fn cursor_snapshot(&self) -> CursorSnapshot {
+        if !self.valid {
+            return CursorSnapshot::SENTINEL;
+        }
+
+        let mut hash = Self::FNV_OFFSET_BASIS;
+        for byte in (self.buffer_id.as_usize() as u64)
+            .to_le_bytes()
+            .into_iter()
+            .chain((self.line as u64).to_le_bytes())
+            .chain((self.col as u64).to_le_bytes())
+        {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(Self::FNV_PRIME);
+        }
+
+        if hash == 0 {
+            hash = 1;
+        }
+
+        CursorSnapshot::from_bytes(hash.to_le_bytes())
     }
 }
 

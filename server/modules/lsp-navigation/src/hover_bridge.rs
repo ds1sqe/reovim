@@ -5,7 +5,7 @@
 
 use {
     reovim_driver_text_session::{
-        ExtensionMap, TextCursorShadow,
+        CursorSnapshot, ExtensionMap, TextCursorShadow,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
     reovim_kernel::api::v1::ServiceRegistry,
@@ -75,11 +75,11 @@ impl ExtensionStateBridge for HoverBridge {
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn on_cursor_moved(&self, line: usize, col: usize, extensions: &mut ExtensionMap) {
+    fn on_cursor_moved(&self, cursor: &CursorSnapshot, extensions: &mut ExtensionMap) {
         // Dismiss hover when cursor moves away from the trigger position.
         if let Some(state) = extensions.get_mut::<HoverState>()
             && state.active
-            && (line as u32 != state.origin_line || col as u32 != state.origin_col)
+            && state.origin_cursor != *cursor.as_bytes()
         {
             state.dismiss();
         }
@@ -123,6 +123,12 @@ impl ExtensionStateBridge for HoverBridge {
             "hover tick: delivering snapshot to HoverState"
         );
 
+        let origin_cursor = client_extensions
+            .get::<TextCursorShadow>()
+            .filter(|shadow| shadow.valid)
+            .map(TextCursorShadow::cursor_snapshot)
+            .unwrap_or(CursorSnapshot::SENTINEL);
+
         // Move the snapshot into per-client HoverState.
         let state = client_extensions.get_or_insert::<HoverState>();
         state.show(
@@ -132,6 +138,7 @@ impl ExtensionStateBridge for HoverBridge {
             snapshot.line,
             snapshot.col,
         );
+        state.set_origin_cursor(&origin_cursor);
         true
     }
 }

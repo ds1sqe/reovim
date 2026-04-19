@@ -26,3 +26,20 @@ fn clear_restores_invalid_sentinel() {
     shadow.clear();
     assert_eq!(shadow, TextCursorShadow::invalid());
 }
+
+#[test]
+fn valid_shadow_produces_non_sentinel_snapshot() {
+    let mut shadow = TextCursorShadow::invalid();
+    shadow.update(BufferId::from_raw(3), 4, 5);
+    assert_ne!(shadow.cursor_snapshot(), CursorSnapshot::SENTINEL);
+}
+
+#[test]
+fn snapshot_changes_with_position() {
+    let mut shadow = TextCursorShadow::invalid();
+    shadow.update(BufferId::from_raw(3), 4, 5);
+    let a = shadow.cursor_snapshot();
+    shadow.update(BufferId::from_raw(3), 4, 6);
+    let b = shadow.cursor_snapshot();
+    assert_ne!(a, b);
+}

@@ -42,20 +42,17 @@ impl std::fmt::Display for ClientId {
     }
 }
 
-/// Per-client cursor identity snapshot for bridge tick consumption.
+/// Per-client cursor identity snapshot for bridge consumption.
 ///
-/// Updated by the runner after each key event. Bridges read this in
-/// `tick()` to detect cursor movement without direct access to the
-/// window layout.
+/// Updated by the active domain driver after input dispatch. Bridges read this
+/// opaque token to detect cursor identity changes without direct access to
+/// domain-specific cursor state.
 ///
-/// This is a domain-neutral mechanism-level type: any bridge can read it,
-/// the runner writes it. The 8-byte opaque body uses the same wire format
-/// as [`reovim_subsys_coordination::CursorHeader`] — domain_id (4 bytes,
-/// LE) + inner_id (2 bytes, LE) + flags (2 bytes, LE). A sentinel value
-/// of all-zeros indicates "no cursor seen yet".
+/// This is a domain-neutral mechanism-level type: any bridge can read it, but
+/// only the active driver owns how the 8-byte body is produced. A sentinel
+/// value of all-zeros indicates "no cursor seen yet".
 ///
-/// No text-domain fields (line, col, buffer_id) — the runner encodes its
-/// text cursor into the 8-byte body via the coordination codec.
+/// No text-domain fields (line, col, buffer_id) are exposed here.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CursorSnapshot(pub [u8; 8]);
 

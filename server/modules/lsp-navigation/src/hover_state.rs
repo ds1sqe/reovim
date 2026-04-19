@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_text_session::SessionExtension,
+    reovim_driver_text_session::{CursorSnapshot, SessionExtension},
     reovim_kernel::api::v1::{ArcSwap, Service},
 };
 
@@ -44,6 +44,8 @@ pub struct HoverState {
     pub origin_line: u32,
     /// Column where hover was triggered (0-indexed).
     pub origin_col: u32,
+    /// Opaque cursor identity at the time the hover was triggered.
+    pub origin_cursor: [u8; 8],
 }
 
 impl HoverState {
@@ -64,6 +66,11 @@ impl HoverState {
         self.origin_col = col;
     }
 
+    /// Store the opaque cursor identity for stale-cursor dismissal.
+    pub fn set_origin_cursor(&mut self, cursor: &CursorSnapshot) {
+        self.origin_cursor = *cursor.as_bytes();
+    }
+
     /// Dismiss the hover popup.
     pub fn dismiss(&mut self) {
         self.active = false;
@@ -80,6 +87,7 @@ impl SessionExtension for HoverState {
             origin_buffer_id: 0,
             origin_line: 0,
             origin_col: 0,
+            origin_cursor: *CursorSnapshot::SENTINEL.as_bytes(),
         }
     }
 }

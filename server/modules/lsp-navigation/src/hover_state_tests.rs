@@ -9,6 +9,7 @@ fn create_defaults() {
     assert_eq!(state.origin_buffer_id, 0);
     assert_eq!(state.origin_line, 0);
     assert_eq!(state.origin_col, 0);
+    assert_eq!(state.origin_cursor, [0; 8]);
 }
 
 #[test]
@@ -28,6 +29,7 @@ fn show_sets_all_fields() {
     assert_eq!(state.origin_buffer_id, 42);
     assert_eq!(state.origin_line, 5);
     assert_eq!(state.origin_col, 12);
+    assert_eq!(state.origin_cursor, [0; 8]);
 }
 
 #[test]
@@ -54,6 +56,14 @@ fn dismiss_when_inactive_is_noop() {
     let mut state = HoverState::create();
     state.dismiss();
     assert!(!state.active);
+}
+
+#[test]
+fn set_origin_cursor_stores_bytes() {
+    let mut state = HoverState::create();
+    let cursor = reovim_driver_text_session::CursorSnapshot::from_bytes([1, 2, 3, 4, 5, 6, 7, 8]);
+    state.set_origin_cursor(&cursor);
+    assert_eq!(state.origin_cursor, [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 #[test]

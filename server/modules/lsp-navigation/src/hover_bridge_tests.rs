@@ -3,6 +3,16 @@ use {
     std::sync::Arc,
 };
 
+fn cursor_snapshot(
+    buffer_id: u64,
+    line: u32,
+    col: u32,
+) -> reovim_driver_text_session::CursorSnapshot {
+    let mut map = ExtensionMap::new();
+    set_cursor_shadow(&mut map, buffer_id, line, col);
+    map.get::<TextCursorShadow>().unwrap().cursor_snapshot()
+}
+
 fn set_cursor_shadow(map: &mut ExtensionMap, buffer_id: u64, line: u32, col: u32) {
     let shadow = map.get_or_insert::<TextCursorShadow>();
     shadow.update(
@@ -126,8 +136,9 @@ fn cursor_moved_dismisses_when_position_changed() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<HoverState>();
     state.show("hover".to_owned(), HoverContentType::PlainText, 1, 5, 10);
+    state.set_origin_cursor(&cursor_snapshot(1, 5, 10));
 
-    HoverBridge.on_cursor_moved(6, 10, &mut map);
+    HoverBridge.on_cursor_moved(&cursor_snapshot(1, 6, 10), &mut map);
 
     let state = map.get::<HoverState>().unwrap();
     assert!(!state.active);
@@ -139,8 +150,9 @@ fn cursor_moved_keeps_popup_at_origin() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<HoverState>();
     state.show("hover".to_owned(), HoverContentType::PlainText, 1, 5, 10);
+    state.set_origin_cursor(&cursor_snapshot(1, 5, 10));
 
-    HoverBridge.on_cursor_moved(5, 10, &mut map);
+    HoverBridge.on_cursor_moved(&cursor_snapshot(1, 5, 10), &mut map);
 
     let state = map.get::<HoverState>().unwrap();
     assert!(state.active);
@@ -151,7 +163,7 @@ fn cursor_moved_noop_when_inactive() {
     let mut map = ExtensionMap::new();
     map.get_or_insert::<HoverState>();
 
-    HoverBridge.on_cursor_moved(100, 200, &mut map);
+    HoverBridge.on_cursor_moved(&cursor_snapshot(1, 100, 200), &mut map);
 
     let state = map.get::<HoverState>().unwrap();
     assert!(!state.active);
@@ -160,7 +172,7 @@ fn cursor_moved_noop_when_inactive() {
 #[test]
 fn cursor_moved_noop_no_state() {
     let mut map = ExtensionMap::new();
-    HoverBridge.on_cursor_moved(0, 0, &mut map);
+    HoverBridge.on_cursor_moved(&reovim_driver_text_session::CursorSnapshot::SENTINEL, &mut map);
 }
 
 #[test]
@@ -168,8 +180,9 @@ fn cursor_moved_same_line_different_col_dismisses() {
     let mut map = ExtensionMap::new();
     let state = map.get_or_insert::<HoverState>();
     state.show("hover".to_owned(), HoverContentType::PlainText, 1, 5, 10);
+    state.set_origin_cursor(&cursor_snapshot(1, 5, 10));
 
-    HoverBridge.on_cursor_moved(5, 15, &mut map);
+    HoverBridge.on_cursor_moved(&cursor_snapshot(1, 5, 15), &mut map);
 
     let state = map.get::<HoverState>().unwrap();
     assert!(!state.active);

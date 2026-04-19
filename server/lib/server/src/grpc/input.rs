@@ -21,7 +21,7 @@ use {
     },
     reovim_subsys_input::InputEvent,
     reovim_subsys_input_contracts::KeySequence,
-    reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
+    reovim_subsys_session::{CursorSnapshot, bridges::BridgeRegistry, change_set::ChangeSet},
     tonic::{Request, Response, Status},
 };
 
@@ -370,27 +370,22 @@ impl InputServiceImpl {
     }
 
     /// Notify all client-scoped bridges of a cursor movement (#662).
-    ///
-    /// Cursor position is domain-owned (#753 E3); use (0, 0) as placeholder
-    /// until projections supply cursor coordinates.
     fn notify_bridges_cursor_moved(
         session: &Session,
         client_id: ClientId,
         bridges: &BridgeRegistry,
         changes: &mut ChangeSet,
     ) {
-        // Cursor position is domain-owned. Pass (0, 0) as placeholder (#753 E3).
-        let (line, col) = (0usize, 0usize);
-
         session
             .clients()
             .with_client_extensions_mut(client_id, |ext| {
+                let cursor = *ext.get_or_insert::<CursorSnapshot>();
                 for bridge in bridges
                     .values()
                     .filter(|b| b.scope() == reovim_subsys_session::bridges::ExtensionScope::Client)
                 {
                     let was_active = bridge.is_active(ext);
-                    bridge.on_cursor_moved(line, col, ext);
+                    bridge.on_cursor_moved(&cursor, ext);
                     let is_active = bridge.is_active(ext);
                     if was_active && !is_active {
                         changes.record_extension_change(bridge.kind().into());
