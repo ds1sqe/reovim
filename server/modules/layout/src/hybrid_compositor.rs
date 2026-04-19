@@ -250,6 +250,8 @@ impl RootCompositor for HybridCompositor {
         self.get_layer(layer)
             .and_then(|(_, comp)| comp.tiled_tree())
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 #[cfg(test)]

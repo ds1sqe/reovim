@@ -225,6 +225,8 @@ impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
     ) -> Option<&reovim_subsys_layout::TiledTree> {
         None
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 // =========================================================================

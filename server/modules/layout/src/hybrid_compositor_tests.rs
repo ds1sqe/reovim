@@ -250,3 +250,11 @@ fn tiled_tree_returns_none_for_unknown_layer() {
     let c = HybridCompositor::new();
     assert!(c.tiled_tree(LayerId::new(99)).is_none());
 }
+
+#[test]
+fn set_surface_is_noop() {
+    let mut c = HybridCompositor::new();
+    let before = c.generation();
+    c.set_surface(1, &[1, 2, 3]);
+    assert_eq!(c.generation(), before);
+}

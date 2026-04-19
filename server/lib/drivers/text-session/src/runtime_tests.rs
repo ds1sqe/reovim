@@ -4095,6 +4095,8 @@ impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
     ) -> Option<&reovim_subsys_layout::TiledTree> {
         None
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 fn make_compositor_runtime<'a>(
@@ -5310,6 +5312,8 @@ impl reovim_subsys_layout::RootCompositor for SingleWindowRootCompositor {
     ) -> Option<&reovim_subsys_layout::TiledTree> {
         None
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 #[test]

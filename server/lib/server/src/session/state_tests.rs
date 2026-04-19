@@ -558,6 +558,8 @@ impl reovim_subsys_layout::RootCompositor for MockCompositor {
     ) -> Option<&reovim_subsys_layout::TiledTree> {
         None
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 /// Test `with_registries` with `Some(compositor)` to cover line 148.

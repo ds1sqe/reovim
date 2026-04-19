@@ -302,6 +302,7 @@ fn test_build_layout_notification_with_compositor() {
         fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
             None
         }
+        fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
     }
 
     // Create a session state (compositor is now per-client, not shared)
@@ -467,6 +468,7 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
             None
         }
+        fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
     }
 
     // Create session with compositor that returns two windows

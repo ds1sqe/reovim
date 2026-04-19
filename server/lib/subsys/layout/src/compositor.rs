@@ -196,6 +196,12 @@ pub trait RootCompositor: Send + Sync {
 
     /// Tiled tree for a specific layer, if any.
     fn tiled_tree(&self, layer: LayerId) -> Option<&crate::TiledTree>;
+
+    /// Set the current surface payload for this compositor.
+    ///
+    /// The boundary stays raw `(kind, body)` instead of depending on another
+    /// subsys type. Implementations may ignore unsupported surface kinds.
+    fn set_surface(&mut self, kind: u16, body: &[u8]);
 }
 
 /// Window layer compositor manages windows within a single layer.

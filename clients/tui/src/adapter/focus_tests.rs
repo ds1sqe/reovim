@@ -94,6 +94,8 @@ impl RootCompositor for MockCompositor {
     fn tiled_tree(&self, _layer: LayerId) -> Option<&reovim_subsys_layout::TiledTree> {
         None
     }
+
+    fn set_surface(&mut self, _kind: u16, _body: &[u8]) {}
 }
 
 fn test_manager() -> TuiFocusManager<MockCompositor> {
