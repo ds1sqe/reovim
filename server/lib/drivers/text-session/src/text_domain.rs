@@ -59,9 +59,7 @@ use {
 use crate::{
     Jumplist, MarkBank, Session, WindowLayout,
     api::{ChangeTracker, CommandExecutor, StateChanges},
-    change_bridge::{
-        changeset_to_command_result, changeset_to_dispatch_result, state_changes_to_change_set,
-    },
+    change_bridge::{state_changes_to_command_result, state_changes_to_dispatch_result},
     tab::TabPageSet,
     text_content::TextContentProvider,
     text_cursor::TextCursor,
@@ -229,9 +227,7 @@ impl TextDomainDriver {
         let Some(ref provider) = self.dispatch_provider else {
             return self
                 .with_client_runtime(client_id, |_runtime| {})
-                .map(|((), changes)| {
-                    changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
-                })
+                .map(|((), changes)| state_changes_to_dispatch_result(&changes))
                 .unwrap_or_default();
         };
 
@@ -277,7 +273,7 @@ impl TextDomainDriver {
         drop(session_guard);
         drop(clients_guard);
 
-        changeset_to_dispatch_result(&state_changes_to_change_set(&changes))
+        state_changes_to_dispatch_result(&changes)
     }
 
     /// Internal dispatch: lock state, create `SessionRuntime`, take changes.
@@ -386,9 +382,7 @@ impl DomainDriver for TextDomainDriver {
         match self.with_client_runtime(client_id, |_runtime| {
             // Command lookup deferred to sub-plan 05.
         }) {
-            Some(((), changes)) => {
-                changeset_to_command_result(&state_changes_to_change_set(&changes))
-            }
+            Some(((), changes)) => state_changes_to_command_result(&changes),
             None => CommandResult::NotHandled,
         }
     }

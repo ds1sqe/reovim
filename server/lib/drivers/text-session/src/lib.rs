@@ -166,9 +166,6 @@ pub use buffer_access::BufferReadAccess;
 // Key dispatch provider trait (sub-plan 05 Phase 1)
 pub use key_dispatch::TextKeyDispatchProvider;
 
-// StateChanges → ChangeSet bridge (sub-plan 03)
-pub use change_bridge::{state_changes_from_change_set, state_changes_to_change_set};
-
 // Text-domain client state bundle (sub-plan 03).
 // Transitional: wired into TextDomainDriver internally. Sub-plan 05 migrates
 // server's EditingState to use this type via ExtensionMap.
