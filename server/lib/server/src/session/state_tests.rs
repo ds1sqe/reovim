@@ -503,10 +503,6 @@ impl reovim_subsys_layout::RootCompositor for MockCompositor {
         None
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<reovim_subsys_layout::WindowId> {
-        None
-    }
-
     fn layer_compositor(
         &self,
         _layer: reovim_subsys_layout::LayerId,

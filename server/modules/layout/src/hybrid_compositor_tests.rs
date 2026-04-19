@@ -131,12 +131,6 @@ fn set_focus_activates_layer() {
     assert_eq!(c.active_layer(), Some(layer_id));
 }
 
-#[test]
-fn focus_at_returns_none() {
-    let mut c = HybridCompositor::new();
-    assert!(c.focus_at(10, 10).is_none());
-}
-
 // =============================================================================
 // Queries
 // =============================================================================

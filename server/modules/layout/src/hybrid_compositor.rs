@@ -181,11 +181,6 @@ impl RootCompositor for HybridCompositor {
         self.focused
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-        // Click-through focus — not needed for keyboard-driven MVP
-        None
-    }
-
     // =========================================================================
     // Per-Layer Operations
     // =========================================================================

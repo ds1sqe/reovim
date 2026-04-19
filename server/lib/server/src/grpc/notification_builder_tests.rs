@@ -264,9 +264,6 @@ fn test_build_layout_notification_with_compositor() {
         fn focused(&self) -> Option<WindowId> {
             self.focused
         }
-        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-            self.focused
-        }
         fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
             None
         }
@@ -422,9 +419,6 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         fn set_focus(&mut self, _window: WindowId) {}
         fn focused(&self) -> Option<WindowId> {
             Some(WindowId::from_raw(10))
-        }
-        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-            None
         }
         fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
             None

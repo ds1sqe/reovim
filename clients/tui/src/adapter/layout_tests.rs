@@ -1,4 +1,10 @@
-use {super::*, reovim_driver_display::layout::WindowLayerCompositor};
+use {
+    super::*,
+    reovim_subsys_layout::{
+        Layer, LayerConfig, LayerId, LayoutTopology, Rect, RootCompositor, WindowId,
+        WindowLayerCompositor,
+    },
+};
 
 // Mock compositor for testing
 struct MockCompositor {
@@ -21,14 +27,11 @@ impl MockCompositor {
 // Minimal RootCompositor implementation for testing
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl RootCompositor for MockCompositor {
-    fn composite(
-        &self,
-        screen: reovim_driver_display::Rect,
-    ) -> reovim_driver_display::layout::CompositeResult {
-        reovim_driver_display::layout::CompositeResult::empty(screen)
+    fn composite(&self, screen: Rect) -> reovim_subsys_layout::CompositeResult {
+        reovim_subsys_layout::CompositeResult::empty(screen)
     }
 
-    fn create_layer(&mut self, _config: reovim_driver_display::layout::LayerConfig) -> LayerId {
+    fn create_layer(&mut self, _config: LayerConfig) -> LayerId {
         LayerId::new(0)
     }
 
@@ -38,7 +41,7 @@ impl RootCompositor for MockCompositor {
         Some(LayerId::new(0))
     }
 
-    fn layers(&self) -> Vec<&reovim_driver_display::layout::Layer> {
+    fn layers(&self) -> Vec<&Layer> {
         Vec::new()
     }
 
@@ -64,10 +67,6 @@ impl RootCompositor for MockCompositor {
         self.focused
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-        self.focused
-    }
-
     fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
         None
     }
@@ -80,7 +79,7 @@ impl RootCompositor for MockCompositor {
         self.windows.len()
     }
 
-    fn set_screen(&mut self, _screen: reovim_driver_display::Rect) {}
+    fn set_screen(&mut self, _screen: Rect) {}
 
     fn layer_of(&self, _window: WindowId) -> Option<LayerId> {
         Some(LayerId::new(0))
@@ -92,6 +91,14 @@ impl RootCompositor for MockCompositor {
             focused: self.focused,
             next_id: self.next_id,
         })
+    }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> LayoutTopology {
+        LayoutTopology::Single(WindowId::from_raw(0))
     }
 }
 

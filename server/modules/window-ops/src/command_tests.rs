@@ -175,10 +175,6 @@ impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
         self.focused
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-        self.focused
-    }
-
     fn layer_compositor(
         &self,
         _layer: LayerId,
@@ -213,6 +209,14 @@ impl reovim_subsys_layout::RootCompositor for MockRootCompositor {
             },
             focused: self.focused,
         })
+    }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> reovim_subsys_layout::LayoutTopology {
+        reovim_subsys_layout::LayoutTopology::Single(WindowId::from_raw(0))
     }
 }
 

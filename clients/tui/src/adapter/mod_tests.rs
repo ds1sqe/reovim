@@ -1,9 +1,9 @@
 use {
     super::*,
     reovim_client_model::traits::{FocusManager, Layout},
-    reovim_driver_display::{
-        Rect, WindowId,
-        layout::{CompositeResult, Layer, LayerConfig, WindowLayerCompositor},
+    reovim_subsys_layout::{
+        CompositeResult, Layer, LayerConfig, LayerId, LayoutTopology, Rect, RootCompositor,
+        WindowId, WindowLayerCompositor,
     },
 };
 
@@ -60,10 +60,6 @@ impl RootCompositor for MockCompositor {
         self.focused
     }
 
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-        self.focused
-    }
-
     fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
         None
     }
@@ -86,6 +82,14 @@ impl RootCompositor for MockCompositor {
         Box::new(Self {
             focused: self.focused,
         })
+    }
+
+    fn generation(&self) -> u64 {
+        0
+    }
+
+    fn topology(&self) -> LayoutTopology {
+        LayoutTopology::Single(WindowId::from_raw(0))
     }
 }
 

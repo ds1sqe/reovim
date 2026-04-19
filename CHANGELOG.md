@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **subsys/layout**: Plan 12 Phase 2 removes `focus_at(x, y)` from `RootCompositor`, keeping hit-testing out of the subsys-layout trait surface and limiting fallout to direct compositor implementations, mocks, and tests
 - **subsys/layout**: Plan 12 Phase 1 inlines `Rect`, `Size`, `Direction`, and `SplitDirection` into `reovim-subsys-layout`, removing its `reovim-client-model` dependency while preserving the crate-level re-export API for downstream users
 - **subsys/session**: Plan 11 Phase 7 extracts `SurfaceDescriptor` and its kind constants from `types.rs` into a dedicated `surface.rs` module, keeping the crate-level re-export stable and leaving the final subsys-session type audit clean
 - **server/session**: Plan 11 Phase 6B moves `ChangeSet` ownership out of `reovim-subsys-session` and into `reovim-server`. Server-side gRPC notification/input paths now import `ChangeSet` from `server::session`, while the subsys-session change_set module and tests are removed

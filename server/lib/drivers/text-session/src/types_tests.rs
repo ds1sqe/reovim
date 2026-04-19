@@ -741,9 +741,6 @@ impl RootCompositor for MockCompositor {
     fn focused(&self) -> Option<WindowId> {
         None
     }
-    fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-        None
-    }
     fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
         None
     }
