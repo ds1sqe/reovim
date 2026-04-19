@@ -31,8 +31,7 @@ use {
     reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_text_input::{
-        BindingLayer, EagerLookupPolicy, KeySequence, KeybindingStore, LookupPolicyStore,
-        ModeInfoStore, ResolverRegistry,
+        KeybindingStore, LookupPolicyStore, ModeInfoStore, ResolverRegistry,
     },
     reovim_driver_text_session::LeaderKeyProvider,
     reovim_driver_text_syntax::{
@@ -47,6 +46,7 @@ use {
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
+    reovim_subsys_input_contracts::{BindingLayer, EagerLookupPolicy, KeySequence, KeymapQuery},
     reovim_subsys_module_config::{BuiltinManifest, ModulesConfig},
     reovim_subsys_module_loader::{
         handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,
@@ -510,7 +510,7 @@ fn build_text_domain_driver(
 
     use {
         reovim_driver_text_input::ResolverDispatchProvider,
-        reovim_driver_text_session::TextDomainDriver, reovim_subsys_input::KeymapQuery,
+        reovim_driver_text_session::TextDomainDriver,
     };
 
     // Get TextBufferRegistry from services (registered earlier in bootstrap).

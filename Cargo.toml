@@ -13,6 +13,7 @@ members = [
     "server/lib/subsys/command",
     "server/lib/drivers/command",
     "server/lib/subsys/input",
+    "server/lib/subsys/input-contracts",
     "server/lib/drivers/text-input",
     "server/lib/drivers/text-syntax",
     "server/lib/drivers/syntax-treesitter",
@@ -268,6 +269,7 @@ reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", vers
 reovim-subsys-command = { path = "./server/lib/subsys/command", version = "0.15.0-dev" }
 reovim-driver-command = { path = "./server/lib/drivers/command", version = "0.15.0-dev" }
 reovim-subsys-input = { path = "./server/lib/subsys/input", version = "0.15.0-dev" }
+reovim-subsys-input-contracts = { path = "./server/lib/subsys/input-contracts", version = "0.15.0-dev" }
 reovim-driver-text-input = { path = "./server/lib/drivers/text-input", version = "0.15.0-dev" }
 reovim-driver-text-syntax = { path = "./server/lib/drivers/text-syntax", version = "0.15.0-dev" }
 reovim-driver-syntax-treesitter = { path = "./server/lib/drivers/syntax-treesitter", version = "0.15.0-dev" }

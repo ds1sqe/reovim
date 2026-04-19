@@ -32,7 +32,9 @@ use crate::{ExtensionMap, Jumplist, api::Selection as ApiSelection};
 // Re-export moved types so they are accessible within this module and its tests via `use super::*`.
 // CursorSnapshot is only referenced in tests. It is now an opaque [u8; 8] identity (C2 #753).
 #[allow(unused_imports)]
-pub use crate::{ClientId, CursorSnapshot, KeySequence};
+pub use crate::{ClientId, CursorSnapshot};
+#[allow(unused_imports)]
+pub use reovim_subsys_input_contracts::KeySequence;
 
 /// Viewport for a client session.
 ///

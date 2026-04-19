@@ -1,7 +1,4 @@
-use {
-    super::*,
-    reovim_kernel::api::v1::ModuleId,
-};
+use {super::*, reovim_kernel::api::v1::ModuleId};
 
 fn test_mode_id() -> ModeId {
     ModeId::new(ModuleId::new("test"), "normal")
@@ -48,7 +45,7 @@ fn test_session_state_lookup_keys_empty() {
     let kernel = KernelContext::default();
     let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
 
     assert!(result.is_not_found());
@@ -147,7 +144,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
 
     // Register a mode that accepts char input (discriminant 1, different from home mode 0)
     let insert_mode_id = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
-    let insert_info = reovim_subsys_input::ModeInfo {
+    let insert_info = reovim_subsys_input_contracts::ModeInfo {
         id: insert_mode_id,
         display_name: "INSERT",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Bar,
@@ -166,7 +163,7 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
     assert!(!state.mode_accepts_char_input());
 
     // Now register home_mode with accepts_char_input: false
-    let normal_info = reovim_subsys_input::ModeInfo {
+    let normal_info = reovim_subsys_input_contracts::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -209,7 +206,7 @@ fn test_lookup_keys_after_registration() {
         .register_str(&test_mode_id(), "j", cmd);
 
     // Lookup should find it
-    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -271,7 +268,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     let mut keymap_reg = KeymapRegistry::new();
 
     // Register something in each registry
-    let mode_info = reovim_subsys_input::ModeInfo {
+    let mode_info = reovim_subsys_input_contracts::ModeInfo {
         id: test_mode_id(),
         display_name: "NORMAL",
         cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
@@ -299,7 +296,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     assert!(!state.mode_registry.is_empty());
 
     // Keymap lookup should find our binding
-    let keys = reovim_subsys_input::KeySequence::parse("j").unwrap();
+    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -616,4 +613,3 @@ fn test_ensure_initial_compositor_window_noop_when_no_buffers() {
 }
 
 // test_ensure_initial_compositor_window_noop_when_already_has_tiled_window: DELETED — uses driver-specific Buffer.
-

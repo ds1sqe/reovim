@@ -28,45 +28,9 @@
 
 use std::sync::RwLock;
 
-use reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, Service};
+use reovim_kernel::api::v1::{Mode, ModeId, Service};
 
-/// Information about a mode for registration.
-///
-/// This is a driver-side struct that holds mode metadata.
-/// Modules convert their `Mode` implementations to this struct
-/// for registration via `ServiceRegistry`.
-#[derive(Debug, Clone)]
-pub struct ModeInfo {
-    /// The mode ID.
-    pub id: ModeId,
-    /// Display name for statusline.
-    pub display_name: &'static str,
-    /// Cursor style for this mode.
-    pub cursor_style: CursorStyle,
-    /// Whether this mode accepts character input.
-    pub accepts_char_input: bool,
-    /// Whether this mode has an active selection.
-    pub has_selection: bool,
-    /// Parent mode for keybinding inheritance.
-    pub inherits_from: Option<ModeId>,
-    /// Whether this is the entry/default mode for new sessions.
-    pub is_entry: bool,
-}
-
-impl ModeInfo {
-    /// Create mode info from a Mode implementation.
-    pub fn from_mode<M: Mode>(mode: M) -> Self {
-        Self {
-            id: mode.id(),
-            display_name: mode.display_name(),
-            cursor_style: mode.cursor_style(),
-            accepts_char_input: mode.accepts_char_input(),
-            has_selection: mode.has_selection(),
-            inherits_from: mode.inherits_from().map(|m| m.id()),
-            is_entry: mode.is_entry(),
-        }
-    }
-}
+pub use reovim_subsys_input_contracts::ModeInfo;
 
 /// Store for mode information registered by modules.
 ///

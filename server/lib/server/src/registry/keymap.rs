@@ -22,7 +22,7 @@ use {
         api::v1::{CommandId, ModeId, ModuleId},
         profile_scope,
     },
-    reovim_subsys_input::{
+    reovim_subsys_input_contracts::{
         BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult,
         KeyLookupState, KeySequence, KeymapQuery,
     },

@@ -24,11 +24,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
+    reovim_input_codec::key_sequence_to_legacy_key_events,
     reovim_protocol::v2::{
-        SendInputRequest, SendInputResponse, input_service_server::InputService,
-        notification,
+        SendInputRequest, SendInputResponse, input_service_server::InputService, notification,
     },
-    reovim_subsys_input::KeySequence,
+    reovim_subsys_input_contracts::KeySequence,
     reovim_subsys_session::{bridges::BridgeRegistry, change_set::ChangeSet},
     tonic::{Request, Response, Status},
 };
@@ -138,8 +138,10 @@ impl InputService for InputServiceImpl {
         // Parse vim notation keys from opaque payload (v3: bytes, interpreted as UTF-8 keys)
         let keys_str = std::str::from_utf8(&req.payload)
             .map_err(|_| Status::invalid_argument("Payload is not valid UTF-8 key notation"))?;
-        let keys = KeySequence::parse(keys_str).ok_or_else(|| {
-            Status::invalid_argument(format!("Invalid key notation: {keys_str}"))
+        let keys = KeySequence::parse(keys_str)
+            .ok_or_else(|| Status::invalid_argument(format!("Invalid key notation: {keys_str}")))?;
+        let adapted_keys = key_sequence_to_legacy_key_events(&keys).ok_or_else(|| {
+            Status::invalid_argument(format!("Unsupported key notation: {keys_str}"))
         })?;
 
         // #514/#468: Snapshot ALL bridge active states before key resolution.
@@ -155,7 +157,7 @@ impl InputService for InputServiceImpl {
         let mut any_handled = false;
         let mut accumulated_changes = ChangeSet::new();
 
-        for key in keys.as_slice() {
+        for key in &adapted_keys {
             // Phase #478: Log key to client ring buffer
             session.with_client_ring_buffer(client_id, |rb: &ClientRingBuffer| {
                 rb.log_key(&format!("{:?}", key.code));

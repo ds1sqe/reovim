@@ -42,9 +42,8 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
-    reovim_kernel::api::v1::ModeStack,
-    reovim_subsys_layout::RootCompositor,
-    reovim_subsys_session::{ExtensionMap, KeySequence},
+    reovim_kernel::api::v1::ModeStack, reovim_subsys_input_contracts::KeySequence,
+    reovim_subsys_layout::RootCompositor, reovim_subsys_session::ExtensionMap,
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};

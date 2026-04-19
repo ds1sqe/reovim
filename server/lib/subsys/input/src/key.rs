@@ -6,7 +6,7 @@
 //!
 //! Linux equivalent: `include/uapi/linux/input-event-codes.h`
 
-use bitflags::bitflags;
+use {bitflags::bitflags, reovim_subsys_input_contracts::ToKeyToken};
 
 bitflags! {
     /// Key modifiers (platform-agnostic).
@@ -253,6 +253,66 @@ impl KeyEvent {
     #[must_use]
     pub const fn is_repeat(&self) -> bool {
         matches!(self.kind, KeyEventKind::Repeat)
+    }
+}
+
+impl ToKeyToken for KeyEvent {
+    fn to_key_token(&self) -> String {
+        legacy_key_to_token(self)
+    }
+}
+
+fn legacy_key_to_token(key: &KeyEvent) -> String {
+    let has_ctrl = key.modifiers.contains(Modifiers::CTRL);
+    let has_alt = key.modifiers.contains(Modifiers::ALT);
+    let has_shift = key.modifiers.contains(Modifiers::SHIFT);
+    let has_any_mod = has_ctrl || has_alt || has_shift;
+
+    let mut prefix = String::new();
+    if has_ctrl {
+        prefix.push_str("C-");
+    }
+    if has_alt {
+        prefix.push_str("A-");
+    }
+    if has_shift {
+        prefix.push_str("S-");
+    }
+
+    match key.code {
+        KeyCode::Char(c) => {
+            if has_any_mod {
+                let key = match c {
+                    '<' => "lt".to_owned(),
+                    '>' => "gt".to_owned(),
+                    ' ' => "Space".to_owned(),
+                    _ => c.to_string(),
+                };
+                format!("<{prefix}{key}>")
+            } else if c == '<' {
+                "<lt>".to_owned()
+            } else if c == '>' {
+                "<gt>".to_owned()
+            } else {
+                c.to_string()
+            }
+        }
+        KeyCode::Escape => format!("<{prefix}Esc>"),
+        KeyCode::Enter => format!("<{prefix}Enter>"),
+        KeyCode::Tab => format!("<{prefix}Tab>"),
+        KeyCode::Backspace => format!("<{prefix}BS>"),
+        KeyCode::Delete => format!("<{prefix}Del>"),
+        KeyCode::Up => format!("<{prefix}Up>"),
+        KeyCode::Down => format!("<{prefix}Down>"),
+        KeyCode::Left => format!("<{prefix}Left>"),
+        KeyCode::Right => format!("<{prefix}Right>"),
+        KeyCode::Home => format!("<{prefix}Home>"),
+        KeyCode::End => format!("<{prefix}End>"),
+        KeyCode::PageUp => format!("<{prefix}PageUp>"),
+        KeyCode::PageDown => format!("<{prefix}PageDown>"),
+        KeyCode::F(n) => format!("<{prefix}F{n}>"),
+        KeyCode::BackTab => "<S-Tab>".to_owned(),
+        _ => "<?>".to_owned(),
     }
 }
 

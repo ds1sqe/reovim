@@ -19,6 +19,7 @@
 //! | `0x0001-0x00FF` | This crate (in-repo) | Well-known: key, pointer, scroll |
 //! | `0x0100-0xFFFF` | External crates | Anyone can claim a range |
 
+mod contracts;
 mod convert;
 pub mod key;
 pub mod key_types;
@@ -28,6 +29,9 @@ pub mod pointer;
 pub mod scroll;
 
 pub use {
+    contracts::{
+        key_event_to_contract_token, key_sequence_to_key_events, key_sequence_to_legacy_key_events,
+    },
     key_types::{KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers},
     mouse_types::{MouseButton, MouseEvent, MouseEventKind},
 };

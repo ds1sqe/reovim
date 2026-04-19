@@ -1,10 +1,10 @@
 [package]
-name = "reovim-subsys-input"
+name = "reovim-subsys-input-contracts"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Input subsystem contracts for reovim (key types, mode infrastructure)"
+description = "Pure shared input contracts for mode/keybinding/session seams"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -14,7 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-arch = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
-reovim-subsys-input-contracts = { workspace = true }
-bitflags = "2.4"

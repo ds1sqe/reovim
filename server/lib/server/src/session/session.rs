@@ -22,7 +22,10 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceService;
-use reovim_subsys_session::{DomainDriver, ExtensionMap};
+use {
+    reovim_subsys_input_contracts::ModeTransition,
+    reovim_subsys_session::{DomainDriver, ExtensionMap},
+};
 
 // active_buffer is now domain-owned; only reachable via domain driver (#753).
 
@@ -282,10 +285,7 @@ impl Session {
         let state = self.state.read();
         let home_mode = state.home_mode().clone();
         // #474/#753 E6: Clone shared compositor for per-client layout notifications.
-        let compositor = state
-            .compositor
-            .as_ref()
-            .map(|c| c.boxed_clone());
+        let compositor = state.compositor.as_ref().map(|c| c.boxed_clone());
         drop(state);
 
         tracing::debug!(
@@ -543,7 +543,7 @@ impl Session {
     pub async fn try_on_command_complete_for_client(
         &self,
         client_id: ClientId,
-    ) -> Option<reovim_subsys_input::ModeTransition> {
+    ) -> Option<ModeTransition> {
         // Stubbed: client_context removed (#753 E3). Domain driver handles mode
         // transitions internally via dispatch_key_with_extensions.
         tracing::warn!(%client_id, "try_on_command_complete_for_client: stubbed (#753 E3)");

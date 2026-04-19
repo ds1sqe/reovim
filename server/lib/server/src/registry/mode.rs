@@ -17,7 +17,10 @@
 
 use std::collections::HashMap;
 
-use reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId};
+use {
+    reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId},
+    reovim_subsys_input_contracts::ModeInfo,
+};
 
 /// Entry in the mode registry containing cached mode behavior.
 ///
@@ -74,7 +77,7 @@ impl ModeEntry {
     ///
     /// Used when extracting modes from `ModeInfoStore`.
     #[must_use]
-    pub fn from_info(info: reovim_subsys_input::ModeInfo) -> Self {
+    pub fn from_info(info: ModeInfo) -> Self {
         Self {
             id: info.id,
             display_name: info.display_name,

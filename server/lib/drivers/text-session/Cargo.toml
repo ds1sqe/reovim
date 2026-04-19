@@ -29,6 +29,7 @@ reovim-subsys-layout = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
 # Input subsystem contracts (KeyEvent, InputEvent)
 reovim-subsys-input = { workspace = true }
+reovim-subsys-input-contracts = { workspace = true }
 # Input codec for decoding InputEvent payloads
 reovim-input-codec = { workspace = true }
 # Session subsystem contracts (types + traits, zero domain deps)

@@ -8,6 +8,8 @@
 
 use crate::SessionExtension;
 
+pub use reovim_subsys_input_contracts::KeySequence;
+
 /// Unique client connection identifier.
 ///
 /// Each terminal/TUI that connects to the server gets a unique `ClientId`.
@@ -126,51 +128,6 @@ impl Viewport {
 impl Default for Viewport {
     fn default() -> Self {
         Self::default_size()
-    }
-}
-
-/// Pending key sequence.
-///
-/// Accumulates keys that haven't been resolved yet (e.g., `d` waiting for motion).
-#[derive(Debug, Clone, Default)]
-pub struct KeySequence {
-    /// Accumulated key representations.
-    keys: Vec<String>,
-}
-
-impl KeySequence {
-    /// Create an empty sequence.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { keys: Vec::new() }
-    }
-
-    /// Add a key to the sequence.
-    pub fn push(&mut self, key: String) {
-        self.keys.push(key);
-    }
-
-    /// Clear the sequence.
-    pub fn clear(&mut self) {
-        self.keys.clear();
-    }
-
-    /// Check if empty.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.keys.is_empty()
-    }
-
-    /// Get the keys.
-    #[must_use]
-    pub fn keys(&self) -> &[String] {
-        &self.keys
-    }
-
-    /// Get the sequence as a single string.
-    #[must_use]
-    pub fn as_string(&self) -> String {
-        self.keys.join("")
     }
 }
 

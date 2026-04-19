@@ -2280,6 +2280,7 @@ dependencies = [
  "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
+ "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-module-config",
  "reovim-subsys-module-loader",
@@ -2685,6 +2686,7 @@ dependencies = [
  "reovim-subsys-command-types",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
+ "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
@@ -2746,6 +2748,7 @@ dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
  "reovim-subsys-input",
+ "reovim-subsys-input-contracts",
 ]
 
 [[package]]
@@ -3673,6 +3676,7 @@ dependencies = [
  "reovim-driver-text-search",
  "reovim-driver-text-session",
  "reovim-driver-text-undo",
+ "reovim-input-codec",
  "reovim-kernel",
  "reovim-module-cmdline",
  "reovim-module-editor",
@@ -3867,12 +3871,14 @@ dependencies = [
  "rand",
  "reovim-arch",
  "reovim-client-cli",
+ "reovim-input-codec",
  "reovim-kernel",
  "reovim-protocol",
  "reovim-subsys-command",
  "reovim-subsys-command-types",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
+ "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
@@ -3925,6 +3931,15 @@ version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
  "reovim-arch",
+ "reovim-kernel",
+ "reovim-subsys-command-types",
+ "reovim-subsys-input-contracts",
+]
+
+[[package]]
+name = "reovim-subsys-input-contracts"
+version = "0.15.0-dev"
+dependencies = [
  "reovim-kernel",
  "reovim-subsys-command-types",
 ]
@@ -3994,6 +4009,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
+ "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "serde_json",
 ]

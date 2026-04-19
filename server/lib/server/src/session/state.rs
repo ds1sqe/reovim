@@ -16,6 +16,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_kernel::api::v1::{KernelContext, ModeId},
+    reovim_subsys_input_contracts::KeySequence,
     reovim_subsys_layout::RootCompositor,
     reovim_subsys_vfs::VfsDriver,
 };
@@ -159,11 +160,7 @@ impl SessionState {
 
     /// Look up a key sequence in the current mode's keymap.
     #[must_use]
-    pub fn lookup_keys(
-        &self,
-        mode: &ModeId,
-        keys: &reovim_subsys_input::KeySequence,
-    ) -> KeyLookupResult {
+    pub fn lookup_keys(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
         self.keymap_registry.lookup(mode, keys)
     }
 
