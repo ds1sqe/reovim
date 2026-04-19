@@ -7,8 +7,9 @@
 //! # Anchor Resolution
 //!
 //! Overlays use anchor-based positioning. The `arrange()` method receives
-//! `window_placements` from the compositor so that anchors like `Cursor`
-//! and `Below` can resolve positions relative to other windows.
+//! `window_placements` from the compositor so that anchors like
+//! `CursorInWindow` and `AdjacentTo` can resolve positions relative to other
+//! windows.
 //!
 //! # Implementation
 //!
@@ -48,8 +49,8 @@ pub trait OverlayLayer: Send + Sync {
     ///
     /// * `screen` - Screen bounds for computing overlay positions
     /// * `window_placements` - Existing window placements from tiled/float zones,
-    ///   used for anchor resolution (e.g., `Anchor::Cursor` needs to know where
-    ///   the referenced window is positioned)
+    ///   used for anchor resolution (e.g., `Anchor::CursorInWindow` needs to know
+    ///   where the referenced window is positioned)
     ///
     /// # Returns
     ///

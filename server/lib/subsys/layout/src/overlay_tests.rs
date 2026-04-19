@@ -32,7 +32,7 @@ fn test_overlay_window_clone() {
 fn test_overlay_window_debug() {
     let ow = OverlayWindow {
         id: WindowId::from_raw(1),
-        constraints: OverlayConstraints::at_position(0, 0),
+        constraints: OverlayConstraints::centered(),
         computed_bounds: Rect::new(0, 0, 10, 10),
         z_order: ZOrder::new(0),
     };

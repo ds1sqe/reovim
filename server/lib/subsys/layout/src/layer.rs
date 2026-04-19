@@ -13,7 +13,7 @@
 //! └── Tiled Zone   (z: layer_z + 0-9)   - Split windows (binary tree)
 //! ```
 
-use crate::{Rect, WindowId};
+use crate::{Direction, Rect, WindowId};
 
 /// Opacity threshold below which mouse clicks pass through to the layer below.
 ///
@@ -265,17 +265,15 @@ pub enum Anchor {
     /// The exact cursor coordinates are domain-specific and resolved by
     /// the layout policy implementation when computing overlay positions.
     CursorInWindow(WindowId),
-    /// Relative to a screen position.
-    Screen {
-        /// X coordinate (column).
-        x: u16,
-        /// Y coordinate (row).
-        y: u16,
-    },
     /// Centered on screen.
     Center,
-    /// Below another window.
-    Below(WindowId),
+    /// Adjacent to another window along an edge.
+    AdjacentTo {
+        /// Reference window.
+        window: WindowId,
+        /// Edge on which to anchor the overlay.
+        edge: Direction,
+    },
 }
 
 /// Constraints for overlay positioning.
@@ -304,18 +302,6 @@ impl OverlayConstraints {
     pub const fn at_cursor(window: WindowId) -> Self {
         Self {
             anchor: Anchor::CursorInWindow(window),
-            preferred_width: None,
-            preferred_height: None,
-            max_width: None,
-            max_height: None,
-        }
-    }
-
-    /// Create constraints anchored to screen position.
-    #[must_use]
-    pub const fn at_position(x: u16, y: u16) -> Self {
-        Self {
-            anchor: Anchor::Screen { x, y },
             preferred_width: None,
             preferred_height: None,
             max_width: None,

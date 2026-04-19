@@ -159,17 +159,26 @@ fn test_overlay_constraints_at_cursor() {
     assert_eq!(constraints.max_height, None);
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
-fn test_overlay_constraints_at_position() {
-    let constraints = OverlayConstraints::at_position(30, 10);
+fn test_anchor_adjacent_to() {
+    let window = WindowId::from_raw(9);
+    let constraints = OverlayConstraints {
+        anchor: Anchor::AdjacentTo {
+            window,
+            edge: Direction::Down,
+        },
+        preferred_width: None,
+        preferred_height: None,
+        max_width: None,
+        max_height: None,
+    };
 
     match constraints.anchor {
-        Anchor::Screen { x, y } => {
-            assert_eq!(x, 30);
-            assert_eq!(y, 10);
+        Anchor::AdjacentTo { window: got, edge } => {
+            assert_eq!(got, window);
+            assert_eq!(edge, Direction::Down);
         }
-        _ => panic!("Expected Anchor::Screen"),
+        _ => panic!("Expected Anchor::AdjacentTo"),
     }
     assert_eq!(constraints.preferred_width, None);
     assert_eq!(constraints.preferred_height, None);
