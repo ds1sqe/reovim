@@ -51,7 +51,8 @@ use {
     reovim_subsys_coordination::Cursor,
     reovim_subsys_input::InputEvent,
     reovim_subsys_session::{
-        BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver, ExtensionMap,
+        BufferContentProvider, ClientId, CommandResult, DispatchResult, DomainDriver,
+        DomainRouting, ExtensionMap,
     },
 };
 
@@ -468,7 +469,9 @@ impl DomainDriver for TextDomainDriver {
     fn initial_cursor(&self, _client_id: ClientId, _buffer_id: BufferId) -> Box<dyn Cursor> {
         Box::new(TextCursor::new(self.domain_id, 0, 0))
     }
+}
 
+impl DomainRouting for TextDomainDriver {
     fn current_mode(&self, client_id: ClientId) -> Option<ModeId> {
         let clients = self.clients.read();
         let mode = clients.get(&client_id)?.mode_stack.current().clone();
@@ -513,6 +516,10 @@ impl DomainDriver for TextDomainDriver {
         let buf = clients.get(&client_id)?.active_buffer;
         drop(clients);
         buf
+    }
+
+    fn cursor_generation(&self, _client_id: ClientId) -> u64 {
+        0
     }
 }
 

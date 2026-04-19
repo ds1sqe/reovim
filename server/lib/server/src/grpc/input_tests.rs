@@ -139,6 +139,15 @@ impl CapturedKeyDriver {
     }
 }
 
+impl reovim_subsys_session::DomainRouting for CapturedKeyDriver {
+    fn current_mode(&self, _client_id: SubsysClientId) -> Option<reovim_kernel::api::v1::ModeId> {
+        Some(reovim_kernel::api::v1::ModeId::new(
+            reovim_kernel::api::v1::ModuleId::new("test"),
+            "normal",
+        ))
+    }
+}
+
 impl DomainDriver for CapturedKeyDriver {
     fn domain_name(&self) -> &'static str {
         "test"

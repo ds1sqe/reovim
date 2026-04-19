@@ -8,7 +8,7 @@ use {
 
 use super::{
     BufferContentProvider, ClientId, CommandResult, Directive, DispatchResult, DisplayLine,
-    DomainDriver, ExtensionMap,
+    DomainDriver, DomainRouting, ExtensionMap,
 };
 
 // --- Test cursor implementation ---
@@ -266,6 +266,8 @@ impl DomainDriver for MockDomainDriver {
     }
 }
 
+impl DomainRouting for MockDomainDriver {}
+
 // --- Tests ---
 
 #[test]
@@ -469,4 +471,10 @@ fn windows_default_returns_empty() {
 fn window_count_default_returns_zero() {
     let driver = MockDomainDriver::new("text", 1);
     assert_eq!(driver.window_count(ClientId(0)), 0);
+}
+
+#[test]
+fn cursor_generation_default_returns_zero() {
+    let driver = MockDomainDriver::new("text", 1);
+    assert_eq!(driver.cursor_generation(ClientId(0)), 0);
 }

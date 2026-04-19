@@ -5,7 +5,7 @@ use {
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_input::{INPUT_HEADER_SIZE, InputEvent},
-    reovim_subsys_session::{ClientId, CommandResult, Directive, DomainDriver},
+    reovim_subsys_session::{ClientId, CommandResult, Directive, DomainDriver, DomainRouting},
 };
 
 use {
@@ -477,4 +477,10 @@ fn window_count_empty_client_returns_zero() {
 fn window_count_unknown_client_returns_zero() {
     let driver = make_driver();
     assert_eq!(driver.window_count(ClientId::new(99)), 0);
+}
+
+#[test]
+fn cursor_generation_defaults_to_zero() {
+    let driver = make_driver();
+    assert_eq!(driver.cursor_generation(ClientId::new(1)), 0);
 }

@@ -377,6 +377,7 @@ async fn test_client_current_mode() {
     let client_id = ClientId::new(1);
 
     session.add_client(client_id);
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
 
     let mode = session.client_current_mode(client_id);
     assert!(mode.is_some());
@@ -484,6 +485,7 @@ fn test_update_client_state_sharing() {
 
     session.add_client(owner_id);
     session.add_client(sharer_id);
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
 
     session
         .clients()
@@ -562,6 +564,7 @@ fn test_client_current_mode_sharing_returns_target_mode() {
 
     session.add_client(owner_id);
     session.add_client(sharer_id);
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
 
     session
         .clients()
@@ -1393,6 +1396,18 @@ impl SessionDispatchTestDriver {
 
     fn payloads(&self) -> Vec<Vec<u8>> {
         self.inputs.lock().unwrap().clone()
+    }
+}
+
+impl reovim_subsys_session::DomainRouting for SessionDispatchTestDriver {
+    fn current_mode(
+        &self,
+        _client_id: reovim_subsys_session::ClientId,
+    ) -> Option<reovim_kernel::api::v1::ModeId> {
+        Some(reovim_kernel::api::v1::ModeId::new(
+            reovim_kernel::api::v1::ModuleId::new("test"),
+            "normal",
+        ))
     }
 }
 

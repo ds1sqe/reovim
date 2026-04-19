@@ -512,8 +512,8 @@ impl Session {
 
     /// Get the current mode for a specific client (#471).
     ///
-    /// Returns the mode from the client's per-client mode stack (if Independent/Sharing)
-    /// or `None` for Following clients.
+    /// Returns the mode from the routed domain driver for the effective input
+    /// target (Independent/Sharing) or `None` for Following clients.
     #[must_use]
     pub fn client_current_mode(
         &self,
@@ -523,11 +523,11 @@ impl Session {
 
         // Find the target client ID based on relation
         let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
+        drop(clients);
 
-        // Get mode from target's mode stack
-        clients
-            .get(&target_id)
-            .map(|c| c.state.mode_stack.current().clone())
+        let driver = self.domain_driver.read();
+        let driver = driver.as_ref()?;
+        driver.current_mode(reovim_subsys_session::ClientId::new(target_id.as_usize()))
     }
 
     /// Get access to a client's ring buffer.

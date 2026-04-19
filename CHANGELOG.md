@@ -37,6 +37,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **subsys/session**: Plan 11 Phase 3 splits `DomainRouting` out of `DomainDriver`, moving read-only routing queries (`current_mode`, `active_window`, `window_buffer`, `windows`, `window_count`, `active_buffer`) behind the new supertrait while preserving `Arc<dyn DomainDriver>` storage and adding default `cursor_generation()`
 - **subsys/session**: Plan 11 Phase 2 removes the remaining text-domain query surface from `reovim-subsys-session`. `DomainDriver` no longer exposes viewport/selection/tab/register/clipboard query methods or their query structs, and `TextDomainDriver` no longer implements that text-specific API
 - **drivers/modules**: Phase 10.6 compile fallout now uses a driver-owned `TextCursorShadow` in `reovim-driver-text-session` for text-only bridge consumers. `reovim-module-illuminate` and `reovim-module-lsp-navigation` no longer read text fields from opaque `CursorSnapshot`, and illuminate hold tracking now resets on same-position buffer changes as well as line/column moves
 - **subsys/server**: `DomainDriver` now uses `dispatch_input` as its sole dispatch entry. The legacy `dispatch_key`, `dispatch_key_with_extensions`, and `decode_key_fallback` paths were removed, `Session::dispatch_key_for_client` was folded into `dispatch_input_for_client`, and gRPC input now reaches domain drivers only through opaque `InputEvent` dispatch

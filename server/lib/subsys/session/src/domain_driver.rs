@@ -28,6 +28,44 @@ use {
 
 use super::{BufferContentProvider, ClientId, CommandResult, DispatchResult, ExtensionMap};
 
+/// Read-only routing/query contract for a domain.
+pub trait DomainRouting {
+    /// Current mode for a client. Returns `None` if client not found.
+    fn current_mode(&self, _client_id: ClientId) -> Option<ModeId> {
+        None
+    }
+
+    /// Active (focused) window for a client.
+    fn active_window(&self, _client_id: ClientId) -> Option<WindowId> {
+        None
+    }
+
+    /// Buffer assigned to a window for a client.
+    fn window_buffer(&self, _client_id: ClientId, _window_id: WindowId) -> Option<BufferId> {
+        None
+    }
+
+    /// All window IDs for a client.
+    fn windows(&self, _client_id: ClientId) -> Vec<WindowId> {
+        Vec::new()
+    }
+
+    /// Number of windows for a client.
+    fn window_count(&self, _client_id: ClientId) -> usize {
+        0
+    }
+
+    /// Active buffer for a client (the buffer in the focused window).
+    fn active_buffer(&self, _client_id: ClientId) -> Option<BufferId> {
+        None
+    }
+
+    /// Monotonic cursor generation for a client.
+    fn cursor_generation(&self, _client_id: ClientId) -> u64 {
+        0
+    }
+}
+
 /// What each domain implements.
 ///
 /// The server holds `Arc<dyn DomainDriver>` per registered domain and routes
@@ -38,7 +76,7 @@ use super::{BufferContentProvider, ClientId, CommandResult, DispatchResult, Exte
 /// This trait is intentionally small — the domain driver is the entry point
 /// for the server to interact with a domain, not the surface area for all
 /// domain capabilities.
-pub trait DomainDriver: Send + Sync {
+pub trait DomainDriver: DomainRouting + Send + Sync {
     /// Domain name (e.g., "text", "mesh", "image").
     ///
     /// Must match the name used at `CoordinationRegistry` enlistment.
@@ -160,40 +198,4 @@ pub trait DomainDriver: Send + Sync {
     /// REQUIRED: no default. Must return only Persistent projections.
     /// Transient projections would deliver phantom events to late-joining clients.
     fn initial_projections(&self, client_id: ClientId) -> Vec<Projection>;
-
-    // --- State queries (Phase 4A, consumed by 4B/4C) ---
-
-    /// Current mode for a client. Returns `None` if client not found.
-    ///
-    /// The server calls this for mode change detection and notifications.
-    fn current_mode(&self, _client_id: ClientId) -> Option<ModeId> {
-        None
-    }
-
-    /// Active (focused) window for a client.
-    fn active_window(&self, _client_id: ClientId) -> Option<WindowId> {
-        None
-    }
-
-    /// Buffer assigned to a window for a client.
-    fn window_buffer(&self, _client_id: ClientId, _window_id: WindowId) -> Option<BufferId> {
-        None
-    }
-
-    /// All window IDs for a client.
-    fn windows(&self, _client_id: ClientId) -> Vec<WindowId> {
-        Vec::new()
-    }
-
-    /// Number of windows for a client.
-    fn window_count(&self, _client_id: ClientId) -> usize {
-        0
-    }
-
-    /// Active buffer for a client (the buffer in the focused window).
-    ///
-    /// Returns `None` if client not found or no buffer is active.
-    fn active_buffer(&self, _client_id: ClientId) -> Option<BufferId> {
-        None
-    }
 }
