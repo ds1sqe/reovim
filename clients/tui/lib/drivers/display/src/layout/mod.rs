@@ -12,6 +12,7 @@ pub use reovim_subsys_layout::{
     CompositeResult,
     CompositorKey,
     CompositorRegistry,
+    Direction,
     // Zone-specific traits
     FloatingLayer,
     FloatingWindow,
@@ -24,6 +25,7 @@ pub use reovim_subsys_layout::{
     OverlayLayer,
     OverlayWindow,
     RootCompositor,
+    SplitDirection,
     TiledLayer,
     WindowError,
     WindowLayerCompositor,

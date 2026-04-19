@@ -72,9 +72,3 @@ pub use {
 
 // Re-export kernel ID types
 pub use reovim_kernel::api::v1::WindowId;
-
-/// Type alias for backward compatibility.
-///
-/// Layout code uses `NavigateDirection`, common model uses `Direction`.
-/// They have the same semantics (Up, Down, Left, Right).
-pub type NavigateDirection = Direction;

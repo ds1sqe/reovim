@@ -11,7 +11,7 @@ fn test_composite_result_empty() {
 #[test]
 fn test_window_error_vim_codes() {
     assert_eq!(WindowError::CannotCloseLastWindow.vim_code(), "E444");
-    assert_eq!(WindowError::NoNeighbor(NavigateDirection::Left).vim_code(), "E36");
+    assert_eq!(WindowError::NoNeighbor(Direction::Left).vim_code(), "E36");
     assert_eq!(WindowError::NotEnoughRoom.vim_code(), "E94");
     assert_eq!(WindowError::CannotResizeAtEdge.vim_code(), "E36");
 }
@@ -69,7 +69,7 @@ fn test_composite_result_get_placement() {
 fn test_window_error_all_variants() {
     let errors = [
         WindowError::CannotCloseLastWindow,
-        WindowError::NoNeighbor(NavigateDirection::Right),
+        WindowError::NoNeighbor(Direction::Right),
         WindowError::NotEnoughRoom,
         WindowError::CannotResizeAtEdge,
         WindowError::WindowNotFound(WindowId::from_raw(1)),
@@ -89,7 +89,7 @@ fn test_window_error_all_variants() {
 #[test]
 fn test_window_error_messages() {
     assert!(
-        WindowError::NoNeighbor(NavigateDirection::Left)
+        WindowError::NoNeighbor(Direction::Left)
             .message()
             .contains("Left")
     );

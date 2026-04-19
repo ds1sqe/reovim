@@ -48,7 +48,7 @@ use {
     reovim_subsys_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_subsys_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_subsys_layout::{
-        LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowPlacement,
+        Direction, LayerId, OverlayConstraints, Rect, SplitDirection, WindowPlacement,
     },
 };
 
@@ -1476,7 +1476,7 @@ impl SessionRuntime<'_> {
 }
 
 impl CompositorApi for SessionRuntime<'_> {
-    fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError> {
+    fn navigate(&self, direction: Direction) -> Result<WindowId, CompositorError> {
         let compositor = self
             .compositor
             .as_ref()
@@ -1635,7 +1635,7 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(())
     }
 
-    fn resize(&mut self, direction: NavigateDirection, delta: i16) -> Result<(), CompositorError> {
+    fn resize(&mut self, direction: Direction, delta: i16) -> Result<(), CompositorError> {
         let compositor = self
             .compositor
             .as_mut()

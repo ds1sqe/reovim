@@ -49,11 +49,11 @@ fn test_default_focus_left() {
     ];
 
     // From right window, go left
-    let next = policy.next(NavigateDirection::Left, WindowId::from_raw(2), &views);
+    let next = policy.next(Direction::Left, WindowId::from_raw(2), &views);
     assert_eq!(next, Some(WindowId::from_raw(1)));
 
     // From left window, go left (nothing there)
-    let next = policy.next(NavigateDirection::Left, WindowId::from_raw(1), &views);
+    let next = policy.next(Direction::Left, WindowId::from_raw(1), &views);
     assert_eq!(next, None);
 }
 
@@ -66,7 +66,7 @@ fn test_default_focus_right() {
     ];
 
     // From left window, go right
-    let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+    let next = policy.next(Direction::Right, WindowId::from_raw(1), &views);
     assert_eq!(next, Some(WindowId::from_raw(2)));
 }
 
@@ -79,11 +79,11 @@ fn test_default_focus_vertical() {
     ];
 
     // From top, go down
-    let next = policy.next(NavigateDirection::Down, WindowId::from_raw(1), &views);
+    let next = policy.next(Direction::Down, WindowId::from_raw(1), &views);
     assert_eq!(next, Some(WindowId::from_raw(2)));
 
     // From bottom, go up
-    let next = policy.next(NavigateDirection::Up, WindowId::from_raw(2), &views);
+    let next = policy.next(Direction::Up, WindowId::from_raw(2), &views);
     assert_eq!(next, Some(WindowId::from_raw(1)));
 }
 
@@ -96,7 +96,7 @@ fn test_default_focus_unknown_current() {
     )];
 
     // Current window not in views
-    let next = policy.next(NavigateDirection::Left, WindowId::from_raw(999), &views);
+    let next = policy.next(Direction::Left, WindowId::from_raw(999), &views);
     assert_eq!(next, None);
 }
 
@@ -113,7 +113,7 @@ fn test_default_focus_best_skips_farther_window() {
     ];
 
     // From window 1, going right: window 2 (closer) should win over window 3 (farther)
-    let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+    let next = policy.next(Direction::Right, WindowId::from_raw(1), &views);
     assert_eq!(next, Some(WindowId::from_raw(2)));
 }
 

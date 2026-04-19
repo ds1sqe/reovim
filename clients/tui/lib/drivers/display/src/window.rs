@@ -2,18 +2,10 @@
 //!
 //! `WindowId` is re-exported from the kernel (single source of truth).
 //! Geometry and direction types come from the common client model.
-//!
-//! This module provides type aliases for backward compatibility and
-//! any TUI-specific extensions.
+//! This module provides TUI-specific extensions.
 
 // Re-export geometry and direction types from common client model
 pub use reovim_client_model::{Direction, Rect, Size, SplitDirection};
-
-/// Type alias for backward compatibility.
-///
-/// TUI code uses `NavigateDirection`, common model uses `Direction`.
-/// They have the same semantics (Up, Down, Left, Right).
-pub type NavigateDirection = Direction;
 
 /// Type alias for backward compatibility.
 ///

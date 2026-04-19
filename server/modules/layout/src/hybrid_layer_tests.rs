@@ -105,7 +105,7 @@ fn navigate_tiled_delegates() {
     let mut l = layer();
     let a = l.add_tiled();
     let b = l.split_tiled(a, SplitDirection::Vertical).unwrap();
-    let target = l.navigate_tiled(a, NavigateDirection::Right);
+    let target = l.navigate_tiled(a, Direction::Right);
     assert_eq!(target, Some(b));
 }
 
@@ -114,7 +114,7 @@ fn equalize_tiled() {
     let mut l = layer();
     let a = l.add_tiled();
     l.split_tiled(a, SplitDirection::Vertical);
-    l.resize_tiled(a, NavigateDirection::Right, 10);
+    l.resize_tiled(a, Direction::Right, 10);
     l.equalize_tiled();
     let placements = l.arrange(Rect::new(0, 0, 80, 24));
     assert_eq!(placements[0].bounds.width, 40);

@@ -59,11 +59,11 @@ impl reovim_subsys_layout::WindowLayerCompositor for MockLayerCompositor {
         Some(id)
     }
 
-    fn navigate_tiled(&self, from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
+    fn navigate_tiled(&self, from: WindowId, _direction: Direction) -> Option<WindowId> {
         self.windows.iter().find(|&&w| w != from).copied()
     }
 
-    fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
+    fn resize_tiled(&mut self, _window: WindowId, _direction: Direction, _delta: i16) {}
 
     fn close_tiled(&mut self, window: WindowId) -> Option<WindowId> {
         self.windows.retain(|&w| w != window);

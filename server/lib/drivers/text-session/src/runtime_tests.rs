@@ -1874,18 +1874,18 @@ fn test_selection_register_without_provider() {
 fn test_compositor_api_no_compositor() {
     use {
         crate::testing::TestSessionRuntime,
-        reovim_subsys_layout::{NavigateDirection, Rect, SplitDirection},
+        reovim_subsys_layout::{Direction, Rect, SplitDirection},
     };
 
     let mut harness = TestSessionRuntime::new();
 
     harness.with_runtime(|runtime| {
         // All compositor operations should return errors when no compositor
-        assert!(runtime.navigate(NavigateDirection::Left).is_err());
+        assert!(runtime.navigate(Direction::Left).is_err());
         assert!(runtime.split(SplitDirection::Horizontal).is_err());
         assert!(runtime.close_current_window().is_err());
         assert!(runtime.close_others().is_err());
-        assert!(runtime.resize(NavigateDirection::Right, 5).is_err());
+        assert!(runtime.resize(Direction::Right, 5).is_err());
         assert!(runtime.equalize().is_err());
         assert!(runtime.cycle(true).is_err());
         assert!(runtime.toggle_float().is_err());
@@ -3913,11 +3913,11 @@ impl reovim_subsys_layout::WindowLayerCompositor for MockLayerCompositor {
         Some(id)
     }
 
-    fn navigate_tiled(&self, from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
+    fn navigate_tiled(&self, from: WindowId, _direction: Direction) -> Option<WindowId> {
         self.windows.iter().find(|&&w| w != from).copied()
     }
 
-    fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
+    fn resize_tiled(&mut self, _window: WindowId, _direction: Direction, _delta: i16) {}
 
     fn close_tiled(&mut self, window: WindowId) -> Option<WindowId> {
         self.windows.retain(|&w| w != window);
@@ -4145,7 +4145,7 @@ fn test_compositor_navigate() {
         &kernel,
         &executor,
     );
-    let result = rt.navigate(NavigateDirection::Right);
+    let result = rt.navigate(Direction::Right);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), WindowId::from_raw(2));
 }
@@ -4309,7 +4309,7 @@ fn test_compositor_resize() {
         &kernel,
         &executor,
     );
-    let result = rt.resize(NavigateDirection::Right, 5);
+    let result = rt.resize(Direction::Right, 5);
     assert!(result.is_ok());
     assert!(rt.changes.window_changed);
 }
@@ -5181,10 +5181,10 @@ impl reovim_subsys_layout::WindowLayerCompositor for SingleWindowLayerCompositor
     ) -> Option<WindowId> {
         None
     }
-    fn navigate_tiled(&self, _from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
+    fn navigate_tiled(&self, _from: WindowId, _direction: Direction) -> Option<WindowId> {
         None
     }
-    fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
+    fn resize_tiled(&mut self, _window: WindowId, _direction: Direction, _delta: i16) {}
     fn close_tiled(&mut self, _window: WindowId) -> Option<WindowId> {
         None
     }

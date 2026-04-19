@@ -31,7 +31,7 @@
 
 use {
     super::layer::WindowPlacement,
-    crate::{NavigateDirection, Rect, SplitDirection, WindowId},
+    crate::{Direction, Rect, SplitDirection, WindowId},
 };
 
 /// Tiled layer manages vim-style split windows.
@@ -118,7 +118,7 @@ pub trait TiledLayer: Send + Sync {
     fn navigate(
         &self,
         from: WindowId,
-        direction: NavigateDirection,
+        direction: Direction,
         views: &[WindowPlacement],
     ) -> Option<WindowId>;
 
@@ -145,7 +145,7 @@ pub trait TiledLayer: Send + Sync {
     /// * `window` - Window to resize
     /// * `direction` - Edge to move
     /// * `delta` - Amount to move (positive = expand, negative = contract)
-    fn resize(&mut self, window: WindowId, direction: NavigateDirection, delta: i16);
+    fn resize(&mut self, window: WindowId, direction: Direction, delta: i16);
 
     /// Equalize all windows.
     ///

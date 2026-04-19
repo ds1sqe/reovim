@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_subsys_layout::{LayerId, NavigateDirection, Rect, SplitDirection, TiledLayer},
+    reovim_subsys_layout::{Direction, LayerId, Rect, SplitDirection, TiledLayer},
 };
 
 fn zone() -> TiledZone {
@@ -162,7 +162,7 @@ fn navigate_right() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
     let views = z.arrange(bounds());
-    let target = z.navigate(a, NavigateDirection::Right, &views);
+    let target = z.navigate(a, Direction::Right, &views);
     assert_eq!(target, Some(b));
 }
 
@@ -172,7 +172,7 @@ fn navigate_left() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
     let views = z.arrange(bounds());
-    let target = z.navigate(b, NavigateDirection::Left, &views);
+    let target = z.navigate(b, Direction::Left, &views);
     assert_eq!(target, Some(a));
 }
 
@@ -182,7 +182,7 @@ fn navigate_at_boundary_returns_none() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     let views = z.arrange(bounds());
-    assert!(z.navigate(a, NavigateDirection::Left, &views).is_none());
+    assert!(z.navigate(a, Direction::Left, &views).is_none());
 }
 
 #[test]
@@ -191,7 +191,7 @@ fn navigate_down() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Horizontal).unwrap();
     let views = z.arrange(bounds());
-    assert_eq!(z.navigate(a, NavigateDirection::Down, &views), Some(b));
+    assert_eq!(z.navigate(a, Direction::Down, &views), Some(b));
 }
 
 // =============================================================================
@@ -204,7 +204,7 @@ fn equalize_resets_ratios() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     // Resize to make unequal
-    z.resize(a, NavigateDirection::Right, 10);
+    z.resize(a, Direction::Right, 10);
     z.equalize();
     // After equalize, both halves should be equal
     let placements = z.arrange(bounds());
@@ -253,7 +253,7 @@ fn resize_changes_proportions() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     // Resize uses internal 1000-wide bounds; delta of 100 = 10% shift
-    z.resize(a, NavigateDirection::Right, 100);
+    z.resize(a, Direction::Right, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     // Ratio shifted from 0.5 → 0.6, so width ≈ 48 out of 80
@@ -321,7 +321,7 @@ fn resize_on_empty_zone_is_noop() {
     let mut z = zone();
     let fake = WindowId::new();
     // Should not panic; the `if let Some(root)` is false
-    z.resize(fake, NavigateDirection::Right, 10);
+    z.resize(fake, Direction::Right, 10);
     assert!(z.is_empty());
 }
 
@@ -350,7 +350,7 @@ fn navigate_from_nonexistent_window() {
     z.add_first();
     let views = z.arrange(bounds());
     let fake = WindowId::new();
-    assert!(z.navigate(fake, NavigateDirection::Right, &views).is_none());
+    assert!(z.navigate(fake, Direction::Right, &views).is_none());
 }
 
 #[test]
@@ -359,7 +359,7 @@ fn navigate_up() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Horizontal).unwrap();
     let views = z.arrange(bounds());
-    assert_eq!(z.navigate(b, NavigateDirection::Up, &views), Some(a));
+    assert_eq!(z.navigate(b, Direction::Up, &views), Some(a));
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn navigate_up_at_boundary_returns_none() {
     let a = z.add_first();
     z.split(a, SplitDirection::Horizontal);
     let views = z.arrange(bounds());
-    assert!(z.navigate(a, NavigateDirection::Up, &views).is_none());
+    assert!(z.navigate(a, Direction::Up, &views).is_none());
 }
 
 #[test]
@@ -377,7 +377,7 @@ fn navigate_down_at_boundary_returns_none() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Horizontal).unwrap();
     let views = z.arrange(bounds());
-    assert!(z.navigate(b, NavigateDirection::Down, &views).is_none());
+    assert!(z.navigate(b, Direction::Down, &views).is_none());
 }
 
 #[test]
@@ -386,7 +386,7 @@ fn navigate_right_at_boundary_returns_none() {
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
     let views = z.arrange(bounds());
-    assert!(z.navigate(b, NavigateDirection::Right, &views).is_none());
+    assert!(z.navigate(b, Direction::Right, &views).is_none());
 }
 
 #[test]
@@ -398,7 +398,7 @@ fn navigate_picks_closest_among_multiple() {
     let c = z.split(b, SplitDirection::Horizontal).unwrap();
     let views = z.arrange(bounds());
     // Navigate right from A: should pick closest (B, since B is above C)
-    let target = z.navigate(a, NavigateDirection::Right, &views).unwrap();
+    let target = z.navigate(a, Direction::Right, &views).unwrap();
     // Both B and C are to the right; the closest by center distance should be chosen
     assert!(target == b || target == c);
 }
@@ -407,7 +407,7 @@ fn navigate_picks_closest_among_multiple() {
 fn navigate_with_empty_views() {
     let z = zone();
     let fake = WindowId::new();
-    assert!(z.navigate(fake, NavigateDirection::Left, &[]).is_none());
+    assert!(z.navigate(fake, Direction::Left, &[]).is_none());
 }
 
 // =============================================================================
@@ -461,7 +461,7 @@ fn close_deep_nested_first_child_of_subtree() {
 fn resize_single_leaf_is_noop() {
     let mut z = zone();
     let a = z.add_first();
-    z.resize(a, NavigateDirection::Right, 10);
+    z.resize(a, Direction::Right, 10);
     // Single leaf, resize_at hits the else { return; } path
     assert_eq!(z.windows(), vec![a]);
 }
@@ -474,7 +474,7 @@ fn resize_horizontal_split_down() {
     let a = z.add_first();
     let _b = z.split(a, SplitDirection::Horizontal).unwrap();
     // Resize first child (a) downward: sign=+1, ratio increases -> a taller
-    z.resize(a, NavigateDirection::Down, 100);
+    z.resize(a, Direction::Down, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     assert!(
@@ -487,7 +487,7 @@ fn resize_horizontal_split_down() {
     let mut z2 = zone();
     let a2 = z2.add_first();
     let b2 = z2.split(a2, SplitDirection::Horizontal).unwrap();
-    z2.resize(b2, NavigateDirection::Up, 100);
+    z2.resize(b2, Direction::Up, 100);
     let placements2 = z2.arrange(bounds());
     let pa2 = placements2.iter().find(|p| p.window_id == a2).unwrap();
     // Second child Up => sign=+1, ratio goes up => first (a2) gets MORE height
@@ -512,7 +512,7 @@ fn resize_second_child_left() {
     let mut z = zone();
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
-    z.resize(b, NavigateDirection::Left, 100);
+    z.resize(b, Direction::Left, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     let pb = placements.iter().find(|p| p.window_id == b).unwrap();
@@ -535,7 +535,7 @@ fn resize_first_child_left() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     // Resize first child (a) to the left -> shrinks a
-    z.resize(a, NavigateDirection::Left, 100);
+    z.resize(a, Direction::Left, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     assert!(
@@ -552,7 +552,7 @@ fn resize_second_child_right() {
     let mut z = zone();
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
-    z.resize(b, NavigateDirection::Right, 100);
+    z.resize(b, Direction::Right, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     let pb = placements.iter().find(|p| p.window_id == b).unwrap();
@@ -578,7 +578,7 @@ fn resize_axis_mismatch_recurses() {
     // Split b horizontally to create a nested split
     let c = z.split(b, SplitDirection::Horizontal).unwrap();
     // Resize b with Down on the vertical split -> axis mismatch -> recurse into right child (b/c split)
-    z.resize(b, NavigateDirection::Down, 100);
+    z.resize(b, Direction::Down, 100);
     let placements = z.arrange(bounds());
     let pb = placements.iter().find(|p| p.window_id == b).unwrap();
     let pc = placements.iter().find(|p| p.window_id == c).unwrap();
@@ -596,7 +596,7 @@ fn resize_nonexistent_target_is_noop() {
     z.split(a, SplitDirection::Vertical);
     let fake = WindowId::new();
     // Neither child contains fake — both branches of recurse path return
-    z.resize(fake, NavigateDirection::Right, 10);
+    z.resize(fake, Direction::Right, 10);
     // Should not panic; tree unchanged
     let placements = z.arrange(bounds());
     assert_eq!(placements[0].bounds.width, 40);
@@ -609,7 +609,7 @@ fn resize_clamps_to_min_ratio() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     // Shrink left window way past minimum
-    z.resize(a, NavigateDirection::Left, 900);
+    z.resize(a, Direction::Left, 900);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     // Ratio clamped to 0.1, so width should be ~8 out of 80
@@ -627,7 +627,7 @@ fn resize_clamps_to_max_ratio() {
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
     // Grow left window way past maximum
-    z.resize(a, NavigateDirection::Right, 900);
+    z.resize(a, Direction::Right, 900);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     // Ratio clamped to 0.9, so width should be ~72 out of 80
@@ -642,7 +642,7 @@ fn resize_horizontal_second_child_down() {
     let mut z = zone();
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Horizontal).unwrap();
-    z.resize(b, NavigateDirection::Down, 100);
+    z.resize(b, Direction::Down, 100);
     let placements = z.arrange(bounds());
     let pa = placements.iter().find(|p| p.window_id == a).unwrap();
     let pb = placements.iter().find(|p| p.window_id == b).unwrap();
@@ -815,7 +815,7 @@ fn resize_axis_mismatch_no_nested_target() {
     let mut z = zone();
     let a = z.add_first();
     z.split(a, SplitDirection::Vertical);
-    z.resize(a, NavigateDirection::Up, 10);
+    z.resize(a, Direction::Up, 10);
     // No change (leaf can't resize), verify no panic
     let placements = z.arrange(bounds());
     assert_eq!(placements[0].bounds.width, 40);
@@ -827,7 +827,7 @@ fn resize_axis_mismatch_second_child() {
     let mut z = zone();
     let a = z.add_first();
     let b = z.split(a, SplitDirection::Vertical).unwrap();
-    z.resize(b, NavigateDirection::Down, 10);
+    z.resize(b, Direction::Down, 10);
     // b is a leaf, resize_at returns, no change
     let placements = z.arrange(bounds());
     assert_eq!(placements[0].bounds.width, 40);
@@ -847,7 +847,7 @@ fn resize_at_zero_width_bounds_is_noop() {
     };
     // Zero-width bounds: vertical split total = 0.0
     let zero_bounds = Rect::new(0, 0, 0, 10);
-    node.resize_at(id_a, NavigateDirection::Right, 10, zero_bounds);
+    node.resize_at(id_a, Direction::Right, 10, zero_bounds);
     // Ratio should remain unchanged at 0.5
     if let TiledTree::Split { ratio, .. } = &node {
         assert_eq!(*ratio, Permil::HALF);
@@ -866,7 +866,7 @@ fn resize_at_zero_height_bounds_is_noop() {
         second: Box::new(TiledTree::Window(id_b)),
     };
     let zero_bounds = Rect::new(0, 0, 10, 0);
-    node.resize_at(id_a, NavigateDirection::Down, 10, zero_bounds);
+    node.resize_at(id_a, Direction::Down, 10, zero_bounds);
     if let TiledTree::Split { ratio, .. } = &node {
         assert_eq!(*ratio, Permil::HALF);
     }

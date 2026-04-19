@@ -17,7 +17,7 @@ use {
     },
     reovim_driver_text_session::{CompositorApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
-    reovim_subsys_layout::{NavigateDirection, SplitDirection},
+    reovim_subsys_layout::{Direction, SplitDirection},
 };
 
 use crate::ids;
@@ -47,7 +47,7 @@ impl Command for FocusLeft {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for FocusLeft {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
-        match runtime.navigate(NavigateDirection::Left) {
+        match runtime.navigate(Direction::Left) {
             Ok(window) => match runtime.focus(window) {
                 Ok(()) => CommandResult::Success,
                 Err(e) => CommandResult::Error(e.to_string()),
@@ -78,7 +78,7 @@ impl Command for FocusDown {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for FocusDown {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
-        match runtime.navigate(NavigateDirection::Down) {
+        match runtime.navigate(Direction::Down) {
             Ok(window) => match runtime.focus(window) {
                 Ok(()) => CommandResult::Success,
                 Err(e) => CommandResult::Error(e.to_string()),
@@ -109,7 +109,7 @@ impl Command for FocusUp {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for FocusUp {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
-        match runtime.navigate(NavigateDirection::Up) {
+        match runtime.navigate(Direction::Up) {
             Ok(window) => match runtime.focus(window) {
                 Ok(()) => CommandResult::Success,
                 Err(e) => CommandResult::Error(e.to_string()),
@@ -140,7 +140,7 @@ impl Command for FocusRight {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for FocusRight {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
-        match runtime.navigate(NavigateDirection::Right) {
+        match runtime.navigate(Direction::Right) {
             Ok(window) => match runtime.focus(window) {
                 Ok(()) => CommandResult::Success,
                 Err(e) => CommandResult::Error(e.to_string()),
@@ -393,7 +393,7 @@ impl Command for ResizeHeightIncrease {
 impl CommandHandler for ResizeHeightIncrease {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
         // Resize down direction expands height
-        match runtime.resize(NavigateDirection::Down, RESIZE_DELTA) {
+        match runtime.resize(Direction::Down, RESIZE_DELTA) {
             Ok(()) => CommandResult::Success,
             Err(e) => CommandResult::Error(e.to_string()),
         }
@@ -421,7 +421,7 @@ impl Command for ResizeHeightDecrease {
 impl CommandHandler for ResizeHeightDecrease {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
         // Resize down direction with negative delta shrinks height
-        match runtime.resize(NavigateDirection::Down, -RESIZE_DELTA) {
+        match runtime.resize(Direction::Down, -RESIZE_DELTA) {
             Ok(()) => CommandResult::Success,
             Err(e) => CommandResult::Error(e.to_string()),
         }
@@ -449,7 +449,7 @@ impl Command for ResizeWidthIncrease {
 impl CommandHandler for ResizeWidthIncrease {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
         // Resize right direction expands width
-        match runtime.resize(NavigateDirection::Right, RESIZE_DELTA) {
+        match runtime.resize(Direction::Right, RESIZE_DELTA) {
             Ok(()) => CommandResult::Success,
             Err(e) => CommandResult::Error(e.to_string()),
         }
@@ -477,7 +477,7 @@ impl Command for ResizeWidthDecrease {
 impl CommandHandler for ResizeWidthDecrease {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
         // Resize right direction with negative delta shrinks width
-        match runtime.resize(NavigateDirection::Right, -RESIZE_DELTA) {
+        match runtime.resize(Direction::Right, -RESIZE_DELTA) {
             Ok(()) => CommandResult::Success,
             Err(e) => CommandResult::Error(e.to_string()),
         }

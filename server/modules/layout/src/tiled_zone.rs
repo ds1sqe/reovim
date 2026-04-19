@@ -5,7 +5,7 @@
 //! splits and leaves represent windows.
 
 use reovim_subsys_layout::{
-    LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, NavigateDirection, Permil, Rect, SplitDirection,
+    Direction, LayerId, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, Permil, Rect, SplitDirection,
     TiledLayer, TiledTree, WindowId, WindowPlacement, ZOrder, Zone,
 };
 
@@ -27,13 +27,7 @@ trait SplitTreeExt {
     ) -> Option<WindowId>;
     fn close_leaf(&mut self, target: WindowId) -> Option<WindowId>;
     fn first_leaf(&self) -> WindowId;
-    fn resize_at(
-        &mut self,
-        target: WindowId,
-        direction: NavigateDirection,
-        delta: i16,
-        bounds: Rect,
-    );
+    fn resize_at(&mut self, target: WindowId, direction: Direction, delta: i16, bounds: Rect);
     fn equalize(&mut self);
 }
 
@@ -173,13 +167,7 @@ impl SplitTreeExt for TiledTree {
     }
 
     /// Adjust the ratio of the split containing `target` on the given axis.
-    fn resize_at(
-        &mut self,
-        target: WindowId,
-        direction: NavigateDirection,
-        delta: i16,
-        bounds: Rect,
-    ) {
+    fn resize_at(&mut self, target: WindowId, direction: Direction, delta: i16, bounds: Rect) {
         let &mut Self::Split {
             direction: sd,
             ref mut ratio,
@@ -191,8 +179,8 @@ impl SplitTreeExt for TiledTree {
         };
         let axis_matches = matches!(
             (sd, direction),
-            (SplitDirection::Vertical, NavigateDirection::Left | NavigateDirection::Right)
-                | (SplitDirection::Horizontal, NavigateDirection::Up | NavigateDirection::Down)
+            (SplitDirection::Vertical, Direction::Left | Direction::Right)
+                | (SplitDirection::Horizontal, Direction::Up | Direction::Down)
         );
 
         let (fb, sb) = split_rect(bounds, sd, ratio_to_f32(*ratio));
@@ -205,12 +193,12 @@ impl SplitTreeExt for TiledTree {
             if total > 0.0 {
                 let sign = if first.contains(target) {
                     match direction {
-                        NavigateDirection::Right | NavigateDirection::Down => 1.0,
+                        Direction::Right | Direction::Down => 1.0,
                         _ => -1.0,
                     }
                 } else {
                     match direction {
-                        NavigateDirection::Left | NavigateDirection::Up => 1.0,
+                        Direction::Left | Direction::Up => 1.0,
                         _ => -1.0,
                     }
                 };
@@ -315,7 +303,7 @@ impl TiledLayer for TiledZone {
     fn navigate(
         &self,
         from: WindowId,
-        direction: NavigateDirection,
+        direction: Direction,
         views: &[WindowPlacement],
     ) -> Option<WindowId> {
         let from_placement = views.iter().find(|p| p.window_id == from)?;
@@ -328,10 +316,10 @@ impl TiledLayer for TiledZone {
             }
             let c = rect_center(p.bounds);
             let is_in_direction = match direction {
-                NavigateDirection::Left => c.0 < from_center.0,
-                NavigateDirection::Right => c.0 > from_center.0,
-                NavigateDirection::Up => c.1 < from_center.1,
-                NavigateDirection::Down => c.1 > from_center.1,
+                Direction::Left => c.0 < from_center.0,
+                Direction::Right => c.0 > from_center.0,
+                Direction::Up => c.1 < from_center.1,
+                Direction::Down => c.1 > from_center.1,
             };
             if !is_in_direction {
                 continue;
@@ -346,7 +334,7 @@ impl TiledLayer for TiledZone {
         best.map(|(id, _)| id)
     }
 
-    fn resize(&mut self, window: WindowId, direction: NavigateDirection, delta: i16) {
+    fn resize(&mut self, window: WindowId, direction: Direction, delta: i16) {
         if let Some(root) = &mut self.root {
             let bounds = Rect::new(0, 0, 1000, 1000);
             root.resize_at(window, direction, delta, bounds);

@@ -354,7 +354,7 @@ impl reovim_subsys_layout::WindowLayerCompositor for MockLayerCompositor {
     fn navigate_tiled(
         &self,
         _from: reovim_subsys_layout::WindowId,
-        _direction: reovim_subsys_layout::NavigateDirection,
+        _direction: reovim_subsys_layout::Direction,
     ) -> Option<reovim_subsys_layout::WindowId> {
         None
     }
@@ -362,7 +362,7 @@ impl reovim_subsys_layout::WindowLayerCompositor for MockLayerCompositor {
     fn resize_tiled(
         &mut self,
         _window: reovim_subsys_layout::WindowId,
-        _direction: reovim_subsys_layout::NavigateDirection,
+        _direction: reovim_subsys_layout::Direction,
         _delta: i16,
     ) {
     }

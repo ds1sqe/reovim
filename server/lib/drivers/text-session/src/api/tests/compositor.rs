@@ -3,10 +3,7 @@ use super::*;
 #[test]
 fn test_compositor_error_display() {
     assert_eq!(CompositorError::CannotCloseLastWindow.to_string(), "cannot close last window");
-    assert_eq!(
-        CompositorError::NoNeighbor(NavigateDirection::Right).to_string(),
-        "no window Right"
-    );
+    assert_eq!(CompositorError::NoNeighbor(Direction::Right).to_string(), "no window Right");
     assert_eq!(CompositorError::NoActiveLayer.to_string(), "no active layer");
     assert_eq!(
         CompositorError::WindowNotFound(WindowId::from_raw(42)).to_string(),
@@ -17,15 +14,9 @@ fn test_compositor_error_display() {
 
 #[test]
 fn test_compositor_error_display_all_directions() {
-    assert_eq!(
-        CompositorError::NoNeighbor(NavigateDirection::Left).to_string(),
-        "no window Left"
-    );
-    assert_eq!(CompositorError::NoNeighbor(NavigateDirection::Up).to_string(), "no window Up");
-    assert_eq!(
-        CompositorError::NoNeighbor(NavigateDirection::Down).to_string(),
-        "no window Down"
-    );
+    assert_eq!(CompositorError::NoNeighbor(Direction::Left).to_string(), "no window Left");
+    assert_eq!(CompositorError::NoNeighbor(Direction::Up).to_string(), "no window Up");
+    assert_eq!(CompositorError::NoNeighbor(Direction::Down).to_string(), "no window Down");
 }
 
 #[test]

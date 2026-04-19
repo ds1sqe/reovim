@@ -1,8 +1,9 @@
 use {
     super::*,
+    reovim_client_model::Direction,
     reovim_subsys_layout::{
-        Layer, LayerConfig, LayerId, LayoutTopology, Rect, RootCompositor, WindowId,
-        WindowLayerCompositor,
+        Direction as LayoutDirection, Layer, LayerConfig, LayerId, LayoutTopology, Rect,
+        RootCompositor, WindowId, WindowLayerCompositor,
     },
 };
 
@@ -173,21 +174,28 @@ fn test_window_id_conversion() {
 
 #[test]
 fn test_direction_conversion() {
+    let direction = Direction::Up;
     assert!(matches!(
-        TuiLayoutAdapter::<MockCompositor>::to_navigate_direction(Direction::Up),
-        NavigateDirection::Up
+        TuiLayoutAdapter::<MockCompositor>::to_direction(direction),
+        LayoutDirection::Up
     ));
+
+    let direction = Direction::Down;
     assert!(matches!(
-        TuiLayoutAdapter::<MockCompositor>::to_navigate_direction(Direction::Down),
-        NavigateDirection::Down
+        TuiLayoutAdapter::<MockCompositor>::to_direction(direction),
+        LayoutDirection::Down
     ));
+
+    let direction = Direction::Left;
     assert!(matches!(
-        TuiLayoutAdapter::<MockCompositor>::to_navigate_direction(Direction::Left),
-        NavigateDirection::Left
+        TuiLayoutAdapter::<MockCompositor>::to_direction(direction),
+        LayoutDirection::Left
     ));
+
+    let direction = Direction::Right;
     assert!(matches!(
-        TuiLayoutAdapter::<MockCompositor>::to_navigate_direction(Direction::Right),
-        NavigateDirection::Right
+        TuiLayoutAdapter::<MockCompositor>::to_direction(direction),
+        LayoutDirection::Right
     ));
 }
 

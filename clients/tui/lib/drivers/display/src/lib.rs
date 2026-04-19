@@ -75,9 +75,7 @@ pub use command::RenderCommand;
 // Geometry types (Rect, Size) come from common client model via window module
 pub use {
     reovim_kernel::api::v1::{BufferId, WindowId},
-    window::{
-        Direction, NavigateDirection, Rect, Size, SplitDirection, TerminalSize, TerminalSizeExt,
-    },
+    window::{Direction, Rect, Size, SplitDirection, TerminalSize, TerminalSizeExt},
 };
 
 // Traits

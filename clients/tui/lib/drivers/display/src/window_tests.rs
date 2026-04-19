@@ -32,10 +32,6 @@ fn test_direction_variants() {
     assert_ne!(Direction::Up, Direction::Down);
     assert_ne!(Direction::Left, Direction::Right);
     assert_ne!(Direction::Up, Direction::Left);
-
-    // Verify NavigateDirection alias works
-    let nav: NavigateDirection = Direction::Left;
-    assert_eq!(nav, Direction::Left);
 }
 
 #[test]

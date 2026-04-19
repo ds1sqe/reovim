@@ -6,10 +6,16 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use {
-    reovim_client_model::{Direction, LogicalLayout, SplitDirection, traits::Layout},
+    reovim_client_model::{
+        Direction as ModelDirection, LogicalLayout, SplitDirection as ModelSplitDirection,
+        traits::Layout,
+    },
     reovim_driver_display::{
-        NavigateDirection, WindowId,
-        layout::{LayerId, RootCompositor},
+        WindowId,
+        layout::{
+            Direction as LayoutDirection, LayerId, RootCompositor,
+            SplitDirection as LayoutSplitDirection,
+        },
     },
 };
 
@@ -83,23 +89,21 @@ impl<C: RootCompositor + 'static> TuiLayoutAdapter<C> {
         self.compositor.lock().expect("compositor mutex poisoned")
     }
 
-    /// Convert common model Direction to TUI `NavigateDirection`.
-    const fn to_navigate_direction(direction: Direction) -> NavigateDirection {
+    /// Convert common model `Direction` to layout `Direction`.
+    const fn to_direction(direction: ModelDirection) -> LayoutDirection {
         match direction {
-            Direction::Up => NavigateDirection::Up,
-            Direction::Down => NavigateDirection::Down,
-            Direction::Left => NavigateDirection::Left,
-            Direction::Right => NavigateDirection::Right,
+            ModelDirection::Up => LayoutDirection::Up,
+            ModelDirection::Down => LayoutDirection::Down,
+            ModelDirection::Left => LayoutDirection::Left,
+            ModelDirection::Right => LayoutDirection::Right,
         }
     }
 
-    /// Convert common model `SplitDirection` to TUI `SplitDirection`.
-    const fn to_split_direction(
-        direction: SplitDirection,
-    ) -> reovim_driver_display::SplitDirection {
+    /// Convert common model `SplitDirection` to layout `SplitDirection`.
+    const fn to_split_direction(direction: ModelSplitDirection) -> LayoutSplitDirection {
         match direction {
-            SplitDirection::Horizontal => reovim_driver_display::SplitDirection::Horizontal,
-            SplitDirection::Vertical => reovim_driver_display::SplitDirection::Vertical,
+            ModelSplitDirection::Horizontal => LayoutSplitDirection::Horizontal,
+            ModelSplitDirection::Vertical => LayoutSplitDirection::Vertical,
         }
     }
 }
@@ -107,7 +111,7 @@ impl<C: RootCompositor + 'static> TuiLayoutAdapter<C> {
 #[allow(clippy::significant_drop_tightening)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl<C: RootCompositor + 'static> Layout for TuiLayoutAdapter<C> {
-    fn split(&mut self, direction: SplitDirection) -> u64 {
+    fn split(&mut self, direction: ModelSplitDirection) -> u64 {
         let mut compositor = self.lock();
 
         // Get the layer compositor for the active layer
@@ -142,8 +146,8 @@ impl<C: RootCompositor + 'static> Layout for TuiLayoutAdapter<C> {
         true
     }
 
-    fn focus_direction(&mut self, direction: Direction) -> bool {
-        let nav_dir = Self::to_navigate_direction(direction);
+    fn focus_direction(&mut self, direction: ModelDirection) -> bool {
+        let direction = Self::to_direction(direction);
         let mut compositor = self.lock();
 
         // Find the target window first (immutable borrow scope)
@@ -151,7 +155,7 @@ impl<C: RootCompositor + 'static> Layout for TuiLayoutAdapter<C> {
             .layer_compositor(self.active_layer)
             .and_then(|layer| {
                 let focused = layer.focused()?;
-                layer.navigate_tiled(focused, nav_dir)
+                layer.navigate_tiled(focused, direction)
             });
 
         // Set focus if target found (mutable operation after immutable scope ends)

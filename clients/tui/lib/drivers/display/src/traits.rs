@@ -1,8 +1,8 @@
 //! Display driver traits.
 
 use crate::{
-    DisplayCapabilities, DisplayError, FrameBuffer, NavigateDirection, Rect, RenderCommand,
-    SplitDirection, TerminalSize, WindowId, highlight::ColorMode,
+    Direction, DisplayCapabilities, DisplayError, FrameBuffer, Rect, RenderCommand, SplitDirection,
+    TerminalSize, WindowId, highlight::ColorMode,
 };
 
 /// Display driver for terminal operations.
@@ -132,7 +132,7 @@ pub trait WindowManager: Send + Sync {
     fn bounds(&self, id: WindowId) -> Option<Rect>;
 
     /// Navigate to adjacent window.
-    fn navigate(&mut self, direction: NavigateDirection) -> Option<WindowId>;
+    fn navigate(&mut self, direction: Direction) -> Option<WindowId>;
 
     /// Get all window IDs.
     fn window_ids(&self) -> Vec<WindowId>;
@@ -147,7 +147,7 @@ pub trait WindowManager: Send + Sync {
     fn resize_window(&mut self, direction: SplitDirection, delta: f32);
 
     /// Swap active window with neighbor.
-    fn swap(&mut self, direction: NavigateDirection) -> bool;
+    fn swap(&mut self, direction: Direction) -> bool;
 }
 
 #[cfg(test)]

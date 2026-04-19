@@ -31,7 +31,7 @@
 
 use crate::{
     WindowId,
-    window::{NavigateDirection, Rect},
+    window::{Direction, Rect},
 };
 
 /// A window with its screen position (from `LayoutPolicy`).
@@ -111,7 +111,7 @@ pub trait FocusPolicy: Send + Sync {
     /// The window ID to focus, or `None` if there's no window in that direction.
     fn next(
         &self,
-        direction: NavigateDirection,
+        direction: Direction,
         current: WindowId,
         views: &[WindowView],
     ) -> Option<WindowId>;
@@ -148,7 +148,7 @@ pub struct DefaultFocusPolicy;
 impl FocusPolicy for DefaultFocusPolicy {
     fn next(
         &self,
-        direction: NavigateDirection,
+        direction: Direction,
         current: WindowId,
         views: &[WindowView],
     ) -> Option<WindowId> {
@@ -167,10 +167,10 @@ impl FocusPolicy for DefaultFocusPolicy {
 
             // Check if window is in the correct direction
             let in_direction = match direction {
-                NavigateDirection::Left => dx < 0,
-                NavigateDirection::Right => dx > 0,
-                NavigateDirection::Up => dy < 0,
-                NavigateDirection::Down => dy > 0,
+                Direction::Left => dx < 0,
+                Direction::Right => dx > 0,
+                Direction::Up => dy < 0,
+                Direction::Down => dy > 0,
             };
 
             if !in_direction {

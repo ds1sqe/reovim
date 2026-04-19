@@ -27,8 +27,7 @@
 use {
     reovim_kernel::api::v1::TabId,
     reovim_subsys_layout::{
-        LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowId,
-        WindowPlacement,
+        Direction, LayerId, OverlayConstraints, Rect, SplitDirection, WindowId, WindowPlacement,
     },
 };
 
@@ -38,7 +37,7 @@ pub enum CompositorError {
     /// Cannot close the last window.
     CannotCloseLastWindow,
     /// No window in the specified direction.
-    NoNeighbor(NavigateDirection),
+    NoNeighbor(Direction),
     /// Not enough room to split.
     NotEnoughRoom,
     /// Cannot resize at screen edge.
@@ -96,7 +95,7 @@ impl std::error::Error for CompositorError {}
 /// ```ignore
 /// // In a command handler:
 /// fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
-///     match runtime.navigate(NavigateDirection::Left) {
+///     match runtime.navigate(Direction::Left) {
 ///         Ok(window) => {
 ///             runtime.focus(window)?;
 ///             CommandResult::Success
@@ -116,7 +115,7 @@ pub trait CompositorApi {
     /// - `NoActiveLayer` - No layer is active
     /// - `NoFocusedWindow` - No window is focused
     /// - `NoNeighbor` - No window in the specified direction
-    fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError>;
+    fn navigate(&self, direction: Direction) -> Result<WindowId, CompositorError>;
 
     /// Split the current window.
     ///
@@ -165,7 +164,7 @@ pub trait CompositorApi {
     /// - `NoActiveLayer` - No layer is active
     /// - `NoFocusedWindow` - No window is focused
     /// - `CannotResizeAtEdge` - Window is at screen edge in that direction
-    fn resize(&mut self, direction: NavigateDirection, delta: i16) -> Result<(), CompositorError>;
+    fn resize(&mut self, direction: Direction, delta: i16) -> Result<(), CompositorError>;
 
     /// Equalize all windows in the current layer.
     ///

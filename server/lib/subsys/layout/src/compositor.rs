@@ -29,7 +29,7 @@
 
 use {
     super::layer::{Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, Zone},
-    crate::{NavigateDirection, Rect, SplitDirection, WindowId},
+    crate::{Direction, Rect, SplitDirection, WindowId},
 };
 
 /// Result of compositing all layers.
@@ -241,13 +241,13 @@ pub trait WindowLayerCompositor: Send + Sync {
     ///
     /// Returns the window in the specified direction from `from`,
     /// or None if there is no neighbor in that direction.
-    fn navigate_tiled(&self, from: WindowId, direction: NavigateDirection) -> Option<WindowId>;
+    fn navigate_tiled(&self, from: WindowId, direction: Direction) -> Option<WindowId>;
 
     /// Resize tiled window.
     ///
     /// Moves the edge of `window` in `direction` by `delta` units.
     /// Positive delta expands, negative contracts.
-    fn resize_tiled(&mut self, window: WindowId, direction: NavigateDirection, delta: i16);
+    fn resize_tiled(&mut self, window: WindowId, direction: Direction, delta: i16);
 
     /// Close tiled window.
     ///
@@ -339,7 +339,7 @@ pub enum WindowError {
     /// E444: Cannot close last window.
     CannotCloseLastWindow,
     /// E36: No neighbor in direction.
-    NoNeighbor(NavigateDirection),
+    NoNeighbor(Direction),
     /// E94: Not enough room to split.
     NotEnoughRoom,
     /// E36: Cannot resize at edge.
