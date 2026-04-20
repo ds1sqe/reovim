@@ -17,6 +17,7 @@ members = [
     "uapi/module-macros",
     "uapi/protocol",
     "uapi/render-codec",
+    "uapi/surface-codec",
 
     # Server layer
     "server/lib/kernel",
@@ -26,6 +27,7 @@ members = [
     "server/lib/subsys/command-types",
     "server/lib/subsys/command",
     "server/lib/subsys/content-codec",
+    "server/lib/subsys/surface-codec",
     "ext/server/drivers/command",
     "server/lib/subsys/input",
     "ext/server/drivers/text-input",
@@ -67,6 +69,10 @@ members = [
     "ext/content-codec/tar-gz",
     "ext/content-codec/binary-struct",
     "ext/content-codec/legacy",
+
+    # Surface codecs
+    "ext/surface-codec/tui",
+    "ext/surface-codec/pixel",
 
     # Providers (domain logic, above drivers)
     "ext/server/providers/text",
@@ -266,8 +272,10 @@ reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev
 reovim-content-codec = { path = "./uapi/content-codec", version = "0.15.0-dev" }
 reovim-content-codec-text = { path = "./ext/content-codec/text", version = "0.15.0-dev" }
 reovim-render-codec = { path = "./uapi/render-codec", version = "0.15.0-dev" }
+reovim-surface-codec = { path = "./uapi/surface-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
 reovim-subsys-content-codec = { path = "./server/lib/subsys/content-codec", version = "0.15.0-dev" }
+reovim-subsys-surface-codec = { path = "./server/lib/subsys/surface-codec", version = "0.15.0-dev" }
 
 # Server crates
 reovim-kernel = { path = "./server/lib/kernel", version = "0.15.0-dev" }
@@ -400,6 +408,10 @@ reovim-content-codec-binary-struct = { path = "./ext/content-codec/binary-struct
 reovim-content-codec-rlib = { path = "./ext/content-codec/rlib", version = "0.15.0-dev" }
 reovim-content-codec-tar-gz = { path = "./ext/content-codec/tar-gz", version = "0.15.0-dev" }
 reovim-content-codec-csv = { path = "./ext/content-codec/csv", version = "0.15.0-dev" }
+
+# Surface codec modules (ext/surface-codec/*)
+reovim-surface-codec-tui = { path = "./ext/surface-codec/tui", version = "0.15.0-dev" }
+reovim-surface-codec-pixel = { path = "./ext/surface-codec/pixel", version = "0.15.0-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
 reovim-tui-mod-statusline = { path = "./ext/client/tui/modules/statusline", version = "0.15.0-dev" }

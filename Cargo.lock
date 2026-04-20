@@ -4036,12 +4036,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-subsys-surface-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-kernel",
+ "reovim-surface-codec",
+]
+
+[[package]]
 name = "reovim-subsys-vfs"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
  "memmap2",
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-surface-codec"
+version = "0.15.0-dev"
+
+[[package]]
+name = "reovim-surface-codec-pixel"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-surface-codec",
+ "reovim-surface-codec",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-surface-codec-tui"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-surface-codec",
+ "reovim-surface-codec",
+ "tracing",
 ]
 
 [[package]]

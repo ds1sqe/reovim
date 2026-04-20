@@ -1,0 +1,28 @@
+[package]
+name = "reovim-surface-codec-pixel"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pixel surface codec — PixelSurface (kind=0x0002) for raster rendering"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+# Enable for building as standalone dynamic library.
+dynamic = []
+
+[dependencies]
+reovim-surface-codec = { workspace = true }
+reovim-subsys-surface-codec = { workspace = true }
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+
+tracing = { workspace = true }

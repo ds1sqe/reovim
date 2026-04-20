@@ -8,7 +8,7 @@
 //!
 //! # Contents
 //!
-//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`SurfaceDescriptor`]
+//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity)
 //! - **Extension system**: [`SessionExtension`], [`ExtensionMap`], [`TextInputSink`]
 //! - **Mode lifecycle**: [`SessionMode`], [`ModeError`]
 //! - **Empty session handling**: [`EmptySessionHandler`], [`EmptySessionContext`], [`EmptySessionAction`]
@@ -38,7 +38,6 @@ mod mode;
 mod notification_queue;
 mod option_change;
 mod stale_check;
-mod surface;
 pub mod tick;
 mod types;
 mod window;
@@ -53,10 +52,10 @@ pub use {
 };
 
 // Types
-pub use {
-    surface::SurfaceDescriptor,
-    types::{ClientId, CursorSnapshot},
-};
+//
+// `SurfaceDescriptor` lives in `uapi/surface-codec/` (Plan 14 Phase S);
+// consumers import it directly from `reovim_surface_codec`.
+pub use types::{ClientId, CursorSnapshot};
 
 // Extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};

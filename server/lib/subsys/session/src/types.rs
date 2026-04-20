@@ -3,7 +3,6 @@
 //! This module provides:
 //! - [`ClientId`] — unique client connection identifier
 //! - [`CursorSnapshot`] — per-client opaque cursor identity snapshot for bridge tick consumption
-//! - [`KeySequence`] — pending key sequence accumulator
 
 use crate::SessionExtension;
 

@@ -7,68 +7,6 @@ fn test_client_id() {
     assert_eq!(id.to_string(), "client-42");
 }
 
-#[test]
-fn test_key_sequence() {
-    let mut seq = KeySequence::new();
-    assert!(seq.is_empty());
-
-    seq.push("d".to_string());
-    seq.push("w".to_string());
-    assert!(!seq.is_empty());
-    assert_eq!(seq.as_string(), "dw");
-
-    seq.clear();
-    assert!(seq.is_empty());
-}
-
-// =========================================================================
-// Additional KeySequence tests
-// =========================================================================
-
-#[test]
-fn test_key_sequence_keys() {
-    let mut seq = KeySequence::new();
-    seq.push("d".to_string());
-    seq.push("w".to_string());
-
-    let keys = seq.keys();
-    assert_eq!(keys.len(), 2);
-    assert_eq!(keys[0], "d");
-    assert_eq!(keys[1], "w");
-}
-
-#[test]
-fn test_key_sequence_default() {
-    let seq = KeySequence::default();
-    assert!(seq.is_empty());
-    assert!(seq.keys().is_empty());
-    assert!(seq.as_string().is_empty());
-}
-
-#[test]
-fn test_key_sequence_as_string_single() {
-    let mut seq = KeySequence::new();
-    seq.push("a".to_string());
-    assert_eq!(seq.as_string(), "a");
-}
-
-#[test]
-fn test_key_sequence_special_keys() {
-    let mut seq = KeySequence::new();
-    seq.push("<C-w>".to_string());
-    seq.push("h".to_string());
-    assert_eq!(seq.as_string(), "<C-w>h");
-    assert_eq!(seq.keys().len(), 2);
-}
-
-#[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn test_key_sequence_debug() {
-    let seq = KeySequence::new();
-    let debug = format!("{seq:?}");
-    assert!(debug.contains("KeySequence"));
-}
-
 // =========================================================================
 // ClientId tests
 // =========================================================================

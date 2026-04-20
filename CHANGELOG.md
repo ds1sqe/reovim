@@ -62,6 +62,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Plan 14 Phase S — surface codec reshape** (#753): three-tier split applied to the surface codec concern.
+  - `uapi/surface-codec/` (`reovim-surface-codec`) — new closed-mechanism crate holding `SurfaceDescriptor { kind: u16, body: Vec<u8> }`, `surface_kind`/`surface_body` header accessors, well-known kinds for shipped in-repo codecs (`KIND_CELL_GRID=0x0001`, `KIND_PIXEL_BUFFER=0x0002`; 0x0001–0x00FF reserved for in-repo, 0x0100–0xFFFF for external), object-safe `Codec` trait (kind/encode/decode), and `SurfacePayloadError { TooShort | WrongType | InvalidData }`. No geometry or rendering-model vocabulary — concrete surface shapes live in the corresponding `ext/surface-codec/<variant>/` module crates.
+  - `server/lib/subsys/surface-codec/` (`reovim-subsys-surface-codec`) — new subsystem crate with `SurfaceCodecRegistry` trait + `DefaultSurfaceCodecRegistry` default implementation, keyed by `u16` kind value, mirroring the input-codec registry precedent.
+  - `ext/surface-codec/tui/` (`reovim-surface-codec-tui`) — new module crate providing `CellGridSurface { width, height }` + `CellGridCodec` for `KIND_CELL_GRID`. `TuiSurfaceCodecModule` holds `Option<Arc<DefaultSurfaceCodecRegistry>>`; init registers, exit unregisters symmetrically. `declare_module!` gated behind `dynamic` feature.
+  - `ext/surface-codec/pixel/` (`reovim-surface-codec-pixel`) — new module crate providing `PixelSurface { width_px, height_px, dpi }` + `PixelCodec` for `KIND_PIXEL_BUFFER`. Same lifecycle and feature pattern as the TUI variant.
+  - `SurfaceDescriptor` migrated out of `reovim-subsys-session` to `uapi/surface-codec/`; consumers import it directly from `reovim_surface_codec`. No re-export remains in `reovim-subsys-session`.
+  - `reovim-subsys-layout` stays opaque — no production dep on `reovim-subsys-surface-codec`; the `set_surface(kind, body)` signature keeps primitives, with decode happening at the driver layer via the registry.
+
 - **Plan 14 Phase C — content codec reshape** (#753): three-tier split applied to the content codec concern.
   - `uapi/content-codec/` (`reovim-content-codec`) — new closed-mechanism crate holding domain-neutral `Decode<D>/Encode<D>/Index<D>` traits, `ContentCodec` + `DecodeResult`, type-erased `DecodedEdit` (with `DecodedEdit::Domain(DomainEdit)` replacing the old hardcoded `DecodedEdit::Text` variant), inode/mount primitives, classifier/factory stores, metadata, errors, and annotation data types (moved in from `reovim-driver-annotation::types`).
   - `server/lib/subsys/content-codec/` (`reovim-subsys-content-codec`) — new subsystem crate with `ContentCodecRegistry` trait + `DefaultContentCodecRegistry` default implementation, mirroring the post-#753 input-codec registry pattern.

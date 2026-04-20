@@ -1,0 +1,13 @@
+[package]
+name = "reovim-surface-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Surface codec uapi — opaque SurfaceDescriptor envelope and Codec trait for domain-neutral rendering surfaces"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true

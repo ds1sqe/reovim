@@ -1,0 +1,19 @@
+[package]
+name = "reovim-subsys-surface-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Surface codec subsystem — SurfaceCodecRegistry trait and default implementation"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-surface-codec = { workspace = true }
+reovim-kernel = { workspace = true }
+
+parking_lot = { workspace = true }
