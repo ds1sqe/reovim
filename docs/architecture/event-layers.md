@@ -8,7 +8,7 @@ ownership, emission rules, and subscriber expectations.
 | Layer | Home | Rate | Transport |
 |-------|------|------|-----------|
 | Kernel substrate | `server/lib/kernel/src/ipc/events/` | Low-moderate | `EventBus::emit` |
-| Per-domain transition | Per-domain events crate (e.g. `shared/domains/text/events/`) | Low-moderate | `EventBus::emit` |
+| Per-domain transition | Per-domain events crate (e.g. `ext/server/domain/text/events/`) | Low-moderate | `EventBus::emit` |
 | Per-domain streaming state | Per-provider (not centralized) | High (Hz-level) | Shared atomic / watch channel |
 
 ### Kernel substrate (domain-free)
@@ -81,7 +81,7 @@ implementation has landed.
 
 ## Extensibility Example: Adding `reovim-domain-hex`
 
-1. Create `shared/domains/hex/events/` with `HexCursorMoved`,
+1. Create `ext/server/domain/hex/events/` with `HexCursorMoved`,
    `HexSelectionChanged`, etc.
 2. Depend on `reovim-kernel` for `Event` trait + `BufferId`.
 3. Depend on hex-specific types crate for position/selection types.

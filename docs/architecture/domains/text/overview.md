@@ -1,8 +1,8 @@
 # Text Domain (`reovim-domain-text`)
 
 **Crate**: `reovim-domain-text`  
-**Path**: `shared/domains/text/`  
-**Sibling events crate**: `reovim-domain-text-events` at `shared/domains/text/events/`  
+**Path**: `ext/server/domain/text/`  
+**Sibling events crate**: `reovim-domain-text-events` at `ext/server/domain/text/events/`  
 **Extracted from kernel**: #739 / #740
 
 ## Overview
@@ -197,7 +197,7 @@ after the initial O(n) open scan.
 
 ## Events
 
-The sibling crate `reovim-domain-text-events` (`shared/domains/text/events/`)
+The sibling crate `reovim-domain-text-events` (`ext/server/domain/text/events/`)
 emits these events via the kernel event bus:
 
 ### `TextBufferModified`

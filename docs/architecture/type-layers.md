@@ -24,9 +24,9 @@ Understanding which types belong where prevents layer confusion and import confl
 │  → Core primitives, WHAT can be done                                    │
 │  → NOTE: Position/TextPosition/TextEdit moved to DOMAIN layer (#739/#740)│
 ├─────────────────────────────────────────────────────────────────────────┤
-│  DOMAIN (shared/domains/text/) — reovim-domain-text         SHARED      │
+│  DOMAIN (ext/server/domain/text/) — reovim-domain-text         SHARED      │
 │  Position, TextPosition, TextEdit, Motion, TextObject                   │
-│  Domain trait (shared/domain/) — reovim-domain                         │
+│  Domain trait (ext/server/domain/domain/) — reovim-domain                         │
 │  → Shared text-editing domain types, usable by kernel, drivers, modules │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  SERVER (server/lib/server/)                               MECHANISM    │

@@ -14,7 +14,7 @@ Design principle:
 
 ## `Domain` Trait
 
-Crate: `reovim-domain` (`shared/domain/`)
+Crate: `reovim-domain` (`ext/server/domain/domain/`)
 
 Zero dependencies — defines only the trait contract.
 
@@ -42,7 +42,7 @@ needs to know the concrete content type.
 
 ### Text (`reovim-domain-text`)
 
-**Path**: `shared/domains/text/`
+**Path**: `ext/server/domain/text/`
 
 Binds the abstract domain types to concrete text representations:
 
@@ -57,7 +57,7 @@ See `docs/architecture/domains/text/overview.md` for full type inventory,
 
 The architecture anticipates additional domains as the editor expands beyond
 text. Each new domain defines its own marker type implementing `Domain` and
-lives in `shared/domains/<name>/`. No changes to the kernel or codec pipeline
+lives in `ext/server/domain/<name>/`. No changes to the kernel or codec pipeline
 are required — generic traits parameterize over the new `Domain` implementor.
 
 ## Design Principle

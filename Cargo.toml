@@ -162,21 +162,17 @@ members = [
     # Client layer - CLI
     "clients/cli",
 
-    # Shared layer
-    "shared/input-codec",
+    # uapi — wire contracts (input codec relocated here pending Plan 15 redesign)
+    "uapi/input-codec",
 
     # Client-core shared libs (platform-agnostic model + client module ABI)
     "clients/lib/model",
     "clients/lib/driver",
 
-    # Shared types
-    "shared/domain",
-    "shared/domains/text",
-
-    # Shared domain events
-    "shared/domains/text/events",
-
-    # Shared benchmarking utilities
+    # Extension layer — domain types
+    "ext/server/domain/domain",
+    "ext/server/domain/text",
+    "ext/server/domain/text/events",
 
     # Tools (Rust) — python-test-sdk is Python, excluded below
     "tools/bench",
@@ -255,10 +251,10 @@ reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
 reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
 reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
-reovim-domain = { path = "./shared/domain", version = "0.15.0-dev" }
-reovim-domain-text = { path = "./shared/domains/text", version = "0.15.0-dev" }
-reovim-domain-text-events = { path = "./shared/domains/text/events", version = "0.15.0-dev" }
-reovim-input-codec = { path = "./shared/input-codec", version = "0.15.0-dev" }
+reovim-domain = { path = "./ext/server/domain/domain", version = "0.15.0-dev" }
+reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
+reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
+reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
 reovim-render-codec = { path = "./uapi/render-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
 
