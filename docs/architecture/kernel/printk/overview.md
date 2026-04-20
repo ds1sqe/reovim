@@ -141,9 +141,10 @@ use reovim_kernel::api::v1::{
 
 ## Implementation Notes
 
-The `shared/log/` crate (`reovim-log`) provides the driver-side logger
-implementation used by the server runtime. It bridges the kernel `Logger`
-trait to the `tracing` subscriber ecosystem.
+The kernel `Logger` trait is implemented by `CompositeLogger` in
+`server/lib/server/src/debug/composite_logger.rs`, which writes records to the
+debug ring buffer and to `tracing`. The tracing subscriber itself is set up by
+`apps/bin/src/logging.rs` at startup.
 
 ## Related Documents
 

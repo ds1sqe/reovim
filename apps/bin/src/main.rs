@@ -34,6 +34,7 @@
 //! 5. The result is handled (command execution, mode push/pop, char insertion)
 
 mod bootstrap;
+mod logging;
 mod module_cli;
 mod module_service;
 
@@ -265,18 +266,18 @@ fn main() -> std::io::Result<()> {
         if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let config = reovim_driver_log::LogConfig {
+        let config = logging::LogConfig {
             level: if cli.verbose {
-                reovim_driver_log::Level::Debug
+                reovim_kernel::api::v1::Level::Debug
             } else {
-                reovim_driver_log::Level::Info
+                reovim_kernel::api::v1::Level::Info
             },
-            output: reovim_driver_log::LogOutput::File,
-            format: reovim_driver_log::LogFormat::Plain,
+            output: logging::LogOutput::File,
+            format: logging::LogFormat::Plain,
             file_path: Some(log_path),
-            rotation: reovim_driver_log::RotationPolicy::Never,
+            rotation: logging::RotationPolicy::Never,
         };
-        if let Err(e) = reovim_driver_log::init_logging(&config) {
+        if let Err(e) = logging::init_logging(&config) {
             eprintln!("Failed to init file logging: {e}, falling back to stderr");
             tracing_subscriber::fmt()
                 .with_writer(std::io::stderr)

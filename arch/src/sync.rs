@@ -5,8 +5,8 @@
 //! directly on external crates, maintaining the dependency rule:
 //!
 //! ```text
-//! shared/arch/          -> (platform crates)
-//! server/lib/kernel/    -> shared/arch/ only
+//! arch/                 -> (platform crates)
+//! server/lib/kernel/    -> arch/ only
 //! ```
 //!
 //! # Why not `std::sync`?

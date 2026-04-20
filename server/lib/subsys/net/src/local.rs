@@ -7,9 +7,9 @@
 //! # Architecture
 //!
 //! This module defines the platform-agnostic types and path generation.
-//! The actual implementations live in `shared/arch/`:
-//! - `shared/arch/src/unix/local.rs` - Unix socket implementation
-//! - `shared/arch/src/windows/local.rs` - Named pipe implementation
+//! The actual implementations live in `arch/`:
+//! - `arch/src/unix/local.rs` - Unix socket implementation
+//! - `arch/src/windows/local.rs` - Named pipe implementation
 //!
 //! # Usage
 //!

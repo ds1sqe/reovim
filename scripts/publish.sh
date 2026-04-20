@@ -57,10 +57,10 @@ fi
 #         reovim-test-dynamic-module (not publishable).
 CRATES=(
     # Tier 0 — no internal deps
-    "shared/arch"                                  # reovim-arch
+    "arch"                                         # reovim-arch
     "shared/capabilities"                          # reovim-capabilities
     "shared/clients/model"                         # reovim-client-model
-    "shared/depgraph"                              # reovim-depgraph
+    "lib/depgraph"                                 # reovim-depgraph
 
     # Tier 1 — kernel, protocol, base drivers
     "shared/clients/driver"                        # reovim-client-driver
@@ -78,7 +78,6 @@ CRATES=(
     "server/lib/subsys/formatter"                  # reovim-subsys-formatter
     "server/lib/subsys/git"                        # reovim-subsys-git
     "server/lib/subsys/layout"                     # reovim-subsys-layout
-    "shared/log"                                   # reovim-driver-log
     "server/lib/subsys/manifest"                   # reovim-subsys-manifest
     "server/lib/subsys/module-config"              # reovim-subsys-module-config
     "server/lib/subsys/module-loader"               # reovim-subsys-module-loader

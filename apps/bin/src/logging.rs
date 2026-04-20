@@ -1,51 +1,68 @@
-//! Subscriber setup utilities.
+#![cfg_attr(coverage_nightly, coverage(off))]
+//! Application logging bootstrap.
 //!
-//! This module handles the tracing subscriber configuration based on `LogConfig`.
-//! It provides `init_logging()` to set up the tracing subscriber before
-//! setting the kernel logger.
-//!
-//! # Usage Order
-//!
-//! 1. Call `init_logging(&config)` to set up tracing subscriber
-//! 2. Call `set_logger(&LOGGER)` to route kernel `pr_*!` macros to tracing
-//!
-//! ```rust,ignore
-//! use reovim_driver_log::{init_logging, LogConfig, TracingLogger};
-//! use reovim_kernel::api::v1::set_logger;
-//!
-//! // Step 1: Set up tracing subscriber
-//! init_logging(&LogConfig::default())?;
-//!
-//! // Step 2: Set kernel logger
-//! static LOGGER: TracingLogger = TracingLogger;
-//! set_logger(&LOGGER)?;
-//! ```
+//! Sets up the `tracing` subscriber for the reovim binary at startup.
+//! The kernel `Logger` trait is wired separately via
+//! `reovim_server::debug::COMPOSITE_LOGGER` in `init_debug_infrastructure`.
 
-use std::{io, path::Path};
+use std::{io, path::{Path, PathBuf}};
 
 use {
+    reovim_kernel::api::v1::Level,
     tracing_appender::rolling,
     tracing_subscriber::{EnvFilter, fmt},
 };
 
-use {
-    crate::config::{LogConfig, LogFormat, LogOutput, RotationPolicy},
-    reovim_kernel::api::v1::Level,
-};
+#[derive(Debug, Clone)]
+pub struct LogConfig {
+    pub level: Level,
+    pub output: LogOutput,
+    pub format: LogFormat,
+    pub file_path: Option<PathBuf>,
+    pub rotation: RotationPolicy,
+}
 
-/// Error type for logging initialization.
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level: Level::Info,
+            output: LogOutput::Stderr,
+            format: LogFormat::Plain,
+            file_path: None,
+            rotation: RotationPolicy::Never,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum LogOutput {
+    #[default]
+    Stderr,
+    Stdout,
+    File,
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum LogFormat {
+    #[default]
+    Plain,
+    Json,
+    Pretty,
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum RotationPolicy {
+    #[default]
+    Never,
+    Daily,
+    Hourly,
+}
+
 #[derive(Debug)]
 pub enum LogError {
-    /// File path required for `File` output but not provided.
     MissingFilePath,
-
-    /// Invalid filter string.
     InvalidFilter(String),
-
-    /// Failed to set global subscriber.
     SetGlobalDefault(String),
-
-    /// I/O error during setup.
     Io(io::Error),
 }
 
@@ -75,39 +92,6 @@ impl From<io::Error> for LogError {
     }
 }
 
-/// Initialize logging with the given configuration.
-///
-/// This sets up the tracing subscriber. Call this **before** `set_logger()`.
-///
-/// # Environment Variable
-///
-/// The `REOVIM_LOG` environment variable takes precedence over `config.level`.
-/// Examples:
-/// - `REOVIM_LOG=debug` - enable debug and above
-/// - `REOVIM_LOG=warn` - enable warn and error only
-/// - `REOVIM_LOG=reovim_kernel=trace` - trace for kernel crate only
-///
-/// # Errors
-///
-/// Returns error if:
-/// - `LogOutput::File` is used but `file_path` is `None`
-/// - Invalid filter string
-/// - Subscriber setup fails
-///
-/// # Example
-///
-/// ```
-/// use reovim_driver_log::{init_logging, LogConfig, LogFormat};
-///
-/// let config = LogConfig {
-///     format: LogFormat::Pretty,
-///     ..Default::default()
-/// };
-///
-/// // In a real application (can only be called once):
-/// // init_logging(&config).expect("failed to initialize logging");
-/// ```
-#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn init_logging(config: &LogConfig) -> Result<(), LogError> {
     let filter = build_filter(config)?;
 
@@ -153,21 +137,14 @@ pub fn init_logging(config: &LogConfig) -> Result<(), LogError> {
     Ok(())
 }
 
-/// Build the `EnvFilter` from config, respecting `REOVIM_LOG` env var.
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn build_filter(config: &LogConfig) -> Result<EnvFilter, LogError> {
-    // REOVIM_LOG env var takes precedence
     if let Ok(filter) = EnvFilter::try_from_env("REOVIM_LOG") {
         return Ok(filter);
     }
-
-    // Fall back to config level
     let level_str = level_to_filter_str(config.level);
-
     EnvFilter::try_new(level_str).map_err(|e| LogError::InvalidFilter(e.to_string()))
 }
 
-/// Convert kernel `Level` to filter string.
 const fn level_to_filter_str(level: Level) -> &'static str {
     match level {
         Level::Error => "error",
@@ -178,8 +155,6 @@ const fn level_to_filter_str(level: Level) -> &'static str {
     }
 }
 
-/// Initialize stdout subscriber.
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn init_stdout(filter: EnvFilter, format: &LogFormat) -> Result<(), LogError> {
     match format {
         LogFormat::Plain => {
@@ -214,8 +189,6 @@ fn init_stdout(filter: EnvFilter, format: &LogFormat) -> Result<(), LogError> {
     }
 }
 
-/// Initialize file subscriber with rotation.
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn init_file(
     filter: EnvFilter,
     path: &Path,
@@ -234,9 +207,6 @@ fn init_file(
         RotationPolicy::Hourly => rolling::hourly(dir, prefix),
     };
 
-    // Non-blocking writer to avoid blocking the main thread on I/O.
-    // The guard is leaked to keep the writer alive for the program lifetime.
-    // This is intentional - logging should work until program exit.
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
     std::mem::forget(guard);
 
@@ -251,21 +221,16 @@ fn init_file(
                 .map_err(|e| LogError::SetGlobalDefault(e.to_string()))
         }
         LogFormat::Plain | LogFormat::Pretty => {
-            // Pretty doesn't make sense for files (no colors), use plain
             let subscriber = fmt::Subscriber::builder()
                 .with_env_filter(filter)
                 .with_writer(non_blocking)
                 .with_file(true)
                 .with_line_number(true)
                 .with_target(true)
-                .with_ansi(false) // No ANSI colors in file output
+                .with_ansi(false)
                 .finish();
             tracing::subscriber::set_global_default(subscriber)
                 .map_err(|e| LogError::SetGlobalDefault(e.to_string()))
         }
     }
 }
-
-#[cfg(test)]
-#[path = "subscriber_tests.rs"]
-mod tests;

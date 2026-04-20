@@ -256,19 +256,21 @@ clients/
 ├── cli/                     # CLI client
 └── web/                     # Web client (gRPC-Web, WASM)
 
+arch/                        # Platform abstraction (top-level, Linux-inspired)
+├── src/unix/                # Unix implementation
+└── src/windows/             # Windows implementation
+
+lib/                         # Core libraries (top-level, Linux-inspired)
+└── depgraph/                # Dependency graph utilities
+
 shared/
 ├── protocol/                # gRPC v2 definitions
 │   └── proto/               # .proto files
-├── arch/                    # Platform abstraction
-│   ├── src/unix/            # Unix implementation
-│   └── src/windows/         # Windows implementation
-├── net/                     # Network transport
 ├── log/                     # Logging infrastructure
 ├── trace/                   # Tracing/diagnostics
 ├── module-macros/           # declare_module! proc-macro
 ├── testing/                 # Integration test utilities
 ├── capabilities/            # Capability definitions
-├── depgraph/                # Dependency graph utilities
 ├── domain/                  # reovim-domain: core domain abstractions
 ├── domains/                 # Domain type families
 │   └── text/                # reovim-domain-text: Text domain (Buffer, Position, Motion, TextObject)

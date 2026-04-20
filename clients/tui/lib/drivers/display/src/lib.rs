@@ -15,7 +15,7 @@
 //!        ^
 //!        |  uses Color from
 //!        |
-//! shared/arch/                     <-- Platform-agnostic Color type
+//! arch/                            <-- Platform-agnostic Color type
 //! ```
 //!
 //! # Components

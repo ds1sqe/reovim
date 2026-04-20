@@ -49,8 +49,7 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 
 | Crate | Location | Purpose | Documentation |
 |-------|----------|---------|---------------|
-| `reovim-log` | `shared/log/` | Logging infrastructure (tracing) | [log/overview.md](./log/overview.md) |
-| `reovim-net` | `shared/net/` | Network transport, RPC server | [net/overview.md](./net/overview.md) |
+| `reovim-subsys-net` | `server/lib/subsys/net/` | Network transport contracts | [net/overview.md](./net/overview.md) |
 
 ## Layer Position
 

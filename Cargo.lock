@@ -2216,7 +2216,6 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-display",
- "reovim-driver-log",
  "reovim-driver-text-buffer",
  "reovim-driver-text-input",
  "reovim-driver-text-session",
@@ -2289,6 +2288,7 @@ dependencies = [
  "tokio",
  "tonic",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
 ]
 
@@ -2545,16 +2545,6 @@ name = "reovim-driver-git"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-kernel",
-]
-
-[[package]]
-name = "reovim-driver-log"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]

@@ -4,6 +4,12 @@ members = [
     # Top-level runner (thin wrapper)
     "apps/bin",
 
+    # Platform abstraction layer (Linux-style arch/)
+    "arch",
+
+    # Core libraries (Linux-style lib/) — no reovim-* deps allowed
+    "lib/depgraph",
+
     # Server layer
     "server/lib/kernel",
     "server/lib/server",
@@ -30,7 +36,6 @@ members = [
     "server/lib/drivers/text-ffi-python",
     "server/lib/drivers/picker",
     "server/lib/drivers/completion",
-    "shared/depgraph",
     "server/lib/subsys/manifest",
     "server/lib/subsys/module-config",
     "server/lib/subsys/module-loader",
@@ -152,10 +157,8 @@ members = [
 
     # Shared layer
     "shared/protocol",
-    "shared/arch",
     "shared/input-codec",
     "shared/render-codec",
-    "shared/log",
     "shared/trace",
     "shared/module-macros",
     "shared/capabilities",
@@ -245,7 +248,7 @@ tracing-appender = "0.2"
 chrono = "0.4"
 
 # Shared crates
-reovim-arch = { path = "./shared/arch", version = "0.15.0-dev" }
+reovim-arch = { path = "./arch", version = "0.15.0-dev" }
 reovim-protocol = { path = "./shared/protocol", version = "0.15.0-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.15.0-dev" }
 reovim-capabilities = { path = "./shared/capabilities", version = "0.15.0-dev" }
@@ -257,7 +260,6 @@ reovim-domain-text-events = { path = "./shared/domains/text/events", version = "
 reovim-input-codec = { path = "./shared/input-codec", version = "0.15.0-dev" }
 reovim-render-codec = { path = "./shared/render-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
-reovim-log = { path = "./shared/log", version = "0.15.0-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.15.0-dev" }
 
 # Server crates
@@ -285,7 +287,7 @@ reovim-driver-text-ffi = { path = "./server/lib/drivers/text-ffi", version = "0.
 reovim-driver-text-ffi-python = { path = "./server/lib/drivers/text-ffi-python", version = "0.15.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.15.0-dev" }
 reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.15.0-dev" }
-reovim-depgraph = { path = "./shared/depgraph", version = "0.15.0-dev" }
+reovim-depgraph = { path = "./lib/depgraph", version = "0.15.0-dev" }
 reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
 reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
 reovim-provider-text = { path = "./server/lib/providers/text", version = "0.15.0-dev" }

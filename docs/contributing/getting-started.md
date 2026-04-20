@@ -95,16 +95,16 @@ reovim/
 │   ├── tui/               # TUI client (gRPC v2)
 │   │   └── lib/drivers/   # TUI-specific drivers (tui, display)
 │   └── web/               # Web client (gRPC-Web, WASM)
+├── arch/                  # Platform abstraction (top-level, Linux-inspired)
+├── lib/                   # Core libraries (top-level, Linux-inspired)
+│   └── depgraph/          # Dependency graph utilities
 ├── shared/                # Shared libraries
 │   ├── protocol/          # gRPC v2 protocol definitions
-│   ├── arch/              # Platform abstraction (unix/, windows/)
-│   ├── net/               # Network transport layer
 │   ├── log/               # Logging infrastructure
 │   ├── trace/             # Tracing/diagnostics
 │   ├── module-macros/     # `declare_module!` proc-macro
 │   ├── testing/           # Integration test utilities
 │   ├── capabilities/      # Capability definitions
-│   ├── depgraph/          # Dependency graph utilities
 │   ├── bench/             # Benchmarking utilities
 │   ├── domain/            # Domain abstractions
 │   ├── domains/           # Domain types (text, etc.)
