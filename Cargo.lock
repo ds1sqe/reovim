@@ -2695,15 +2695,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-driver-trace"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "reovim-driver-tui"
 version = "0.15.0-dev"
 dependencies = [

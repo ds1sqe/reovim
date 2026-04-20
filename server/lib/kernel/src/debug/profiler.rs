@@ -152,8 +152,8 @@ pub(super) fn timestamp_ns() -> u64 {
 /// Profiler trait - kernel defines mechanism, drivers implement policy.
 ///
 /// Following the `Logger` pattern: the kernel provides the trait interface,
-/// and drivers (e.g., `shared/trace/`) implement it with the tracing
-/// ecosystem.
+/// and the application (`apps/bin/src/profiling.rs`) implements it with the
+/// tracing ecosystem.
 ///
 /// # Thread Safety
 ///

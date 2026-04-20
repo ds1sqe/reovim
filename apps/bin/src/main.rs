@@ -37,6 +37,7 @@ mod bootstrap;
 mod logging;
 mod module_cli;
 mod module_service;
+mod profiling;
 
 use {
     clap::{Parser, Subcommand},
@@ -340,6 +341,12 @@ fn init_debug_infrastructure() {
     // 2. Set composite logger (ring buffer + tracing passthrough)
     if let Err(e) = reovim_kernel::api::v1::set_logger(&COMPOSITE_LOGGER) {
         tracing::warn!("Logger already set: {e}");
+    }
+
+    // 2b. Set tracing profiler so profile_scope! emits flame-graph spans
+    // (no-op unless REOVIM_PROFILE is set).
+    if let Err(e) = profiling::init_profiling() {
+        tracing::warn!("Profiler already set: {e}");
     }
 
     // 3. Set debug context callback for panic handler

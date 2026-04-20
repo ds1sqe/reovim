@@ -84,7 +84,6 @@ CRATES=(
     "server/lib/subsys/net"                        # reovim-subsys-net
     "server/lib/drivers/search"                    # reovim-driver-search
     "server/lib/subsys/statusline"                 # reovim-subsys-statusline
-    "shared/trace"                                 # reovim-driver-trace
     "server/lib/subsys/vfs"                       # reovim-subsys-vfs
     "shared/module-macros"                         # reovim-module-macros
     "clients/tui/modules/bufferline"               # reovim-tui-mod-bufferline
