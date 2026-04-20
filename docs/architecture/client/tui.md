@@ -44,7 +44,7 @@ reovim tui --grpc 127.0.0.1:12540
 The TUI client loads 20 client modules that provide chrome (UI panels) and buffer
 contributions. Modules implement the `ClientModule` trait from `reovim-client-driver`.
 
-Source: `clients/tui/modules/`
+Source: `ext/client/tui/modules/`
 
 | Module | Kind | Purpose |
 |--------|------|---------|

@@ -86,26 +86,26 @@ CRATES=(
     "server/lib/subsys/statusline"                 # reovim-subsys-statusline
     "server/lib/subsys/vfs"                       # reovim-subsys-vfs
     "uapi/module-macros"                           # reovim-module-macros
-    "clients/tui/modules/bufferline"               # reovim-tui-mod-bufferline
-    "clients/tui/modules/cmdline"                  # reovim-tui-mod-cmdline
-    "clients/tui/modules/completion"               # reovim-tui-mod-completion
-    "clients/tui/modules/diagnostics"              # reovim-tui-mod-diagnostics
-    "clients/tui/modules/explorer"                 # reovim-tui-mod-explorer
-    "clients/tui/modules/fold"                     # reovim-tui-mod-fold
-    "clients/tui/modules/hover"                    # reovim-tui-mod-hover
-    "clients/tui/modules/illuminate"               # reovim-tui-mod-illuminate
-    "clients/tui/modules/jump"                     # reovim-tui-mod-jump
-    "clients/tui/modules/landing"                  # reovim-tui-mod-landing
-    "clients/tui/modules/line-numbers"             # reovim-tui-mod-line-numbers
-    "clients/tui/modules/markdown"                 # reovim-tui-mod-markdown
-    "clients/tui/modules/microscope"               # reovim-tui-mod-microscope
-    "clients/tui/modules/notification"             # reovim-tui-mod-notification
-    "clients/tui/modules/pair"                     # reovim-tui-mod-pair
-    "clients/tui/modules/signature-help"           # reovim-tui-mod-signature-help
-    "clients/tui/modules/statusline"               # reovim-tui-mod-statusline
-    "clients/tui/modules/tetromino"                # reovim-tui-mod-tetromino
-    "clients/tui/modules/which-key"                # reovim-tui-mod-whichkey
-    "clients/tui/modules/yank-flash"               # reovim-tui-mod-yank-flash
+    "ext/client/tui/modules/bufferline"               # reovim-tui-mod-bufferline
+    "ext/client/tui/modules/cmdline"                  # reovim-tui-mod-cmdline
+    "ext/client/tui/modules/completion"               # reovim-tui-mod-completion
+    "ext/client/tui/modules/diagnostics"              # reovim-tui-mod-diagnostics
+    "ext/client/tui/modules/explorer"                 # reovim-tui-mod-explorer
+    "ext/client/tui/modules/fold"                     # reovim-tui-mod-fold
+    "ext/client/tui/modules/hover"                    # reovim-tui-mod-hover
+    "ext/client/tui/modules/illuminate"               # reovim-tui-mod-illuminate
+    "ext/client/tui/modules/jump"                     # reovim-tui-mod-jump
+    "ext/client/tui/modules/landing"                  # reovim-tui-mod-landing
+    "ext/client/tui/modules/line-numbers"             # reovim-tui-mod-line-numbers
+    "ext/client/tui/modules/markdown"                 # reovim-tui-mod-markdown
+    "ext/client/tui/modules/microscope"               # reovim-tui-mod-microscope
+    "ext/client/tui/modules/notification"             # reovim-tui-mod-notification
+    "ext/client/tui/modules/pair"                     # reovim-tui-mod-pair
+    "ext/client/tui/modules/signature-help"           # reovim-tui-mod-signature-help
+    "ext/client/tui/modules/statusline"               # reovim-tui-mod-statusline
+    "ext/client/tui/modules/tetromino"                # reovim-tui-mod-tetromino
+    "ext/client/tui/modules/which-key"                # reovim-tui-mod-whichkey
+    "ext/client/tui/modules/yank-flash"               # reovim-tui-mod-yank-flash
 
     # Tier 3 — testing, bench, command types, display, base server modules
     "tools/testing"                                # reovim-testing

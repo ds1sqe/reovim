@@ -40,6 +40,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **uapi**: `reovim-input-codec` relocated from `shared/input-codec/` to `uapi/input-codec/` as a temporary home pending the Plan 15 input-opaque redesign. Fits `uapi/` role (wire contract: encode/decode for InputEvent opaque payloads). Package name unchanged
 - **shared**: `shared/` directory removed entirely. All former contents now live under `arch/`, `lib/`, `uapi/`, `tools/`, `clients/lib/`, or `ext/server/domain/`
 - **ext**: `reovim-driver-tui` and `reovim-driver-display` relocated from `clients/tui/lib/drivers/{tui,display}/` to `ext/client/tui/drivers/{tui,display}/`. Establishes the `ext/client/tui/` subtree for TUI-scoped platform extensions. Empty `clients/tui/lib/` removed. Workspace members + deps paths, `scripts/publish.sh`, and active docs (`docs/architecture/drivers/overview.md`, `docs/architecture/client/tui.md`) updated. In-source doc path comments in display driver and web extension interface updated
+- **ext**: All 20 TUI client modules (`bufferline`, `cmdline`, `completion`, `diagnostics`, `explorer`, `fold`, `hover`, `illuminate`, `jump`, `landing`, `line-numbers`, `markdown`, `microscope`, `notification`, `pair`, `signature-help`, `statusline`, `tetromino`, `which-key`, `yank-flash`) relocated from `clients/tui/modules/` to `ext/client/tui/modules/`. Package names unchanged (`reovim-tui-mod-*`). Workspace members + deps paths, `scripts/publish.sh`, `docs/architecture/client/tui.md`, and `clients/web/src/extensions/yank-flash.ts` path reference updated
 
 ### Added
 
