@@ -11,7 +11,7 @@ coverage:
 ignore:
   - "tools/**"
   - "archive/**"
-  - "shared/protocol/src/gen/**"
+  - "uapi/protocol/src/gen/**"
   - "**/build.rs"
   - "shared/testing/**"
   - "server/lib/drivers/ffi-python/**"

@@ -58,7 +58,7 @@ fi
 CRATES=(
     # Tier 0 — no internal deps
     "arch"                                         # reovim-arch
-    "shared/capabilities"                          # reovim-capabilities
+    "lib/capabilities"                             # reovim-capabilities
     "shared/clients/model"                         # reovim-client-model
     "lib/depgraph"                                 # reovim-depgraph
 
@@ -67,7 +67,7 @@ CRATES=(
     "server/lib/subsys/module-registry"            # reovim-subsys-module-registry
     "clients/tui/lib/drivers/tui"                  # reovim-driver-tui
     "server/lib/kernel"                            # reovim-kernel
-    "shared/protocol"                              # reovim-protocol
+    "uapi/protocol"                                # reovim-protocol
 
     # Tier 2 — drivers, shared libs, TUI client modules
     "clients/cli"                                  # reovim-client-cli
@@ -110,7 +110,7 @@ CRATES=(
 
     # Tier 3 — testing, bench, command types, display, base server modules
     "shared/testing"                               # reovim-testing
-    "shared/bench"                                 # reovim-bench-utils
+    "lib/bench"                                    # reovim-bench-utils
     "server/lib/drivers/command-types"             # reovim-driver-command-types
     "clients/tui/lib/drivers/display"              # reovim-driver-display
     "server/lib/drivers/undo"                      # reovim-driver-undo

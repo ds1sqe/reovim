@@ -8,7 +8,13 @@ members = [
     "arch",
 
     # Core libraries (Linux-style lib/) — no reovim-* deps allowed
+    "lib/bench",
+    "lib/capabilities",  # TEMP: to be relocated to subsys or uapi in a follow-on phase
     "lib/depgraph",
+
+    # Userspace API (Linux-style uapi/) — stable wire contracts
+    "uapi/protocol",
+    "uapi/render-codec",
 
     # Server layer
     "server/lib/kernel",
@@ -156,12 +162,9 @@ members = [
     "clients/cli",
 
     # Shared layer
-    "shared/protocol",
     "shared/input-codec",
-    "shared/render-codec",
     "shared/trace",
     "shared/module-macros",
-    "shared/capabilities",
     "shared/testing",
 
     # Shared clients layer
@@ -176,7 +179,6 @@ members = [
     "shared/domains/text/events",
 
     # Shared benchmarking utilities
-    "shared/bench",
 
     # Tools (Rust only - reovim-testing is Python)
     "tools/bench",
@@ -249,16 +251,16 @@ chrono = "0.4"
 
 # Shared crates
 reovim-arch = { path = "./arch", version = "0.15.0-dev" }
-reovim-protocol = { path = "./shared/protocol", version = "0.15.0-dev" }
+reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.15.0-dev" }
-reovim-capabilities = { path = "./shared/capabilities", version = "0.15.0-dev" }
+reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.15.0-dev" }
-reovim-bench-utils = { path = "./shared/bench", version = "0.15.0-dev" }
+reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
 reovim-domain = { path = "./shared/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./shared/domains/text", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./shared/domains/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./shared/input-codec", version = "0.15.0-dev" }
-reovim-render-codec = { path = "./shared/render-codec", version = "0.15.0-dev" }
+reovim-render-codec = { path = "./uapi/render-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.15.0-dev" }
 

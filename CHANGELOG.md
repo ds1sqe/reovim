@@ -29,6 +29,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **arch**: `reovim-arch` relocated from `shared/arch/` to top-level `arch/` (Linux-inspired platform abstraction layer). Package name unchanged (`reovim-arch`). Workspace dep path updated; `scripts/publish.sh` updated. Consumers unaffected since all imports use crate names, not paths
 - **lib**: `reovim-depgraph` relocated from `shared/depgraph/` to top-level `lib/depgraph/` (Linux-inspired core library layout). Package name unchanged. Workspace dep path updated; `scripts/publish.sh` updated. Consumers unaffected since all imports use crate names, not paths
 - **apps**: `reovim-driver-log` crate dissolved — tracing subscriber setup absorbed into `apps/bin/src/logging.rs` as application bootstrap. Only `apps/bin` consumed it, and kernel `Logger` implementation was already `reovim_server::debug::CompositeLogger`. Dead code removed: `TracingLogger`, `to_tracing_level`, `from_tracing_level`, and ~900 lines of tests covering the unused Logger bridge. Workspace member, workspace dep, `scripts/publish.sh` entry, and `docs/architecture/drivers/log/` removed
+- **lib**: `reovim-capabilities` and `reovim-bench-utils` relocated from `shared/` to `lib/` (pure crates, zero reovim deps). `lib/capabilities` is marked TEMP and will move to subsys or uapi in a follow-on phase. Package names and consumers unchanged
+- **uapi**: `reovim-protocol` relocated from `shared/protocol/` to `uapi/protocol/` and `reovim-render-codec` relocated from `shared/render-codec/` to `uapi/render-codec/` — new Linux-inspired top-level `uapi/` for stable wire contracts (gRPC proto, CommandBuffer encoding). Package names unchanged. `.codecov.yml` path updated for generated proto files
 
 ### Added
 

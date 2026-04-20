@@ -187,7 +187,7 @@ pub trait Module: Send + Sync + 'static {
     ///
     /// Same as `extension_kinds()`: the kernel defines the method with
     /// `&[&'static str]` return type. Capability constants live in
-    /// `shared/capabilities/`, not in the kernel.
+    /// `lib/capabilities/`, not in the kernel.
     fn provides(&self) -> &[&'static str] {
         &[]
     }
