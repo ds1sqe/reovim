@@ -57,7 +57,7 @@ members = [
     "ext/server/drivers/codec-xxd",
 
     # Providers (domain logic, above drivers)
-    "server/lib/providers/text",
+    "ext/server/providers/text",
 
     # Server modules
     "ext/server/modules/vim",
@@ -169,8 +169,10 @@ members = [
     "clients/lib/model",
     "clients/lib/driver",
 
-    # Extension layer — domain types
-    "ext/server/domain/domain",
+    # Core: generic Domain trait (zero deps; enables Buffer<D>, Decode<D>, ...)
+    "lib/domain",
+
+    # Extension layer — concrete domain implementations
     "ext/server/domain/text",
     "ext/server/domain/text/events",
 
@@ -251,7 +253,7 @@ reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
 reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
 reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
-reovim-domain = { path = "./ext/server/domain/domain", version = "0.15.0-dev" }
+reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
@@ -286,7 +288,7 @@ reovim-driver-completion = { path = "./ext/server/drivers/completion", version =
 reovim-depgraph = { path = "./lib/depgraph", version = "0.15.0-dev" }
 reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
 reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
-reovim-provider-text = { path = "./server/lib/providers/text", version = "0.15.0-dev" }
+reovim-provider-text = { path = "./ext/server/providers/text", version = "0.15.0-dev" }
 reovim-subsys-module-loader = { path = "./server/lib/subsys/module-loader", version = "0.15.0-dev" }
 reovim-driver-git = { path = "./ext/server/drivers/git", version = "0.15.0-dev" }
 reovim-subsys-module-registry = { path = "./server/lib/subsys/module-registry", version = "0.15.0-dev" }

@@ -66,7 +66,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│              PROVIDERS (server/lib/providers/)                  │
+│              PROVIDERS (ext/server/providers/)                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  text/   (reovim-provider-text)                         │    │
 │  │  High-level text services built on kernel + drivers      │    │
@@ -108,7 +108,7 @@ See: [Session Model](./session-model.md)
 | `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
 | `drivers/` | `ext/server/drivers/*` | Hardware/service adapters |
 | `fs/` | `server/lib/subsys/vfs/` | Virtual filesystem |
-| Subsystem libraries | `server/lib/providers/*` | High-level domain services |
+| Subsystem libraries | `ext/server/providers/*` | High-level domain services |
 | Loadable Modules | `ext/server/modules/` | Dynamic policy modules |
 
 ## Design Principles
@@ -140,7 +140,7 @@ See: [Mechanism vs Policy](./mechanism-policy/README.md)
 
 ### 5. Provider Layer
 
-`server/lib/providers/` sits between drivers and modules. Providers compose kernel
+`ext/server/providers/` sits between drivers and modules. Providers compose kernel
 primitives and driver services into higher-level, domain-oriented APIs (e.g.,
 `reovim-provider-text` for text operations). Modules consume providers rather than
 accessing drivers directly when a provider already wraps the needed functionality.

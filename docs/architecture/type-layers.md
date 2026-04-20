@@ -26,7 +26,7 @@ Understanding which types belong where prevents layer confusion and import confl
 ├─────────────────────────────────────────────────────────────────────────┤
 │  DOMAIN (ext/server/domain/text/) — reovim-domain-text         SHARED      │
 │  Position, TextPosition, TextEdit, Motion, TextObject                   │
-│  Domain trait (ext/server/domain/domain/) — reovim-domain                         │
+│  Domain trait (lib/domain/) — reovim-domain                             │
 │  → Shared text-editing domain types, usable by kernel, drivers, modules │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  SERVER (server/lib/server/)                               MECHANISM    │

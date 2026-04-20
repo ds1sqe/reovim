@@ -10,7 +10,7 @@ fn text_buffer_registry_boundary_lives_in_provider_text() {
 
     let session_lib = root.join("ext/server/drivers/text-session/src/lib.rs");
     let session_runtime = root.join("ext/server/drivers/text-session/src/runtime.rs");
-    let provider_lib = root.join("server/lib/providers/text/src/lib.rs");
+    let provider_lib = root.join("ext/server/providers/text/src/lib.rs");
 
     let session_src = fs::read_to_string(&session_lib)
         .unwrap_or_else(|err| panic!("cannot read {}: {err}", session_lib.display()));

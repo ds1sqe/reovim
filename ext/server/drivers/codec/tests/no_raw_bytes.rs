@@ -18,7 +18,7 @@ fn no_raw_bytes_identifier_in_source_tree() {
         .expect("codec crate should live under ext/server/drivers/codec");
     let scan_roots = [
         manifest_dir.join("src"),
-        workspace_root.join("server/lib/providers/text/src"),
+        workspace_root.join("ext/server/providers/text/src"),
         workspace_root.join("ext/server/modules/commands/src"),
     ];
 

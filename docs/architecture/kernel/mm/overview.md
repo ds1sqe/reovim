@@ -11,7 +11,7 @@ Kernel-owned identifiers and background saturation support.
 Following the domain decoupling in #740, the `mm/` subsystem no longer holds
 text content types. Buffer, Position, Edit, Line, Selection, Range, Rope, and
 related structures now live in `ext/server/domain/text/` (crate `reovim-domain-text`)
-and `server/lib/providers/text/` (crate `reovim-provider-text`).
+and `ext/server/providers/text/` (crate `reovim-provider-text`).
 
 The kernel `mm/` subsystem retains only what is strictly kernel-owned: opaque
 identifiers for kernel resources and the `SaturatorHandle` background-work

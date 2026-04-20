@@ -14,7 +14,7 @@ Design principle:
 
 ## `Domain` Trait
 
-Crate: `reovim-domain` (`ext/server/domain/domain/`)
+Crate: `reovim-domain` (`lib/domain/`)
 
 Zero dependencies — defines only the trait contract.
 

@@ -1,7 +1,7 @@
 # Text Content Provider (`reovim-provider-text`)
 
 **Crate**: `reovim-provider-text`  
-**Path**: `server/lib/providers/text/`  
+**Path**: `ext/server/providers/text/`  
 **Introduced**: #739 (provider layer), populated incrementally in #740
 
 ## Overview
