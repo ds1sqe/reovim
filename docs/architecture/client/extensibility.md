@@ -122,7 +122,10 @@ $XDG_DATA_HOME/reovim/client-modules/
 ## Server-side pairing
 
 Most features need both a server module (behavior) and a client module
-(presentation). They pair by `kind` string from `shared/extension-kinds/`.
+(presentation). They pair by a `kind` string declared as a
+`pub const KIND: &str = "..."` constant in each extension module
+(the centralized `shared/extension-kinds/` registry was removed in
+v0.11.0 — see `changelog/CHANGELOG-0.11.0.md`).
 
 ```
 Server module (diagnostics):

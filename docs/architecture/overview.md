@@ -12,7 +12,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘  │
 │           │                    │                     │            │
 │           └────────────────────┼─────────────────────┘            │
-│                         │ gRPC v2 (shared/protocol/)            │
+│                         │ gRPC v2 (uapi/protocol/)            │
 └─────────────────────────┼───────────────────────────────────────┘
                           │
 ┌─────────────────────────┼───────────────────────────────────────┐
@@ -74,10 +74,13 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│                        SHARED (shared/)                         │
+│  CORE LIBS (arch/, lib/, uapi/) + EXT DOMAINS                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  protocol/ │ arch/ │ net/ │ log/ │ trace/ │ module-macros │   │
-│  │  domain/ │ domains/text/                                │    │
+│  │  arch/                 (platform abstraction)           │    │
+│  │  lib/domain/           (generic Domain trait)           │    │
+│  │  lib/{depgraph,log,trace,bench,capabilities}/           │    │
+│  │  uapi/{protocol,render-codec,input-codec,module-macros} │    │
+│  │  ext/server/domain/text/  (concrete text domain)        │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -104,7 +107,7 @@ See: [Session Model](./session-model.md)
 
 | Linux | Reovim | Purpose |
 |-------|--------|---------|
-| `arch/` | `shared/arch/` | Platform abstraction (Unix, Windows) |
+| `arch/` | `arch/` | Platform abstraction (Unix, Windows) |
 | `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
 | `drivers/` | `ext/server/drivers/*` | Hardware/service adapters |
 | `fs/` | `server/lib/subsys/vfs/` | Virtual filesystem |
@@ -148,7 +151,7 @@ accessing drivers directly when a provider already wraps the needed functionalit
 ## Crate Dependency Graph
 
 ```
-shared/arch                ← Platform traits (no deps)
+arch/                      ← Platform traits (no deps)
     │
     ▼
 server/lib/kernel          ← Core mechanisms (depends on arch)
@@ -163,7 +166,7 @@ server/lib/kernel          ← Core mechanisms (depends on arch)
             ▼
         ext/server/modules/              ← Policy modules (vim, motions, etc.)
 
-shared/protocol            ← gRPC v2 definitions
+uapi/protocol              ← gRPC v3 definitions
     │
     ├──▶ server/lib/server  ← Server runtime
     │
@@ -256,27 +259,41 @@ clients/
 ├── cli/                     # CLI client
 └── web/                     # Web client (gRPC-Web, WASM)
 
-arch/                        # Platform abstraction (top-level, Linux-inspired)
+arch/                        # Platform abstraction (Linux-inspired top-level)
 ├── src/unix/                # Unix implementation
 └── src/windows/             # Windows implementation
 
-lib/                         # Core libraries (top-level, Linux-inspired)
-└── depgraph/                # Dependency graph utilities
+lib/                         # Core libraries (zero reovim-specific policy)
+├── bench/                   # reovim-bench-utils: benchmarking utilities
+├── capabilities/            # reovim-capabilities: capability definitions (TEMP)
+├── depgraph/                # reovim-depgraph: graph utils + layer tests
+└── domain/                  # reovim-domain: generic Domain trait (zero deps)
 
-shared/
-├── protocol/                # gRPC v2 definitions
-│   └── proto/               # .proto files
-├── log/                     # Logging infrastructure
-├── trace/                   # Tracing/diagnostics
-├── module-macros/           # declare_module! proc-macro
-├── testing/                 # Integration test utilities
-├── capabilities/            # Capability definitions
-├── domain/                  # reovim-domain: core domain abstractions
-├── domains/                 # Domain type families
-│   └── text/                # reovim-domain-text: Text domain (Buffer, Position, Motion, TextObject)
-└── clients/                 # Client shared libraries
-    ├── model/               # reovim-client-model: client model types
-    └── driver/              # reovim-client-driver: client driver traits
+uapi/                        # Stable wire contracts (cross-process/ABI)
+├── protocol/                # reovim-protocol: gRPC v3 definitions
+├── render-codec/            # reovim-render-codec: render surface wire format
+├── input-codec/             # reovim-input-codec: InputEvent wire format (TEMP)
+└── module-macros/           # reovim-module-macros: declare_module! proc-macro
+
+tools/                       # Dev-time tooling (composition-root-like)
+├── bench/                   # Criterion benchmark suite
+├── perf-report/             # Performance report generator
+├── python-test-sdk/         # Python test SDK
+└── testing/                 # reovim-testing: integration test harness
+
+clients/lib/                 # Platform-agnostic shared client infra
+├── model/                   # reovim-client-model
+└── driver/                  # reovim-client-driver
+
+ext/server/                  # Pluggable server-side extensions
+├── domain/text/             # reovim-domain-text + events
+├── drivers/                 # 19 driver implementations
+├── modules/                 # 73 policy modules
+└── providers/text/          # reovim-provider-text
+
+ext/client/tui/              # TUI-scoped platform extensions
+├── drivers/                 # tui/, display/
+└── modules/                 # 20 TUI client modules
 ```
 
 ## Client Layer Model

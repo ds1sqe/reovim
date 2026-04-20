@@ -91,29 +91,37 @@ reovim/
 │       ├── mode-manager/      # Mode system
 │       └── ...                # (options, buffer-ops, clipboard, search, etc.)
 ├── clients/               # Client applications
-│   ├── cli/               # CLI client (gRPC v2)
-│   ├── tui/               # TUI client (gRPC v2)
-│   │   └── lib/drivers/   # TUI-specific drivers (tui, display)
+│   ├── lib/               # Platform-agnostic shared client infra
+│   │   ├── driver/        # reovim-client-driver
+│   │   └── model/         # reovim-client-model
+│   ├── cli/               # CLI client core (gRPC v3)
+│   ├── tui/               # TUI client core (gRPC v3)
 │   └── web/               # Web client (gRPC-Web, WASM)
-├── arch/                  # Platform abstraction (top-level, Linux-inspired)
-├── lib/                   # Core libraries (top-level, Linux-inspired)
-│   └── depgraph/          # Dependency graph utilities
-├── shared/                # Shared libraries
-│   ├── protocol/          # gRPC v2 protocol definitions
-│   ├── log/               # Logging infrastructure
-│   ├── trace/             # Tracing/diagnostics
-│   ├── module-macros/     # `declare_module!` proc-macro
-│   ├── testing/           # Integration test utilities
-│   ├── capabilities/      # Capability definitions
-│   ├── bench/             # Benchmarking utilities
-│   ├── domain/            # Domain abstractions
-│   ├── domains/           # Domain types (text, etc.)
-│   └── clients/           # Shared client libraries
-│       ├── driver/        # reovim-client-driver
-│       └── model/         # reovim-client-model
-├── tools/
-│   ├── bench/             # Performance benchmarks (criterion)
-│   └── perf-report/       # Performance report generator
+├── ext/                   # Extension tree (pluggable)
+│   ├── server/
+│   │   ├── domain/text/   # Concrete text domain
+│   │   ├── drivers/       # 19 driver implementations
+│   │   ├── modules/       # 73 policy modules
+│   │   └── providers/text/ # reovim-provider-text
+│   └── client/tui/
+│       ├── drivers/       # TUI platform drivers (tui, display)
+│       └── modules/       # 20 TUI client modules
+├── arch/                  # Platform abstraction (Linux-inspired)
+├── lib/                   # Core libraries (zero reovim-specific policy)
+│   ├── bench/             # reovim-bench-utils
+│   ├── capabilities/      # reovim-capabilities (TEMP)
+│   ├── depgraph/          # reovim-depgraph + layer tests
+│   └── domain/            # reovim-domain: generic Domain trait
+├── uapi/                  # Stable wire contracts
+│   ├── protocol/          # gRPC v3 proto definitions
+│   ├── render-codec/      # Render surface wire format
+│   ├── input-codec/       # InputEvent wire format (TEMP, Plan 15)
+│   └── module-macros/     # declare_module! proc-macro
+├── tools/                 # Dev-time tooling (composition-root-like)
+│   ├── bench/             # Criterion benchmark suite
+│   ├── perf-report/       # Performance report generator
+│   ├── python-test-sdk/   # Python test SDK
+│   └── testing/           # reovim-testing harness
 └── perf/                  # Versioned performance reports
 ```
 

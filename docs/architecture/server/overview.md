@@ -14,7 +14,7 @@ The gRPC server manages sessions, clients, and request dispatching.
 | Session | `session/` | Session state management |
 | Client | `session/client.rs` | Per-client state, viewport |
 | gRPC Handlers | `grpc/` | Request routing, 12 service handlers |
-| Transport | `shared/net/` | Network transport layer (separate crate) |
+| Transport | `server/lib/subsys/net/` | Network transport layer (separate crate) |
 | Notification | `grpc/notification.rs` | Broadcast to clients |
 
 ## Architecture
@@ -58,13 +58,13 @@ See [Sessions Documentation](./sessions.md#per-client-viewport) for the viewport
 
 ### gRPC v2 Protocol
 
-gRPC v2 protocol defined in `shared/protocol/` (.proto files).
+gRPC v2 protocol defined in `uapi/protocol/` (.proto files).
 
 See [RPC Protocol Documentation](./rpc-protocol.md) for message formats.
 
 ## Related Documents
 
 - [Sessions](./sessions.md) - Session and viewport management
-- [Transport](./transport.md) - Transport layer (shared/net/)
+- [Transport](./transport.md) - Transport layer (server/lib/subsys/net/)
 - [RPC Protocol](./rpc-protocol.md) - gRPC v2 protocol spec
 - [Notifications](./notifications.md) - Client notifications

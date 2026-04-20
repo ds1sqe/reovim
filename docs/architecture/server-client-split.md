@@ -1387,9 +1387,8 @@ reovim/
 │               ├── mod.rs
 │               └── state.rs
 │
-├── shared/
-│   ├── clients/
-│   │   └── model/                 # Common Client Model (reovim-client-model)
+├── clients/lib/
+│   ├── model/                     # Common Client Model (reovim-client-model)
 │   │       └── src/
 │   │           ├── lib.rs
 │   │           ├── geometry.rs    # ScreenPosition, Size, Rect

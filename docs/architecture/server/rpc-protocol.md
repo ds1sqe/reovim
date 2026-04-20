@@ -4,11 +4,11 @@ gRPC protocol over HTTP/2 with Protocol Buffers for client-server communication.
 
 ## Source Location
 
-`shared/protocol/proto/reovim/v2/` (13 proto files)
+`uapi/protocol/proto/reovim/v2/` (13 proto files)
 
 ## Protocol Overview
 
-Reovim uses **gRPC v2** (Protocol Buffers over HTTP/2) via `tonic`. All services are defined in `.proto` files under `shared/protocol/proto/reovim/v2/`.
+Reovim uses **gRPC v2** (Protocol Buffers over HTTP/2) via `tonic`. All services are defined in `.proto` files under `uapi/protocol/proto/reovim/v2/`.
 
 Clients connect via `--grpc HOST:PORT` (default port: 12540).
 

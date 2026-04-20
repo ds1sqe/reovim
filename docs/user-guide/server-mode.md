@@ -151,7 +151,7 @@ See [CLI Reference](./cli-reference.md) for the complete command list.
 
 ## gRPC Protocol
 
-Reovim uses gRPC v2 protocol (Protocol Buffers over HTTP/2) for client-server communication. The protocol definitions are in `shared/protocol/proto/reovim/v2/` (13 proto files).
+Reovim uses gRPC v2 protocol (Protocol Buffers over HTTP/2) for client-server communication. The protocol definitions are in `uapi/protocol/proto/reovim/v2/` (13 proto files).
 
 ### Available Services
 
@@ -193,7 +193,7 @@ The `DebugService` bypasses authentication, allowing the stateless CLI to target
 ### Protocol Files
 
 ```
-shared/protocol/proto/reovim/v2/
+uapi/protocol/proto/reovim/v2/
 ├── common.proto         # Shared types (Position, Selection, WindowRect)
 ├── input.proto          # InputService
 ├── state.proto          # StateService
@@ -299,8 +299,8 @@ The default gRPC port is `12540`, with fallback range `12541-12549`.
 - `server/lib/server/` - Server implementation (gRPC handlers, sessions)
 - `clients/tui/` - TUI client implementation
 - `clients/cli/` - CLI client implementation
-- `shared/protocol/` - gRPC v2 protocol definitions (13 proto files)
-- `shared/net/` - Network transport layer
+- `uapi/protocol/` - gRPC v2 protocol definitions (13 proto files)
+- `server/lib/subsys/net/` - Network transport layer
 
 ## Related Documents
 

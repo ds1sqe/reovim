@@ -183,7 +183,7 @@ reovim cli --format json log-tail
 The `DebugService` provides access via gRPC:
 
 ```protobuf
-// shared/protocol/proto/reovim/v2/debug.proto
+// uapi/protocol/proto/reovim/v2/debug.proto
 service DebugService {
     rpc LogTail(LogTailRequest) returns (LogTailResponse);
     rpc LogLevel(LogLevelRequest) returns (LogLevelResponse);

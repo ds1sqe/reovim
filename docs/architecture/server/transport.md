@@ -4,7 +4,7 @@ The server supports multiple transport protocols for client connections.
 
 ## Source Location
 
-`shared/net/src/`
+`server/lib/subsys/net/src/`
 
 ## Transport Options
 
@@ -49,7 +49,7 @@ Lower latency than TCP for local connections.
 ## Transport Traits (Legacy TCP Path)
 
 The current primary transport is gRPC via `tonic`. The trait definitions below
-in `shared/net/src/traits.rs` are for the legacy TCP path and are not used by
+in `server/lib/subsys/net/src/traits.rs` are for the legacy TCP path and are not used by
 the gRPC transport:
 
 ```rust

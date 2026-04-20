@@ -290,7 +290,7 @@ impl Module for MyModule {
 
 ## gRPC Module Management
 
-Module lifecycle is managed via the `ModuleService` gRPC service (defined in `shared/protocol/proto/reovim/v2/module.proto`):
+Module lifecycle is managed via the `ModuleService` gRPC service (defined in `uapi/protocol/proto/reovim/v2/module.proto`):
 
 | RPC | Description |
 |-----|-------------|

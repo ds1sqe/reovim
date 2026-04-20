@@ -109,7 +109,7 @@ Headless mode:
 
 ## gRPC Method
 
-For direct gRPC integration (see `shared/protocol/proto/reovim/v2/state.proto`):
+For direct gRPC integration (see `uapi/protocol/proto/reovim/v2/state.proto`):
 
 ```protobuf
 // Request

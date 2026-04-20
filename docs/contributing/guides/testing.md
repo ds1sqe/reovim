@@ -525,7 +525,7 @@ cargo test -- --nocapture
 | Test harness | `tools/testing/` | Subprocess management, client utilities |
 | Integration builder | `tools/testing/src/integration.rs` | Fluent test API |
 | Module tests | `ext/server/modules/*/tests/` | Per-module integration tests |
-| Protocol | `shared/protocol/` | gRPC v2 definitions |
+| Protocol | `uapi/protocol/` | gRPC v2 definitions |
 
 ### Port Allocation
 

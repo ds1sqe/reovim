@@ -4,7 +4,7 @@ Server-to-client streaming notifications for real-time state updates.
 
 ## Source Location
 
-- Proto: `shared/protocol/proto/reovim/v2/notification.proto`
+- Proto: `uapi/protocol/proto/reovim/v2/notification.proto`
 - Implementation: `server/lib/server/src/grpc/notification.rs`
 
 ## Transport

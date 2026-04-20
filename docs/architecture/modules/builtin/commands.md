@@ -76,7 +76,7 @@ impl Module for CommandsModule {
 
 ## CommandQueryService (gRPC)
 
-The `CommandService` gRPC service (defined in `shared/protocol/proto/reovim/v2/command.proto`)
+The `CommandService` gRPC service (defined in `uapi/protocol/proto/reovim/v2/command.proto`)
 provides command-line tab completion and discovery for clients:
 
 | RPC | Purpose |
