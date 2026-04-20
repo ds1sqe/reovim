@@ -11,7 +11,7 @@
 //! `Color` comes from `reovim-arch` (platform abstraction layer).
 //!
 //! ```text
-//! clients/tui/lib/drivers/display/  <-- Traits + Style types (this crate)
+//! ext/client/tui/drivers/display/  <-- Traits + Style types (this crate)
 //!        ^
 //!        |  uses Color from
 //!        |

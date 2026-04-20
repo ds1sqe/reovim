@@ -76,10 +76,10 @@ See [Client Extensibility](./extensibility.md).
 
 The TUI has two platform-specific drivers:
 
-- `display` (`clients/tui/lib/drivers/display/`) — Display driver: FrameBuffer,
+- `display` (`ext/client/tui/drivers/display/`) — Display driver: FrameBuffer,
   WindowRenderer, AnnotationStore, compositor, render backend, layout, highlight, and
   style systems.
-- `tui` (`clients/tui/lib/drivers/tui/`) — Terminal session management: raw mode,
+- `tui` (`ext/client/tui/drivers/tui/`) — Terminal session management: raw mode,
   alternate screen, InputReader, Screen, FrameRenderer.
 
 ## Notification Handling

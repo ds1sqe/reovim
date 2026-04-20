@@ -39,6 +39,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **ext**: `reovim-domain` and `reovim-domain-text` (+ its sibling `reovim-domain-text-events`) relocated from `shared/domain/` and `shared/domains/text/` to `ext/server/domain/domain/` and `ext/server/domain/text/` — establishes the `ext/` top-level tree and the `ext/server/domain/` subtree for pluggable content domains. Package names unchanged
 - **uapi**: `reovim-input-codec` relocated from `shared/input-codec/` to `uapi/input-codec/` as a temporary home pending the Plan 15 input-opaque redesign. Fits `uapi/` role (wire contract: encode/decode for InputEvent opaque payloads). Package name unchanged
 - **shared**: `shared/` directory removed entirely. All former contents now live under `arch/`, `lib/`, `uapi/`, `tools/`, `clients/lib/`, or `ext/server/domain/`
+- **ext**: `reovim-driver-tui` and `reovim-driver-display` relocated from `clients/tui/lib/drivers/{tui,display}/` to `ext/client/tui/drivers/{tui,display}/`. Establishes the `ext/client/tui/` subtree for TUI-scoped platform extensions. Empty `clients/tui/lib/` removed. Workspace members + deps paths, `scripts/publish.sh`, and active docs (`docs/architecture/drivers/overview.md`, `docs/architecture/client/tui.md`) updated. In-source doc path comments in display driver and web extension interface updated
 
 ### Added
 

@@ -135,8 +135,8 @@ members = [
 
     # Client layer - TUI
     "clients/tui",
-    "clients/tui/lib/drivers/tui",
-    "clients/tui/lib/drivers/display",
+    "ext/client/tui/drivers/tui",
+    "ext/client/tui/drivers/display",
     # Client modules - TUI (native ClientModule implementations)
     "clients/tui/modules/statusline",
     "clients/tui/modules/hover",
@@ -299,8 +299,8 @@ reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.15.0-d
 reovim-driver-codec-xxd = { path = "./server/lib/drivers/codec-xxd", version = "0.15.0-dev" }
 
 # Client drivers (TUI-specific)
-reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.15.0-dev" }
-reovim-driver-display = { path = "./clients/tui/lib/drivers/display", version = "0.15.0-dev" }
+reovim-driver-tui = { path = "./ext/client/tui/drivers/tui", version = "0.15.0-dev" }
+reovim-driver-display = { path = "./ext/client/tui/drivers/display", version = "0.15.0-dev" }
 
 # Client crates
 reovim-client-tui = { path = "./clients/tui", version = "0.15.0-dev" }

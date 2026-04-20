@@ -40,8 +40,8 @@ These drivers live outside `server/lib/drivers/`:
 
 | Driver | Location | Purpose | Documentation |
 |--------|----------|---------|---------------|
-| `display/` | `clients/tui/lib/drivers/display/` | Frame buffer, compositor | [display/overview.md](./display/overview.md) |
-| `tui/` | `clients/tui/lib/drivers/tui/` | Terminal I/O | - |
+| `display/` | `ext/client/tui/drivers/display/` | Frame buffer, compositor | [display/overview.md](./display/overview.md) |
+| `tui/` | `ext/client/tui/drivers/tui/` | Terminal I/O | - |
 
 ### Shared Libraries (not drivers)
 
@@ -80,7 +80,7 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Note:** Display and TUI drivers are in `clients/tui/lib/drivers/` since they are client-specific.
+**Note:** Display and TUI drivers are in `ext/client/tui/drivers/` since they are client-specific.
 
 ## Driver Registration
 

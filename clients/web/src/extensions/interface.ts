@@ -2,7 +2,7 @@
  * WebExtension interface — mechanism layer for client-side extensions.
  *
  * TypeScript equivalent of the Rust `TuiExtension` trait
- * (`clients/tui/lib/drivers/display/src/render_backend.rs`).
+ * (`ext/client/tui/drivers/display/src/render_backend.rs`).
  *
  * The editor dispatches generically over `WebExtension[]` via `kind()` matching.
  * Individual extensions own their state, JSON parsing, DOM rendering, and lifecycle.

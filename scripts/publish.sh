@@ -65,7 +65,7 @@ CRATES=(
     # Tier 1 — kernel, protocol, base drivers
     "clients/lib/driver"                           # reovim-client-driver
     "server/lib/subsys/module-registry"            # reovim-subsys-module-registry
-    "clients/tui/lib/drivers/tui"                  # reovim-driver-tui
+    "ext/client/tui/drivers/tui"                   # reovim-driver-tui
     "server/lib/kernel"                            # reovim-kernel
     "uapi/protocol"                                # reovim-protocol
 
@@ -111,7 +111,7 @@ CRATES=(
     "tools/testing"                                # reovim-testing
     "lib/bench"                                    # reovim-bench-utils
     "server/lib/drivers/command-types"             # reovim-driver-command-types
-    "clients/tui/lib/drivers/display"              # reovim-driver-display
+    "ext/client/tui/drivers/display"               # reovim-driver-display
     "server/lib/drivers/undo"                      # reovim-driver-undo
     "server/modules/buffer-ops"                    # reovim-module-buffer-ops
     "server/modules/buffer-simple"                 # reovim-module-buffer-simple

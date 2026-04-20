@@ -35,7 +35,7 @@ impl ServiceKey for DecorationProviderKey {
 /// zero knowledge of which modules exist or what keys they register.
 ///
 /// ```text
-/// clients/tui/lib/drivers/display/   -> DecorationSourceKey (mechanism)
+/// ext/client/tui/drivers/display/   -> DecorationSourceKey (mechanism)
 /// server/modules/pair/               -> "pair.rainbow" key (policy)
 /// server/modules/search/             -> "search.match" key (policy)
 /// ```
