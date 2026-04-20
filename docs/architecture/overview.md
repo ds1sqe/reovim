@@ -155,7 +155,7 @@ server/lib/kernel          ← Core mechanisms (depends on arch)
     │
     ├──▶ server/lib/drivers/*   ← Service adapters
     │
-    └──▶ shared/module-macros   ← declare_module! proc-macro
+    └──▶ uapi/module-macros     ← declare_module! proc-macro (module ABI)
             │
             ▼
         server/lib/server/registry/  ← Module loader, registry

@@ -32,6 +32,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **lib**: `reovim-capabilities` and `reovim-bench-utils` relocated from `shared/` to `lib/` (pure crates, zero reovim deps). `lib/capabilities` is marked TEMP and will move to subsys or uapi in a follow-on phase. Package names and consumers unchanged
 - **uapi**: `reovim-protocol` relocated from `shared/protocol/` to `uapi/protocol/` and `reovim-render-codec` relocated from `shared/render-codec/` to `uapi/render-codec/` — new Linux-inspired top-level `uapi/` for stable wire contracts (gRPC proto, CommandBuffer encoding). Package names unchanged. `.codecov.yml` path updated for generated proto files
 - **apps**: `reovim-driver-trace` crate dissolved — `TracingProfiler` + `init_profiling` absorbed into `apps/bin/src/profiling.rs`. Now wired at startup so `profile_scope!` calls in server code emit flame-graph spans when `REOVIM_PROFILE` is set (previously the Profiler trait was unwired and profile_scope! expansions were no-ops). Kernel-side profiler infrastructure unchanged
+- **uapi**: `reovim-module-macros` relocated from `shared/module-macros/` to `uapi/module-macros/`. `declare_module!` and `declare_client_module!` define the module FFI ABI — the binding interface between runtime and extensions — which is a stable contract, the uapi layer's role. Package name unchanged
 
 ### Added
 

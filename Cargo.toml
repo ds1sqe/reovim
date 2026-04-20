@@ -12,7 +12,8 @@ members = [
     "lib/capabilities",  # TEMP: to be relocated to subsys or uapi in a follow-on phase
     "lib/depgraph",
 
-    # Userspace API (Linux-style uapi/) — stable wire contracts
+    # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
+    "uapi/module-macros",
     "uapi/protocol",
     "uapi/render-codec",
 
@@ -163,7 +164,6 @@ members = [
 
     # Shared layer
     "shared/input-codec",
-    "shared/module-macros",
     "shared/testing",
 
     # Shared clients layer
@@ -251,7 +251,7 @@ chrono = "0.4"
 # Shared crates
 reovim-arch = { path = "./arch", version = "0.15.0-dev" }
 reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
-reovim-module-macros = { path = "./shared/module-macros", version = "0.15.0-dev" }
+reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
 reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }

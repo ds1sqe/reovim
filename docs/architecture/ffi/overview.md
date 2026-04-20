@@ -299,7 +299,7 @@ possible, or with an ABI version bump if struct layouts must change.
 
 ## Client Module FFI (`declare_client_module!`)
 
-The `declare_client_module!` macro in `shared/module-macros/src/lib.rs` generates 23+
+The `declare_client_module!` macro in `uapi/module-macros/src/lib.rs` generates 23+
 FFI trampolines for client-side dynamic modules. This is the client-side counterpart to
 `declare_module!`.
 
