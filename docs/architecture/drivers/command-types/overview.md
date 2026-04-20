@@ -4,7 +4,7 @@ Shared types for the command system.
 
 ## Source Location
 
-`server/lib/drivers/command-types/src/`
+`ext/server/drivers/command-types/src/`
 
 ## Purpose
 

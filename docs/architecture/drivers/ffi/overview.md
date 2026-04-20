@@ -4,7 +4,7 @@ C-compatible interfaces for external module development.
 
 ## Source Location
 
-`server/lib/drivers/ffi/src/`
+`ext/server/drivers/ffi/src/`
 
 ## Purpose
 

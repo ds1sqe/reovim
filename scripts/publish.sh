@@ -72,7 +72,7 @@ CRATES=(
     # Tier 2 — drivers, shared libs, TUI client modules
     "clients/cli"                                  # reovim-client-cli
     "server/lib/subsys/annotation"                 # reovim-subsys-annotation
-    "server/lib/drivers/buffer"                    # reovim-driver-buffer
+    "ext/server/drivers/buffer"                    # reovim-driver-buffer
     "server/lib/subsys/clipboard"                  # reovim-subsys-clipboard
     "server/lib/subsys/completion"                 # reovim-subsys-completion
     "server/lib/subsys/formatter"                  # reovim-subsys-formatter
@@ -82,7 +82,7 @@ CRATES=(
     "server/lib/subsys/module-config"              # reovim-subsys-module-config
     "server/lib/subsys/module-loader"               # reovim-subsys-module-loader
     "server/lib/subsys/net"                        # reovim-subsys-net
-    "server/lib/drivers/search"                    # reovim-driver-search
+    "ext/server/drivers/search"                    # reovim-driver-search
     "server/lib/subsys/statusline"                 # reovim-subsys-statusline
     "server/lib/subsys/vfs"                       # reovim-subsys-vfs
     "uapi/module-macros"                           # reovim-module-macros
@@ -110,9 +110,9 @@ CRATES=(
     # Tier 3 — testing, bench, command types, display, base server modules
     "tools/testing"                                # reovim-testing
     "lib/bench"                                    # reovim-bench-utils
-    "server/lib/drivers/command-types"             # reovim-driver-command-types
+    "ext/server/drivers/command-types"             # reovim-driver-command-types
     "ext/client/tui/drivers/display"               # reovim-driver-display
-    "server/lib/drivers/undo"                      # reovim-driver-undo
+    "ext/server/drivers/undo"                      # reovim-driver-undo
     "server/modules/buffer-ops"                    # reovim-module-buffer-ops
     "server/modules/buffer-simple"                 # reovim-module-buffer-simple
     "server/modules/git"                           # reovim-module-git
@@ -126,26 +126,26 @@ CRATES=(
 
     # Tier 4 — TUI client, session driver
     "clients/tui"                                  # reovim-client-tui
-    "server/lib/drivers/session"                   # reovim-driver-session
+    "ext/server/drivers/session"                   # reovim-driver-session
     "server/modules/clipboard"                     # reovim-module-clipboard
     "server/modules/undo"                          # reovim-module-undo
 
     # Tier 5 — higher-level drivers
-    "server/lib/drivers/codec"                     # reovim-driver-codec
-    "server/lib/drivers/command"                   # reovim-driver-command
-    "server/lib/drivers/ffi"                       # reovim-driver-ffi
-    "server/lib/drivers/input"                     # reovim-driver-input
-    "server/lib/drivers/lsp"                       # reovim-driver-lsp
-    "server/lib/drivers/picker"                    # reovim-driver-picker
-    "server/lib/drivers/syntax"                    # reovim-driver-syntax
+    "ext/server/drivers/codec"                     # reovim-driver-codec
+    "ext/server/drivers/command"                   # reovim-driver-command
+    "ext/server/drivers/ffi"                       # reovim-driver-ffi
+    "ext/server/drivers/input"                     # reovim-driver-input
+    "ext/server/drivers/lsp"                       # reovim-driver-lsp
+    "ext/server/drivers/picker"                    # reovim-driver-picker
+    "ext/server/drivers/syntax"                    # reovim-driver-syntax
     "server/modules/cmdline"                       # reovim-module-cmdline
     "server/modules/notification"                  # reovim-module-notification
     "server/modules/scratch-buffer"                # reovim-module-scratch-buffer
     "server/modules/settings"                      # reovim-module-settings
 
     # Tier 6 — treesitter, codecs, feature modules, server, pickers
-    "server/lib/drivers/ffi-python"                # reovim-driver-ffi-python
-    "server/lib/drivers/syntax-treesitter"         # reovim-driver-syntax-treesitter
+    "ext/server/drivers/ffi-python"                # reovim-driver-ffi-python
+    "ext/server/drivers/syntax-treesitter"         # reovim-driver-syntax-treesitter
     "server/modules/codec-binary-struct"           # reovim-module-codec-binary-struct
     "server/modules/codec-cjk"                     # reovim-module-codec-cjk
     "server/modules/codec-csv"                     # reovim-module-codec-csv

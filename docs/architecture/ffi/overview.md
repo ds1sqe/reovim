@@ -284,7 +284,7 @@ The buffer family shown below is one example; the full header covers the complet
 | **Undo** | undo/redo control functions | `src/undo.rs` |
 | **Timer** | timer creation and cancellation | `src/timer.rs` |
 
-Consult `server/lib/drivers/ffi/include/reovim.h` for the authoritative, complete function list.
+Consult `ext/server/drivers/ffi/include/reovim.h` for the authoritative, complete function list.
 
 ## Future Extensions
 

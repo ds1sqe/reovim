@@ -11,8 +11,8 @@
 //!
 //! ```text
 //! server/lib/kernel/api/service/     → Generic ServiceRegistry (this module)
-//! server/lib/drivers/vfs/            → VfsScheme enum + VfsProviderRegistry
-//! server/lib/drivers/input/          → ModeProviderKey enum + ModeProviderRegistry
+//! ext/server/drivers/vfs/            → VfsScheme enum + VfsProviderRegistry
+//! ext/server/drivers/input/          → ModeProviderKey enum + ModeProviderRegistry
 //! ```
 //!
 //! # Example

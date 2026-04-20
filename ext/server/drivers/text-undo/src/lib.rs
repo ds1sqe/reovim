@@ -11,7 +11,7 @@
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
+//! ext/server/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
 //! server/modules/undo/         → UndoRegistry implementation (POLICY)
 //! ```
 

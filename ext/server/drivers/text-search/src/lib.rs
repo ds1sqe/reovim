@@ -9,7 +9,7 @@
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/search/   → Trait + Types + Key + Registry (MECHANISM)
+//! ext/server/drivers/search/   → Trait + Types + Key + Registry (MECHANISM)
 //! server/modules/search/       → SearchEngine implementation (POLICY)
 //! ```
 

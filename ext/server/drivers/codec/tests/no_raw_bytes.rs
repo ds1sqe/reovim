@@ -15,7 +15,7 @@ fn no_raw_bytes_identifier_in_source_tree() {
     let workspace_root = manifest_dir
         .ancestors()
         .nth(4)
-        .expect("codec crate should live under server/lib/drivers/codec");
+        .expect("codec crate should live under ext/server/drivers/codec");
     let scan_roots = [
         manifest_dir.join("src"),
         workspace_root.join("server/lib/providers/text/src"),

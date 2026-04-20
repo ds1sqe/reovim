@@ -7,7 +7,7 @@ The command system defines and executes all editor actions using a trait-based a
 The command system is distributed across drivers and modules:
 
 ```
-server/lib/drivers/command/src/
+ext/server/drivers/command/src/
 ├── lib.rs          # Re-exports, CommandHandlerStore
 ├── traits.rs       # Command, CommandHandler traits
 ├── registry.rs     # CommandHandlerStore
@@ -17,7 +17,7 @@ server/lib/drivers/command/src/
 ├── ex_dispatch.rs  # ExCommandRegistry, ExCommandDispatcher
 └── ex_registry.rs  # ExCommandHandlerStore
 
-server/lib/drivers/command-types/src/
+ext/server/drivers/command-types/src/
 ├── lib.rs          # Re-exports
 ├── args.rs         # ArgSpec, ArgKind, ArgValue
 ├── context.rs      # CommandContext
@@ -37,7 +37,7 @@ server/modules/commands/src/
 
 ## Command and CommandHandler
 
-Commands use two traits defined in `server/lib/drivers/command/src/traits.rs`:
+Commands use two traits defined in `ext/server/drivers/command/src/traits.rs`:
 
 ### Command Trait (Metadata)
 
@@ -76,7 +76,7 @@ Commands receive a `SessionRuntime` which provides access to:
 
 ## CommandContext
 
-Context carrying all command inputs, defined in `server/lib/drivers/command-types/src/context.rs`:
+Context carrying all command inputs, defined in `ext/server/drivers/command-types/src/context.rs`:
 
 ```rust
 pub struct CommandContext {
@@ -103,7 +103,7 @@ pub struct CommandContext {
 
 ## CommandResult
 
-Results returned by command execution, defined in `server/lib/drivers/command-types/src/result.rs`:
+Results returned by command execution, defined in `ext/server/drivers/command-types/src/result.rs`:
 
 ```rust
 pub enum CommandResult {
@@ -290,7 +290,7 @@ Window commands are triggered with `<C-w>` prefix. Implemented in `server/module
 ## Ex-Commands
 
 Ex-commands (`:w`, `:q`, `:e`, etc.) use a trait-based dispatch system defined in
-`server/lib/drivers/command/src/ex_handler.rs` and `server/lib/drivers/command/src/ex_dispatch.rs`.
+`ext/server/drivers/command/src/ex_handler.rs` and `ext/server/drivers/command/src/ex_dispatch.rs`.
 
 ### ExCommandHandler Trait
 

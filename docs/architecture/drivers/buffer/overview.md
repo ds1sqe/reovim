@@ -4,7 +4,7 @@ Typed key and registry for buffer manager lookup.
 
 ## Source Location
 
-`server/lib/drivers/buffer/src/`
+`ext/server/drivers/buffer/src/`
 
 ## Purpose
 

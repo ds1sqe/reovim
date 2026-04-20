@@ -1,6 +1,6 @@
 # Codec Driver Overview
 
-`reovim-driver-codec` (`server/lib/drivers/codec/`)
+`reovim-driver-codec` (`ext/server/drivers/codec/`)
 
 ## Overview
 
@@ -13,7 +13,7 @@ decoded text on save.
 
 Mechanism vs policy split:
 
-- **Driver** (`server/lib/drivers/codec/`) — traits, storage primitives,
+- **Driver** (`ext/server/drivers/codec/`) — traits, storage primitives,
   factory registry, edit pipeline.
 - **Modules** (`server/modules/codec-*/`) — implement `ContentCodec` and
   `ContentCodecFactory` for specific formats (UTF-8, CJK, hex, CSV, tar.gz,
@@ -227,4 +227,4 @@ Defined in `server/lib/server/src/grpc/buffer.rs`:
 - `docs/architecture/drivers/vfs/` — `ByteSource`, `FileHandle`, `HeapByteSource`
 - `docs/architecture/drivers/session/` — `SessionExtension`, `StaleCheck`, `ExtensionMap`
 - `docs/architecture/drivers/buffer/` — `BufferId`, `ByteEdit`
-- `server/lib/drivers/codec/src/lib.rs` — crate-level doc comment and re-exports
+- `ext/server/drivers/codec/src/lib.rs` — crate-level doc comment and re-exports

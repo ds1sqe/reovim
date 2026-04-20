@@ -6,7 +6,7 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 
 - Sessions: `server/lib/server/src/session/`
 - Per-client state: `server/lib/server/src/session/client.rs` (`EditingState`)
-- Driver Session: `server/lib/drivers/session/` (shared state + bootstrap)
+- Driver Session: `ext/server/drivers/session/` (shared state + bootstrap)
 
 ## Session Architecture (#471, #491)
 

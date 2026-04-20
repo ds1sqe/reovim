@@ -4,7 +4,7 @@ Per-buffer undo/redo operations interface.
 
 ## Source Location
 
-`server/lib/drivers/undo/src/`
+`ext/server/drivers/undo/src/`
 
 ## Purpose
 

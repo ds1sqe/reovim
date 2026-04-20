@@ -14,7 +14,7 @@ ignore:
   - "uapi/protocol/src/gen/**"
   - "**/build.rs"
   - "tools/testing/**"
-  - "server/lib/drivers/ffi-python/**"
+  - "ext/server/drivers/ffi-python/**"
   - "clients/web/**"
 
 comment:

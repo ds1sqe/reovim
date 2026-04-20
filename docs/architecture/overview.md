@@ -47,7 +47,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│                    DRIVERS (server/lib/drivers/)                │
+│                    DRIVERS (ext/server/drivers/)                │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
 │  │ input/ │ │syntax/ │ │  lsp/  │ │  vfs/  │ │session/│         │
 │  │Keyboard│ │Syntax  │ │  LSP   │ │ Files  │ │Session │         │
@@ -106,7 +106,7 @@ See: [Session Model](./session-model.md)
 |-------|--------|---------|
 | `arch/` | `shared/arch/` | Platform abstraction (Unix, Windows) |
 | `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
-| `drivers/` | `server/lib/drivers/*` | Hardware/service adapters |
+| `drivers/` | `ext/server/drivers/*` | Hardware/service adapters |
 | `fs/` | `server/lib/subsys/vfs/` | Virtual filesystem |
 | Subsystem libraries | `server/lib/providers/*` | High-level domain services |
 | Loadable Modules | `server/modules/` | Dynamic policy modules |
@@ -153,7 +153,7 @@ shared/arch                ← Platform traits (no deps)
     ▼
 server/lib/kernel          ← Core mechanisms (depends on arch)
     │
-    ├──▶ server/lib/drivers/*   ← Service adapters
+    ├──▶ ext/server/drivers/*   ← Service adapters
     │
     └──▶ uapi/module-macros     ← declare_module! proc-macro (module ABI)
             │

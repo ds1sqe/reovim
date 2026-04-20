@@ -1,6 +1,6 @@
 # Driver Layer
 
-Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each driver is a separate crate.
+Drivers (`ext/server/drivers/*`) implement traits defined by the kernel. Each driver is a separate crate.
 
 ## Driver Overview (27 crates)
 
@@ -36,7 +36,7 @@ Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each dr
 
 ### Non-Server Drivers
 
-These drivers live outside `server/lib/drivers/`:
+These drivers live outside `ext/server/drivers/`:
 
 | Driver | Location | Purpose | Documentation |
 |--------|----------|---------|---------------|
@@ -61,7 +61,7 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 ├─────────────────────────────────────────────────────────────┤
 │  Modules (server/modules/) - policy                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Drivers (server/lib/drivers/) — 27 crates  ← YOU ARE HERE  │
+│  Drivers (ext/server/drivers/) — 27 crates  ← YOU ARE HERE  │
 │  ├── command/      - Command execution                      │
 │  ├── input/        - Key/mouse input                        │
 │  ├── syntax/       - Syntax highlighting                    │

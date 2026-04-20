@@ -18,7 +18,7 @@
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/codec/               <-- Traits, stores, types
+//! ext/server/drivers/codec/               <-- Traits, stores, types
 //!        ^
 //!        |  implements
 //!        |

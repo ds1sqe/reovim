@@ -9,7 +9,7 @@ The module system enables dynamic loading of policy modules. Implemented in Phas
 | `Module` trait | `server/lib/kernel/src/api/module/mod.rs` | Module interface |
 | `declare_module!` | `uapi/module-macros/` | FFI entry points (module ABI) |
 | `ModuleRegistry` | `server/lib/server/src/registry/mod.rs` | Dependency resolution |
-| `PythonModule` | `server/lib/drivers/ffi-python/` | Python module wrapper |
+| `PythonModule` | `ext/server/drivers/ffi-python/` | Python module wrapper |
 
 ## Module Types
 

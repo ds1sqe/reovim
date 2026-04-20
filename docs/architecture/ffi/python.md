@@ -26,7 +26,7 @@ between Python and Rust types.
 │  PythonModule struct implementing Module trait              │
 │  Delegates to Python methods via PyO3 GIL                   │
 ├─────────────────────────────────────────────────────────────┤
-│  MODULE LOADER (server/lib/drivers/module-loader/)          │
+│  MODULE LOADER (ext/server/drivers/module-loader/)          │
 │  load_python() - Python module loading                      │
 │  discover_python_modules() - .py file detection             │
 │  Unified interface: static/dynamic/python                   │
@@ -237,7 +237,7 @@ def restore_state(self, state: bytes):
 ```
 
 Note: there is no enforced state size limit in the loader. The 16 MiB figure is a
-recommended guideline only — no enforcement exists in `server/lib/drivers/ffi-python/`.
+recommended guideline only — no enforcement exists in `ext/server/drivers/ffi-python/`.
 Modules that serialize very large state may cause memory pressure; keep state compact.
 
 ## Error Handling

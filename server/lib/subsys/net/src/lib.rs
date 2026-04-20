@@ -20,7 +20,7 @@
 //!        ^
 //!        |  implemented by
 //!        |
-//! server/lib/drivers/net-*/     <-- Transport driver implementations (future)
+//! ext/server/drivers/net-*/     <-- Transport driver implementations (future)
 //! ```
 //!
 //! # Components

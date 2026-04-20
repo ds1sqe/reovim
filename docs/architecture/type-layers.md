@@ -13,7 +13,7 @@ Understanding which types belong where prevents layer confusion and import confl
 │  ExCommandContext, ExCommandHandler, VimMode, Operator, ...             │
 │  → Decides HOW things behave                                            │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  DRIVERS (server/lib/drivers/)                             MECHANISM    │
+│  DRIVERS (ext/server/drivers/)                             MECHANISM    │
 │  CommandContext, CommandHandler, KeySequence, ResolveContext, ...       │
 │  → Provides services, defines trait contracts                           │
 ├─────────────────────────────────────────────────────────────────────────┤

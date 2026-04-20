@@ -18,7 +18,7 @@
 //! modules would otherwise need to import from the server.
 //!
 //! ```text
-//! server/lib/drivers/input/  <-- FallbackContext trait (this crate)
+//! ext/server/drivers/input/  <-- FallbackContext trait (this crate)
 //!        ^
 //!        |  (implements trait)
 //!        |

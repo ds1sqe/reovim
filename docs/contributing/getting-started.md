@@ -120,7 +120,7 @@ reovim/
 ### Module Architecture
 
 - **Kernel** (`server/lib/kernel/`): Core mechanisms, policy-agnostic
-- **Drivers** (`server/lib/drivers/`): Service providers with trait contracts
+- **Drivers** (`ext/server/drivers/`): Service providers with trait contracts
 - **Modules** (`server/modules/`): Policy implementations (vim behavior, keymaps, etc.)
 - **Server** (`server/lib/server/`): gRPC handlers, session management, module registry
 

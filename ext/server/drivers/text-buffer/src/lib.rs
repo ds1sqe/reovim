@@ -13,7 +13,7 @@
 //!
 //! ```text
 //! server/lib/kernel/           → BufferManager trait (MECHANISM)
-//! server/lib/drivers/buffer/   → Key + Registry (MECHANISM)
+//! ext/server/drivers/buffer/   → Key + Registry (MECHANISM)
 //! server/modules/buffer-simple/→ SimpleBufferManager implementation (POLICY)
 //! ```
 

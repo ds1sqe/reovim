@@ -68,11 +68,11 @@ pub struct Buffer {
     file_path: Option<String>,
     // NOTE: Cursor removed in #471 (per-client cursor isolation).
     // Cursor now lives in Window (per-client state), not Buffer.
-    // See: server/lib/drivers/text-session/src/types.rs - Window.cursor
+    // See: ext/server/drivers/text-session/src/types.rs - Window.cursor
     //
     // NOTE: Selection removed in Phase 8 (#465).
     // Selection now lives in Window (per-window state), not Buffer.
-    // See: server/lib/drivers/text-session/src/types.rs - Window.selection
+    // See: ext/server/drivers/text-session/src/types.rs - Window.selection
 }
 
 impl Buffer {

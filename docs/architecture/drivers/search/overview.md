@@ -4,7 +4,7 @@ Pattern matching interface for buffer searching.
 
 ## Source Location
 
-`server/lib/drivers/search/src/`
+`ext/server/drivers/search/src/`
 
 ## Purpose
 

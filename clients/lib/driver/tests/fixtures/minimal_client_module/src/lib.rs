@@ -16,7 +16,7 @@
 //! ```
 //!
 //! The tests use the same `test_module_path` helper pattern that
-//! `server/lib/drivers/module-loader/tests/integration.rs` uses — walking up
+//! `ext/server/drivers/module-loader/tests/integration.rs` uses — walking up
 //! from `CARGO_MANIFEST_DIR` to find the workspace root.
 
 use reovim_client_driver::{ClientModule, ClientModuleError, ModuleContext, ProbeResult, Version};

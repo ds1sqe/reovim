@@ -296,7 +296,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  Keymap, Operators, Layout, Options, Mode-Manager           │
 │  → Decide HOW things behave (keybindings, defaults)         │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (server/lib/drivers/)                    MECHANISM │
+│  DRIVERS (ext/server/drivers/)                    MECHANISM │
 │  syntax/, input/, session/, lsp/, vfs/, command/            │
 │  → Provide services, define trait contracts                 │
 ├─────────────────────────────────────────────────────────────┤
@@ -310,7 +310,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 **Crate Structure:**
 - `reovim-app` (apps/bin/) - Main binary, server/client modes, module loading
 - `reovim-kernel` (server/lib/kernel/) - Core mechanisms: buffers, events, modes, undo
-- `reovim-driver-*` (server/lib/drivers/) - Services: syntax, input, session, LSP, network
+- `reovim-driver-*` (ext/server/drivers/) - Services: syntax, input, session, LSP, network
 - `reovim-module-*` (server/modules/) - Policy modules: keymap, operators, layout
 - `reovim-client-*` (clients/) - Client applications: TUI, CLI, Web
 

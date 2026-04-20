@@ -4,7 +4,7 @@ Python bindings via PyO3 for writing reovim modules in Python.
 
 ## Source Location
 
-`server/lib/drivers/ffi-python/src/`
+`ext/server/drivers/ffi-python/src/`
 
 ## Purpose
 

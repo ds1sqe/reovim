@@ -16,7 +16,7 @@
 //!
 //! Tests that need the fixture will skip with a message if the `.so` is not
 //! found, matching the pattern used by
-//! `server/lib/drivers/module-loader/tests/integration.rs`.
+//! `server/lib/subsys/module-loader/tests/integration.rs`.
 
 #![allow(unsafe_code)] // FFI loading intrinsically requires unsafe
 

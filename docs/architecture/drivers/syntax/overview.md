@@ -44,7 +44,7 @@ pub struct HighlightSpan {
 Tree-sitter integration is in the syntax driver:
 
 ```
-server/lib/drivers/syntax/      # SyntaxDriver with tree-sitter
+ext/server/drivers/syntax/      # SyntaxDriver with tree-sitter
 ```
 
 Language-specific queries are bundled with the driver. This keeps the kernel free of tree-sitter dependencies while providing syntax highlighting capabilities.

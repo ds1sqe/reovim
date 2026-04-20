@@ -4,7 +4,7 @@ Generic tree-sitter implementation of the SyntaxDriver trait.
 
 ## Source Location
 
-`server/lib/drivers/syntax-treesitter/src/`
+`ext/server/drivers/syntax-treesitter/src/`
 
 ## Purpose
 

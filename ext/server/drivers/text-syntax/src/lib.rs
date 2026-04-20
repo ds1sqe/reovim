@@ -21,11 +21,11 @@
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/syntax/               <-- HighlightCategory, Annotation, SyntaxDriver, bridge
+//! ext/server/drivers/syntax/               <-- HighlightCategory, Annotation, SyntaxDriver, bridge
 //!        ^
 //!        |  implements
 //!        |
-//! server/lib/drivers/syntax-treesitter/   <-- Tree-sitter based implementations
+//! ext/server/drivers/syntax-treesitter/   <-- Tree-sitter based implementations
 //! ```
 //!
 //! # Components

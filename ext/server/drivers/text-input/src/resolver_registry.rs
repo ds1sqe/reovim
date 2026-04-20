@@ -14,7 +14,7 @@
 //!
 //! # Note
 //!
-//! Moved from `server/modules/editor/` to `server/lib/drivers/input/` in Epic #417
+//! Moved from `server/modules/editor/` to `ext/server/drivers/input/` in Epic #417
 //! to maintain proper mechanism/policy separation. The registry is pure
 //! mechanism (`HashMap` storage), while resolver implementations are policy.
 
