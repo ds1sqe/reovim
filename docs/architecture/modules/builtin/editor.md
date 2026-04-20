@@ -4,7 +4,7 @@ Core editor command provider.
 
 ## Source Location
 
-`server/modules/editor/src/`
+`ext/server/modules/editor/src/`
 
 ## Purpose
 

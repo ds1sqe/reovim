@@ -4,7 +4,7 @@ Mode transition tracker that handles ModeChanged events.
 
 ## Source Location
 
-`server/modules/mode-manager/src/`
+`ext/server/modules/mode-manager/src/`
 
 ## Purpose
 

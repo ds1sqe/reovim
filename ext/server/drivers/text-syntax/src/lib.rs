@@ -8,7 +8,7 @@
 //!
 //! **IMPORTANT:** This crate defines ONLY the trait interface for syntax
 //! highlighting. It does NOT depend on tree-sitter or any parsing library.
-//! Those are implementation details of language modules (`server/modules/treesitter-*/`).
+//! Those are implementation details of language modules (`ext/server/modules/treesitter-*/`).
 //!
 //! # Design Philosophy
 //!

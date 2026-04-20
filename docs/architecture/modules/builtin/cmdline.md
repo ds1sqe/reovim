@@ -4,7 +4,7 @@ Command-line mode state and bridge for gRPC serialization.
 
 ## Source Location
 
-`server/modules/cmdline/src/`
+`ext/server/modules/cmdline/src/`
 
 ## Purpose
 

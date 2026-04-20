@@ -19,7 +19,7 @@ fn no_raw_bytes_identifier_in_source_tree() {
     let scan_roots = [
         manifest_dir.join("src"),
         workspace_root.join("server/lib/providers/text/src"),
-        workspace_root.join("server/modules/commands/src"),
+        workspace_root.join("ext/server/modules/commands/src"),
     ];
 
     let matches = scan_roots

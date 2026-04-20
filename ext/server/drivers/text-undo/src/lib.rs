@@ -12,7 +12,7 @@
 //!
 //! ```text
 //! ext/server/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
-//! server/modules/undo/         → UndoRegistry implementation (POLICY)
+//! ext/server/modules/undo/         → UndoRegistry implementation (POLICY)
 //! ```
 
 mod error;

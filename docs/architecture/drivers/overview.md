@@ -59,7 +59,7 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 ├─────────────────────────────────────────────────────────────┤
 │  Server (server/lib/server/)                                │
 ├─────────────────────────────────────────────────────────────┤
-│  Modules (server/modules/) - policy                         │
+│  Modules (ext/server/modules/) - policy                         │
 ├─────────────────────────────────────────────────────────────┤
 │  Drivers (ext/server/drivers/) — 27 crates  ← YOU ARE HERE  │
 │  ├── command/      - Command execution                      │

@@ -5,7 +5,7 @@
  * Displays a floating completion popup with kind badge, label,
  * optional detail, and source ID.
  *
- * JSON payload (from `server/modules/completion/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/completion/src/bridge.rs`):
  * ```json
  * {"active": true, "items": [{"label": "HashMap", "kindAbbrev": "cls",
  *   "sourceId": "lsp", "detail": "HashMap<K, V>"}],

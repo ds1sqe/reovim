@@ -15,7 +15,7 @@
 //! ├── step_test.rs           - Per-key state tracking
 //! └── assertions.rs          - Assertion macros
 //!
-//! server/modules/vim/tests/  ← POLICY (module-specific tests)
+//! ext/server/modules/vim/tests/  ← POLICY (module-specific tests)
 //! ├── operators.rs        - What operators to test
 //! ├── registers.rs        - What register behaviors to verify
 //! └── cursor_movement.rs  - What cursor behaviors to verify

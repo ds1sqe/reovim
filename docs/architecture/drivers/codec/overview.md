@@ -15,7 +15,7 @@ Mechanism vs policy split:
 
 - **Driver** (`ext/server/drivers/codec/`) — traits, storage primitives,
   factory registry, edit pipeline.
-- **Modules** (`server/modules/codec-*/`) — implement `ContentCodec` and
+- **Modules** (`ext/server/modules/codec-*/`) — implement `ContentCodec` and
   `ContentCodecFactory` for specific formats (UTF-8, CJK, hex, CSV, tar.gz,
   PDF, rlib, ...).
 

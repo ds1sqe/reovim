@@ -5,7 +5,7 @@
  * Displays a sidebar tree view on the left side with file navigation,
  * expand/collapse, and input prompts for file operations.
  *
- * JSON payload (from `server/modules/explorer/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/explorer/src/bridge.rs`):
  * ```json
  * {"active": true, "rootName": "project", "cursorIndex": 0,
  *  "scrollOffset": 0, "width": 30, "inputMode": "none",

@@ -216,9 +216,9 @@ TOML, Markdown.
 
 ### Text Object Module
 
-Implemented in `server/modules/textobjects/src/`:
+Implemented in `ext/server/modules/textobjects/src/`:
 - Handles paired delimiters: `()`, `[]`, `{}`, `<>`, `""`, `''`, ``` `` ```
 - Handles tags: `<tag>...</tag>`
 - Handles word, WORD, sentence, and paragraph boundaries
-- Semantic (tree-sitter) objects in `server/modules/textobjects/src/semantic.rs`
-- Command IDs defined in `server/modules/textobjects/src/ids.rs`
+- Semantic (tree-sitter) objects in `ext/server/modules/textobjects/src/semantic.rs`
+- Command IDs defined in `ext/server/modules/textobjects/src/ids.rs`

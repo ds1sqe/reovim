@@ -467,7 +467,7 @@ All FFI trampolines use `catch_unwind` to prevent panics from crossing the FFI b
 
 ## Example
 
-See the existing modules in `server/modules/` for working examples. The `scratch-buffer` module is a simple starting point that demonstrates:
+See the existing modules in `ext/server/modules/` for working examples. The `scratch-buffer` module is a simple starting point that demonstrates:
 
 - Module lifecycle (init/exit)
 - Minimal state management

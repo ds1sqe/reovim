@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! ext/server/drivers/picker/      -> Trait + Types + Registry + Engine (MECHANISM)
-//! server/modules/microscope/      -> Picker implementations + orchestration (POLICY)
+//! ext/server/modules/microscope/      -> Picker implementations + orchestration (POLICY)
 //! ```
 
 mod action;

@@ -4,7 +4,7 @@ Meta-module that aggregates 14 default modules for standard editor functionality
 
 ## Source Location
 
-`server/modules/defaults/src/`
+`ext/server/modules/defaults/src/`
 
 ## Purpose
 
@@ -102,8 +102,8 @@ The `statusline` and `undotree` client-side UI modules were removed in Epic #465
 Their functionality is now handled by client extensions (e.g., cmdline and which-key are
 server modules that expose state via `ExtensionService`).
 
-The `layout` and `pair` modules still exist at `server/modules/layout/` and
-`server/modules/pair/` respectively and were not removed.
+The `layout` and `pair` modules still exist at `ext/server/modules/layout/` and
+`ext/server/modules/pair/` respectively and were not removed.
 
 ## Related Documents
 

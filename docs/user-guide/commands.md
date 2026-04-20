@@ -24,14 +24,14 @@ ext/server/drivers/command-types/src/
 ├── result.rs       # CommandResult variants
 └── motion.rs       # MotionType
 
-server/modules/vim/src/
+ext/server/modules/vim/src/
 ├── resolvers/      # Mode-specific key resolvers
 │   ├── normal.rs   # Normal mode commands (h/j/k/l, d/y/c)
 │   ├── insert.rs   # Insert mode commands
 │   └── visual.rs   # Visual mode commands
 └── commands/       # Vim-specific command implementations
 
-server/modules/commands/src/
+ext/server/modules/commands/src/
 └── ...             # Ex-command implementations (:w, :q, :e, :wq)
 ```
 
@@ -235,7 +235,7 @@ Operators combine with motions: `d` + `w` = delete word, `y` + `$` = yank to end
 
 ### Window Operations (19)
 
-Window commands are triggered with `<C-w>` prefix. Implemented in `server/modules/window-ops/`.
+Window commands are triggered with `<C-w>` prefix. Implemented in `ext/server/modules/window-ops/`.
 
 **Focus Navigation:**
 | Command | Key | Description |

@@ -4,7 +4,7 @@ Buffer lifecycle event subscriber for the kernel EventBus.
 
 ## Source Location
 
-`server/modules/buffer-ops/src/`
+`ext/server/modules/buffer-ops/src/`
 
 ## Purpose
 

@@ -274,7 +274,7 @@ tools/testing/src/
 ├── integration.rs          # IntegrationTest builder + TestResult
 └── assertions.rs           # Assertion utilities
 
-server/modules/vim/tests/   # Vim module-specific tests
+ext/server/modules/vim/tests/   # Vim module-specific tests
 ├── ex_commands.rs          # Ex-command tests
 ├── register_isolation.rs   # Register isolation tests
 └── textobjects.rs          # iw, aw, i(, a{, etc.
@@ -473,7 +473,7 @@ tools/testing/src/
 ├── frame.rs                # Frame assertion helpers
 └── assertions.rs           # Assertion macros
 
-server/modules/vim/tests/   # Vim module tests
+ext/server/modules/vim/tests/   # Vim module tests
 ├── ex_commands.rs          # Ex-command tests
 ├── register_isolation.rs   # Register isolation tests
 └── textobjects.rs          # iw, aw, i(, a{, etc.
@@ -524,7 +524,7 @@ cargo test -- --nocapture
 |-----------|----------|---------|
 | Test harness | `tools/testing/` | Subprocess management, client utilities |
 | Integration builder | `tools/testing/src/integration.rs` | Fluent test API |
-| Module tests | `server/modules/*/tests/` | Per-module integration tests |
+| Module tests | `ext/server/modules/*/tests/` | Per-module integration tests |
 | Protocol | `shared/protocol/` | gRPC v2 definitions |
 
 ### Port Allocation

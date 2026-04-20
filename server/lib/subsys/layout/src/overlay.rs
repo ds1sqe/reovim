@@ -13,7 +13,7 @@
 //!
 //! # Implementation
 //!
-//! See `server/modules/layout/src/overlayzone.rs` for the policy implementation.
+//! See `ext/server/modules/layout/src/overlayzone.rs` for the policy implementation.
 
 use {
     super::layer::{OverlayConstraints, WindowPlacement, ZOrder},

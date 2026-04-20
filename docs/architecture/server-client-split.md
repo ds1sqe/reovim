@@ -1466,7 +1466,7 @@ reovim/
 │       │       └── viewport.ts
 │       └── package.json
 │
-└── server/modules/
+└── ext/server/modules/
     └── window-ops/                # Window operations module (Phase 11)
         └── src/
             ├── lib.rs             # Module registration
@@ -1579,7 +1579,7 @@ Platform Implementations (TUI adapters, Web WASM)
 
 **Goal**: Implement full window management with `<C-w>` commands.
 
-**Implementation:** `server/modules/window-ops/` (19 command handlers)
+**Implementation:** `ext/server/modules/window-ops/` (19 command handlers)
 
 | Category | Commands | Keys |
 |----------|----------|------|

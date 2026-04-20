@@ -26,7 +26,7 @@
 //! │                                                             │
 //! └─────────────────────────────────────────────────────────────┘
 //!                              │
-//!                              │ (implementations in server/modules/)
+//!                              │ (implementations in ext/server/modules/)
 //!                              ▼
 //!              ┌───────────────────────────────┐
 //!              │      Concrete VFS Impls       │

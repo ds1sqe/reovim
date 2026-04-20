@@ -292,7 +292,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  │  (gRPC/TCP) │  │(TUI/CLI/Web)│  │   Module Loader     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
-│  MODULES (server/modules/)                        POLICY    │
+│  MODULES (ext/server/modules/)                        POLICY    │
 │  Keymap, Operators, Layout, Options, Mode-Manager           │
 │  → Decide HOW things behave (keybindings, defaults)         │
 ├─────────────────────────────────────────────────────────────┤
@@ -311,7 +311,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 - `reovim-app` (apps/bin/) - Main binary, server/client modes, module loading
 - `reovim-kernel` (server/lib/kernel/) - Core mechanisms: buffers, events, modes, undo
 - `reovim-driver-*` (ext/server/drivers/) - Services: syntax, input, session, LSP, network
-- `reovim-module-*` (server/modules/) - Policy modules: keymap, operators, layout
+- `reovim-module-*` (ext/server/modules/) - Policy modules: keymap, operators, layout
 - `reovim-client-*` (clients/) - Client applications: TUI, CLI, Web
 
 **Key Design Principles:**

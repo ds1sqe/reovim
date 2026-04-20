@@ -9,7 +9,7 @@ Understanding which types belong where prevents layer confusion and import confl
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  MODULES (server/modules/)                                  POLICY      │
+│  MODULES (ext/server/modules/)                                  POLICY      │
 │  ExCommandContext, ExCommandHandler, VimMode, Operator, ...             │
 │  → Decides HOW things behave                                            │
 ├─────────────────────────────────────────────────────────────────────────┤

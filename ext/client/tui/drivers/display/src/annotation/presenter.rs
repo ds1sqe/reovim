@@ -8,9 +8,9 @@
 //! ```text
 //! AnnotationPresenter (mechanism trait - this module)
 //!        ↓ implements
-//! LineNumberPresenter (policy - in server/modules/vim)
-//! DiagnosticPresenter (policy - in server/modules/lsp)
-//! GitPresenter        (policy - in server/modules/git)
+//! LineNumberPresenter (policy - in ext/server/modules/vim)
+//! DiagnosticPresenter (policy - in ext/server/modules/lsp)
+//! GitPresenter        (policy - in ext/server/modules/git)
 //! ```
 //!
 //! # Design

@@ -4,7 +4,7 @@ Ex-commands implementation (:w, :q, :e, :wq, :colorscheme, session commands).
 
 ## Source Location
 
-`server/modules/commands/src/`
+`ext/server/modules/commands/src/`
 
 ## Purpose
 

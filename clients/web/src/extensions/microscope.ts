@@ -5,7 +5,7 @@
  * Displays a Helix-style bottom-anchored picker with query input,
  * results list, and preview pane.
  *
- * JSON payload (from `server/modules/microscope/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/microscope/src/bridge.rs`):
  * ```json
  * {"active": true, "query": "main", "cursor": 4, "selected": 1,
  *  "scrollOffset": 0, "pickerName": "files", "pickerTitle": "Files",

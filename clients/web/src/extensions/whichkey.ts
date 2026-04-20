@@ -8,7 +8,7 @@
  * If the user completes the key sequence before the delay expires,
  * no popup is shown at all.
  *
- * JSON payload (from `server/modules/whichkey/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/whichkey/src/bridge.rs`):
  * ```json
  * {"active": true, "prefix": "d",
  *  "hints": [{"key": "d", "command": "motions:whole-line"}, ...]}

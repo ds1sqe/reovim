@@ -33,7 +33,7 @@ pub enum CompositorKey {
     /// Root compositor for the display tree.
     ///
     /// This is the top-level compositor that manages all window layers.
-    /// Implemented by `HybridCompositor` in `server/modules/layout`.
+    /// Implemented by `HybridCompositor` in `ext/server/modules/layout`.
     Root,
 }
 

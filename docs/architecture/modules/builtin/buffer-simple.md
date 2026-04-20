@@ -4,7 +4,7 @@ SimpleBufferManager implementation of the BufferManager trait.
 
 ## Source Location
 
-`server/modules/buffer-simple/src/`
+`ext/server/modules/buffer-simple/src/`
 
 ## Purpose
 

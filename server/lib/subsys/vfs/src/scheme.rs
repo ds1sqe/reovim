@@ -35,7 +35,7 @@ pub enum VfsScheme {
     /// Local filesystem (file:// or empty scheme).
     ///
     /// This is the default scheme for local file paths.
-    /// Handled by `LocalFsProvider` in `server/modules/vfs-local`.
+    /// Handled by `LocalFsProvider` in `ext/server/modules/vfs-local`.
     File,
 
     /// In-memory filesystem (mem://).

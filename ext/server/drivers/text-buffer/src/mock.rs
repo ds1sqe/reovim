@@ -36,7 +36,7 @@ use {
 /// This lives in the driver layer (mechanism) so that:
 /// - Tests in server can use it without depending on modules
 /// - It follows mechanism/policy separation
-/// - Module implementations remain in server/modules/
+/// - Module implementations remain in ext/server/modules/
 pub struct TestBufferManager {
     /// Buffer storage with outer `RwLock` protecting the `HashMap`.
     buffers: RwLock<HashMap<BufferId, Arc<RwLock<dyn KernelBuffer>>>>,

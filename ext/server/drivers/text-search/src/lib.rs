@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! ext/server/drivers/search/   → Trait + Types + Key + Registry (MECHANISM)
-//! server/modules/search/       → SearchEngine implementation (POLICY)
+//! ext/server/modules/search/       → SearchEngine implementation (POLICY)
 //! ```
 
 mod key;

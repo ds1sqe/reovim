@@ -60,78 +60,78 @@ members = [
     "server/lib/providers/text",
 
     # Server modules
-    "server/modules/vim",
-    "server/modules/editor",
-    "server/modules/motions",
-    "server/modules/textobjects",
-    "server/modules/commands",
-    "server/modules/keymap",
-    "server/modules/layout",
-    "server/modules/mode-manager",
-    "server/modules/buffer-ops",
-    "server/modules/buffer-simple",
-    "server/modules/scratch-buffer",
-    "server/modules/clipboard",
-    "server/modules/search",
-    "server/modules/undo",
-    "server/modules/vfs-local",
-    "server/modules/window-ops",
-    "server/modules/treesitter-rust",
-    "server/modules/treesitter-python",
-    "server/modules/treesitter-c",
-    "server/modules/treesitter-javascript",
-    "server/modules/treesitter-typescript",
-    "server/modules/treesitter-json",
-    "server/modules/treesitter-toml",
-    "server/modules/treesitter-bash",
-    "server/modules/treesitter-go",
-    "server/modules/cmdline",
-    "server/modules/whichkey",
-    "server/modules/notification",
-    "server/modules/microscope",
-    "server/modules/explorer",
-    "server/modules/picker-files",
-    "server/modules/picker-buffers",
-    "server/modules/picker-commands",
-    "server/modules/picker-grep",
-    "server/modules/picker-options",
-    "server/modules/treesitter-markdown",
-    "server/modules/lsp",
-    "server/modules/snippet",
-    "server/modules/range-finder",
-    "server/modules/completion",
-    "server/modules/lsp-navigation",
-    "server/modules/profiles",
-    "server/modules/tetromino",
-    "server/modules/health-check",
-    "server/modules/git",
-    "server/modules/picker-git-branches",
-    "server/modules/picker-git-log",
-    "server/modules/picker-git-status",
-    "server/modules/picker-git-stash",
-    "server/modules/git-signs",
-    "server/modules/git-statusline",
-    "server/modules/illuminate",
-    "server/modules/format",
-    "server/modules/diagnostics-panel",
-    "server/modules/bufferline",
-    "server/modules/git-blame",
-    "server/modules/module-manager",
-    "server/modules/emacs",
-    "server/modules/pair",
-    "server/modules/context",
-    "server/modules/sticky-context",
-    "server/modules/indent-guide",
-    "server/modules/settings",
-    "server/modules/codec-utf8",
-    "server/modules/codec-hex",
-    "server/modules/codec-cjk",
-    "server/modules/codec-legacy",
-    "server/modules/codec-pdf",
-    "server/modules/codec-binary-struct",
-    "server/modules/codec-rlib",
-    "server/modules/codec-tar-gz",
-    "server/modules/codec-csv",
+    "ext/server/modules/vim",
+    "ext/server/modules/editor",
+    "ext/server/modules/motions",
+    "ext/server/modules/textobjects",
+    "ext/server/modules/commands",
+    "ext/server/modules/keymap",
+    "ext/server/modules/layout",
+    "ext/server/modules/mode-manager",
+    "ext/server/modules/buffer-ops",
+    "ext/server/modules/buffer-simple",
+    "ext/server/modules/scratch-buffer",
+    "ext/server/modules/clipboard",
+    "ext/server/modules/search",
+    "ext/server/modules/undo",
+    "ext/server/modules/vfs-local",
+    "ext/server/modules/window-ops",
+    "ext/server/modules/treesitter-rust",
+    "ext/server/modules/treesitter-python",
+    "ext/server/modules/treesitter-c",
+    "ext/server/modules/treesitter-javascript",
+    "ext/server/modules/treesitter-typescript",
+    "ext/server/modules/treesitter-json",
+    "ext/server/modules/treesitter-toml",
+    "ext/server/modules/treesitter-bash",
+    "ext/server/modules/treesitter-go",
+    "ext/server/modules/cmdline",
+    "ext/server/modules/whichkey",
+    "ext/server/modules/notification",
+    "ext/server/modules/microscope",
+    "ext/server/modules/explorer",
+    "ext/server/modules/picker-files",
+    "ext/server/modules/picker-buffers",
+    "ext/server/modules/picker-commands",
+    "ext/server/modules/picker-grep",
+    "ext/server/modules/picker-options",
+    "ext/server/modules/treesitter-markdown",
+    "ext/server/modules/lsp",
+    "ext/server/modules/snippet",
+    "ext/server/modules/range-finder",
+    "ext/server/modules/completion",
+    "ext/server/modules/lsp-navigation",
+    "ext/server/modules/profiles",
+    "ext/server/modules/tetromino",
+    "ext/server/modules/health-check",
+    "ext/server/modules/git",
+    "ext/server/modules/picker-git-branches",
+    "ext/server/modules/picker-git-log",
+    "ext/server/modules/picker-git-status",
+    "ext/server/modules/picker-git-stash",
+    "ext/server/modules/git-signs",
+    "ext/server/modules/git-statusline",
+    "ext/server/modules/illuminate",
+    "ext/server/modules/format",
+    "ext/server/modules/diagnostics-panel",
+    "ext/server/modules/bufferline",
+    "ext/server/modules/git-blame",
+    "ext/server/modules/module-manager",
+    "ext/server/modules/emacs",
+    "ext/server/modules/pair",
+    "ext/server/modules/context",
+    "ext/server/modules/sticky-context",
+    "ext/server/modules/indent-guide",
+    "ext/server/modules/settings",
+    "ext/server/modules/codec-utf8",
+    "ext/server/modules/codec-hex",
+    "ext/server/modules/codec-cjk",
+    "ext/server/modules/codec-legacy",
+    "ext/server/modules/codec-pdf",
+    "ext/server/modules/codec-binary-struct",
+    "ext/server/modules/codec-rlib",
+    "ext/server/modules/codec-tar-gz",
+    "ext/server/modules/codec-csv",
 
     # Client layer - TUI
     "clients/tui",
@@ -319,78 +319,78 @@ reovim = { path = "./apps/bin", version = "0.15.0-dev" }
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
 
 # Server modules
-reovim-module-vim = { path = "./server/modules/vim", version = "0.15.0-dev" }
-reovim-module-editor = { path = "./server/modules/editor", version = "0.15.0-dev" }
-reovim-module-motions = { path = "./server/modules/motions", version = "0.15.0-dev" }
-reovim-module-textobjects = { path = "./server/modules/textobjects", version = "0.15.0-dev" }
-reovim-module-commands = { path = "./server/modules/commands", version = "0.15.0-dev" }
-reovim-module-keymap = { path = "./server/modules/keymap", version = "0.15.0-dev" }
-reovim-module-layout = { path = "./server/modules/layout", version = "0.15.0-dev" }
-reovim-module-mode-manager = { path = "./server/modules/mode-manager", version = "0.15.0-dev" }
-reovim-module-buffer-ops = { path = "./server/modules/buffer-ops", version = "0.15.0-dev" }
-reovim-module-buffer-simple = { path = "./server/modules/buffer-simple", version = "0.15.0-dev" }
-reovim-module-scratch-buffer = { path = "./server/modules/scratch-buffer", version = "0.15.0-dev" }
-reovim-module-clipboard = { path = "./server/modules/clipboard", version = "0.15.0-dev" }
-reovim-module-search = { path = "./server/modules/search", version = "0.15.0-dev" }
-reovim-module-undo = { path = "./server/modules/undo", version = "0.15.0-dev" }
-reovim-module-vfs-local = { path = "./server/modules/vfs-local", version = "0.15.0-dev" }
-reovim-module-window-ops = { path = "./server/modules/window-ops", version = "0.15.0-dev" }
-reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.15.0-dev" }
-reovim-module-treesitter-python = { path = "./server/modules/treesitter-python", version = "0.15.0-dev" }
-reovim-module-treesitter-c = { path = "./server/modules/treesitter-c", version = "0.15.0-dev" }
-reovim-module-treesitter-javascript = { path = "./server/modules/treesitter-javascript", version = "0.15.0-dev" }
-reovim-module-treesitter-typescript = { path = "./server/modules/treesitter-typescript", version = "0.15.0-dev" }
-reovim-module-treesitter-json = { path = "./server/modules/treesitter-json", version = "0.15.0-dev" }
-reovim-module-treesitter-toml = { path = "./server/modules/treesitter-toml", version = "0.15.0-dev" }
-reovim-module-treesitter-bash = { path = "./server/modules/treesitter-bash", version = "0.15.0-dev" }
-reovim-module-treesitter-go = { path = "./server/modules/treesitter-go", version = "0.15.0-dev" }
-reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.15.0-dev" }
-reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.15.0-dev" }
-reovim-module-notification = { path = "./server/modules/notification", version = "0.15.0-dev" }
-reovim-module-microscope = { path = "./server/modules/microscope", version = "0.15.0-dev" }
-reovim-module-explorer = { path = "./server/modules/explorer", version = "0.15.0-dev" }
-reovim-picker-files = { path = "./server/modules/picker-files", version = "0.15.0-dev" }
-reovim-picker-buffers = { path = "./server/modules/picker-buffers", version = "0.15.0-dev" }
-reovim-picker-commands = { path = "./server/modules/picker-commands", version = "0.15.0-dev" }
-reovim-picker-grep = { path = "./server/modules/picker-grep", version = "0.15.0-dev" }
-reovim-picker-options = { path = "./server/modules/picker-options", version = "0.15.0-dev" }
-reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.15.0-dev" }
-reovim-module-lsp = { path = "./server/modules/lsp", version = "0.15.0-dev" }
-reovim-module-snippet = { path = "./server/modules/snippet", version = "0.15.0-dev" }
-reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.15.0-dev" }
-reovim-module-completion = { path = "./server/modules/completion", version = "0.15.0-dev" }
-reovim-module-lsp-navigation = { path = "./server/modules/lsp-navigation", version = "0.15.0-dev" }
-reovim-module-profiles = { path = "./server/modules/profiles", version = "0.15.0-dev" }
-reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.15.0-dev" }
-reovim-module-health-check = { path = "./server/modules/health-check", version = "0.15.0-dev" }
-reovim-module-git = { path = "./server/modules/git", version = "0.15.0-dev" }
-reovim-picker-git-branches = { path = "./server/modules/picker-git-branches", version = "0.15.0-dev" }
-reovim-picker-git-log = { path = "./server/modules/picker-git-log", version = "0.15.0-dev" }
-reovim-picker-git-status = { path = "./server/modules/picker-git-status", version = "0.15.0-dev" }
-reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version = "0.15.0-dev" }
-reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.15.0-dev" }
-reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.15.0-dev" }
-reovim-module-illuminate = { path = "./server/modules/illuminate", version = "0.15.0-dev" }
-reovim-module-format = { path = "./server/modules/format", version = "0.15.0-dev" }
-reovim-module-diagnostics-panel = { path = "./server/modules/diagnostics-panel", version = "0.15.0-dev" }
-reovim-module-bufferline = { path = "./server/modules/bufferline", version = "0.15.0-dev" }
-reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.15.0-dev" }
-reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.15.0-dev" }
-reovim-module-emacs = { path = "./server/modules/emacs", version = "0.15.0-dev" }
-reovim-module-pair = { path = "./server/modules/pair", version = "0.15.0-dev" }
-reovim-module-context = { path = "./server/modules/context", version = "0.15.0-dev" }
-reovim-module-sticky-context = { path = "./server/modules/sticky-context", version = "0.15.0-dev" }
-reovim-module-indent-guide = { path = "./server/modules/indent-guide", version = "0.15.0-dev" }
-reovim-module-settings = { path = "./server/modules/settings", version = "0.15.0-dev" }
-reovim-module-codec-utf8 = { path = "./server/modules/codec-utf8", version = "0.15.0-dev" }
-reovim-module-codec-hex = { path = "./server/modules/codec-hex", version = "0.15.0-dev" }
-reovim-module-codec-cjk = { path = "./server/modules/codec-cjk", version = "0.15.0-dev" }
-reovim-module-codec-legacy = { path = "./server/modules/codec-legacy", version = "0.15.0-dev" }
-reovim-module-codec-pdf = { path = "./server/modules/codec-pdf", version = "0.15.0-dev" }
-reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-struct", version = "0.15.0-dev" }
-reovim-module-codec-rlib = { path = "./server/modules/codec-rlib", version = "0.15.0-dev" }
-reovim-module-codec-tar-gz = { path = "./server/modules/codec-tar-gz", version = "0.15.0-dev" }
-reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.15.0-dev" }
+reovim-module-vim = { path = "./ext/server/modules/vim", version = "0.15.0-dev" }
+reovim-module-editor = { path = "./ext/server/modules/editor", version = "0.15.0-dev" }
+reovim-module-motions = { path = "./ext/server/modules/motions", version = "0.15.0-dev" }
+reovim-module-textobjects = { path = "./ext/server/modules/textobjects", version = "0.15.0-dev" }
+reovim-module-commands = { path = "./ext/server/modules/commands", version = "0.15.0-dev" }
+reovim-module-keymap = { path = "./ext/server/modules/keymap", version = "0.15.0-dev" }
+reovim-module-layout = { path = "./ext/server/modules/layout", version = "0.15.0-dev" }
+reovim-module-mode-manager = { path = "./ext/server/modules/mode-manager", version = "0.15.0-dev" }
+reovim-module-buffer-ops = { path = "./ext/server/modules/buffer-ops", version = "0.15.0-dev" }
+reovim-module-buffer-simple = { path = "./ext/server/modules/buffer-simple", version = "0.15.0-dev" }
+reovim-module-scratch-buffer = { path = "./ext/server/modules/scratch-buffer", version = "0.15.0-dev" }
+reovim-module-clipboard = { path = "./ext/server/modules/clipboard", version = "0.15.0-dev" }
+reovim-module-search = { path = "./ext/server/modules/search", version = "0.15.0-dev" }
+reovim-module-undo = { path = "./ext/server/modules/undo", version = "0.15.0-dev" }
+reovim-module-vfs-local = { path = "./ext/server/modules/vfs-local", version = "0.15.0-dev" }
+reovim-module-window-ops = { path = "./ext/server/modules/window-ops", version = "0.15.0-dev" }
+reovim-module-treesitter-rust = { path = "./ext/server/modules/treesitter-rust", version = "0.15.0-dev" }
+reovim-module-treesitter-python = { path = "./ext/server/modules/treesitter-python", version = "0.15.0-dev" }
+reovim-module-treesitter-c = { path = "./ext/server/modules/treesitter-c", version = "0.15.0-dev" }
+reovim-module-treesitter-javascript = { path = "./ext/server/modules/treesitter-javascript", version = "0.15.0-dev" }
+reovim-module-treesitter-typescript = { path = "./ext/server/modules/treesitter-typescript", version = "0.15.0-dev" }
+reovim-module-treesitter-json = { path = "./ext/server/modules/treesitter-json", version = "0.15.0-dev" }
+reovim-module-treesitter-toml = { path = "./ext/server/modules/treesitter-toml", version = "0.15.0-dev" }
+reovim-module-treesitter-bash = { path = "./ext/server/modules/treesitter-bash", version = "0.15.0-dev" }
+reovim-module-treesitter-go = { path = "./ext/server/modules/treesitter-go", version = "0.15.0-dev" }
+reovim-module-cmdline = { path = "./ext/server/modules/cmdline", version = "0.15.0-dev" }
+reovim-module-whichkey = { path = "./ext/server/modules/whichkey", version = "0.15.0-dev" }
+reovim-module-notification = { path = "./ext/server/modules/notification", version = "0.15.0-dev" }
+reovim-module-microscope = { path = "./ext/server/modules/microscope", version = "0.15.0-dev" }
+reovim-module-explorer = { path = "./ext/server/modules/explorer", version = "0.15.0-dev" }
+reovim-picker-files = { path = "./ext/server/modules/picker-files", version = "0.15.0-dev" }
+reovim-picker-buffers = { path = "./ext/server/modules/picker-buffers", version = "0.15.0-dev" }
+reovim-picker-commands = { path = "./ext/server/modules/picker-commands", version = "0.15.0-dev" }
+reovim-picker-grep = { path = "./ext/server/modules/picker-grep", version = "0.15.0-dev" }
+reovim-picker-options = { path = "./ext/server/modules/picker-options", version = "0.15.0-dev" }
+reovim-module-treesitter-markdown = { path = "./ext/server/modules/treesitter-markdown", version = "0.15.0-dev" }
+reovim-module-lsp = { path = "./ext/server/modules/lsp", version = "0.15.0-dev" }
+reovim-module-snippet = { path = "./ext/server/modules/snippet", version = "0.15.0-dev" }
+reovim-module-range-finder = { path = "./ext/server/modules/range-finder", version = "0.15.0-dev" }
+reovim-module-completion = { path = "./ext/server/modules/completion", version = "0.15.0-dev" }
+reovim-module-lsp-navigation = { path = "./ext/server/modules/lsp-navigation", version = "0.15.0-dev" }
+reovim-module-profiles = { path = "./ext/server/modules/profiles", version = "0.15.0-dev" }
+reovim-module-tetromino = { path = "./ext/server/modules/tetromino", version = "0.15.0-dev" }
+reovim-module-health-check = { path = "./ext/server/modules/health-check", version = "0.15.0-dev" }
+reovim-module-git = { path = "./ext/server/modules/git", version = "0.15.0-dev" }
+reovim-picker-git-branches = { path = "./ext/server/modules/picker-git-branches", version = "0.15.0-dev" }
+reovim-picker-git-log = { path = "./ext/server/modules/picker-git-log", version = "0.15.0-dev" }
+reovim-picker-git-status = { path = "./ext/server/modules/picker-git-status", version = "0.15.0-dev" }
+reovim-picker-git-stash = { path = "./ext/server/modules/picker-git-stash", version = "0.15.0-dev" }
+reovim-module-git-signs = { path = "./ext/server/modules/git-signs", version = "0.15.0-dev" }
+reovim-module-git-statusline = { path = "./ext/server/modules/git-statusline", version = "0.15.0-dev" }
+reovim-module-illuminate = { path = "./ext/server/modules/illuminate", version = "0.15.0-dev" }
+reovim-module-format = { path = "./ext/server/modules/format", version = "0.15.0-dev" }
+reovim-module-diagnostics-panel = { path = "./ext/server/modules/diagnostics-panel", version = "0.15.0-dev" }
+reovim-module-bufferline = { path = "./ext/server/modules/bufferline", version = "0.15.0-dev" }
+reovim-module-git-blame = { path = "./ext/server/modules/git-blame", version = "0.15.0-dev" }
+reovim-module-module-manager = { path = "./ext/server/modules/module-manager", version = "0.15.0-dev" }
+reovim-module-emacs = { path = "./ext/server/modules/emacs", version = "0.15.0-dev" }
+reovim-module-pair = { path = "./ext/server/modules/pair", version = "0.15.0-dev" }
+reovim-module-context = { path = "./ext/server/modules/context", version = "0.15.0-dev" }
+reovim-module-sticky-context = { path = "./ext/server/modules/sticky-context", version = "0.15.0-dev" }
+reovim-module-indent-guide = { path = "./ext/server/modules/indent-guide", version = "0.15.0-dev" }
+reovim-module-settings = { path = "./ext/server/modules/settings", version = "0.15.0-dev" }
+reovim-module-codec-utf8 = { path = "./ext/server/modules/codec-utf8", version = "0.15.0-dev" }
+reovim-module-codec-hex = { path = "./ext/server/modules/codec-hex", version = "0.15.0-dev" }
+reovim-module-codec-cjk = { path = "./ext/server/modules/codec-cjk", version = "0.15.0-dev" }
+reovim-module-codec-legacy = { path = "./ext/server/modules/codec-legacy", version = "0.15.0-dev" }
+reovim-module-codec-pdf = { path = "./ext/server/modules/codec-pdf", version = "0.15.0-dev" }
+reovim-module-codec-binary-struct = { path = "./ext/server/modules/codec-binary-struct", version = "0.15.0-dev" }
+reovim-module-codec-rlib = { path = "./ext/server/modules/codec-rlib", version = "0.15.0-dev" }
+reovim-module-codec-tar-gz = { path = "./ext/server/modules/codec-tar-gz", version = "0.15.0-dev" }
+reovim-module-codec-csv = { path = "./ext/server/modules/codec-csv", version = "0.15.0-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
 reovim-tui-mod-statusline = { path = "./ext/client/tui/modules/statusline", version = "0.15.0-dev" }

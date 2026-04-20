@@ -4,7 +4,7 @@
  * Extracted from the hardcoded handler in `editor.ts` (lines 706-733, 988-1027).
  * Owns its own state, JSON parsing, and DOM lifecycle.
  *
- * JSON payload (from `server/modules/cmdline/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/cmdline/src/bridge.rs`):
  * ```json
  * {"active": true, "prompt": ":", "input": "wq", "cursor": 2,
  *  "completions": ["write", "wq"], "completion_index": 0}

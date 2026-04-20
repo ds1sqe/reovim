@@ -14,7 +14,7 @@
 //!
 //! ```text
 //! ext/server/drivers/completion/   -> Trait + Types + Registry + Engine (MECHANISM)
-//! server/modules/completion/       -> Source implementations + orchestration (POLICY)
+//! ext/server/modules/completion/       -> Source implementations + orchestration (POLICY)
 //! ```
 
 mod context;

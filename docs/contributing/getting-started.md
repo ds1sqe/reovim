@@ -121,7 +121,7 @@ reovim/
 
 - **Kernel** (`server/lib/kernel/`): Core mechanisms, policy-agnostic
 - **Drivers** (`ext/server/drivers/`): Service providers with trait contracts
-- **Modules** (`server/modules/`): Policy implementations (vim behavior, keymaps, etc.)
+- **Modules** (`ext/server/modules/`): Policy implementations (vim behavior, keymaps, etc.)
 - **Server** (`server/lib/server/`): gRPC handlers, session management, module registry
 
 Modules implement traits from kernel/drivers and are loaded dynamically.

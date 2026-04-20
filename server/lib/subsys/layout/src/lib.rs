@@ -27,7 +27,7 @@
 //! # Mechanism vs Policy
 //!
 //! - **This crate (Mechanism)**: Defines WHAT can be done via traits
-//! - **server/modules/layout/ (Policy)**: Implements HOW things behave
+//! - **ext/server/modules/layout/ (Policy)**: Implements HOW things behave
 
 mod compositor;
 mod compositor_key;

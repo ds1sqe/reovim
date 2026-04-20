@@ -4,7 +4,7 @@
  * Mirrors `ext/client/tui/modules/yank-flash/src/lib.rs`.
  * Renders a brief highlight on yanked text via DOM overlay.
  *
- * JSON payload (from `server/modules/vim/src/operators/yank_flash.rs`):
+ * JSON payload (from `ext/server/modules/vim/src/operators/yank_flash.rs`):
  * ```json
  * {"bufferId":1,"startLine":5,"endLine":10,"startCol":0,"endCol":0,"isLinewise":true,"sequence":1}
  * ```

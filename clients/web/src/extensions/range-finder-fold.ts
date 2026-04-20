@@ -4,7 +4,7 @@
  * Mirrors `clients/tui/extensions/range-finder/src/fold.rs`.
  * Parses FoldBridge JSON and renders fold markers at collapsed line positions.
  *
- * JSON payload (from `server/modules/range-finder/src/fold/bridge.rs`):
+ * JSON payload (from `ext/server/modules/range-finder/src/fold/bridge.rs`):
  * ```json
  * {"folds": {"1": [{"start_line": 2, "hidden_count": 6, "preview": "fn foo() {"}]}}
  * ```

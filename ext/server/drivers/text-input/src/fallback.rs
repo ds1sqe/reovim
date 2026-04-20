@@ -26,7 +26,7 @@
 //!        ^
 //!        |  (uses trait)
 //!        |
-//! server/modules/editor/     <-- EditorFallbackHandler<C: FallbackContext>
+//! ext/server/modules/editor/     <-- EditorFallbackHandler<C: FallbackContext>
 //! ```
 
 use std::sync::Arc;

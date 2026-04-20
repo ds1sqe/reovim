@@ -4,7 +4,7 @@ Creates an empty buffer when a session starts with no buffers.
 
 ## Source Location
 
-`server/modules/scratch-buffer/src/`
+`ext/server/modules/scratch-buffer/src/`
 
 ## Purpose
 

@@ -4,7 +4,7 @@
 //!
 //! This crate defines the trait interface for content encoding and decoding.
 //! It does NOT depend on any specific encoding library (e.g., `encoding_rs`).
-//! Those are implementation details of codec modules (`server/modules/codec-*/`).
+//! Those are implementation details of codec modules (`ext/server/modules/codec-*/`).
 //!
 //! # Design Philosophy
 //!
@@ -22,10 +22,10 @@
 //!        ^
 //!        |  implements
 //!        |
-//! server/modules/codec-utf8/             <-- UTF-8 codec
-//! server/modules/codec-hex/              <-- Hex dump codec
-//! server/modules/codec-cjk/              <-- CJK encoding codecs
-//! server/modules/codec-legacy/           <-- Legacy encoding codecs
+//! ext/server/modules/codec-utf8/             <-- UTF-8 codec
+//! ext/server/modules/codec-hex/              <-- Hex dump codec
+//! ext/server/modules/codec-cjk/              <-- CJK encoding codecs
+//! ext/server/modules/codec-legacy/           <-- Legacy encoding codecs
 //! ```
 //!
 //! # Components

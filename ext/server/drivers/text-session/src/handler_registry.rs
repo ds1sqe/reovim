@@ -15,7 +15,7 @@ use crate::{EmptySessionHandler, handler_key::SessionHandlerKey};
 ///
 /// Following the VFS pattern (mechanism/policy separation):
 /// - **Mechanism (driver)**: This registry type + `EmptySessionHandler` trait
-/// - **Policy (module)**: `ScratchBufferHandler` in `server/modules/scratch-buffer`
+/// - **Policy (module)**: `ScratchBufferHandler` in `ext/server/modules/scratch-buffer`
 ///
 /// # Example
 ///

@@ -4,7 +4,7 @@
  * Mirrors `clients/tui/extensions/range-finder/src/jump.rs`.
  * Parses JumpBridge JSON and renders label overlays at match positions.
  *
- * JSON payload (from `server/modules/range-finder/src/jump/bridge.rs`):
+ * JSON payload (from `ext/server/modules/range-finder/src/jump/bridge.rs`):
  * ```json
  * {"active": true, "matches": [{"line": 0, "col": 5, "label": "s"}]}
  * ```

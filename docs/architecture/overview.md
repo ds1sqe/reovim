@@ -26,7 +26,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └─────────────────────────┼───────────────────────────────────────┘
                           │
 ┌─────────────────────────┼───────────────────────────────────────┐
-│                    MODULES (server/modules/)                    │
+│                    MODULES (ext/server/modules/)                    │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │
 │  │   vim   │ │ motions │ │textobj  │ │ keymap  │ │ editor  │    │
 │  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘    │
@@ -109,7 +109,7 @@ See: [Session Model](./session-model.md)
 | `drivers/` | `ext/server/drivers/*` | Hardware/service adapters |
 | `fs/` | `server/lib/subsys/vfs/` | Virtual filesystem |
 | Subsystem libraries | `server/lib/providers/*` | High-level domain services |
-| Loadable Modules | `server/modules/` | Dynamic policy modules |
+| Loadable Modules | `ext/server/modules/` | Dynamic policy modules |
 
 ## Design Principles
 
@@ -161,7 +161,7 @@ server/lib/kernel          ← Core mechanisms (depends on arch)
         server/lib/server/registry/  ← Module loader, registry
             │
             ▼
-        server/modules/              ← Policy modules (vim, motions, etc.)
+        ext/server/modules/              ← Policy modules (vim, motions, etc.)
 
 shared/protocol            ← gRPC v2 definitions
     │

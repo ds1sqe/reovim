@@ -113,22 +113,22 @@ CRATES=(
     "ext/server/drivers/command-types"             # reovim-driver-command-types
     "ext/client/tui/drivers/display"               # reovim-driver-display
     "ext/server/drivers/undo"                      # reovim-driver-undo
-    "server/modules/buffer-ops"                    # reovim-module-buffer-ops
-    "server/modules/buffer-simple"                 # reovim-module-buffer-simple
-    "server/modules/git"                           # reovim-module-git
-    "server/modules/git-blame"                     # reovim-module-git-blame
-    "server/modules/git-statusline"                # reovim-module-git-statusline
-    "server/modules/keymap"                        # reovim-module-keymap
-    "server/modules/layout"                        # reovim-module-layout
-    "server/modules/mode-manager"                  # reovim-module-mode-manager
-    "server/modules/search"                        # reovim-module-search
-    "server/modules/vfs-local"                     # reovim-module-vfs-local
+    "ext/server/modules/buffer-ops"                    # reovim-module-buffer-ops
+    "ext/server/modules/buffer-simple"                 # reovim-module-buffer-simple
+    "ext/server/modules/git"                           # reovim-module-git
+    "ext/server/modules/git-blame"                     # reovim-module-git-blame
+    "ext/server/modules/git-statusline"                # reovim-module-git-statusline
+    "ext/server/modules/keymap"                        # reovim-module-keymap
+    "ext/server/modules/layout"                        # reovim-module-layout
+    "ext/server/modules/mode-manager"                  # reovim-module-mode-manager
+    "ext/server/modules/search"                        # reovim-module-search
+    "ext/server/modules/vfs-local"                     # reovim-module-vfs-local
 
     # Tier 4 — TUI client, session driver
     "clients/tui"                                  # reovim-client-tui
     "ext/server/drivers/session"                   # reovim-driver-session
-    "server/modules/clipboard"                     # reovim-module-clipboard
-    "server/modules/undo"                          # reovim-module-undo
+    "ext/server/modules/clipboard"                     # reovim-module-clipboard
+    "ext/server/modules/undo"                          # reovim-module-undo
 
     # Tier 5 — higher-level drivers
     "ext/server/drivers/codec"                     # reovim-driver-codec
@@ -138,75 +138,75 @@ CRATES=(
     "ext/server/drivers/lsp"                       # reovim-driver-lsp
     "ext/server/drivers/picker"                    # reovim-driver-picker
     "ext/server/drivers/syntax"                    # reovim-driver-syntax
-    "server/modules/cmdline"                       # reovim-module-cmdline
-    "server/modules/notification"                  # reovim-module-notification
-    "server/modules/scratch-buffer"                # reovim-module-scratch-buffer
-    "server/modules/settings"                      # reovim-module-settings
+    "ext/server/modules/cmdline"                       # reovim-module-cmdline
+    "ext/server/modules/notification"                  # reovim-module-notification
+    "ext/server/modules/scratch-buffer"                # reovim-module-scratch-buffer
+    "ext/server/modules/settings"                      # reovim-module-settings
 
     # Tier 6 — treesitter, codecs, feature modules, server, pickers
     "ext/server/drivers/ffi-python"                # reovim-driver-ffi-python
     "ext/server/drivers/syntax-treesitter"         # reovim-driver-syntax-treesitter
-    "server/modules/codec-binary-struct"           # reovim-module-codec-binary-struct
-    "server/modules/codec-cjk"                     # reovim-module-codec-cjk
-    "server/modules/codec-csv"                     # reovim-module-codec-csv
-    "server/modules/codec-hex"                     # reovim-module-codec-hex
-    "server/modules/codec-legacy"                  # reovim-module-codec-legacy
-    "server/modules/codec-pdf"                     # reovim-module-codec-pdf
-    "server/modules/codec-utf8"                    # reovim-module-codec-utf8
-    "server/modules/commands"                      # reovim-module-commands
-    "server/modules/context"                       # reovim-module-context
-    "server/modules/editor"                        # reovim-module-editor
-    "server/modules/format"                        # reovim-module-format
-    "server/modules/health-check"                  # reovim-module-health-check
-    "server/modules/indent-guide"                  # reovim-module-indent-guide
-    "server/modules/lsp"                           # reovim-module-lsp
-    "server/modules/module-manager"                # reovim-module-module-manager
-    "server/modules/motions"                       # reovim-module-motions
-    "server/modules/pair"                          # reovim-module-pair
-    "server/modules/profiles"                      # reovim-module-profiles
-    "server/modules/tetromino"                     # reovim-module-tetromino
-    "server/modules/textobjects"                   # reovim-module-textobjects
-    "server/modules/whichkey"                      # reovim-module-whichkey
-    "server/modules/window-ops"                    # reovim-module-window-ops
-    "server/modules/picker-buffers"                # reovim-picker-buffers
-    "server/modules/picker-commands"               # reovim-picker-commands
-    "server/modules/picker-files"                  # reovim-picker-files
-    "server/modules/picker-git-branches"           # reovim-picker-git-branches
-    "server/modules/picker-git-log"                # reovim-picker-git-log
-    "server/modules/picker-git-stash"              # reovim-picker-git-stash
-    "server/modules/picker-git-status"             # reovim-picker-git-status
-    "server/modules/picker-grep"                   # reovim-picker-grep
-    "server/modules/picker-options"                # reovim-picker-options
+    "ext/server/modules/codec-binary-struct"           # reovim-module-codec-binary-struct
+    "ext/server/modules/codec-cjk"                     # reovim-module-codec-cjk
+    "ext/server/modules/codec-csv"                     # reovim-module-codec-csv
+    "ext/server/modules/codec-hex"                     # reovim-module-codec-hex
+    "ext/server/modules/codec-legacy"                  # reovim-module-codec-legacy
+    "ext/server/modules/codec-pdf"                     # reovim-module-codec-pdf
+    "ext/server/modules/codec-utf8"                    # reovim-module-codec-utf8
+    "ext/server/modules/commands"                      # reovim-module-commands
+    "ext/server/modules/context"                       # reovim-module-context
+    "ext/server/modules/editor"                        # reovim-module-editor
+    "ext/server/modules/format"                        # reovim-module-format
+    "ext/server/modules/health-check"                  # reovim-module-health-check
+    "ext/server/modules/indent-guide"                  # reovim-module-indent-guide
+    "ext/server/modules/lsp"                           # reovim-module-lsp
+    "ext/server/modules/module-manager"                # reovim-module-module-manager
+    "ext/server/modules/motions"                       # reovim-module-motions
+    "ext/server/modules/pair"                          # reovim-module-pair
+    "ext/server/modules/profiles"                      # reovim-module-profiles
+    "ext/server/modules/tetromino"                     # reovim-module-tetromino
+    "ext/server/modules/textobjects"                   # reovim-module-textobjects
+    "ext/server/modules/whichkey"                      # reovim-module-whichkey
+    "ext/server/modules/window-ops"                    # reovim-module-window-ops
+    "ext/server/modules/picker-buffers"                # reovim-picker-buffers
+    "ext/server/modules/picker-commands"               # reovim-picker-commands
+    "ext/server/modules/picker-files"                  # reovim-picker-files
+    "ext/server/modules/picker-git-branches"           # reovim-picker-git-branches
+    "ext/server/modules/picker-git-log"                # reovim-picker-git-log
+    "ext/server/modules/picker-git-stash"              # reovim-picker-git-stash
+    "ext/server/modules/picker-git-status"             # reovim-picker-git-status
+    "ext/server/modules/picker-grep"                   # reovim-picker-grep
+    "ext/server/modules/picker-options"                # reovim-picker-options
     "server/lib/server"                            # reovim-server
 
     # Tier 7 — language modules, emacs, vim
-    "server/modules/emacs"                         # reovim-module-emacs
-    "server/modules/sticky-context"                # reovim-module-sticky-context
-    "server/modules/treesitter-bash"               # reovim-module-treesitter-bash
-    "server/modules/treesitter-c"                  # reovim-module-treesitter-c
-    "server/modules/treesitter-go"                 # reovim-module-treesitter-go
-    "server/modules/treesitter-javascript"         # reovim-module-treesitter-javascript
-    "server/modules/treesitter-json"               # reovim-module-treesitter-json
-    "server/modules/treesitter-python"             # reovim-module-treesitter-python
-    "server/modules/treesitter-rust"               # reovim-module-treesitter-rust
-    "server/modules/treesitter-toml"               # reovim-module-treesitter-toml
-    "server/modules/treesitter-typescript"         # reovim-module-treesitter-typescript
-    "server/modules/vim"                           # reovim-module-vim
+    "ext/server/modules/emacs"                         # reovim-module-emacs
+    "ext/server/modules/sticky-context"                # reovim-module-sticky-context
+    "ext/server/modules/treesitter-bash"               # reovim-module-treesitter-bash
+    "ext/server/modules/treesitter-c"                  # reovim-module-treesitter-c
+    "ext/server/modules/treesitter-go"                 # reovim-module-treesitter-go
+    "ext/server/modules/treesitter-javascript"         # reovim-module-treesitter-javascript
+    "ext/server/modules/treesitter-json"               # reovim-module-treesitter-json
+    "ext/server/modules/treesitter-python"             # reovim-module-treesitter-python
+    "ext/server/modules/treesitter-rust"               # reovim-module-treesitter-rust
+    "ext/server/modules/treesitter-toml"               # reovim-module-treesitter-toml
+    "ext/server/modules/treesitter-typescript"         # reovim-module-treesitter-typescript
+    "ext/server/modules/vim"                           # reovim-module-vim
 
     # Tier 8 — high-level feature modules
-    "server/modules/bufferline"                    # reovim-module-bufferline
-    "server/modules/completion"                    # reovim-module-completion
-    "server/modules/diagnostics-panel"             # reovim-module-diagnostics-panel
-    "server/modules/explorer"                      # reovim-module-explorer
-    "server/modules/git-signs"                     # reovim-module-git-signs
-    "server/modules/illuminate"                    # reovim-module-illuminate
-    "server/modules/microscope"                    # reovim-module-microscope
-    "server/modules/range-finder"                  # reovim-module-range-finder
-    "server/modules/snippet"                       # reovim-module-snippet
-    "server/modules/treesitter-markdown"           # reovim-module-treesitter-markdown
+    "ext/server/modules/bufferline"                    # reovim-module-bufferline
+    "ext/server/modules/completion"                    # reovim-module-completion
+    "ext/server/modules/diagnostics-panel"             # reovim-module-diagnostics-panel
+    "ext/server/modules/explorer"                      # reovim-module-explorer
+    "ext/server/modules/git-signs"                     # reovim-module-git-signs
+    "ext/server/modules/illuminate"                    # reovim-module-illuminate
+    "ext/server/modules/microscope"                    # reovim-module-microscope
+    "ext/server/modules/range-finder"                  # reovim-module-range-finder
+    "ext/server/modules/snippet"                       # reovim-module-snippet
+    "ext/server/modules/treesitter-markdown"           # reovim-module-treesitter-markdown
 
     # Tier 9 — depends on everything
-    "server/modules/lsp-navigation"                # reovim-module-lsp-navigation
+    "ext/server/modules/lsp-navigation"                # reovim-module-lsp-navigation
 
     # Tier 10 — main binary (last)
     "apps/bin"                                     # reovim

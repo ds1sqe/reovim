@@ -4,7 +4,7 @@ Which-key popup showing available keybinding completions.
 
 ## Source Location
 
-`server/modules/whichkey/src/`
+`ext/server/modules/whichkey/src/`
 
 ## Purpose
 

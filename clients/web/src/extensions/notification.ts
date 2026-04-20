@@ -4,7 +4,7 @@
  * Mirrors `clients/tui/extensions/notification/src/lib.rs`.
  * Displays stacked toast notifications with auto-dismiss and progress bars.
  *
- * JSON payload (from `server/modules/notification/src/bridge.rs`):
+ * JSON payload (from `ext/server/modules/notification/src/bridge.rs`):
  * ```json
  * {"active": true, "entries": [
  *   {"id": 0, "level": "info", "title": "Hello", "body": "", "progress": {"percent": 35, "detail": "3/10"}}
