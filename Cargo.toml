@@ -164,7 +164,6 @@ members = [
 
     # Shared layer
     "shared/input-codec",
-    "shared/testing",
 
     # Shared clients layer
     "shared/clients/model",
@@ -179,9 +178,10 @@ members = [
 
     # Shared benchmarking utilities
 
-    # Tools (Rust only - reovim-testing is Python)
+    # Tools (Rust) — python-test-sdk is Python, excluded below
     "tools/bench",
     "tools/perf-report",
+    "tools/testing",
 
     # Test fixtures (cdylib modules for integration testing)
     "server/lib/subsys/module-loader/tests/fixtures/test_module",
@@ -195,7 +195,7 @@ members = [
 ]
 exclude = [
     # Python projects (not Rust)
-    "tools/reovim-testing",
+    "tools/python-test-sdk",
 ]
 default-members = ["apps/bin"]
 
@@ -253,7 +253,7 @@ reovim-arch = { path = "./arch", version = "0.15.0-dev" }
 reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
 reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
 reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
-reovim-testing = { path = "./shared/testing", version = "0.15.0-dev" }
+reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
 reovim-domain = { path = "./shared/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./shared/domains/text", version = "0.15.0-dev" }

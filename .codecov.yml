@@ -13,7 +13,7 @@ ignore:
   - "archive/**"
   - "uapi/protocol/src/gen/**"
   - "**/build.rs"
-  - "shared/testing/**"
+  - "tools/testing/**"
   - "server/lib/drivers/ffi-python/**"
   - "clients/web/**"
 

@@ -268,7 +268,7 @@ println!("Cursor: line={}, col={}", result.cursor_line, result.cursor_column);
 ### Integration Test Organization
 
 ```
-shared/testing/src/
+tools/testing/src/
 ├── lib.rs                  # Test harness exports
 ├── harness.rs              # TestServerHarness (subprocess management)
 ├── integration.rs          # IntegrationTest builder + TestResult
@@ -282,7 +282,7 @@ server/modules/vim/tests/   # Vim module-specific tests
 
 ### Test Harness Components
 
-#### TestServerHarness (`shared/testing/src/harness.rs`)
+#### TestServerHarness (`tools/testing/src/harness.rs`)
 
 Spawns and manages a reovim server process:
 
@@ -296,7 +296,7 @@ let client = harness.client().await?;
 // Server is killed when harness is dropped (kill_on_drop)
 ```
 
-#### TestClient (`shared/testing/src/`)
+#### TestClient (`tools/testing/src/`)
 
 gRPC client used in multi-client tests (obtained from `MultiClientTest`):
 
@@ -308,7 +308,7 @@ let content = clients[0].get_buffer().await.unwrap(); // Get buffer content
 clients[0].open_buffer("/path/to/file").await.unwrap(); // Open a file
 ```
 
-#### IntegrationTest (`shared/testing/src/integration.rs`)
+#### IntegrationTest (`tools/testing/src/integration.rs`)
 
 Fluent builder for tests:
 
@@ -372,7 +372,7 @@ assert_frame_line_contains(&frame, 0, "fn main");
 
 ## Phase 7+ Integration Tests
 
-Phase 7+ uses a comprehensive integration test framework in `shared/testing/` that tests the complete editor through gRPC, using subprocess-based test isolation.
+Phase 7+ uses a comprehensive integration test framework in `tools/testing/` that tests the complete editor through gRPC, using subprocess-based test isolation.
 
 ### Architecture
 
@@ -463,7 +463,7 @@ async fn test_two_clients_see_changes() {
 ### Test File Organization
 
 ```
-shared/testing/src/
+tools/testing/src/
 ├── lib.rs                  # Test harness exports
 ├── harness.rs              # TestServerHarness (subprocess management)
 ├── integration.rs          # IntegrationTest builder + TestResult
@@ -522,8 +522,8 @@ cargo test -- --nocapture
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Test harness | `shared/testing/` | Subprocess management, client utilities |
-| Integration builder | `shared/testing/src/integration.rs` | Fluent test API |
+| Test harness | `tools/testing/` | Subprocess management, client utilities |
+| Integration builder | `tools/testing/src/integration.rs` | Fluent test API |
 | Module tests | `server/modules/*/tests/` | Per-module integration tests |
 | Protocol | `shared/protocol/` | gRPC v2 definitions |
 

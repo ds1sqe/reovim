@@ -108,7 +108,7 @@ CRATES=(
     "clients/tui/modules/yank-flash"               # reovim-tui-mod-yank-flash
 
     # Tier 3 — testing, bench, command types, display, base server modules
-    "shared/testing"                               # reovim-testing
+    "tools/testing"                                # reovim-testing
     "lib/bench"                                    # reovim-bench-utils
     "server/lib/drivers/command-types"             # reovim-driver-command-types
     "clients/tui/lib/drivers/display"              # reovim-driver-display

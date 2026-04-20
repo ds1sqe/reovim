@@ -455,7 +455,7 @@ Modules are discovered in these directories:
 ## Examples
 
 Complete example modules (a minimal hello-world module and a hot-reload counter module)
-can be found in the integration test fixtures under `shared/testing/`.
+can be found in the integration test fixtures under `tools/testing/`.
 
 ## Related Documentation
 

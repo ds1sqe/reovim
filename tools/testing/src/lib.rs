@@ -8,7 +8,7 @@
 //! # Architecture (Mechanism vs Policy)
 //!
 //! ```text
-//! shared/testing/            ← MECHANISM (this crate)
+//! tools/testing/             ← MECHANISM (this crate)
 //! ├── harness.rs             - Server process lifecycle
 //! ├── integration.rs         - Single-client test builder
 //! ├── multi_client.rs        - Multi-client test builder

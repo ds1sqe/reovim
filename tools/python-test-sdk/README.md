@@ -104,7 +104,7 @@ with test("hello world") as e:
 ## Installation
 
 ```bash
-# From tools/reovim-testing directory
+# From tools/python-test-sdk directory
 pip install -e .
 
 # Or just run directly

@@ -31,7 +31,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// Get the absolute path to the LSP test fixture project.
 fn fixture_path() -> PathBuf {
     // CARGO_MANIFEST_DIR = server/lib/server
-    // Fixture is at shared/testing/fixtures/rust-lsp-project/
+    // Fixture is at tools/testing/fixtures/rust-lsp-project/
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
         .parent() // server/lib/
@@ -40,7 +40,7 @@ fn fixture_path() -> PathBuf {
         .unwrap()
         .parent() // workspace root
         .unwrap()
-        .join("shared/testing/fixtures/rust-lsp-project")
+        .join("tools/testing/fixtures/rust-lsp-project")
 }
 
 /// Check if rust-analyzer is installed and available.
