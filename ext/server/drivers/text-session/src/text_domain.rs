@@ -44,8 +44,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_codec_tui_input::{KIND_KEY, KeyEvent, decode_key_event},
     reovim_domain_text::{HistoryRing, RegisterBank},
-    reovim_input_codec::KeyEvent,
     reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ModeStack, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_coordination::Cursor,
@@ -355,8 +355,8 @@ impl DomainDriver for TextDomainDriver {
         let kind = reovim_subsys_input::input_kind(payload);
 
         match kind {
-            reovim_input_codec::key::KIND_KEY => {
-                if let Some(key) = reovim_input_codec::key::decode(payload) {
+            KIND_KEY => {
+                if let Ok(key) = decode_key_event(payload) {
                     self.dispatch_decoded_key(client_id, &key, client_ext, shared_ext)
                 } else {
                     DispatchResult::default()

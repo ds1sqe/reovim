@@ -18,9 +18,8 @@ reovim-provider-text = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-driver-text-session = { workspace = true }
-reovim-input-codec = { workspace = true }
+reovim-codec-tui-input = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
-reovim-subsys-input-contracts = { workspace = true }
 reovim-subsys-input = { workspace = true }
 tracing = "0.1"
 

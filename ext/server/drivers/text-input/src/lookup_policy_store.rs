@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use {reovim_kernel::api::v1::Service, reovim_subsys_input_contracts::KeyLookupPolicy};
+use {crate::KeyLookupPolicy, reovim_kernel::api::v1::Service};
 
 /// Store for a [`KeyLookupPolicy`] registered by a module.
 pub struct LookupPolicyStore {

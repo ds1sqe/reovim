@@ -1,4 +1,7 @@
-//! Canonical mouse input vocabulary owned by `reovim-input-codec`.
+//! TUI mouse input vocabulary.
+//!
+//! Provides `MouseButton`, `MouseEvent`, and `MouseEventKind` for terminal
+//! cell-grid coordinate mouse events.
 
 use crate::Modifiers;
 
@@ -34,7 +37,9 @@ pub enum MouseEventKind {
     ScrollRight,
 }
 
-/// Mouse event with position and modifiers.
+/// Mouse event with cell-grid position and modifiers.
+///
+/// `column` and `row` are 0-based cell indices in the terminal grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseEvent {
     /// The event kind.
@@ -48,7 +53,7 @@ pub struct MouseEvent {
 }
 
 impl MouseEvent {
-    /// Create a new mouse event.
+    /// Create a new mouse event with no modifiers.
     #[must_use]
     pub const fn new(kind: MouseEventKind, column: u16, row: u16) -> Self {
         Self {
@@ -109,5 +114,69 @@ impl MouseEvent {
     #[must_use]
     pub const fn is_moved(&self) -> bool {
         matches!(self.kind, MouseEventKind::Moved)
+    }
+}
+
+/// Encode a `MouseEventKind` to a `u8` tag + `u8` button value.
+///
+/// Encoding:
+/// ```text
+/// tag  button  meaning
+///   0    0     Moved
+///   1    b     Down(b)
+///   2    b     Up(b)
+///   3    b     Drag(b)
+///   4    0     ScrollUp
+///   5    0     ScrollDown
+///   6    0     ScrollLeft
+///   7    0     ScrollRight
+/// ```
+/// Button encoding: Left=0, Right=1, Middle=2.
+#[must_use]
+pub fn mouse_kind_to_bytes(kind: &MouseEventKind) -> (u8, u8) {
+    match kind {
+        MouseEventKind::Moved => (0, 0),
+        MouseEventKind::Down(b) => (1, button_to_u8(b)),
+        MouseEventKind::Up(b) => (2, button_to_u8(b)),
+        MouseEventKind::Drag(b) => (3, button_to_u8(b)),
+        MouseEventKind::ScrollUp => (4, 0),
+        MouseEventKind::ScrollDown => (5, 0),
+        MouseEventKind::ScrollLeft => (6, 0),
+        MouseEventKind::ScrollRight => (7, 0),
+    }
+}
+
+/// Decode `(tag, button)` back to `MouseEventKind`.
+///
+/// Returns `None` for unknown tag values.
+#[must_use]
+pub fn bytes_to_mouse_kind(tag: u8, button: u8) -> Option<MouseEventKind> {
+    match tag {
+        0 => Some(MouseEventKind::Moved),
+        1 => Some(MouseEventKind::Down(u8_to_button(button)?)),
+        2 => Some(MouseEventKind::Up(u8_to_button(button)?)),
+        3 => Some(MouseEventKind::Drag(u8_to_button(button)?)),
+        4 => Some(MouseEventKind::ScrollUp),
+        5 => Some(MouseEventKind::ScrollDown),
+        6 => Some(MouseEventKind::ScrollLeft),
+        7 => Some(MouseEventKind::ScrollRight),
+        _ => None,
+    }
+}
+
+fn button_to_u8(button: &MouseButton) -> u8 {
+    match button {
+        MouseButton::Left => 0,
+        MouseButton::Right => 1,
+        MouseButton::Middle => 2,
+    }
+}
+
+fn u8_to_button(value: u8) -> Option<MouseButton> {
+    match value {
+        0 => Some(MouseButton::Left),
+        1 => Some(MouseButton::Right),
+        2 => Some(MouseButton::Middle),
+        _ => None,
     }
 }

@@ -12,9 +12,9 @@ use {
 };
 
 use {
-    reovim_input_codec::{KeyCode, KeyEvent, Modifiers},
     reovim_kernel::api::v1::{BufferId, WindowId},
     reovim_subsys_coordination::{Cursor, CursorHeader, Projection},
+    reovim_subsys_input::INPUT_HEADER_SIZE,
     reovim_subsys_session::{
         BufferContentProvider, ClientId as SubsysClientId, CommandResult, DispatchResult,
         DisplayLine, DomainDriver,
@@ -35,10 +35,33 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
     request
 }
 
-/// Helper: build a SendInputRequest from a key string.
-fn send_input_request(keys: &str) -> SendInputRequest {
+/// Helper: build a SendInputRequest from a raw payload (must be a valid
+/// InputEvent payload, i.e. >= 8 bytes).
+fn send_input_request(payload: Vec<u8>) -> SendInputRequest {
     SendInputRequest {
-        payload: keys.as_bytes().to_vec(),
+        payload,
+        window_id: None,
+        timestamp_ns: 0,
+    }
+}
+
+/// Helper: build an arbitrary opaque payload suitable for `InputEvent::new`.
+///
+/// The server is platform-agnostic — it only requires that the payload is at
+/// least `INPUT_HEADER_SIZE` bytes and forwards the bytes to the domain
+/// driver unchanged.  These tests exercise the forwarding invariant by
+/// sending distinct byte sequences and asserting the driver received them
+/// verbatim.  The payload contents have no codec meaning.
+fn opaque_payload(tag: &[u8]) -> Vec<u8> {
+    let mut payload = vec![0u8; INPUT_HEADER_SIZE];
+    payload.extend_from_slice(tag);
+    payload
+}
+
+/// Helper: build a deliberately short (invalid) payload for error-path tests.
+fn short_payload(bytes: Vec<u8>) -> SendInputRequest {
+    SendInputRequest {
+        payload: bytes,
         window_id: None,
         timestamp_ns: 0,
     }
@@ -129,13 +152,8 @@ impl CapturedKeyDriver {
         }
     }
 
-    fn captured_keys(&self) -> Vec<KeyEvent> {
-        self.payloads
-            .lock()
-            .unwrap()
-            .iter()
-            .filter_map(|payload| reovim_input_codec::key::decode(payload))
-            .collect()
+    fn captured_payloads(&self) -> Vec<Vec<u8>> {
+        self.payloads.lock().unwrap().clone()
     }
 }
 
@@ -229,7 +247,8 @@ impl DomainDriver for CapturedKeyDriver {
 // =========================================================================
 
 #[tokio::test]
-async fn test_send_input_invalid_notation() {
+async fn test_send_input_short_payload_rejected() {
+    // Payloads shorter than INPUT_HEADER_SIZE (8 bytes) are rejected.
     let registry = test_registry();
     registry
         .get(&SessionId::new("test"))
@@ -238,7 +257,8 @@ async fn test_send_input_invalid_notation() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    let request = authed_request(send_input_request("<Ctrl"), ClientId::new(1));
+    // 6 bytes — shorter than the 8-byte INPUT_HEADER_SIZE
+    let request = authed_request(short_payload(vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00]), ClientId::new(1));
     let response = service.send_input(request).await;
 
     assert!(response.is_err());
@@ -255,7 +275,8 @@ async fn test_send_input_no_session() {
         Arc::new(BridgeRegistry::new()),
     );
 
-    let request = authed_request(send_input_request("a"), ClientId::new(1));
+    // Auth check happens before session lookup; short payload is fine here.
+    let request = authed_request(short_payload(b"a".to_vec()), ClientId::new(1));
     let response = service.send_input(request).await;
 
     assert!(response.is_err());
@@ -268,8 +289,8 @@ async fn test_send_input_rejects_unauthenticated() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    // No ClientId in extensions
-    let request = Request::new(send_input_request("a"));
+    // No ClientId in extensions — auth check happens before payload validation.
+    let request = Request::new(short_payload(b"a".to_vec()));
     let response = service.send_input(request).await;
 
     assert!(response.is_err());
@@ -282,8 +303,8 @@ async fn test_send_input_client_not_found() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    // Client ID 999 doesn't exist
-    let request = authed_request(send_input_request("a"), ClientId::new(999));
+    // Client existence check happens before payload validation.
+    let request = authed_request(short_payload(b"a".to_vec()), ClientId::new(999));
     let response = service.send_input(request).await;
 
     assert!(response.is_err());
@@ -308,7 +329,8 @@ async fn test_send_input_following_client_ignored() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    let request = authed_request(send_input_request("a"), client_id);
+    // Following check happens before payload validation.
+    let request = authed_request(short_payload(b"a".to_vec()), client_id);
     let response = service.send_input(request).await;
 
     assert!(response.is_ok());
@@ -317,7 +339,8 @@ async fn test_send_input_following_client_ignored() {
 }
 
 #[tokio::test]
-async fn test_send_input_invalid_utf8() {
+async fn test_send_input_empty_payload_rejected() {
+    // An empty payload is too short (< 8 bytes) and must be rejected.
     let registry = test_registry();
     let client_id = ClientId::new(1);
     registry
@@ -328,15 +351,7 @@ async fn test_send_input_invalid_utf8() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    // Invalid UTF-8 bytes
-    let request = authed_request(
-        SendInputRequest {
-            payload: vec![0xFF, 0xFE],
-            window_id: None,
-            timestamp_ns: 0,
-        },
-        client_id,
-    );
+    let request = authed_request(short_payload(vec![]), client_id);
     let response = service.send_input(request).await;
 
     assert!(response.is_err());
@@ -344,28 +359,9 @@ async fn test_send_input_invalid_utf8() {
 }
 
 #[tokio::test]
-async fn test_send_input_empty_key_sequence() {
-    let registry = test_registry();
-    let client_id = ClientId::new(1);
-    registry
-        .get(&SessionId::new("test"))
-        .unwrap()
-        .add_client(client_id);
-
-    let service =
-        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
-
-    // Empty key string — KeySequence::parse returns None for empty input
-    let request = authed_request(send_input_request(""), client_id);
-    let response = service.send_input(request).await;
-
-    // Empty string is invalid key notation
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
-}
-
-#[tokio::test]
-async fn test_send_input_adapts_single_key_notation_before_dispatch_input() {
+async fn test_send_input_forwards_payload_unchanged() {
+    // The server forwards the opaque input payload to the domain driver
+    // byte-for-byte.  Content has no codec meaning at this layer.
     let registry = test_registry();
     let session = registry.get(&SessionId::new("test")).unwrap();
     let client_id = ClientId::new(1);
@@ -376,16 +372,19 @@ async fn test_send_input_adapts_single_key_notation_before_dispatch_input() {
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
+    let payload = opaque_payload(&[0xAA, 0xBB, 0xCC]);
     let response = service
-        .send_input(authed_request(send_input_request("j"), client_id))
+        .send_input(authed_request(send_input_request(payload.clone()), client_id))
         .await;
 
     assert!(response.is_ok());
-    assert_eq!(driver.captured_keys(), vec![KeyEvent::new(KeyCode::Char('j'))]);
+    assert_eq!(driver.captured_payloads(), vec![payload]);
 }
 
 #[tokio::test]
-async fn test_send_input_adapts_multi_token_special_notation_before_dispatch_input() {
+async fn test_send_input_forwards_distinct_payloads_distinctly() {
+    // Two distinct payloads arrive at the driver as two distinct byte
+    // sequences — the server does not merge, reinterpret, or reorder.
     let registry = test_registry();
     let session = registry.get(&SessionId::new("test")).unwrap();
     let client_id = ClientId::new(1);
@@ -396,18 +395,16 @@ async fn test_send_input_adapts_multi_token_special_notation_before_dispatch_inp
     let service =
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
-    let response = service
-        .send_input(authed_request(send_input_request("<C-w>h"), client_id))
-        .await;
+    let first = opaque_payload(&[0xDE, 0xAD]);
+    let second = opaque_payload(&[0xBE, 0xEF, 0x01]);
+    for payload in [&first, &second] {
+        let r = service
+            .send_input(authed_request(send_input_request(payload.clone()), client_id))
+            .await;
+        assert!(r.is_ok());
+    }
 
-    assert!(response.is_ok());
-    assert_eq!(
-        driver.captured_keys(),
-        vec![
-            KeyEvent::with_modifiers(KeyCode::Char('w'), Modifiers::CTRL),
-            KeyEvent::new(KeyCode::Char('h')),
-        ]
-    );
+    assert_eq!(driver.captured_payloads(), vec![first, second]);
 }
 
 // =========================================================================

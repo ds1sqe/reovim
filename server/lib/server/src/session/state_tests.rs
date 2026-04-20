@@ -45,7 +45,7 @@ fn test_session_state_lookup_keys_empty() {
     let kernel = KernelContext::default();
     let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
+    let keys = crate::registry::keymap::test_helpers::seq_from_notation("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
 
     assert!(result.is_not_found());
@@ -144,18 +144,15 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
 
     // Register a mode that accepts char input (discriminant 1, different from home mode 0)
     let insert_mode_id = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
-    let insert_info = reovim_subsys_input_contracts::ModeInfo {
-        id: insert_mode_id,
-        display_name: "INSERT",
-        cursor_style: reovim_kernel::api::v1::CursorStyle::Bar,
-        accepts_char_input: true,
-        has_selection: false,
-        inherits_from: None,
-        is_entry: false,
-    };
-    state
-        .mode_registry
-        .register(crate::registry::ModeEntry::from_info(insert_info));
+    state.mode_registry.register(crate::registry::ModeEntry::from_fields(
+        insert_mode_id,
+        "INSERT",
+        reovim_kernel::api::v1::CursorStyle::Bar,
+        true,  // accepts_char_input
+        false, // has_selection
+        None,  // inherits_from
+        false, // is_entry
+    ));
 
     // mode_accepts_char_input checks home_mode (test/normal, discriminant 0)
     // We registered test/INSERT (discriminant 1) which is a different mode
@@ -163,18 +160,15 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
     assert!(!state.mode_accepts_char_input());
 
     // Now register home_mode with accepts_char_input: false
-    let normal_info = reovim_subsys_input_contracts::ModeInfo {
-        id: test_mode_id(),
-        display_name: "NORMAL",
-        cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
-        accepts_char_input: false,
-        has_selection: false,
-        inherits_from: None,
-        is_entry: true,
-    };
-    state
-        .mode_registry
-        .register(crate::registry::ModeEntry::from_info(normal_info));
+    state.mode_registry.register(crate::registry::ModeEntry::from_fields(
+        test_mode_id(),
+        "NORMAL",
+        reovim_kernel::api::v1::CursorStyle::Block,
+        false, // accepts_char_input
+        false, // has_selection
+        None,  // inherits_from
+        true,  // is_entry
+    ));
 
     // Home mode is now registered but does NOT accept char input
     assert!(!state.mode_accepts_char_input());
@@ -206,7 +200,7 @@ fn test_lookup_keys_after_registration() {
         .register_str(&test_mode_id(), "j", cmd);
 
     // Lookup should find it
-    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
+    let keys = crate::registry::keymap::test_helpers::seq_from_notation("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }
@@ -268,16 +262,15 @@ fn test_session_state_registries_accessible_after_with_registries() {
     let mut keymap_reg = KeymapRegistry::new();
 
     // Register something in each registry
-    let mode_info = reovim_subsys_input_contracts::ModeInfo {
-        id: test_mode_id(),
-        display_name: "NORMAL",
-        cursor_style: reovim_kernel::api::v1::CursorStyle::Block,
-        accepts_char_input: false,
-        has_selection: false,
-        inherits_from: None,
-        is_entry: true,
-    };
-    mode_reg.register(crate::registry::ModeEntry::from_info(mode_info));
+    mode_reg.register(crate::registry::ModeEntry::from_fields(
+        test_mode_id(),
+        "NORMAL",
+        reovim_kernel::api::v1::CursorStyle::Block,
+        false, // accepts_char_input
+        false, // has_selection
+        None,  // inherits_from
+        true,  // is_entry
+    ));
 
     let cmd_id = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "cursor-down");
     keymap_reg.register_str(&test_mode_id(), "j", cmd_id);
@@ -296,7 +289,7 @@ fn test_session_state_registries_accessible_after_with_registries() {
     assert!(!state.mode_registry.is_empty());
 
     // Keymap lookup should find our binding
-    let keys = reovim_subsys_input_contracts::KeySequence::parse("j").unwrap();
+    let keys = crate::registry::keymap::test_helpers::seq_from_notation("j").unwrap();
     let result = state.lookup_keys(&test_mode_id(), &keys);
     assert!(result.is_found());
 }

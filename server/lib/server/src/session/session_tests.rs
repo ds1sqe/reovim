@@ -926,7 +926,7 @@ fn test_editing_state_debug_format() {
     let debug_str = format!("{state:?}");
     assert!(debug_str.contains("EditingState"));
     assert!(debug_str.contains("mode_stack"));
-    assert!(debug_str.contains("pending_keys"));
+    assert!(debug_str.contains("pending_input"));
     // windows/viewport/selection are domain-owned (#753 E3)
     assert!(debug_str.contains("extensions"));
     assert!(debug_str.contains("compositor"));
@@ -1515,10 +1515,13 @@ async fn dispatch_input_for_client_happy_path_uses_domain_driver() {
     let driver = std::sync::Arc::new(SessionDispatchTestDriver::new());
     session.set_domain_driver(driver.clone());
 
-    let payload = reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::new(
-        reovim_input_codec::KeyCode::Char('j'),
-    ));
-    let event = InputEvent::new(payload.clone(), None, 0).expect("encoded key payload valid");
+    // Opaque payload — server does not interpret content, only forwards.
+    let payload = {
+        let mut p = vec![0u8; reovim_subsys_input::INPUT_HEADER_SIZE];
+        p.extend_from_slice(&[0x11, 0x22]);
+        p
+    };
+    let event = InputEvent::new(payload.clone(), None, 0).expect("payload >= header size");
 
     let result = session.dispatch_input_for_client(client_id, &event).await;
 
@@ -1536,13 +1539,11 @@ async fn dispatch_input_fallback_without_domain_driver() {
     session.add_client(client_id);
 
     let event = InputEvent::new(
-        reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::new(
-            reovim_input_codec::KeyCode::Char('j'),
-        )),
+        vec![0u8; reovim_subsys_input::INPUT_HEADER_SIZE],
         None,
         0,
     )
-    .expect("encoded key payload valid");
+    .expect("payload >= header size");
     let result = session.dispatch_input_for_client(client_id, &event).await;
 
     // Fallback stub returns None when no domain driver is active (#753 E3)

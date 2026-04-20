@@ -24,7 +24,6 @@ use super::CaptureTracker;
 use super::PresenceService;
 use {
     reovim_subsys_input::InputEvent,
-    reovim_subsys_input_contracts::ModeTransition,
     reovim_subsys_session::{DomainDriver, ExtensionMap},
 };
 
@@ -496,13 +495,12 @@ impl Session {
     /// Try `on_command_complete` with per-client state (#471, #477).
     ///
     /// Like `resolve_key_for_client`, but for post-command mode transitions.
+    ///
+    /// Stubbed: domain driver handles mode transitions internally via
+    /// `dispatch_input`. The server no longer tracks driver-tier `ModeTransition`
+    /// types (#753 E3 / I.7).
     #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
-    pub async fn try_on_command_complete_for_client(
-        &self,
-        client_id: ClientId,
-    ) -> Option<ModeTransition> {
-        // Stubbed: client_context removed (#753 E3). Domain driver handles mode
-        // transitions internally via dispatch_input.
+    pub async fn try_on_command_complete_for_client(&self, client_id: ClientId) -> Option<()> {
         tracing::warn!(%client_id, "try_on_command_complete_for_client: stubbed (#753 E3)");
         None
     }

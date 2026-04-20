@@ -45,7 +45,7 @@ pub use {
     app::AppState,
     config::{ServerConfig, TransportMode},
     registry::{
-        CommandQuerySnapshot, CommandRegistry, KeyLookupResult, KeymapRegistry, ModeEntry,
+        CommandQuerySnapshot, CommandRegistry, KeymapRegistry, LookupResult, ModeEntry,
         ModeRegistry,
     },
     server::{Server, SessionFactory},

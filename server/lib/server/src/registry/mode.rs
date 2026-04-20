@@ -17,10 +17,7 @@
 
 use std::collections::HashMap;
 
-use {
-    reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId},
-    reovim_subsys_input_contracts::ModeInfo,
-};
+use reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId};
 
 /// Entry in the mode registry containing cached mode behavior.
 ///
@@ -73,19 +70,31 @@ impl ModeEntry {
         }
     }
 
-    /// Create a mode entry from `ModeInfo` (Epic #417 Part 3).
+    /// Create a mode entry directly from field values.
     ///
-    /// Used when extracting modes from `ModeInfoStore`.
+    /// Used by the composition root (bootstrap) when converting driver-layer
+    /// `ModeInfo` structs into server-side `ModeEntry` instances.  The server
+    /// does NOT import driver-tier `ModeInfo` directly; the caller extracts
+    /// the fields and passes them here.
     #[must_use]
-    pub fn from_info(info: ModeInfo) -> Self {
+    #[allow(clippy::fn_params_excessive_bools)] // five bool fields mirror ModeInfo shape
+    pub fn from_fields(
+        id: ModeId,
+        display_name: &'static str,
+        cursor_style: CursorStyle,
+        accepts_char_input: bool,
+        has_selection: bool,
+        inherits_from: Option<ModeId>,
+        is_entry: bool,
+    ) -> Self {
         Self {
-            id: info.id,
-            display_name: info.display_name,
-            cursor_style: info.cursor_style,
-            accepts_char_input: info.accepts_char_input,
-            has_selection: info.has_selection,
-            inherits_from: info.inherits_from,
-            is_entry: info.is_entry,
+            id,
+            display_name,
+            cursor_style,
+            accepts_char_input,
+            has_selection,
+            inherits_from,
+            is_entry,
             owner: None,
         }
     }

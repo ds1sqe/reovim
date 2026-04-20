@@ -2279,7 +2279,6 @@ dependencies = [
  "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
- "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-module-config",
  "reovim-subsys-module-loader",
@@ -2434,6 +2433,17 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tracing",
+]
+
+[[package]]
+name = "reovim-codec-tui-input"
+version = "0.15.0-dev"
+dependencies = [
+ "bitflags 2.11.0",
+ "reovim-input-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-input",
 ]
 
 [[package]]
@@ -2615,14 +2625,13 @@ name = "reovim-driver-text-input"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-codec-tui-input",
  "reovim-domain-text",
  "reovim-driver-text-session",
- "reovim-input-codec",
  "reovim-kernel",
  "reovim-provider-text",
  "reovim-subsys-command-types",
  "reovim-subsys-input",
- "reovim-subsys-input-contracts",
  "tracing",
 ]
 
@@ -2656,18 +2665,17 @@ version = "0.15.0-dev"
 dependencies = [
  "parking_lot",
  "reovim-arch",
+ "reovim-codec-tui-input",
  "reovim-domain-text",
  "reovim-domain-text-events",
  "reovim-driver-text-search",
  "reovim-driver-text-undo",
- "reovim-input-codec",
  "reovim-kernel",
  "reovim-provider-text",
  "reovim-subsys-clipboard",
  "reovim-subsys-command-types",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
- "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
@@ -2718,9 +2726,7 @@ name = "reovim-input-codec"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
- "reovim-arch",
- "reovim-subsys-input",
- "reovim-subsys-input-contracts",
+ "reovim-kernel",
 ]
 
 [[package]]
@@ -3843,14 +3849,12 @@ dependencies = [
  "rand",
  "reovim-arch",
  "reovim-client-cli",
- "reovim-input-codec",
  "reovim-kernel",
  "reovim-protocol",
  "reovim-subsys-command",
  "reovim-subsys-command-types",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
- "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
@@ -3902,15 +3906,9 @@ name = "reovim-subsys-input"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
+ "parking_lot",
+ "reovim-input-codec",
  "reovim-kernel",
-]
-
-[[package]]
-name = "reovim-subsys-input-contracts"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "reovim-subsys-command-types",
 ]
 
 [[package]]
@@ -3985,11 +3983,9 @@ name = "reovim-subsys-session"
 version = "0.15.0-dev"
 dependencies = [
  "parking_lot",
- "reovim-input-codec",
  "reovim-kernel",
  "reovim-subsys-coordination",
  "reovim-subsys-input",
- "reovim-subsys-input-contracts",
  "reovim-subsys-layout",
  "serde_json",
 ]

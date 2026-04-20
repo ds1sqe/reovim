@@ -3,8 +3,8 @@
 use std::sync::RwLock;
 
 use {
+    crate::ModeInfo,
     reovim_kernel::api::v1::{Mode, ModeId, Service},
-    reovim_subsys_input_contracts::ModeInfo,
 };
 
 /// Store for mode information registered by modules.

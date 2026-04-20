@@ -8,7 +8,7 @@
 //!
 //! # Contents
 //!
-//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`KeySequence`], [`SurfaceDescriptor`]
+//! - **Types**: [`ClientId`], [`CursorSnapshot`] (opaque 8-byte cursor identity), [`SurfaceDescriptor`]
 //! - **Extension system**: [`SessionExtension`], [`ExtensionMap`], [`TextInputSink`]
 //! - **Mode lifecycle**: [`SessionMode`], [`ModeError`]
 //! - **Empty session handling**: [`EmptySessionHandler`], [`EmptySessionContext`], [`EmptySessionAction`]
@@ -55,7 +55,7 @@ pub use {
 // Types
 pub use {
     surface::SurfaceDescriptor,
-    types::{ClientId, CursorSnapshot, KeySequence},
+    types::{ClientId, CursorSnapshot},
 };
 
 // Extension system

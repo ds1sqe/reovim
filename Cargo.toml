@@ -26,7 +26,6 @@ members = [
     "server/lib/subsys/command",
     "ext/server/drivers/command",
     "server/lib/subsys/input",
-    "server/lib/subsys/input-contracts",
     "ext/server/drivers/text-input",
     "ext/server/drivers/text-syntax",
     "ext/server/drivers/syntax-treesitter",
@@ -165,6 +164,9 @@ members = [
     # uapi — wire contracts (input codec relocated here pending Plan 15 redesign)
     "uapi/input-codec",
 
+    # TUI input codec (ext module, registers with InputCodecRegistry on load)
+    "ext/input-codec/tui",
+
     # Client-core shared libs (platform-agnostic model + client module ABI)
     "clients/lib/model",
     "clients/lib/driver",
@@ -257,6 +259,7 @@ reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
+reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }
 reovim-render-codec = { path = "./uapi/render-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
 
@@ -269,7 +272,6 @@ reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", vers
 reovim-subsys-command = { path = "./server/lib/subsys/command", version = "0.15.0-dev" }
 reovim-driver-command = { path = "./ext/server/drivers/command", version = "0.15.0-dev" }
 reovim-subsys-input = { path = "./server/lib/subsys/input", version = "0.15.0-dev" }
-reovim-subsys-input-contracts = { path = "./server/lib/subsys/input-contracts", version = "0.15.0-dev" }
 reovim-driver-text-input = { path = "./ext/server/drivers/text-input", version = "0.15.0-dev" }
 reovim-driver-text-syntax = { path = "./ext/server/drivers/text-syntax", version = "0.15.0-dev" }
 reovim-driver-syntax-treesitter = { path = "./ext/server/drivers/syntax-treesitter", version = "0.15.0-dev" }

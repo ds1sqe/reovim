@@ -1,4 +1,8 @@
-//! Canonical keyboard input vocabulary owned by `reovim-input-codec`.
+//! TUI keyboard input vocabulary.
+//!
+//! Owns the typed key/mouse vocabulary for terminal platforms.  This module
+//! was split out of `reovim-input-codec` (the closed UAPI mechanism) so that
+//! platform vocabulary does not pollute the generic envelope crate.
 
 use bitflags::bitflags;
 
@@ -10,7 +14,7 @@ bitflags! {
     /// # Example
     ///
     /// ```
-    /// use reovim_input_codec::Modifiers;
+    /// use reovim_codec_tui_input::Modifiers;
     ///
     /// let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
     /// assert!(ctrl_shift.contains(Modifiers::CTRL));
@@ -36,10 +40,10 @@ bitflags! {
     }
 }
 
-/// Platform-agnostic key codes.
+/// Platform-agnostic key codes for TUI terminals.
 ///
-/// Covers all printable ASCII, function keys F1-F24, navigation keys,
-/// editing keys, and special keys.
+/// Covers all printable ASCII/Unicode, function keys F1-F24, navigation keys,
+/// editing keys, media keys, per-side modifier keycodes, and ISO level shift keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     // =========================================================================
@@ -113,7 +117,7 @@ pub enum KeyCode {
     KeypadBegin,
 
     // =========================================================================
-    // Media keys (for future platforms)
+    // Media keys
     // =========================================================================
     /// Media play.
     MediaPlay,
@@ -201,7 +205,7 @@ pub struct KeyEvent {
 }
 
 impl KeyEvent {
-    /// Create a new key event with just a key code (press, no modifiers).
+    /// Create a key press event with no modifiers.
     #[must_use]
     pub const fn new(code: KeyCode) -> Self {
         Self {
@@ -211,7 +215,7 @@ impl KeyEvent {
         }
     }
 
-    /// Create a key event with modifiers (press).
+    /// Create a key event with modifiers.
     #[must_use]
     pub const fn with_modifiers(code: KeyCode, modifiers: Modifiers) -> Self {
         Self {
@@ -221,7 +225,7 @@ impl KeyEvent {
         }
     }
 
-    /// Create a key event with full specification.
+    /// Create a key event with explicit kind and modifiers.
     #[must_use]
     pub const fn full(code: KeyCode, modifiers: Modifiers, kind: KeyEventKind) -> Self {
         Self {
@@ -253,18 +257,6 @@ impl KeyEvent {
 /// Result of keymap lookup.
 ///
 /// Supports multi-key sequences like `gg`, `<C-w>h`.
-///
-/// # Example
-///
-/// ```
-/// use reovim_input_codec::KeymapResult;
-///
-/// let result: KeymapResult<&str> = KeymapResult::Match("delete_line");
-/// assert!(result.is_match());
-///
-/// let prefix: KeymapResult<&str> = KeymapResult::Prefix;
-/// assert!(prefix.is_prefix());
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeymapResult<T> {
     /// Full match: the key sequence maps to an action.
@@ -325,5 +317,169 @@ impl<T> KeymapResult<T> {
             Self::Prefix => panic!("called `KeymapResult::unwrap()` on a `Prefix` value"),
             Self::None => panic!("called `KeymapResult::unwrap()` on a `None` value"),
         }
+    }
+}
+
+/// Encode a `KeyCode` to a `u32` for wire format.
+///
+/// Encoding table (hex):
+/// ```text
+/// 0x0000        Null
+/// 0x0001        Backspace
+/// 0x0002        Enter
+/// 0x0003        Left
+/// 0x0004        Right
+/// 0x0005        Up
+/// 0x0006        Down
+/// 0x0007        Home
+/// 0x0008        End
+/// 0x0009        PageUp
+/// 0x000A        PageDown
+/// 0x000B        Tab
+/// 0x000C        BackTab
+/// 0x000D        Delete
+/// 0x000E        Insert
+/// 0x000F        Escape
+/// 0x0010        CapsLock
+/// 0x0011        ScrollLock
+/// 0x0012        NumLock
+/// 0x0013        PrintScreen
+/// 0x0014        Pause
+/// 0x0015        Menu
+/// 0x0016        KeypadBegin
+/// 0x0020-0x002C Media keys (play..mute)
+/// 0x0030-0x003D Modifier keys (LeftShift..IsoLevel5Shift)
+/// 0x0100_0000+  Char(c) — bit 24 is the flag; low 21 bits carry the Unicode codepoint
+///                         (covers U+0000 to U+10FFFF, the full Unicode range)
+/// 0x0200_0000+  F(n)    — bit 25 is the flag; low 8 bits carry function number (1-24)
+/// ```
+#[must_use]
+pub fn keycode_to_u32(code: &KeyCode) -> u32 {
+    match code {
+        KeyCode::Null => 0x0000,
+        KeyCode::Backspace => 0x0001,
+        KeyCode::Enter => 0x0002,
+        KeyCode::Left => 0x0003,
+        KeyCode::Right => 0x0004,
+        KeyCode::Up => 0x0005,
+        KeyCode::Down => 0x0006,
+        KeyCode::Home => 0x0007,
+        KeyCode::End => 0x0008,
+        KeyCode::PageUp => 0x0009,
+        KeyCode::PageDown => 0x000A,
+        KeyCode::Tab => 0x000B,
+        KeyCode::BackTab => 0x000C,
+        KeyCode::Delete => 0x000D,
+        KeyCode::Insert => 0x000E,
+        KeyCode::Escape => 0x000F,
+        KeyCode::CapsLock => 0x0010,
+        KeyCode::ScrollLock => 0x0011,
+        KeyCode::NumLock => 0x0012,
+        KeyCode::PrintScreen => 0x0013,
+        KeyCode::Pause => 0x0014,
+        KeyCode::Menu => 0x0015,
+        KeyCode::KeypadBegin => 0x0016,
+        KeyCode::MediaPlay => 0x0020,
+        KeyCode::MediaPause => 0x0021,
+        KeyCode::MediaPlayPause => 0x0022,
+        KeyCode::MediaStop => 0x0023,
+        KeyCode::MediaReverse => 0x0024,
+        KeyCode::MediaFastForward => 0x0025,
+        KeyCode::MediaRewind => 0x0026,
+        KeyCode::MediaNext => 0x0027,
+        KeyCode::MediaPrevious => 0x0028,
+        KeyCode::MediaRecord => 0x0029,
+        KeyCode::MediaLowerVolume => 0x002A,
+        KeyCode::MediaRaiseVolume => 0x002B,
+        KeyCode::MediaMuteVolume => 0x002C,
+        KeyCode::LeftShift => 0x0030,
+        KeyCode::RightShift => 0x0031,
+        KeyCode::LeftCtrl => 0x0032,
+        KeyCode::RightCtrl => 0x0033,
+        KeyCode::LeftAlt => 0x0034,
+        KeyCode::RightAlt => 0x0035,
+        KeyCode::LeftSuper => 0x0036,
+        KeyCode::RightSuper => 0x0037,
+        KeyCode::LeftHyper => 0x0038,
+        KeyCode::RightHyper => 0x0039,
+        KeyCode::LeftMeta => 0x003A,
+        KeyCode::RightMeta => 0x003B,
+        KeyCode::IsoLevel3Shift => 0x003C,
+        KeyCode::IsoLevel5Shift => 0x003D,
+        // Char: bit 24 (0x0100_0000) as flag, low 21 bits carry the Unicode codepoint.
+        // This covers all of Unicode (U+0000 to U+10FFFF, which fits in 21 bits).
+        KeyCode::Char(c) => 0x0100_0000 | u32::from(*c),
+        // F key: bit 25 (0x0200_0000) as flag, low 8 bits carry function number.
+        KeyCode::F(n) => 0x0200_0000 | u32::from(*n),
+    }
+}
+
+/// Decode a `u32` back to a `KeyCode`.
+///
+/// Returns `KeyCode::Null` for unknown values.
+#[must_use]
+pub fn u32_to_keycode(value: u32) -> KeyCode {
+    match value {
+        0x0000 => KeyCode::Null,
+        0x0001 => KeyCode::Backspace,
+        0x0002 => KeyCode::Enter,
+        0x0003 => KeyCode::Left,
+        0x0004 => KeyCode::Right,
+        0x0005 => KeyCode::Up,
+        0x0006 => KeyCode::Down,
+        0x0007 => KeyCode::Home,
+        0x0008 => KeyCode::End,
+        0x0009 => KeyCode::PageUp,
+        0x000A => KeyCode::PageDown,
+        0x000B => KeyCode::Tab,
+        0x000C => KeyCode::BackTab,
+        0x000D => KeyCode::Delete,
+        0x000E => KeyCode::Insert,
+        0x000F => KeyCode::Escape,
+        0x0010 => KeyCode::CapsLock,
+        0x0011 => KeyCode::ScrollLock,
+        0x0012 => KeyCode::NumLock,
+        0x0013 => KeyCode::PrintScreen,
+        0x0014 => KeyCode::Pause,
+        0x0015 => KeyCode::Menu,
+        0x0016 => KeyCode::KeypadBegin,
+        0x0020 => KeyCode::MediaPlay,
+        0x0021 => KeyCode::MediaPause,
+        0x0022 => KeyCode::MediaPlayPause,
+        0x0023 => KeyCode::MediaStop,
+        0x0024 => KeyCode::MediaReverse,
+        0x0025 => KeyCode::MediaFastForward,
+        0x0026 => KeyCode::MediaRewind,
+        0x0027 => KeyCode::MediaNext,
+        0x0028 => KeyCode::MediaPrevious,
+        0x0029 => KeyCode::MediaRecord,
+        0x002A => KeyCode::MediaLowerVolume,
+        0x002B => KeyCode::MediaRaiseVolume,
+        0x002C => KeyCode::MediaMuteVolume,
+        0x0030 => KeyCode::LeftShift,
+        0x0031 => KeyCode::RightShift,
+        0x0032 => KeyCode::LeftCtrl,
+        0x0033 => KeyCode::RightCtrl,
+        0x0034 => KeyCode::LeftAlt,
+        0x0035 => KeyCode::RightAlt,
+        0x0036 => KeyCode::LeftSuper,
+        0x0037 => KeyCode::RightSuper,
+        0x0038 => KeyCode::LeftHyper,
+        0x0039 => KeyCode::RightHyper,
+        0x003A => KeyCode::LeftMeta,
+        0x003B => KeyCode::RightMeta,
+        0x003C => KeyCode::IsoLevel3Shift,
+        0x003D => KeyCode::IsoLevel5Shift,
+        v if v & 0x0200_0000 != 0 => {
+            #[allow(clippy::cast_possible_truncation)]
+            KeyCode::F((v & 0xFF) as u8)
+        }
+        // Char: bit 24 set, low 21 bits are the Unicode codepoint.
+        v if v & 0x0100_0000 != 0 => {
+            let codepoint = v & 0x001F_FFFF; // low 21 bits
+            let c = char::from_u32(codepoint).unwrap_or('\0');
+            KeyCode::Char(c)
+        }
+        _ => KeyCode::Null,
     }
 }

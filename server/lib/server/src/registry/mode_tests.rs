@@ -228,17 +228,16 @@ fn test_mode_registry_unregister_for_module() {
 }
 
 #[test]
-fn test_mode_entry_from_info() {
-    let info = reovim_subsys_input_contracts::ModeInfo {
-        id: TestMode::Command.id(),
-        display_name: "TEST",
-        cursor_style: CursorStyle::Underline,
-        accepts_char_input: true,
-        has_selection: false,
-        inherits_from: None,
-        is_entry: false,
-    };
-    let entry = ModeEntry::from_info(info);
+fn test_mode_entry_from_fields() {
+    let entry = ModeEntry::from_fields(
+        TestMode::Command.id(),
+        "TEST",
+        CursorStyle::Underline,
+        true,  // accepts_char_input
+        false, // has_selection
+        None,  // inherits_from
+        false, // is_entry
+    );
     assert_eq!(entry.display_name, "TEST");
     assert_eq!(entry.cursor_style, CursorStyle::Underline);
     assert!(entry.accepts_char_input);

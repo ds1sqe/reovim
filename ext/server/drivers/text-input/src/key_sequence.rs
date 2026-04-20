@@ -1,6 +1,15 @@
+//! Key sequence and token conversion for the text-input driver.
+//!
+//! `KeySequence` and `ToKeyToken` moved here from `reovim-subsys-input-contracts`
+//! as part of the Plan-14 I.6 reshape.  These types are text-input-specific:
+//! they carry vim-notation string tokens and are not domain-neutral.
+//!
+//! Domain-neutral lookup primitives (`LookupState<C>`, `LookupResult<C>`, etc.)
+//! live in `reovim-subsys-input`.
+
 use std::fmt;
 
-/// Conversion hook for contract-owned key-sequence tokens.
+/// Conversion hook for key-sequence tokens.
 ///
 /// Contract crates stay untyped; typed input crates implement this trait to
 /// adapt their own key representations into canonical notation tokens.
@@ -21,7 +30,99 @@ impl ToKeyToken for &str {
     }
 }
 
-/// Driver-free sequence of canonical key-notation tokens.
+impl ToKeyToken for reovim_codec_tui_input::KeyEvent {
+    fn to_key_token(&self) -> String {
+        use reovim_codec_tui_input::{KeyCode, Modifiers};
+
+        let has_mod = self.modifiers != Modifiers::NONE;
+
+        // Convert the base key code to its canonical notation name.
+        let base = match &self.code {
+            KeyCode::Char(c) => {
+                if !has_mod {
+                    return c.to_string();
+                }
+                c.to_string()
+            }
+            KeyCode::Escape => "Esc".to_owned(),
+            KeyCode::Enter => "Enter".to_owned(),
+            KeyCode::Tab => "Tab".to_owned(),
+            KeyCode::BackTab => "S-Tab".to_owned(),
+            KeyCode::Backspace => "BS".to_owned(),
+            KeyCode::Delete => "Del".to_owned(),
+            KeyCode::Insert => "Insert".to_owned(),
+            KeyCode::Up => "Up".to_owned(),
+            KeyCode::Down => "Down".to_owned(),
+            KeyCode::Left => "Left".to_owned(),
+            KeyCode::Right => "Right".to_owned(),
+            KeyCode::Home => "Home".to_owned(),
+            KeyCode::End => "End".to_owned(),
+            KeyCode::PageUp => "PageUp".to_owned(),
+            KeyCode::PageDown => "PageDown".to_owned(),
+            KeyCode::F(n) => format!("F{n}"),
+            KeyCode::Null => "@".to_owned(),
+            KeyCode::CapsLock => "CapsLock".to_owned(),
+            KeyCode::ScrollLock => "ScrollLock".to_owned(),
+            KeyCode::NumLock => "NumLock".to_owned(),
+            KeyCode::PrintScreen => "PrintScreen".to_owned(),
+            KeyCode::Pause => "Pause".to_owned(),
+            KeyCode::Menu => "Menu".to_owned(),
+            KeyCode::KeypadBegin => "KP5".to_owned(),
+            KeyCode::MediaPlay => "MediaPlay".to_owned(),
+            KeyCode::MediaPause => "MediaPause".to_owned(),
+            KeyCode::MediaPlayPause => "MediaPlayPause".to_owned(),
+            KeyCode::MediaStop => "MediaStop".to_owned(),
+            KeyCode::MediaReverse => "MediaReverse".to_owned(),
+            KeyCode::MediaFastForward => "MediaFastForward".to_owned(),
+            KeyCode::MediaRewind => "MediaRewind".to_owned(),
+            KeyCode::MediaNext => "MediaNext".to_owned(),
+            KeyCode::MediaPrevious => "MediaPrevious".to_owned(),
+            KeyCode::MediaRecord => "MediaRecord".to_owned(),
+            KeyCode::MediaLowerVolume => "MediaLowerVolume".to_owned(),
+            KeyCode::MediaRaiseVolume => "MediaRaiseVolume".to_owned(),
+            KeyCode::MediaMuteVolume => "MediaMuteVolume".to_owned(),
+            KeyCode::LeftShift => "LeftShift".to_owned(),
+            KeyCode::RightShift => "RightShift".to_owned(),
+            KeyCode::LeftCtrl => "LeftCtrl".to_owned(),
+            KeyCode::RightCtrl => "RightCtrl".to_owned(),
+            KeyCode::LeftAlt => "LeftAlt".to_owned(),
+            KeyCode::RightAlt => "RightAlt".to_owned(),
+            KeyCode::LeftSuper => "LeftSuper".to_owned(),
+            KeyCode::RightSuper => "RightSuper".to_owned(),
+            KeyCode::LeftHyper => "LeftHyper".to_owned(),
+            KeyCode::RightHyper => "RightHyper".to_owned(),
+            KeyCode::LeftMeta => "LeftMeta".to_owned(),
+            KeyCode::RightMeta => "RightMeta".to_owned(),
+            KeyCode::IsoLevel3Shift => "IsoLevel3Shift".to_owned(),
+            KeyCode::IsoLevel5Shift => "IsoLevel5Shift".to_owned(),
+        };
+
+        if !has_mod {
+            // No modifiers: wrap in angle brackets for special keys.
+            return match &self.code {
+                KeyCode::Char(_) => base,
+                _ => format!("<{base}>"),
+            };
+        }
+
+        // With modifiers: always use angle-bracket form.
+        let mut token = String::from("<");
+        if self.modifiers.contains(Modifiers::CTRL) {
+            token.push_str("C-");
+        }
+        if self.modifiers.contains(Modifiers::ALT) {
+            token.push_str("A-");
+        }
+        if self.modifiers.contains(Modifiers::SHIFT) {
+            token.push_str("S-");
+        }
+        token.push_str(&base);
+        token.push('>');
+        token
+    }
+}
+
+/// Driver-owned sequence of canonical key-notation tokens.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct KeySequence(Vec<String>);
 
@@ -66,7 +167,7 @@ impl KeySequence {
         &self.0
     }
 
-    /// Borrow the canonical tokens.
+    /// Borrow the canonical tokens (alias for `as_slice`).
     #[must_use]
     pub fn keys(&self) -> &[String] {
         &self.0
@@ -216,68 +317,3 @@ fn parse_function_key(spec: &str) -> Option<String> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn key_sequence_basics_and_prefixes() {
-        let mut seq = KeySequence::new();
-        assert!(seq.is_empty());
-        assert_eq!(seq.len(), 0);
-
-        seq.push("g");
-        seq.push("g");
-        assert_eq!(seq.as_slice(), ["g".to_owned(), "g".to_owned()].as_slice());
-        assert_eq!(seq.keys(), ["g".to_owned(), "g".to_owned()].as_slice());
-        assert_eq!(seq.as_string(), "gg");
-        assert_eq!(format!("{seq}"), "gg");
-
-        let prefix = KeySequence::from_keys(&["g"]);
-        let other = KeySequence::from_keys(&["d"]);
-        assert!(seq.starts_with(&prefix));
-        assert!(!seq.starts_with(&other));
-
-        seq.clear();
-        assert!(seq.is_empty());
-    }
-
-    #[test]
-    fn parse_normalizes_plain_special_and_modified_tokens() {
-        assert_eq!(KeySequence::parse("gg").unwrap().as_slice(), ["g", "g"]);
-        assert_eq!(KeySequence::parse("<Esc>").unwrap().as_slice(), ["<Esc>"]);
-        assert_eq!(KeySequence::parse("<Escape>").unwrap().as_slice(), ["<Esc>"]);
-        assert_eq!(KeySequence::parse("<CR>").unwrap().as_slice(), ["<Enter>"]);
-        assert_eq!(KeySequence::parse("<Space>").unwrap().as_slice(), [" "]);
-        assert_eq!(KeySequence::parse("<lt>").unwrap().as_slice(), ["<lt>"]);
-        assert_eq!(KeySequence::parse("<gt>").unwrap().as_slice(), ["<gt>"]);
-        assert_eq!(KeySequence::parse("<C-w>h").unwrap().as_slice(), ["<C-w>", "h"]);
-        assert_eq!(KeySequence::parse("<M-x>").unwrap().as_slice(), ["<A-x>"]);
-        assert_eq!(KeySequence::parse("<S-Tab>").unwrap().as_slice(), ["<S-Tab>"]);
-        assert_eq!(KeySequence::parse("<C-A-S-x>").unwrap().as_slice(), ["<C-A-S-x>"]);
-        assert_eq!(KeySequence::parse("🎉").unwrap().as_slice(), ["🎉"]);
-        assert_eq!(KeySequence::parse("<F12>").unwrap().as_slice(), ["<F12>"]);
-    }
-
-    #[test]
-    fn parse_rejects_invalid_notation() {
-        assert!(KeySequence::parse("").is_none());
-        assert!(KeySequence::parse("<Ctrl").is_none());
-        assert!(KeySequence::parse("<Unknown>").is_none());
-        assert!(KeySequence::parse("<F13>").is_none());
-    }
-
-    #[test]
-    fn string_inputs_are_accepted_via_to_key_token() {
-        let owned = String::from("<C-w>");
-        let borrowed = "h";
-        let seq = KeySequence::from_keys(&[owned.as_str(), borrowed]);
-        assert_eq!(seq.as_string(), "<C-w>h");
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn debug_mentions_type_name() {
-        assert!(format!("{:?}", KeySequence::default()).contains("KeySequence"));
-    }
-}

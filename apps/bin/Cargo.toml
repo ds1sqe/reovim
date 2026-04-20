@@ -87,7 +87,6 @@ reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
 reovim-driver-text-buffer = { workspace = true }
 reovim-subsys-layout = { workspace = true }
-reovim-subsys-input-contracts = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-driver-text-input = { workspace = true }
 reovim-driver-command = { workspace = true }

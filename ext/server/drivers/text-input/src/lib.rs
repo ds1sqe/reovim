@@ -6,12 +6,17 @@
 //! re-exports the shared contracts, typed key/mouse vocabulary, and
 //! envelope/header surface consumed by text-input policy modules.
 
+mod binding_info;
 mod dispatch_provider;
 mod fallback;
+mod input_sequence_bridge;
 mod keybinding_store;
+mod key_sequence;
 mod lifecycle;
+mod lookup_contracts;
 mod lookup_policy_store;
 mod mode;
+mod mode_info_local;
 mod mode_key;
 mod mode_registry;
 mod mode_store;
@@ -20,6 +25,7 @@ mod pending;
 mod provider;
 mod resolver;
 mod resolver_registry;
+mod transition_local;
 
 // Re-export fallback types
 pub use fallback::{
@@ -54,14 +60,26 @@ pub use {
     provider::{DefaultModeProvider, ProviderPriority},
 };
 
-// Re-export shared contracts.
-pub use reovim_subsys_input_contracts::{
-    BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState,
-    KeySequence, KeymapQuery, ModeInfo, ModeTransition, PopResult, ToKeyToken, TransitionContext,
+// Re-export text-input key sequence contract (moved from subsys-input-contracts).
+pub use key_sequence::{KeySequence, ToKeyToken};
+
+// Re-export binding info and layer (moved from subsys-input-contracts).
+pub use lookup_contracts::{
+    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
+};
+pub use binding_info::BindingInfo;
+
+// Re-export mode info and transition types (moved from subsys-input-contracts).
+pub use mode_info_local::ModeInfo;
+pub use transition_local::{ModeTransition, PopResult, TransitionContext};
+
+// Re-export input sequence bridge helper.
+pub use input_sequence_bridge::{
+    InputSequenceBridgeError, key_sequence_to_input_sequence,
 };
 
-// Re-export typed key/mouse types.
-pub use reovim_input_codec::{
+// Re-export typed key/mouse types (moved from reovim-input-codec to ext/input-codec/tui).
+pub use reovim_codec_tui_input::{
     KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers, MouseButton, MouseEvent,
     MouseEventKind,
 };
@@ -76,13 +94,25 @@ pub use reovim_subsys_input::{
 };
 
 #[cfg(test)]
+mod binding_info_tests;
+#[cfg(test)]
+mod dispatch_provider_tests;
+#[cfg(test)]
 mod fallback_tests;
+#[cfg(test)]
+mod input_sequence_bridge_tests;
 #[cfg(test)]
 mod keybinding_store_tests;
 #[cfg(test)]
+mod key_sequence_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod lookup_contracts_tests;
+#[cfg(test)]
 mod lookup_policy_store_tests;
+#[cfg(test)]
+mod mode_info_local_tests;
 #[cfg(test)]
 mod mode_key_tests;
 #[cfg(test)]
@@ -101,3 +131,5 @@ mod provider_tests;
 mod resolver_registry_tests;
 #[cfg(test)]
 mod resolver_tests;
+#[cfg(test)]
+mod transition_local_tests;

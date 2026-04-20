@@ -8,15 +8,10 @@
 //!
 //! - [`ModeRegistry`]: Stores mode metadata and behavior traits
 //! - [`CommandRegistry`]: Stores command handlers by ID
-//! - [`KeymapRegistry`]: Maps (mode, key sequence) to command IDs
-//!
-//! # Note
-//!
-//! These registries are ported from the runner's registry module for
-//! the gRPC v2 server migration (Phase 9).
+//! - [`KeymapRegistry`]: Maps (mode, input sequence) to command IDs
 
 mod command;
-mod keymap;
+pub(crate) mod keymap;
 mod mode;
 
 pub use {
@@ -25,5 +20,5 @@ pub use {
     mode::{ModeEntry, ModeRegistry},
 };
 
-// Re-export KeyLookupResult from the shared input contracts.
-pub use reovim_subsys_input_contracts::KeyLookupResult;
+// Re-export generic lookup primitives from subsys-input.
+pub use reovim_subsys_input::{BindingInfo, BindingLayer, KeymapQuery, LookupResult, LookupState};

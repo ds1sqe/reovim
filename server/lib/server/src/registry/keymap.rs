@@ -1,8 +1,8 @@
-//! Keymap registry for mapping key sequences to commands.
+//! Keymap registry for mapping input sequences to commands.
 //!
-//! Supports multi-key sequences like `gg`, `<C-w>h`, etc. The registry
+//! Supports multi-event sequences like `gg`, `<C-w>h`, etc. The registry
 //! can distinguish between:
-//! - **Full match**: The key sequence maps to a command
+//! - **Full match**: The input sequence maps to a command
 //! - **Prefix match**: The sequence is a prefix of one or more bindings
 //! - **No match**: The sequence doesn't match anything
 //!
@@ -13,7 +13,7 @@
 //! - **Policy**: Policy module defaults (Vim, Emacs, etc.)
 //! - **Base** (lowest): Mechanism defaults (rarely used)
 //!
-//! Higher layers override lower layers for the same key sequence.
+//! Higher layers override lower layers for the same input sequence.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -22,9 +22,9 @@ use {
         api::v1::{CommandId, ModeId, ModuleId},
         profile_scope,
     },
-    reovim_subsys_input_contracts::{
-        BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult,
-        KeyLookupState, KeySequence, KeymapQuery,
+    reovim_subsys_input::{
+        BindingInfo, BindingLayer, EagerLookupPolicy, InputSequence, LookupPolicy, LookupResult,
+        LookupState,
     },
 };
 
@@ -47,7 +47,7 @@ struct KeybindingEntry {
 
 /// Registry for keybindings with layered composition.
 ///
-/// Maps (mode, key sequence) pairs to command IDs. Supports multi-key
+/// Maps (mode, input sequence) pairs to command IDs. Supports multi-event
 /// sequences with prefix detection for proper handling of sequences
 /// like `gg` or `<C-w>h`.
 ///
@@ -56,10 +56,10 @@ struct KeybindingEntry {
 /// the Vim-specific policy from the vim module.
 #[derive(Clone)]
 pub struct KeymapRegistry {
-    /// Bindings organized by mode, then by key sequence, then by layer.
-    entries: HashMap<ModeId, HashMap<KeySequence, Vec<KeybindingEntry>>>,
+    /// Bindings organized by mode, then by input sequence, then by layer.
+    entries: HashMap<ModeId, HashMap<InputSequence, Vec<KeybindingEntry>>>,
     /// Default policy for `lookup()`. Configurable via `set_default_policy()`.
-    default_policy: Arc<dyn KeyLookupPolicy>,
+    default_policy: Arc<dyn LookupPolicy<CommandId>>,
 }
 
 impl Default for KeymapRegistry {
@@ -84,12 +84,12 @@ impl KeymapRegistry {
 
     /// Register a keybinding at a specific layer.
     ///
-    /// Higher layers override lower layers for the same key sequence.
+    /// Higher layers override lower layers for the same input sequence.
     pub fn register_at_layer(
         &mut self,
         layer: BindingLayer,
         mode: &ModeId,
-        keys: KeySequence,
+        keys: InputSequence,
         command: CommandId,
         description: &'static str,
         category: Option<&'static str>,
@@ -118,7 +118,7 @@ impl KeymapRegistry {
     pub fn register_at_layer_for_module(
         &mut self,
         mode: &ModeId,
-        keys: KeySequence,
+        keys: InputSequence,
         info: BindingInfo,
         owner: ModuleId,
     ) {
@@ -139,9 +139,9 @@ impl KeymapRegistry {
         key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
     }
 
-    /// Get the effective binding for a key sequence (highest layer wins).
+    /// Get the effective binding for an input sequence (highest layer wins).
     #[must_use]
-    pub fn get_binding(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
+    pub fn get_binding(&self, mode: &ModeId, keys: &InputSequence) -> Option<CommandId> {
         self.entries
             .get(mode)
             .and_then(|m| m.get(keys))
@@ -152,23 +152,23 @@ impl KeymapRegistry {
 
     /// Pure query - reports facts about what exists.
     #[must_use]
-    pub fn query(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
+    pub fn query(&self, mode: &ModeId, keys: &InputSequence) -> LookupState<CommandId> {
         profile_scope!("keymap_query", "server::keymap");
 
         let exact = self.get_binding(mode, keys);
         let has_longer = self.has_longer_bindings(mode, keys);
 
         match (exact, has_longer) {
-            (Some(cmd), true) => KeyLookupState::ExactWithLonger { exact: cmd },
-            (Some(cmd), false) => KeyLookupState::ExactOnly(cmd),
-            (None, true) => KeyLookupState::PrefixOnly,
-            (None, false) => KeyLookupState::NotFound,
+            (Some(cmd), true) => LookupState::ExactWithLonger { exact: cmd },
+            (Some(cmd), false) => LookupState::ExactOnly(cmd),
+            (None, true) => LookupState::PrefixOnly,
+            (None, false) => LookupState::NotFound,
         }
     }
 
-    /// Check if longer bindings exist for a key sequence.
+    /// Check if longer bindings exist for an input sequence.
     #[must_use]
-    pub fn has_longer_bindings(&self, mode: &ModeId, keys: &KeySequence) -> bool {
+    pub fn has_longer_bindings(&self, mode: &ModeId, keys: &InputSequence) -> bool {
         self.entries.get(mode).is_some_and(|mode_entries| {
             mode_entries
                 .iter()
@@ -189,7 +189,7 @@ impl KeymapRegistry {
     }
 
     /// Mark a binding as removed at a specific layer.
-    pub fn remove_at_layer(&mut self, layer: BindingLayer, mode: &ModeId, keys: KeySequence) {
+    pub fn remove_at_layer(&mut self, layer: BindingLayer, mode: &ModeId, keys: InputSequence) {
         let mode_entries = self.entries.entry(mode.clone()).or_default();
         let key_entries = mode_entries.entry(keys).or_default();
 
@@ -223,40 +223,29 @@ impl KeymapRegistry {
         removed
     }
 
-    /// Register a keybinding from a string at the Policy layer.
-    ///
-    /// Uses empty description and no category. For rich metadata, use
-    /// [`register_at_layer()`] directly.
-    pub fn register_str(&mut self, mode: &ModeId, keys: &str, command: CommandId) -> bool {
-        KeySequence::parse(keys).is_some_and(|seq| {
-            self.register_at_layer(BindingLayer::Policy, mode, seq, command, "", None);
-            true
-        })
-    }
-
     /// Set the default lookup policy for `lookup()`.
     ///
     /// By default, the registry uses [`EagerLookupPolicy`]. Call this to
     /// install a different policy (e.g., `VimLookupPolicy` from the vim module).
-    pub fn set_default_policy(&mut self, policy: Arc<dyn KeyLookupPolicy>) {
+    pub fn set_default_policy(&mut self, policy: Arc<dyn LookupPolicy<CommandId>>) {
         self.default_policy = policy;
     }
 
-    /// Look up a key sequence in a mode using the default policy.
+    /// Look up an input sequence in a mode using the default policy.
     #[must_use]
-    pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
+    pub fn lookup(&self, mode: &ModeId, keys: &InputSequence) -> LookupResult<CommandId> {
         profile_scope!("keymap_lookup", "server::keymap");
         self.lookup_with_policy(mode, keys, &*self.default_policy)
     }
 
-    /// Look up a key sequence in a mode with a specific policy.
+    /// Look up an input sequence in a mode with a specific policy.
     #[must_use]
     pub fn lookup_with_policy(
         &self,
         mode: &ModeId,
-        keys: &KeySequence,
-        policy: &dyn KeyLookupPolicy,
-    ) -> KeyLookupResult {
+        keys: &InputSequence,
+        policy: &dyn LookupPolicy<CommandId>,
+    ) -> LookupResult<CommandId> {
         profile_scope!("keymap_lookup_with_policy", "server::keymap");
         policy.resolve(self.query(mode, keys))
     }
@@ -267,7 +256,7 @@ impl KeymapRegistry {
 
     /// Get all bindings for a mode (effective bindings only).
     #[must_use]
-    pub fn bindings_for_mode(&self, mode: &ModeId) -> Vec<(&KeySequence, &CommandId)> {
+    pub fn bindings_for_mode(&self, mode: &ModeId) -> Vec<(&InputSequence, &CommandId)> {
         self.entries
             .get(mode)
             .map(|m| {
@@ -286,8 +275,8 @@ impl KeymapRegistry {
     pub fn bindings_with_prefix(
         &self,
         mode: &ModeId,
-        prefix: &KeySequence,
-    ) -> Vec<(KeySequence, BindingInfo)> {
+        prefix: &InputSequence,
+    ) -> Vec<(InputSequence, BindingInfo)> {
         self.entries
             .get(mode)
             .map(|mode_entries| {
@@ -316,7 +305,7 @@ impl KeymapRegistry {
             .unwrap_or_default()
     }
 
-    /// Get the number of unique key sequences with bindings for a mode.
+    /// Get the number of unique input sequences with bindings for a mode.
     #[must_use]
     pub fn binding_count(&self, mode: &ModeId) -> usize {
         self.entries
@@ -324,7 +313,7 @@ impl KeymapRegistry {
             .map_or(0, |m| m.values().filter(|entries| !entries.is_empty()).count())
     }
 
-    /// Get total number of unique key sequences with bindings across all modes.
+    /// Get total number of unique input sequences with bindings across all modes.
     #[must_use]
     pub fn total_bindings(&self) -> usize {
         self.entries
@@ -353,34 +342,71 @@ impl std::fmt::Debug for KeymapRegistry {
         f.debug_struct("KeymapRegistry")
             .field("modes", &self.entries.keys().collect::<Vec<_>>())
             .field("total_bindings", &self.total_bindings())
-            .field("default_policy", &"<dyn KeyLookupPolicy>")
+            .field("default_policy", &"<dyn LookupPolicy<CommandId>>")
             .finish()
     }
 }
 
-// ============================================================================
-// KeymapQuery Implementation (Epic #353)
-// ============================================================================
-
-impl KeymapQuery for KeymapRegistry {
-    fn query(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
-        Self::query(self, mode, keys)
-    }
-
-    fn has_longer_bindings(&self, mode: &ModeId, keys: &KeySequence) -> bool {
-        Self::has_longer_bindings(self, mode, keys)
-    }
-
-    fn get_exact(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
-        self.get_binding(mode, keys)
-    }
-
-    fn bindings_with_prefix(
-        &self,
+/// Test helpers.
+///
+/// These methods are available only in `#[cfg(test)]` contexts and must not
+/// appear in production paths.  They bridge vim notation (used by the legacy
+/// test suite) to `InputSequence` via the TUI key codec.
+#[cfg(test)]
+impl KeymapRegistry {
+    /// Register a keybinding from a simple vim-notation string.
+    ///
+    /// Returns `true` on success, `false` if the notation could not be parsed
+    /// Each ASCII character in `notation` becomes one synthetic payload in
+    /// the resulting `InputSequence`.  Payloads are opaque byte strings —
+    /// the server does not interpret them, it only compares and dispatches.
+    ///
+    /// This helper intentionally supports only the simple single-character and
+    /// multi-character ASCII sequences used by the server keymap test suite
+    /// (e.g., `"j"`, `"gg"`).  The byte format is a 9-byte payload: the
+    /// 8-byte opaque header (all zeros — test-only) followed by the ASCII
+    /// body byte.  Real codecs live outside the server crate.
+    pub fn register_str(
+        &mut self,
         mode: &ModeId,
-        prefix: &KeySequence,
-    ) -> Vec<(KeySequence, BindingInfo)> {
-        Self::bindings_with_prefix(self, mode, prefix)
+        notation: &str,
+        command: CommandId,
+    ) -> bool {
+        let Some(seq) = test_helpers::seq_from_notation(notation) else {
+            return false;
+        };
+        self.register_at_layer(BindingLayer::Policy, mode, seq, command, "", None);
+        true
+    }
+}
+
+/// Shared test helpers for `KeymapRegistry` tests.
+///
+/// The server crate is platform-agnostic and must not depend on any codec
+/// implementation.  These helpers synthesize stable opaque byte payloads
+/// directly; `InputSequence` stores `Vec<Vec<u8>>` and compares byte-wise,
+/// so any deterministic encoding suffices for dispatch tests.
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use reovim_subsys_input::{INPUT_HEADER_SIZE, InputSequence};
+
+    /// Build an `InputSequence` from a simple ASCII notation string.
+    ///
+    /// Each ASCII character becomes one synthetic payload: an 8-byte zero
+    /// header (kind=0, flags=0, context=0) followed by the ASCII body byte.
+    /// Returns `None` for empty strings.  ASCII-only.
+    pub fn seq_from_notation(notation: &str) -> Option<InputSequence> {
+        if notation.is_empty() {
+            return None;
+        }
+        let mut seq = InputSequence::new();
+        for c in notation.chars() {
+            assert!(c.is_ascii(), "test notation must be ASCII");
+            let mut payload = vec![0u8; INPUT_HEADER_SIZE];
+            payload.push(c as u8);
+            seq.push(payload);
+        }
+        Some(seq)
     }
 }
 

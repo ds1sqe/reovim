@@ -16,14 +16,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_kernel::api::v1::{KernelContext, ModeId},
-    reovim_subsys_input_contracts::KeySequence,
+    reovim_subsys_input::InputSequence,
     reovim_subsys_layout::RootCompositor,
     reovim_subsys_vfs::VfsDriver,
 };
 
 use crate::{
     app::AppState,
-    registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
+    registry::{CommandRegistry, KeymapRegistry, LookupResult, ModeRegistry},
 };
 
 /// Session state combining application state with registries.
@@ -158,9 +158,13 @@ impl SessionState {
         &self.home_mode
     }
 
-    /// Look up a key sequence in the current mode's keymap.
+    /// Look up an input sequence in the current mode's keymap.
     #[must_use]
-    pub fn lookup_keys(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
+    pub fn lookup_keys(
+        &self,
+        mode: &ModeId,
+        keys: &InputSequence,
+    ) -> LookupResult<reovim_kernel::api::v1::CommandId> {
         self.keymap_registry.lookup(mode, keys)
     }
 

@@ -7,8 +7,6 @@
 
 use crate::SessionExtension;
 
-pub use reovim_subsys_input_contracts::KeySequence;
-
 /// Unique client connection identifier.
 ///
 /// Each terminal/TUI that connects to the server gets a unique `ClientId`.

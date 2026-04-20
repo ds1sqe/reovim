@@ -46,7 +46,7 @@ use {
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
-    reovim_subsys_input_contracts::{BindingLayer, EagerLookupPolicy, KeySequence, KeymapQuery},
+    reovim_driver_text_input::{BindingLayer, EagerLookupPolicy, KeySequence, KeymapQuery},
     reovim_subsys_module_config::{BuiltinManifest, ModulesConfig},
     reovim_subsys_module_loader::{
         handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,

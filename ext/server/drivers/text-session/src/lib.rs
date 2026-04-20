@@ -134,8 +134,9 @@ pub use types::{
 
 // SessionContext removed in #491 - use SessionRuntime instead
 
-// Transition types
-pub use transition::{PopResult, TransitionContext};
+// Transition types (ModeTransition, PopResult, TransitionContext defined locally;
+// reovim-driver-text-input re-exports from here).
+pub use transition::{ModeTransition, PopResult, TransitionContext};
 
 // Session runtime (implements all API traits)
 pub use runtime::SessionRuntime;

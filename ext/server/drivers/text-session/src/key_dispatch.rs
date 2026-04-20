@@ -24,7 +24,7 @@
 //! The server never sees `ResolveResult`, `ModeTransition`, or resolver
 //! internals — those are encapsulated inside the implementation.
 
-use {reovim_input_codec::KeyEvent, reovim_subsys_session::ExtensionMap};
+use {reovim_codec_tui_input::KeyEvent, reovim_subsys_session::ExtensionMap};
 
 use crate::{
     SessionRuntime,

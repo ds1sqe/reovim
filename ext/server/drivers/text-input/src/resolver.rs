@@ -46,10 +46,10 @@
 use std::{any::TypeId, collections::HashMap};
 
 use {
+    crate::{ModeTransition, TransitionContext},
     reovim_domain_text::Position,
     reovim_driver_text_session::{ExtensionMap, SessionExtension, TextInputSink},
     reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack},
-    reovim_subsys_input_contracts::{ModeTransition, TransitionContext},
 };
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};

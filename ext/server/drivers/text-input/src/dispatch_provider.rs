@@ -12,7 +12,7 @@ use {
         ExtensionMap, PopResult, SessionRuntime, TextKeyDispatchProvider,
         api::{ChangeTracker, CommandExecutor, ModeApi, StateChanges},
     },
-    reovim_input_codec::KeyEvent,
+    reovim_codec_tui_input::KeyEvent,
     reovim_kernel::api::v1::ModeId,
     reovim_subsys_command_types::{ArgValue, CommandContext, RuntimeSignal},
 };

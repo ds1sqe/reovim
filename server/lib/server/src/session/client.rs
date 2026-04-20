@@ -42,8 +42,10 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
-    reovim_kernel::api::v1::ModeStack, reovim_subsys_input_contracts::KeySequence,
-    reovim_subsys_layout::RootCompositor, reovim_subsys_session::ExtensionMap,
+    reovim_kernel::api::v1::ModeStack,
+    reovim_subsys_input::InputSequence,
+    reovim_subsys_layout::RootCompositor,
+    reovim_subsys_session::ExtensionMap,
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};
@@ -495,8 +497,8 @@ pub struct EditingState {
     /// Mode stack (current mode on top).
     pub mode_stack: ModeStack,
 
-    /// Keys accumulated but not yet processed.
-    pub pending_keys: KeySequence,
+    /// Input events accumulated but not yet processed.
+    pub pending_input: InputSequence,
 
     /// Per-client module extensions (#477).
     ///
@@ -522,7 +524,7 @@ impl std::fmt::Debug for EditingState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EditingState")
             .field("mode_stack", &self.mode_stack)
-            .field("pending_keys", &self.pending_keys)
+            .field("pending_input", &self.pending_input)
             .field("extensions", &self.extensions)
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
             .field("terminal_size", &self.terminal_size)
@@ -539,7 +541,7 @@ impl Clone for EditingState {
     fn clone(&self) -> Self {
         Self {
             mode_stack: self.mode_stack.clone(),
-            pending_keys: self.pending_keys.clone(),
+            pending_input: self.pending_input.clone(),
             extensions: ExtensionMap::new(), // Fresh extensions for cloned state
             compositor: self.compositor.as_ref().map(|c| c.boxed_clone()), // #474
             terminal_size: self.terminal_size,
@@ -556,7 +558,7 @@ impl Default for EditingState {
         );
         Self {
             mode_stack: ModeStack::new(placeholder_mode),
-            pending_keys: KeySequence::new(),
+            pending_input: InputSequence::new(),
             extensions: ExtensionMap::new(),
             compositor: None,
             terminal_size: (80, 24),
@@ -570,7 +572,7 @@ impl EditingState {
     pub fn with_mode_stack(mode_stack: ModeStack) -> Self {
         Self {
             mode_stack,
-            pending_keys: KeySequence::new(),
+            pending_input: InputSequence::new(),
             extensions: ExtensionMap::new(),
             compositor: None,
             terminal_size: (80, 24),
@@ -583,9 +585,9 @@ impl EditingState {
         self.mode_stack.current()
     }
 
-    /// Clear pending keys.
-    pub fn clear_pending_keys(&mut self) {
-        self.pending_keys.clear();
+    /// Clear pending input events.
+    pub fn clear_pending_input(&mut self) {
+        self.pending_input.clear();
     }
 }
 

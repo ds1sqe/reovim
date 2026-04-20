@@ -1,11 +1,11 @@
 //! `InputService` gRPC implementation.
 //!
-//! Provides key input processing for v2 protocol clients.
+//! Provides input processing for v2 and v3 protocol clients.
 //!
 //! # Input Dispatch
 //!
-//! v2 clients still send vim key notation strings. The server adapts each parsed
-//! key into an opaque `InputEvent`, then routes it through
+//! Clients send opaque `InputEvent` payloads. The server wraps each payload
+//! in an `InputEvent` and routes it through
 //! `Session::dispatch_input_for_client()` and `DomainDriver::dispatch_input()`.
 
 // `Status` is tonic's standard error type - size is inherent to the library
@@ -15,12 +15,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
-    reovim_input_codec::{key, key_sequence_to_key_events},
     reovim_protocol::v2::{
         SendInputRequest, SendInputResponse, input_service_server::InputService, notification,
     },
     reovim_subsys_input::InputEvent,
-    reovim_subsys_input_contracts::KeySequence,
     reovim_subsys_session::{CursorSnapshot, bridges::BridgeRegistry},
     tonic::{Request, Response, Status},
 };
@@ -93,14 +91,15 @@ impl InputServiceImpl {
 
 #[tonic::async_trait]
 impl InputService for InputServiceImpl {
-    /// Send keys to the editor.
+    /// Send an input event to the editor.
     ///
-    /// Parses vim notation keys (e.g., `iHello<Esc>`, `<C-w>h`) and processes them.
+    /// The `payload` field of the request contains a single opaque `InputEvent`
+    /// payload (header + body) as produced by the client's codec (e.g.,
+    /// `TuiKeyCodec`). The server does not interpret or re-encode the bytes;
+    /// it wraps them in an `InputEvent` and dispatches directly.
     ///
-    /// Each adapted key is encoded as an opaque `InputEvent` and dispatched via
-    /// `Session::dispatch_input_for_client()`. The domain driver owns decode,
-    /// resolution, command execution, mode transitions, and no-op behavior for
-    /// unsupported payloads.
+    /// The domain driver owns decode, key resolution, command execution, mode
+    /// transitions, and no-op behavior for unsupported payloads.
     #[allow(clippy::too_many_lines)]
     async fn send_input(
         &self,
@@ -132,18 +131,17 @@ impl InputService for InputServiceImpl {
                 should_quit: false,
             }));
         }
-        // Independent/Sharing: proceed with normal input processing
-        // Note: For Sharing, input goes to target's state - handled by
+        // Independent/Sharing: proceed with normal input processing.
+        // For Sharing, input goes to target's state — handled by
         // session.dispatch_input_for_client() and domain-owned dispatch logic.
 
-        // Parse vim notation keys from opaque payload (v3: bytes, interpreted as UTF-8 keys)
-        let keys_str = std::str::from_utf8(&req.payload)
-            .map_err(|_| Status::invalid_argument("Payload is not valid UTF-8 key notation"))?;
-        let keys = KeySequence::parse(keys_str)
-            .ok_or_else(|| Status::invalid_argument(format!("Invalid key notation: {keys_str}")))?;
-        let adapted_keys = key_sequence_to_key_events(&keys).ok_or_else(|| {
-            Status::invalid_argument(format!("Unsupported key notation: {keys_str}"))
-        })?;
+        // Wrap the raw payload bytes in an InputEvent.
+        // InputEvent::new rejects payloads shorter than INPUT_HEADER_SIZE (8 bytes).
+        let window_id = req
+            .window_id
+            .map(|id| reovim_kernel::api::v1::WindowId::from_raw(id as usize));
+        let event = InputEvent::new(req.payload, window_id, req.timestamp_ns)
+            .map_err(|err| Status::invalid_argument(format!("invalid input payload: {err}")))?;
 
         // #514/#468: Snapshot ALL bridge active states before key resolution.
         // Generic detection replaces hardcoded cmdline check.
@@ -154,14 +152,14 @@ impl InputService for InputServiceImpl {
         let mode_before_keys = session.client_current_mode(client_id);
         let compositor_gen_before = session.client_compositor_generation(client_id);
 
-        // Process each adapted key through the opaque input seam.
-        let mut any_handled = false;
+        // Process the input event through the opaque input seam.
         let mut accumulated_changes = ChangeSet::new();
 
-        for key in &adapted_keys {
-            // Phase #478: Log key to client ring buffer
+        {
+            // Phase #478: Log payload kind to client ring buffer
+            let payload_kind = reovim_subsys_input::input_kind(event.payload());
             session.with_client_ring_buffer(client_id, |rb: &ClientRingBuffer| {
-                rb.log_key(&format!("{:?}", key.code));
+                rb.log_key(&format!("kind=0x{payload_kind:04x}"));
             });
 
             // Debug: Log current mode before resolution
@@ -171,13 +169,10 @@ impl InputService for InputServiceImpl {
             tracing::debug!(
                 ?current_mode,
                 %client_id,
-                code = ?key.code,
-                modifiers = ?key.modifiers,
-                "Resolving key"
+                kind = payload_kind,
+                "Dispatching input event"
             );
 
-            let event = InputEvent::new(key::encode(key), None, req.timestamp_ns)
-                .map_err(|err| Status::internal(format!("failed to encode key input: {err}")))?;
             let dispatch_result = session.dispatch_input_for_client(client_id, &event).await;
 
             // None means no domain driver active (stub, #753 E3) — input is dropped.
@@ -187,19 +182,21 @@ impl InputService for InputServiceImpl {
                     %client_id,
                     "dispatch_input_for_client: no domain driver active, input dropped (#753 E3)"
                 );
-                continue;
+                return Ok(Response::new(SendInputResponse {
+                    ok: false,
+                    should_quit: false,
+                }));
             };
 
             accumulated_changes.merge(Self::dispatch_result_to_change_set(dispatch));
-            any_handled = true;
         }
 
-        // Record cursor movement for active buffer whenever any key was handled.
+        // Record cursor movement for active buffer whenever input was handled.
         // Most key operations move the cursor (typing, motions, commands like `o`).
         // `record_cursor_move` is idempotent on `affected_buffers`, so calling it
         // even when InsertChar already recorded cursor_move is safe (#505).
         // Per-client active_buffer (#471)
-        if any_handled && let Some(buffer_id) = session.active_buffer_for_client(client_id) {
+        if let Some(buffer_id) = session.active_buffer_for_client(client_id) {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
@@ -282,9 +279,9 @@ impl InputService for InputServiceImpl {
         // #753 E6: Syntax/codec updates route through domain driver post-dispatch hooks.
         // The server no longer touches driver types directly.
 
-        // Return result
+        // Return result (if we reach here, the event was handled)
         Ok(Response::new(SendInputResponse {
-            ok: any_handled,
+            ok: true,
             should_quit: accumulated_changes.should_quit,
         }))
     }

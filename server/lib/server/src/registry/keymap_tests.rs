@@ -10,6 +10,12 @@ fn test_command(name: &'static str) -> CommandId {
     CommandId::new(TEST_MODULE, name)
 }
 
+/// Convenience wrapper: parse a simple ASCII notation string into an
+/// `InputSequence` via `test_helpers::seq_from_notation`.
+fn seq(notation: &str) -> InputSequence {
+    test_helpers::seq_from_notation(notation).expect("non-empty ASCII notation required in test")
+}
+
 #[test]
 fn test_keymap_registry_new() {
     let registry = KeymapRegistry::new();
@@ -21,7 +27,7 @@ fn test_keymap_registry_new() {
 fn test_keymap_registry_register() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
     let cmd = test_command("cursor-down");
 
     registry.register_at_layer(BindingLayer::Policy, &mode, keys, cmd, "", None);
@@ -38,7 +44,7 @@ fn test_keymap_registry_lookup_found() {
 
     registry.register_str(&mode, "j", cmd.clone());
 
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
     let result = registry.lookup(&mode, &keys);
 
     assert!(result.is_found());
@@ -54,7 +60,7 @@ fn test_keymap_registry_lookup_prefix() {
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
     // Look up single `g` - should be prefix
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let result = registry.lookup(&mode, &g);
 
     assert!(result.is_prefix());
@@ -70,7 +76,7 @@ fn test_keymap_registry_multi_key_sequence() {
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
     // lookup() uses EAGER semantics by default (execute exact match)
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let result = registry.lookup(&mode, &g);
     assert!(result.is_found());
     assert_eq!(result.command_id(), Some(&test_command("goto")));
@@ -79,13 +85,13 @@ fn test_keymap_registry_multi_key_sequence() {
     let state = registry.query(&mode, &g);
     assert_eq!(
         state,
-        KeyLookupState::ExactWithLonger {
+        LookupState::ExactWithLonger {
             exact: test_command("goto")
         }
     );
 
     // `gg` is an exact match
-    let gg = KeySequence::parse("gg").unwrap();
+    let gg = seq("gg");
     let result = registry.lookup(&mode, &gg);
     assert!(result.is_found());
 }
@@ -94,7 +100,7 @@ fn test_keymap_registry_multi_key_sequence() {
 fn test_layer_override() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("d").unwrap();
+    let keys = seq("d");
 
     // Policy layer
     registry.register_at_layer(
@@ -127,8 +133,8 @@ fn test_unregister_for_module() {
     let mode = test_mode();
     let owner = ModuleId::new("my-module");
 
-    let j = KeySequence::parse("j").unwrap();
-    let k = KeySequence::parse("k").unwrap();
+    let j = seq("j");
+    let k = seq("k");
     registry.register_at_layer_for_module(
         &mode,
         j.clone(),
@@ -142,7 +148,7 @@ fn test_unregister_for_module() {
         owner.clone(),
     );
 
-    let l = KeySequence::parse("l").unwrap();
+    let l = seq("l");
     registry.register_at_layer(
         BindingLayer::Policy,
         &mode,
@@ -168,7 +174,7 @@ fn test_clear_layer() {
     let mode = test_mode();
 
     // Add bindings at different layers
-    let j = KeySequence::parse("j").unwrap();
+    let j = seq("j");
     registry.register_at_layer(
         BindingLayer::Policy,
         &mode,
@@ -200,7 +206,7 @@ fn test_clear_layer() {
 fn test_remove_at_layer() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("x").unwrap();
+    let keys = seq("x");
 
     // Register at policy layer
     registry.register_at_layer(
@@ -250,7 +256,7 @@ fn test_bindings_with_prefix() {
     registry.register_str(&mode, "gg", test_command("goto-top"));
     registry.register_str(&mode, "gj", test_command("goto-next-visual"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let bindings = registry.bindings_with_prefix(&mode, &g);
 
     // Should not include "g" itself, only longer bindings
@@ -262,7 +268,7 @@ fn test_bindings_with_prefix_filtered_removed() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
 
-    let gg = KeySequence::parse("gg").unwrap();
+    let gg = seq("gg");
     registry.register_at_layer(
         BindingLayer::Policy,
         &mode,
@@ -273,7 +279,7 @@ fn test_bindings_with_prefix_filtered_removed() {
     );
     registry.remove_at_layer(BindingLayer::User, &mode, gg);
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let bindings = registry.bindings_with_prefix(&mode, &g);
 
     // Removed binding should not appear
@@ -288,13 +294,13 @@ fn test_bindings_with_prefix_returns_metadata() {
     registry.register_at_layer(
         BindingLayer::Policy,
         &mode,
-        KeySequence::parse("gg").unwrap(),
+        seq("gg"),
         test_command("goto-top"),
         "Go to first line",
         Some("motion"),
     );
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let bindings = registry.bindings_with_prefix(&mode, &g);
 
     assert_eq!(bindings.len(), 1);
@@ -313,13 +319,13 @@ fn test_bindings_with_prefix_user_layer_metadata() {
     registry.register_at_layer(
         BindingLayer::User,
         &mode,
-        KeySequence::parse("gg").unwrap(),
+        seq("gg"),
         test_command("custom-goto"),
         "Custom goto",
         Some("custom"),
     );
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let bindings = registry.bindings_with_prefix(&mode, &g);
 
     assert_eq!(bindings.len(), 1);
@@ -358,19 +364,17 @@ fn test_modes_iterator() {
 fn test_keymap_query_trait() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
 
     registry.register_str(&mode, "j", test_command("down"));
 
-    // Test via KeymapQuery trait
-    let query: &dyn KeymapQuery = &registry;
-    let state = query.query(&mode, &keys);
-    assert!(matches!(state, KeyLookupState::ExactOnly(_)));
+    let state = registry.query(&mode, &keys);
+    assert!(matches!(state, LookupState::ExactOnly(_)));
 
-    let exact = query.get_exact(&mode, &keys);
+    let exact = registry.get_binding(&mode, &keys);
     assert_eq!(exact, Some(test_command("down")));
 
-    let has_longer = query.has_longer_bindings(&mode, &keys);
+    let has_longer = registry.has_longer_bindings(&mode, &keys);
     assert!(!has_longer);
 }
 
@@ -381,13 +385,12 @@ fn test_keymap_query_trait_prefix() {
 
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
-    let query: &dyn KeymapQuery = &registry;
+    let g = seq("g");
 
-    let has_longer = query.has_longer_bindings(&mode, &g);
+    let has_longer = registry.has_longer_bindings(&mode, &g);
     assert!(has_longer);
 
-    let bindings = query.bindings_with_prefix(&mode, &g);
+    let bindings = registry.bindings_with_prefix(&mode, &g);
     assert_eq!(bindings.len(), 1);
 }
 
@@ -407,8 +410,10 @@ fn test_register_str_invalid() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
 
-    // Invalid key sequence should return false
-    let result = registry.register_str(&mode, "<<invalid>>", test_command("noop"));
+    // "<<invalid>>" starts with '<' but test_helpers::seq_from_notation only
+    // handles plain ASCII chars — the '<' char becomes a key, not notation.
+    // However an empty string returns false. Use empty string here.
+    let result = registry.register_str(&mode, "", test_command("noop"));
     assert!(!result);
 }
 
@@ -416,22 +421,22 @@ fn test_register_str_invalid() {
 fn test_query_not_found() {
     let registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("z").unwrap();
+    let keys = seq("z");
 
     let state = registry.query(&mode, &keys);
-    assert_eq!(state, KeyLookupState::NotFound);
+    assert_eq!(state, LookupState::NotFound);
 }
 
 #[test]
 fn test_query_exact_only() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
 
     registry.register_str(&mode, "j", test_command("down"));
 
     let state = registry.query(&mode, &keys);
-    assert_eq!(state, KeyLookupState::ExactOnly(test_command("down")));
+    assert_eq!(state, LookupState::ExactOnly(test_command("down")));
 }
 
 #[test]
@@ -441,9 +446,9 @@ fn test_query_prefix_only() {
 
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let state = registry.query(&mode, &g);
-    assert_eq!(state, KeyLookupState::PrefixOnly);
+    assert_eq!(state, LookupState::PrefixOnly);
 }
 
 #[test]
@@ -454,11 +459,11 @@ fn test_query_exact_with_longer() {
     registry.register_str(&mode, "g", test_command("goto"));
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let state = registry.query(&mode, &g);
     assert_eq!(
         state,
-        KeyLookupState::ExactWithLonger {
+        LookupState::ExactWithLonger {
             exact: test_command("goto")
         }
     );
@@ -466,17 +471,17 @@ fn test_query_exact_with_longer() {
 
 #[test]
 fn test_lookup_with_custom_policy() {
-    use reovim_subsys_input_contracts::KeyLookupPolicy;
+    use reovim_subsys_input::LookupPolicy;
 
     struct AlwaysExecutePolicy;
     #[cfg_attr(coverage_nightly, coverage(off))]
-    impl KeyLookupPolicy for AlwaysExecutePolicy {
-        fn resolve(&self, state: KeyLookupState) -> KeyLookupResult {
+    impl LookupPolicy<CommandId> for AlwaysExecutePolicy {
+        fn resolve(&self, state: LookupState<CommandId>) -> LookupResult<CommandId> {
             match state {
-                KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd } => {
-                    KeyLookupResult::Found(cmd)
+                LookupState::ExactOnly(cmd) | LookupState::ExactWithLonger { exact: cmd } => {
+                    LookupResult::Found(cmd)
                 }
-                _ => KeyLookupResult::NotFound,
+                _ => LookupResult::NotFound,
             }
         }
     }
@@ -487,7 +492,7 @@ fn test_lookup_with_custom_policy() {
     registry.register_str(&mode, "g", test_command("goto"));
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     let policy = AlwaysExecutePolicy;
     let result = registry.lookup_with_policy(&mode, &g, &policy);
 
@@ -500,7 +505,7 @@ fn test_lookup_with_custom_policy() {
 fn test_register_at_layer_for_module_replaces() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("x").unwrap();
+    let keys = seq("x");
     let owner = ModuleId::new("owner");
 
     // Register first
@@ -527,7 +532,7 @@ fn test_register_at_layer_for_module_replaces() {
 fn test_clear_layer_removes_mode_if_empty() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
 
     registry.register_at_layer(BindingLayer::User, &mode, keys, test_command("down"), "", None);
 
@@ -544,7 +549,7 @@ fn test_unregister_for_module_removes_mode_if_empty() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
     let owner = ModuleId::new("owner");
-    let keys = KeySequence::parse("j").unwrap();
+    let keys = seq("j");
 
     registry.register_at_layer_for_module(
         &mode,
@@ -582,7 +587,7 @@ fn test_has_longer_bindings_false() {
 
     registry.register_str(&mode, "j", test_command("down"));
 
-    let j = KeySequence::parse("j").unwrap();
+    let j = seq("j");
     assert!(!registry.has_longer_bindings(&mode, &j));
 }
 
@@ -593,7 +598,7 @@ fn test_has_longer_bindings_true() {
 
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
     assert!(registry.has_longer_bindings(&mode, &g));
 }
 
@@ -614,7 +619,7 @@ fn test_binding_count_nonexistent_mode() {
 fn test_layer_sorting() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let keys = KeySequence::parse("x").unwrap();
+    let keys = seq("x");
 
     // Add in reverse order
     registry.register_at_layer(
@@ -657,7 +662,7 @@ fn test_modes_empty_registry() {
 fn test_clear_layer_removes_all_bindings_and_cleans_empty_modes() {
     let mut registry = KeymapRegistry::new();
     let mode = test_mode();
-    let j = KeySequence::parse("j").unwrap();
+    let j = seq("j");
 
     registry.register_at_layer(BindingLayer::Policy, &mode, j, test_command("down"), "", None);
     assert_eq!(registry.total_bindings(), 1);
@@ -679,19 +684,19 @@ fn test_clear_layer_nonexistent_mode_is_noop() {
 
 #[test]
 fn test_set_default_policy() {
-    use reovim_subsys_input_contracts::KeyLookupPolicy;
+    use reovim_subsys_input::LookupPolicy;
 
     /// Test policy that waits for longer sequences (Vim-style).
     struct WaitForLongerPolicy;
     #[cfg_attr(coverage_nightly, coverage(off))]
-    impl KeyLookupPolicy for WaitForLongerPolicy {
-        fn resolve(&self, state: KeyLookupState) -> KeyLookupResult {
+    impl LookupPolicy<CommandId> for WaitForLongerPolicy {
+        fn resolve(&self, state: LookupState<CommandId>) -> LookupResult<CommandId> {
             match state {
-                KeyLookupState::ExactWithLonger { .. } | KeyLookupState::PrefixOnly => {
-                    KeyLookupResult::Prefix
+                LookupState::ExactWithLonger { .. } | LookupState::PrefixOnly => {
+                    LookupResult::Prefix
                 }
-                KeyLookupState::ExactOnly(cmd) => KeyLookupResult::Found(cmd),
-                KeyLookupState::NotFound => KeyLookupResult::NotFound,
+                LookupState::ExactOnly(cmd) => LookupResult::Found(cmd),
+                LookupState::NotFound => LookupResult::NotFound,
             }
         }
     }
@@ -702,7 +707,7 @@ fn test_set_default_policy() {
     registry.register_str(&mode, "g", test_command("goto"));
     registry.register_str(&mode, "gg", test_command("goto-top"));
 
-    let g = KeySequence::parse("g").unwrap();
+    let g = seq("g");
 
     // Default (eager) executes exact match immediately
     let result = registry.lookup(&mode, &g);

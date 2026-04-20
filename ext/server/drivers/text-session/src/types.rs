@@ -33,8 +33,6 @@ use crate::{ExtensionMap, Jumplist, api::Selection as ApiSelection};
 // CursorSnapshot is only referenced in tests. It is now an opaque [u8; 8] identity (C2 #753).
 #[allow(unused_imports)]
 pub use crate::{ClientId, CursorSnapshot};
-#[allow(unused_imports)]
-pub use reovim_subsys_input_contracts::KeySequence;
 
 /// Viewport for a client session.
 ///
@@ -364,8 +362,6 @@ pub struct BootstrapState {
     pub mode_stack: ModeStack,
     /// Initial window layout (empty by default).
     pub windows: WindowLayout,
-    /// Initial pending keys (empty by default).
-    pub pending_keys: KeySequence,
     /// Initial extensions map (empty by default).
     pub extensions: ExtensionMap,
 }
@@ -374,13 +370,12 @@ impl BootstrapState {
     /// Create bootstrap state with the given home mode.
     ///
     /// The home mode becomes the bottom of the mode stack.
-    /// Windows, pending keys, and extensions start empty.
+    /// Windows and extensions start empty.
     #[must_use]
     pub fn new(home_mode: ModeId) -> Self {
         Self {
             mode_stack: ModeStack::new(home_mode),
             windows: WindowLayout::empty(),
-            pending_keys: KeySequence::new(),
             extensions: ExtensionMap::new(),
         }
     }

@@ -24,12 +24,10 @@ reovim-arch = { workspace = true }
 reovim-subsys-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
 reovim-subsys-input = { workspace = true }
-reovim-subsys-input-contracts = { workspace = true }
 reovim-subsys-layout = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
-reovim-input-codec = { workspace = true }
 
 # Drivers: REMOVED from production deps (#753 E6).
 # All driver access routes through DomainDriver (subsys-session trait).
@@ -64,8 +62,6 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
-# All driver crates removed from dev-dependencies (#753 G-chain).
-# Server tests must not import driver types even for test setup.
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

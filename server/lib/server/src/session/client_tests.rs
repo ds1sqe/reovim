@@ -190,7 +190,7 @@ fn test_effective_state_mut_following_ignored() {
 fn test_editing_state_default() {
     let state = EditingState::default();
 
-    assert!(state.pending_keys.is_empty());
+    assert!(state.pending_input.is_empty());
     // windows/selection are domain-owned (#753 E3)
 }
 
@@ -203,14 +203,14 @@ fn test_editing_state_with_mode_stack() {
 }
 
 #[test]
-fn test_editing_state_clear_pending_keys() {
+fn test_editing_state_clear_pending_input() {
     let mut state = EditingState::default();
-    state.pending_keys.push("d".to_string());
-    state.pending_keys.push("w".to_string());
+    state.pending_input.push(b"d".to_vec());
+    state.pending_input.push(b"w".to_vec());
 
-    assert!(!state.pending_keys.is_empty());
-    state.clear_pending_keys();
-    assert!(state.pending_keys.is_empty());
+    assert!(!state.pending_input.is_empty());
+    state.clear_pending_input();
+    assert!(state.pending_input.is_empty());
 }
 
 // test_client_selection removed: ClientSelection is domain-owned (#753 E3)
@@ -571,14 +571,14 @@ fn test_effective_state_mut_sharing_missing_target() {
 #[test]
 fn test_editing_state_clone() {
     let mut state = EditingState::default();
-    state.pending_keys.push("d".to_string());
+    state.pending_input.push(b"d".to_vec());
 
     let cloned = state.clone();
 
     // Cloned should have same mode stack
     assert_eq!(cloned.mode_stack.current().name(), state.mode_stack.current().name());
-    // Cloned should have same pending keys
-    assert!(!cloned.pending_keys.is_empty());
+    // Cloned should have same pending input
+    assert!(!cloned.pending_input.is_empty());
     // Cloned should have FRESH extensions (not copied)
     let _ = cloned.extensions;
 }
@@ -685,7 +685,7 @@ fn test_effective_state_mut_independent_borrow_semantics() {
     assert!(state.is_none());
 
     // Caller should use client.state directly for independent clients
-    assert!(client.state.pending_keys.is_empty());
+    assert!(client.state.pending_input.is_empty());
 }
 
 // test_sync_cursor_to_no_windows removed: sync_cursor_to uses windows (domain-owned, #753 E3)

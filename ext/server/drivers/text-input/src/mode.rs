@@ -1,8 +1,8 @@
 //! Mode keybinding types.
 
 use {
+    crate::KeySequence,
     reovim_kernel::api::v1::{CommandId, ModeId},
-    reovim_subsys_input_contracts::KeySequence,
 };
 
 /// What a keybinding triggers.
