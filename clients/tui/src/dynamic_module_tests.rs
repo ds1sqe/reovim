@@ -6,7 +6,7 @@
 //! The discovery filter test uses the crate-visible `load_filtered_dynamic_modules`
 //! helper with a synthetic path list (no real filesystem needed for the
 //! filter logic itself — the tests that actually `dlopen` a `.so` live in
-//! `shared/clients/driver/tests/dynamic_loading.rs`).
+//! `clients/lib/driver/tests/dynamic_loading.rs`).
 
 #![allow(unsafe_code)] // filter helper is `unsafe` by signature
 
@@ -327,7 +327,7 @@ fn filter_respects_disabled_set_path_exists_but_rejected_at_load() {
 // =============================================================================
 //
 // The exact loader-level test for cross-type dep ordering lives in
-// `shared/clients/driver/tests/dynamic_loading.rs::t4_cross_type_deps`. This
+// `clients/lib/driver/tests/dynamic_loading.rs::t4_cross_type_deps`. This
 // supplemental test verifies that DynamicClientModule::new_for_test wraps a
 // static handle and the resulting box dispatches kind() / dependencies()
 // correctly — the minimal contract that T4 depends on.

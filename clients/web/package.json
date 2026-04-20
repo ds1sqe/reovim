@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build:cli": "npx tsc -p tsconfig.cli.json",
-    "build:wasm": "cd ../../shared/clients/model && wasm-pack build --target web --features wasm && rm -rf ../../../clients/web/pkg && mv pkg ../../../clients/web/",
+    "build:wasm": "cd ../lib/model && wasm-pack build --target web --features wasm && rm -rf ../../web/pkg && mv pkg ../../web/",
     "prebuild": "npm run build:wasm",
     "predev": "npm run build:wasm",
     "dev": "vite",

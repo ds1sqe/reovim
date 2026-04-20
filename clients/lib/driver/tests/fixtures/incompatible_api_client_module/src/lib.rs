@@ -19,7 +19,7 @@ use reovim_client_driver::{ClientModuleProbe, Version};
 /// Hard-coded incompatible API version.
 ///
 /// The host's `CLIENT_MODULE_API_VERSION` lives at
-/// `shared/clients/driver/src/types/mod.rs` — this fixture deliberately
+/// `clients/lib/driver/src/types/mod.rs` — this fixture deliberately
 /// advertises a major version 99 higher so the version check rejects it
 /// regardless of future host bumps.
 #[unsafe(no_mangle)]

@@ -1,7 +1,7 @@
 //! Integration tests for dynamic client module loading (flight #724).
 //!
 //! Exercises `ClientModuleHandle::load_from_path` + `LoadError` error paths
-//! against a real `.so` built from `shared/clients/driver/tests/fixtures/
+//! against a real `.so` built from `clients/lib/driver/tests/fixtures/
 //! minimal_client_module/`. Also covers the `HANDLE_LEAKS_PER_MODULE_FIXED`
 //! leak-bound contract (T2) and the cross-type dependency resolution in
 //! `ClientModuleLoader::new_with_dynamic` (T4).
@@ -36,8 +36,8 @@ use reovim_client_driver::{
 fn fixture_lib_path(stem: &str) -> Option<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir
-        .parent()? // shared/clients
-        .parent()? // shared
+        .parent()? // clients/lib
+        .parent()? // clients
         .parent()?; // workspace root
 
     for ext in ["so", "dylib"] {

@@ -59,11 +59,11 @@ CRATES=(
     # Tier 0 — no internal deps
     "arch"                                         # reovim-arch
     "lib/capabilities"                             # reovim-capabilities
-    "shared/clients/model"                         # reovim-client-model
+    "clients/lib/model"                            # reovim-client-model
     "lib/depgraph"                                 # reovim-depgraph
 
     # Tier 1 — kernel, protocol, base drivers
-    "shared/clients/driver"                        # reovim-client-driver
+    "clients/lib/driver"                           # reovim-client-driver
     "server/lib/subsys/module-registry"            # reovim-subsys-module-registry
     "clients/tui/lib/drivers/tui"                  # reovim-driver-tui
     "server/lib/kernel"                            # reovim-kernel

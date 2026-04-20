@@ -1476,7 +1476,7 @@ reovim/
 
 ### Client Model as Shared Library
 
-The `shared/clients/model/` crate can be:
+The `clients/lib/model/` crate can be:
 
 1. **Rust library** - Used directly by TUI (Rust)
 2. **FFI bindings** - Exposed via C ABI for Android (JNI) and iOS (Swift) (gated feature)
@@ -1484,7 +1484,7 @@ The `shared/clients/model/` crate can be:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  shared/clients/model/ (Rust)                               │
+│  clients/lib/model/ (Rust)                               │
 │  • Pure logic, no I/O                                       │
 │  • Platform-agnostic abstractions                           │
 │  • ~2,500 LOC with 28 geometry tests                        │
@@ -1514,7 +1514,7 @@ The `shared/clients/model/` crate can be:
 **Implementation:**
 - Web client at `clients/web/` using Vite + TypeScript
 - gRPC-Web via Connect (`@connectrpc/connect-web`)
-- WASM integration for layout interpretation (`shared/clients/model` with `wasm` feature)
+- WASM integration for layout interpretation (`clients/lib/model` with `wasm` feature)
 - Multi-window support with selection/visual mode rendering
 
 #### Architecture (Implemented)
@@ -1538,7 +1538,7 @@ The `shared/clients/model/` crate can be:
 
 **Goal**: Create shared abstraction layer for all clients.
 
-**Implementation:** `shared/clients/model/` (~2,500 LOC)
+**Implementation:** `clients/lib/model/` (~2,500 LOC)
 
 **Architecture layers:**
 ```

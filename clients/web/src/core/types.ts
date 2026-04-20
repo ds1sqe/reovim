@@ -2,7 +2,7 @@
  * CLM Value Types
  *
  * TypeScript equivalents of the Rust CLM types from
- * `shared/clients/driver/src/types/mod.rs`.
+ * `clients/lib/driver/src/types/mod.rs`.
  *
  * These are pure value types with no behavior beyond factory functions.
  *

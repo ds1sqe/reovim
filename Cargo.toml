@@ -165,9 +165,9 @@ members = [
     # Shared layer
     "shared/input-codec",
 
-    # Shared clients layer
-    "shared/clients/model",
-    "shared/clients/driver",
+    # Client-core shared libs (platform-agnostic model + client module ABI)
+    "clients/lib/model",
+    "clients/lib/driver",
 
     # Shared types
     "shared/domain",
@@ -187,11 +187,11 @@ members = [
     "server/lib/subsys/module-loader/tests/fixtures/test_module",
     "server/lib/subsys/module-loader/tests/fixtures/sample_module",
     "clients/tui/tests/fixtures/sample_client_module",
-    "shared/clients/driver/tests/fixtures/minimal_client_module",
-    "shared/clients/driver/tests/fixtures/incompatible_api_client_module",
-    "shared/clients/driver/tests/fixtures/no_init_client_module",
-    "shared/clients/driver/tests/fixtures/bare_client_module",
-    "shared/clients/driver/tests/fixtures/panicking_client_module",
+    "clients/lib/driver/tests/fixtures/minimal_client_module",
+    "clients/lib/driver/tests/fixtures/incompatible_api_client_module",
+    "clients/lib/driver/tests/fixtures/no_init_client_module",
+    "clients/lib/driver/tests/fixtures/bare_client_module",
+    "clients/lib/driver/tests/fixtures/panicking_client_module",
 ]
 exclude = [
     # Python projects (not Rust)
@@ -311,10 +311,10 @@ reovim-client-tui = { path = "./clients/tui", version = "0.15.0-dev" }
 reovim-client-cli = { path = "./clients/cli", version = "0.15.0-dev" }
 
 # Common client model (platform-agnostic abstractions)
-reovim-client-model = { path = "./shared/clients/model", version = "0.15.0-dev" }
+reovim-client-model = { path = "./clients/lib/model", version = "0.15.0-dev" }
 
 # Client driver contracts (CLM traits and types)
-reovim-client-driver = { path = "./shared/clients/driver", version = "0.15.0-dev" }
+reovim-client-driver = { path = "./clients/lib/driver", version = "0.15.0-dev" }
 
 # Application binary
 reovim = { path = "./apps/bin", version = "0.15.0-dev" }

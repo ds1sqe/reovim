@@ -4,7 +4,7 @@ node_modules/
 # Build output
 dist/
 
-# WASM package (built from shared/clients/model)
+# WASM package (built from clients/lib/model)
 pkg/
 
 # Generated protobuf files

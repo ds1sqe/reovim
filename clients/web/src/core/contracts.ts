@@ -2,7 +2,7 @@
  * CLM Contract Interfaces
  *
  * TypeScript equivalents of the Rust CLM traits from
- * `shared/clients/driver/src/traits/mod.rs`.
+ * `clients/lib/driver/src/traits/mod.rs`.
  *
  * These are interface-only definitions. Implementations live in
  * separate adapter files (`platform-adapter.ts`, `server-handle.ts`, etc.).
