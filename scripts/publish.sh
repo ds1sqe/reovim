@@ -130,8 +130,10 @@ CRATES=(
     "ext/server/modules/clipboard"                     # reovim-module-clipboard
     "ext/server/modules/undo"                          # reovim-module-undo
 
+    # Content codec foundation
+    "ext/content-codec/xxd"                        # reovim-content-codec-xxd
+
     # Tier 5 — higher-level drivers
-    "ext/server/drivers/codec"                     # reovim-driver-codec
     "ext/server/drivers/command"                   # reovim-driver-command
     "ext/server/drivers/ffi"                       # reovim-driver-ffi
     "ext/server/drivers/input"                     # reovim-driver-input
@@ -146,13 +148,15 @@ CRATES=(
     # Tier 6 — treesitter, codecs, feature modules, server, pickers
     "ext/server/drivers/ffi-python"                # reovim-driver-ffi-python
     "ext/server/drivers/syntax-treesitter"         # reovim-driver-syntax-treesitter
-    "ext/server/modules/codec-binary-struct"           # reovim-module-codec-binary-struct
-    "ext/server/modules/codec-cjk"                     # reovim-module-codec-cjk
-    "ext/server/modules/codec-csv"                     # reovim-module-codec-csv
-    "ext/server/modules/codec-hex"                     # reovim-module-codec-hex
-    "ext/server/modules/codec-legacy"                  # reovim-module-codec-legacy
-    "ext/server/modules/codec-pdf"                     # reovim-module-codec-pdf
-    "ext/server/modules/codec-utf8"                    # reovim-module-codec-utf8
+    "ext/content-codec/binary-struct"                  # reovim-content-codec-binary-struct
+    "ext/content-codec/cjk"                            # reovim-content-codec-cjk
+    "ext/content-codec/csv"                            # reovim-content-codec-csv
+    "ext/content-codec/hex"                            # reovim-content-codec-hex
+    "ext/content-codec/legacy"                         # reovim-content-codec-legacy
+    "ext/content-codec/pdf"                            # reovim-content-codec-pdf
+    "ext/content-codec/rlib"                           # reovim-content-codec-rlib
+    "ext/content-codec/tar-gz"                        # reovim-content-codec-tar-gz
+    "ext/content-codec/utf8"                           # reovim-content-codec-utf8
     "ext/server/modules/commands"                      # reovim-module-commands
     "ext/server/modules/context"                       # reovim-module-context
     "ext/server/modules/editor"                        # reovim-module-editor

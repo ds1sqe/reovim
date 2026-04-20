@@ -16,5 +16,9 @@ workspace = true
 # Kernel layer (BufferId, ServiceKey, MultiServiceRegistry)
 reovim-kernel = { workspace = true }
 
+# Annotation data types (Annotation, AnnotationKind, AnnotationTarget,
+# AnnotationPayload) live in uapi/content-codec/ and are re-exported here.
+reovim-content-codec = { workspace = true }
+
 # Small vector optimization for annotation storage (avoids heap for <=2 items)
 smallvec = "1.13"

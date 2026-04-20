@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use {
-    reovim_driver_codec::CodecSessionState,
+    reovim_content_codec_text::CodecSessionState,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
@@ -155,7 +155,7 @@ fn flush_via_inode(
     buffer_id: reovim_kernel::api::v1::BufferId,
     path: &str,
 ) -> Result<(), String> {
-    use reovim_driver_codec::InodeTable;
+    use reovim_content_codec::InodeTable;
 
     let codec_state = runtime
         .shared_ext_mut::<CodecSessionState>()

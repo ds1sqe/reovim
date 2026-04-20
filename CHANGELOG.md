@@ -62,6 +62,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Plan 14 Phase C — content codec reshape** (#753): three-tier split applied to the content codec concern.
+  - `uapi/content-codec/` (`reovim-content-codec`) — new closed-mechanism crate holding domain-neutral `Decode<D>/Encode<D>/Index<D>` traits, `ContentCodec` + `DecodeResult`, type-erased `DecodedEdit` (with `DecodedEdit::Domain(DomainEdit)` replacing the old hardcoded `DecodedEdit::Text` variant), inode/mount primitives, classifier/factory stores, metadata, errors, and annotation data types (moved in from `reovim-driver-annotation::types`).
+  - `server/lib/subsys/content-codec/` (`reovim-subsys-content-codec`) — new subsystem crate with `ContentCodecRegistry` trait + `DefaultContentCodecRegistry` default implementation, mirroring the post-#753 input-codec registry pattern.
+  - `ext/content-codec/text/` (`reovim-content-codec-text`) — new text-domain carve-out for `TextEdit`, `CodecSessionState`, `MountInfo`, `InodeStaleCheck`, `install_stale_check`, `text_edit_to_decoded_edit`, and domain-text event re-exports. Includes a `MockEdit` integration test that exercises `DomainEdit` downcast roundtrip to prove the codec uapi stays free of text-domain vocabulary.
+  - `ext/content-codec/<format>/` — 10 existing codec crates relocated and renamed from `ext/server/drivers|modules/codec-*/` to `ext/content-codec/*/`: `xxd`, `utf8`, `cjk`, `csv`, `hex`, `pdf`, `rlib`, `tar-gz`, `binary-struct`, `legacy`. Package names changed from `reovim-{driver,module}-codec-*` to `reovim-content-codec-*`.
+  - `ext/server/drivers/codec/` (`reovim-driver-codec`) — deleted. Consumers now depend directly on `reovim-content-codec` and/or `reovim-content-codec-text`.
+  - `reovim-driver-annotation` — `Annotation`, `AnnotationKind`, `AnnotationTarget`, `AnnotationPayload` types moved to `reovim-content-codec`; the driver crate re-exports them to keep its public surface stable.
+  - All `use reovim_driver_codec::...` imports must change to `use reovim_content_codec::...` (and `use reovim_content_codec_text::...` for text-specific types). All `use reovim_{driver,module}_codec_*` imports must change to `use reovim_content_codec_*`.
+
 - **depgraph**: Plan 12 Phase 8 adds `layout_no_client` to keep `reovim-subsys-layout` free of direct `reovim-client-model`, `reovim-driver-*`, and `reovim-module-*` manifest dependencies
 - **subsys/layout**: Plan 12 Phase 6 removes the `NavigateDirection` alias workspace-wide, switching layout, session, driver, module, and display-facing APIs to the canonical `Direction` type, including `WindowError::NoNeighbor(Direction)` and mirrored compositor errors
 - **subsys/layout**: Plan 12 Phase 5 adds raw `set_surface(kind, body)` to `RootCompositor`, keeping surface payloads out of the subsys-layout type boundary while updating only direct compositor implementations and test mocks

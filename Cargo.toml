@@ -13,6 +13,7 @@ members = [
     "lib/depgraph",
 
     # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
+    "uapi/content-codec",
     "uapi/module-macros",
     "uapi/protocol",
     "uapi/render-codec",
@@ -24,6 +25,7 @@ members = [
     # Server drivers
     "server/lib/subsys/command-types",
     "server/lib/subsys/command",
+    "server/lib/subsys/content-codec",
     "ext/server/drivers/command",
     "server/lib/subsys/input",
     "ext/server/drivers/text-input",
@@ -52,8 +54,19 @@ members = [
     "ext/server/drivers/annotation",
     "ext/server/drivers/statusline",
     "server/lib/subsys/coordination",
-    "ext/server/drivers/codec",
-    "ext/server/drivers/codec-xxd",
+    "ext/content-codec/text",
+
+    # Content codecs
+    "ext/content-codec/xxd",
+    "ext/content-codec/utf8",
+    "ext/content-codec/cjk",
+    "ext/content-codec/csv",
+    "ext/content-codec/hex",
+    "ext/content-codec/pdf",
+    "ext/content-codec/rlib",
+    "ext/content-codec/tar-gz",
+    "ext/content-codec/binary-struct",
+    "ext/content-codec/legacy",
 
     # Providers (domain logic, above drivers)
     "ext/server/providers/text",
@@ -122,16 +135,6 @@ members = [
     "ext/server/modules/sticky-context",
     "ext/server/modules/indent-guide",
     "ext/server/modules/settings",
-    "ext/server/modules/codec-utf8",
-    "ext/server/modules/codec-hex",
-    "ext/server/modules/codec-cjk",
-    "ext/server/modules/codec-legacy",
-    "ext/server/modules/codec-pdf",
-    "ext/server/modules/codec-binary-struct",
-    "ext/server/modules/codec-rlib",
-    "ext/server/modules/codec-tar-gz",
-    "ext/server/modules/codec-csv",
-
     # Client layer - TUI
     "clients/tui",
     "ext/client/tui/drivers/tui",
@@ -260,8 +263,11 @@ reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev"
 reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
 reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }
+reovim-content-codec = { path = "./uapi/content-codec", version = "0.15.0-dev" }
+reovim-content-codec-text = { path = "./ext/content-codec/text", version = "0.15.0-dev" }
 reovim-render-codec = { path = "./uapi/render-codec", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
+reovim-subsys-content-codec = { path = "./server/lib/subsys/content-codec", version = "0.15.0-dev" }
 
 # Server crates
 reovim-kernel = { path = "./server/lib/kernel", version = "0.15.0-dev" }
@@ -299,8 +305,7 @@ reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.
 reovim-driver-annotation = { path = "./ext/server/drivers/annotation", version = "0.15.0-dev" }
 reovim-driver-statusline = { path = "./ext/server/drivers/statusline", version = "0.15.0-dev" }
 reovim-subsys-coordination = { path = "./server/lib/subsys/coordination", version = "0.15.0-dev" }
-reovim-driver-codec = { path = "./ext/server/drivers/codec", version = "0.15.0-dev" }
-reovim-driver-codec-xxd = { path = "./ext/server/drivers/codec-xxd", version = "0.15.0-dev" }
+reovim-content-codec-xxd = { path = "./ext/content-codec/xxd", version = "0.15.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./ext/client/tui/drivers/tui", version = "0.15.0-dev" }
@@ -386,15 +391,15 @@ reovim-module-context = { path = "./ext/server/modules/context", version = "0.15
 reovim-module-sticky-context = { path = "./ext/server/modules/sticky-context", version = "0.15.0-dev" }
 reovim-module-indent-guide = { path = "./ext/server/modules/indent-guide", version = "0.15.0-dev" }
 reovim-module-settings = { path = "./ext/server/modules/settings", version = "0.15.0-dev" }
-reovim-module-codec-utf8 = { path = "./ext/server/modules/codec-utf8", version = "0.15.0-dev" }
-reovim-module-codec-hex = { path = "./ext/server/modules/codec-hex", version = "0.15.0-dev" }
-reovim-module-codec-cjk = { path = "./ext/server/modules/codec-cjk", version = "0.15.0-dev" }
-reovim-module-codec-legacy = { path = "./ext/server/modules/codec-legacy", version = "0.15.0-dev" }
-reovim-module-codec-pdf = { path = "./ext/server/modules/codec-pdf", version = "0.15.0-dev" }
-reovim-module-codec-binary-struct = { path = "./ext/server/modules/codec-binary-struct", version = "0.15.0-dev" }
-reovim-module-codec-rlib = { path = "./ext/server/modules/codec-rlib", version = "0.15.0-dev" }
-reovim-module-codec-tar-gz = { path = "./ext/server/modules/codec-tar-gz", version = "0.15.0-dev" }
-reovim-module-codec-csv = { path = "./ext/server/modules/codec-csv", version = "0.15.0-dev" }
+reovim-content-codec-utf8 = { path = "./ext/content-codec/utf8", version = "0.15.0-dev" }
+reovim-content-codec-hex = { path = "./ext/content-codec/hex", version = "0.15.0-dev" }
+reovim-content-codec-cjk = { path = "./ext/content-codec/cjk", version = "0.15.0-dev" }
+reovim-content-codec-legacy = { path = "./ext/content-codec/legacy", version = "0.15.0-dev" }
+reovim-content-codec-pdf = { path = "./ext/content-codec/pdf", version = "0.15.0-dev" }
+reovim-content-codec-binary-struct = { path = "./ext/content-codec/binary-struct", version = "0.15.0-dev" }
+reovim-content-codec-rlib = { path = "./ext/content-codec/rlib", version = "0.15.0-dev" }
+reovim-content-codec-tar-gz = { path = "./ext/content-codec/tar-gz", version = "0.15.0-dev" }
+reovim-content-codec-csv = { path = "./ext/content-codec/csv", version = "0.15.0-dev" }
 
 # Client modules - TUI (native ClientModule implementations)
 reovim-tui-mod-statusline = { path = "./ext/client/tui/modules/statusline", version = "0.15.0-dev" }

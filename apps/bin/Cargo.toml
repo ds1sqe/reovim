@@ -26,14 +26,14 @@ static-modules = [
     "dep:reovim-module-scratch-buffer",
     "dep:reovim-module-vfs-local",
     "dep:reovim-module-clipboard",
-    "dep:reovim-module-codec-utf8",
-    "dep:reovim-module-codec-hex",
-    "dep:reovim-module-codec-cjk",
-    "dep:reovim-module-codec-legacy",
-    "dep:reovim-module-codec-pdf",
-    "dep:reovim-module-codec-binary-struct",
-    "dep:reovim-module-codec-rlib",
-    "dep:reovim-module-codec-csv",
+    "dep:reovim-content-codec-utf8",
+    "dep:reovim-content-codec-hex",
+    "dep:reovim-content-codec-cjk",
+    "dep:reovim-content-codec-legacy",
+    "dep:reovim-content-codec-pdf",
+    "dep:reovim-content-codec-binary-struct",
+    "dep:reovim-content-codec-rlib",
+    "dep:reovim-content-codec-csv",
     "dep:reovim-module-keymap",
     "dep:reovim-module-commands",
     "dep:reovim-module-editor",
@@ -143,14 +143,14 @@ reovim-module-search = { workspace = true, optional = true }
 reovim-module-scratch-buffer = { workspace = true, optional = true }
 reovim-module-vfs-local = { workspace = true, optional = true }
 reovim-module-clipboard = { workspace = true, optional = true }
-reovim-module-codec-utf8 = { workspace = true, optional = true }
-reovim-module-codec-hex = { workspace = true, optional = true }
-reovim-module-codec-cjk = { workspace = true, optional = true }
-reovim-module-codec-legacy = { workspace = true, optional = true }
-reovim-module-codec-pdf = { workspace = true, optional = true }
-reovim-module-codec-binary-struct = { workspace = true, optional = true }
-reovim-module-codec-rlib = { workspace = true, optional = true }
-reovim-module-codec-csv = { workspace = true, optional = true }
+reovim-content-codec-utf8 = { workspace = true, optional = true }
+reovim-content-codec-hex = { workspace = true, optional = true }
+reovim-content-codec-cjk = { workspace = true, optional = true }
+reovim-content-codec-legacy = { workspace = true, optional = true }
+reovim-content-codec-pdf = { workspace = true, optional = true }
+reovim-content-codec-binary-struct = { workspace = true, optional = true }
+reovim-content-codec-rlib = { workspace = true, optional = true }
+reovim-content-codec-csv = { workspace = true, optional = true }
 reovim-module-layout = { workspace = true, optional = true }
 
 # Tier 2: Utility modules

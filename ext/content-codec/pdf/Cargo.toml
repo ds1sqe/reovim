@@ -1,0 +1,52 @@
+[package]
+name = "reovim-content-codec-pdf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "PDF content codec module for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer - for Module trait
+reovim-kernel = { workspace = true }
+reovim-capabilities = { workspace = true }
+
+# Domain-neutral codec uapi (traits, DecodedEdit, stores, etc.)
+reovim-content-codec = { workspace = true }
+# Text-domain carve-out (CodecSessionState used in command.rs, TextEdit in tests)
+reovim-content-codec-text = { workspace = true }
+reovim-driver-annotation = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-text-session = { workspace = true }
+# Content codec registry contract
+reovim-subsys-content-codec = { workspace = true }
+
+# Module macros for FFI entry points
+reovim-module-macros = { workspace = true }
+
+# PDF text extraction and structural editing
+pdf-extract = { workspace = true }
+lopdf = { workspace = true }
+
+# VFS byte source access
+reovim-subsys-vfs = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim-testing = { workspace = true }
+reovim-domain-text = { workspace = true }
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

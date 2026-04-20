@@ -5,9 +5,8 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_codec::{
-        CodecSessionState, ContentClassifierStore, ContentCodecFactoryStore, ContentType,
-    },
+    reovim_content_codec::{ContentClassifierStore, ContentCodecFactoryStore, ContentType},
+    reovim_content_codec_text::CodecSessionState,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },

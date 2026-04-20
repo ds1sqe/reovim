@@ -1,0 +1,49 @@
+[package]
+name = "reovim-content-codec-text"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Text-domain carve-out for the content codec — TextEdit, CodecSessionState, stale check, and module registration"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+# Enable for building as standalone dynamic library.
+dynamic = []
+
+[dependencies]
+# uapi mechanism (DecodedEdit, DomainEdit, ContentCodec trait, inode primitives).
+reovim-content-codec = { workspace = true }
+
+# Registry contract: the text carve-out does not currently register a codec
+# on load (utf8/cjk/legacy/csv live as separate modules in ext/content-codec/
+# as of C.5). It depends on subsys only to keep the option open for future
+# text-specific codec bundles and to keep the module-entry depgraph
+# assertion (D.3) satisfied once it gains a codec.
+reovim-subsys-content-codec = { workspace = true }
+
+# VFS heap byte source helper used by set_source path.
+reovim-subsys-vfs = { workspace = true }
+
+# Session extension + stale check trait.
+reovim-driver-text-session = { workspace = true }
+
+# Text domain vocabulary (Position + TextEdit event shape).
+reovim-domain-text = { workspace = true }
+reovim-domain-text-events = { workspace = true }
+
+# Kernel types (BufferId, ByteEdit, Module trait).
+reovim-kernel = { workspace = true }
+
+# declare_module! entry point.
+reovim-module-macros = { workspace = true }
+
+tracing = { workspace = true }

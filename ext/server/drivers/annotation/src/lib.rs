@@ -57,12 +57,16 @@ mod line_number_mode;
 mod registry;
 mod source;
 mod store;
-mod types;
 
 pub use {
     line_number_mode::LineNumberMode,
     registry::{AnnotationSourceKey, AnnotationSourceRegistry},
     source::{AnnotationContext, AnnotationSource},
     store::{AnnotationLayer, AnnotationStore, BufferAnnotationStore, SourceId},
-    types::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
 };
+
+// Annotation data types live in `uapi/content-codec/` so that uapi codec types
+// (e.g., DecodeResult.annotations) can reference them without violating the
+// core/ext boundary. This driver crate re-exports them to keep its existing
+// public surface stable.
+pub use reovim_content_codec::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget};

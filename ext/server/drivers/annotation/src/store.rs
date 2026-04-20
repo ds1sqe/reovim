@@ -31,7 +31,7 @@ use std::{
 
 use {reovim_kernel::api::v1::BufferId, smallvec::SmallVec};
 
-use super::types::Annotation;
+use crate::Annotation;
 
 /// Source identifier (matches `AnnotationSource::id()`).
 ///
@@ -263,7 +263,7 @@ impl AnnotationStore {
     #[must_use]
     pub fn query_filtered<F>(&self, range: Range<usize>, filter: F) -> Vec<&Annotation>
     where
-        F: Fn(&super::types::AnnotationKind) -> bool,
+        F: Fn(&crate::AnnotationKind) -> bool,
     {
         let mut result: Vec<&Annotation> = self
             .layers

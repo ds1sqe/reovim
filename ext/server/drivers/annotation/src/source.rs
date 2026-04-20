@@ -58,8 +58,7 @@
 //! ```
 
 use {
-    super::types::{Annotation, AnnotationKind},
-    crate::LineNumberMode,
+    crate::{Annotation, AnnotationKind, LineNumberMode},
     reovim_kernel::api::v1::BufferId,
     std::{ops::Range, path::PathBuf},
 };

@@ -1,0 +1,22 @@
+[package]
+name = "reovim-subsys-content-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Content codec subsystem — ContentCodecRegistry trait and default implementation"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-content-codec = { workspace = true }
+reovim-kernel = { workspace = true }
+
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+reovim-subsys-vfs = { workspace = true }

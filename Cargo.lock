@@ -2212,6 +2212,14 @@ dependencies = [
  "parking_lot",
  "reovim-client-cli",
  "reovim-client-tui",
+ "reovim-content-codec-binary-struct",
+ "reovim-content-codec-cjk",
+ "reovim-content-codec-csv",
+ "reovim-content-codec-hex",
+ "reovim-content-codec-legacy",
+ "reovim-content-codec-pdf",
+ "reovim-content-codec-rlib",
+ "reovim-content-codec-utf8",
  "reovim-depgraph",
  "reovim-domain-text",
  "reovim-driver-command",
@@ -2225,14 +2233,6 @@ dependencies = [
  "reovim-module-bufferline",
  "reovim-module-clipboard",
  "reovim-module-cmdline",
- "reovim-module-codec-binary-struct",
- "reovim-module-codec-cjk",
- "reovim-module-codec-csv",
- "reovim-module-codec-hex",
- "reovim-module-codec-legacy",
- "reovim-module-codec-pdf",
- "reovim-module-codec-rlib",
- "reovim-module-codec-utf8",
  "reovim-module-commands",
  "reovim-module-completion",
  "reovim-module-diagnostics-panel",
@@ -2447,6 +2447,212 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-content-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-domain",
+ "reovim-kernel",
+ "reovim-subsys-vfs",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-test",
+ "trybuild",
+]
+
+[[package]]
+name = "reovim-content-codec-binary-struct"
+version = "0.15.0-dev"
+dependencies = [
+ "goblin",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+ "zip",
+]
+
+[[package]]
+name = "reovim-content-codec-cjk"
+version = "0.15.0-dev"
+dependencies = [
+ "encoding_rs",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-csv"
+version = "0.15.0-dev"
+dependencies = [
+ "csv",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-hex"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-content-codec-xxd",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-legacy"
+version = "0.15.0-dev"
+dependencies = [
+ "encoding_rs",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-pdf"
+version = "0.15.0-dev"
+dependencies = [
+ "lopdf",
+ "pdf-extract",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-driver-command",
+ "reovim-driver-text-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-rlib"
+version = "0.15.0-dev"
+dependencies = [
+ "goblin",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-tar-gz"
+version = "0.15.0-dev"
+dependencies = [
+ "flate2",
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain-text",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tar",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-text"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-content-codec",
+ "reovim-domain-text",
+ "reovim-domain-text-events",
+ "reovim-driver-text-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-utf8"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
+ "reovim-domain",
+ "reovim-domain-text",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+ "reovim-subsys-vfs",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-content-codec-xxd"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-content-codec",
+ "reovim-driver-annotation",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-subsys-content-codec",
+]
+
+[[package]]
 name = "reovim-depgraph"
 version = "0.15.0-dev"
 dependencies = [
@@ -2476,35 +2682,9 @@ dependencies = [
 name = "reovim-driver-annotation"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-content-codec",
  "reovim-kernel",
  "smallvec",
-]
-
-[[package]]
-name = "reovim-driver-codec"
-version = "0.15.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-domain",
- "reovim-domain-text",
- "reovim-domain-text-events",
- "reovim-driver-annotation",
- "reovim-driver-text-session",
- "reovim-kernel",
- "reovim-subsys-vfs",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
- "tracing-test",
- "trybuild",
-]
-
-[[package]]
-name = "reovim-driver-codec-xxd"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-driver-annotation",
- "reovim-driver-codec",
 ]
 
 [[package]]
@@ -2810,160 +2990,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-module-codec-binary-struct"
-version = "0.15.0-dev"
-dependencies = [
- "goblin",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
- "zip",
-]
-
-[[package]]
-name = "reovim-module-codec-cjk"
-version = "0.15.0-dev"
-dependencies = [
- "encoding_rs",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-csv"
-version = "0.15.0-dev"
-dependencies = [
- "csv",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-hex"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-driver-codec-xxd",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-legacy"
-version = "0.15.0-dev"
-dependencies = [
- "encoding_rs",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-pdf"
-version = "0.15.0-dev"
-dependencies = [
- "lopdf",
- "pdf-extract",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-driver-command",
- "reovim-driver-text-session",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-rlib"
-version = "0.15.0-dev"
-dependencies = [
- "goblin",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-tar-gz"
-version = "0.15.0-dev"
-dependencies = [
- "flate2",
- "reovim-capabilities",
- "reovim-domain-text",
- "reovim-driver-annotation",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tar",
- "tracing",
-]
-
-[[package]]
-name = "reovim-module-codec-utf8"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-capabilities",
- "reovim-domain",
- "reovim-domain-text",
- "reovim-driver-codec",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-vfs",
- "reovim-testing",
- "tracing",
-]
-
-[[package]]
 name = "reovim-module-commands"
 version = "0.15.0-dev"
 dependencies = [
  "regex",
  "reovim-arch",
  "reovim-capabilities",
+ "reovim-content-codec",
+ "reovim-content-codec-text",
  "reovim-domain-text",
- "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-text-session",
@@ -3890,6 +3925,16 @@ dependencies = [
 name = "reovim-subsys-command-types"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-kernel",
+ "reovim-subsys-vfs",
+]
+
+[[package]]
+name = "reovim-subsys-content-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-content-codec",
  "reovim-kernel",
  "reovim-subsys-vfs",
 ]

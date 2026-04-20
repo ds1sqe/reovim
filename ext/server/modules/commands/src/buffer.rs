@@ -1,7 +1,7 @@
 //! Buffer navigation ex-commands: `:bnext`, `:bprevious`, `:bd`.
 
 use {
-    reovim_driver_codec::CodecSessionState,
+    reovim_content_codec_text::CodecSessionState,
     reovim_driver_command::{Command, CommandHandler, CommandResult},
     reovim_driver_text_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},

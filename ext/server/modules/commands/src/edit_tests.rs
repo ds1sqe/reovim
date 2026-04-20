@@ -1,5 +1,5 @@
 use {
-    reovim_driver_codec::{
+    reovim_content_codec::{
         CodecError, CodecMetadata, ContentClassifier, ContentClassifierStore,
         ContentCodecFactoryStore, ContentType, DecodeResult,
     },
@@ -34,7 +34,7 @@ impl ContentClassifier for AlwaysMatchClassifier {
 /// A codec that always returns a decode error.
 struct FailingCodec;
 
-impl reovim_driver_codec::ContentCodec for FailingCodec {
+impl reovim_content_codec::ContentCodec for FailingCodec {
     fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
         Err(CodecError::Other("forced decode failure".to_string()))
     }
@@ -42,11 +42,11 @@ impl reovim_driver_codec::ContentCodec for FailingCodec {
 
 struct FailingCodecFactory;
 
-impl reovim_driver_codec::ContentCodecFactory for FailingCodecFactory {
+impl reovim_content_codec::ContentCodecFactory for FailingCodecFactory {
     fn create(
         &self,
         content_type: &ContentType,
-    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+    ) -> Option<Arc<dyn reovim_content_codec::ContentCodec>> {
         if content_type.as_str() == "text/test" {
             Some(Arc::new(FailingCodec))
         } else {
@@ -68,7 +68,7 @@ struct SimpleTestCodec {
     truncated: bool,
 }
 
-impl reovim_driver_codec::ContentCodec for SimpleTestCodec {
+impl reovim_content_codec::ContentCodec for SimpleTestCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         Ok(DecodeResult {
             content: String::from_utf8_lossy(raw).into_owned(),
@@ -85,11 +85,11 @@ struct SimpleTestFactory {
     truncated: bool,
 }
 
-impl reovim_driver_codec::ContentCodecFactory for SimpleTestFactory {
+impl reovim_content_codec::ContentCodecFactory for SimpleTestFactory {
     fn create(
         &self,
         content_type: &ContentType,
-    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+    ) -> Option<Arc<dyn reovim_content_codec::ContentCodec>> {
         if content_type.as_str() == "text/test" {
             Some(Arc::new(SimpleTestCodec {
                 truncated: self.truncated,
@@ -111,11 +111,11 @@ impl reovim_driver_codec::ContentCodecFactory for SimpleTestFactory {
 /// Factory that recognises no content type (simulates missing codec).
 struct NoMatchFactory;
 
-impl reovim_driver_codec::ContentCodecFactory for NoMatchFactory {
+impl reovim_content_codec::ContentCodecFactory for NoMatchFactory {
     fn create(
         &self,
         _content_type: &ContentType,
-    ) -> Option<Arc<dyn reovim_driver_codec::ContentCodec>> {
+    ) -> Option<Arc<dyn reovim_content_codec::ContentCodec>> {
         None
     }
 
@@ -429,7 +429,7 @@ fn decode_file_content_codec_found_truncated_no_codec_state() {
 #[test]
 fn decode_file_content_codec_found_stores_codec_state() {
     use {
-        reovim_driver_codec::CodecSessionState,
+        reovim_content_codec_text::CodecSessionState,
         reovim_driver_text_session::testing::TestSessionRuntime,
     };
 

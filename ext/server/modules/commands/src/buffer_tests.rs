@@ -50,7 +50,8 @@ fn command_handlers_count() {
 #[test]
 fn bdelete_clears_codec_session_state() {
     use {
-        reovim_driver_codec::{CodecMetadata, CodecSessionState, ContentType},
+        reovim_content_codec::{CodecMetadata, ContentType},
+        reovim_content_codec_text::CodecSessionState,
         reovim_driver_text_session::testing::TestSessionRuntime,
     };
 

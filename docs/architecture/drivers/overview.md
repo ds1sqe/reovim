@@ -2,15 +2,14 @@
 
 Drivers (`ext/server/drivers/*`) implement traits defined by the kernel. Each driver is a separate crate.
 
-## Driver Overview (27 crates)
+## Driver Overview (26 crates)
 
 | Driver | Crate | Purpose | Documentation |
 |--------|-------|---------|---------------|
 | `annotation/` | `reovim-driver-annotation` | Annotation system | - |
 | `buffer/` | `reovim-driver-buffer` | Buffer manager registry | [buffer/overview.md](./buffer/overview.md) |
 | `clipboard/` | `reovim-subsys-clipboard` | System clipboard interface | [clipboard/overview.md](./clipboard/overview.md) |
-| `codec/` | `reovim-driver-codec` | Codec framework, file type detection | - |
-| `codec-xxd/` | `reovim-driver-codec-xxd` | XXD hex codec | - |
+| `codec-xxd/` | `reovim-content-codec-xxd` | XXD hex codec (standalone, lives in `ext/content-codec/xxd/`) | - |
 | `command/` | `reovim-driver-command` | Command traits and execution | [command/overview.md](./command/overview.md) |
 | `command-types/` | `reovim-driver-command-types` | CommandContext, CommandResult | [command-types/overview.md](./command-types/overview.md) |
 | `completion/` | `reovim-driver-completion` | Completion framework | - |
@@ -61,7 +60,7 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 ├─────────────────────────────────────────────────────────────┤
 │  Modules (ext/server/modules/) - policy                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Drivers (ext/server/drivers/) — 27 crates  ← YOU ARE HERE  │
+│  Drivers (ext/server/drivers/) — 26 crates  ← YOU ARE HERE  │
 │  ├── command/      - Command execution                      │
 │  ├── input/        - Key/mouse input                        │
 │  ├── syntax/       - Syntax highlighting                    │
@@ -69,7 +68,6 @@ These are sometimes referenced alongside drivers but are shared infrastructure:
 │  ├── vfs/          - Filesystem                             │
 │  ├── session/      - Session management                     │
 │  ├── buffer/       - Buffer operations                      │
-│  ├── codec/        - File type detection, encoding          │
 │  ├── module-loader/- Dynamic module loading                 │
 │  ├── undo/         - Undo/redo system                       │
 │  ├── search/       - Search and replace                     │
