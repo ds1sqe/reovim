@@ -36,8 +36,9 @@ impl std::error::Error for RenderError {}
 pub trait RenderTarget: Send + Sync {
     /// Submit encoded render commands.
     ///
-    /// The byte slice contains a `render-codec` `CommandBuffer` payload.
-    /// The platform adapter decodes and executes the commands.
+    /// The byte slice is a `RenderDescriptor::body` payload as defined by
+    /// `reovim-render-codec`. The platform adapter looks up the codec for
+    /// the expected `KIND_*` value, decodes the bytes, and executes.
     ///
     /// # Errors
     ///

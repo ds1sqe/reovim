@@ -1,58 +1,110 @@
 #![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-//! Render codec crate — domain-neutral `CommandBuffer` types for rendering.
+//! Render codec uapi — opaque envelope + `Codec` trait for domain-neutral
+//! render targets.
 //!
-//! This crate lives in `shared/` because it defines the encoding format for
-//! render commands. Domain drivers produce `CommandBuffer` payloads; platform
-//! clients decode and execute them.
+//! This crate is the closed-mechanism tier of the Plan 14 Phase R
+//! three-tier pattern (mirror of the Phase S surface-codec uapi):
 //!
-//! # Render Surfaces
+//! ```text
+//! uapi/render-codec/              ← CLOSED mechanism (this crate)
+//!   RenderDescriptor + Codec trait + header accessors
 //!
-//! | Surface | Module | Use Case |
-//! |---------|--------|----------|
-//! | `cell_grid` | Terminal/TUI | Character cells on a 2D grid |
-//! | `pixel` | GUI/Web | Pixel-addressed 2D rendering |
-//! | `vr` | VR/AR | Stereoscopic 3D rendering |
-//! | `volumetric` | Holographic | Volumetric 3D rendering |
+//! server/lib/subsys/render-codec/ ← CONTRACT + REGISTRY (Phase R.2)
+//!   RenderCodecRegistry trait + default impl
 //!
-//! Each surface defines a `CommandBuffer` that encodes render commands as
-//! opaque bytes. Platform clients decode the buffer using the corresponding
-//! module's decoder.
+//! ext/render-codec/<variant>/     ← PER-VARIANT IMPL (Phase R.3+)
+//!   ext/render-codec/tui/         CellGridRender codec (kind 0x0001)
+//! ```
+//!
+//! The uapi carries no cell layout, style vocabulary, or platform
+//! interpretation — concrete render shapes (cell-grid, pixel, ...) live
+//! in the corresponding `ext/render-codec/<variant>/` module crates.
 
-pub mod cell_grid;
-pub mod pixel;
-pub mod volumetric;
-pub mod vr;
+mod descriptor;
 
-/// Surface kind identifier for render command routing.
-///
-/// Used by clients to determine which decoder to use for a `CommandBuffer`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum SurfaceKind {
-    /// Character-cell grid (terminals, TUI).
-    CellGrid = 1,
-    /// Pixel-addressed 2D surface (GUI, web canvas).
-    Pixel = 2,
-    /// Stereoscopic VR/AR surface.
-    Vr = 3,
-    /// Volumetric 3D surface (holographic displays).
-    Volumetric = 4,
+#[cfg(test)]
+mod descriptor_tests;
+
+pub use descriptor::{
+    // Well-known kinds (in-repo allocation, 0x0001–0x00FF).
+    KIND_CELL_GRID,
+    RenderDescriptor,
+    render_body,
+    render_kind,
+};
+
+use std::any::Any;
+
+/// Error returned when a render codec cannot decode a payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RenderPayloadError {
+    /// Body shorter than the minimum expected for this kind.
+    TooShort {
+        /// Number of bytes received.
+        got: usize,
+        /// Minimum bytes required.
+        min: usize,
+    },
+    /// Kind byte does not match this codec.
+    WrongType {
+        /// Expected kind value this codec handles.
+        expected: u16,
+        /// Actual kind value in the envelope.
+        actual: u16,
+    },
+    /// Body bytes are well-formed length-wise but fail a codec-specific
+    /// semantic check.
+    InvalidData {
+        /// Stringified error class.
+        reason: &'static str,
+    },
 }
 
-impl SurfaceKind {
-    /// Convert from raw byte, returning `None` for unknown values.
-    #[must_use]
-    pub const fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            1 => Some(Self::CellGrid),
-            2 => Some(Self::Pixel),
-            3 => Some(Self::Vr),
-            4 => Some(Self::Volumetric),
-            _ => None,
+impl std::fmt::Display for RenderPayloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooShort { got, min } => {
+                write!(f, "render payload too short: got {got} bytes, need at least {min}")
+            }
+            Self::WrongType { expected, actual } => {
+                write!(
+                    f,
+                    "render payload wrong type: expected kind {expected:#06x}, got {actual:#06x}"
+                )
+            }
+            Self::InvalidData { reason } => write!(f, "render payload invalid: {reason}"),
         }
     }
 }
 
-#[cfg(test)]
-mod tests;
+impl std::error::Error for RenderPayloadError {}
+
+/// Contract for render codecs.
+///
+/// Implementations decode `RenderDescriptor::body` bytes into a concrete
+/// render-target value (e.g. `CellGridRender { width, height, ... }`) and
+/// encode concrete render values back into bytes for wire transport.
+pub trait Codec: Send + Sync + 'static {
+    /// The kind value this codec handles. Must be unique per concern.
+    fn kind(&self) -> u16;
+
+    /// Encode a concrete render value back into bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderPayloadError::InvalidData`] if the value cannot be
+    /// encoded, [`RenderPayloadError::WrongType`] if the `value` type is
+    /// not the one this codec handles.
+    fn encode(&self, value: &dyn Any) -> Result<Vec<u8>, RenderPayloadError>;
+
+    /// Decode body bytes into a type-erased concrete render value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderPayloadError::TooShort`] if `body` is smaller than
+    /// the codec's minimum length, [`RenderPayloadError::InvalidData`] on
+    /// malformed body.
+    fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, RenderPayloadError>;
+}

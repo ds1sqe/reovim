@@ -2710,11 +2710,15 @@ version = "0.15.0-dev"
 dependencies = [
  "dirs",
  "reovim-arch",
+ "reovim-client-driver",
  "reovim-client-model",
  "reovim-driver-annotation",
  "reovim-driver-statusline",
  "reovim-kernel",
+ "reovim-render-codec",
+ "reovim-render-codec-tui",
  "reovim-subsys-layout",
+ "reovim-subsys-render-codec",
  "serde",
  "smallvec",
  "tempfile",
@@ -3874,6 +3878,17 @@ name = "reovim-render-codec"
 version = "0.15.0-dev"
 
 [[package]]
+name = "reovim-render-codec-tui"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-render-codec",
+ "reovim-subsys-render-codec",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-server"
 version = "0.15.0-dev"
 dependencies = [
@@ -4021,6 +4036,15 @@ dependencies = [
  "reovim-protocol",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-subsys-render-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-kernel",
+ "reovim-render-codec",
 ]
 
 [[package]]

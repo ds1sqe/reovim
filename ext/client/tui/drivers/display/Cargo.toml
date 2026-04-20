@@ -49,3 +49,10 @@ serde = { version = "1.0", features = ["derive"] }
 [dev-dependencies]
 # Temporary directories for theme loader tests (Phase 13.0 #470)
 tempfile = "3.14"
+# Render-codec adoption (Plan 14 Phase R.4) — narrow proof consumer for
+# the cell-grid render-codec pipeline. Dev-only; production render path
+# migration is tracked as follow-on R-b.
+reovim-client-driver = { workspace = true }
+reovim-render-codec = { workspace = true }
+reovim-subsys-render-codec = { workspace = true }
+reovim-render-codec-tui = { workspace = true }
