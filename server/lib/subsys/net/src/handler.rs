@@ -95,7 +95,7 @@ impl RpcHandlerContext {
 /// # Example
 ///
 /// ```ignore
-/// use reovim_driver_net::{RpcHandler, RpcHandlerContext, RpcResult};
+/// use reovim_subsys_net::{RpcHandler, RpcHandlerContext, RpcResult};
 /// use serde_json::Value;
 ///
 /// struct EchoHandler;

@@ -1,25 +1,26 @@
 #![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-//! Network driver for reovim.
+//! Network subsystem contracts for reovim.
 //!
 //! Linux equivalent: `net/`, `include/linux/net.h`
 //!
 //! # Architecture
 //!
-//! This crate defines traits for RPC server infrastructure and re-exports
-//! shared RPC types from `shared/protocol/`. The server uses this driver for
-//! server mode.
+//! This crate defines subsys-level trait contracts for RPC transport
+//! infrastructure and re-exports shared RPC types from `shared/protocol/`.
+//! Driver implementations (e.g., gRPC via tonic) live in the drivers layer
+//! and are tracked as a separate follow-on plan.
 //!
 //! ```text
-//! shared/protocol/       <-- Shared RPC types (messages, params, results)
+//! shared/protocol/              <-- Shared RPC types (messages, params, results)
 //!        ^
 //!        |  re-exports from
 //!        |
-//! shared/net/            <-- Traits + re-exports (this crate)
+//! server/lib/subsys/net/        <-- Traits + re-exports (this crate)
 //!        ^
-//!        |  imports from
+//!        |  implemented by
 //!        |
-//! server/lib/server/     <-- Server implementation
+//! server/lib/drivers/net-*/     <-- Transport driver implementations (future)
 //! ```
 //!
 //! # Components
@@ -47,7 +48,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_driver_net::{
+//! use reovim_subsys_net::{
 //!     TransportConfig, RpcRequest, RpcResponse, RpcError,
 //!     NetError,
 //! };

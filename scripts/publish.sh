@@ -82,7 +82,7 @@ CRATES=(
     "server/lib/subsys/manifest"                   # reovim-subsys-manifest
     "server/lib/subsys/module-config"              # reovim-subsys-module-config
     "server/lib/subsys/module-loader"               # reovim-subsys-module-loader
-    "shared/net"                                   # reovim-driver-net
+    "server/lib/subsys/net"                        # reovim-subsys-net
     "server/lib/drivers/search"                    # reovim-driver-search
     "server/lib/subsys/statusline"                 # reovim-subsys-statusline
     "shared/trace"                                 # reovim-driver-trace

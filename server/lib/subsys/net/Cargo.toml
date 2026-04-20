@@ -1,10 +1,10 @@
 [package]
-name = "reovim-driver-net"
+name = "reovim-subsys-net"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Network driver for reovim (RPC server, transports)"
+description = "Network subsystem contracts for reovim (RPC transports, listeners, handlers)"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true

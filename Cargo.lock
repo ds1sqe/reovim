@@ -2558,17 +2558,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-driver-net"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-arch",
- "reovim-kernel",
- "reovim-protocol",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "reovim-driver-picker"
 version = "0.15.0-dev"
 dependencies = [
@@ -3997,6 +3986,17 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "reovim-subsys-net"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kernel",
+ "reovim-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

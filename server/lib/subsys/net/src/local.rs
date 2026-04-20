@@ -14,7 +14,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use reovim_driver_net::local::LocalAddr;
+//! use reovim_subsys_net::local::LocalAddr;
 //!
 //! // Get platform-appropriate address for an instance
 //! let addr = LocalAddr::for_instance("myproject");
