@@ -61,10 +61,14 @@ fi
 
 # Source directories to scan
 SEARCH_DIRS=(
-    server/
-    clients/
-    shared/
     apps/
+    arch/
+    clients/
+    ext/
+    lib/
+    server/
+    tools/
+    uapi/
 )
 
 violations=()

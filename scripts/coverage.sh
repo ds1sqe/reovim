@@ -179,11 +179,14 @@ if [ -n "$FAIL_UNDER" ]; then
   # Parse LCOV: per-file line + branch hit rates, collect uncovered lines and branches.
   REPORT=$(awk -v threshold="$FAIL_UNDER" '
     function make_rel(f) {
-      sub(/.*\/server\//, "server/", f)
-      sub(/.*\/clients\//, "clients/", f)
-      sub(/.*\/shared\//, "shared/", f)
       sub(/.*\/apps\//, "apps/", f)
+      sub(/.*\/arch\//, "arch/", f)
+      sub(/.*\/clients\//, "clients/", f)
+      sub(/.*\/ext\//, "ext/", f)
+      sub(/.*\/lib\//, "lib/", f)
+      sub(/.*\/server\//, "server/", f)
       sub(/.*\/tools\//, "tools/", f)
+      sub(/.*\/uapi\//, "uapi/", f)
       return f
     }
     /^SF:/ {
