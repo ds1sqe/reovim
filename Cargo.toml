@@ -177,6 +177,9 @@ members = [
     # Client-side ext capabilities (TUI)
     "ext/client/tui/capabilities/cell",
 
+    # Client-side ext handler modules (TUI)
+    "ext/client/tui/modules/surface-descriptor-cell-grid",
+
     # Core: generic Domain trait (zero deps; enables Buffer<D>, Decode<D>, ...)
     "lib/domain",
 
@@ -435,6 +438,7 @@ reovim-tui-mod-illuminate = { path = "./ext/client/tui/modules/illuminate", vers
 reovim-tui-mod-diagnostics = { path = "./ext/client/tui/modules/diagnostics", version = "0.15.0-dev" }
 reovim-tui-mod-markdown = { path = "./ext/client/tui/modules/markdown", version = "0.15.0-dev" }
 reovim-tui-mod-bufferline = { path = "./ext/client/tui/modules/bufferline", version = "0.15.0-dev" }
+reovim-tui-mod-surface-descriptor-cell-grid = { path = "./ext/client/tui/modules/surface-descriptor-cell-grid", version = "0.15.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

@@ -2408,6 +2408,7 @@ dependencies = [
  "reovim-client-cli",
  "reovim-client-driver",
  "reovim-client-model",
+ "reovim-client-subsys-codec",
  "reovim-driver-display",
  "reovim-driver-tui",
  "reovim-protocol",
@@ -2431,6 +2432,7 @@ dependencies = [
  "reovim-tui-mod-pair",
  "reovim-tui-mod-signature-help",
  "reovim-tui-mod-statusline",
+ "reovim-tui-mod-surface-descriptor-cell-grid",
  "reovim-tui-mod-tetromino",
  "reovim-tui-mod-whichkey",
  "reovim-tui-mod-yank-flash",
@@ -4227,6 +4229,13 @@ dependencies = [
  "reovim-client-driver",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-surface-descriptor-cell-grid"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-codec",
 ]
 
 [[package]]

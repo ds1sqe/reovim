@@ -29,10 +29,13 @@
 
 pub mod render;
 pub mod surface;
+pub mod surface_descriptor;
 pub mod target;
 
 #[cfg(test)]
 mod render_tests;
+#[cfg(test)]
+mod surface_descriptor_tests;
 #[cfg(test)]
 mod surface_tests;
 #[cfg(test)]
@@ -44,6 +47,10 @@ pub use {
     },
     surface::{
         DefaultSurfaceEncoderRegistry, SurfaceEncoder, SurfaceEncoderError, SurfaceEncoderRegistry,
+    },
+    surface_descriptor::{
+        DefaultSurfaceDescriptorHandlerRegistry, SurfaceDescriptorHandler,
+        SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
     },
     target::FrameTarget,
 };

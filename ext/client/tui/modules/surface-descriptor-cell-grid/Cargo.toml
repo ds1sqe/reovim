@@ -1,0 +1,16 @@
+[package]
+name = "reovim-tui-mod-surface-descriptor-cell-grid"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TUI cell-grid surface descriptor handler for reovim-client-subsys-codec"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-subsys-codec = { workspace = true }
