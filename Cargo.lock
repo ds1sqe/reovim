@@ -2918,6 +2918,7 @@ name = "reovim-ext-client-tui-cap-cell"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
+ "reovim-client-driver",
 ]
 
 [[package]]
