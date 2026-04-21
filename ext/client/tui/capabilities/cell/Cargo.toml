@@ -1,0 +1,16 @@
+[package]
+name = "reovim-ext-client-tui-cap-cell"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TUI cell-grid capability type for FrameTarget slots"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bitflags = { workspace = true }

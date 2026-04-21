@@ -52,9 +52,6 @@ pub use {
 };
 
 // Types
-//
-// `SurfaceDescriptor` lives in `uapi/surface-codec/` (Plan 14 Phase S);
-// consumers import it directly from `reovim_surface_codec`.
 pub use types::{ClientId, CursorSnapshot};
 
 // Extension system

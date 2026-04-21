@@ -2390,6 +2390,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-subsys-codec"
+version = "0.15.0-dev"
+dependencies = [
+ "parking_lot",
+]
+
+[[package]]
 name = "reovim-client-tui"
 version = "0.15.0-dev"
 dependencies = [
@@ -2706,15 +2713,11 @@ version = "0.15.0-dev"
 dependencies = [
  "dirs",
  "reovim-arch",
- "reovim-client-driver",
  "reovim-client-model",
  "reovim-driver-annotation",
  "reovim-driver-statusline",
  "reovim-kernel",
- "reovim-render-codec",
- "reovim-render-codec-tui",
  "reovim-subsys-layout",
- "reovim-subsys-render-codec",
  "serde",
  "smallvec",
  "tempfile",
@@ -2906,6 +2909,13 @@ dependencies = [
  "tokio",
  "tracing",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-ext-client-tui-cap-cell"
+version = "0.15.0-dev"
+dependencies = [
+ "bitflags 2.11.0",
 ]
 
 [[package]]
@@ -3882,21 +3892,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-render-codec"
-version = "0.15.0-dev"
-
-[[package]]
-name = "reovim-render-codec-tui"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-render-codec",
- "reovim-subsys-render-codec",
- "tracing",
-]
-
-[[package]]
 name = "reovim-server"
 version = "0.15.0-dev"
 dependencies = [
@@ -4046,15 +4041,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-subsys-render-codec"
-version = "0.15.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-kernel",
- "reovim-render-codec",
-]
-
-[[package]]
 name = "reovim-subsys-session"
 version = "0.15.0-dev"
 dependencies = [
@@ -4067,47 +4053,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-subsys-surface-codec"
-version = "0.15.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-kernel",
- "reovim-surface-codec",
-]
-
-[[package]]
 name = "reovim-subsys-vfs"
 version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
  "memmap2",
  "reovim-kernel",
-]
-
-[[package]]
-name = "reovim-surface-codec"
-version = "0.15.0-dev"
-
-[[package]]
-name = "reovim-surface-codec-pixel"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-surface-codec",
- "reovim-surface-codec",
- "tracing",
-]
-
-[[package]]
-name = "reovim-surface-codec-tui"
-version = "0.15.0-dev"
-dependencies = [
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-subsys-surface-codec",
- "reovim-surface-codec",
- "tracing",
 ]
 
 [[package]]
