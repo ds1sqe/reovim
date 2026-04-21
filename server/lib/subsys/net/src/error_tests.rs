@@ -32,10 +32,7 @@ fn display_io() {
 
 #[test]
 fn display_port_exhausted() {
-    assert_eq!(
-        NetError::PortExhausted.to_string(),
-        "no available ports in fallback range"
-    );
+    assert_eq!(NetError::PortExhausted.to_string(), "no available ports in fallback range");
 }
 
 #[test]
@@ -67,8 +64,7 @@ fn debug_contains_variant_name() {
 
 #[test]
 fn is_std_error() {
-    let err: Box<dyn std::error::Error> =
-        Box::new(NetError::BindFailed("x".into()));
+    let err: Box<dyn std::error::Error> = Box::new(NetError::BindFailed("x".into()));
     assert!(err.to_string().starts_with("failed to bind"));
 }
 

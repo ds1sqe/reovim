@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_protocol::v2::{WindowLeaf, WindowSplit, window_node::Node},
+    reovim_protocol::v3::{WindowLeaf, WindowSplit, window_node::Node},
 };
 
 fn make_leaf_node(window_id: u64, buffer_id: Option<u64>) -> WindowNode {
@@ -118,6 +118,9 @@ fn test_apply_layout_notification() {
             rect: None,
             focused: false,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
         WindowInfo {
             window_id: 2,
@@ -125,6 +128,9 @@ fn test_apply_layout_notification() {
             rect: None,
             focused: false,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
     ];
 
@@ -147,6 +153,9 @@ fn test_apply_layout_notification_no_focused_id_uses_first() {
             rect: None,
             focused: false,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
         WindowInfo {
             window_id: 20,
@@ -154,6 +163,9 @@ fn test_apply_layout_notification_no_focused_id_uses_first() {
             rect: None,
             focused: false,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
     ];
 
@@ -190,6 +202,9 @@ fn test_apply_layout_notification_cleans_stale_cursors() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
 
     apply_layout_notification(&mut state, Some(1), windows);

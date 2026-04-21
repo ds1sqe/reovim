@@ -1,4 +1,4 @@
-use {super::*, reovim_protocol::v2::WindowRect};
+use {super::*, reovim_protocol::v3::WindowRect};
 
 fn make_window_info(
     id: u64,
@@ -20,6 +20,9 @@ fn make_window_info(
         }),
         focused,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }
 }
 
@@ -111,6 +114,9 @@ fn test_window_without_rect_uses_fallback() {
             rect: None, // No rect - uses fallback vertical stacking
             focused: true,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
         WindowInfo {
             window_id: 2,
@@ -118,6 +124,9 @@ fn test_window_without_rect_uses_fallback() {
             rect: None, // No rect - uses fallback vertical stacking
             focused: false,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         },
     ];
 
@@ -233,6 +242,9 @@ fn test_single_window_uses_full_screen() {
         }),
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
 
     mirror.apply_layout_changed(1, &windows);
@@ -254,6 +266,9 @@ fn test_window_placement_buffer_id_none() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
 
     mirror.apply_layout_changed(1, &windows);

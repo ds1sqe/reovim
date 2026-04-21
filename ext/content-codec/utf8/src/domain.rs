@@ -5,10 +5,10 @@
 //! new domain-aware trait system.
 
 use {
-    reovim_domain_text::{Text, TextEdit, TextPosition},
     reovim_content_codec::{
         ByteNotifiable, CodecError, CodecMetadata, ContentType, Decode, DecodeOutput, Encode, Index,
     },
+    reovim_domain_text::{Text, TextEdit, TextPosition},
     reovim_kernel::api::v1::ByteEdit,
 };
 

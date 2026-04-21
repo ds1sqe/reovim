@@ -104,11 +104,10 @@ impl Codec for CellGridRenderCodec {
                 reason: "cursor out of bounds",
             });
         }
-        let cells_len = u32::try_from(target.cells.len()).map_err(|_| {
-            RenderPayloadError::InvalidData {
+        let cells_len =
+            u32::try_from(target.cells.len()).map_err(|_| RenderPayloadError::InvalidData {
                 reason: "cells payload exceeds u32::MAX",
-            }
-        })?;
+            })?;
         let mut buf = Vec::with_capacity(CellGridRender::HEADER_LEN + target.cells.len());
         buf.extend_from_slice(&target.width.to_be_bytes());
         buf.extend_from_slice(&target.height.to_be_bytes());
@@ -148,7 +147,8 @@ impl Codec for CellGridRenderCodec {
                 reason: "cursor out of bounds",
             });
         }
-        let cells = body[CellGridRender::HEADER_LEN..CellGridRender::HEADER_LEN + cells_len].to_vec();
+        let cells =
+            body[CellGridRender::HEADER_LEN..CellGridRender::HEADER_LEN + cells_len].to_vec();
         Ok(Box::new(CellGridRender {
             width,
             height,

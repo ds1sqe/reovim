@@ -2,18 +2,19 @@
 
 use reovim_input_codec::InputPayloadError;
 
-use crate::{
-    KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
-    ScrollEvent,
-    codecs::{
-        TuiKeyCodec, TuiMouseCodec, TuiScrollCodec,
-        decode_key_event, decode_mouse_event, decode_scroll_event,
-        encode_key_event, encode_mouse_event, encode_scroll_event,
-        KIND_KEY, KIND_MOUSE, KIND_SCROLL,
+use {
+    crate::{
+        KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
+        ScrollEvent,
+        codecs::{
+            KIND_KEY, KIND_MOUSE, KIND_SCROLL, TuiKeyCodec, TuiMouseCodec, TuiScrollCodec,
+            decode_key_event, decode_mouse_event, decode_scroll_event, encode_key_event,
+            encode_mouse_event, encode_scroll_event,
+        },
+        key_types::keycode_to_u32,
     },
-    key_types::keycode_to_u32,
+    reovim_input_codec::Codec,
 };
-use reovim_input_codec::Codec;
 
 // ---------------------------------------------------------------------------
 // TuiKeyCodec
@@ -146,7 +147,9 @@ fn tui_key_codec_wrong_type_returns_error() {
     let err = codec.encode(&not_a_key).unwrap_err();
     assert!(matches!(
         err,
-        InputPayloadError::WrongType { expected: "KeyEvent" }
+        InputPayloadError::WrongType {
+            expected: "KeyEvent"
+        }
     ));
 }
 
@@ -187,10 +190,7 @@ fn all_mouse_events() -> Vec<MouseEvent> {
         ScrollLeft,
         ScrollRight,
     ];
-    kinds
-        .iter()
-        .map(|k| MouseEvent::new(*k, 10, 20))
-        .collect()
+    kinds.iter().map(|k| MouseEvent::new(*k, 10, 20)).collect()
 }
 
 #[test]
@@ -251,7 +251,9 @@ fn tui_mouse_codec_wrong_type_returns_error() {
     let err = codec.encode(&not_a_mouse).unwrap_err();
     assert!(matches!(
         err,
-        InputPayloadError::WrongType { expected: "MouseEvent" }
+        InputPayloadError::WrongType {
+            expected: "MouseEvent"
+        }
     ));
 }
 
@@ -323,7 +325,9 @@ fn tui_scroll_codec_wrong_type_returns_error() {
     let err = codec.encode(&not_a_scroll).unwrap_err();
     assert!(matches!(
         err,
-        InputPayloadError::WrongType { expected: "ScrollEvent" }
+        InputPayloadError::WrongType {
+            expected: "ScrollEvent"
+        }
     ));
 }
 
@@ -333,23 +337,25 @@ fn tui_scroll_codec_wrong_type_returns_error() {
 
 #[test]
 fn codecs_arc_dyn_codec_roundtrip() {
-    use reovim_input_codec::Codec;
-    use std::sync::Arc;
-    use crate::codecs::{tui_key_codec, tui_mouse_codec, tui_scroll_codec};
+    use {
+        crate::codecs::{tui_key_codec, tui_mouse_codec, tui_scroll_codec},
+        reovim_input_codec::Codec,
+        std::sync::Arc,
+    };
 
-    let codecs: Vec<Arc<dyn Codec>> = vec![
-        tui_key_codec(),
-        tui_mouse_codec(),
-        tui_scroll_codec(),
-    ];
+    let codecs: Vec<Arc<dyn Codec>> = vec![tui_key_codec(), tui_mouse_codec(), tui_scroll_codec()];
     let kinds: Vec<u16> = codecs.iter().map(|c| c.kind()).collect();
     assert_eq!(kinds, vec![KIND_KEY, KIND_MOUSE, KIND_SCROLL]);
 }
 
 #[test]
 fn tui_key_codec_register_unregister_via_registry() {
-    use reovim_subsys_input::{DefaultInputCodecRegistry, InputCodecRegistry};
-    use crate::codecs::{tui_key_codec, tui_mouse_codec, tui_scroll_codec, KIND_KEY, KIND_MOUSE, KIND_SCROLL};
+    use {
+        crate::codecs::{
+            KIND_KEY, KIND_MOUSE, KIND_SCROLL, tui_key_codec, tui_mouse_codec, tui_scroll_codec,
+        },
+        reovim_subsys_input::{DefaultInputCodecRegistry, InputCodecRegistry},
+    };
 
     let registry = DefaultInputCodecRegistry::new();
     registry.register(tui_key_codec());

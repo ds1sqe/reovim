@@ -1,10 +1,10 @@
 use super::*;
+use crate::SelectionState;
 
 // Mock context for testing
 struct MockContext {
     state: TuiCoreState,
     buffer_modified_calls: Vec<u64>,
-    option_changed_calls: Vec<String>,
     extensions: Vec<Box<dyn ClientModule>>,
 }
 
@@ -13,7 +13,6 @@ impl MockContext {
         Self {
             state: TuiCoreState::new(client_id),
             buffer_modified_calls: Vec::new(),
-            option_changed_calls: Vec::new(),
             extensions: Vec::new(),
         }
     }
@@ -40,10 +39,6 @@ impl NotificationContext for MockContext {
         self.buffer_modified_calls.push(buffer_id);
     }
 
-    fn on_option_changed(&mut self, name: &str, _value: Option<OptionValue>) {
-        self.option_changed_calls.push(name.to_string());
-    }
-
     fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
         &mut self.extensions
     }
@@ -64,9 +59,6 @@ fn test_mock_context() {
 
     ctx.on_buffer_modified(42);
     assert_eq!(ctx.buffer_modified_calls, vec![42]);
-
-    ctx.on_option_changed("colorscheme", None);
-    assert_eq!(ctx.option_changed_calls, vec!["colorscheme".to_string()]);
 }
 
 // =========================================================================
@@ -99,7 +91,6 @@ fn test_default_on_buffer_modified_is_noop() {
     };
     // Default trait methods should be no-ops and not panic
     ctx.on_buffer_modified(42);
-    ctx.on_option_changed("test", None);
     assert!(ctx.on_capture_request(1, "plain_text", 1).is_none());
     ctx.on_resize(80, 24);
 }
@@ -108,7 +99,7 @@ fn test_default_on_buffer_modified_is_noop() {
 // Synchronous notification dispatch tests (no client needed)
 // =========================================================================
 
-fn make_notif(payload: reovim_protocol::v2::notification::Payload) -> Notification {
+fn make_notif(payload: reovim_protocol::v3::notification::Payload) -> Notification {
     Notification {
         event_type: String::new(),
         timestamp_ms: 0,
@@ -129,148 +120,8 @@ async fn test_handle_empty_payload() {
 }
 
 #[tokio::test]
-async fn test_handle_mode_changed_local() {
-    use reovim_protocol::v2::ModeChangedPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::ModeChanged(ModeChangedPayload {
-        name: "insert".to_string(),
-        display: "INSERT".to_string(),
-        is_insert: true,
-        client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert_eq!(ctx.state.mode_name, "insert");
-    assert_eq!(ctx.state.mode_display, "INSERT");
-    assert!(ctx.state.is_insert_mode());
-}
-
-#[tokio::test]
-async fn test_handle_mode_changed_remote() {
-    use reovim_protocol::v2::ModeChangedPayload;
-
-    let mut ctx = MockContext::new(1);
-    // Add a remote client first
-    ctx.state.add_remote_client(RemoteClient {
-        client_id: 2,
-        display_name: "other".to_string(),
-        cursor_line: 0,
-        cursor_col: 0,
-        buffer_id: Some(1),
-        mode: "NORMAL".to_string(),
-        selection: None,
-    });
-
-    let notif = make_notif(Payload::ModeChanged(ModeChangedPayload {
-        name: "visual".to_string(),
-        display: "VISUAL".to_string(),
-        is_insert: false,
-        client_id: 2,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    // Local mode should NOT have changed
-    assert!(ctx.state.mode_name.is_empty());
-    // Remote mode should be updated
-    assert_eq!(ctx.state.other_clients[&2].mode, "VISUAL");
-}
-
-#[tokio::test]
-async fn test_handle_mode_changed_remote_unknown_client() {
-    use reovim_protocol::v2::ModeChangedPayload;
-
-    let mut ctx = MockContext::new(1);
-    // No remote client registered for id 99
-    let notif = make_notif(Payload::ModeChanged(ModeChangedPayload {
-        name: "visual".to_string(),
-        display: "VISUAL".to_string(),
-        is_insert: false,
-        client_id: 99,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    // Should not panic, mode display stays empty
-    assert!(ctx.state.mode_display.is_empty());
-}
-
-#[tokio::test]
-async fn test_handle_cursor_moved_local() {
-    use reovim_protocol::v2::{CursorMovedPayload, Position};
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.focused_window_id = 5;
-
-    let notif = make_notif(Payload::CursorMoved(CursorMovedPayload {
-        window_id: 5,
-        position: Some(Position {
-            line: 10,
-            column: 3,
-        }),
-        client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-
-    let cursor = ctx.state.get_focused_cursor().unwrap();
-    assert_eq!(cursor.line, 10);
-    assert_eq!(cursor.column, 3);
-}
-
-#[tokio::test]
-async fn test_handle_cursor_moved_remote() {
-    use reovim_protocol::v2::{CursorMovedPayload, Position};
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.add_remote_client(RemoteClient {
-        client_id: 2,
-        display_name: "other".to_string(),
-        cursor_line: 0,
-        cursor_col: 0,
-        buffer_id: Some(1),
-        mode: "NORMAL".to_string(),
-        selection: None,
-    });
-
-    let notif = make_notif(Payload::CursorMoved(CursorMovedPayload {
-        window_id: 10,
-        position: Some(Position {
-            line: 7,
-            column: 15,
-        }),
-        client_id: 2,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert_eq!(ctx.state.other_clients[&2].cursor_line, 7);
-    assert_eq!(ctx.state.other_clients[&2].cursor_col, 15);
-}
-
-#[tokio::test]
-async fn test_handle_cursor_moved_no_position() {
-    use reovim_protocol::v2::CursorMovedPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::CursorMoved(CursorMovedPayload {
-        window_id: 5,
-        position: None,
-        client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    // No cursor should be stored
-    assert!(ctx.state.get_focused_cursor().is_none());
-}
-
-#[tokio::test]
 async fn test_handle_layout_changed() {
-    use reovim_protocol::v2::{LayoutChangedPayload, WindowInfo};
+    use reovim_protocol::v3::{LayoutChangedPayload, WindowInfo};
 
     let mut ctx = MockContext::new(1);
     // Pre-populate buffer cache so the handler doesn't try to fetch
@@ -291,6 +142,9 @@ async fn test_handle_layout_changed() {
                 rect: None,
                 focused: true,
                 opacity: None,
+                primary_domain_id: 0,
+                embedded_domain_ids: vec![],
+                spatial_placement: None,
             },
             WindowInfo {
                 window_id: 4,
@@ -298,6 +152,9 @@ async fn test_handle_layout_changed() {
                 rect: None,
                 focused: false,
                 opacity: None,
+                primary_domain_id: 0,
+                embedded_domain_ids: vec![],
+                spatial_placement: None,
             },
         ],
         client_id: 1,
@@ -313,7 +170,7 @@ async fn test_handle_layout_changed() {
 
 #[tokio::test]
 async fn test_handle_render_complete() {
-    use reovim_protocol::v2::RenderCompletePayload;
+    use reovim_protocol::v3::RenderCompletePayload;
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::RenderComplete(RenderCompletePayload { frame_id: 42 }));
@@ -324,7 +181,7 @@ async fn test_handle_render_complete() {
 
 #[tokio::test]
 async fn test_handle_detach() {
-    use reovim_protocol::v2::DetachPayload;
+    use reovim_protocol::v3::DetachPayload;
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::Detach(DetachPayload {
@@ -336,23 +193,8 @@ async fn test_handle_detach() {
 }
 
 #[tokio::test]
-async fn test_handle_option_changed() {
-    use reovim_protocol::v2::OptionChangedPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
-        name: "colorscheme".to_string(),
-        value: Some(OptionValue::StringValue("dark".to_string())),
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert_eq!(ctx.option_changed_calls, vec!["colorscheme"]);
-}
-
-#[tokio::test]
 async fn test_handle_presence_joined_remote() {
-    use reovim_protocol::v2::{ClientPresence, PresenceJoinedPayload};
+    use reovim_protocol::v3::{ClientPresence, PresenceJoinedPayload};
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::PresenceJoined(PresenceJoinedPayload {
@@ -361,8 +203,8 @@ async fn test_handle_presence_joined_remote() {
             client_type: "tui".to_string(),
             display_name: "laptop".to_string(),
             buffer_id: Some(100),
-            visible_lines: None,
-            mode: "NORMAL".to_string(),
+            viewport_state: None,
+            spatial_state: None,
             sync_mode: 0,
             follow_target: None,
             joined_at_ms: 0,
@@ -373,11 +215,13 @@ async fn test_handle_presence_joined_remote() {
     assert!(matches!(result, NotificationResult::Redraw));
     assert!(ctx.state.other_clients.contains_key(&5));
     assert_eq!(ctx.state.other_clients[&5].display_name, "laptop");
+    // Mode defaults to empty in v3 until ProjectionUpdated arrives
+    assert!(ctx.state.other_clients[&5].mode.is_empty());
 }
 
 #[tokio::test]
 async fn test_handle_presence_joined_self_ignored() {
-    use reovim_protocol::v2::{ClientPresence, PresenceJoinedPayload};
+    use reovim_protocol::v3::{ClientPresence, PresenceJoinedPayload};
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::PresenceJoined(PresenceJoinedPayload {
@@ -386,8 +230,8 @@ async fn test_handle_presence_joined_self_ignored() {
             client_type: "tui".to_string(),
             display_name: "self".to_string(),
             buffer_id: Some(100),
-            visible_lines: None,
-            mode: "NORMAL".to_string(),
+            viewport_state: None,
+            spatial_state: None,
             sync_mode: 0,
             follow_target: None,
             joined_at_ms: 0,
@@ -401,7 +245,7 @@ async fn test_handle_presence_joined_self_ignored() {
 
 #[tokio::test]
 async fn test_handle_presence_joined_no_client() {
-    use reovim_protocol::v2::PresenceJoinedPayload;
+    use reovim_protocol::v3::PresenceJoinedPayload;
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::PresenceJoined(PresenceJoinedPayload { client: None }));
@@ -413,7 +257,7 @@ async fn test_handle_presence_joined_no_client() {
 
 #[tokio::test]
 async fn test_handle_presence_updated_buffer_changed() {
-    use reovim_protocol::v2::{ClientPresence, PresenceUpdatedPayload};
+    use reovim_protocol::v3::{ClientPresence, PresenceUpdatedPayload};
 
     let mut ctx = MockContext::new(1);
     // First add the remote client
@@ -427,15 +271,15 @@ async fn test_handle_presence_updated_buffer_changed() {
         selection: Some(SelectionState::default()),
     });
 
-    // Update with different buffer_id => cursor and selection reset
+    // Update with different buffer_id => cursor and mode reset
     let notif = make_notif(Payload::PresenceUpdated(PresenceUpdatedPayload {
         client: Some(ClientPresence {
             client_id: 2,
             client_type: "tui".to_string(),
             display_name: "remote".to_string(),
             buffer_id: Some(200), // Different buffer
-            visible_lines: None,
-            mode: "INSERT".to_string(),
+            viewport_state: None,
+            spatial_state: None,
             sync_mode: 0,
             follow_target: None,
             joined_at_ms: 0,
@@ -449,12 +293,12 @@ async fn test_handle_presence_updated_buffer_changed() {
     assert_eq!(remote.cursor_col, 0); // Reset
     assert!(remote.selection.is_none()); // Cleared
     assert_eq!(remote.buffer_id, Some(200));
-    assert_eq!(remote.mode, "INSERT");
+    assert!(remote.mode.is_empty()); // Reset for new buffer
 }
 
 #[tokio::test]
 async fn test_handle_presence_updated_same_buffer_preserves_cursor() {
-    use reovim_protocol::v2::{ClientPresence, PresenceUpdatedPayload};
+    use reovim_protocol::v3::{ClientPresence, PresenceUpdatedPayload};
 
     let mut ctx = MockContext::new(1);
     ctx.state.add_remote_client(RemoteClient {
@@ -474,8 +318,8 @@ async fn test_handle_presence_updated_same_buffer_preserves_cursor() {
             client_type: "tui".to_string(),
             display_name: "remote-updated".to_string(),
             buffer_id: Some(100), // Same buffer
-            visible_lines: None,
-            mode: "VISUAL".to_string(),
+            viewport_state: None,
+            spatial_state: None,
             sync_mode: 0,
             follow_target: None,
             joined_at_ms: 0,
@@ -492,7 +336,7 @@ async fn test_handle_presence_updated_same_buffer_preserves_cursor() {
 
 #[tokio::test]
 async fn test_handle_presence_updated_self_ignored() {
-    use reovim_protocol::v2::{ClientPresence, PresenceUpdatedPayload};
+    use reovim_protocol::v3::{ClientPresence, PresenceUpdatedPayload};
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::PresenceUpdated(PresenceUpdatedPayload {
@@ -501,8 +345,8 @@ async fn test_handle_presence_updated_self_ignored() {
             client_type: "tui".to_string(),
             display_name: "self".to_string(),
             buffer_id: Some(100),
-            visible_lines: None,
-            mode: "NORMAL".to_string(),
+            viewport_state: None,
+            spatial_state: None,
             sync_mode: 0,
             follow_target: None,
             joined_at_ms: 0,
@@ -516,7 +360,7 @@ async fn test_handle_presence_updated_self_ignored() {
 
 #[tokio::test]
 async fn test_handle_presence_updated_no_client() {
-    use reovim_protocol::v2::PresenceUpdatedPayload;
+    use reovim_protocol::v3::PresenceUpdatedPayload;
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::PresenceUpdated(PresenceUpdatedPayload { client: None }));
@@ -527,7 +371,7 @@ async fn test_handle_presence_updated_no_client() {
 
 #[tokio::test]
 async fn test_handle_presence_left() {
-    use reovim_protocol::v2::PresenceLeftPayload;
+    use reovim_protocol::v3::PresenceLeftPayload;
 
     let mut ctx = MockContext::new(1);
     ctx.state.add_remote_client(RemoteClient {
@@ -552,170 +396,8 @@ async fn test_handle_presence_left() {
 }
 
 #[tokio::test]
-async fn test_handle_selection_changed_local_with_selection() {
-    use reovim_protocol::v2::{Position, Selection, SelectionChangedPayload};
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.focused_window_id = 5;
-
-    let notif = make_notif(Payload::SelectionChanged(SelectionChangedPayload {
-        window_id: 5,
-        has_selection: true,
-        selection: Some(Selection {
-            start: Some(Position { line: 1, column: 3 }),
-            end: Some(Position { line: 4, column: 7 }),
-        }),
-        visual_mode: Some("char".to_string()),
-        client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    let sel = ctx.state.window_selections.get(&5).unwrap();
-    assert_eq!(sel.start.line, 1);
-    assert_eq!(sel.start.column, 3);
-    assert_eq!(sel.end.line, 4);
-    assert_eq!(sel.end.column, 7);
-    assert_eq!(sel.mode, "char");
-}
-
-#[tokio::test]
-async fn test_handle_selection_changed_local_clear() {
-    use reovim_protocol::v2::SelectionChangedPayload;
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.focused_window_id = 5;
-    // Pre-populate a selection
-    ctx.state
-        .window_selections
-        .insert(5, SelectionState::default());
-
-    let notif = make_notif(Payload::SelectionChanged(SelectionChangedPayload {
-        window_id: 5,
-        has_selection: false,
-        selection: None,
-        visual_mode: None,
-        client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert!(!ctx.state.window_selections.contains_key(&5));
-}
-
-#[tokio::test]
-async fn test_handle_selection_changed_remote() {
-    use reovim_protocol::v2::{Position, Selection, SelectionChangedPayload};
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.add_remote_client(RemoteClient {
-        client_id: 2,
-        display_name: "other".to_string(),
-        cursor_line: 0,
-        cursor_col: 0,
-        buffer_id: Some(1),
-        mode: "VISUAL".to_string(),
-        selection: None,
-    });
-
-    let notif = make_notif(Payload::SelectionChanged(SelectionChangedPayload {
-        window_id: 10,
-        has_selection: true,
-        selection: Some(Selection {
-            start: Some(Position { line: 0, column: 0 }),
-            end: Some(Position {
-                line: 5,
-                column: 10,
-            }),
-        }),
-        visual_mode: Some("line".to_string()),
-        client_id: 2,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    let remote = &ctx.state.other_clients[&2];
-    assert!(remote.selection.is_some());
-    let sel = remote.selection.as_ref().unwrap();
-    assert_eq!(sel.mode, "line");
-}
-
-#[tokio::test]
-async fn test_handle_resize_request_for_us() {
-    use reovim_protocol::v2::ResizeRequestPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::ResizeRequest(ResizeRequestPayload {
-        width: 120,
-        height: 40,
-        target_client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert_eq!(ctx.state.width, 120);
-    assert_eq!(ctx.state.height, 40);
-}
-
-#[tokio::test]
-async fn test_handle_resize_request_zero_target_broadcast() {
-    use reovim_protocol::v2::ResizeRequestPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::ResizeRequest(ResizeRequestPayload {
-        width: 100,
-        height: 30,
-        target_client_id: 0, // Broadcast
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    assert_eq!(ctx.state.width, 100);
-    assert_eq!(ctx.state.height, 30);
-}
-
-#[tokio::test]
-async fn test_handle_resize_request_for_different_client() {
-    use reovim_protocol::v2::ResizeRequestPayload;
-
-    let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::ResizeRequest(ResizeRequestPayload {
-        width: 120,
-        height: 40,
-        target_client_id: 99, // Different client
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::NoRedraw));
-    // State should NOT be updated
-    assert_eq!(ctx.state.width, 0);
-    assert_eq!(ctx.state.height, 0);
-}
-
-#[tokio::test]
-async fn test_handle_resize_request_zero_dimensions_ignored() {
-    use reovim_protocol::v2::ResizeRequestPayload;
-
-    let mut ctx = MockContext::new(1);
-    ctx.state.width = 80;
-    ctx.state.height = 24;
-
-    let notif = make_notif(Payload::ResizeRequest(ResizeRequestPayload {
-        width: 0,
-        height: 0,
-        target_client_id: 1,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-    // Dimensions should not have changed
-    assert_eq!(ctx.state.width, 80);
-    assert_eq!(ctx.state.height, 24);
-}
-
-#[tokio::test]
 async fn test_handle_capture_request_different_client() {
-    use reovim_protocol::v2::CaptureRequestPayload;
+    use reovim_protocol::v3::CaptureRequestPayload;
 
     let mut ctx = MockContext::new(1);
     let notif = make_notif(Payload::CaptureRequest(CaptureRequestPayload {
@@ -730,7 +412,7 @@ async fn test_handle_capture_request_different_client() {
 
 #[tokio::test]
 async fn test_handle_capture_request_for_us_no_handler() {
-    use reovim_protocol::v2::CaptureRequestPayload;
+    use reovim_protocol::v3::CaptureRequestPayload;
 
     let mut ctx = MockContext::new(1);
     // MockContext::on_capture_request returns None by default
@@ -744,51 +426,126 @@ async fn test_handle_capture_request_for_us_no_handler() {
     assert!(matches!(result, NotificationResult::NoRedraw));
 }
 
+// =========================================================================
+// ProjectionUpdated dispatch tests (new in v3)
+// =========================================================================
+
 #[tokio::test]
-async fn test_handle_selection_no_selection_data_when_has_selection_true() {
-    use reovim_protocol::v2::SelectionChangedPayload;
+async fn test_handle_projection_updated_text_mode() {
+    use reovim_protocol::v3::{DomainDatum, ProjectionUpdatedPayload};
 
     let mut ctx = MockContext::new(1);
-    // has_selection=true but selection=None => selection is None
-    let notif = make_notif(Payload::SelectionChanged(SelectionChangedPayload {
-        window_id: 5,
-        has_selection: true,
-        selection: None,
-        visual_mode: Some("char".to_string()),
+    let notif = make_notif(Payload::ProjectionUpdated(ProjectionUpdatedPayload {
+        tag: "text.mode".to_string(),
+        domain_id: 1,
+        window_id: None,
+        datum: Some(DomainDatum {
+            content: b"INSERT".to_vec(),
+            display: None,
+        }),
+        transient: false,
+        version: 1,
         client_id: 1,
     }));
 
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
-    // selection should be None because there's no selection data
-    assert!(!ctx.state.window_selections.contains_key(&5));
+    assert_eq!(ctx.state.mode_name, "INSERT");
+    assert!(ctx.state.is_insert_mode());
 }
 
 #[tokio::test]
-async fn test_handle_selection_missing_positions_use_defaults() {
-    use reovim_protocol::v2::{Selection, SelectionChangedPayload};
+async fn test_handle_projection_updated_unknown_tag_no_panic() {
+    use reovim_protocol::v3::{DomainDatum, ProjectionUpdatedPayload};
 
     let mut ctx = MockContext::new(1);
-    let notif = make_notif(Payload::SelectionChanged(SelectionChangedPayload {
-        window_id: 5,
-        has_selection: true,
-        selection: Some(Selection {
-            start: None, // No start position
-            end: None,   // No end position
+    let notif = make_notif(Payload::ProjectionUpdated(ProjectionUpdatedPayload {
+        tag: "mesh.camera".to_string(),
+        domain_id: 99,
+        window_id: None,
+        datum: Some(DomainDatum {
+            content: vec![0xFF],
+            display: None,
         }),
-        visual_mode: None,
+        transient: false,
+        version: 0,
         client_id: 1,
+    }));
+
+    // Unknown tag should not panic
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::Redraw));
+}
+
+// =========================================================================
+// SurfaceChanged dispatch tests (replaces ResizeRequest in v3)
+// =========================================================================
+
+#[tokio::test]
+async fn test_handle_surface_changed_cell_grid() {
+    use reovim_protocol::v3::{SurfaceChangedPayload, SurfaceDescriptorProto};
+
+    let mut ctx = MockContext::new(1);
+
+    // Encode CellGridSurface: kind=0x0001, width=120_u32_be, height=40_u32_be
+    let mut body = Vec::new();
+    body.extend_from_slice(&120_u32.to_be_bytes());
+    body.extend_from_slice(&40_u32.to_be_bytes());
+
+    let notif = make_notif(Payload::SurfaceChanged(SurfaceChangedPayload {
+        surface: Some(SurfaceDescriptorProto { kind: 0x0001, body }),
+        target_client_id: 1,
     }));
 
     let result = handle_notification(&mut ctx, notif).await.unwrap();
     assert!(matches!(result, NotificationResult::Redraw));
-    let sel = ctx.state.window_selections.get(&5).unwrap();
-    // Default positions should be (0, 0)
-    assert_eq!(sel.start.line, 0);
-    assert_eq!(sel.start.column, 0);
-    assert_eq!(sel.end.line, 0);
-    assert_eq!(sel.end.column, 0);
-    assert!(sel.mode.is_empty()); // visual_mode was None => default
+    assert_eq!(ctx.state.width, 120);
+    assert_eq!(ctx.state.height, 40);
+}
+
+#[tokio::test]
+async fn test_handle_surface_changed_different_client_ignored() {
+    use reovim_protocol::v3::{SurfaceChangedPayload, SurfaceDescriptorProto};
+
+    let mut ctx = MockContext::new(1);
+
+    let mut body = Vec::new();
+    body.extend_from_slice(&100_u32.to_be_bytes());
+    body.extend_from_slice(&30_u32.to_be_bytes());
+
+    let notif = make_notif(Payload::SurfaceChanged(SurfaceChangedPayload {
+        surface: Some(SurfaceDescriptorProto { kind: 0x0001, body }),
+        target_client_id: 99, // Different client
+    }));
+
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::NoRedraw));
+    // State should NOT be updated
+    assert_eq!(ctx.state.width, 0);
+    assert_eq!(ctx.state.height, 0);
+}
+
+#[tokio::test]
+async fn test_handle_surface_changed_unknown_kind_ignored() {
+    use reovim_protocol::v3::{SurfaceChangedPayload, SurfaceDescriptorProto};
+
+    let mut ctx = MockContext::new(1);
+    ctx.state.width = 80;
+    ctx.state.height = 24;
+
+    let notif = make_notif(Payload::SurfaceChanged(SurfaceChangedPayload {
+        surface: Some(SurfaceDescriptorProto {
+            kind: 0xFFFF, // Unknown kind
+            body: vec![0x00; 8],
+        }),
+        target_client_id: 1,
+    }));
+
+    let result = handle_notification(&mut ctx, notif).await.unwrap();
+    assert!(matches!(result, NotificationResult::Redraw));
+    // Dimensions should NOT change for unknown kind
+    assert_eq!(ctx.state.width, 80);
+    assert_eq!(ctx.state.height, 24);
 }
 
 // =========================================================================
@@ -860,7 +617,7 @@ impl ClientModule for StubExtension {
 
 #[tokio::test]
 async fn test_handle_extension_updated_dispatches_to_matching() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let (whichkey, whichkey_h) = StubExtension::new("whichkey");
@@ -882,7 +639,7 @@ async fn test_handle_extension_updated_dispatches_to_matching() {
 
 #[tokio::test]
 async fn test_handle_extension_updated_remote_ignored() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
@@ -901,7 +658,7 @@ async fn test_handle_extension_updated_remote_ignored() {
 
 #[tokio::test]
 async fn test_handle_extension_updated_unknown_kind_ignored() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let (whichkey, whichkey_h) = StubExtension::new("whichkey");
@@ -922,7 +679,7 @@ async fn test_handle_extension_updated_unknown_kind_ignored() {
 
 #[tokio::test]
 async fn test_handle_extension_updated_client_id_zero_is_local() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
@@ -941,7 +698,7 @@ async fn test_handle_extension_updated_client_id_zero_is_local() {
 
 #[tokio::test]
 async fn test_handle_extension_updated_invalid_json_no_panic() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline)]);
@@ -961,7 +718,7 @@ async fn test_handle_extension_updated_invalid_json_no_panic() {
 
 #[tokio::test]
 async fn test_handle_extension_updated_no_extensions() {
-    use reovim_protocol::v2::ExtensionUpdatedPayload;
+    use reovim_protocol::v3::ExtensionUpdatedPayload;
 
     // No extensions registered — should not panic
     let mut ctx = MockContext::new(1);
@@ -983,151 +740,4 @@ async fn test_notification_result_debug() {
     assert!(format!("{redraw:?}").contains("Redraw"));
     assert!(format!("{no_redraw:?}").contains("NoRedraw"));
     assert!(format!("{stop:?}").contains("Stop"));
-}
-
-// =========================================================================
-// proto_to_client_option conversion tests (#662)
-// =========================================================================
-
-#[test]
-fn test_proto_to_client_option_bool() {
-    let result = proto_to_client_option(OptionValue::BoolValue(true));
-    assert!(matches!(result, ClientOptionValue::Bool(true)));
-}
-
-#[test]
-fn test_proto_to_client_option_integer() {
-    let result = proto_to_client_option(OptionValue::IntValue(42));
-    assert!(matches!(result, ClientOptionValue::Integer(42)));
-}
-
-#[test]
-fn test_proto_to_client_option_string() {
-    let result = proto_to_client_option(OptionValue::StringValue("gruvbox".to_string()));
-    match result {
-        ClientOptionValue::String(s) => assert_eq!(s, "gruvbox"),
-        _ => panic!("Expected String variant"),
-    }
-}
-
-// =========================================================================
-// OptionChanged extension dispatch tests (#662)
-// =========================================================================
-
-/// Extension that records `on_option_changed` calls.
-type OptionCalls = Arc<Mutex<Vec<(String, reovim_client_driver::OptionValue)>>>;
-
-struct OptionTracker {
-    ext_kind: &'static str,
-    calls: OptionCalls,
-}
-
-impl OptionTracker {
-    fn new(kind: &'static str) -> (Self, OptionCalls) {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        (
-            Self {
-                ext_kind: kind,
-                calls: Arc::clone(&calls),
-            },
-            calls,
-        )
-    }
-}
-
-impl ClientModule for OptionTracker {
-    fn id(&self) -> &'static str {
-        self.ext_kind
-    }
-    fn kind(&self) -> &'static str {
-        self.ext_kind
-    }
-    fn name(&self) -> &'static str {
-        "OptionTracker"
-    }
-    fn version(&self) -> Version {
-        Version::new(0, 1, 0)
-    }
-    fn init(&mut self, _ctx: &reovim_client_driver::ModuleContext) -> ProbeResult {
-        ProbeResult::Success
-    }
-    fn exit(&mut self) -> Result<(), ClientModuleError> {
-        Ok(())
-    }
-
-    fn on_option_changed(&mut self, name: &str, value: &reovim_client_driver::OptionValue) {
-        self.calls
-            .lock()
-            .unwrap()
-            .push((name.to_string(), value.clone()));
-    }
-}
-
-#[tokio::test]
-async fn test_option_changed_dispatches_to_extensions() {
-    use reovim_protocol::v2::OptionChangedPayload;
-
-    let (tracker, calls) = OptionTracker::new("line_numbers");
-    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker)]);
-
-    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
-        name: "number".to_string(),
-        value: Some(OptionValue::BoolValue(true)),
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-
-    // Context hook should have been called
-    assert_eq!(ctx.option_changed_calls, vec!["number"]);
-
-    // Extension should also have been called
-    assert_eq!(calls.lock().unwrap().len(), 1);
-    assert_eq!(calls.lock().unwrap()[0].0, "number");
-    assert!(matches!(calls.lock().unwrap()[0].1, ClientOptionValue::Bool(true)));
-}
-
-#[tokio::test]
-async fn test_option_changed_none_value_skips_extension_dispatch() {
-    use reovim_protocol::v2::OptionChangedPayload;
-
-    let (tracker, calls) = OptionTracker::new("line_numbers");
-    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker)]);
-
-    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
-        name: "number".to_string(),
-        value: None,
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-
-    // Context hook called (with None)
-    assert_eq!(ctx.option_changed_calls, vec!["number"]);
-
-    // Extension should NOT be called (no value to convert)
-    assert!(calls.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn test_option_changed_dispatches_to_multiple_extensions() {
-    use reovim_protocol::v2::OptionChangedPayload;
-
-    let (tracker1, calls1) = OptionTracker::new("line_numbers");
-    let (tracker2, calls2) = OptionTracker::new("statusline");
-    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(tracker1), Box::new(tracker2)]);
-
-    let notif = make_notif(Payload::OptionChanged(OptionChangedPayload {
-        name: "relativenumber".to_string(),
-        value: Some(OptionValue::BoolValue(false)),
-    }));
-
-    let result = handle_notification(&mut ctx, notif).await.unwrap();
-    assert!(matches!(result, NotificationResult::Redraw));
-
-    // Both extensions should have been called
-    assert_eq!(calls1.lock().unwrap().len(), 1);
-    assert_eq!(calls2.lock().unwrap().len(), 1);
-    assert_eq!(calls1.lock().unwrap()[0].0, "relativenumber");
-    assert_eq!(calls2.lock().unwrap()[0].0, "relativenumber");
 }

@@ -132,9 +132,9 @@ impl Codec for TuiKeyCodec {
     }
 
     fn encode(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, InputPayloadError> {
-        let event: &KeyEvent = value
-            .downcast_ref()
-            .ok_or(InputPayloadError::WrongType { expected: "KeyEvent" })?;
+        let event: &KeyEvent = value.downcast_ref().ok_or(InputPayloadError::WrongType {
+            expected: "KeyEvent",
+        })?;
         Ok(encode_key_body(event))
     }
 
@@ -241,9 +241,9 @@ impl Codec for TuiMouseCodec {
     }
 
     fn encode(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, InputPayloadError> {
-        let event: &MouseEvent = value
-            .downcast_ref()
-            .ok_or(InputPayloadError::WrongType { expected: "MouseEvent" })?;
+        let event: &MouseEvent = value.downcast_ref().ok_or(InputPayloadError::WrongType {
+            expected: "MouseEvent",
+        })?;
         Ok(encode_mouse_body(event))
     }
 
@@ -340,9 +340,9 @@ impl Codec for TuiScrollCodec {
     }
 
     fn encode(&self, value: &dyn std::any::Any) -> Result<Vec<u8>, InputPayloadError> {
-        let event: &ScrollEvent = value
-            .downcast_ref()
-            .ok_or(InputPayloadError::WrongType { expected: "ScrollEvent" })?;
+        let event: &ScrollEvent = value.downcast_ref().ok_or(InputPayloadError::WrongType {
+            expected: "ScrollEvent",
+        })?;
         Ok(encode_scroll_body(event))
     }
 

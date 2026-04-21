@@ -470,7 +470,8 @@ pub fn u32_to_keycode(value: u32) -> KeyCode {
         0x003B => KeyCode::RightMeta,
         0x003C => KeyCode::IsoLevel3Shift,
         0x003D => KeyCode::IsoLevel5Shift,
-        v if v & 0x0200_0000 != 0 => {
+        v if v & 0x0200_0000 != 0 =>
+        {
             #[allow(clippy::cast_possible_truncation)]
             KeyCode::F((v & 0xFF) as u8)
         }

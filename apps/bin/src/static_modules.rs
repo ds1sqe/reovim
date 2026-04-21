@@ -38,10 +38,9 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("codec-utf8", || Box::new(reovim_content_codec_utf8::CodecUtf8Module::new()));
     map.insert("codec-hex", || Box::new(reovim_content_codec_hex::CodecHexModule::new()));
     map.insert("codec-cjk", || Box::new(reovim_content_codec_cjk::CodecCjkModule::new()));
-    map.insert(
-        "codec-legacy",
-        || Box::new(reovim_content_codec_legacy::CodecLegacyModule::new()),
-    );
+    map.insert("codec-legacy", || {
+        Box::new(reovim_content_codec_legacy::CodecLegacyModule::new())
+    });
     map.insert("codec-pdf", || Box::new(reovim_content_codec_pdf::CodecPdfModule::new()));
     map.insert("codec-binary-struct", || {
         Box::new(reovim_content_codec_binary_struct::CodecBinaryStructModule::new())

@@ -7,10 +7,7 @@
 
 use std::ops::RangeInclusive;
 
-use {
-    reovim_client_model::traits::Panel,
-    reovim_driver_display::BufferId,
-};
+use {reovim_client_model::traits::Panel, reovim_driver_display::BufferId};
 
 /// Adapter implementing the common `Panel` trait for TUI.
 ///

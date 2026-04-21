@@ -76,10 +76,7 @@ fn default_has_no_registry_handle() {
 fn init_acquires_registry_and_registers_all_codecs() {
     let ctx = test_ctx();
     let mut m = CodecCsvModule::new();
-    assert!(matches!(
-        m.init(&ctx),
-        reovim_kernel::api::v1::ProbeResult::Success
-    ));
+    assert!(matches!(m.init(&ctx), reovim_kernel::api::v1::ProbeResult::Success));
     assert!(m.registry.is_some());
     assert_eq!(m.content_types.len(), 4);
 

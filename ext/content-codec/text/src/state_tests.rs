@@ -809,11 +809,7 @@ fn mount_codec_adds_additional_when_inode_already_mounted() {
     let view_names: Vec<&str> = mounts.iter().map(|m| m.view_name.as_str()).collect();
     assert!(view_names.contains(&"default"));
     assert!(view_names.contains(&"hex"));
-    assert!(
-        mounts
-            .iter()
-            .any(|m| m.mount_id == handle.mount_id())
-    );
+    assert!(mounts.iter().any(|m| m.mount_id == handle.mount_id()));
 }
 
 #[test]
@@ -876,9 +872,7 @@ fn unmount_codec_removes_the_named_mount() {
         .expect("hex mount");
 
     assert_eq!(state.list_mounts(buf(1)).len(), 2);
-    state
-        .unmount_codec(hex.mount_id())
-        .expect("umount");
+    state.unmount_codec(hex.mount_id()).expect("umount");
     let remaining = state.list_mounts(buf(1));
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].view_name, "default");

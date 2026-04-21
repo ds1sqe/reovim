@@ -31,12 +31,7 @@ fn binding_info_constructors_preserve_fields() {
 fn binding_info_debug_mentions_type_name() {
     let debug = format!(
         "{:?}",
-        BindingInfo::new(
-            cmd_id("delete"),
-            "Delete",
-            Some("operator"),
-            BindingLayer::Base
-        )
+        BindingInfo::new(cmd_id("delete"), "Delete", Some("operator"), BindingLayer::Base)
     );
     assert!(debug.contains("BindingInfo"));
 }

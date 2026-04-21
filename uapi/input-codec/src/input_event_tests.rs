@@ -119,13 +119,17 @@ fn payload_error_display() {
 
 #[test]
 fn payload_error_display_wrong_type() {
-    let err = InputPayloadError::WrongType { expected: "KeyEvent" };
+    let err = InputPayloadError::WrongType {
+        expected: "KeyEvent",
+    };
     assert_eq!(err.to_string(), "codec encode: wrong input type, expected KeyEvent");
 }
 
 #[test]
 fn payload_error_display_invalid_data() {
-    let err = InputPayloadError::InvalidData { reason: "unknown mouse tag" };
+    let err = InputPayloadError::InvalidData {
+        reason: "unknown mouse tag",
+    };
     assert_eq!(err.to_string(), "input payload invalid: unknown mouse tag");
 }
 

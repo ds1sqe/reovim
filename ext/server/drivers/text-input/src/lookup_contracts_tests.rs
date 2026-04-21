@@ -20,7 +20,11 @@ struct MockKeymap {
 }
 
 impl KeymapQuery for MockKeymap {
-    fn query(&self, _mode: &reovim_kernel::api::v1::ModeId, _keys: &crate::KeySequence) -> KeyLookupState {
+    fn query(
+        &self,
+        _mode: &reovim_kernel::api::v1::ModeId,
+        _keys: &crate::KeySequence,
+    ) -> KeyLookupState {
         self.state.clone()
     }
 }

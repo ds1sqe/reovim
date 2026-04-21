@@ -1,11 +1,12 @@
 //! Tests for `key_sequence_to_input_sequence` and `InputSequenceBridgeError`.
 
-use reovim_subsys_input::{DefaultInputCodecRegistry, InputCodecRegistry};
-use std::sync::Arc;
+use {
+    reovim_subsys_input::{DefaultInputCodecRegistry, InputCodecRegistry},
+    std::sync::Arc,
+};
 
 use crate::{
-    InputSequenceBridgeError, KeySequence,
-    input_sequence_bridge::key_sequence_to_input_sequence,
+    InputSequenceBridgeError, KeySequence, input_sequence_bridge::key_sequence_to_input_sequence,
 };
 
 fn make_registry_with_tui_codecs() -> DefaultInputCodecRegistry {

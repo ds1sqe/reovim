@@ -1,7 +1,9 @@
 //! Tests for `BindingLayer` and `BindingInfo`.
 
-use super::binding::{BindingInfo, BindingLayer};
-use reovim_kernel::api::v1::{CommandId, ModuleId};
+use {
+    super::binding::{BindingInfo, BindingLayer},
+    reovim_kernel::api::v1::{CommandId, ModuleId},
+};
 
 fn cmd(name: &'static str) -> CommandId {
     CommandId::new(ModuleId::new("test"), name)

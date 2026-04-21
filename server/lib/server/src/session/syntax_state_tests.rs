@@ -35,9 +35,7 @@ fn test_broadcast() {
     let mut state = SyntaxStreamState::new();
     let mut rx = state.subscribe();
 
-    let update = TokenUpdate {
-        buffer_id: 1,
-    };
+    let update = TokenUpdate { buffer_id: 1 };
 
     state.broadcast(&update);
 

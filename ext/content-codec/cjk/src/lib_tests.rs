@@ -80,15 +80,17 @@ fn default_has_no_registry_handle() {
 fn init_acquires_registry_and_registers_all_codecs() {
     let ctx = test_ctx();
     let mut m = CodecCjkModule::new();
-    assert!(matches!(
-        m.init(&ctx),
-        reovim_kernel::api::v1::ProbeResult::Success
-    ));
+    assert!(matches!(m.init(&ctx), reovim_kernel::api::v1::ProbeResult::Success));
     assert!(m.registry.is_some());
     assert_eq!(m.content_types.len(), 4);
 
     let registry = ctx.services.get_or_create::<DefaultContentCodecRegistry>();
-    for ct_str in &["encoding/euc-kr", "encoding/shift-jis", "encoding/gbk", "encoding/big5"] {
+    for ct_str in &[
+        "encoding/euc-kr",
+        "encoding/shift-jis",
+        "encoding/gbk",
+        "encoding/big5",
+    ] {
         assert!(
             registry.get(&ContentType::new(*ct_str)).is_some(),
             "expected {ct_str} to be registered"
@@ -107,7 +109,12 @@ fn exit_releases_registry_and_unregisters_all_codecs() {
     assert!(m.content_types.is_empty());
 
     let registry = ctx.services.get_or_create::<DefaultContentCodecRegistry>();
-    for ct_str in &["encoding/euc-kr", "encoding/shift-jis", "encoding/gbk", "encoding/big5"] {
+    for ct_str in &[
+        "encoding/euc-kr",
+        "encoding/shift-jis",
+        "encoding/gbk",
+        "encoding/big5",
+    ] {
         assert!(
             registry.get(&ContentType::new(*ct_str)).is_none(),
             "expected {ct_str} to be unregistered"

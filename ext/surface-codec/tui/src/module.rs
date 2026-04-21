@@ -44,7 +44,9 @@ impl Module for TuiSurfaceCodecModule {
         let registry = ctx.services.get_or_create::<DefaultSurfaceCodecRegistry>();
         registry.register(Arc::new(CellGridCodec::new()));
         self.registry = Some(registry);
-        tracing::info!("TuiSurfaceCodecModule: registered CellGridCodec (kind={KIND_CELL_GRID:#06x})");
+        tracing::info!(
+            "TuiSurfaceCodecModule: registered CellGridCodec (kind={KIND_CELL_GRID:#06x})"
+        );
         ProbeResult::Success
     }
 

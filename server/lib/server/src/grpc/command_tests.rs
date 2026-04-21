@@ -1,8 +1,8 @@
 use {
     super::*,
     crate::session::SessionState,
-    reovim_subsys_command::Command,
     reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_subsys_command::Command,
 };
 
 // === Helper: create a session with CommandNameIndex registered ===

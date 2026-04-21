@@ -1,33 +1,33 @@
-//! gRPC v2 client for TUI.
+//! gRPC v3 client for TUI.
 //!
 //! Provides a unified client interface for TUI communication with the server
-//! using gRPC v2 protocol. Includes streaming notifications for real-time updates.
+//! using gRPC v3 protocol. Includes streaming notifications for real-time updates.
 //!
 //! # Services
 //!
-//! This client wraps all gRPC v2 services:
+//! This client wraps all gRPC v3 services:
 //! - `InputService` - Send keys to the editor
-//! - `StateService` - Query mode, cursor, layout, options
-//! - `BufferService` - Buffer content and file operations
+//! - `StateService` - Query projections, layout, options
+//! - `BufferService` - Buffer metadata and file operations
 //! - `ServerService` - Server management (ping, info, kill)
-//! - `EditorService` - Editor operations (resize, quit, active buffer)
+//! - `EditorService` - Editor operations (surface_changed, quit, active buffer)
 //! - `ModuleService` - Module listing
 //! - `NotificationService` - Server-to-client streaming
+//! - `PresenceService` - Multi-client session management
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         GetActiveBufferRequest, GetActiveBufferResponse, GetLayoutRequest, GetLayoutResponse,
-        GetOptionsRequest, GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse,
-        InfoRequest, InfoResponse, JoinRequest, JoinResponse, KillRequest, KillResponse,
-        LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse, ListClientsRequest,
-        ListClientsResponse, ListModulesRequest, ListModulesResponse, Notification,
-        OpenFileRequest, OpenFileResponse, PingRequest, PingResponse, QuitRequest, QuitResponse,
-        SendInputRequest, SendInputResponse, SetActiveBufferRequest, SetActiveBufferResponse,
-        SubmitCaptureRequest, SubmitCaptureResponseReply, SubscribeRequest,
-        SurfaceChangedRequest, SurfaceChangedResponse, WriteFileRequest, WriteFileResponse,
-        buffer_service_client::BufferServiceClient,
-        editor_service_client::EditorServiceClient, input_service_client::InputServiceClient,
-        module_service_client::ModuleServiceClient,
+        GetOptionsRequest, GetOptionsResponse, GetProjectionsRequest, InfoRequest, InfoResponse,
+        JoinRequest, JoinResponse, KillRequest, KillResponse, LeaveRequest, LeaveResponse,
+        ListBuffersRequest, ListBuffersResponse, ListClientsRequest, ListClientsResponse,
+        ListModulesRequest, ListModulesResponse, Notification, OpenFileRequest, OpenFileResponse,
+        PingRequest, PingResponse, ProjectionEntry, QuitRequest, QuitResponse, SendInputRequest,
+        SendInputResponse, SetActiveBufferRequest, SetActiveBufferResponse, SubmitCaptureRequest,
+        SubmitCaptureResponseReply, SubscribeRequest, SurfaceChangedRequest,
+        SurfaceDescriptorProto, WriteFileRequest, WriteFileResponse,
+        buffer_service_client::BufferServiceClient, editor_service_client::EditorServiceClient,
+        input_service_client::InputServiceClient, module_service_client::ModuleServiceClient,
         notification_service_client::NotificationServiceClient,
         presence_service_client::PresenceServiceClient, server_service_client::ServerServiceClient,
         state_service_client::StateServiceClient,
@@ -98,6 +98,16 @@ fn handle_grpc_error(status: &tonic::Status, operation: &str, client_id: u64) ->
     }
 }
 
+/// Stub result for `get_buffer_content`.
+///
+/// Proto v3 removed direct buffer content RPCs; content arrives via projections.
+/// This stub allows call sites to compile until the server-side emitter lands.
+#[derive(Debug, Default)]
+pub struct BufferContentStub {
+    /// Always empty until `text.buffer_lines` projection is wired server-side.
+    pub lines: Vec<String>,
+}
+
 /// Error type for TUI gRPC client operations.
 #[derive(Debug)]
 pub enum TuiGrpcError {
@@ -131,10 +141,10 @@ impl From<tonic::transport::Error> for TuiGrpcError {
     }
 }
 
-/// gRPC v2 client for TUI.
+/// gRPC v3 client for TUI.
 ///
 /// Wraps all service clients and provides a unified interface for TUI operations.
-/// This is the primary client for gRPC v2 communication.
+/// This is the primary client for gRPC v3 communication.
 ///
 /// `Clone` is cheap — tonic service clients share the underlying `Channel`.
 #[derive(Clone)]
@@ -243,134 +253,28 @@ impl TuiGrpcClient {
     // State Service
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Get the current editor mode.
+    /// Get projections for the given tags.
+    ///
+    /// Returns the current projection entries for the specified tags.
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
-    pub async fn get_mode(&mut self) -> Result<GetModeResponse, TuiGrpcError> {
-        let request = self.make_request(GetModeRequest { client_id: 0 });
-        let response = self.state.get_mode(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the mode for a specific client.
-    ///
-    /// # Per-client state (#471): Per-client mode isolation
-    ///
-    /// Returns the mode from the specified client's per-client mode stack.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_mode_for_client(
+    pub async fn get_projections(
         &mut self,
-        client_id: u64,
-    ) -> Result<GetModeResponse, TuiGrpcError> {
-        let request = self.make_request(GetModeRequest { client_id });
-        let response = self.state.get_mode(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the cursor position.
-    ///
-    /// # Arguments
-    ///
-    /// * `window_id` - Optional window ID. Uses focused window if None.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_cursor(
-        &mut self,
-        window_id: Option<u64>,
-    ) -> Result<GetCursorResponse, TuiGrpcError> {
-        let request = self.make_request(GetCursorRequest {
-            window_id,
+        tags: &[&str],
+    ) -> Result<Vec<ProjectionEntry>, TuiGrpcError> {
+        let req = self.make_request(GetProjectionsRequest {
+            tags: tags.iter().map(|s| (*s).to_string()).collect(),
             client_id: 0,
         });
-        let response = self.state.get_cursor(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get the cursor position for a specific client.
-    ///
-    /// # Per-client state (#471): Per-client cursor isolation
-    ///
-    /// Returns the cursor from the specified client's per-client editing state.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_cursor_for_client(
-        &mut self,
-        window_id: Option<u64>,
-        client_id: u64,
-    ) -> Result<GetCursorResponse, TuiGrpcError> {
-        let request = self.make_request(GetCursorRequest {
-            window_id,
-            client_id,
-        });
-        let response = self.state.get_cursor(request).await?;
-        Ok(response.into_inner())
+        let resp = self.state.get_projections(req).await?.into_inner();
+        Ok(resp.projections)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Panic Methods (#479: Fail Loud)
     // ─────────────────────────────────────────────────────────────────────────
-
-    /// Get mode or panic - TUI should never continue with unknown mode.
-    ///
-    /// # Phase #479: Fail-Loud Policy
-    ///
-    /// TUI panics with traceback on server errors rather than continuing with
-    /// potentially wrong state. After `presence_join()` succeeds, mode lookups
-    /// should always work - failure indicates a bug or misconfiguration.
-    ///
-    /// # Panics
-    ///
-    /// Panics with detailed error message if the gRPC call fails.
-    pub async fn get_mode_or_panic(&mut self, client_id: u64) -> GetModeResponse {
-        match self.get_mode_for_client(client_id).await {
-            Ok(resp) => resp,
-            Err(TuiGrpcError::GrpcError(status)) => {
-                handle_grpc_error(&status, "get_mode", client_id)
-            }
-            Err(e) => panic!(
-                "FATAL: get_mode failed for client_id={client_id}\n\
-                 Error: {e}\n\
-                 Connection may have been lost."
-            ),
-        }
-    }
-
-    /// Get cursor or panic - TUI should never continue with unknown cursor.
-    ///
-    /// # Phase #479: Fail-Loud Policy
-    ///
-    /// TUI panics with traceback on server errors rather than continuing with
-    /// potentially wrong state.
-    ///
-    /// # Panics
-    ///
-    /// Panics with detailed error message if the gRPC call fails.
-    pub async fn get_cursor_or_panic(
-        &mut self,
-        window_id: Option<u64>,
-        client_id: u64,
-    ) -> GetCursorResponse {
-        match self.get_cursor_for_client(window_id, client_id).await {
-            Ok(resp) => resp,
-            Err(TuiGrpcError::GrpcError(status)) => {
-                handle_grpc_error(&status, "get_cursor", client_id)
-            }
-            Err(e) => panic!(
-                "FATAL: get_cursor failed for client_id={client_id}\n\
-                 Error: {e}\n\
-                 Connection may have been lost."
-            ),
-        }
-    }
 
     /// Get layout or panic - TUI should never continue with unknown layout.
     ///
@@ -429,30 +333,33 @@ impl TuiGrpcClient {
         Ok(response.into_inner())
     }
 
-    /// Get raw buffer content.
+    /// Get buffer content lines.
+    ///
+    /// # Note
+    ///
+    /// In proto v3, direct buffer content access via RPC was removed.
+    /// Content is now expected to arrive via `ProjectionUpdated` with
+    /// `tag == "text.buffer_lines"`. Until the server-side emitter lands,
+    /// this method returns an empty line list so callers compile and run.
+    ///
+    /// TODO: Replace with projection-based fetch once server wires
+    /// `text.buffer_lines` emitter — see `tmp/deferral-draft-buffer-lines-projection.md`.
     ///
     /// # Arguments
     ///
-    /// * `buffer_id` - Optional buffer ID. Uses active buffer if None.
-    /// * `start_line` - Optional start line (0-indexed).
-    /// * `end_line` - Optional end line (exclusive).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
+    /// * `buffer_id` - Optional buffer ID (unused pending projection emitter).
+    /// * `start_line` - Optional start line (unused pending projection emitter).
+    /// * `end_line` - Optional end line (unused pending projection emitter).
     pub async fn get_buffer_content(
         &mut self,
-        buffer_id: Option<u64>,
-        start_line: Option<u64>,
-        end_line: Option<u64>,
-    ) -> Result<GetRawContentResponse, TuiGrpcError> {
-        let request = self.make_request(GetRawContentRequest {
-            buffer_id,
-            start_line,
-            end_line,
-        });
-        let response = self.buffer.get_raw_content(request).await?;
-        Ok(response.into_inner())
+        _buffer_id: Option<u64>,
+        _start_line: Option<u64>,
+        _end_line: Option<u64>,
+    ) -> Result<BufferContentStub, TuiGrpcError> {
+        // Proto v3: buffer content is served via projections, not typed RPCs.
+        // Return an empty stub so callers remain functional without content.
+        tracing::trace!("get_buffer_content: no-op stub — server-side projection emitter pending");
+        Ok(BufferContentStub { lines: Vec::new() })
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -535,24 +442,30 @@ impl TuiGrpcClient {
     // Editor Service
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Resize the editor viewport.
+    /// Notify the server of a surface change (replaces v2 `resize`).
+    ///
+    /// Encodes the cell-grid dimensions as a `SurfaceDescriptorProto` using the
+    /// `CellGridCodec` body format (kind=0x0001, body=[width_be:u32, height_be:u32]).
     ///
     /// # Arguments
     ///
-    /// * `width` - New viewport width.
-    /// * `height` - New viewport height.
+    /// * `width` - New viewport width in cells.
+    /// * `height` - New viewport height in cells.
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
-    pub async fn resize(
-        &mut self,
-        width: u64,
-        height: u64,
-    ) -> Result<ResizeResponse, TuiGrpcError> {
-        let request = self.make_request(ResizeRequest { width, height });
-        let response = self.editor.resize(request).await?;
-        Ok(response.into_inner())
+    pub async fn surface_changed(&mut self, width: u32, height: u32) -> Result<(), TuiGrpcError> {
+        // Encode CellGridSurface: kind=0x0001, body=[width_be:u32, height_be:u32]
+        let mut body = Vec::with_capacity(8);
+        body.extend_from_slice(&width.to_be_bytes());
+        body.extend_from_slice(&height.to_be_bytes());
+        let surface = SurfaceDescriptorProto { kind: 0x0001, body };
+        let request = self.make_request(SurfaceChangedRequest {
+            surface: Some(surface),
+        });
+        let _response = self.editor.surface_changed(request).await?;
+        Ok(())
     }
 
     /// Quit the editor.
@@ -629,48 +542,6 @@ impl TuiGrpcClient {
     ) -> Result<GetOptionsResponse, TuiGrpcError> {
         let request = self.make_request(GetOptionsRequest { names });
         let response = self.state.get_options(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get selection state.
-    ///
-    /// # Arguments
-    ///
-    /// * `window_id` - Optional window ID. Uses focused window if None.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_selection(
-        &mut self,
-        window_id: Option<u64>,
-    ) -> Result<GetSelectionResponse, TuiGrpcError> {
-        let request = self.make_request(GetSelectionRequest {
-            window_id,
-            client_id: 0,
-        });
-        let response = self.state.get_selection(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Get visible lines for a window.
-    ///
-    /// # Arguments
-    ///
-    /// * `window_id` - Optional window ID. Uses focused window if None.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_visible_lines(
-        &mut self,
-        window_id: Option<u64>,
-    ) -> Result<GetVisibleLinesResponse, TuiGrpcError> {
-        let request = self.make_request(GetVisibleLinesRequest {
-            window_id,
-            client_id: 0,
-        });
-        let response = self.state.get_visible_lines(request).await?;
         Ok(response.into_inner())
     }
 
@@ -765,58 +636,6 @@ impl TuiGrpcClient {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Syntax Service (Phase 13.0 #470)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /// Get syntax tokens for a buffer range.
-    ///
-    /// One-shot query for initial buffer load or after major edits.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer_id` - Buffer to get tokens for.
-    /// * `start_line` - Optional start line (default: 0).
-    /// * `end_line` - Optional end line (default: end of buffer).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn get_tokens(
-        &mut self,
-        buffer_id: u64,
-        start_line: Option<u64>,
-        end_line: Option<u64>,
-    ) -> Result<GetTokensResponse, TuiGrpcError> {
-        let request = self.make_request(GetTokensRequest {
-            buffer_id,
-            start_line,
-            end_line,
-        });
-        let response = self.syntax.get_tokens(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Subscribe to real-time syntax token updates.
-    ///
-    /// Returns a stream of `TokenUpdate` messages for incremental highlighting.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer_id` - Buffer to stream tokens for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the subscription fails.
-    pub async fn stream_tokens(
-        &mut self,
-        buffer_id: u64,
-    ) -> Result<Streaming<TokenUpdate>, TuiGrpcError> {
-        let request = self.make_request(StreamTokensRequest { buffer_id });
-        let response = self.syntax.stream_tokens(request).await?;
-        Ok(response.into_inner())
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
     // Presence Service (Phase 11.2 #465)
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -845,6 +664,7 @@ impl TuiGrpcClient {
         let request = JoinRequest {
             client_type: client_type.to_string(),
             display_name: display_name.to_string(),
+            surface: None,
         };
         let response = self.presence.join(request).await?.into_inner();
         // Store session token for subsequent requests (#483)

@@ -287,7 +287,6 @@ async fn test_get_layout_unknown_client() {
     assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
 }
 
-
 // =========================================================================
 // Coverage: Ring buffer logging for unknown clients (#497)
 // =========================================================================
@@ -407,7 +406,6 @@ async fn test_get_layout_dangling_follower_not_found() {
     let err = service.get_layout(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::NotFound);
 }
-
 
 // =========================================================================
 // Coverage: kernel_to_proto_option() all variants (L62-77)

@@ -14,7 +14,9 @@ use {
     std::sync::Arc,
 };
 
-use crate::codecs::{KIND_KEY, KIND_MOUSE, KIND_SCROLL, tui_key_codec, tui_mouse_codec, tui_scroll_codec};
+use crate::codecs::{
+    KIND_KEY, KIND_MOUSE, KIND_SCROLL, tui_key_codec, tui_mouse_codec, tui_scroll_codec,
+};
 
 /// Module that registers TUI input codecs with the `InputCodecRegistry`.
 ///
@@ -48,9 +50,7 @@ impl Module for TuiInputCodecModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        let registry = ctx
-            .services
-            .get_or_create::<DefaultInputCodecRegistry>();
+        let registry = ctx.services.get_or_create::<DefaultInputCodecRegistry>();
         register_codecs(registry.as_ref());
         self.registry = Some(registry);
         ProbeResult::Success

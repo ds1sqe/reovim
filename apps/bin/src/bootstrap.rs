@@ -31,12 +31,13 @@ use {
     reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_text_input::{
-        KeybindingStore, LookupPolicyStore, ModeInfoStore, ResolverRegistry,
+        KeySequence, KeybindingStore, KeymapQuery as DriverKeymapQuery, LookupPolicyStore,
+        ModeInfoStore, ResolverRegistry, key_sequence_to_input_sequence,
     },
     reovim_driver_text_session::LeaderKeyProvider,
     reovim_driver_text_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
-        SyntaxFactoryStore,
+        SyntaxFactoryStore, SyntaxSessionState,
     },
     reovim_kernel::api::v1::{
         ConfigPaths, EventBus, KernelContext, ModeId, Module, ModuleContext, ModuleId, ModuleState,
@@ -44,9 +45,12 @@ use {
     },
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
-        SessionState, SyntaxSessionState,
+        SessionState,
     },
-    reovim_driver_text_input::{BindingLayer, EagerLookupPolicy, KeySequence, KeymapQuery},
+    reovim_subsys_input::{
+        BindingLayer, DefaultInputCodecRegistry, EagerLookupPolicy, LookupPolicy, LookupResult,
+        LookupState,
+    },
     reovim_subsys_module_config::{BuiltinManifest, ModulesConfig},
     reovim_subsys_module_loader::{
         handle::ModuleHandle, loader::ModuleLoader, registry::ModuleRegistry,
@@ -59,6 +63,145 @@ use {
 #[cfg(feature = "static-modules")]
 #[path = "static_modules.rs"]
 mod static_modules;
+
+// ============================================================================
+// Composition-root adapters (#753 E6)
+// These bridge driver-tier types to the domain-neutral subsys contracts.
+// They live here because the composition root (not the kernel or drivers)
+// is the correct site for cross-layer wiring.
+// ============================================================================
+
+/// Adapts a driver-tier `KeyLookupPolicy` to the domain-neutral subsys
+/// `LookupPolicy<CommandId>` trait. Used by the composition root to wire a
+/// module-registered policy (e.g. `VimLookupPolicy`) into the new registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
+struct KeyPolicyAsLookupPolicy(Arc<dyn reovim_driver_text_input::KeyLookupPolicy>);
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl LookupPolicy<reovim_kernel::api::v1::CommandId> for KeyPolicyAsLookupPolicy {
+    fn resolve(
+        &self,
+        state: LookupState<reovim_kernel::api::v1::CommandId>,
+    ) -> LookupResult<reovim_kernel::api::v1::CommandId> {
+        use reovim_driver_text_input::{KeyLookupResult, KeyLookupState};
+        let key_state = match state {
+            LookupState::ExactOnly(c) => KeyLookupState::ExactOnly(c),
+            LookupState::ExactWithLonger { exact } => KeyLookupState::ExactWithLonger { exact },
+            LookupState::PrefixOnly => KeyLookupState::PrefixOnly,
+            LookupState::NotFound => KeyLookupState::NotFound,
+        };
+        match self.0.resolve(key_state) {
+            KeyLookupResult::Found(c) => LookupResult::Found(c),
+            KeyLookupResult::Prefix => LookupResult::Prefix,
+            KeyLookupResult::NotFound => LookupResult::NotFound,
+        }
+    }
+}
+
+/// Bridges a `CommandHandler` (from driver-command) to `CommandHandle` (from
+/// text-session api). Restored from pre-#753-E6 shape per the E6 comment
+/// directing bootstrap to own this adapter.
+#[cfg_attr(coverage_nightly, coverage(off))]
+struct HandlerBridge(Arc<dyn reovim_driver_command::CommandHandler>);
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl reovim_driver_text_session::api::CommandHandle for HandlerBridge {
+    fn execute(
+        &self,
+        runtime: &mut reovim_driver_text_session::SessionRuntime<'_>,
+        ctx: &reovim_driver_command::CommandContext,
+    ) -> reovim_driver_command::CommandResult {
+        self.0.execute(runtime, ctx)
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+struct CommandHandlerExecutor(
+    HashMap<reovim_kernel::api::v1::CommandId, Arc<dyn reovim_driver_command::CommandHandler>>,
+);
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl reovim_driver_text_session::api::CommandExecutor for CommandHandlerExecutor {
+    fn get_handle(
+        &self,
+        id: &reovim_kernel::api::v1::CommandId,
+    ) -> Option<Arc<dyn reovim_driver_text_session::api::CommandHandle>> {
+        self.0.get(id).map(|h| {
+            Arc::new(HandlerBridge(Arc::clone(h)))
+                as Arc<dyn reovim_driver_text_session::api::CommandHandle>
+        })
+    }
+}
+
+/// Adapts `KeymapRegistry` (subsys, `InputSequence`-based) to the driver-tier
+/// `KeymapQuery` trait (which uses `KeySequence` string tokens).
+///
+/// Key sequences are converted via `key_sequence_to_input_sequence` using the
+/// TUI codec from the `DefaultInputCodecRegistry`. If conversion fails (codec
+/// not registered or unknown token) the query returns `NotFound`/`false`/`None`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+struct KeymapRegistryAdapter {
+    inner: KeymapRegistry,
+    codec_registry: Arc<DefaultInputCodecRegistry>,
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl DriverKeymapQuery for KeymapRegistryAdapter {
+    fn query(
+        &self,
+        mode: &reovim_kernel::api::v1::ModeId,
+        keys: &KeySequence,
+    ) -> reovim_driver_text_input::KeyLookupState {
+        use reovim_driver_text_input::KeyLookupState;
+        let Ok(input_seq) = key_sequence_to_input_sequence(keys, self.codec_registry.as_ref())
+        else {
+            return KeyLookupState::NotFound;
+        };
+        match self.inner.query(mode, &input_seq) {
+            LookupState::ExactOnly(c) => KeyLookupState::ExactOnly(c),
+            LookupState::ExactWithLonger { exact } => KeyLookupState::ExactWithLonger { exact },
+            LookupState::PrefixOnly => KeyLookupState::PrefixOnly,
+            LookupState::NotFound => KeyLookupState::NotFound,
+        }
+    }
+
+    fn has_longer_bindings(
+        &self,
+        mode: &reovim_kernel::api::v1::ModeId,
+        keys: &KeySequence,
+    ) -> bool {
+        let Ok(input_seq) = key_sequence_to_input_sequence(keys, self.codec_registry.as_ref())
+        else {
+            return false;
+        };
+        self.inner.has_longer_bindings(mode, &input_seq)
+    }
+
+    fn get_exact(
+        &self,
+        mode: &reovim_kernel::api::v1::ModeId,
+        keys: &KeySequence,
+    ) -> Option<reovim_kernel::api::v1::CommandId> {
+        let Ok(input_seq) = key_sequence_to_input_sequence(keys, self.codec_registry.as_ref())
+        else {
+            return None;
+        };
+        match self.inner.query(mode, &input_seq) {
+            LookupState::ExactOnly(c) | LookupState::ExactWithLonger { exact: c } => Some(c),
+            LookupState::PrefixOnly | LookupState::NotFound => None,
+        }
+    }
+
+    fn bindings_with_prefix(
+        &self,
+        _mode: &reovim_kernel::api::v1::ModeId,
+        _prefix: &KeySequence,
+    ) -> Vec<(KeySequence, reovim_driver_text_input::BindingInfo)> {
+        // Reverse-conversion from InputSequence to KeySequence is not
+        // implemented; return empty (which-key display degrades gracefully).
+        Vec::new()
+    }
+}
 
 /// Embedded builtin module manifest (canonical module list and ordering).
 const BUILTINS_TOML: &str = include_str!("../builtins.toml");
@@ -250,7 +393,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     let module_registry = build_live_module_registry(initialized);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
-    let (mode_registry, command_registry, keymap_registry, resolver_registry) =
+    let (mode_registry, command_registry, keymap_registry, resolver_registry, command_handlers) =
         extract_registries(&services);
 
     // Register CommandQuerySnapshot for module command queries (#453)
@@ -349,7 +492,8 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     session_state.ensure_initial_compositor_window();
 
     // Build TextDomainDriver for domain-neutral dispatch (#753).
-    let domain_driver = build_text_domain_driver(&session_state, &services);
+    let domain_driver =
+        build_text_domain_driver(&session_state, &services, resolver_registry, command_handlers);
 
     BootstrapResult {
         session_state,
@@ -386,22 +530,42 @@ pub fn create_session_state() -> SessionState {
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_registries(
     services: &Arc<ServiceRegistry>,
-) -> (ModeRegistry, CommandRegistry, KeymapRegistry, ResolverRegistry) {
+) -> (
+    ModeRegistry,
+    CommandRegistry,
+    KeymapRegistry,
+    ResolverRegistry,
+    HashMap<reovim_kernel::api::v1::CommandId, Arc<dyn reovim_driver_command::CommandHandler>>,
+) {
     // 1. Modes: ModeInfoStore → ModeRegistry
-    //    ModeEntry::from_info() converts driver-side ModeInfo to server-side ModeEntry
+    //    ModeEntry::from_fields() converts driver-side ModeInfo to server-side ModeEntry
     let mut mode_registry = ModeRegistry::new();
     if let Some(store) = services.get::<ModeInfoStore>() {
         for info in store.take_modes() {
-            mode_registry.register(ModeEntry::from_info(info));
+            mode_registry.register(ModeEntry::from_fields(
+                info.id,
+                info.display_name,
+                info.cursor_style,
+                info.accepts_char_input,
+                info.has_selection,
+                info.inherits_from,
+                info.is_entry,
+            ));
         }
     }
     tracing::info!(count = mode_registry.len(), "Extracted modes");
 
     // 2. Commands: CommandHandlerStore → CommandRegistry
-    //    Arc<dyn CommandHandler> is shared directly (no conversion needed)
+    //    Arc<dyn CommandHandler> is shared; we also keep a handlers map for
+    //    CommandHandlerExecutor used by the domain driver (#753 E6).
     let mut command_registry = CommandRegistry::new();
+    let mut command_handlers: HashMap<
+        reovim_kernel::api::v1::CommandId,
+        Arc<dyn reovim_driver_command::CommandHandler>,
+    > = HashMap::new();
     if let Some(store) = services.get::<CommandHandlerStore>() {
         for handler in store.take_handlers() {
+            command_handlers.insert(handler.id(), Arc::clone(&handler));
             command_registry.register(handler);
         }
     }
@@ -410,12 +574,14 @@ fn extract_registries(
     // 3. Keybindings: KeybindingStore → KeymapRegistry
     //    Each KeybindingRegistration declares modes as "module:name" strings
     //    (e.g., "vim:normal"). We resolve these to ModeId via mode_registry.
+    //    KeySequence (notation tokens) are converted to InputSequence (opaque)
+    //    via the TUI codec in DefaultInputCodecRegistry.
     let mut keymap_registry = KeymapRegistry::new();
     // #620: Extract lookup policy from ServiceRegistry (registered by VimModule during init).
     // Falls back to EagerLookupPolicy if no module registered a policy.
     if let Some(policy_store) = services.get::<LookupPolicyStore>() {
-        if let Some(policy) = policy_store.take() {
-            keymap_registry.set_default_policy(policy);
+        if let Some(driver_policy) = policy_store.take() {
+            keymap_registry.set_default_policy(Arc::new(KeyPolicyAsLookupPolicy(driver_policy)));
         } else {
             keymap_registry.set_default_policy(Arc::new(EagerLookupPolicy));
         }
@@ -424,6 +590,10 @@ fn extract_registries(
     }
     // #700: Retrieve leader key provider for <leader> expansion before parsing.
     let leader_provider = services.get::<LeaderKeyProvider>();
+
+    // Obtain (or lazily create) the input codec registry so we can convert
+    // KeySequence → InputSequence. Modules register TUI codecs here during init.
+    let codec_registry = services.get_or_create::<DefaultInputCodecRegistry>();
 
     if let Some(store) = services.get::<KeybindingStore>() {
         let mut wired = 0usize;
@@ -441,12 +611,25 @@ fn extract_registries(
                 continue;
             };
 
+            // Convert notation-token KeySequence to opaque InputSequence for the registry.
+            let input_seq = match key_sequence_to_input_sequence(&keys, codec_registry.as_ref()) {
+                Ok(seq) => seq,
+                Err(e) => {
+                    tracing::warn!(
+                        keys = binding.keys,
+                        error = %e,
+                        "Failed to encode key sequence to InputSequence, skipping"
+                    );
+                    continue;
+                }
+            };
+
             for mode_str in binding.modes {
                 if let Some(mode_id) = resolve_mode_str(mode_str, &mode_registry) {
                     keymap_registry.register_at_layer(
                         BindingLayer::Policy,
                         mode_id,
-                        keys.clone(),
+                        input_seq.clone(),
                         binding.command_id.clone(),
                         binding.description,
                         binding.category,
@@ -476,7 +659,13 @@ fn extract_registries(
     }
     tracing::info!(count = resolver_registry.len(), "Extracted resolvers");
 
-    (mode_registry, command_registry, keymap_registry, resolver_registry)
+    (
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        resolver_registry,
+        command_handlers,
+    )
 }
 
 /// Resolve a mode string like `"vim:normal"` to a `ModeId`.
@@ -505,9 +694,12 @@ fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Opti
 fn build_text_domain_driver(
     session_state: &SessionState,
     services: &Arc<ServiceRegistry>,
+    resolver_registry: reovim_driver_text_input::ResolverRegistry,
+    command_handlers: HashMap<
+        reovim_kernel::api::v1::CommandId,
+        Arc<dyn reovim_driver_command::CommandHandler>,
+    >,
 ) -> Option<Arc<dyn reovim_subsys_session::DomainDriver>> {
-    use std::sync::Arc;
-
     use {
         reovim_driver_text_input::ResolverDispatchProvider,
         reovim_driver_text_session::TextDomainDriver,
@@ -516,9 +708,9 @@ fn build_text_domain_driver(
     // Get TextBufferRegistry from services (registered earlier in bootstrap).
     let text_buffers = services.get::<reovim_provider_text::TextBufferRegistry>()?;
 
-    // Clone the command registry from session_state (CommandRegistry: Clone).
-    let command_registry: Arc<dyn reovim_driver_text_session::api::CommandExecutor> =
-        Arc::new(session_state.command_registry.clone());
+    // Wrap the command handlers map in the composition-root executor adapter.
+    let command_executor: Arc<dyn reovim_driver_text_session::api::CommandExecutor> =
+        Arc::new(CommandHandlerExecutor(command_handlers));
 
     // Clone the kernel context from session_state (KernelContext: Clone).
     let kernel = session_state.app.kernel.clone();
@@ -526,19 +718,22 @@ fn build_text_domain_driver(
     // Clone the home mode from session_state.
     let home_mode = session_state.home_mode().clone();
 
-    // The resolver_registry was extracted from modules above and is used
-    // directly by the domain driver — it is no longer stored on SessionState.
-    let driver_resolver_registry = resolver_registry;
+    // Get (or lazily create) the input codec registry for the keymap adapter.
+    let codec_registry = services.get_or_create::<DefaultInputCodecRegistry>();
 
-    // Clone the keymap registry (KeymapRegistry: Clone) for the dispatch provider.
-    let keymap_arc: Arc<dyn KeymapQuery> = Arc::new(session_state.keymap_registry.clone());
+    // Wrap the server's KeymapRegistry with a driver-tier adapter so
+    // ResolverDispatchProvider can query it via the string-token KeymapQuery trait.
+    let keymap_arc: Arc<dyn DriverKeymapQuery> = Arc::new(KeymapRegistryAdapter {
+        inner: session_state.keymap_registry.clone(),
+        codec_registry,
+    });
 
     // Construct TextDomainDriver with domain_id=1 (canonical text domain).
     let mut driver =
-        TextDomainDriver::new(1, home_mode, Arc::new(kernel), command_registry, text_buffers);
+        TextDomainDriver::new(1, home_mode, Arc::new(kernel), command_executor, text_buffers);
 
     // Wire dispatch provider.
-    let provider = Arc::new(ResolverDispatchProvider::new(driver_resolver_registry, keymap_arc));
+    let provider = Arc::new(ResolverDispatchProvider::new(resolver_registry, keymap_arc));
     driver.set_dispatch_provider(provider);
 
     tracing::info!("TextDomainDriver constructed for default session (#753 E1)");
@@ -584,7 +779,32 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
     // Call handler and execute action
     match handler.handle(&ctx) {
         EmptySessionAction::CreateBuffer { content, .. } => {
-            let id = state.create_buffer(&content);
+            // Register the buffer in both the kernel BufferManager (for ID
+            // assignment) and the TextBufferRegistry (for text-layer access).
+            let text_registry = match services.get::<reovim_provider_text::TextBufferRegistry>() {
+                Some(r) => r,
+                None => {
+                    tracing::warn!(
+                        "TextBufferRegistry not found; skipping scratch buffer creation"
+                    );
+                    return;
+                }
+            };
+            // Step 1: Register in TextBufferRegistry as `dyn BufferOps`; this
+            //         assigns the canonical BufferId from the buffer's own ID.
+            let buffer = reovim_provider_text::Buffer::from_string(&content);
+            let buf_id = buffer.id();
+            let text_arc: Arc<reovim_kernel::api::v1::RwLock<dyn reovim_provider_text::BufferOps>> =
+                Arc::new(reovim_kernel::api::v1::RwLock::new(buffer));
+            let id = text_registry.register(text_arc);
+            // Step 2: Register in kernel BufferManager as `dyn KernelBuffer` using
+            //         the same BufferId (via Buffer::with_id). An empty-content buffer
+            //         is sufficient for the kernel — text content is in TextBufferRegistry.
+            let kernel_buf = reovim_provider_text::Buffer::with_id(buf_id);
+            let kernel_arc: Arc<
+                reovim_kernel::api::v1::RwLock<dyn reovim_kernel::api::KernelBuffer>,
+            > = Arc::new(reovim_kernel::api::v1::RwLock::new(kernel_buf));
+            state.app.kernel.buffers.register(kernel_arc);
             tracing::info!(?id, "Created scratch buffer from empty session handler");
         }
         EmptySessionAction::None => {

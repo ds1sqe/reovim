@@ -11,8 +11,10 @@
 //! be loaded as a module, which silently breaks the codec lifetime =
 //! module lifetime invariant.
 
-use cargo_metadata::{DependencyKind, MetadataCommand};
-use std::path::Path;
+use {
+    cargo_metadata::{DependencyKind, MetadataCommand},
+    std::path::Path,
+};
 
 const CONCERNS: &[&str] = &["input", "content", "surface", "render"];
 const MODULE_MACROS_CRATE: &str = "reovim-module-macros";
@@ -43,9 +45,10 @@ fn every_codec_variant_depends_on_module_macros() {
         }
         checked_count += 1;
 
-        let has_macros = pkg.dependencies.iter().any(|d| {
-            d.kind == DependencyKind::Normal && d.name.as_str() == MODULE_MACROS_CRATE
-        });
+        let has_macros = pkg
+            .dependencies
+            .iter()
+            .any(|d| d.kind == DependencyKind::Normal && d.name.as_str() == MODULE_MACROS_CRATE);
 
         if !has_macros {
             missing.push(format!("{} @ {rel_str}", pkg.name));

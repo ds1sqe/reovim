@@ -15,8 +15,10 @@
 //! `reovim-content-codec` (the uapi crate living at `uapi/content-codec/`)
 //! as a member of the ext content-codec tree.
 
-use cargo_metadata::{DependencyKind, MetadataCommand};
-use std::{collections::HashMap, path::Path};
+use {
+    cargo_metadata::{DependencyKind, MetadataCommand},
+    std::{collections::HashMap, path::Path},
+};
 
 const CONCERNS: &[&str] = &["input", "content", "surface", "render"];
 

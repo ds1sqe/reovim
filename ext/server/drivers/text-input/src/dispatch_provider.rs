@@ -8,11 +8,11 @@
 use std::sync::Arc;
 
 use {
+    reovim_codec_tui_input::KeyEvent,
     reovim_driver_text_session::{
         ExtensionMap, PopResult, SessionRuntime, TextKeyDispatchProvider,
         api::{ChangeTracker, CommandExecutor, ModeApi, StateChanges},
     },
-    reovim_codec_tui_input::KeyEvent,
     reovim_kernel::api::v1::ModeId,
     reovim_subsys_command_types::{ArgValue, CommandContext, RuntimeSignal},
 };

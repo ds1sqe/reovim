@@ -13,8 +13,7 @@ use {
     reovim_render_codec::{KIND_CELL_GRID, RenderDescriptor},
     reovim_render_codec_tui::{CellGridRender, CellGridRenderCodec},
     reovim_subsys_render_codec::{
-        DefaultRenderCodecRegistry, KIND_CELL_GRID as SUBSYS_KIND_CELL_GRID,
-        RenderCodecRegistry,
+        DefaultRenderCodecRegistry, KIND_CELL_GRID as SUBSYS_KIND_CELL_GRID, RenderCodecRegistry,
     },
     std::sync::Arc,
 };
@@ -45,9 +44,9 @@ impl RenderTarget for RecordingRenderTarget {
         let decoded = codec
             .decode(data)
             .map_err(|e| RenderError::InvalidData(e.to_string()))?;
-        let target = decoded
-            .downcast_ref::<CellGridRender>()
-            .ok_or_else(|| RenderError::InvalidData("decoded value is not CellGridRender".into()))?;
+        let target = decoded.downcast_ref::<CellGridRender>().ok_or_else(|| {
+            RenderError::InvalidData("decoded value is not CellGridRender".into())
+        })?;
         self.recorded.push(target.clone());
         Ok(())
     }

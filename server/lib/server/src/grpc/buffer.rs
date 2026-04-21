@@ -62,9 +62,7 @@ impl BufferService for BufferServiceImpl {
         &self,
         _request: Request<ListBuffersRequest>,
     ) -> Result<Response<ListBuffersResponse>, Status> {
-        Err(Status::unimplemented(
-            "ListBuffers: pending domain driver wiring (#753 E6)",
-        ))
+        Err(Status::unimplemented("ListBuffers: pending domain driver wiring (#753 E6)"))
     }
 
     /// Open a file into a buffer (stub).

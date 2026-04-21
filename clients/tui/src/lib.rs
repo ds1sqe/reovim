@@ -75,7 +75,7 @@ impl TuiDebugConfig {
     }
 }
 
-// Module declarations - gRPC v2 only
+// Module declarations - gRPC v3
 pub mod adapter;
 pub mod cli_panel;
 pub mod cli_render;
@@ -95,9 +95,11 @@ pub mod render_engine;
 pub mod render_engine_bridge;
 pub mod tui_output;
 
-// gRPC v2 client
+// gRPC v3 client
 #[cfg(feature = "grpc")]
 pub mod grpc_client;
+#[cfg(feature = "grpc")]
+pub mod projection_handlers;
 #[cfg(feature = "grpc")]
 pub mod server_handle;
 

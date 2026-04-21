@@ -1,8 +1,8 @@
 //! Tests for UTF-8 domain codec implementations.
 
 use {
-    reovim_domain_text::{Text, TextEdit, TextPosition},
     reovim_content_codec::{ByteNotifiable, CodecMetadata, ContentType, Decode, Encode, Index},
+    reovim_domain_text::{Text, TextEdit, TextPosition},
     reovim_kernel::api::v1::ByteEdit,
 };
 

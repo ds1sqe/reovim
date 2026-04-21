@@ -26,13 +26,15 @@ mod lookup_tests;
 #[cfg(test)]
 mod registry_tests;
 
-pub use binding::{BindingInfo, BindingLayer};
-pub use input_event::{
-    INPUT_HEADER_SIZE, InputEvent, InputFlags, InputPayloadError, input_context, input_flags,
-    input_kind,
+pub use {
+    binding::{BindingInfo, BindingLayer},
+    input_event::{
+        INPUT_HEADER_SIZE, InputEvent, InputFlags, InputPayloadError, input_context, input_flags,
+        input_kind,
+    },
+    lookup::{EagerLookupPolicy, KeymapQuery, LookupPolicy, LookupResult, LookupState},
+    registry::{DefaultInputCodecRegistry, InputCodecRegistry},
 };
-pub use lookup::{EagerLookupPolicy, KeymapQuery, LookupPolicy, LookupResult, LookupState};
-pub use registry::{DefaultInputCodecRegistry, InputCodecRegistry};
 
 // Re-export InputSequence from uapi so consumers don't need a direct dep on
 // reovim-input-codec for the common sequence type.

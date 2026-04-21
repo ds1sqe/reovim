@@ -11,10 +11,9 @@ use {
     reovim_protocol::v3::{
         CaptureRequestPayload, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
         GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest,
-        GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse,
-        Notification, RegisterEntry,
-        SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, TabPageInfo, WindowLeaf,
-        WindowNode, WindowRect, WindowSplit, notification::Payload,
+        GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse, Notification,
+        RegisterEntry, SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply,
+        TabPageInfo, WindowLeaf, WindowNode, WindowRect, WindowSplit, notification::Payload,
         state_service_server::StateService, window_node::Node,
     },
     tonic::{Request, Response, Status},

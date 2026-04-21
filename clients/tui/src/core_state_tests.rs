@@ -207,6 +207,9 @@ fn test_cleanup_stale_cursors() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
 
     state.cleanup_stale_cursors();
@@ -375,6 +378,9 @@ fn test_cleanup_stale_scroll_tops() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
 
     state.cleanup_stale_cursors();
@@ -392,6 +398,9 @@ fn test_get_focused_buffer_id_found() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
     assert_eq!(state.get_focused_buffer_id(), Some(42));
 }
@@ -406,6 +415,9 @@ fn test_get_focused_buffer_id_no_match() {
         rect: None,
         focused: false,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
     assert_eq!(state.get_focused_buffer_id(), None);
 }
@@ -426,6 +438,9 @@ fn test_get_focused_buffer_id_none_buffer() {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }];
     assert_eq!(state.get_focused_buffer_id(), None);
 }

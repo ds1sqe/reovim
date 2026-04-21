@@ -60,9 +60,9 @@ impl ServerHandle for TuiServerHandle {
 
 /// Convert gRPC `OptionValue` map to client-driver `OptionValue` pairs.
 fn convert_options(
-    options: &std::collections::HashMap<String, reovim_protocol::v2::OptionValue>,
+    options: &std::collections::HashMap<String, reovim_protocol::v3::OptionValue>,
 ) -> Vec<(String, OptionValue)> {
-    use reovim_protocol::v2::option_value::Value;
+    use reovim_protocol::v3::option_value::Value;
 
     options
         .iter()

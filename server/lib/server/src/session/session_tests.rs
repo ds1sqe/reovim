@@ -1538,12 +1538,8 @@ async fn dispatch_input_fallback_without_domain_driver() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let event = InputEvent::new(
-        vec![0u8; reovim_subsys_input::INPUT_HEADER_SIZE],
-        None,
-        0,
-    )
-    .expect("payload >= header size");
+    let event = InputEvent::new(vec![0u8; reovim_subsys_input::INPUT_HEADER_SIZE], None, 0)
+        .expect("payload >= header size");
     let result = session.dispatch_input_for_client(client_id, &event).await;
 
     // Fallback stub returns None when no domain driver is active (#753 E3)

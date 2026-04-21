@@ -9,4 +9,3 @@
 //! avoid a duplicate re-export here.
 
 pub use reovim_subsys_input::binding::BindingInfo;
-

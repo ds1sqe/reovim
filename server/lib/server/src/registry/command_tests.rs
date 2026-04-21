@@ -1,8 +1,4 @@
-use {
-    super::*,
-    reovim_kernel::api::v1::ModuleId,
-    reovim_subsys_command::Command,
-};
+use {super::*, reovim_kernel::api::v1::ModuleId, reovim_subsys_command::Command};
 
 // Test command implementation (metadata-only, no CommandHandler)
 struct TestCommand {

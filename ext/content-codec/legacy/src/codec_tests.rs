@@ -1,9 +1,9 @@
 //! Tests for legacy encoding codec.
 
 use {
-    reovim_domain_text::Position,
     reovim_content_codec::{ContentCodec, ContentType, DecodedEdit, DomainEdit},
     reovim_content_codec_text::TextEdit,
+    reovim_domain_text::Position,
     reovim_subsys_vfs::HeapByteSource,
 };
 

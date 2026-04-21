@@ -253,10 +253,7 @@ fn decoded_edit_tree_pattern_match() {
     };
     match edit {
         DecodedEdit::Tree { path, op } => {
-            assert_eq!(
-                path.components(),
-                &["sections".to_string(), "text".to_string()]
-            );
+            assert_eq!(path.components(), &["sections".to_string(), "text".to_string()]);
             let inner = op.downcast_ref::<SyntheticTreeOp>().unwrap();
             assert_eq!(inner.name, "patch");
         }

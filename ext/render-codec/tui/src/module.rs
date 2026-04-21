@@ -7,9 +7,7 @@
 use {
     super::codec::CellGridRenderCodec,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    reovim_subsys_render_codec::{
-        DefaultRenderCodecRegistry, KIND_CELL_GRID, RenderCodecRegistry,
-    },
+    reovim_subsys_render_codec::{DefaultRenderCodecRegistry, KIND_CELL_GRID, RenderCodecRegistry},
     std::sync::Arc,
 };
 

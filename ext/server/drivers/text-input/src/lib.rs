@@ -10,8 +10,8 @@ mod binding_info;
 mod dispatch_provider;
 mod fallback;
 mod input_sequence_bridge;
-mod keybinding_store;
 mod key_sequence;
+mod keybinding_store;
 mod lifecycle;
 mod lookup_contracts;
 mod lookup_policy_store;
@@ -64,19 +64,22 @@ pub use {
 pub use key_sequence::{KeySequence, ToKeyToken};
 
 // Re-export binding info and layer (moved from subsys-input-contracts).
-pub use lookup_contracts::{
-    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
+pub use {
+    binding_info::BindingInfo,
+    lookup_contracts::{
+        BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState,
+        KeymapQuery,
+    },
 };
-pub use binding_info::BindingInfo;
 
 // Re-export mode info and transition types (moved from subsys-input-contracts).
-pub use mode_info_local::ModeInfo;
-pub use transition_local::{ModeTransition, PopResult, TransitionContext};
+pub use {
+    mode_info_local::ModeInfo,
+    transition_local::{ModeTransition, PopResult, TransitionContext},
+};
 
 // Re-export input sequence bridge helper.
-pub use input_sequence_bridge::{
-    InputSequenceBridgeError, key_sequence_to_input_sequence,
-};
+pub use input_sequence_bridge::{InputSequenceBridgeError, key_sequence_to_input_sequence};
 
 // Re-export typed key/mouse types (moved from reovim-input-codec to ext/input-codec/tui).
 pub use reovim_codec_tui_input::{
@@ -102,9 +105,9 @@ mod fallback_tests;
 #[cfg(test)]
 mod input_sequence_bridge_tests;
 #[cfg(test)]
-mod keybinding_store_tests;
-#[cfg(test)]
 mod key_sequence_tests;
+#[cfg(test)]
+mod keybinding_store_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]

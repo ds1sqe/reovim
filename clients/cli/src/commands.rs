@@ -60,8 +60,7 @@ pub async fn mode(
     _format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
     Err(GrpcClientError::OperationFailed(
-        "debug-get-mode removed in proto v3; use 'cursor' to query projections instead"
-            .to_string(),
+        "debug-get-mode removed in proto v3; use 'cursor' to query projections instead".to_string(),
     ))
 }
 

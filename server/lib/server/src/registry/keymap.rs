@@ -366,12 +366,7 @@ impl KeymapRegistry {
     /// (e.g., `"j"`, `"gg"`).  The byte format is a 9-byte payload: the
     /// 8-byte opaque header (all zeros — test-only) followed by the ASCII
     /// body byte.  Real codecs live outside the server crate.
-    pub fn register_str(
-        &mut self,
-        mode: &ModeId,
-        notation: &str,
-        command: CommandId,
-    ) -> bool {
+    pub fn register_str(&mut self, mode: &ModeId, notation: &str, command: CommandId) -> bool {
         let Some(seq) = test_helpers::seq_from_notation(notation) else {
             return false;
         };

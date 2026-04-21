@@ -11,21 +11,21 @@
 //! - Access to gRPC client (`client_mut()`)
 //! - Optional hooks for interactive-specific behavior (`on_buffer_modified()`)
 //!
-//! Default hook implementations are no-ops, allowing headless TUI to skip
-//! syntax highlighting refresh while interactive TUI provides real implementations.
+//! In proto v3 the per-field notification variants (ModeChanged, CursorMoved,
+//! SelectionChanged, OptionChanged, BufferModified, ResizeRequest) are replaced
+//! by the generic `ProjectionUpdated` dispatch and `SurfaceChanged`.
+//! Only server-lifecycle notifications (LayoutChanged, RenderComplete, Detach,
+//! Capture, Presence) remain as typed arms.
 
-use reovim_protocol::v2::{
-    Notification, notification::Payload, option_changed_payload::Value as OptionValue,
-};
+use reovim_protocol::v3::{Notification, notification::Payload};
 
-use reovim_client_driver::{
-    BufferId, BufferUpdateEvent, ClientModule, OptionValue as ClientOptionValue,
-};
+use reovim_client_driver::{BufferId, BufferUpdateEvent, ClientModule};
 
 use crate::{
-    CursorPosition, RemoteClient, SelectionState, TuiCoreState,
+    RemoteClient, TuiCoreState,
     core_helpers::apply_layout_notification,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
+    projection_handlers::handle_projection_updated,
 };
 
 /// Context trait for notification handling.
@@ -48,15 +48,6 @@ pub trait NotificationContext {
         // Default: no-op
     }
 
-    /// Called when an option changes.
-    ///
-    /// Default implementation does nothing. Interactive TUI overrides
-    /// to handle colorscheme changes.
-    #[allow(unused_variables)]
-    fn on_option_changed(&mut self, name: &str, value: Option<OptionValue>) {
-        // Default: no-op
-    }
-
     /// Called when a capture request is received.
     ///
     /// Returns the frame content if this TUI should handle the request,
@@ -74,7 +65,7 @@ pub trait NotificationContext {
         None
     }
 
-    /// Called when a resize request is received.
+    /// Called when a surface change (resize) is received.
     ///
     /// Default implementation does nothing. Headless TUI overrides
     /// to resize its frame buffer.
@@ -97,7 +88,7 @@ pub enum NotificationResult {
     Redraw,
     /// Redraw needed AND buffer metadata should be refreshed.
     ///
-    /// Used for `BufferModified` and `LayoutChanged` — avoids calling
+    /// Used for `BufferOpened` and `LayoutChanged` — avoids calling
     /// `dispatch_buffer_metadata` on every notification (#691).
     RedrawWithMetadata,
     /// Notification handled, no redraw needed.
@@ -134,118 +125,64 @@ pub async fn handle_notification<C: NotificationContext>(
     };
 
     match payload {
-        Payload::ModeChanged(mode) => {
-            let is_insert = mode.is_insert;
-            let (is_local, mode_display) = {
-                let state = ctx.state_mut();
-                let local = mode.client_id == state.my_client_id;
-                if local {
-                    state.mode_name = mode.name;
-                    state.mode_display = mode.display;
-                    state.set_insert_mode(is_insert);
-                    (true, state.mode_display.clone())
-                } else {
-                    if let Some(remote) = state.other_clients.get_mut(&mode.client_id) {
-                        remote.mode.clone_from(&mode.display);
-                    }
-                    (false, String::new())
-                }
-            };
-            // Notify extensions of mode change (after dropping state borrow)
-            if is_local {
-                for ext in ctx.extensions_mut() {
-                    ext.on_mode_change(&mode_display);
-                }
-            }
+        // ─────────────────────────────────────────────────────────────
+        // Generic projection dispatch (v3: replaces ModeChanged,
+        // CursorMoved, SelectionChanged, OptionChanged, BufferModified)
+        // ─────────────────────────────────────────────────────────────
+        Payload::ProjectionUpdated(p) => {
+            handle_projection_updated(ctx, p).await?;
             Ok(NotificationResult::Redraw)
         }
 
-        Payload::CursorMoved(cursor) => {
-            let (is_local, buffer_id, cursor_line, cursor_col) = {
-                let state = ctx.state_mut();
-                let local = cursor.client_id == state.my_client_id;
-
-                // Debug: trace cursor notifications to diagnose position bugs
-                tracing::debug!(
-                    notif_client_id = cursor.client_id,
-                    my_client_id = state.my_client_id,
-                    is_local = local,
-                    window_id = cursor.window_id,
-                    position = ?cursor.position,
-                    "CursorMoved notification"
-                );
-
-                if let Some(pos) = cursor.position {
-                    if local {
-                        // Use focused_window_id as storage key: when per-client compositor
-                        // is active (#474) the IDs match, but this also handles edge cases
-                        // where cursor.window_id differs from focused_window_id (e.g., when
-                        // no compositor is loaded).
-                        let key = state.focused_window_id;
-                        state.update_local_cursor(key, pos.line, pos.column);
-                    } else {
-                        state.update_remote_cursor(cursor.client_id, pos.line, pos.column);
-                    }
-                    let bid = state.get_focused_buffer_id().unwrap_or(0);
-                    #[allow(clippy::cast_possible_truncation)]
-                    (local, bid, pos.line as usize, pos.column as usize)
-                } else {
-                    (local, 0, 0, 0)
-                }
-            };
-            // Notify extensions of cursor update (after dropping state borrow)
-            if is_local {
-                #[allow(clippy::cast_possible_truncation)]
-                let bid = BufferId(buffer_id as usize);
-                for ext in ctx.extensions_mut() {
-                    ext.on_cursor_update(bid, cursor_line, cursor_col);
-                }
-            }
-            Ok(NotificationResult::Redraw)
-        }
-
-        Payload::BufferModified(buf) => {
-            let buffer_id = buf.buffer_id;
-
-            // Refetch buffer content (keep stale data until refetch completes
-            // to avoid race condition where capture reads empty cache)
-            match ctx
-                .client_mut()
-                .get_buffer_content(Some(buffer_id), None, None)
-                .await
+        // ─────────────────────────────────────────────────────────────
+        // Surface change (v3: replaces ResizeRequest)
+        // ─────────────────────────────────────────────────────────────
+        Payload::SurfaceChanged(surface_payload) => {
+            let my_client_id = ctx.state_mut().my_client_id;
+            if surface_payload.target_client_id != 0
+                && surface_payload.target_client_id != my_client_id
             {
-                Ok(content) => {
-                    ctx.state_mut()
-                        .buffer_cache
-                        .insert(buffer_id, content.lines);
-                }
-                Err(e) => {
-                    tracing::warn!(buffer_id, error = %e, "Failed to refetch buffer");
-                }
+                tracing::trace!(
+                    target_client_id = surface_payload.target_client_id,
+                    my_client_id,
+                    "Ignoring surface change for different client"
+                );
+                return Ok(NotificationResult::NoRedraw);
             }
 
-            // Notify extensions of buffer content change
-            let lines = ctx.state_mut().buffer_cache.get(&buffer_id).cloned();
-            if let Some(lines) = &lines {
-                #[allow(clippy::cast_possible_truncation)]
-                let total = lines.len();
-                let event = BufferUpdateEvent {
+            // Decode CellGridSurface from opaque SurfaceDescriptorProto.
+            // Body layout: kind=0x0001, body=[width_be:u32, height_be:u32]
+            if let Some(desc) = &surface_payload.surface {
+                if desc.kind == 0x0001 && desc.body.len() >= 8 {
+                    let width = u32::from_be_bytes([
+                        desc.body[0],
+                        desc.body[1],
+                        desc.body[2],
+                        desc.body[3],
+                    ]);
+                    let height = u32::from_be_bytes([
+                        desc.body[4],
+                        desc.body[5],
+                        desc.body[6],
+                        desc.body[7],
+                    ]);
                     #[allow(clippy::cast_possible_truncation)]
-                    buffer_id: BufferId(buffer_id as usize),
-                    revision: 0,
-                    changed_range: 0..total,
-                    new_lines: lines.clone(),
-                    total_lines: total,
-                };
-                for ext in ctx.extensions_mut() {
-                    ext.on_buffer_update(&event);
+                    let (w, h) = (width as u16, height as u16);
+                    if w > 0 && h > 0 {
+                        tracing::debug!(width = w, height = h, "SurfaceChanged (cell-grid resize)");
+                        let state = ctx.state_mut();
+                        state.width = w;
+                        state.height = h;
+                        ctx.on_resize(w, h);
+                    }
+                } else {
+                    tracing::trace!(
+                        kind = desc.kind,
+                        "SurfaceChanged with non-cell-grid kind, ignoring"
+                    );
                 }
             }
-
-            // Notify context for optional syntax refresh
-            ctx.on_buffer_modified(buffer_id);
-
-            Ok(NotificationResult::RedrawWithMetadata)
+            Ok(NotificationResult::Redraw)
         }
 
         Payload::LayoutChanged(layout) => {
@@ -271,6 +208,9 @@ pub async fn handle_notification<C: NotificationContext>(
             // Fetch content for any newly visible buffers not yet in cache.
             // This covers set_window_buffer() which only emits LayoutChanged,
             // not BufferModified (e.g., picker file open, buffer switch).
+            //
+            // NOTE: In v3, get_buffer_content is a no-op stub pending the
+            // server-side `text.buffer_lines` projection emitter.
             let missing: Vec<u64> = {
                 let state = ctx.state_mut();
                 state
@@ -288,8 +228,10 @@ pub async fn handle_notification<C: NotificationContext>(
                     .await
                 {
                     Ok(content) => {
-                        ctx.state_mut().buffer_cache.insert(buf_id, content.lines);
-                        fetched.push(buf_id);
+                        if !content.lines.is_empty() {
+                            ctx.state_mut().buffer_cache.insert(buf_id, content.lines);
+                            fetched.push(buf_id);
+                        }
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -343,21 +285,6 @@ pub async fn handle_notification<C: NotificationContext>(
             Ok(NotificationResult::Stop)
         }
 
-        Payload::OptionChanged(opt) => {
-            let value = opt.value.clone();
-            ctx.on_option_changed(&opt.name, value.clone());
-
-            // Dispatch to extensions so ClientModules (e.g., LineNumbers)
-            // receive option changes like :set nu / :set rnu.
-            if let Some(client_value) = value.map(proto_to_client_option) {
-                for ext in ctx.extensions_mut() {
-                    ext.on_option_changed(&opt.name, &client_value);
-                }
-            }
-
-            Ok(NotificationResult::Redraw)
-        }
-
         Payload::PresenceJoined(p) => {
             if let Some(client) = p.client {
                 let state = ctx.state_mut();
@@ -371,11 +298,11 @@ pub async fn handle_notification<C: NotificationContext>(
                     state.add_remote_client(RemoteClient {
                         client_id: client.client_id,
                         display_name: client.display_name,
-                        cursor_line: 0, // Updated via CursorMoved
+                        cursor_line: 0, // Default; updated via ProjectionUpdated
                         cursor_col: 0,
                         buffer_id: client.buffer_id,
-                        mode: client.mode,
-                        selection: None, // Updated via SelectionChanged
+                        mode: String::new(), // Default; updated via ProjectionUpdated
+                        selection: None,     // Default; updated via ProjectionUpdated
                     });
                 }
             }
@@ -389,20 +316,21 @@ pub async fn handle_notification<C: NotificationContext>(
                     let old = state.other_clients.get(&client.client_id);
 
                     // Check if buffer changed - if so, reset cursor to (0,0)
-                    // The old cursor position doesn't make sense in a new buffer
                     let buffer_changed = old.is_none_or(|o| o.buffer_id != client.buffer_id);
 
                     let (cursor_line, cursor_col) = if buffer_changed {
-                        // Reset cursor for new buffer context
-                        // Server will send CursorMoved with actual position
                         (0, 0)
                     } else {
-                        // Preserve existing cursor position within same buffer
                         (old.map_or(0, |c| c.cursor_line), old.map_or(0, |c| c.cursor_col))
                     };
 
+                    let mode = if buffer_changed {
+                        String::new()
+                    } else {
+                        old.map_or_else(String::new, |c| c.mode.clone())
+                    };
+
                     let selection = if buffer_changed {
-                        // Also clear selection on buffer switch
                         None
                     } else {
                         old.and_then(|c| c.selection.clone())
@@ -416,7 +344,7 @@ pub async fn handle_notification<C: NotificationContext>(
                             cursor_line,
                             cursor_col,
                             buffer_id: client.buffer_id,
-                            mode: client.mode,
+                            mode,
                             selection,
                         },
                     );
@@ -428,71 +356,6 @@ pub async fn handle_notification<C: NotificationContext>(
         Payload::PresenceLeft(p) => {
             let state = ctx.state_mut();
             state.remove_remote_client(p.client_id);
-            Ok(NotificationResult::Redraw)
-        }
-
-        Payload::SelectionChanged(sel) => {
-            let state = ctx.state_mut();
-            let is_local = sel.client_id == state.my_client_id;
-
-            let selection = if sel.has_selection {
-                sel.selection.map(|s| {
-                    let start = s
-                        .start
-                        .map_or_else(CursorPosition::default, |p| CursorPosition {
-                            line: p.line,
-                            column: p.column,
-                        });
-                    let end = s
-                        .end
-                        .map_or_else(CursorPosition::default, |p| CursorPosition {
-                            line: p.line,
-                            column: p.column,
-                        });
-                    SelectionState {
-                        start,
-                        end,
-                        mode: sel.visual_mode.clone().unwrap_or_default(),
-                    }
-                })
-            } else {
-                None
-            };
-
-            if is_local {
-                state.update_local_selection(sel.window_id, selection);
-            } else {
-                state.update_remote_selection(sel.client_id, selection);
-            }
-
-            Ok(NotificationResult::Redraw)
-        }
-
-        Payload::ResizeRequest(resize_req) => {
-            // Only handle resize targeted at us (0 = no target for backward compat)
-            let my_client_id = ctx.state_mut().my_client_id;
-            if resize_req.target_client_id != 0 && resize_req.target_client_id != my_client_id {
-                tracing::trace!(
-                    target_client_id = resize_req.target_client_id,
-                    my_client_id,
-                    "Ignoring resize request for different client"
-                );
-                return Ok(NotificationResult::NoRedraw);
-            }
-
-            #[allow(clippy::cast_possible_truncation)]
-            let width = resize_req.width as u16;
-            #[allow(clippy::cast_possible_truncation)]
-            let height = resize_req.height as u16;
-
-            if width > 0 && height > 0 {
-                tracing::debug!(width, height, "Resize request");
-                let state = ctx.state_mut();
-                state.width = width;
-                state.height = height;
-                // Notify context for frame buffer resize (headless TUI)
-                ctx.on_resize(width, height);
-            }
             Ok(NotificationResult::Redraw)
         }
 
@@ -514,7 +377,6 @@ pub async fn handle_notification<C: NotificationContext>(
                 &capture_req.format,
                 capture_req.target_client_id,
             ) {
-                // Submit capture response - scope client reference tightly
                 let (width, height) = {
                     let state = ctx.state_mut();
                     (state.width, state.height)
@@ -570,7 +432,7 @@ pub async fn handle_notification<C: NotificationContext>(
         }
 
         _ => {
-            // Other notifications - trigger redraw
+            // Other notifications (BufferOpened, BufferClosed, CaptureResponse, etc.)
             Ok(NotificationResult::Redraw)
         }
     }
@@ -607,11 +469,9 @@ pub(crate) async fn dispatch_buffer_metadata(
         &info.name
     };
     let filetype = guess_filetype(filename);
-    let encoding = info
-        .codec_metadata
-        .as_ref()
-        .and_then(|m| m.line_ending.as_deref())
-        .map_or("utf-8", |le| if le == "crlf" { "crlf" } else { "utf-8" });
+    // v3 BufferInfo dropped codec_metadata; encoding defaults to "utf-8"
+    // until a `text.codec_metadata` projection lands.
+    let encoding = "utf-8";
     let modified = info.modified;
     let readonly = info.readonly.unwrap_or(false);
 
@@ -685,15 +545,6 @@ pub(crate) async fn dispatch_buffer_list(
 
     for ext in extensions {
         ext.on_notification(&json);
-    }
-}
-
-/// Convert a proto `OptionValue` to a client-driver `OptionValue`.
-fn proto_to_client_option(value: OptionValue) -> ClientOptionValue {
-    match value {
-        OptionValue::BoolValue(b) => ClientOptionValue::Bool(b),
-        OptionValue::IntValue(i) => ClientOptionValue::Integer(i),
-        OptionValue::StringValue(s) => ClientOptionValue::String(s),
     }
 }
 

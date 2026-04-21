@@ -24,7 +24,7 @@
 //! }
 //! ```
 
-use reovim_protocol::v2::WindowInfo;
+use reovim_protocol::v3::WindowInfo;
 
 /// Mirror of server-side window layout.
 ///

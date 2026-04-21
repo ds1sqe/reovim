@@ -432,14 +432,20 @@ async fn test_goto_definition_on_symbol() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Record position before gd (get_cursor removed in v3; use ping to check liveness)
-    client.ping().await.expect("Server should be alive before gd");
+    client
+        .ping()
+        .await
+        .expect("Server should be alive before gd");
 
     // Send gd (goto definition)
     client.send_keys("gd").await.expect("Failed to send gd");
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Verify server is still alive after gd (get_mode/get_cursor removed in v3)
-    client.ping().await.expect("Server should be alive after gd");
+    client
+        .ping()
+        .await
+        .expect("Server should be alive after gd");
 
     eprintln!("PASS: gd completed without crash");
 

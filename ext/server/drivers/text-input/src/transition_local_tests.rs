@@ -45,16 +45,14 @@ fn pop_result_variants_preserve_payloads() {
     }
 
     let data = PopResult::Data {
-        values: std::collections::HashMap::from([
-            ("pattern".to_owned(), ArgValue::String("foo".to_owned())),
-        ]),
+        values: std::collections::HashMap::from([(
+            "pattern".to_owned(),
+            ArgValue::String("foo".to_owned()),
+        )]),
     };
     match data {
         PopResult::Data { values } => {
-            assert_eq!(
-                values.get("pattern"),
-                Some(&ArgValue::String("foo".to_owned()))
-            );
+            assert_eq!(values.get("pattern"), Some(&ArgValue::String("foo".to_owned())));
         }
         PopResult::ExecuteCommand { .. } | PopResult::Cancelled => panic!("expected data"),
     }

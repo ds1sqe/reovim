@@ -503,7 +503,6 @@ impl<M: Send + Sync> Server<M> {
                 .add_service(svc!(StateServiceServer, state_service, i.clone()))
                 .add_service(svc!(ServerServiceServer, server_service, i.clone()))
                 .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
-
                 .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
                 .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
                 .add_service(svc!(CommandServiceServer, command_service, i.clone()))
@@ -534,7 +533,6 @@ impl<M: Send + Sync> Server<M> {
                 .add_service(svc!(StateServiceServer, state_service, i.clone()))
                 .add_service(svc!(ServerServiceServer, server_service, i.clone()))
                 .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
-
                 .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
                 .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
                 .add_service(svc!(CommandServiceServer, command_service, i.clone()))

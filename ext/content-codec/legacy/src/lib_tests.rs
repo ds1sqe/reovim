@@ -87,16 +87,21 @@ fn default_has_no_registry_handle() {
 fn init_acquires_registry_and_registers_both_codecs() {
     let ctx = test_ctx();
     let mut m = CodecLegacyModule::new();
-    assert!(matches!(
-        m.init(&ctx),
-        reovim_kernel::api::v1::ProbeResult::Success
-    ));
+    assert!(matches!(m.init(&ctx), reovim_kernel::api::v1::ProbeResult::Success));
     assert!(m.registry.is_some());
     assert_eq!(m.content_types.len(), 2);
 
     let registry = ctx.services.get_or_create::<DefaultContentCodecRegistry>();
-    assert!(registry.get(&ContentType::new(classifier::LATIN_1)).is_some());
-    assert!(registry.get(&ContentType::new(classifier::WINDOWS_1252)).is_some());
+    assert!(
+        registry
+            .get(&ContentType::new(classifier::LATIN_1))
+            .is_some()
+    );
+    assert!(
+        registry
+            .get(&ContentType::new(classifier::WINDOWS_1252))
+            .is_some()
+    );
 }
 
 #[test]
@@ -110,8 +115,16 @@ fn exit_releases_registry_and_unregisters_both_codecs() {
     assert!(m.content_types.is_empty());
 
     let registry = ctx.services.get_or_create::<DefaultContentCodecRegistry>();
-    assert!(registry.get(&ContentType::new(classifier::LATIN_1)).is_none());
-    assert!(registry.get(&ContentType::new(classifier::WINDOWS_1252)).is_none());
+    assert!(
+        registry
+            .get(&ContentType::new(classifier::LATIN_1))
+            .is_none()
+    );
+    assert!(
+        registry
+            .get(&ContentType::new(classifier::WINDOWS_1252))
+            .is_none()
+    );
 }
 
 #[test]

@@ -33,13 +33,12 @@ pub mod scroll;
 pub use {
     codecs::{
         KIND_KEY, KIND_MOUSE, KIND_SCROLL, TuiKeyCodec, TuiMouseCodec, TuiScrollCodec,
-        build_full_payload,
-        decode_key_event, decode_mouse_event, decode_scroll_event,
+        build_full_payload, decode_key_event, decode_mouse_event, decode_scroll_event,
         encode_key_event, encode_mouse_event, encode_scroll_event,
     },
     key_types::{KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers},
-    mouse_types::{MouseButton, MouseEvent, MouseEventKind},
     module::{TuiInputCodecModule, unregister_codecs},
+    mouse_types::{MouseButton, MouseEvent, MouseEventKind},
     scroll::ScrollEvent,
 };
 

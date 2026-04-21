@@ -28,14 +28,10 @@ use crate::render_backend::RenderBackend as _;
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_driver_display::{
-        AnnotationCacheManager, BuiltinTheme, FrameBuffer, ThemeLoader, ThemeManager, TokenSpan,
+        AnnotationCacheManager, BuiltinTheme, FrameBuffer, ThemeLoader, ThemeManager,
     },
-    reovim_protocol::v2::{
-        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
-        option_changed_payload::Value as OptionValue,
-    },
+    reovim_protocol::v3::{GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect},
     tokio::{select, sync::mpsc, time::interval},
-    tokio_stream::StreamMap,
     tonic::Streaming,
 };
 
@@ -132,11 +128,11 @@ pub struct TuiApp<O: TuiOutput> {
     /// Theme manager for syntax highlighting.
     theme_manager: ThemeManager,
     /// Theme loader for finding and loading theme files.
+    /// Used by `apply_colorscheme` when options.changed projection is wired.
+    #[allow(dead_code)]
     theme_loader: ThemeLoader,
-    /// Buffer IDs needing syntax token refresh (fallback for buffers without streams).
+    /// Buffer IDs needing syntax token refresh (pending projection-based fetch).
     pending_token_refresh: std::collections::HashSet<u64>,
-    /// Active token update streams per buffer (#655).
-    token_streams: StreamMap<u64, Streaming<reovim_protocol::v2::TokenUpdate>>,
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
     /// Client module loader — manages lifecycle and dependency order.
@@ -241,7 +237,6 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_manager,
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
-            token_streams: StreamMap::new(),
             needs_display_options_refresh: false,
             module_loader,
             server_handle,
@@ -326,18 +321,29 @@ impl<O: TuiOutput> TuiApp<O> {
     async fn fetch_initial_state(&mut self) -> Result<(), TuiAppError> {
         let client_id = self.state.my_client_id;
 
-        // Get mode
-        let mode_resp = self.client.get_mode_or_panic(client_id).await;
-        self.state.mode_name = mode_resp.name;
-        self.state.mode_display = mode_resp.display;
-        self.state.set_insert_mode(mode_resp.is_insert);
-
-        // Get cursor
-        let cursor_resp = self.client.get_cursor_or_panic(None, client_id).await;
-        if let Some(pos) = cursor_resp.position {
-            self.state
-                .update_local_cursor(cursor_resp.window_id, pos.line, pos.column);
+        // Get initial mode via projection (v3: no dedicated get_mode RPC)
+        match self.client.get_projections(&["text.mode"]).await {
+            Ok(entries) => {
+                if let Some(entry) = entries.first() {
+                    if let Some(datum) = &entry.datum {
+                        if let Ok(mode_name) = std::str::from_utf8(&datum.content) {
+                            self.state.mode_name = mode_name.to_string();
+                            self.state.mode_display = mode_name.to_string();
+                            let is_insert =
+                                mode_name.contains("insert") || mode_name.contains("INSERT");
+                            self.state.set_insert_mode(is_insert);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Could not fetch initial mode projection: {e}");
+                // Default mode: server will push via ProjectionUpdated shortly
+            }
         }
+        // Cursor position arrives via ProjectionUpdated (v3: no dedicated get_cursor RPC)
+        // Default is (0,0) until the first projection update.
+        let _ = client_id; // client_id used above
 
         // Get layout
         let layout_resp = self.client.get_layout_or_panic(client_id).await;
@@ -381,9 +387,9 @@ impl<O: TuiOutput> TuiApp<O> {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn apply_display_options(
         &mut self,
-        options: &std::collections::HashMap<String, reovim_protocol::v2::OptionValue>,
+        options: &std::collections::HashMap<String, reovim_protocol::v3::OptionValue>,
     ) {
-        use reovim_protocol::v2::option_value::Value;
+        use reovim_protocol::v3::option_value::Value;
 
         let number = options
             .get("number")
@@ -466,7 +472,7 @@ impl<O: TuiOutput> TuiApp<O> {
     fn collect_windows(&mut self, node: &WindowNode) {
         if let Some(n) = &node.node {
             match n {
-                reovim_protocol::v2::window_node::Node::Leaf(leaf) => {
+                reovim_protocol::v3::window_node::Node::Leaf(leaf) => {
                     if leaf.buffer_id.is_some() {
                         self.state.windows.push(WindowInfo {
                             window_id: leaf.window_id,
@@ -480,7 +486,7 @@ impl<O: TuiOutput> TuiApp<O> {
                         });
                     }
                 }
-                reovim_protocol::v2::window_node::Node::Split(split) => {
+                reovim_protocol::v3::window_node::Node::Split(split) => {
                     for child in &split.children {
                         self.collect_windows(child);
                     }
@@ -500,74 +506,40 @@ impl<O: TuiOutput> TuiApp<O> {
 
         for buffer_id in buffer_ids {
             if !self.state.buffer_cache.contains_key(&buffer_id) {
+                // In v3, buffer content arrives via projections.
+                // get_buffer_content is a stub; queue token refresh for when emitter lands.
                 let content = self
                     .client
                     .get_buffer_content(Some(buffer_id), None, None)
                     .await?;
-                self.state.buffer_cache.insert(buffer_id, content.lines);
-
-                // Fetch initial tokens for syntax highlighting
-                self.fetch_tokens_for_buffer(buffer_id).await;
+                if !content.lines.is_empty() {
+                    self.state.buffer_cache.insert(buffer_id, content.lines);
+                }
+                self.queue_token_refresh(buffer_id);
             }
         }
 
         Ok(())
     }
 
-    /// Fetch syntax tokens for a buffer.
-    async fn fetch_tokens_for_buffer(&mut self, buffer_id: u64) {
-        let content = self
-            .state
-            .buffer_cache
-            .get(&buffer_id)
-            .map(|lines| lines.join("\n"))
-            .unwrap_or_default();
-
-        match self.client.get_tokens(buffer_id, None, None).await {
-            Ok(response) => {
-                let token_spans: Vec<TokenSpan> = response
-                    .tokens
-                    .into_iter()
-                    .map(|t| TokenSpan {
-                        start_byte: t.start_byte,
-                        end_byte: t.end_byte,
-                        category: t.category,
-                    })
-                    .collect();
-
-                self.token_cache_manager.apply_token_update(
-                    buffer_id,
-                    &token_spans,
-                    0,
-                    u64::MAX,
-                    true,
-                    &content,
-                    "syntax",
-                    0,
-                );
-
-                tracing::debug!(buffer_id, token_count = token_spans.len(), "Cached syntax tokens");
-
-                // Subscribe to real-time token updates (#655)
-                if !self.token_streams.contains_key(&buffer_id) {
-                    match self.client.stream_tokens(buffer_id).await {
-                        Ok(stream) => {
-                            self.token_streams.insert(buffer_id, stream);
-                            tracing::debug!(buffer_id, "Subscribed to token stream");
-                        }
-                        Err(e) => {
-                            tracing::debug!(buffer_id, error = %e, "Could not subscribe to token stream");
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::debug!(buffer_id, error = %e, "Could not fetch tokens");
-            }
-        }
+    /// Enqueue a buffer for syntax token refresh.
+    ///
+    /// In v3, syntax tokens flow through `ProjectionUpdated` with
+    /// `tag == "text.syntax_tokens"`. This enqueue is a no-op placeholder
+    /// until the projection-based token handler is wired.
+    fn queue_token_refresh(&mut self, buffer_id: u64) {
+        // Token data now arrives via subscribe_all() ProjectionUpdated stream.
+        // The pending_token_refresh set is retained for forward-compat but
+        // drained without action until the server-side emitter lands.
+        tracing::trace!(buffer_id, "token refresh requested (pending projection emitter)");
+        self.pending_token_refresh.insert(buffer_id);
     }
 
     /// Apply a colorscheme by name.
+    ///
+    /// Called when `options.changed` projection delivers a colorscheme update.
+    /// Not yet wired pending the server-side options emitter.
+    #[allow(dead_code)]
     fn apply_colorscheme(&mut self, name: &str) {
         Self::apply_theme_internal(&self.theme_loader, &mut self.theme_manager, name);
     }
@@ -581,9 +553,6 @@ impl<O: TuiOutput> TuiApp<O> {
         let mut redraw_timer = interval(Duration::from_millis(16)); // 60 FPS max
 
         while self.running {
-            // Biased select: notification stream is prioritized over token
-            // stream so BufferModified updates buffer_cache before TokenUpdate
-            // tries to convert byte offsets to line/column positions.
             select! {
                 biased;
 
@@ -596,20 +565,16 @@ impl<O: TuiOutput> TuiApp<O> {
                     }
                 }
 
-                // Server notifications (both modes)
+                // Server notifications (both modes).
+                // Syntax tokens now arrive via ProjectionUpdated(tag=text.syntax_tokens).
                 notification = self.notification_stream.message() => {
                     match notification {
                         Ok(Some(notif)) => {
                             self.handle_server_notification(notif).await?;
 
-                            // Process deferred refreshes
-                            if !self.pending_token_refresh.is_empty() {
-                                let buffer_ids: Vec<u64> =
-                                    self.pending_token_refresh.drain().collect();
-                                for buffer_id in buffer_ids {
-                                    self.fetch_tokens_for_buffer(buffer_id).await;
-                                }
-                            }
+                            // Drain pending token refreshes (no-op in v3 until emitter lands)
+                            self.pending_token_refresh.drain();
+
                             if self.needs_display_options_refresh {
                                 self.fetch_display_options().await;
                                 self.needs_display_options_refresh = false;
@@ -617,46 +582,6 @@ impl<O: TuiOutput> TuiApp<O> {
                         }
                         Ok(None) => return Err(TuiAppError::StreamEnded),
                         Err(e) => return Err(TuiAppError::Grpc(e.into())),
-                    }
-                }
-
-                // Token stream updates (#655) — real-time syntax tokens
-                Some((buffer_id, update_result)) = tokio_stream::StreamExt::next(&mut self.token_streams) => {
-                    match update_result {
-                        Ok(update) => {
-                            let content = self
-                                .state
-                                .buffer_cache
-                                .get(&buffer_id)
-                                .map(|lines| lines.join("\n"))
-                                .unwrap_or_default();
-
-                            let token_spans: Vec<TokenSpan> = update
-                                .tokens
-                                .into_iter()
-                                .map(|t| TokenSpan {
-                                    start_byte: t.start_byte,
-                                    end_byte: t.end_byte,
-                                    category: t.category,
-                                })
-                                .collect();
-
-                            self.token_cache_manager.apply_token_update(
-                                buffer_id,
-                                &token_spans,
-                                update.start_line,
-                                update.end_line,
-                                update.full_refresh,
-                                &content,
-                                &update.layer,
-                                update.priority,
-                            );
-
-                            self.state.set_needs_redraw(true);
-                        }
-                        Err(e) => {
-                            tracing::debug!(buffer_id, error = %e, "Token stream error, removing");
-                        }
                     }
                 }
 
@@ -775,10 +700,10 @@ impl<O: TuiOutput> TuiApp<O> {
 
         if let Err(e) = self
             .client
-            .resize(u64::from(width), u64::from(height))
+            .surface_changed(u32::from(width), u32::from(height))
             .await
         {
-            self.state.last_error = Some(format!("Resize failed: {e}"));
+            self.state.last_error = Some(format!("Resize (surface_changed) failed: {e}"));
         }
 
         self.state.set_needs_redraw(true);
@@ -1042,24 +967,8 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
     }
 
     fn on_buffer_modified(&mut self, buffer_id: u64) {
-        // Skip poll-based refresh if we have an active stream for this buffer (#655)
-        if !self.token_streams.contains_key(&buffer_id) {
-            self.pending_token_refresh.insert(buffer_id);
-        }
-    }
-
-    fn on_option_changed(&mut self, name: &str, value: Option<OptionValue>) {
-        match name {
-            "colorscheme" => {
-                if let Some(OptionValue::StringValue(theme_name)) = value {
-                    self.apply_colorscheme(&theme_name);
-                }
-            }
-            "number" | "relativenumber" => {
-                self.needs_display_options_refresh = true;
-            }
-            _ => {}
-        }
+        // In v3, syntax tokens arrive via ProjectionUpdated; queue for when emitter lands.
+        self.queue_token_refresh(buffer_id);
     }
 
     fn on_resize(&mut self, width: u16, height: u16) {
@@ -1196,29 +1105,22 @@ async fn connect_common(
     // Subscribe to all notifications (token now set by presence_join)
     let notification_stream = client.subscribe_all().await?;
 
-    // Notify server of viewport size (token now attached via make_request)
-    client.resize(u64::from(width), u64::from(height)).await?;
+    // Notify server of viewport size via surface_changed (v3 replaces resize)
+    client
+        .surface_changed(u32::from(width), u32::from(height))
+        .await?;
     let my_client_id = join_resp.client_id;
     tracing::info!(client_id = my_client_id, display_name, "Joined presence session");
 
-    // Initialize other_clients from JoinResponse.peers_v2
+    // Initialize other_clients from JoinResponse.peers (v3: ClientInfo).
+    // v3 ClientInfo has no cursor or mode fields; those arrive via ProjectionUpdated.
+    // Apply Option A: default cursor=(0,0), mode="" until projection updates arrive.
     let other_clients: HashMap<u64, RemoteClient> = join_resp
-        .peers_v2
+        .peers
         .into_iter()
         .filter(|peer| peer.id != my_client_id)
         .map(|peer| {
-            let (cursor_line, cursor_col) = peer
-                .view
-                .as_ref()
-                .and_then(|v| v.cursor.as_ref())
-                .map_or((0, 0), |c| (c.line, c.column));
-
             let buffer_id = peer.view.as_ref().and_then(|v| v.buffer_id);
-            let mode = peer
-                .view
-                .as_ref()
-                .map(|v| v.mode.clone())
-                .unwrap_or_default();
             let display_name = peer
                 .metadata
                 .map_or_else(|| format!("Client {}", peer.id), |m| m.display_name);
@@ -1228,10 +1130,10 @@ async fn connect_common(
                 RemoteClient {
                     client_id: peer.id,
                     display_name,
-                    cursor_line,
-                    cursor_col,
+                    cursor_line: 0, // Default until ProjectionUpdated arrives
+                    cursor_col: 0,
                     buffer_id,
-                    mode,
+                    mode: String::new(), // Default until ProjectionUpdated arrives
                     selection: None,
                 },
             )

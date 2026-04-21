@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 
-use reovim_protocol::v2::WindowInfo;
+use reovim_protocol::v3::WindowInfo;
 
 /// Line number display mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -199,7 +199,7 @@ pub struct TuiCoreState {
     pub active_tab_id: Option<u64>,
 
     /// Tab page info (#401).
-    pub tabs: Vec<reovim_protocol::v2::TabPageInfo>,
+    pub tabs: Vec<reovim_protocol::v3::TabPageInfo>,
 
     // =========================================================================
     // Content

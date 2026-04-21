@@ -258,7 +258,8 @@ async fn test_send_input_short_payload_rejected() {
         InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     // 6 bytes — shorter than the 8-byte INPUT_HEADER_SIZE
-    let request = authed_request(short_payload(vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00]), ClientId::new(1));
+    let request =
+        authed_request(short_payload(vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00]), ClientId::new(1));
     let response = service.send_input(request).await;
 
     assert!(response.is_err());

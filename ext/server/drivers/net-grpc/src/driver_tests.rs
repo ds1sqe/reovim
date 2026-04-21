@@ -32,9 +32,7 @@ fn spawn_serve(
     tokio::spawn(async move { driver.serve(config, empty_router(), signal).await })
 }
 
-async fn wait_for_bind(
-    handle: &Arc<arc_swap::ArcSwapOption<SocketAddr>>,
-) -> Option<SocketAddr> {
+async fn wait_for_bind(handle: &Arc<arc_swap::ArcSwapOption<SocketAddr>>) -> Option<SocketAddr> {
     let deadline = tokio::time::Instant::now() + POLL_BUDGET;
     loop {
         if let Some(addr) = handle.load().as_deref().copied() {
@@ -76,20 +74,13 @@ async fn bind_tcp_addr_in_use_returns_bind_failed() {
 
     let driver = Box::new(GrpcServerDriverImpl::new());
     let (_tx, rx) = oneshot::channel::<()>();
-    let join = spawn_serve(
-        driver,
-        TransportConfig::tcp("127.0.0.1", taken.port()),
-        Some(rx),
-    );
+    let join = spawn_serve(driver, TransportConfig::tcp("127.0.0.1", taken.port()), Some(rx));
 
     let res = timeout(Duration::from_secs(2), join)
         .await
         .expect("serve resolved")
         .expect("task joined");
-    assert!(
-        matches!(res, Err(NetError::BindFailed(_))),
-        "expected BindFailed, got {res:?}",
-    );
+    assert!(matches!(res, Err(NetError::BindFailed(_))), "expected BindFailed, got {res:?}",);
     drop(sentinel);
 }
 
@@ -111,16 +102,8 @@ async fn concurrent_bind_race_exactly_one_wins() {
     let (tx1, rx1) = oneshot::channel::<()>();
     let (tx2, rx2) = oneshot::channel::<()>();
 
-    let h1 = spawn_serve(
-        d1,
-        TransportConfig::tcp("127.0.0.1", port),
-        Some(rx1),
-    );
-    let h2 = spawn_serve(
-        d2,
-        TransportConfig::tcp("127.0.0.1", port),
-        Some(rx2),
-    );
+    let h1 = spawn_serve(d1, TransportConfig::tcp("127.0.0.1", port), Some(rx1));
+    let h2 = spawn_serve(d2, TransportConfig::tcp("127.0.0.1", port), Some(rx2));
 
     // Drive both tasks to a committed state: the winner publishes its
     // bound address into its bind_handle; the loser's task completes
@@ -156,10 +139,7 @@ async fn concurrent_bind_race_exactly_one_wins() {
         .iter()
         .filter(|r| matches!(r, Err(NetError::BindFailed(_))))
         .count();
-    assert!(
-        losers >= 1,
-        "at least one task must lose the bind race: r1={r1:?}, r2={r2:?}",
-    );
+    assert!(losers >= 1, "at least one task must lose the bind race: r1={r1:?}, r2={r2:?}",);
 }
 
 #[cfg(unix)]
@@ -169,19 +149,12 @@ async fn bind_unix_ok() {
     let path = dir.join("driver-test.sock");
     let driver = Box::new(GrpcServerDriverImpl::new());
     let (tx, rx) = oneshot::channel::<()>();
-    let join = spawn_serve(
-        driver,
-        TransportConfig::unix_socket(&path),
-        Some(rx),
-    );
+    let join = spawn_serve(driver, TransportConfig::unix_socket(&path), Some(rx));
 
     // The listener exists once the path does.
     let deadline = tokio::time::Instant::now() + POLL_BUDGET;
     loop {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "unix socket file never appeared"
-        );
+        assert!(tokio::time::Instant::now() < deadline, "unix socket file never appeared");
         if path.exists() {
             break;
         }
@@ -189,16 +162,16 @@ async fn bind_unix_ok() {
     }
 
     tx.send(()).unwrap();
-    let res = timeout(Duration::from_secs(2), join).await.unwrap().unwrap();
+    let res = timeout(Duration::from_secs(2), join)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(res.is_ok(), "serve returned Ok after shutdown: {res:?}");
 }
 
 #[cfg(unix)]
 fn tempdir() -> std::path::PathBuf {
-    let base = std::env::temp_dir().join(format!(
-        "reovim-net-grpc-test-{}",
-        std::process::id()
-    ));
+    let base = std::env::temp_dir().join(format!("reovim-net-grpc-test-{}", std::process::id()));
     std::fs::create_dir_all(&base).unwrap();
     base
 }
@@ -206,11 +179,10 @@ fn tempdir() -> std::path::PathBuf {
 #[tokio::test]
 async fn stdio_transport_rejected() {
     let driver = Box::new(GrpcServerDriverImpl::new());
-    let res = driver.serve(TransportConfig::Stdio, empty_router(), None).await;
-    assert!(matches!(
-        res,
-        Err(NetError::UnsupportedTransport(TransportKind::Stdio))
-    ));
+    let res = driver
+        .serve(TransportConfig::Stdio, empty_router(), None)
+        .await;
+    assert!(matches!(res, Err(NetError::UnsupportedTransport(TransportKind::Stdio))));
 }
 
 #[tokio::test]
@@ -258,11 +230,7 @@ async fn bind_tcp_invalid_host_returns_invalid_address() {
     // surfaces the parser error as `NetError::InvalidAddress`.
     let driver = Box::new(GrpcServerDriverImpl::new());
     let res = driver
-        .serve(
-            TransportConfig::tcp("not a host", 0),
-            empty_router(),
-            None,
-        )
+        .serve(TransportConfig::tcp("not a host", 0), empty_router(), None)
         .await;
     assert!(
         matches!(res, Err(NetError::InvalidAddress(_))),

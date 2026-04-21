@@ -5,11 +5,11 @@
 //! field updates via `lopdf` parse → modify → serialize (Plan 07 Phase 6).
 
 use {
-    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_content_codec::{
         CodecError, CodecMetadata, ContentCodec, ContentType, DecodeResult, DecodedEdit,
         TranslateEditError, TreePath, impl_tree_op,
     },
+    reovim_driver_annotation::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
     reovim_kernel::api::v1::ByteEdit,
     reovim_subsys_vfs::ByteSource,
 };

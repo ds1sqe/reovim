@@ -10,7 +10,7 @@
 //! - `create_default_window` - Create a default window for empty layouts
 //! - `fetch_buffer_contents` - Fetch buffer content for visible windows
 
-use reovim_protocol::v2::{GetLayoutResponse, WindowInfo, WindowNode, WindowRect};
+use reovim_protocol::v3::{GetLayoutResponse, WindowInfo, WindowNode, WindowRect};
 
 use crate::{
     TuiCoreState,
@@ -30,7 +30,7 @@ use crate::{
 pub fn collect_windows(node: &WindowNode, focused_id: u64, out: &mut Vec<WindowInfo>) {
     if let Some(n) = &node.node {
         match n {
-            reovim_protocol::v2::window_node::Node::Leaf(leaf) => {
+            reovim_protocol::v3::window_node::Node::Leaf(leaf) => {
                 // Skip windows with no buffer (they can't be displayed)
                 if leaf.buffer_id.is_some() {
                     out.push(WindowInfo {
@@ -47,7 +47,7 @@ pub fn collect_windows(node: &WindowNode, focused_id: u64, out: &mut Vec<WindowI
                     tracing::debug!(window_id = leaf.window_id, "Skipping window with no buffer");
                 }
             }
-            reovim_protocol::v2::window_node::Node::Split(split) => {
+            reovim_protocol::v3::window_node::Node::Split(split) => {
                 for child in &split.children {
                     collect_windows(child, focused_id, out);
                 }

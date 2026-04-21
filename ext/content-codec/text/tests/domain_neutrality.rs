@@ -47,8 +47,7 @@ fn mock_edit_roundtrips_through_domain_variant() {
 
 #[test]
 fn mock_and_text_edits_are_distinct_concrete_types() {
-    use reovim_content_codec_text::TextEdit;
-    use reovim_domain_text::Position;
+    use {reovim_content_codec_text::TextEdit, reovim_domain_text::Position};
 
     let mock_edit = DecodedEdit::Domain(DomainEdit::new(MockEdit {
         tag: "mock",

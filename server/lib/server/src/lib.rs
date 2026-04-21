@@ -49,7 +49,5 @@ pub use {
         ModeRegistry,
     },
     server::{Server, SessionFactory},
-    session::{
-        Session, SessionId, SessionRegistry, SessionState, SyntaxStreamState,
-    },
+    session::{Session, SessionId, SessionRegistry, SessionState, SyntaxStreamState},
 };

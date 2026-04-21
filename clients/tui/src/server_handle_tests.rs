@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use {
     reovim_client_driver::OptionValue,
-    reovim_protocol::v2::{self, option_value::Value},
+    reovim_protocol::v3::{self, option_value::Value},
 };
 
 use super::convert_options;
 
-fn make_proto_option(value: Value) -> v2::OptionValue {
-    v2::OptionValue { value: Some(value) }
+fn make_proto_option(value: Value) -> v3::OptionValue {
+    v3::OptionValue { value: Some(value) }
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn convert_options_empty() {
 #[test]
 fn convert_options_none_value_skipped() {
     let mut map = HashMap::new();
-    map.insert("broken".to_string(), v2::OptionValue { value: None });
+    map.insert("broken".to_string(), v3::OptionValue { value: None });
     let result = convert_options(&map);
     assert!(result.is_empty());
 }

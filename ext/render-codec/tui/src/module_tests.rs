@@ -3,9 +3,7 @@
 use {
     super::*,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
-    reovim_subsys_render_codec::{
-        DefaultRenderCodecRegistry, KIND_CELL_GRID, RenderCodecRegistry,
-    },
+    reovim_subsys_render_codec::{DefaultRenderCodecRegistry, KIND_CELL_GRID, RenderCodecRegistry},
 };
 
 fn test_ctx() -> ModuleContext {
@@ -78,7 +76,9 @@ fn registered_codec_roundtrips_through_registry() {
     let _ = m.init(&ctx);
 
     let registry = ctx.services.get_or_create::<DefaultRenderCodecRegistry>();
-    let codec = registry.get(KIND_CELL_GRID).expect("codec must be registered");
+    let codec = registry
+        .get(KIND_CELL_GRID)
+        .expect("codec must be registered");
     let target = crate::CellGridRender::new(80, 24, 5, 5, vec![0x41, 0x42]);
     let body = codec.encode(&target).unwrap();
     let decoded = codec.decode(&body).unwrap();

@@ -3,7 +3,7 @@ use {
     crate::{CursorPosition, RemoteClient, SelectionState, layout_mirror::ServerLayoutMirror},
     reovim_client_driver::{ChromePosition, PlatformCapabilities, Rect, RenderSurface},
     reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan, ui::display_width},
-    reovim_protocol::v2::{WindowInfo, WindowRect},
+    reovim_protocol::v3::{WindowInfo, WindowRect},
 };
 
 /// Mirror of `viewport::label_text` for test assertions.
@@ -37,6 +37,9 @@ fn window(id: u64, buffer_id: u64) -> WindowInfo {
         rect: None,
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }
 }
 
@@ -1063,6 +1066,9 @@ fn window_with_rect(
         }),
         focused,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     }
 }
 

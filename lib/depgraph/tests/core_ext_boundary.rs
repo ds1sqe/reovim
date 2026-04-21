@@ -20,8 +20,10 @@
 //! - `[dev-dependencies]` are unrestricted (tests may use any fixture).
 //! - Test fixtures (`**/tests/fixtures/**`) are exempt.
 
-use cargo_metadata::{DependencyKind, MetadataCommand};
-use std::{collections::HashMap, path::Path};
+use {
+    cargo_metadata::{DependencyKind, MetadataCommand},
+    std::{collections::HashMap, path::Path},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Location {
@@ -159,10 +161,8 @@ fn no_repo_core_depends_on_ext() {
             };
 
             if is_violation {
-                violations.push(format!(
-                    "{} ({:?}) -> {} ({:?})",
-                    pkg.name, origin, dep.name, target,
-                ));
+                violations
+                    .push(format!("{} ({:?}) -> {} ({:?})", pkg.name, origin, dep.name, target,));
             }
         }
     }

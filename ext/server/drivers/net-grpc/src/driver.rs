@@ -47,9 +47,7 @@ impl GrpcServerDriver for GrpcServerDriverImpl {
         shutdown: Option<ShutdownSignal>,
     ) -> Result<(), NetError> {
         match config {
-            TransportConfig::Stdio => {
-                Err(NetError::UnsupportedTransport(TransportKind::Stdio))
-            }
+            TransportConfig::Stdio => Err(NetError::UnsupportedTransport(TransportKind::Stdio)),
             TransportConfig::Tcp { host, port } => {
                 let addr = parse_tcp_addr(&host, port)?;
                 let listener = TcpListener::bind(addr)
@@ -75,8 +73,8 @@ impl GrpcServerDriver for GrpcServerDriverImpl {
             TransportConfig::UnixSocket { path } => {
                 use {tokio::net::UnixListener, tokio_stream::wrappers::UnixListenerStream};
 
-                let listener = UnixListener::bind(&path)
-                    .map_err(|e| NetError::BindFailed(e.to_string()))?;
+                let listener =
+                    UnixListener::bind(&path).map_err(|e| NetError::BindFailed(e.to_string()))?;
                 let incoming = UnixListenerStream::new(listener);
                 match shutdown {
                     Some(signal) => router

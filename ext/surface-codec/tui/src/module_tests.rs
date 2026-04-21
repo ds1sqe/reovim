@@ -78,7 +78,9 @@ fn registered_codec_roundtrips_through_registry() {
     let _ = m.init(&ctx);
 
     let registry = ctx.services.get_or_create::<DefaultSurfaceCodecRegistry>();
-    let codec = registry.get(KIND_CELL_GRID).expect("codec must be registered");
+    let codec = registry
+        .get(KIND_CELL_GRID)
+        .expect("codec must be registered");
     let surface = crate::CellGridSurface::new(80, 24);
     let body = codec.encode(&surface).unwrap();
     let decoded = codec.decode(&body).unwrap();

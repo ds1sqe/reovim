@@ -85,10 +85,7 @@ fn keycode_u32_roundtrip_all_variants() {
     for code in all_keycodes() {
         let encoded = keycode_to_u32(&code);
         let decoded = u32_to_keycode(encoded);
-        assert_eq!(
-            decoded, code,
-            "roundtrip failed for {code:?}: encoded={encoded:#010x}"
-        );
+        assert_eq!(decoded, code, "roundtrip failed for {code:?}: encoded={encoded:#010x}");
     }
 }
 
@@ -131,10 +128,7 @@ fn modifiers_all_distinct_flags() {
     for (i, a) in all.iter().enumerate() {
         for (j, b) in all.iter().enumerate() {
             if i != j {
-                assert!(
-                    (*a & *b).is_empty(),
-                    "Modifiers::{a:?} and Modifiers::{b:?} share a bit"
-                );
+                assert!((*a & *b).is_empty(), "Modifiers::{a:?} and Modifiers::{b:?} share a bit");
             }
         }
     }

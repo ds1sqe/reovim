@@ -39,7 +39,7 @@ fn test_resolve_mode_str_valid() {
         let kernel = create_kernel_context(Arc::clone(&services));
         let ctx = create_module_context(kernel, Arc::clone(&services));
         let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
-        let (mode_registry, _, _, _) = extract_registries(&services);
+        let (mode_registry, _, _, _, _) = extract_registries(&services);
         mode_registry
     };
     // vim:normal should exist after module init

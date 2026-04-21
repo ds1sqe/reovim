@@ -1,9 +1,6 @@
 //! Tests for InputSequence — opaque payload sequence.
 
-use {
-    super::input_sequence::InputSequence,
-    std::collections::HashSet,
-};
+use {super::input_sequence::InputSequence, std::collections::HashSet};
 
 fn make_payload(kind: u16, extra: &[u8]) -> Vec<u8> {
     let mut v = Vec::with_capacity(8 + extra.len());

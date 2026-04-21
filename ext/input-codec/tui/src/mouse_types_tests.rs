@@ -70,12 +70,8 @@ fn mouse_event_new_no_modifiers() {
 
 #[test]
 fn mouse_event_with_modifiers() {
-    let ev = MouseEvent::with_modifiers(
-        MouseEventKind::Up(MouseButton::Right),
-        3,
-        7,
-        Modifiers::CTRL,
-    );
+    let ev =
+        MouseEvent::with_modifiers(MouseEventKind::Up(MouseButton::Right), 3, 7, Modifiers::CTRL);
     assert_eq!(ev.modifiers, Modifiers::CTRL);
     assert!(ev.is_up());
 }

@@ -29,8 +29,11 @@ mod descriptor_tests;
 
 pub use descriptor::{
     // Well-known kinds (in-repo allocation, 0x0001–0x00FF).
-    KIND_CELL_GRID, KIND_PIXEL_BUFFER,
-    SurfaceDescriptor, surface_body, surface_kind,
+    KIND_CELL_GRID,
+    KIND_PIXEL_BUFFER,
+    SurfaceDescriptor,
+    surface_body,
+    surface_kind,
 };
 
 use std::any::Any;

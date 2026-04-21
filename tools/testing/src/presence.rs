@@ -267,8 +267,10 @@ impl PresenceTestClient {
     ///
     /// Returns the content of the active buffer.
     pub async fn get_buffer(&mut self) -> Result<String, String> {
-        Err("get_buffer_content removed in proto v3; buffer content routes through projections"
-            .to_string())
+        Err(
+            "get_buffer_content removed in proto v3; buffer content routes through projections"
+                .to_string(),
+        )
     }
 }
 

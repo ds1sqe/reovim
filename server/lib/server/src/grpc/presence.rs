@@ -31,10 +31,9 @@ use {
     reovim_protocol::v3::{
         ClientInfo as ProtoClientInfo, ClientMetadata as ProtoClientMetadata,
         ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
-        ClientRelationType as ProtoRelationType,
-        ClientViewState as ProtoViewState, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse,
-        ListClientsRequest, ListClientsResponse, Notification, PresenceUpdate, SetRelationRequest,
-        SetRelationResponse, SetSyncModeRequest,
+        ClientRelationType as ProtoRelationType, ClientViewState as ProtoViewState, JoinRequest,
+        JoinResponse, LeaveRequest, LeaveResponse, ListClientsRequest, ListClientsResponse,
+        Notification, PresenceUpdate, SetRelationRequest, SetRelationResponse, SetSyncModeRequest,
         SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         TransitionError as ProtoTransitionError, UpdatePresenceRequest, UpdatePresenceResponse,
         notification::Payload, presence_service_server::PresenceService, presence_update::Update,

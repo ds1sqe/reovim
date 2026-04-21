@@ -144,15 +144,17 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
 
     // Register a mode that accepts char input (discriminant 1, different from home mode 0)
     let insert_mode_id = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
-    state.mode_registry.register(crate::registry::ModeEntry::from_fields(
-        insert_mode_id,
-        "INSERT",
-        reovim_kernel::api::v1::CursorStyle::Bar,
-        true,  // accepts_char_input
-        false, // has_selection
-        None,  // inherits_from
-        false, // is_entry
-    ));
+    state
+        .mode_registry
+        .register(crate::registry::ModeEntry::from_fields(
+            insert_mode_id,
+            "INSERT",
+            reovim_kernel::api::v1::CursorStyle::Bar,
+            true,  // accepts_char_input
+            false, // has_selection
+            None,  // inherits_from
+            false, // is_entry
+        ));
 
     // mode_accepts_char_input checks home_mode (test/normal, discriminant 0)
     // We registered test/INSERT (discriminant 1) which is a different mode
@@ -160,15 +162,17 @@ fn test_session_state_mode_accepts_char_input_with_registered_mode() {
     assert!(!state.mode_accepts_char_input());
 
     // Now register home_mode with accepts_char_input: false
-    state.mode_registry.register(crate::registry::ModeEntry::from_fields(
-        test_mode_id(),
-        "NORMAL",
-        reovim_kernel::api::v1::CursorStyle::Block,
-        false, // accepts_char_input
-        false, // has_selection
-        None,  // inherits_from
-        true,  // is_entry
-    ));
+    state
+        .mode_registry
+        .register(crate::registry::ModeEntry::from_fields(
+            test_mode_id(),
+            "NORMAL",
+            reovim_kernel::api::v1::CursorStyle::Block,
+            false, // accepts_char_input
+            false, // has_selection
+            None,  // inherits_from
+            true,  // is_entry
+        ));
 
     // Home mode is now registered but does NOT accept char input
     assert!(!state.mode_accepts_char_input());

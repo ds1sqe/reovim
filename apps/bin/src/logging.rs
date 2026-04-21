@@ -5,7 +5,10 @@
 //! The kernel `Logger` trait is wired separately via
 //! `reovim_server::debug::COMPOSITE_LOGGER` in `init_debug_infrastructure`.
 
-use std::{io, path::{Path, PathBuf}};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use {
     reovim_kernel::api::v1::Level,
@@ -35,6 +38,7 @@ impl Default for LogConfig {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)] // Stdout/File variants reserved for future log routing
 pub enum LogOutput {
     #[default]
     Stderr,
@@ -43,6 +47,7 @@ pub enum LogOutput {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)] // Json/Pretty variants reserved for future log format selection
 pub enum LogFormat {
     #[default]
     Plain,
@@ -51,6 +56,7 @@ pub enum LogFormat {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)] // Daily/Hourly variants reserved for future log rotation
 pub enum RotationPolicy {
     #[default]
     Never,

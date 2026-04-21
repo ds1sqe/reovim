@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_client_model::Direction,
+    reovim_client_model::{Direction, SplitDirection},
     reovim_subsys_layout::{
         Direction as LayoutDirection, Layer, LayerConfig, LayerId, LayoutTopology, Rect,
         RootCompositor, WindowId, WindowLayerCompositor,
@@ -203,11 +203,11 @@ fn test_direction_conversion() {
 fn test_split_direction_conversion() {
     assert!(matches!(
         TuiLayoutAdapter::<MockCompositor>::to_split_direction(SplitDirection::Horizontal),
-        reovim_driver_display::SplitDirection::Horizontal
+        reovim_subsys_layout::SplitDirection::Horizontal
     ));
     assert!(matches!(
         TuiLayoutAdapter::<MockCompositor>::to_split_direction(SplitDirection::Vertical),
-        reovim_driver_display::SplitDirection::Vertical
+        reovim_subsys_layout::SplitDirection::Vertical
     ));
 }
 

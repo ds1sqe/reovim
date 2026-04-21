@@ -34,10 +34,7 @@ fn new_has_no_registry_handle() {
 fn init_acquires_registry_and_registers_codec() {
     let ctx = test_ctx();
     let mut module = XxdContentCodecModule::new();
-    assert!(matches!(
-        module.init(&ctx),
-        reovim_kernel::api::v1::ProbeResult::Success
-    ));
+    assert!(matches!(module.init(&ctx), reovim_kernel::api::v1::ProbeResult::Success));
     assert!(module.registry.is_some());
     assert!(module.content_type.is_some());
 
@@ -67,7 +64,9 @@ fn exit_releases_registry_and_unregisters_codec() {
 #[test]
 fn exit_without_init_is_noop() {
     let mut module = XxdContentCodecModule::new();
-    module.exit().expect("exit should succeed even without init");
+    module
+        .exit()
+        .expect("exit should succeed even without init");
     assert!(module.registry.is_none());
     assert!(module.content_type.is_none());
 }
@@ -78,7 +77,9 @@ fn double_exit_is_safe() {
     let mut module = XxdContentCodecModule::new();
     let _ = module.init(&ctx);
     module.exit().expect("first exit should succeed");
-    module.exit().expect("second exit should succeed (idempotent)");
+    module
+        .exit()
+        .expect("second exit should succeed (idempotent)");
     assert!(module.registry.is_none());
     assert!(module.content_type.is_none());
 }

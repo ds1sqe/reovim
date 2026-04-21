@@ -53,11 +53,12 @@ impl Codec for CellGridCodec {
     }
 
     fn encode(&self, value: &dyn Any) -> Result<Vec<u8>, SurfacePayloadError> {
-        let surface = value.downcast_ref::<CellGridSurface>().ok_or(
-            SurfacePayloadError::InvalidData {
-                reason: "expected CellGridSurface",
-            },
-        )?;
+        let surface =
+            value
+                .downcast_ref::<CellGridSurface>()
+                .ok_or(SurfacePayloadError::InvalidData {
+                    reason: "expected CellGridSurface",
+                })?;
         let mut buf = Vec::with_capacity(CellGridSurface::BODY_LEN);
         buf.extend_from_slice(&surface.width.to_be_bytes());
         buf.extend_from_slice(&surface.height.to_be_bytes());

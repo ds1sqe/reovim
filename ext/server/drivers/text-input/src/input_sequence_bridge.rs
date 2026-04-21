@@ -167,4 +167,3 @@ fn parse_bracket_notation(inner: &str) -> Option<KeyEvent> {
 
     Some(KeyEvent::full(code, mods, KeyEventKind::Press))
 }
-

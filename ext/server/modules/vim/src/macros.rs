@@ -142,7 +142,10 @@ pub fn keys_to_notation(keys: &[KeyEvent]) -> String {
 #[must_use]
 pub fn notation_to_keys(notation: &str) -> Option<Vec<KeyEvent>> {
     let seq = KeySequence::parse(notation)?;
-    seq.as_slice().iter().map(|token| notation_token_to_key_event(token)).collect()
+    seq.as_slice()
+        .iter()
+        .map(|token| notation_token_to_key_event(token))
+        .collect()
 }
 
 /// Convert a single vim-notation token (as produced by `KeySequence::parse`) to

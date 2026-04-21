@@ -7,12 +7,12 @@ use std::{
 
 use {
     flate2::{Compression, write::GzEncoder},
-    reovim_domain_text::Position,
     reovim_content_codec::{
         ContentCodec, DecodedEdit, DomainEdit, InodeTable, Mount, MountMode, TranslateEditError,
         TreeOp, TreePath,
     },
     reovim_content_codec_text::TextEdit,
+    reovim_domain_text::Position,
     reovim_kernel::api::v1::{BufferId, ByteEdit},
     reovim_subsys_vfs::HeapByteSource,
     tar::Builder,

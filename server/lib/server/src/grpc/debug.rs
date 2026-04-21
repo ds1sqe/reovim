@@ -29,13 +29,12 @@ use std::sync::Arc;
 use {
     reovim_protocol::v3::{
         CaptureRequestPayload, DebugCaptureRequest, DebugCaptureResponse, DebugExtensionInfo,
-        DebugGetExtensionStateRequest, DebugGetExtensionStateResponse,
-        DebugGetProjectionsRequest, DebugGetProjectionsResponse,
-        DebugListClientsRequest, DebugListClientsResponse, DebugListExtensionsRequest,
-        DebugListExtensionsResponse, DebugSendInputRequest, DebugSendInputResponse, LogEntry,
-        LogLevelRequest, LogLevelResponse, LogTailRequest, LogTailResponse, Notification,
-        SendInputRequest, debug_service_server::DebugService, input_service_server::InputService,
-        notification::Payload,
+        DebugGetExtensionStateRequest, DebugGetExtensionStateResponse, DebugGetProjectionsRequest,
+        DebugGetProjectionsResponse, DebugListClientsRequest, DebugListClientsResponse,
+        DebugListExtensionsRequest, DebugListExtensionsResponse, DebugSendInputRequest,
+        DebugSendInputResponse, LogEntry, LogLevelRequest, LogLevelResponse, LogTailRequest,
+        LogTailResponse, Notification, SendInputRequest, debug_service_server::DebugService,
+        input_service_server::InputService, notification::Payload,
     },
     tonic::{Request, Response, Status},
 };

@@ -7,8 +7,10 @@
 //! the allowlist below; any drift (addition or removal) forces an edit
 //! here so the check becomes a review checkpoint.
 
-use cargo_metadata::MetadataCommand;
-use std::{collections::BTreeSet, path::Path};
+use {
+    cargo_metadata::MetadataCommand,
+    std::{collections::BTreeSet, path::Path},
+};
 
 const UAPI_ALLOWLIST: &[&str] = &[
     "reovim-content-codec",
@@ -37,8 +39,7 @@ fn uapi_membership_matches_allowlist() {
         }
     }
 
-    let expected: BTreeSet<String> =
-        UAPI_ALLOWLIST.iter().map(|s| (*s).to_string()).collect();
+    let expected: BTreeSet<String> = UAPI_ALLOWLIST.iter().map(|s| (*s).to_string()).collect();
 
     let added: Vec<&String> = actual.difference(&expected).collect();
     let removed: Vec<&String> = expected.difference(&actual).collect();

@@ -7,8 +7,10 @@
 //! relocate this file into `ext/content-codec/text/` alongside the
 //! concrete `TextEdit` type.
 
-use reovim_content_codec::{DecodedEdit, DomainEdit, impl_domain_edit};
-use reovim_domain_text::Position;
+use {
+    reovim_content_codec::{DecodedEdit, DomainEdit, impl_domain_edit},
+    reovim_domain_text::Position,
+};
 
 /// Concrete domain-edit payload for the text domain.
 ///

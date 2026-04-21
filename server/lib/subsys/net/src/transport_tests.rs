@@ -102,18 +102,12 @@ fn kind_stdio() {
 
 #[test]
 fn kind_unix() {
-    assert_eq!(
-        TransportConfig::unix_socket("/tmp/x").kind(),
-        TransportKind::UnixSocket
-    );
+    assert_eq!(TransportConfig::unix_socket("/tmp/x").kind(), TransportKind::UnixSocket);
 }
 
 #[test]
 fn kind_tcp() {
-    assert_eq!(
-        TransportConfig::tcp_localhost(0).kind(),
-        TransportKind::Tcp
-    );
+    assert_eq!(TransportConfig::tcp_localhost(0).kind(), TransportKind::Tcp);
 }
 
 #[test]

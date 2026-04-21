@@ -85,6 +85,7 @@ tokio = { workspace = true, features = ["rt", "macros", "time"] }
 reovim-testing = { workspace = true }
 reovim-protocol = { workspace = true, features = ["grpc"] }
 reovim-client-cli = { workspace = true }
+reovim-subsys-layout = { workspace = true }
 reovim-subsys-module-registry = { workspace = true }
 reovim-tui-mod-statusline = { workspace = true }
 tempfile = "3"

@@ -16,8 +16,8 @@
 
 // Re-export the uapi so callers only need a single crate for trait + registry.
 pub use reovim_surface_codec::{
-    Codec, KIND_CELL_GRID, KIND_PIXEL_BUFFER, SurfaceDescriptor, SurfacePayloadError,
-    surface_body, surface_kind,
+    Codec, KIND_CELL_GRID, KIND_PIXEL_BUFFER, SurfaceDescriptor, SurfacePayloadError, surface_body,
+    surface_kind,
 };
 
 mod registry;

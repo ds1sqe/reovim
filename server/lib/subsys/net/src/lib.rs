@@ -45,7 +45,9 @@ mod error;
 mod traits;
 pub mod transport;
 
-pub use driver::{GrpcServerDriver, ShutdownSignal};
-pub use error::NetError;
-pub use traits::PortAllocator;
-pub use transport::{TransportConfig, TransportKind};
+pub use {
+    driver::{GrpcServerDriver, ShutdownSignal},
+    error::NetError,
+    traits::PortAllocator,
+    transport::{TransportConfig, TransportKind},
+};
