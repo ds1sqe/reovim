@@ -69,6 +69,7 @@
 
 // byte_undo_log moved to reovim-kernel::block (#740)
 mod byte_source;
+pub mod capabilities;
 mod error;
 mod file_mapping;
 mod filetype;

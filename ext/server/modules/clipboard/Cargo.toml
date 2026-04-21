@@ -18,9 +18,8 @@ workspace = true
 [dependencies]
 # Kernel types
 reovim-kernel = { workspace = true }
-reovim-capabilities = { workspace = true }
 
-# Driver for ClipboardProvider trait
+# Driver for ClipboardProvider trait (also owns the clipboard-provider capability string)
 reovim-subsys-clipboard = { workspace = true }
 
 # Platform abstraction for RwLock

@@ -45,6 +45,7 @@
 //! }
 //! ```
 
+pub mod capabilities;
 mod error;
 mod key;
 mod mock;

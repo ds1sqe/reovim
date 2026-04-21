@@ -78,7 +78,7 @@ impl Module for ClipboardModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::CLIPBOARD_PROVIDER]
+        &[reovim_subsys_clipboard::capabilities::CLIPBOARD_PROVIDER]
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {

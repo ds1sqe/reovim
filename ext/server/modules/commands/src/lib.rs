@@ -104,7 +104,7 @@ impl Module for CommandsModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::COMMAND_DISPATCH]
+        &[reovim_subsys_command::capabilities::COMMAND_DISPATCH]
     }
 }
 

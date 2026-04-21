@@ -2990,7 +2990,6 @@ version = "0.15.0-dev"
 dependencies = [
  "arboard",
  "reovim-arch",
- "reovim-capabilities",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-subsys-clipboard",
@@ -3018,7 +3017,6 @@ version = "0.15.0-dev"
 dependencies = [
  "regex",
  "reovim-arch",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -3028,6 +3026,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-command",
  "reovim-subsys-command-types",
  "reovim-subsys-layout",
  "reovim-subsys-vfs",
@@ -3694,7 +3693,6 @@ dependencies = [
 name = "reovim-module-vfs-local"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-subsys-vfs",

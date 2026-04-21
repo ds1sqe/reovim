@@ -6,6 +6,7 @@
 //! `CommandHandler` lives in `reovim_driver_command` because it
 //! requires domain-specific types.
 
+pub mod capabilities;
 mod name_index;
 mod parse;
 mod query;

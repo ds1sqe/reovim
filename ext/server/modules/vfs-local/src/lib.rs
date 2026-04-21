@@ -126,7 +126,7 @@ impl Module for VfsLocalModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::VFS_PROVIDER]
+        &[reovim_subsys_vfs::capabilities::VFS_PROVIDER]
     }
 }
 
