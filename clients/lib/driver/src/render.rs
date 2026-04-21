@@ -2,7 +2,7 @@
 //!
 //! [`RenderTarget`] defines a platform-agnostic byte-submission interface.
 //! Domain view modules submit encoded render commands; platform adapters
-//! decode them using `render-codec`.
+//! decode them using a platform-specific render pipeline.
 
 /// Error returned when a render submission fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,7 @@ impl std::error::Error for RenderError {}
 ///
 /// Domain view modules call [`submit`](RenderTarget::submit) with encoded
 /// render command bytes. Platform adapters implement this trait and decode
-/// the bytes using the appropriate `render-codec` surface module.
+/// the bytes using a platform-specific render pipeline.
 ///
 /// No coordinates or surface dimensions appear in this trait — those are
 /// encoded in the command buffer by the domain driver and decoded by the
@@ -36,9 +36,9 @@ impl std::error::Error for RenderError {}
 pub trait RenderTarget: Send + Sync {
     /// Submit encoded render commands.
     ///
-    /// The byte slice is a `RenderDescriptor::body` payload as defined by
-    /// `reovim-render-codec`. The platform adapter looks up the codec for
-    /// the expected `KIND_*` value, decodes the bytes, and executes.
+    /// The byte slice is an opaque render payload whose shape is
+    /// platform-specific. The platform adapter decodes the bytes and
+    /// executes the rendering operation.
     ///
     /// # Errors
     ///
