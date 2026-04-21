@@ -47,6 +47,10 @@ reovim-tui-mod-illuminate = { workspace = true }
 reovim-tui-mod-diagnostics = { workspace = true }
 reovim-tui-mod-markdown = { workspace = true }
 reovim-tui-mod-bufferline = { workspace = true }
+reovim-tui-mod-surface-descriptor-cell-grid = { workspace = true }
+
+# Client-side codec subsystem (surface-descriptor dispatch registry)
+reovim-client-subsys-codec = { workspace = true }
 
 # Common client model (wire types, traits)
 reovim-client-model = { workspace = true }

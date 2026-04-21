@@ -484,6 +484,12 @@ async fn test_handle_projection_updated_unknown_tag_no_panic() {
 async fn test_handle_surface_changed_cell_grid() {
     use reovim_protocol::v3::{SurfaceChangedPayload, SurfaceDescriptorProto};
 
+    // The handler registry lives in the `OnceLock` populated by
+    // `TuiApp::new`. Unit tests that call `handle_notification` in
+    // isolation must pre-init the registry themselves. Idempotent —
+    // no interference with other tests that do the same.
+    let _ = crate::surface_decoding::register_builtin_surface_handlers();
+
     let mut ctx = MockContext::new(1);
 
     // Encode CellGridSurface: kind=0x0001, width=120_u32_be, height=40_u32_be

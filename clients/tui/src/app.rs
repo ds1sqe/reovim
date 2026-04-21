@@ -169,6 +169,12 @@ impl<O: TuiOutput> TuiApp<O> {
     ) -> Self {
         let (width, height) = (state.width, state.height);
 
+        // Populate the process-global surface-descriptor registry
+        // before the notification loop starts consuming `SurfaceChanged`
+        // messages. Idempotent — safe to call on every `TuiApp::new` in
+        // the (unusual) multi-app-per-process configuration.
+        let _ = crate::surface_decoding::register_builtin_surface_handlers();
+
         // Create server layout mirror
         let layout_mirror = ServerLayoutMirror::new(width, height);
 

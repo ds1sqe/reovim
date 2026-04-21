@@ -93,6 +93,7 @@ pub mod render_backend;
 pub mod render_core;
 pub mod render_engine;
 pub mod render_engine_bridge;
+pub mod surface_decoding;
 pub mod tui_output;
 
 // gRPC v3 client

@@ -150,37 +150,14 @@ pub async fn handle_notification<C: NotificationContext>(
                 return Ok(NotificationResult::NoRedraw);
             }
 
-            // Decode CellGridSurface from opaque SurfaceDescriptorProto.
-            // Body layout: kind=0x0001, body=[width_be:u32, height_be:u32]
+            // Dispatch the opaque SurfaceDescriptorProto through the
+            // process-global registry populated at TUI startup by
+            // `surface_decoding::register_builtin_surface_handlers`.
+            // Kind-specific decode policy lives in the ext handler
+            // crate (e.g. `reovim-tui-mod-surface-descriptor-cell-grid`
+            // for kind = 0x0001), not here.
             if let Some(desc) = &surface_payload.surface {
-                if desc.kind == 0x0001 && desc.body.len() >= 8 {
-                    let width = u32::from_be_bytes([
-                        desc.body[0],
-                        desc.body[1],
-                        desc.body[2],
-                        desc.body[3],
-                    ]);
-                    let height = u32::from_be_bytes([
-                        desc.body[4],
-                        desc.body[5],
-                        desc.body[6],
-                        desc.body[7],
-                    ]);
-                    #[allow(clippy::cast_possible_truncation)]
-                    let (w, h) = (width as u16, height as u16);
-                    if w > 0 && h > 0 {
-                        tracing::debug!(width = w, height = h, "SurfaceChanged (cell-grid resize)");
-                        let state = ctx.state_mut();
-                        state.width = w;
-                        state.height = h;
-                        ctx.on_resize(w, h);
-                    }
-                } else {
-                    tracing::trace!(
-                        kind = desc.kind,
-                        "SurfaceChanged with non-cell-grid kind, ignoring"
-                    );
-                }
+                decode_surface_descriptor(ctx, desc);
             }
             Ok(NotificationResult::Redraw)
         }
@@ -544,6 +521,85 @@ pub(crate) async fn dispatch_buffer_list(
 
     for ext in extensions {
         ext.on_notification(&json);
+    }
+}
+
+/// Dispatch a `SurfaceDescriptorProto` through the process-global
+/// registry (populated at TUI startup in
+/// [`crate::surface_decoding`]).
+///
+/// Kind-specific decode policy lives in the ext handler crates; this
+/// function only routes by `kind`, downcasts the typed result, and
+/// applies the side-effect (window resize, viewport hint, DPI change,
+/// …) to the notification context. Unknown kinds log at `trace!` and
+/// are otherwise ignored.
+fn decode_surface_descriptor<C: NotificationContext>(
+    ctx: &mut C,
+    desc: &reovim_protocol::v3::SurfaceDescriptorProto,
+) {
+    use reovim_client_subsys_codec::SurfaceDescriptorHandlerRegistry;
+    use reovim_tui_mod_surface_descriptor_cell_grid::CellGridSurfaceInfo;
+
+    let Some(registry) = crate::surface_decoding::global_registry() else {
+        tracing::warn!(
+            "surface-descriptor registry not initialised — \
+             check clients/tui/src/lib.rs startup path calls \
+             surface_decoding::register_builtin_surface_handlers()",
+        );
+        return;
+    };
+
+    // Proto wire field is u32 but the envelope contract is u16
+    // (comment in uapi/protocol/proto/reovim/v3/common.proto:69).
+    // Values above u16::MAX are guaranteed unregistered; log trace and
+    // bail without surfacing the decode error.
+    let Ok(kind) = u16::try_from(desc.kind) else {
+        tracing::trace!(
+            kind = desc.kind,
+            "surface descriptor kind exceeds u16::MAX — no handler registered",
+        );
+        return;
+    };
+
+    let Some(handler) = registry.get(kind) else {
+        tracing::trace!(
+            kind,
+            "unknown surface descriptor kind — no handler registered",
+        );
+        return;
+    };
+
+    match handler.decode(&desc.body) {
+        Ok(boxed) => {
+            if let Ok(info) = boxed.downcast::<CellGridSurfaceInfo>() {
+                let (w, h) = (info.width, info.height);
+                if w > 0 && h > 0 {
+                    tracing::debug!(
+                        width = w,
+                        height = h,
+                        "SurfaceChanged (cell-grid resize)",
+                    );
+                    let state = ctx.state_mut();
+                    state.width = w;
+                    state.height = h;
+                    ctx.on_resize(w, h);
+                }
+            } else {
+                tracing::warn!(
+                    kind = desc.kind,
+                    "surface descriptor boxed type mismatch \
+                     — handler registered under this kind returned \
+                     a type this routing layer doesn't recognise",
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                kind = desc.kind,
+                error = %e,
+                "surface descriptor decode failed",
+            );
+        }
     }
 }
 
