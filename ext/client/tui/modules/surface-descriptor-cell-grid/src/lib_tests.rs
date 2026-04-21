@@ -246,3 +246,33 @@ fn decode_and_apply_u32_overflow_propagates_decode_error() {
     ));
     assert_eq!(ctx.last, None);
 }
+
+// =========================================================================
+// Plan 17-β.2b Phase A: decode_info direct-helper tests (F1 fold)
+// =========================================================================
+
+#[test]
+fn decode_info_valid_body_returns_typed_info() {
+    let info = super::decode_info(&be_bytes(80, 24)).expect("ok");
+    assert_eq!(info, CellGridSurfaceInfo { width: 80, height: 24 });
+}
+
+#[test]
+fn decode_info_too_short_body_returns_too_short_error() {
+    let err = super::decode_info(&[1, 2, 3]).unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 }
+    );
+}
+
+#[test]
+fn decode_info_width_overflow_returns_out_of_range() {
+    let err = super::decode_info(&be_bytes(u32::MAX, 24)).unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorHandlerError::OutOfRange {
+            reason: "width exceeds u16::MAX"
+        }
+    );
+}
