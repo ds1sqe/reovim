@@ -1,7 +1,20 @@
 use {
     crate::{CELL_GRID_BODY_LEN, CellGridSurfaceHandler, CellGridSurfaceInfo, KIND_CELL_GRID},
-    reovim_client_subsys_codec::{SurfaceDescriptorHandler, SurfaceDescriptorHandlerError},
+    reovim_client_subsys_codec::{
+        SurfaceApplyContext, SurfaceDescriptorApplyError, SurfaceDescriptorHandler,
+        SurfaceDescriptorHandlerError,
+    },
 };
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct RecordingCtx {
+    last: Option<(u16, u16)>,
+}
+impl SurfaceApplyContext for RecordingCtx {
+    fn set_surface_size(&mut self, width: u16, height: u16) {
+        self.last = Some((width, height));
+    }
+}
 
 fn handler() -> CellGridSurfaceHandler {
     CellGridSurfaceHandler::new()
@@ -159,4 +172,77 @@ fn cell_grid_surface_info_implements_copy_and_eq() {
     assert_eq!(a, b);
     assert_eq!(a, c);
     assert_ne!(a, CellGridSurfaceInfo { width: 2, height: 1 });
+}
+
+// =========================================================================
+// Plan 17-β.2a: decode_and_apply override tests
+// =========================================================================
+
+#[test]
+fn decode_and_apply_valid_body_calls_set_surface_size() {
+    let mut ctx = RecordingCtx::default();
+    handler()
+        .decode_and_apply(&be_bytes(80, 24), &mut ctx)
+        .expect("ok");
+    assert_eq!(ctx.last, Some((80, 24)));
+}
+
+#[test]
+fn decode_and_apply_zero_width_rejects_without_calling_ctx() {
+    let mut ctx = RecordingCtx::default();
+    let err = handler()
+        .decode_and_apply(&be_bytes(0, 24), &mut ctx)
+        .unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorApplyError::StateApplyRejected {
+            reason: "zero surface dimension"
+        }
+    );
+    assert_eq!(ctx.last, None);
+}
+
+#[test]
+fn decode_and_apply_zero_height_rejects_without_calling_ctx() {
+    let mut ctx = RecordingCtx::default();
+    let err = handler()
+        .decode_and_apply(&be_bytes(80, 0), &mut ctx)
+        .unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorApplyError::StateApplyRejected {
+            reason: "zero surface dimension"
+        }
+    );
+    assert_eq!(ctx.last, None);
+}
+
+#[test]
+fn decode_and_apply_too_short_body_propagates_decode_error() {
+    let mut ctx = RecordingCtx::default();
+    let err = handler()
+        .decode_and_apply(&[1, 2, 3], &mut ctx)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        SurfaceDescriptorApplyError::Decode(
+            SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 }
+        )
+    ));
+    assert_eq!(ctx.last, None);
+}
+
+#[test]
+fn decode_and_apply_u32_overflow_propagates_decode_error() {
+    let mut ctx = RecordingCtx::default();
+    let err = handler()
+        .decode_and_apply(&be_bytes(u32::MAX, 24), &mut ctx)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        SurfaceDescriptorApplyError::Decode(
+            SurfaceDescriptorHandlerError::OutOfRange { .. }
+        )
+    ));
+    assert_eq!(ctx.last, None);
 }

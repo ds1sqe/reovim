@@ -15,7 +15,10 @@
 //! message.
 
 use {
-    reovim_client_subsys_codec::{SurfaceDescriptorHandler, SurfaceDescriptorHandlerError},
+    reovim_client_subsys_codec::{
+        SurfaceApplyContext, SurfaceDescriptorApplyError, SurfaceDescriptorHandler,
+        SurfaceDescriptorHandlerError,
+    },
     std::any::Any,
 };
 
@@ -84,6 +87,24 @@ impl SurfaceDescriptorHandler for CellGridSurfaceHandler {
         })?;
 
         Ok(Box::new(CellGridSurfaceInfo { width, height }))
+    }
+
+    fn decode_and_apply(
+        &self,
+        body: &[u8],
+        ctx: &mut dyn SurfaceApplyContext,
+    ) -> Result<(), SurfaceDescriptorApplyError> {
+        let boxed = self.decode(body)?;
+        let info = *boxed
+            .downcast::<CellGridSurfaceInfo>()
+            .expect("decode() always returns CellGridSurfaceInfo");
+        if info.width == 0 || info.height == 0 {
+            return Err(SurfaceDescriptorApplyError::StateApplyRejected {
+                reason: "zero surface dimension",
+            });
+        }
+        ctx.set_surface_size(info.width, info.height);
+        Ok(())
     }
 }
 

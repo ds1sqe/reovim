@@ -25,6 +25,70 @@ use {
     std::{any::Any, collections::HashMap, sync::Arc},
 };
 
+/// Narrow context trait that surface-descriptor handlers use to
+/// apply decoded state without exposing TUI- or domain-specific
+/// machinery across the codec subsys boundary.
+///
+/// Plan 17-β.2a adds this trait so handler crates can call
+/// [`decode_and_apply`](SurfaceDescriptorHandler::decode_and_apply)
+/// directly without re-passing a `Box<dyn Any + Send>` through the
+/// routing layer. Extended with new narrow hooks as future surface
+/// descriptor kinds arrive (viewport change, DPI change, …).
+pub trait SurfaceApplyContext {
+    /// Set the active surface size in cells. Typically wired into the
+    /// TUI resize pipeline.
+    fn set_surface_size(&mut self, width: u16, height: u16);
+}
+
+/// Errors a [`SurfaceDescriptorHandler::decode_and_apply`]
+/// implementation may surface. Wraps the decode error plus adds
+/// state-apply-specific variants.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SurfaceDescriptorApplyError {
+    /// Underlying decode failed.
+    Decode(SurfaceDescriptorHandlerError),
+    /// Decode succeeded but handler refused to apply (e.g. zero
+    /// dimensions, out-of-range viewport values, etc.).
+    StateApplyRejected {
+        /// Static description of why the state-apply was refused.
+        reason: &'static str,
+    },
+    /// Handler hit an apply-side failure distinct from decode or
+    /// rejection (reserved for future failure modes).
+    Contextual {
+        /// Static description of the contextual failure.
+        reason: &'static str,
+    },
+}
+
+impl From<SurfaceDescriptorHandlerError> for SurfaceDescriptorApplyError {
+    fn from(e: SurfaceDescriptorHandlerError) -> Self {
+        Self::Decode(e)
+    }
+}
+
+impl std::fmt::Display for SurfaceDescriptorApplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Decode(e) => write!(f, "decode failed: {e}"),
+            Self::StateApplyRejected { reason } => {
+                write!(f, "state apply rejected: {reason}")
+            }
+            Self::Contextual { reason } => write!(f, "apply failure: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for SurfaceDescriptorApplyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Decode(e) => Some(e),
+            Self::StateApplyRejected { .. } | Self::Contextual { .. } => None,
+        }
+    }
+}
+
 /// Errors a [`SurfaceDescriptorHandler`] may surface while decoding a
 /// payload. Shape is parallel to
 /// [`RenderHandlerError`](crate::RenderHandlerError).
@@ -83,6 +147,11 @@ pub trait SurfaceDescriptorHandler: Send + Sync {
     /// returned box via `Box::downcast::<T>()` using the concrete
     /// descriptor type exported by the handler's crate.
     ///
+    /// This method is primarily used by tests and introspection;
+    /// production dispatch goes through
+    /// [`decode_and_apply`](Self::decode_and_apply) which encapsulates
+    /// both the decode and the state-apply side-effect.
+    ///
     /// # Errors
     ///
     /// Returns [`SurfaceDescriptorHandlerError`] when the payload is
@@ -92,6 +161,33 @@ pub trait SurfaceDescriptorHandler: Send + Sync {
         &self,
         body: &[u8],
     ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError>;
+
+    /// Decode `body` and apply the resulting descriptor to `ctx` in
+    /// one step. Implementations should decode, downcast to their
+    /// concrete descriptor type, and call narrow
+    /// [`SurfaceApplyContext`] hooks — never exposing their concrete
+    /// type to the routing layer.
+    ///
+    /// The default implementation runs [`decode`](Self::decode) and
+    /// discards the boxed value on success (i.e. decode-only, no
+    /// side-effect). Handlers that want to apply state MUST override.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SurfaceDescriptorApplyError::Decode`] when decode
+    /// fails, plus implementation-specific
+    /// [`StateApplyRejected`](SurfaceDescriptorApplyError::StateApplyRejected)
+    /// / [`Contextual`](SurfaceDescriptorApplyError::Contextual)
+    /// variants when the handler rejects the apply or hits a
+    /// contextual failure.
+    fn decode_and_apply(
+        &self,
+        body: &[u8],
+        _ctx: &mut dyn SurfaceApplyContext,
+    ) -> Result<(), SurfaceDescriptorApplyError> {
+        let _ = self.decode(body)?;
+        Ok(())
+    }
 }
 
 /// Thread-safe registry of [`SurfaceDescriptorHandler`] trait objects

@@ -1,10 +1,78 @@
 use {
     crate::surface_descriptor::{
-        DefaultSurfaceDescriptorHandlerRegistry, SurfaceDescriptorHandler,
+        DefaultSurfaceDescriptorHandlerRegistry, SurfaceApplyContext,
+        SurfaceDescriptorApplyError, SurfaceDescriptorHandler,
         SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
     },
     std::{any::Any, sync::Arc},
 };
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CaptureCtx {
+    last_size: Option<(u16, u16)>,
+}
+
+impl SurfaceApplyContext for CaptureCtx {
+    fn set_surface_size(&mut self, width: u16, height: u16) {
+        self.last_size = Some((width, height));
+    }
+}
+
+struct ApplyingHandler;
+impl SurfaceDescriptorHandler for ApplyingHandler {
+    fn kind(&self) -> u16 {
+        0x1111
+    }
+    fn decode(
+        &self,
+        body: &[u8],
+    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+        if body.len() < 2 {
+            return Err(SurfaceDescriptorHandlerError::TooShort {
+                got: body.len(),
+                min: 2,
+            });
+        }
+        Ok(Box::new((u16::from(body[0]), u16::from(body[1]))))
+    }
+    fn decode_and_apply(
+        &self,
+        body: &[u8],
+        ctx: &mut dyn SurfaceApplyContext,
+    ) -> Result<(), SurfaceDescriptorApplyError> {
+        let boxed = self.decode(body)?;
+        let (w, h) = *boxed.downcast::<(u16, u16)>().expect("own type");
+        if w == 0 || h == 0 {
+            return Err(SurfaceDescriptorApplyError::StateApplyRejected {
+                reason: "zero dimension",
+            });
+        }
+        ctx.set_surface_size(w, h);
+        Ok(())
+    }
+}
+
+struct RejectingHandler;
+impl SurfaceDescriptorHandler for RejectingHandler {
+    fn kind(&self) -> u16 {
+        0x2222
+    }
+    fn decode(
+        &self,
+        _body: &[u8],
+    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+        Ok(Box::new(()))
+    }
+    fn decode_and_apply(
+        &self,
+        _body: &[u8],
+        _ctx: &mut dyn SurfaceApplyContext,
+    ) -> Result<(), SurfaceDescriptorApplyError> {
+        Err(SurfaceDescriptorApplyError::Contextual {
+            reason: "unavailable",
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TestInfo {
@@ -216,4 +284,103 @@ fn handler_decode_invalid_data_surfaces_through_registry() {
             reason: "always invalid"
         }
     );
+}
+
+// =========================================================================
+// Plan 17-β.2a: decode_and_apply + SurfaceApplyContext tests
+// =========================================================================
+
+#[test]
+fn decode_and_apply_default_impl_runs_decode_without_side_effect() {
+    let handler = TestHandler { kind: 7, min_len: 2 };
+    let mut ctx = CaptureCtx::default();
+    handler.decode_and_apply(&[3, 4], &mut ctx).expect("ok");
+    assert_eq!(ctx.last_size, None, "default impl has no side-effect");
+}
+
+#[test]
+fn decode_and_apply_default_impl_propagates_decode_error() {
+    let handler = TestHandler { kind: 7, min_len: 10 };
+    let mut ctx = CaptureCtx::default();
+    let err = handler.decode_and_apply(b"short", &mut ctx).unwrap_err();
+    assert!(matches!(err, SurfaceDescriptorApplyError::Decode(_)));
+}
+
+#[test]
+fn overriding_handler_applies_to_context() {
+    let handler = ApplyingHandler;
+    let mut ctx = CaptureCtx::default();
+    handler.decode_and_apply(&[80, 24], &mut ctx).expect("ok");
+    assert_eq!(ctx.last_size, Some((80, 24)));
+}
+
+#[test]
+fn overriding_handler_rejects_zero_dim_with_state_apply_rejected() {
+    let handler = ApplyingHandler;
+    let mut ctx = CaptureCtx::default();
+    let err = handler.decode_and_apply(&[0, 24], &mut ctx).unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorApplyError::StateApplyRejected {
+            reason: "zero dimension"
+        }
+    );
+    assert_eq!(ctx.last_size, None);
+}
+
+#[test]
+fn contextual_failure_variant_surfaces_from_handler() {
+    let handler = RejectingHandler;
+    let mut ctx = CaptureCtx::default();
+    let err = handler.decode_and_apply(b"any", &mut ctx).unwrap_err();
+    assert_eq!(
+        err,
+        SurfaceDescriptorApplyError::Contextual {
+            reason: "unavailable"
+        }
+    );
+}
+
+#[test]
+fn apply_error_decode_from_blanket_impl_wraps_decode_error() {
+    let e = SurfaceDescriptorHandlerError::TooShort { got: 1, min: 2 };
+    let wrapped: SurfaceDescriptorApplyError = e.clone().into();
+    assert_eq!(wrapped, SurfaceDescriptorApplyError::Decode(e));
+}
+
+#[test]
+fn apply_error_displays_each_variant_distinctly() {
+    let a = SurfaceDescriptorApplyError::Decode(
+        SurfaceDescriptorHandlerError::InvalidData { reason: "x" },
+    );
+    let b = SurfaceDescriptorApplyError::StateApplyRejected { reason: "y" };
+    let c = SurfaceDescriptorApplyError::Contextual { reason: "z" };
+    assert!(format!("{a}").contains("decode failed"));
+    assert!(format!("{b}").contains("rejected"));
+    assert!(format!("{c}").contains("apply failure"));
+}
+
+#[test]
+fn apply_error_decode_variant_exposes_source() {
+    let inner = SurfaceDescriptorHandlerError::InvalidData { reason: "x" };
+    let wrapped = SurfaceDescriptorApplyError::Decode(inner);
+    let e: &dyn std::error::Error = &wrapped;
+    assert!(e.source().is_some());
+}
+
+#[test]
+fn apply_error_other_variants_have_no_source() {
+    let a = SurfaceDescriptorApplyError::StateApplyRejected { reason: "x" };
+    let b = SurfaceDescriptorApplyError::Contextual { reason: "y" };
+    let ae: &dyn std::error::Error = &a;
+    let be: &dyn std::error::Error = &b;
+    assert!(ae.source().is_none());
+    assert!(be.source().is_none());
+}
+
+#[test]
+fn apply_error_implements_clone_and_eq() {
+    let a = SurfaceDescriptorApplyError::StateApplyRejected { reason: "x" };
+    let b = a.clone();
+    assert_eq!(a, b);
 }
