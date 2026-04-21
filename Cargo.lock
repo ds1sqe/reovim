@@ -2285,6 +2285,7 @@ dependencies = [
  "reovim-subsys-module-loader",
  "reovim-subsys-module-registry",
  "reovim-subsys-net",
+ "reovim-subsys-session",
  "reovim-subsys-vfs",
  "tokio",
  "tonic",

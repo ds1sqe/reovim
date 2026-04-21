@@ -140,3 +140,5 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **client**: `render_unknown_domain_placeholder()` — fallback renderer for unrecognized domains with warning log
 
 ### Fixed
+
+- **apps**: `apps/bin/Cargo.toml` declares `reovim-subsys-session` as a direct production dependency. `apps/bin/src/bootstrap.rs` uses `reovim_subsys_session::DomainDriver` but previously resolved the crate only via a transitive build-graph edge; the explicit declaration keeps the build stable against future transitive-dep trimming. New depgraph guard `lib/depgraph/tests/apps_bin_imports_declared.rs` scans `bootstrap.rs` for `reovim_*::` crate-path roots and asserts each is present in `apps/bin`'s `[dependencies]`; prevents regressions of this class (#753)
