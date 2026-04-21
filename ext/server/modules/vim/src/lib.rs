@@ -290,7 +290,7 @@ impl Module for VimModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::MODE_MANAGEMENT]
+        &[reovim_subsys_input::capabilities::MODE_MANAGEMENT]
     }
 
     fn extension_kinds(&self) -> &[&'static str] {

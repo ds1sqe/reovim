@@ -13,6 +13,7 @@
 //! - `InputCodecRegistry` trait and `DefaultInputCodecRegistry` implementation.
 
 pub mod binding;
+pub mod capabilities;
 pub mod input_event;
 pub mod lookup;
 pub mod registry;

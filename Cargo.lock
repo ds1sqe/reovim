@@ -3101,11 +3101,11 @@ dependencies = [
 name = "reovim-module-emacs"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",
+ "reovim-subsys-input",
 ]
 
 [[package]]
@@ -3328,9 +3328,9 @@ dependencies = [
 name = "reovim-module-mode-manager"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-input",
 ]
 
 [[package]]
@@ -3351,7 +3351,6 @@ dependencies = [
 name = "reovim-module-motions"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-text-search",
@@ -3359,6 +3358,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-provider-text",
+ "reovim-subsys-input",
  "reovim-subsys-layout",
  "tracing",
 ]
@@ -3693,7 +3693,6 @@ dependencies = [
 name = "reovim-module-vim"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-codec-tui-input",
  "reovim-domain-text",
  "reovim-driver-annotation",
@@ -3712,6 +3711,7 @@ dependencies = [
  "reovim-provider-text",
  "reovim-subsys-clipboard",
  "reovim-subsys-command-types",
+ "reovim-subsys-input",
  "reovim-subsys-layout",
  "reovim-subsys-manifest",
  "reovim-subsys-vfs",

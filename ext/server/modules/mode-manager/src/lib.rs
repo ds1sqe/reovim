@@ -101,7 +101,7 @@ impl Module for ModeManager {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::MODE_MANAGEMENT]
+        &[reovim_subsys_input::capabilities::MODE_MANAGEMENT]
     }
 }
 

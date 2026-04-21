@@ -83,7 +83,7 @@ fn test_init_registers_initial_mode_provider() {
 fn test_provides_mode_management() {
     let module = EmacsModule::new();
     let caps = module.provides();
-    assert!(caps.contains(&reovim_capabilities::MODE_MANAGEMENT));
+    assert!(caps.contains(&reovim_subsys_input::capabilities::MODE_MANAGEMENT));
 }
 
 #[test]

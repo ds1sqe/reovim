@@ -89,7 +89,7 @@ impl Module for MotionsModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::MOTION_COMMANDS]
+        &[reovim_subsys_input::capabilities::MOTION_COMMANDS]
     }
 }
 

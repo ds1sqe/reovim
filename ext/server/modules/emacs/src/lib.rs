@@ -65,7 +65,7 @@ impl Module for EmacsModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::MODE_MANAGEMENT]
+        &[reovim_subsys_input::capabilities::MODE_MANAGEMENT]
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
