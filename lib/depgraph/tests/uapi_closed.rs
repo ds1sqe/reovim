@@ -17,8 +17,6 @@ const UAPI_ALLOWLIST: &[&str] = &[
     "reovim-input-codec",
     "reovim-module-macros",
     "reovim-protocol",
-    "reovim-render-codec",
-    "reovim-surface-codec",
 ];
 
 #[test]
