@@ -1,0 +1,29 @@
+[package]
+name = "reovim-driver-net-grpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "gRPC server-driver implementation for reovim (tonic + tokio)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+grpc-web = ["dep:tonic-web", "dep:tower-http"]
+
+[dependencies]
+reovim-subsys-net = { workspace = true }
+
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tonic = { workspace = true }
+async-trait = { workspace = true }
+arc-swap = { workspace = true }
+
+tonic-web = { version = "0.12", optional = true }
+tower-http = { version = "0.5", features = ["cors"], optional = true }

@@ -82,6 +82,10 @@ static-modules = [
 reovim-server = { workspace = true }
 reovim-protocol = { workspace = true }
 
+# Server driver implementations (composition root owns concrete drivers)
+reovim-subsys-net = { workspace = true }
+reovim-driver-net-grpc = { workspace = true }
+
 # Kernel and drivers for module loading
 reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }

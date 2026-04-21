@@ -608,6 +608,175 @@ impl<M: Send + Sync> Server<M> {
         self.run_grpc(port, Some(Box::pin(shutdown)), port_tx).await
     }
 
+    /// Run the server through a `GrpcServerDriver` abstraction.
+    ///
+    /// This is the driver-routed path introduced in Plan 15 Phase N.
+    /// The composition root (apps/bin) provides a concrete driver
+    /// (e.g. `reovim-driver-net-grpc::GrpcServerDriverImpl`) that
+    /// owns the TCP bind + tonic serve lifecycle. Server code here
+    /// touches only the `reovim-subsys-net` contract; the driver
+    /// implementation is not a production dep of this crate.
+    ///
+    /// Currently supports base gRPC only. gRPC-Web layer stacking
+    /// changes the concrete `tonic::transport::server::Router<L>`
+    /// generic parameter, which the `GrpcServerDriver::serve` trait
+    /// method cannot accept through its object-safe signature. gRPC-
+    /// Web traffic continues to flow through [`run_grpc`][Self::run_grpc];
+    /// migrating it to the driver abstraction is tracked as a
+    /// follow-on (Plan 15 Phase V or later).
+    ///
+    /// # Errors
+    /// Propagates any [`reovim_subsys_net::NetError`] from the driver,
+    /// plus a synthetic `NetError::Io` when the configured transport
+    /// is not gRPC.
+    #[cfg(feature = "grpc")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
+    pub async fn serve_with_driver(
+        &self,
+        driver: Box<dyn reovim_subsys_net::GrpcServerDriver>,
+        shutdown: Option<reovim_subsys_net::ShutdownSignal>,
+        port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
+    ) -> Result<(), reovim_subsys_net::NetError>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
+        use reovim_subsys_net::{NetError, TransportConfig};
+
+        // Create the default session with module-initialized state.
+        let session_state = self.create_session_state();
+        let default_session = Arc::new(Session::from_state(
+            SessionId::new(&*self.config.default_session_name),
+            session_state,
+        ));
+        if let Some(ref d) = self.domain_driver {
+            default_session.set_domain_driver(Arc::clone(d));
+        }
+        self.sessions.insert(&default_session);
+        tracing::info!(
+            session = %self.config.default_session_name,
+            "Created default session"
+        );
+
+        let port = match &self.config.transport {
+            TransportMode::Grpc { port } => *port,
+            _ => {
+                return Err(NetError::Io(
+                    "serve_with_driver() only supports gRPC transport".into(),
+                ));
+            }
+        };
+
+        // Port-reporter task: polls the driver's bind-handle and
+        // forwards the bound port to the composition root's oneshot.
+        if let Some(tx) = port_tx {
+            let handle = driver.bind_handle();
+            tokio::spawn(async move {
+                use std::time::Duration;
+                let poll = Duration::from_millis(5);
+                let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+                loop {
+                    if let Some(addr) = handle.load().as_deref().copied() {
+                        let _ = tx.send(addr.port());
+                        return;
+                    }
+                    if tokio::time::Instant::now() >= deadline {
+                        tracing::warn!("port-reporter timed out waiting for bind");
+                        return;
+                    }
+                    tokio::time::sleep(poll).await;
+                }
+            });
+        }
+
+        let default_session_id = SessionId::new(&*self.config.default_session_name);
+        let interceptor = AuthInterceptor::new(Arc::clone(&self.tokens));
+        let bridges = Arc::clone(&self.bridge_registry);
+
+        // Tick scheduler (matches run_grpc setup).
+        {
+            use reovim_subsys_session::{TickSchedulerHandle, tick::TickScheduler};
+
+            let tick_scheduler = Arc::new(crate::tick::TokioTickScheduler::new(
+                Arc::clone(&self.sessions),
+                default_session_id.clone(),
+                Arc::clone(&bridges),
+            ));
+
+            if let Some(session) = self.sessions.get(&default_session_id) {
+                session.with_state_mut_sync(|state| {
+                    let handle = state.app.services.get_or_create::<TickSchedulerHandle>();
+                    handle.set(tick_scheduler as Arc<dyn TickScheduler>);
+                });
+            }
+        }
+
+        let buffer_service =
+            BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let editor_service =
+            EditorServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let input_service = InputServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&bridges),
+        );
+        let state_service =
+            StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let server_service =
+            ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let notification_service = NotificationServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&self.tokens),
+        );
+        let module_service = self.module_service.clone();
+        let presence_service = PresenceServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&self.tokens),
+        );
+        let command_service =
+            CommandServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let extension_service = ExtensionServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&bridges),
+        );
+        let debug_service = DebugServiceImpl::with_sessions(
+            Arc::clone(&self.sessions),
+            default_session_id,
+            Arc::clone(&self.bridge_registry),
+        );
+
+        macro_rules! svc {
+            ($server:ident, $impl:expr, $i:expr) => {
+                tonic::service::interceptor::InterceptedService::new(
+                    $server::new($impl)
+                        .max_decoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE)
+                        .max_encoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE),
+                    $i,
+                )
+            };
+        }
+
+        let config = TransportConfig::tcp("0.0.0.0", port);
+
+        let i = &interceptor;
+        let router = tonic::transport::Server::builder()
+            .add_service(svc!(BufferServiceServer, buffer_service, i.clone()))
+            .add_service(svc!(EditorServiceServer, editor_service, i.clone()))
+            .add_service(svc!(InputServiceServer, input_service, i.clone()))
+            .add_service(svc!(ModuleServiceServer, module_service, i.clone()))
+            .add_service(svc!(StateServiceServer, state_service, i.clone()))
+            .add_service(svc!(ServerServiceServer, server_service, i.clone()))
+            .add_service(svc!(NotificationServiceServer, notification_service, i.clone()))
+            .add_service(svc!(PresenceServiceServer, presence_service, i.clone()))
+            .add_service(svc!(ExtensionServiceServer, extension_service, i.clone()))
+            .add_service(svc!(CommandServiceServer, command_service, i.clone()))
+            .add_service(svc!(DebugServiceServer, debug_service, i.clone()));
+        driver.serve(config, router, shutdown).await
+    }
+
     /// Get a reference to the session registry.
     #[must_use]
     pub const fn sessions(&self) -> &Arc<SessionRegistry> {

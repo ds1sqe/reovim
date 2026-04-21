@@ -2224,6 +2224,7 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-display",
+ "reovim-driver-net-grpc",
  "reovim-driver-text-buffer",
  "reovim-driver-text-input",
  "reovim-driver-text-session",
@@ -2283,6 +2284,7 @@ dependencies = [
  "reovim-subsys-module-config",
  "reovim-subsys-module-loader",
  "reovim-subsys-module-registry",
+ "reovim-subsys-net",
  "reovim-subsys-vfs",
  "tokio",
  "tonic",
@@ -2739,6 +2741,20 @@ name = "reovim-driver-git"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-net-grpc"
+version = "0.15.0-dev"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "reovim-subsys-net",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-web",
+ "tower-http 0.5.2",
 ]
 
 [[package]]
@@ -3906,6 +3922,7 @@ dependencies = [
  "reovim-subsys-coordination",
  "reovim-subsys-input",
  "reovim-subsys-layout",
+ "reovim-subsys-net",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
  "reovim-testing",
@@ -4031,11 +4048,10 @@ dependencies = [
 name = "reovim-subsys-net"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-arch",
- "reovim-kernel",
- "reovim-protocol",
- "serde",
- "serde_json",
+ "arc-swap",
+ "async-trait",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]

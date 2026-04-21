@@ -588,12 +588,21 @@ async fn run_integrated() -> std::io::Result<()> {
         .with_bridges(bootstrap.bridges)
         .with_module_service(runner_module_service);
 
-    // Spawn server task
+    // Spawn server task — integrated mode routes through the
+    // subsys-net abstraction (Plan 15 Phase N). The TUI client that
+    // will attach is a local tonic client, so base gRPC is
+    // sufficient (no grpc-web layering needed for in-process
+    // connections).
     let server_task = tokio::spawn(async move {
-        let shutdown = async {
+        let shutdown: reovim_subsys_net::ShutdownSignal = Box::pin(async move {
             let _ = shutdown_rx.await;
-        };
-        server.run_until(shutdown, Some(port_tx)).await
+        });
+        let driver: Box<dyn reovim_subsys_net::GrpcServerDriver> =
+            Box::new(reovim_driver_net_grpc::GrpcServerDriverImpl::new());
+        server
+            .serve_with_driver(driver, Some(shutdown), Some(port_tx))
+            .await
+            .map_err(std::io::Error::other)
     });
 
     // Wait for port with timeout
