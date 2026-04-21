@@ -524,21 +524,42 @@ pub(crate) async fn dispatch_buffer_list(
     }
 }
 
+/// Thin adapter presenting a `NotificationContext` as a
+/// [`SurfaceApplyContext`](reovim_client_subsys_codec::SurfaceApplyContext).
+///
+/// The adapter bridges between `ClientCore` ownership boundaries: the
+/// codec subsys knows only the narrow `SurfaceApplyContext` trait;
+/// handler crates call its hooks; this file translates into
+/// `NotificationContext`'s wider surface (`state_mut` + `on_resize`).
+/// Using a concrete wrapper avoids an orphan-rule blanket impl.
+struct CtxAsSurfaceApply<'a, C: NotificationContext + ?Sized> {
+    inner: &'a mut C,
+}
+
+impl<C: NotificationContext + ?Sized> reovim_client_subsys_codec::SurfaceApplyContext
+    for CtxAsSurfaceApply<'_, C>
+{
+    fn set_surface_size(&mut self, width: u16, height: u16) {
+        let state = self.inner.state_mut();
+        state.width = width;
+        state.height = height;
+        self.inner.on_resize(width, height);
+    }
+}
+
 /// Dispatch a `SurfaceDescriptorProto` through the process-global
 /// registry (populated at TUI startup in
 /// [`crate::surface_decoding`]).
 ///
-/// Kind-specific decode policy lives in the ext handler crates; this
-/// function only routes by `kind`, downcasts the typed result, and
-/// applies the side-effect (window resize, viewport hint, DPI change,
-/// …) to the notification context. Unknown kinds log at `trace!` and
-/// are otherwise ignored.
+/// Kind-specific decode + state-apply policy lives in ext handler
+/// crates; this function only routes by `kind` and delegates to
+/// [`decode_and_apply`](reovim_client_subsys_codec::SurfaceDescriptorHandler::decode_and_apply).
+/// Unknown kinds log at `trace!` and are otherwise ignored.
 fn decode_surface_descriptor<C: NotificationContext>(
     ctx: &mut C,
     desc: &reovim_protocol::v3::SurfaceDescriptorProto,
 ) {
     use reovim_client_subsys_codec::SurfaceDescriptorHandlerRegistry;
-    use reovim_tui_mod_surface_descriptor_cell_grid::CellGridSurfaceInfo;
 
     let Some(registry) = crate::surface_decoding::global_registry() else {
         tracing::warn!(
@@ -569,37 +590,9 @@ fn decode_surface_descriptor<C: NotificationContext>(
         return;
     };
 
-    match handler.decode(&desc.body) {
-        Ok(boxed) => {
-            if let Ok(info) = boxed.downcast::<CellGridSurfaceInfo>() {
-                let (w, h) = (info.width, info.height);
-                if w > 0 && h > 0 {
-                    tracing::debug!(
-                        width = w,
-                        height = h,
-                        "SurfaceChanged (cell-grid resize)",
-                    );
-                    let state = ctx.state_mut();
-                    state.width = w;
-                    state.height = h;
-                    ctx.on_resize(w, h);
-                }
-            } else {
-                tracing::warn!(
-                    kind = desc.kind,
-                    "surface descriptor boxed type mismatch \
-                     — handler registered under this kind returned \
-                     a type this routing layer doesn't recognise",
-                );
-            }
-        }
-        Err(e) => {
-            tracing::warn!(
-                kind = desc.kind,
-                error = %e,
-                "surface descriptor decode failed",
-            );
-        }
+    let mut apply_ctx = CtxAsSurfaceApply { inner: ctx };
+    if let Err(e) = handler.decode_and_apply(&desc.body, &mut apply_ctx) {
+        tracing::warn!(kind, error = %e, "surface descriptor dispatch failed");
     }
 }
 
