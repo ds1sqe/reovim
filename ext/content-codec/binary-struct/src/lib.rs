@@ -117,7 +117,7 @@ impl Module for CodecBinaryStructModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::CODEC_PROVIDER]
+        &[reovim_subsys_content_codec::capabilities::CODEC_PROVIDER]
     }
 }
 

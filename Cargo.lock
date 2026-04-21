@@ -2472,7 +2472,6 @@ name = "reovim-content-codec-binary-struct"
 version = "0.15.0-dev"
 dependencies = [
  "goblin",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2491,7 +2490,6 @@ name = "reovim-content-codec-cjk"
 version = "0.15.0-dev"
 dependencies = [
  "encoding_rs",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2508,7 +2506,6 @@ name = "reovim-content-codec-csv"
 version = "0.15.0-dev"
 dependencies = [
  "csv",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2525,7 +2522,6 @@ dependencies = [
 name = "reovim-content-codec-hex"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-content-codec-xxd",
@@ -2544,7 +2540,6 @@ name = "reovim-content-codec-legacy"
 version = "0.15.0-dev"
 dependencies = [
  "encoding_rs",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2562,7 +2557,6 @@ version = "0.15.0-dev"
 dependencies = [
  "lopdf",
  "pdf-extract",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2582,7 +2576,6 @@ name = "reovim-content-codec-rlib"
 version = "0.15.0-dev"
 dependencies = [
  "goblin",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2600,7 +2593,6 @@ name = "reovim-content-codec-tar-gz"
 version = "0.15.0-dev"
 dependencies = [
  "flate2",
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain-text",
@@ -2633,7 +2625,6 @@ dependencies = [
 name = "reovim-content-codec-utf8"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-content-codec",
  "reovim-content-codec-text",
  "reovim-domain",

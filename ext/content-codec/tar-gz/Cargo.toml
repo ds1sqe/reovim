@@ -17,7 +17,6 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-capabilities = { workspace = true }
 reovim-content-codec = { workspace = true }
 reovim-driver-annotation = { workspace = true }
 reovim-subsys-vfs = { workspace = true }

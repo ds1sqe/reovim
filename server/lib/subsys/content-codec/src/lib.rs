@@ -16,6 +16,7 @@
 // Re-export the uapi so callers only need a single crate for trait + registry.
 pub use reovim_content_codec::{ContentCodec, ContentType};
 
+pub mod capabilities;
 mod registry;
 
 #[cfg(test)]

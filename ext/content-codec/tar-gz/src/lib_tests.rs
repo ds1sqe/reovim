@@ -38,7 +38,7 @@ fn module_version() {
 #[test]
 fn module_provides_codec() {
     let m = CodecTarGzModule::new();
-    assert!(m.provides().contains(&reovim_capabilities::CODEC_PROVIDER));
+    assert!(m.provides().contains(&reovim_subsys_content_codec::capabilities::CODEC_PROVIDER));
 }
 
 #[test]
