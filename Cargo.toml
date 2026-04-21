@@ -9,7 +9,6 @@ members = [
 
     # Core libraries (Linux-style lib/) — no reovim-* deps allowed
     "lib/bench",
-    "lib/capabilities",  # TEMP: to be relocated to subsys or uapi in a follow-on phase
     "lib/depgraph",
 
     # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
@@ -270,7 +269,6 @@ chrono = "0.4"
 reovim-arch = { path = "./arch", version = "0.15.0-dev" }
 reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
 reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
-reovim-capabilities = { path = "./lib/capabilities", version = "0.15.0-dev" }
 reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
 reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }

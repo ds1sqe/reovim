@@ -181,13 +181,17 @@ pub trait Module: Send + Sync + 'static {
     /// dependency matching: a module that `requires` a capability is
     /// satisfied by any module that `provides` it.
     ///
-    /// Use constants from `reovim-capabilities`.
+    /// Use capability constants from the owning subsys crate
+    /// (e.g. `reovim_subsys_input::capabilities::MODE_MANAGEMENT`) or
+    /// from the domain-scoped capabilities crate for text-domain
+    /// caps (e.g. `reovim_domain_text_capabilities::LSP_PROVIDER`).
     ///
     /// # Kernel Purity
     ///
     /// Same as `extension_kinds()`: the kernel defines the method with
-    /// `&[&'static str]` return type. Capability constants live in
-    /// `lib/capabilities/`, not in the kernel.
+    /// `&[&'static str]` return type. Capability constants live in the
+    /// subsys or domain-capabilities crate that owns the trait surface,
+    /// not in the kernel.
     fn provides(&self) -> &[&'static str] {
         &[]
     }
@@ -202,7 +206,10 @@ pub trait Module: Send + Sync + 'static {
     /// If no module provides a required capability, the module may fail
     /// to initialize or operate in degraded mode.
     ///
-    /// Use constants from `reovim-capabilities`.
+    /// Use capability constants from the owning subsys crate
+    /// (e.g. `reovim_subsys_input::capabilities::MODE_MANAGEMENT`) or
+    /// from the domain-scoped capabilities crate for text-domain
+    /// caps (e.g. `reovim_domain_text_capabilities::LSP_PROVIDER`).
     fn requires(&self) -> &[&'static str] {
         &[]
     }

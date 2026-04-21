@@ -8,7 +8,6 @@ description = "Module distribution registry for reovim — install, update, remo
 repository.workspace = true
 
 [dependencies]
-reovim-capabilities = { workspace = true }
 reovim-depgraph = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -2341,10 +2341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-capabilities"
-version = "0.15.0-dev"
-
-[[package]]
 name = "reovim-client-cli"
 version = "0.15.0-dev"
 dependencies = [
@@ -4031,7 +4027,6 @@ dependencies = [
 name = "reovim-subsys-module-registry"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
  "reovim-depgraph",
  "serde",
  "serde_json",

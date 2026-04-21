@@ -68,6 +68,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - 10 consumer modules migrated: `buffer-simple`, `lsp`, `completion`, `git`, `format` (lib.rs + lib_tests.rs), `snippet`, `treesitter-rust`, `undo`, `search`, `treesitter-markdown`. Each Cargo.toml swaps `reovim-capabilities` for `reovim-domain-text-capabilities`.
   - 1129 consumer tests pass; 5 new-crate tests pass. `lib/capabilities/` now has zero production consumers; deletion happens in Phase E.
 
+### Removed
+
+- **Plan 16 Phase E — `reovim-capabilities` crate deleted** (#753): after Phases A–D decentralized all 17 capability strings to their owning subsys / domain crates, the god crate is gone.
+  - `lib/capabilities/` directory deleted entirely.
+  - Workspace member line + `[workspace.dependencies]` entry removed from root `Cargo.toml`.
+  - One dead dep edge removed from `server/lib/subsys/module-registry/Cargo.toml` (previously unused).
+  - `Module::provides()` / `Module::requires()` doc comments in `server/lib/kernel/src/api/module/mod.rs` updated to point at subsys/domain-capabilities crates.
+  - Phase G depgraph guard (follow-on flight) locks in the invariant that nothing can resurrect `reovim-capabilities`.
+
 - **uapi/input-codec**: Reshaped to CLOSED mechanism only (Plan 14 I.1). Owns `InputEvent` opaque envelope, `INPUT_HEADER_SIZE`, header accessors (`input_kind`/`input_flags`/`input_context`), `InputFlags`, `InputPayloadError`, `Codec` trait (object-safe), and `InputSequence` (Vec<Vec<u8>> byte-sequence key). Platform vocabulary (`KeyCode`, `Modifiers`, `MouseEvent`, etc.) removed — now lives in `ext/input-codec/tui/`. `InputPayloadError` variants extended with `WrongType { expected: &'static str }` and `InvalidData { reason: &'static str }` for codec encode/decode diagnostics
 - **subsys-input**: Extended with `InputCodecRegistry` trait + `DefaultInputCodecRegistry` impl (parking_lot RwLock, concurrent-safe) (Plan 14 I.2). Generic `LookupState<C>`, `LookupResult<C>`, `LookupPolicy<C>` trait, `EagerLookupPolicy`, `KeymapQuery<C>`, `BindingInfo`, `BindingLayer` moved here from the deleted subsys-input-contracts
 - **ext/input-codec/tui**: New `reovim-codec-tui-input` crate — TUI platform input codec module (Plan 14 I.3). Owns `KeyCode`, `Modifiers`, `KeyEvent`, `KeyEventKind`, `KeymapResult`, `MouseButton`, `MouseEvent`, `MouseEventKind`, `ScrollEvent` vocabulary. Provides `TuiKeyCodec` (KIND=0x0001), `TuiMouseCodec` (KIND=0x0002), `TuiScrollCodec` (KIND=0x0003) implementing the `Codec` trait from `reovim-input-codec`. `declare_module!` registers all three codecs with `InputCodecRegistry` on `init`; `TuiInputCodecModule` holds the registry `Arc` so `exit()` unregisters symmetrically (codec lifetime = module lifetime). Zero dependency on `reovim-arch`
