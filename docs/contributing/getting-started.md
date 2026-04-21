@@ -109,7 +109,6 @@ reovim/
 ├── arch/                  # Platform abstraction (Linux-inspired)
 ├── lib/                   # Core libraries (zero reovim-specific policy)
 │   ├── bench/             # reovim-bench-utils
-│   ├── capabilities/      # reovim-capabilities (TEMP)
 │   ├── depgraph/          # reovim-depgraph + layer tests
 │   └── domain/            # reovim-domain: generic Domain trait
 ├── uapi/                  # Stable wire contracts

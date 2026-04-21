@@ -78,7 +78,7 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  arch/                 (platform abstraction)           │    │
 │  │  lib/domain/           (generic Domain trait)           │    │
-│  │  lib/{depgraph,log,trace,bench,capabilities}/           │    │
+│  │  lib/{depgraph,bench}/                                  │    │
 │  │  uapi/{protocol,render-codec,input-codec,module-macros} │    │
 │  │  ext/server/domain/text/  (concrete text domain)        │    │
 │  └─────────────────────────────────────────────────────────┘    │
@@ -265,7 +265,6 @@ arch/                        # Platform abstraction (Linux-inspired top-level)
 
 lib/                         # Core libraries (zero reovim-specific policy)
 ├── bench/                   # reovim-bench-utils: benchmarking utilities
-├── capabilities/            # reovim-capabilities: capability definitions (TEMP)
 ├── depgraph/                # reovim-depgraph: graph utils + layer tests
 └── domain/                  # reovim-domain: generic Domain trait (zero deps)
 
