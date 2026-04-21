@@ -22,6 +22,7 @@
 //! in Plan 17 §1 (issue #150 precedent).
 
 pub mod capability;
+pub(crate) mod render_surface_impl;
 pub mod style;
 
 #[cfg(test)]
