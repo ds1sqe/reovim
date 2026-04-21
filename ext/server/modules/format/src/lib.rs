@@ -61,7 +61,7 @@ impl Module for FormatModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::FORMATTER_PROVIDER]
+        &[reovim_domain_text_capabilities::FORMATTER_PROVIDER]
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

@@ -21,6 +21,6 @@ dynamic = []
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-capabilities = { workspace = true }
+reovim-domain-text-capabilities = { workspace = true }
 reovim-driver-git = { workspace = true }
 reovim-module-macros = { workspace = true }

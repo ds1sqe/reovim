@@ -214,7 +214,7 @@ impl Module for LspModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::LSP_PROVIDER]
+        &[reovim_domain_text_capabilities::LSP_PROVIDER]
     }
 
     fn extension_kinds(&self) -> &[&'static str] {

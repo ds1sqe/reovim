@@ -215,7 +215,7 @@ impl Module for SnippetModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::SNIPPET_PROVIDER]
+        &[reovim_domain_text_capabilities::SNIPPET_PROVIDER]
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

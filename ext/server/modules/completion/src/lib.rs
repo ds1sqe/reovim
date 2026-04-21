@@ -125,7 +125,7 @@ impl Module for CompletionModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::COMPLETION_PROVIDER]
+        &[reovim_domain_text_capabilities::COMPLETION_PROVIDER]
     }
 
     fn extension_kinds(&self) -> &[&'static str] {

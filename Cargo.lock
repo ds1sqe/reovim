@@ -2667,6 +2667,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-domain-text-capabilities"
+version = "0.15.0-dev"
+
+[[package]]
 name = "reovim-domain-text-events"
 version = "0.15.0-dev"
 dependencies = [
@@ -2953,7 +2957,7 @@ name = "reovim-module-buffer-simple"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-text-buffer",
  "reovim-kernel",
  "reovim-module-macros",
@@ -3031,8 +3035,8 @@ version = "0.15.0-dev"
 dependencies = [
  "lsp-types",
  "parking_lot",
- "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-domain-text-capabilities",
  "reovim-driver-command",
  "reovim-driver-completion",
  "reovim-driver-text-input",
@@ -3134,7 +3138,7 @@ name = "reovim-module-format"
 version = "0.15.0-dev"
 dependencies = [
  "lsp-types",
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-command",
  "reovim-driver-formatter",
  "reovim-driver-text-lsp",
@@ -3150,7 +3154,7 @@ dependencies = [
 name = "reovim-module-git"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
@@ -3260,7 +3264,7 @@ version = "0.15.0-dev"
 dependencies = [
  "lsp-types",
  "parking_lot",
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-text-lsp",
  "reovim-driver-text-session",
  "reovim-kernel",
@@ -3451,8 +3455,8 @@ name = "reovim-module-search"
 version = "0.15.0-dev"
 dependencies = [
  "regex",
- "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-domain-text-capabilities",
  "reovim-driver-text-search",
  "reovim-kernel",
  "reovim-module-macros",
@@ -3477,8 +3481,8 @@ name = "reovim-module-snippet"
 version = "0.15.0-dev"
 dependencies = [
  "regex",
- "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-domain-text-capabilities",
  "reovim-driver-command",
  "reovim-driver-text-input",
  "reovim-driver-text-session",
@@ -3601,7 +3605,7 @@ dependencies = [
 name = "reovim-module-treesitter-markdown"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-syntax-treesitter",
  "reovim-driver-text-syntax",
  "reovim-kernel",
@@ -3631,7 +3635,7 @@ dependencies = [
 name = "reovim-module-treesitter-rust"
 version = "0.15.0-dev"
 dependencies = [
- "reovim-capabilities",
+ "reovim-domain-text-capabilities",
  "reovim-driver-syntax-treesitter",
  "reovim-driver-text-syntax",
  "reovim-kernel",
@@ -3670,8 +3674,8 @@ name = "reovim-module-undo"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
- "reovim-capabilities",
  "reovim-domain-text",
+ "reovim-domain-text-capabilities",
  "reovim-driver-text-undo",
  "reovim-kernel",
  "reovim-module-macros",

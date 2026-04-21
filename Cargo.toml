@@ -190,6 +190,7 @@ members = [
 
     # Extension layer — concrete domain implementations
     "ext/server/domain/text",
+    "ext/server/domain/text/capabilities",
     "ext/server/domain/text/events",
 
     # Tools (Rust) — python-test-sdk is Python, excluded below
@@ -274,6 +275,7 @@ reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
 reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
+reovim-domain-text-capabilities = { path = "./ext/server/domain/text/capabilities", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
 reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }

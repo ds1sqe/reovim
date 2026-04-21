@@ -70,7 +70,7 @@ impl Module for SearchModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::SEARCH_PROVIDER]
+        &[reovim_domain_text_capabilities::SEARCH_PROVIDER]
     }
 }
 

@@ -18,7 +18,7 @@ workspace = true
 [dependencies]
 # Kernel layer - for Module trait
 reovim-kernel = { workspace = true }
-reovim-capabilities = { workspace = true }
+reovim-domain-text-capabilities = { workspace = true }
 
 # Driver layer - implements SyntaxDriverFactory
 reovim-driver-text-syntax = { workspace = true }

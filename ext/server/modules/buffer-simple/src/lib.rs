@@ -132,7 +132,7 @@ impl Module for BufferSimpleModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::BUFFER_MANAGER]
+        &[reovim_domain_text_capabilities::BUFFER_MANAGER]
     }
 }
 

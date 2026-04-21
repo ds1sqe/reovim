@@ -68,7 +68,7 @@ impl Module for GitModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::GIT_PROVIDER]
+        &[reovim_domain_text_capabilities::GIT_PROVIDER]
     }
 }
 

@@ -252,7 +252,7 @@ impl Module for TreesitterRustModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::SYNTAX_HIGHLIGHTING]
+        &[reovim_domain_text_capabilities::SYNTAX_HIGHLIGHTING]
     }
 }
 

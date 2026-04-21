@@ -81,7 +81,7 @@ impl Module for UndoModule {
     }
 
     fn provides(&self) -> &[&'static str] {
-        &[reovim_capabilities::UNDO_PROVIDER]
+        &[reovim_domain_text_capabilities::UNDO_PROVIDER]
     }
 }
 

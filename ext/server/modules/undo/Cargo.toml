@@ -18,7 +18,7 @@ workspace = true
 [dependencies]
 # Kernel types
 reovim-kernel = { workspace = true }
-reovim-capabilities = { workspace = true }
+reovim-domain-text-capabilities = { workspace = true }
 
 # Text types (Position, Edit)
 reovim-domain-text = { workspace = true }

@@ -36,7 +36,7 @@ fn test_module_provides() {
     let module = FormatModule::new();
     let caps = module.provides();
     assert_eq!(caps.len(), 1);
-    assert_eq!(caps[0], reovim_capabilities::FORMATTER_PROVIDER);
+    assert_eq!(caps[0], reovim_domain_text_capabilities::FORMATTER_PROVIDER);
 }
 
 #[test]
