@@ -313,6 +313,40 @@ fn fill_partially_oob_clamps_via_write_cell() {
 }
 
 #[test]
+fn fill_with_zero_dim_rect_is_noop() {
+    // Plan 21 landing telemetry P1 fold (Plan 22 Phase B): both
+    // zero-width and zero-height rects skip every cell.
+    let mut g = grid();
+    let before: Vec<_> = g.iter().map(|((x, y), c)| (x, y, c.clone())).collect();
+
+    RenderSurface::fill(
+        &mut g,
+        Rect {
+            x: 5,
+            y: 2,
+            width: 0,
+            height: 3,
+        },
+        'X',
+        Style::new(),
+    );
+    RenderSurface::fill(
+        &mut g,
+        Rect {
+            x: 5,
+            y: 2,
+            width: 3,
+            height: 0,
+        },
+        'Y',
+        Style::new(),
+    );
+
+    let after: Vec<_> = g.iter().map(|((x, y), c)| (x, y, c.clone())).collect();
+    assert_eq!(before, after, "zero-dim rect fill must be a noop");
+}
+
+#[test]
 fn clear_resets_rect_to_default() {
     let mut g = grid();
     RenderSurface::fill(

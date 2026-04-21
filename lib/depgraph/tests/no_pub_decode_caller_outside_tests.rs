@@ -80,6 +80,13 @@ fn line_matches_any(line: &str, patterns: &[&str]) -> bool {
 
 /// Walk a file and collect offending line numbers, skipping
 /// `#[cfg(test)]` blocks via naive brace-depth tracking.
+///
+/// Plan 22 fix (FD round-1 non-blocker): the prior implementation
+/// double-counted the opening `{` of a test scope (arm-increment +
+/// char-walk increment on the same brace, leaving one extra line of
+/// post-block code silently skipped). The char walk is now the sole
+/// depth tracker; arming runs before the walk so same-line patterns
+/// like `#[cfg(test)] mod x {` are handled correctly.
 fn scan_file(path: &Path, patterns: &[&str]) -> Vec<(usize, String)> {
     let Ok(src) = fs::read_to_string(path) else {
         return Vec::new();
@@ -90,32 +97,34 @@ fn scan_file(path: &Path, patterns: &[&str]) -> Vec<(usize, String)> {
 
     for (i, line) in src.lines().enumerate() {
         let trimmed = line.trim_start();
-        // Arm on encountering `#[cfg(test)]` at line start — next
-        // open brace (likely the `mod { ... }` or `fn { ... }` it
-        // annotates) begins a test-scope run.
-        if armed_test_cfg && line.contains('{') {
-            test_depth += 1;
-            armed_test_cfg = false;
-        }
+
+        // Arm BEFORE the char walk so `#[cfg(test)] mod x { … }` on
+        // one line is recognised (arm takes effect when the walk
+        // hits the `{`).
         if trimmed.starts_with("#[cfg(test)]") || trimmed.starts_with("#[cfg(all(test") {
             armed_test_cfg = true;
         }
-        // Adjust brace depth inside the test-scope run.
-        if test_depth > 0 {
-            for c in line.chars() {
-                match c {
-                    '{' => test_depth += 1,
-                    '}' => {
-                        test_depth -= 1;
-                        if test_depth <= 0 {
-                            test_depth = 0;
-                            break;
-                        }
+
+        // Single-pass char walk tracks brace depth. The first `{`
+        // after arming opens the test scope (depth → 1); further
+        // `{` / `}` track nesting.
+        for c in line.chars() {
+            match c {
+                '{' => {
+                    if armed_test_cfg {
+                        armed_test_cfg = false;
+                        test_depth = test_depth.max(0) + 1;
+                    } else if test_depth > 0 {
+                        test_depth += 1;
                     }
-                    _ => {}
                 }
+                '}' if test_depth > 0 => {
+                    test_depth -= 1;
+                }
+                _ => {}
             }
         }
+
         if test_depth > 0 {
             continue;
         }
@@ -175,6 +184,59 @@ fn no_pub_decode_caller_outside_tests() {
          decode_and_apply() — reaching decode() exposes Box<dyn Any + Send> \
          to the routing layer. Offenders: {offenders:#?}",
     );
+}
+
+#[test]
+fn probe_skips_call_inside_cfg_test_scope() {
+    // Plan 22 telemetry fold: lock the brace-counter fix against
+    // regression. A `.decode(body)` call INSIDE a `#[cfg(test)]`
+    // scope must be skipped; a call OUTSIDE (on a post-scope line)
+    // must still be flagged. This test proves the depth counter
+    // correctly transitions 0 → 1 → 0 around the test module.
+    let tmp = std::env::temp_dir().join("plan22_phase_b_scope_test");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).expect("mk tmp");
+    let seeded = tmp.join("seeded_scope.rs");
+
+    // Seed: one call inside #[cfg(test)] (should be skipped), one
+    // call on a line AFTER the closing brace (should be flagged).
+    fs::write(
+        &seeded,
+        "fn real_production(h: &dyn SurfaceDescriptorHandler, body: &[u8]) {\n\
+         \x20\x20\x20\x20let _boxed = h.decode(body).unwrap();\n\
+         }\n\
+         \n\
+         #[cfg(test)]\n\
+         mod tests {\n\
+         \x20\x20\x20\x20fn helper(h: &dyn SurfaceDescriptorHandler, body: &[u8]) {\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20let _inside = h.decode(body).unwrap();\n\
+         \x20\x20\x20\x20}\n\
+         }\n",
+    )
+    .expect("write seeded");
+
+    let mut offenders: Vec<(PathBuf, usize, String)> = Vec::new();
+    walk_dir(&tmp, FORBIDDEN_PATTERNS, &mut offenders);
+
+    // The production call on line 2 must be flagged; the test-scope
+    // call on line 8 must be skipped. So exactly one offender.
+    assert_eq!(
+        offenders.len(),
+        1,
+        "expected exactly one offender (production line only); \
+         saw {offenders:#?}. If the counter regressed to double-count, \
+         the production line would be skipped (0 offenders). If the \
+         counter regressed to never-skip, both lines would flag \
+         (2 offenders).",
+    );
+    // The flagged line is the production call — line 2.
+    assert_eq!(
+        offenders[0].1, 2,
+        "flagged wrong line — expected production line 2, got {}",
+        offenders[0].1,
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
 }
 
 #[test]
