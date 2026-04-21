@@ -22,7 +22,7 @@ reovim-module-macros = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
 reovim-driver-text-input = { workspace = true }
-reovim-input-codec = { workspace = true }
+reovim-codec-tui-input = { workspace = true }
 reovim-driver-text-session = { workspace = true }
 reovim-module-cmdline = { workspace = true }
 reovim-module-editor = { workspace = true }

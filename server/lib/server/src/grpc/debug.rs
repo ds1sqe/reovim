@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         CaptureRequestPayload, DebugCaptureRequest, DebugCaptureResponse, DebugExtensionInfo,
         DebugGetExtensionStateRequest, DebugGetExtensionStateResponse,
         DebugGetProjectionsRequest, DebugGetProjectionsResponse,

@@ -417,7 +417,7 @@ async fn test_get_layout_dangling_follower_not_found() {
 fn test_kernel_to_proto_option_bool_true() {
     use {
         super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
-        reovim_protocol::v2::option_value::Value,
+        reovim_protocol::v3::option_value::Value,
     };
 
     let proto = kernel_to_proto_option(&KernelOptionValue::Bool(true));
@@ -428,7 +428,7 @@ fn test_kernel_to_proto_option_bool_true() {
 fn test_kernel_to_proto_option_bool_false() {
     use {
         super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
-        reovim_protocol::v2::option_value::Value,
+        reovim_protocol::v3::option_value::Value,
     };
 
     let proto = kernel_to_proto_option(&KernelOptionValue::Bool(false));
@@ -439,7 +439,7 @@ fn test_kernel_to_proto_option_bool_false() {
 fn test_kernel_to_proto_option_integer() {
     use {
         super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
-        reovim_protocol::v2::option_value::Value,
+        reovim_protocol::v3::option_value::Value,
     };
 
     let proto = kernel_to_proto_option(&KernelOptionValue::Integer(42));
@@ -450,7 +450,7 @@ fn test_kernel_to_proto_option_integer() {
 fn test_kernel_to_proto_option_string() {
     use {
         super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
-        reovim_protocol::v2::option_value::Value,
+        reovim_protocol::v3::option_value::Value,
     };
 
     let proto = kernel_to_proto_option(&KernelOptionValue::String("hello".to_string()));
@@ -461,7 +461,7 @@ fn test_kernel_to_proto_option_string() {
 fn test_kernel_to_proto_option_choice() {
     use {
         super::kernel_to_proto_option, reovim_kernel::api::v1::OptionValue as KernelOptionValue,
-        reovim_protocol::v2::option_value::Value,
+        reovim_protocol::v3::option_value::Value,
     };
 
     let proto = kernel_to_proto_option(&KernelOptionValue::Choice {
@@ -513,7 +513,7 @@ async fn test_get_options_with_specific_names_registered() {
     assert_eq!(resp.options.len(), 1);
     assert!(resp.options.contains_key("number"));
     let opt = &resp.options["number"];
-    assert_eq!(opt.value, Some(reovim_protocol::v2::option_value::Value::BoolValue(false)));
+    assert_eq!(opt.value, Some(reovim_protocol::v3::option_value::Value::BoolValue(false)));
 }
 
 #[tokio::test]

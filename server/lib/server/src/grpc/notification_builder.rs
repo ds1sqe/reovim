@@ -31,7 +31,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         BufferClosedPayload, BufferOpenedPayload, DomainDatum, ExtensionUpdatedPayload,
         LayoutChangedPayload, Notification, ProjectionUpdatedPayload, TabPageInfo, WindowInfo,
         WindowRect, notification,

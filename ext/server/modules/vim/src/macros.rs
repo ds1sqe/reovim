@@ -44,8 +44,8 @@
 //! ```
 
 use {
+    reovim_codec_tui_input::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
     reovim_driver_text_input::KeySequence,
-    reovim_input_codec::{KeyCode, KeyEvent, Modifiers, key_sequence_to_key_events},
 };
 
 /// Convert a single `KeyEvent` to vim notation string.
@@ -125,11 +125,13 @@ pub fn keys_to_notation(keys: &[KeyEvent]) -> String {
 
 /// Parse vim notation string into `Vec<KeyEvent>`.
 ///
-/// Uses the input driver's `KeySequence::parse` for consistent parsing.
+/// Parses the notation using `KeySequence::parse` for token splitting, then
+/// converts each token to a `KeyEvent` using `reovim_codec_tui_input` types.
+/// No codec registry is required.
 ///
 /// # Errors
 ///
-/// Returns `None` if the notation string is invalid.
+/// Returns `None` if the notation string is invalid or contains an unknown token.
 ///
 /// # Example
 ///
@@ -140,7 +142,87 @@ pub fn keys_to_notation(keys: &[KeyEvent]) -> String {
 #[must_use]
 pub fn notation_to_keys(notation: &str) -> Option<Vec<KeyEvent>> {
     let seq = KeySequence::parse(notation)?;
-    key_sequence_to_key_events(&seq)
+    seq.as_slice().iter().map(|token| notation_token_to_key_event(token)).collect()
+}
+
+/// Convert a single vim-notation token (as produced by `KeySequence::parse`) to
+/// a `KeyEvent`.  Returns `None` for unrecognised tokens.
+fn notation_token_to_key_event(token: &str) -> Option<KeyEvent> {
+    // Single printable character (no angle brackets)
+    if token.chars().count() == 1 {
+        let c = token.chars().next()?;
+        return Some(KeyEvent::new(KeyCode::Char(c)));
+    }
+
+    // Literal `<lt>` / `<gt>` — produced by KeySequence for '<' and '>'
+    if token == "<lt>" {
+        return Some(KeyEvent::new(KeyCode::Char('<')));
+    }
+    if token == "<gt>" {
+        return Some(KeyEvent::new(KeyCode::Char('>')));
+    }
+
+    // Angle-bracket notation: `<Esc>`, `<C-w>`, `<S-Tab>`, etc.
+    if let Some(inner) = token.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+        return parse_bracket_notation(inner);
+    }
+
+    None
+}
+
+/// Parse the inner content of an `<...>` token into a `KeyEvent`.
+fn parse_bracket_notation(inner: &str) -> Option<KeyEvent> {
+    let mut remaining = inner;
+    let mut mods = Modifiers::NONE;
+
+    loop {
+        if let Some(rest) = remaining.strip_prefix("C-") {
+            mods |= Modifiers::CTRL;
+            remaining = rest;
+        } else if let Some(rest) = remaining.strip_prefix("A-") {
+            mods |= Modifiers::ALT;
+            remaining = rest;
+        } else if let Some(rest) = remaining.strip_prefix("S-") {
+            mods |= Modifiers::SHIFT;
+            remaining = rest;
+        } else {
+            break;
+        }
+    }
+
+    let code = match remaining {
+        "Esc" => KeyCode::Escape,
+        "Enter" => KeyCode::Enter,
+        "Tab" => KeyCode::Tab,
+        "BS" => KeyCode::Backspace,
+        "Del" => KeyCode::Delete,
+        "Up" => KeyCode::Up,
+        "Down" => KeyCode::Down,
+        "Left" => KeyCode::Left,
+        "Right" => KeyCode::Right,
+        "Home" => KeyCode::Home,
+        "End" => KeyCode::End,
+        "PageUp" => KeyCode::PageUp,
+        "PageDown" => KeyCode::PageDown,
+        "Insert" => KeyCode::Insert,
+        "F1" => KeyCode::F(1),
+        "F2" => KeyCode::F(2),
+        "F3" => KeyCode::F(3),
+        "F4" => KeyCode::F(4),
+        "F5" => KeyCode::F(5),
+        "F6" => KeyCode::F(6),
+        "F7" => KeyCode::F(7),
+        "F8" => KeyCode::F(8),
+        "F9" => KeyCode::F(9),
+        "F10" => KeyCode::F(10),
+        "F11" => KeyCode::F(11),
+        "F12" => KeyCode::F(12),
+        // Single char after modifiers
+        c if c.chars().count() == 1 => KeyCode::Char(c.chars().next()?),
+        _ => return None,
+    };
+
+    Some(KeyEvent::full(code, mods, KeyEventKind::Press))
 }
 
 /// Content stored in a register that represents a macro.

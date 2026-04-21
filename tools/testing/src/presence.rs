@@ -28,7 +28,7 @@
 
 use std::time::Duration;
 
-use {reovim_client_cli::GrpcClient, reovim_protocol::v2::ClientInfo};
+use {reovim_client_cli::GrpcClient, reovim_protocol::v3::ClientInfo};
 
 use super::harness::TestServerHarness;
 
@@ -59,7 +59,7 @@ impl PresenceTestClient {
     ///
     /// Registers this client with the server and receives an assigned client ID.
     /// Returns the full join response including peer list.
-    pub async fn join(&mut self) -> Result<reovim_protocol::v2::JoinResponse, String> {
+    pub async fn join(&mut self) -> Result<reovim_protocol::v3::JoinResponse, String> {
         let response = self
             .client
             .presence_join("test", &self.display_name)

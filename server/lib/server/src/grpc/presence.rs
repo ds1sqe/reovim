@@ -28,7 +28,7 @@ use std::{pin::Pin, sync::Arc, time::SystemTime};
 
 use {
     futures::Stream,
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ClientInfo as ProtoClientInfo, ClientMetadata as ProtoClientMetadata,
         ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
         ClientRelationType as ProtoRelationType,
@@ -126,7 +126,7 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
 
 /// Build `presence_joined` notification.
 fn build_presence_joined_notification(presence: &ClientPresence) -> Notification {
-    use reovim_protocol::v2::PresenceJoinedPayload;
+    use reovim_protocol::v3::PresenceJoinedPayload;
 
     Notification {
         event_type: "presence_joined".to_string(),
@@ -139,7 +139,7 @@ fn build_presence_joined_notification(presence: &ClientPresence) -> Notification
 
 /// Build `presence_left` notification.
 fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> Notification {
-    use reovim_protocol::v2::PresenceLeftPayload;
+    use reovim_protocol::v3::PresenceLeftPayload;
 
     Notification {
         event_type: "presence_left".to_string(),
@@ -153,7 +153,7 @@ fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> 
 
 /// Build `presence_updated` notification.
 pub fn build_presence_updated_notification(presence: &ClientPresence) -> Notification {
-    use reovim_protocol::v2::PresenceUpdatedPayload;
+    use reovim_protocol::v3::PresenceUpdatedPayload;
 
     Notification {
         event_type: "presence_updated".to_string(),

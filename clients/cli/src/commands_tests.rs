@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_protocol::v2::{ListModulesResponse, ModuleInfo},
+    reovim_protocol::v3::{ListModulesResponse, ModuleInfo},
     reovim_subsys_module_registry::{InstalledModules, ModuleInfo as RegistryModuleInfo},
     tempfile::TempDir,
 };

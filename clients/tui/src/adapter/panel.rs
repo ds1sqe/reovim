@@ -1,23 +1,21 @@
 //! Panel trait implementation for TUI.
 //!
 //! This module provides an adapter between the common client model's `Panel` trait
-//! and TUI's `View` type. The `TuiPanel` wraps a View and provides viewport
-//! state tracking including scroll position and visible lines.
+//! and TUI state. `TuiPanel` holds the viewport state directly — buffer ID, scroll
+//! position, and cursor position — without depending on removed display-driver
+//! layout-primitive types (`View`, `ColIndex`, `LineIndex`).
 
 use std::ops::RangeInclusive;
 
 use {
     reovim_client_model::traits::Panel,
-    reovim_driver_display::{
-        BufferId,
-        layout::{ColIndex, LineIndex, View},
-    },
+    reovim_driver_display::BufferId,
 };
 
 /// Adapter implementing the common `Panel` trait for TUI.
 ///
-/// Wraps a TUI `View` and provides additional state tracking needed
-/// for the Panel trait (viewport dimensions, total lines).
+/// Holds viewport state (buffer, scroll, cursor) and provides the methods
+/// required by the `Panel` trait contract.
 ///
 /// # ID Mapping
 ///
@@ -26,14 +24,20 @@ use {
 /// handles the conversion transparently.
 #[derive(Debug, Clone)]
 pub struct TuiPanel {
-    /// The underlying TUI view.
-    view: View,
+    /// The buffer being viewed.
+    buffer_id: BufferId,
     /// Viewport ID (window ID in TUI terms).
     viewport_id: u64,
     /// Window height in lines (for visible range calculation).
     window_height: u32,
     /// Total lines in the buffer.
     total_lines: u32,
+    /// Vertical scroll offset (first visible line, 0-indexed).
+    pub scroll_top: usize,
+    /// Cursor line (0-indexed).
+    pub cursor_line: usize,
+    /// Cursor column (0-indexed).
+    pub cursor_col: usize,
 }
 
 impl TuiPanel {
@@ -41,29 +45,26 @@ impl TuiPanel {
     ///
     /// # Arguments
     ///
-    /// * `view` - The underlying TUI view
+    /// * `buffer_id` - The buffer being viewed
     /// * `viewport_id` - The viewport/window ID
     /// * `window_height` - Height of the window in lines
     /// * `total_lines` - Total number of lines in the buffer
     #[must_use]
-    pub const fn new(view: View, viewport_id: u64, window_height: u32, total_lines: u32) -> Self {
+    pub const fn new(
+        buffer_id: BufferId,
+        viewport_id: u64,
+        window_height: u32,
+        total_lines: u32,
+    ) -> Self {
         Self {
-            view,
+            buffer_id,
             viewport_id,
             window_height,
             total_lines,
+            scroll_top: 0,
+            cursor_line: 0,
+            cursor_col: 0,
         }
-    }
-
-    /// Get a reference to the underlying view.
-    #[must_use]
-    pub const fn view(&self) -> &View {
-        &self.view
-    }
-
-    /// Get mutable access to the underlying view.
-    pub const fn view_mut(&mut self) -> &mut View {
-        &mut self.view
     }
 
     /// Update the window height.
@@ -86,7 +87,7 @@ impl TuiPanel {
 #[allow(clippy::cast_possible_truncation)]
 impl Panel for TuiPanel {
     fn buffer_id(&self) -> u64 {
-        Self::buffer_id_to_u64(self.view.buffer_id)
+        Self::buffer_id_to_u64(self.buffer_id)
     }
 
     fn viewport_id(&self) -> u64 {
@@ -94,7 +95,7 @@ impl Panel for TuiPanel {
     }
 
     fn visible_range(&self) -> RangeInclusive<u32> {
-        let start = self.view.scroll_top.as_usize() as u32;
+        let start = self.scroll_top as u32;
         // End is either scroll_top + height - 1, or total_lines - 1, whichever is smaller
         let end = (start + self.window_height)
             .saturating_sub(1)
@@ -109,16 +110,16 @@ impl Panel for TuiPanel {
         // Clamp to valid range
         let max_top = self.total_lines.saturating_sub(self.window_height);
         let clamped_top = new_top.min(max_top);
-        self.view.scroll_top = LineIndex::new(clamped_top as usize);
+        self.scroll_top = clamped_top as usize;
     }
 
     fn cursor_position(&self) -> (u32, u32) {
-        (self.view.cursor.line.as_usize() as u32, self.view.cursor.col.as_usize() as u32)
+        (self.cursor_line as u32, self.cursor_col as u32)
     }
 
     fn set_cursor(&mut self, line: u32, col: u32) {
-        self.view.cursor.line = LineIndex::new(line as usize);
-        self.view.cursor.col = ColIndex::new(col as usize);
+        self.cursor_line = line as usize;
+        self.cursor_col = col as usize;
     }
 
     fn total_lines(&self) -> u32 {

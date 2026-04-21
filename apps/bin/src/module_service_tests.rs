@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use {
     super::*,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ListModulesRequest, LoadModuleRequest, ReloadModuleRequest, UnloadModuleRequest,
         module_service_client::ModuleServiceClient,
     },

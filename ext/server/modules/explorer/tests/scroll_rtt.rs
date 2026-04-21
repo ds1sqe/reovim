@@ -27,7 +27,7 @@
 use std::time::{Duration, Instant};
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         JoinRequest, SendKeysRequest, SubscribeRequest, input_service_client::InputServiceClient,
         notification::Payload, notification_service_client::NotificationServiceClient,
         presence_service_client::PresenceServiceClient,
@@ -72,8 +72,8 @@ async fn send_keys(client: &mut InputServiceClient<Channel>, token: &str, keys: 
 ///
 /// Skips non-explorer notifications (`mode_changed`, `cursor_moved`, etc.).
 async fn wait_explorer_notification(
-    stream: &mut Streaming<reovim_protocol::v2::Notification>,
-) -> reovim_protocol::v2::Notification {
+    stream: &mut Streaming<reovim_protocol::v3::Notification>,
+) -> reovim_protocol::v3::Notification {
     loop {
         let msg = tokio::time::timeout(NOTIFICATION_TIMEOUT, stream.message())
             .await
@@ -128,7 +128,7 @@ async fn setup_explorer_client(
     port: u16,
 ) -> (
     InputServiceClient<Channel>,
-    Streaming<reovim_protocol::v2::Notification>,
+    Streaming<reovim_protocol::v3::Notification>,
     String,
 ) {
     let addr = format!("http://127.0.0.1:{port}");

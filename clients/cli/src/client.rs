@@ -3,7 +3,7 @@
 //! Provides a unified client interface to all gRPC v2 services.
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         DebugCaptureRequest,
         DebugCaptureResponse,
         DebugGetExtensionStateRequest,

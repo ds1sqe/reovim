@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ListModulesRequest, ListModulesResponse, LoadModuleRequest, LoadModuleResponse, ModuleInfo,
         ReloadModuleRequest, ReloadModuleResponse, UnloadModuleRequest, UnloadModuleResponse,
         module_service_server::{ModuleService, ModuleServiceServer},

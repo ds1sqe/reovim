@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ListBuffersRequest, ListBuffersResponse, OpenFileRequest, OpenFileResponse,
         SetContentRequest, SetContentResponse, WriteFileRequest, WriteFileResponse,
         buffer_service_server::BufferService,

@@ -16,7 +16,7 @@ use {
         EditorServiceImpl, ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl,
         NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
     },
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         buffer_service_server::BufferServiceServer,
         command_service_server::CommandServiceServer,
         debug_service_server::DebugServiceServer,

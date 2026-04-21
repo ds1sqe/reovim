@@ -10,7 +10,7 @@
 #![allow(clippy::result_large_err)]
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ListModulesRequest, ListModulesResponse, LoadModuleRequest, LoadModuleResponse,
         ReloadModuleRequest, ReloadModuleResponse, UnloadModuleRequest, UnloadModuleResponse,
         module_service_server::ModuleService,

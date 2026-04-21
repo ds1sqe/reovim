@@ -15,7 +15,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::Mutex,
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         SendInputRequest, SendInputResponse, input_service_server::InputService, notification,
     },
     reovim_subsys_input::InputEvent,

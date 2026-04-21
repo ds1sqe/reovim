@@ -1,4 +1,4 @@
-use reovim_input_codec::{KeyCode, KeyEvent, Modifiers};
+use reovim_codec_tui_input::{KeyCode, KeyEvent, Modifiers};
 
 use crate::macros::*;
 

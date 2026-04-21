@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         ExtensionInfo, GetExtensionStateRequest, GetExtensionStateResponse, ListExtensionsRequest,
         ListExtensionsResponse, extension_service_server::ExtensionService,
     },

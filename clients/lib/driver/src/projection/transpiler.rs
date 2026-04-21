@@ -5,7 +5,7 @@
 //! caller's scope. This is the D21 design: fail loud on invalid input.
 
 use {
-    reovim_protocol::v2::ProjectionUpdatedPayload,
+    reovim_protocol::v3::ProjectionUpdatedPayload,
     reovim_subsys_coordination::{DomainId, ProjectionTag},
 };
 

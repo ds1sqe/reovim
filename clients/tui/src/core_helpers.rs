@@ -39,6 +39,9 @@ pub fn collect_windows(node: &WindowNode, focused_id: u64, out: &mut Vec<WindowI
                         rect: leaf.rect,
                         focused: leaf.window_id == focused_id,
                         opacity: None,
+                        primary_domain_id: 0,
+                        embedded_domain_ids: vec![],
+                        spatial_placement: None,
                     });
                 } else {
                     tracing::debug!(window_id = leaf.window_id, "Skipping window with no buffer");
@@ -149,6 +152,9 @@ pub fn create_default_window(state: &mut TuiCoreState, buffer_id: u64, width: u1
         }),
         focused: true,
         opacity: None,
+        primary_domain_id: 0,
+        embedded_domain_ids: vec![],
+        spatial_placement: None,
     };
 
     state.windows.push(window);

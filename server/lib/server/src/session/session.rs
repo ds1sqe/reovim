@@ -16,7 +16,7 @@ use reovim_kernel::api::v1::ServiceRegistry;
 
 use parking_lot::RwLock;
 #[cfg(feature = "grpc")]
-use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
+use {reovim_protocol::v3::Notification, tokio::sync::broadcast};
 
 #[cfg(feature = "grpc")]
 use super::CaptureTracker;

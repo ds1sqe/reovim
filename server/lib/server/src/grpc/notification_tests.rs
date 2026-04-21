@@ -231,7 +231,7 @@ fn test_build_presence_left_notification() {
     assert_eq!(notification.event_type, "presence_left");
     assert!(notification.timestamp_ms > 0);
 
-    if let Some(reovim_protocol::v2::notification::Payload::PresenceLeft(payload)) =
+    if let Some(reovim_protocol::v3::notification::Payload::PresenceLeft(payload)) =
         notification.payload
     {
         assert_eq!(payload.client_id, 42);

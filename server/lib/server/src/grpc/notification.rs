@@ -28,7 +28,7 @@ use std::{
 
 use {
     futures::Stream,
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         Notification, SubscribeRequest, notification::Payload,
         notification_service_server::NotificationService,
     },
@@ -111,7 +111,7 @@ impl Drop for CleanupStream {
 
 /// Build `presence_left` notification for auto-cleanup.
 fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> Notification {
-    use reovim_protocol::v2::PresenceLeftPayload;
+    use reovim_protocol::v3::PresenceLeftPayload;
 
     let timestamp_ms = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

@@ -31,7 +31,7 @@ fn domain_projection_windowed() {
 #[cfg(feature = "proto")]
 mod proto_tests {
     use {
-        reovim_protocol::v2::{DomainDatum, ProjectionUpdatedPayload},
+        reovim_protocol::v3::{DomainDatum, ProjectionUpdatedPayload},
         reovim_subsys_coordination::{DomainId, ProjectionTag},
     };
 

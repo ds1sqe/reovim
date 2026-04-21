@@ -446,6 +446,9 @@ impl<O: TuiOutput> TuiApp<O> {
             }),
             focused: true,
             opacity: None,
+            primary_domain_id: 0,
+            embedded_domain_ids: vec![],
+            spatial_placement: None,
         };
 
         self.state.windows.push(window);
@@ -471,6 +474,9 @@ impl<O: TuiOutput> TuiApp<O> {
                             rect: leaf.rect,
                             focused: leaf.window_id == self.state.focused_window_id,
                             opacity: None,
+                            primary_domain_id: 0,
+                            embedded_domain_ids: vec![],
+                            spatial_placement: None,
                         });
                     }
                 }

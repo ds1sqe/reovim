@@ -420,7 +420,7 @@ fn test_subscribe_notifications() {
 #[cfg(feature = "grpc")]
 #[test]
 fn test_emit_notification() {
-    use reovim_protocol::v2::Notification;
+    use reovim_protocol::v3::Notification;
 
     let session = Session::new(SessionId::new("test"));
     let mut rx = session.subscribe_notifications();
@@ -728,7 +728,7 @@ fn test_set_client_relation_back_to_independent() {
 #[cfg(feature = "grpc")]
 #[test]
 fn test_emit_notification_and_receive() {
-    use reovim_protocol::v2::Notification;
+    use reovim_protocol::v3::Notification;
 
     let session = Session::new(SessionId::new("notif-test"));
     let mut rx = session.subscribe_notifications();
@@ -754,7 +754,7 @@ fn test_emit_notification_no_subscribers() {
     let session = Session::new(SessionId::new("no-sub-test"));
 
     // Emit with no subscribers should not panic
-    let notification = reovim_protocol::v2::Notification {
+    let notification = reovim_protocol::v3::Notification {
         event_type: "orphan".to_string(),
         timestamp_ms: 0,
         payload: None,

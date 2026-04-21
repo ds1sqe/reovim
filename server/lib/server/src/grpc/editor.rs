@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use {
     reovim_kernel::api::v1::BufferId,
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         GetActiveBufferRequest, GetActiveBufferResponse, QuitRequest, QuitResponse,
         SetActiveBufferRequest, SetActiveBufferResponse, SurfaceChangedRequest,
         SurfaceChangedResponse, editor_service_server::EditorService,
@@ -65,7 +65,7 @@ impl EditorService for EditorServiceImpl {
         &self,
         request: Request<SurfaceChangedRequest>,
     ) -> Result<Response<SurfaceChangedResponse>, Status> {
-        use reovim_protocol::v2::{Notification, SurfaceChangedPayload, notification::Payload};
+        use reovim_protocol::v3::{Notification, SurfaceChangedPayload, notification::Payload};
 
         let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();

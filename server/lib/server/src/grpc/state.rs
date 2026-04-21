@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         CaptureRequestPayload, GetLayoutRequest, GetLayoutResponse, GetOptionsRequest,
         GetOptionsResponse, GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest,
         GetRegistersResponse, GetScreenContentRequest, GetScreenContentResponse,
@@ -61,8 +61,8 @@ fn placement_to_leaf(
 /// Convert a kernel `OptionValue` to a proto `OptionValue`.
 fn kernel_to_proto_option(
     value: &reovim_kernel::api::v1::OptionValue,
-) -> reovim_protocol::v2::OptionValue {
-    use reovim_protocol::v2::option_value::Value;
+) -> reovim_protocol::v3::OptionValue {
+    use reovim_protocol::v3::option_value::Value;
 
     let proto_value = match value {
         reovim_kernel::api::v1::OptionValue::Bool(b) => Some(Value::BoolValue(*b)),
@@ -73,7 +73,7 @@ fn kernel_to_proto_option(
         }
     };
 
-    reovim_protocol::v2::OptionValue { value: proto_value }
+    reovim_protocol::v3::OptionValue { value: proto_value }
 }
 
 /// gRPC `StateService` implementation.

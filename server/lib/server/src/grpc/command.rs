@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         CommandSource, CompleteArgsRequest, CompleteArgsResponse, KeybindingCommandEntry,
         SearchCommandsRequest, SearchCommandsResponse, UserCommandEntry,
         command_service_server::CommandService,

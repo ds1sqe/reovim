@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_protocol::v2::{
+    reovim_protocol::v3::{
         InfoRequest, InfoResponse, KillRequest, KillResponse, PingRequest, PingResponse,
         server_service_server::ServerService,
     },

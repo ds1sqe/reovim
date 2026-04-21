@@ -3702,6 +3702,7 @@ name = "reovim-module-vim"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-codec-tui-input",
  "reovim-domain-text",
  "reovim-driver-annotation",
  "reovim-driver-command",
@@ -3709,7 +3710,6 @@ dependencies = [
  "reovim-driver-text-search",
  "reovim-driver-text-session",
  "reovim-driver-text-undo",
- "reovim-input-codec",
  "reovim-kernel",
  "reovim-module-cmdline",
  "reovim-module-editor",
