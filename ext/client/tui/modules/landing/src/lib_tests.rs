@@ -4,15 +4,32 @@ use reovim_arch::clock::TestClock;
 
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::CellCapability,
 };
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-fn render(module: &LandingModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+// Plan 22 / 17-β.2b-impl-b pilot migration: tests now construct a
+// CellCapability (which implements RenderSurface since Plan 21)
+// directly, instead of using the driver's RecordingSurface test
+// fixture. The two small helpers below replace RecordingSurface's
+// inspection API (`has_content` + `char_at`) using CellCapability's
+// `iter` + `get_cell` methods — identical semantics, no behavioural
+// change.
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn char_at(g: &CellCapability, x: u16, y: u16) -> char {
+    g.get_cell(x, y).map_or(' ', |c| c.ch)
+}
+
+fn render(module: &LandingModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -116,14 +133,14 @@ fn dismiss_is_permanent() {
 fn render_on_normal_terminal() {
     let m = LandingModule::new();
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content(), "Landing screen should render content");
+    assert!(has_content(&surface), "Landing screen should render content");
 }
 
 #[test]
 fn render_on_small_terminal() {
     let m = LandingModule::new();
     let surface = render(&m, 20, 5);
-    assert!(!surface.has_content(), "Small terminal should not render landing");
+    assert!(!has_content(&surface), "Small terminal should not render landing");
 }
 
 #[test]
@@ -131,7 +148,7 @@ fn render_skipped_when_dismissed() {
     let mut m = LandingModule::new();
     m.on_cursor_update(BufferId(0), 0, 0);
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content(), "Dismissed extension should not render");
+    assert!(!has_content(&surface), "Dismissed extension should not render");
 }
 
 #[test]
@@ -141,16 +158,19 @@ fn render_content_centered() {
     let box_x: u16 = (120 - BOX_WIDTH) / 2;
     let box_y: u16 = (40 - 17) / 2;
     // Top-left corner should be U+256D
-    assert_eq!(surface.char_at(box_x, box_y), '\u{256D}');
+    assert_eq!(char_at(&surface, box_x, box_y), '\u{256D}');
     // Top-right corner should be U+256E
-    assert_eq!(surface.char_at(box_x + BOX_WIDTH - 1, box_y), '\u{256E}');
+    assert_eq!(
+        char_at(&surface, box_x + BOX_WIDTH - 1, box_y),
+        '\u{256E}',
+    );
 }
 
 #[test]
 fn render_large_terminal() {
     let m = LandingModule::new();
     let surface = render(&m, 200, 60);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -264,5 +284,5 @@ fn render_uses_animation_color() {
     m.tick();
     // Should render without panic using the animation color
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }

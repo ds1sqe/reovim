@@ -18,3 +18,6 @@ reovim-arch = { workspace = true }
 
 [dev-dependencies]
 reovim-client-driver = { workspace = true, features = ["testing"] }
+# Plan 22 / 17-β.2b-impl-b pilot: migrate tests from RecordingSurface to
+# CellCapability — CellCapability implements RenderSurface since Plan 21.
+reovim-ext-client-tui-cap-cell = { workspace = true }

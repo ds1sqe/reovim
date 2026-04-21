@@ -4170,6 +4170,7 @@ version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
 ]
 
 [[package]]
