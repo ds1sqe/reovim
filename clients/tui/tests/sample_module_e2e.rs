@@ -162,10 +162,9 @@ fn set_client_env(path: &Path) -> ClientEnvGuard {
 // projection. This helper needs to be rewritten once a text-content projection
 // helper is available.
 #[allow(dead_code)]
+#[allow(clippy::unused_async)] // async kept for future implementation that will await
 async fn wait_for_sample_content(_client: &mut GrpcClient) -> String {
-    unimplemented!(
-        "wait_for_sample_content requires projection-based buffer query (TODO #757)"
-    );
+    unimplemented!("wait_for_sample_content requires projection-based buffer query (TODO #757)");
 }
 
 // TODO(#757): reopen after projection-based buffer query lands.
@@ -196,9 +195,7 @@ async fn test_sample_module_e2e() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     let mut grpc = connect_with_retry(&addr).await;
-    grpc.ping()
-        .await
-        .expect("gRPC client should reach session");
+    grpc.ping().await.expect("gRPC client should reach session");
     let modules = connect_module_service_with_retry(&addr)
         .await
         .list(ListModulesRequest {})

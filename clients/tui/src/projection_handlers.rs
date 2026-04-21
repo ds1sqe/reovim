@@ -48,6 +48,8 @@ pub async fn handle_projection_updated<C: NotificationContext>(
 ///
 /// Updates `TuiCoreState.mode_name` for the local client.
 fn handle_mode_projection<C: NotificationContext>(ctx: &mut C, p: &ProjectionUpdatedPayload) {
+    #[allow(clippy::single_match_else)]
+    // early-return pattern is clearer than if-let for multi-stmt else
     let bytes = match p.datum.as_ref() {
         Some(d) => &d.content,
         None => {
@@ -118,6 +120,7 @@ fn handle_options_changed_projection<C: NotificationContext>(
 ///
 /// Returns `None` if datum is absent or not valid UTF-8.
 #[cfg(test)]
+#[allow(clippy::redundant_closure_for_method_calls)] // clearer with closure
 pub(crate) fn decode_mode_datum(p: &ProjectionUpdatedPayload) -> Option<String> {
     let bytes = p.datum.as_ref()?.content.as_slice();
     std::str::from_utf8(bytes).ok().map(|s| s.to_string())

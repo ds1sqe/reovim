@@ -67,10 +67,10 @@ pub fn key_sequence_to_input_sequence(
     // Verify TUI key codec is loaded (we don't need it for type-safe conversion
     // since encode_key_event is a free function, but this guards against
     // mis-configuration early).
-    let _codec = registry
+    // Verify TUI key codec is loaded — guards against mis-configuration early.
+    registry
         .get(reovim_codec_tui_input::KIND_KEY)
         .ok_or(InputSequenceBridgeError::TuiKeyCodecNotRegistered)?;
-    drop(_codec);
 
     let mut seq = InputSequence::new();
     for token in ks.as_slice() {

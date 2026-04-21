@@ -86,7 +86,7 @@ struct JKeymap;
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl KeymapQuery for JKeymap {
     fn query(&self, _mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
-        if keys.len() == 1 && matches!(keys.as_slice()[0].code, KeyCode::Char('j')) {
+        if keys.len() == 1 && keys.as_slice()[0] == "j" {
             KeyLookupState::ExactOnly(crate::ids::TROUBLE_NEXT)
         } else {
             KeyLookupState::NotFound

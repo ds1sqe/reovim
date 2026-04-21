@@ -175,14 +175,14 @@ fn mock_codec_decode_roundtrip() {
 
 #[test]
 fn mock_codec_translate_edit_defaults_to_read_only() {
-    let codec = MockCodec;
-
-    let bytes = HeapByteSource::new(b"hello");
     // A synthetic domain-edit payload — the default impl rejects any edit,
     // so the wrapped value shape is irrelevant.
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct DummyEdit;
     crate::impl_domain_edit!(DummyEdit);
+
+    let codec = MockCodec;
+    let bytes = HeapByteSource::new(b"hello");
     let edit = DecodedEdit::Domain(crate::DomainEdit::new(DummyEdit));
 
     // Default impl now returns Err(ReadOnly) so codecs that do not

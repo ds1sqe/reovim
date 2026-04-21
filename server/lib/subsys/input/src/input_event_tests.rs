@@ -1,4 +1,4 @@
-//! Tests for InputEvent opaque envelope and header codec.
+//! Tests for `InputEvent` opaque envelope and header codec.
 
 use super::input_event::*;
 

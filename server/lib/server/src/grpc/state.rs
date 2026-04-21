@@ -39,7 +39,7 @@ fn capture_error_to_status(e: CaptureError) -> Status {
 
 /// Convert a compositor placement to a proto `WindowLeaf`.
 ///
-/// buffer_id is domain-owned (#753 E3) — not available here.
+/// `buffer_id` is domain-owned (#753 E3) — not available here.
 #[allow(clippy::cast_possible_truncation)]
 fn placement_to_leaf(
     placement: &reovim_subsys_layout::WindowPlacement,

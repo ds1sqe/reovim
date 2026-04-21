@@ -352,6 +352,7 @@ pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
 /// Perform one authoritative bootstrap pass for the runner.
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::too_many_lines)] // orchestration function; splitting would obscure intent
 pub fn bootstrap_runtime() -> BootstrapResult {
     // Load user config (#586)
     let config = load_module_config();
@@ -488,7 +489,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     );
 
     configure_syntax_highlighting(&mut session_state, &services);
-    trigger_empty_session_handlers(&mut session_state, &services);
+    trigger_empty_session_handlers(&session_state, &services);
     session_state.ensure_initial_compositor_window();
 
     // Build TextDomainDriver for domain-neutral dispatch (#753).
@@ -528,6 +529,7 @@ pub fn create_session_state() -> SessionState {
 /// | `KeybindingStore` | `KeymapRegistry` | Key → command mapping |
 /// | `ResolverRegistry` | `ResolverRegistry` | Mode-specific key interpretation |
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::too_many_lines)] // extraction logic; splitting would obscure the registry mapping
 fn extract_registries(
     services: &Arc<ServiceRegistry>,
 ) -> (
@@ -746,7 +748,7 @@ fn build_text_domain_driver(
 /// If no buffers exist after module initialization, call registered
 /// `EmptySessionHandler`s to create a scratch buffer.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
+fn trigger_empty_session_handlers(state: &SessionState, services: &Arc<ServiceRegistry>) {
     use reovim_driver_text_session::{
         EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
     };
@@ -781,14 +783,10 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
         EmptySessionAction::CreateBuffer { content, .. } => {
             // Register the buffer in both the kernel BufferManager (for ID
             // assignment) and the TextBufferRegistry (for text-layer access).
-            let text_registry = match services.get::<reovim_provider_text::TextBufferRegistry>() {
-                Some(r) => r,
-                None => {
-                    tracing::warn!(
-                        "TextBufferRegistry not found; skipping scratch buffer creation"
-                    );
-                    return;
-                }
+            let Some(text_registry) = services.get::<reovim_provider_text::TextBufferRegistry>()
+            else {
+                tracing::warn!("TextBufferRegistry not found; skipping scratch buffer creation");
+                return;
             };
             // Step 1: Register in TextBufferRegistry as `dyn BufferOps`; this
             //         assigns the canonical BufferId from the buffer's own ID.
@@ -855,7 +853,7 @@ fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<Tracke
     initialize_modules_with_dependents(config, ctx).tracked
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // module init fan-out; splitting would scatter the registry dispatch
 fn initialize_modules_with_dependents(
     config: &ModulesConfig,
     ctx: &ModuleContext,

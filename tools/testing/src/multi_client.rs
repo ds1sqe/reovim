@@ -95,6 +95,7 @@ impl TestClient {
 
     /// Get buffer content.
     #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::unused_async)] // async kept for API compatibility with callers that .await
     pub async fn get_buffer(&mut self) -> Result<String, String> {
         // v3: buffer content routes through projections, not GetRawContent
         Err(

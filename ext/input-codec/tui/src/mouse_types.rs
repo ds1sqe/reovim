@@ -133,12 +133,12 @@ impl MouseEvent {
 /// ```
 /// Button encoding: Left=0, Right=1, Middle=2.
 #[must_use]
-pub fn mouse_kind_to_bytes(kind: &MouseEventKind) -> (u8, u8) {
+pub const fn mouse_kind_to_bytes(kind: &MouseEventKind) -> (u8, u8) {
     match kind {
         MouseEventKind::Moved => (0, 0),
-        MouseEventKind::Down(b) => (1, button_to_u8(b)),
-        MouseEventKind::Up(b) => (2, button_to_u8(b)),
-        MouseEventKind::Drag(b) => (3, button_to_u8(b)),
+        MouseEventKind::Down(b) => (1, button_to_u8(*b)),
+        MouseEventKind::Up(b) => (2, button_to_u8(*b)),
+        MouseEventKind::Drag(b) => (3, button_to_u8(*b)),
         MouseEventKind::ScrollUp => (4, 0),
         MouseEventKind::ScrollDown => (5, 0),
         MouseEventKind::ScrollLeft => (6, 0),
@@ -164,7 +164,7 @@ pub fn bytes_to_mouse_kind(tag: u8, button: u8) -> Option<MouseEventKind> {
     }
 }
 
-fn button_to_u8(button: &MouseButton) -> u8 {
+const fn button_to_u8(button: MouseButton) -> u8 {
     match button {
         MouseButton::Left => 0,
         MouseButton::Right => 1,
@@ -172,7 +172,7 @@ fn button_to_u8(button: &MouseButton) -> u8 {
     }
 }
 
-fn u8_to_button(value: u8) -> Option<MouseButton> {
+const fn u8_to_button(value: u8) -> Option<MouseButton> {
     match value {
         0 => Some(MouseButton::Left),
         1 => Some(MouseButton::Right),

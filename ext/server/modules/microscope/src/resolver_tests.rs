@@ -120,7 +120,7 @@ struct EscapeKeymap;
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl KeymapQuery for EscapeKeymap {
     fn query(&self, _mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
-        if keys.len() == 1 && matches!(keys.as_slice()[0].code, KeyCode::Escape) {
+        if keys.len() == 1 && keys.as_slice()[0] == "<Esc>" {
             KeyLookupState::ExactOnly(crate::ids::CLOSE)
         } else {
             KeyLookupState::NotFound

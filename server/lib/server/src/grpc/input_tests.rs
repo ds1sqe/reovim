@@ -1,8 +1,8 @@
 //! Tests for `InputService::send_input` gRPC endpoint.
 //!
-//! Tests for removed internal helpers (resolve_to_command_context,
-//! handle_resolve_result, apply_mode_transition_for_client,
-//! handle_pop_result_for_client, emit_syntax_updates, notify_codec_indices)
+//! Tests for removed internal helpers (`resolve_to_command_context`,
+//! `handle_resolve_result`, `apply_mode_transition_for_client`,
+//! `handle_pop_result_for_client`, `emit_syntax_updates`, `notify_codec_indices`)
 //! have been deleted — those methods were removed in #753 E6.
 //! Domain dispatch testing lives in driver-text-session.
 
@@ -35,8 +35,8 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
     request
 }
 
-/// Helper: build a SendInputRequest from a raw payload (must be a valid
-/// InputEvent payload, i.e. >= 8 bytes).
+/// Helper: build a `SendInputRequest` from a raw payload (must be a valid
+/// `InputEvent` payload, i.e. >= 8 bytes).
 fn send_input_request(payload: Vec<u8>) -> SendInputRequest {
     SendInputRequest {
         payload,

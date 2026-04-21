@@ -48,7 +48,7 @@ pub struct CodecTarGzModule {
 impl CodecTarGzModule {
     /// Create a new tar.gz codec module.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             registry: None,
             content_type: None,

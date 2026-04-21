@@ -3,8 +3,8 @@
 //! # Architecture (#753 E6)
 //!
 //! Buffer metadata access is domain-neutral. The server no longer imports
-//! driver crates directly. Proto v3 provides: List, OpenFile, WriteFile,
-//! SetContent. Content access routes through projections, not typed RPCs.
+//! driver crates directly. Proto v3 provides: `List`, `OpenFile`, `WriteFile`,
+//! `SetContent`. Content access routes through projections, not typed RPCs.
 
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
@@ -57,7 +57,7 @@ impl BufferServiceImpl {
 impl BufferService for BufferServiceImpl {
     /// List all open buffers.
     ///
-    /// TODO(#753 E6): Route buffer metadata through DomainDriver.
+    /// TODO(#753 E6): Route buffer metadata through `DomainDriver`.
     async fn list(
         &self,
         _request: Request<ListBuffersRequest>,

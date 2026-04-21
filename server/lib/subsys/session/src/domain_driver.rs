@@ -155,7 +155,7 @@ pub trait DomainDriver: DomainRouting + Send + Sync {
     /// Dispatch an opaque input event with access to extension maps.
     ///
     /// This is the sole domain-neutral dispatch path. The domain driver decodes
-    /// the InputEvent payload via codec crates and dispatches accordingly.
+    /// the `InputEvent` payload via codec crates and dispatches accordingly.
     /// Returns `DispatchResult` — the server polls for all other state changes.
     fn dispatch_input(
         &self,
@@ -189,7 +189,7 @@ pub trait DomainDriver: DomainRouting + Send + Sync {
     /// not a silent blank client. Domain drivers that genuinely emit no
     /// projections return empty Vec explicitly.
     ///
-    /// Called after EVERY dispatch_input. Must be O(changed-tags), not O(all-state).
+    /// Called after EVERY `dispatch_input`. Must be O(changed-tags), not O(all-state).
     /// The domain driver tracks dirty state internally.
     fn collect_projections(&self, client_id: ClientId) -> Vec<Projection>;
 

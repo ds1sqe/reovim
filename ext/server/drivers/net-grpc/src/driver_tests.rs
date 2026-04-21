@@ -80,7 +80,7 @@ async fn bind_tcp_addr_in_use_returns_bind_failed() {
         .await
         .expect("serve resolved")
         .expect("task joined");
-    assert!(matches!(res, Err(NetError::BindFailed(_))), "expected BindFailed, got {res:?}",);
+    assert!(matches!(res, Err(NetError::BindFailed(_))), "expected BindFailed, got {res:?}");
     drop(sentinel);
 }
 
@@ -139,7 +139,7 @@ async fn concurrent_bind_race_exactly_one_wins() {
         .iter()
         .filter(|r| matches!(r, Err(NetError::BindFailed(_))))
         .count();
-    assert!(losers >= 1, "at least one task must lose the bind race: r1={r1:?}, r2={r2:?}",);
+    assert!(losers >= 1, "at least one task must lose the bind race: r1={r1:?}, r2={r2:?}");
 }
 
 #[cfg(unix)]

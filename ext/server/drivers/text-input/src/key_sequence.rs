@@ -140,6 +140,7 @@ impl KeySequence {
     }
 
     /// Push a token-producing value into the sequence.
+    #[allow(clippy::needless_pass_by_value)] // API accepts owned T for ergonomics (avoids &str awkwardness)
     pub fn push<T: ToKeyToken>(&mut self, key: T) {
         self.0.push(key.to_key_token());
     }
@@ -193,7 +194,7 @@ impl KeySequence {
         }
 
         let mut tokens = Vec::new();
-        let mut chars = s.chars().peekable();
+        let mut chars = s.chars();
 
         while let Some(c) = chars.next() {
             if c == '<' {

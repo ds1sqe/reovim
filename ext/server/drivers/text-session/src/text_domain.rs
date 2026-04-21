@@ -355,13 +355,10 @@ impl DomainDriver for TextDomainDriver {
         let kind = reovim_subsys_input::input_kind(payload);
 
         match kind {
-            KIND_KEY => {
-                if let Ok(key) = decode_key_event(payload) {
-                    self.dispatch_decoded_key(client_id, &key, client_ext, shared_ext)
-                } else {
-                    DispatchResult::default()
-                }
-            }
+            KIND_KEY => decode_key_event(payload).map_or_else(
+                |_| DispatchResult::default(),
+                |key| self.dispatch_decoded_key(client_id, &key, client_ext, shared_ext),
+            ),
             // Pointer and scroll events not handled by text domain yet
             _ => DispatchResult::default(),
         }
@@ -387,32 +384,32 @@ impl DomainDriver for TextDomainDriver {
         }
     }
 
+    #[allow(clippy::significant_drop_tightening)] // `clients` borrow must outlive `state.mode_stack` access
     fn collect_projections(
         &self,
         client_id: ClientId,
     ) -> Vec<reovim_subsys_coordination::Projection> {
         use reovim_subsys_coordination::{DomainId, Projection, ProjectionDelivery, ProjectionTag};
 
-        let clients = self.clients.read();
-        let Some(state) = clients.get(&client_id) else {
-            return Vec::new();
+        let mode_name = {
+            let clients = self.clients.read();
+            let Some(state) = clients.get(&client_id) else {
+                return Vec::new();
+            };
+            state.mode_stack.current().name().to_owned()
         };
 
         let domain_id = DomainId(self.domain_id);
-        let mut projections = Vec::new();
 
         // text.mode — current mode name
-        let mode_name = state.mode_stack.current().name().to_owned();
-        projections.push(Projection {
+        vec![Projection {
             tag: ProjectionTag::from("text.mode"),
             domain_id,
             window_id: None,
             payload: mode_name.as_bytes().to_vec(),
             display: Some(mode_name),
             delivery: ProjectionDelivery::Persistent,
-        });
-
-        projections
+        }]
     }
 
     fn initial_projections(

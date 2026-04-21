@@ -7,8 +7,8 @@
 //!
 //! The server is a domain-neutral topological router. It does NOT import any
 //! driver crate. Per-session shared state that formerly lived inside
-//! `DriverSession` (compositor, home_mode) is now directly owned here.
-//! Per-client state (mode_stack, cursor, extensions) lives in `EditingState`.
+//! `DriverSession` (compositor, `home_mode`) is now directly owned here.
+//! Per-client state (`mode_stack`, cursor, extensions) lives in `EditingState`.
 //! Buffer access, command execution, and key dispatch all route through
 //! `DomainDriver` — the server never touches driver types directly.
 
@@ -45,7 +45,7 @@ use crate::{
 /// `SessionState` is NOT `Sync` by itself. The `Session` wrapper provides
 /// thread-safe access via `RwLock<SessionState>`.
 pub struct SessionState {
-    /// Shared compositor for layout (dissolved from DriverSession #753 E6).
+    /// Shared compositor for layout (dissolved from `DriverSession` #753 E6).
     ///
     /// Cloned per-client on join for independent layout notifications.
     pub compositor: Option<Box<dyn RootCompositor>>,
@@ -66,7 +66,7 @@ pub struct SessionState {
     /// Registry of mode metadata and behavior.
     pub mode_registry: ModeRegistry,
 
-    /// Registry of command handlers (metadata-only in server, execution via DomainDriver).
+    /// Registry of command handlers (metadata-only in server, execution via `DomainDriver`).
     pub command_registry: CommandRegistry,
 
     /// Registry of keybindings.

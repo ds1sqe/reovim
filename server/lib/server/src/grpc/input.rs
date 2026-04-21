@@ -137,6 +137,7 @@ impl InputService for InputServiceImpl {
 
         // Wrap the raw payload bytes in an InputEvent.
         // InputEvent::new rejects payloads shorter than INPUT_HEADER_SIZE (8 bytes).
+        #[allow(clippy::cast_possible_truncation)] // WindowId is usize; u64 fits on 64-bit targets
         let window_id = req
             .window_id
             .map(|id| reovim_kernel::api::v1::WindowId::from_raw(id as usize));
@@ -218,7 +219,7 @@ impl InputService for InputServiceImpl {
         if accumulated_changes.layout_changed || accumulated_changes.focus_changed {
             let new_buffer_id = session
                 .active_buffer_for_client(client_id)
-                .map(|b| b.as_usize());
+                .map(reovim_kernel::api::BufferId::as_usize);
             session.presence().update(client_id, |p| {
                 p.buffer_id = new_buffer_id;
             });

@@ -9,10 +9,12 @@
 
 use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleId, ProbeResult, Version},
-    reovim_module_macros::declare_module,
     reovim_subsys_input::{DefaultInputCodecRegistry, InputCodecRegistry},
     std::sync::Arc,
 };
+
+#[cfg(feature = "dynamic")]
+use reovim_module_macros::declare_module;
 
 use crate::codecs::{
     KIND_KEY, KIND_MOUSE, KIND_SCROLL, tui_key_codec, tui_mouse_codec, tui_scroll_codec,
@@ -31,7 +33,7 @@ pub struct TuiInputCodecModule {
 impl TuiInputCodecModule {
     /// Create a new instance with no registry bound yet.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { registry: None }
     }
 }
@@ -87,4 +89,5 @@ pub fn unregister_codecs(registry: &dyn InputCodecRegistry) {
     registry.unregister(KIND_SCROLL);
 }
 
+#[cfg(feature = "dynamic")]
 declare_module!(TuiInputCodecModule);

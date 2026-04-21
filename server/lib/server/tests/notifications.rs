@@ -53,7 +53,7 @@ async fn test_server_accepts_connection() {
 
 /// Test that mode changes are reflected in state queries.
 ///
-/// get_mode() removed in v3; mode state is now queried via get_projections("text.mode").
+/// `get_mode()` removed in v3; mode state is now queried via `get_projections("text.mode")`.
 /// This test is deferred until the integration test helper is updated.
 #[tokio::test]
 #[ignore = "get_mode removed in v3; mode queried via projections (#753)"]
@@ -62,7 +62,7 @@ async fn test_mode_change_reflected_in_state() {}
 
 /// Test that buffer modifications are reflected in content queries.
 ///
-/// get_buffer_content() removed in v3; content queried via projections (#753).
+/// `get_buffer_content()` removed in v3; content queried via projections (#753).
 /// This test is deferred until the integration test helper is updated.
 #[tokio::test]
 #[ignore = "get_buffer_content removed in v3; content queried via projections (#753)"]
@@ -71,7 +71,7 @@ async fn test_buffer_modification_reflected_in_content() {}
 
 /// Test that cursor position updates are reflected in queries.
 ///
-/// get_cursor() removed in v3; cursor state queried via projections (#753).
+/// `get_cursor()` removed in v3; cursor state queried via projections (#753).
 /// This test is deferred until the integration test helper is updated.
 #[tokio::test]
 #[ignore = "get_cursor removed in v3; cursor queried via projections (#753)"]

@@ -38,7 +38,7 @@ fn server_has_no_production_input_vocab_deps() {
             continue;
         }
         if FORBIDDEN_DEPS.contains(&dep.name.as_str()) {
-            violations.push(dep.name.to_string());
+            violations.push(dep.name.clone());
         }
     }
 

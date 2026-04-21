@@ -1,4 +1,4 @@
-//! Tests for DispatchResult types.
+//! Tests for `DispatchResult` types.
 
 use {super::dispatch_result::*, reovim_kernel::api::v1::BufferId};
 

@@ -92,9 +92,9 @@ pub enum TiledTree {
         /// Proportion assigned to `first`, in parts per thousand.
         ratio: Permil,
         /// The sub-topology that receives the leading portion of the space.
-        first: Box<TiledTree>,
+        first: Box<Self>,
         /// The sub-topology that receives the trailing portion of the space.
-        second: Box<TiledTree>,
+        second: Box<Self>,
     },
 }
 

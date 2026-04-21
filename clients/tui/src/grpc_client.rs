@@ -10,7 +10,7 @@
 //! - `StateService` - Query projections, layout, options
 //! - `BufferService` - Buffer metadata and file operations
 //! - `ServerService` - Server management (ping, info, kill)
-//! - `EditorService` - Editor operations (surface_changed, quit, active buffer)
+//! - `EditorService` - Editor operations (`surface_changed`, quit, active buffer)
 //! - `ModuleService` - Module listing
 //! - `NotificationService` - Server-to-client streaming
 //! - `PresenceService` - Multi-client session management
@@ -350,7 +350,13 @@ impl TuiGrpcClient {
     /// * `buffer_id` - Optional buffer ID (unused pending projection emitter).
     /// * `start_line` - Optional start line (unused pending projection emitter).
     /// * `end_line` - Optional end line (unused pending projection emitter).
-    pub async fn get_buffer_content(
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible; returns `Ok` always. Future implementations may
+    /// return an error if the projection fetch fails.
+    #[allow(clippy::result_large_err)] // TuiGrpcError contains tonic::Status; boxing not warranted
+    pub fn get_buffer_content(
         &mut self,
         _buffer_id: Option<u64>,
         _start_line: Option<u64>,
@@ -445,7 +451,7 @@ impl TuiGrpcClient {
     /// Notify the server of a surface change (replaces v2 `resize`).
     ///
     /// Encodes the cell-grid dimensions as a `SurfaceDescriptorProto` using the
-    /// `CellGridCodec` body format (kind=0x0001, body=[width_be:u32, height_be:u32]).
+    /// `CellGridCodec` body format (kind=0x0001, body=[`width_be:u32`, `height_be:u32`]).
     ///
     /// # Arguments
     ///

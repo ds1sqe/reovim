@@ -1,4 +1,4 @@
-//! Tests for ProjectionStore.
+//! Tests for `ProjectionStore`.
 
 use {
     super::projection_store::*,
@@ -129,6 +129,6 @@ fn multiple_tags_per_client() {
 fn session_has_projection_store() {
     use crate::session::{Session, SessionId};
     let session = Session::new(SessionId::new("proj-test"));
-    let store = session.projection_store().read();
-    assert!(store.get_all(cid(1)).is_empty());
+    let is_empty = session.projection_store().read().get_all(cid(1)).is_empty();
+    assert!(is_empty);
 }

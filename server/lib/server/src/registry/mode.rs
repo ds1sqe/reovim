@@ -78,7 +78,7 @@ impl ModeEntry {
     /// the fields and passes them here.
     #[must_use]
     #[allow(clippy::fn_params_excessive_bools)] // five bool fields mirror ModeInfo shape
-    pub fn from_fields(
+    pub const fn from_fields(
         id: ModeId,
         display_name: &'static str,
         cursor_style: CursorStyle,

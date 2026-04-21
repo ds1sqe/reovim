@@ -23,8 +23,8 @@ pub struct TextCursorShadow {
 }
 
 impl TextCursorShadow {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x00000100000001B3;
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
 
     /// Invalid sentinel value.
     #[must_use]
@@ -39,7 +39,7 @@ impl TextCursorShadow {
 
     /// Update the shadow from authoritative text cursor state.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn update(&mut self, buffer_id: BufferId, line: usize, col: usize) {
+    pub const fn update(&mut self, buffer_id: BufferId, line: usize, col: usize) {
         self.buffer_id = buffer_id;
         self.line = line as u32;
         self.col = col as u32;
@@ -62,8 +62,8 @@ impl TextCursorShadow {
         for byte in (self.buffer_id.as_usize() as u64)
             .to_le_bytes()
             .into_iter()
-            .chain((self.line as u64).to_le_bytes())
-            .chain((self.col as u64).to_le_bytes())
+            .chain(u64::from(self.line).to_le_bytes())
+            .chain(u64::from(self.col).to_le_bytes())
         {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(Self::FNV_PRIME);

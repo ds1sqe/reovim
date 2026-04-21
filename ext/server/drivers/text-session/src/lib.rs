@@ -94,7 +94,7 @@
 pub mod api;
 pub mod bridges;
 mod buffer_access;
-mod change_bridge;
+pub(crate) mod change_bridge;
 mod jumplist;
 mod key_dispatch;
 mod mark;

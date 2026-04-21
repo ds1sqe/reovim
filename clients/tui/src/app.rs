@@ -324,16 +324,14 @@ impl<O: TuiOutput> TuiApp<O> {
         // Get initial mode via projection (v3: no dedicated get_mode RPC)
         match self.client.get_projections(&["text.mode"]).await {
             Ok(entries) => {
-                if let Some(entry) = entries.first() {
-                    if let Some(datum) = &entry.datum {
-                        if let Ok(mode_name) = std::str::from_utf8(&datum.content) {
-                            self.state.mode_name = mode_name.to_string();
-                            self.state.mode_display = mode_name.to_string();
-                            let is_insert =
-                                mode_name.contains("insert") || mode_name.contains("INSERT");
-                            self.state.set_insert_mode(is_insert);
-                        }
-                    }
+                if let Some(entry) = entries.first()
+                    && let Some(datum) = &entry.datum
+                    && let Ok(mode_name) = std::str::from_utf8(&datum.content)
+                {
+                    self.state.mode_name = mode_name.to_string();
+                    self.state.mode_display = mode_name.to_string();
+                    let is_insert = mode_name.contains("insert") || mode_name.contains("INSERT");
+                    self.state.set_insert_mode(is_insert);
                 }
             }
             Err(e) => {
@@ -359,7 +357,7 @@ impl<O: TuiOutput> TuiApp<O> {
         }
 
         // Get buffer content for each window
-        self.fetch_buffer_contents().await?;
+        self.fetch_buffer_contents()?;
 
         // Fetch display options (line numbers)
         self.fetch_display_options().await;
@@ -496,7 +494,8 @@ impl<O: TuiOutput> TuiApp<O> {
     }
 
     /// Fetch buffer content for all visible windows.
-    async fn fetch_buffer_contents(&mut self) -> Result<(), TuiAppError> {
+    #[allow(clippy::result_large_err)] // TuiAppError propagates TuiGrpcError with tonic::Status
+    fn fetch_buffer_contents(&mut self) -> Result<(), TuiAppError> {
         let buffer_ids: Vec<u64> = self
             .state
             .windows
@@ -510,8 +509,7 @@ impl<O: TuiOutput> TuiApp<O> {
                 // get_buffer_content is a stub; queue token refresh for when emitter lands.
                 let content = self
                     .client
-                    .get_buffer_content(Some(buffer_id), None, None)
-                    .await?;
+                    .get_buffer_content(Some(buffer_id), None, None)?;
                 if !content.lines.is_empty() {
                     self.state.buffer_cache.insert(buffer_id, content.lines);
                 }
@@ -573,7 +571,7 @@ impl<O: TuiOutput> TuiApp<O> {
                             self.handle_server_notification(notif).await?;
 
                             // Drain pending token refreshes (no-op in v3 until emitter lands)
-                            self.pending_token_refresh.drain();
+                            self.pending_token_refresh.clear();
 
                             if self.needs_display_options_refresh {
                                 self.fetch_display_options().await;

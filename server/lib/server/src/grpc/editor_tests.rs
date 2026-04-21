@@ -91,10 +91,10 @@ async fn test_set_active_buffer_success() {
 
 // test_resize_updates_terminal_size_for_existing_client: REMOVED — ResizeRequest/resize RPC deleted in v3 (#753).
 
-/// Cover the stub path in set_active_buffer with an authenticated client.
+/// Cover the stub path in `set_active_buffer` with an authenticated client.
 ///
-/// active_buffer is now domain-owned (#753 E3); the RPC logs a debug stub
-/// and returns ok. Verify the handler succeeds with a client_id in extensions.
+/// `active_buffer` is now domain-owned (#753 E3); the RPC logs a debug stub
+/// and returns ok. Verify the handler succeeds with a `client_id` in extensions.
 #[tokio::test]
 async fn test_set_active_buffer_updates_per_client_state() {
     let (registry, session) = test_registry_with_buffer_manager();

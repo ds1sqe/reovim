@@ -275,6 +275,10 @@ impl GrpcClient {
     }
 
     /// Backward-compatible alias for `send_input`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendInputResponse, GrpcClientError> {
         self.send_input(keys).await
@@ -579,6 +583,10 @@ impl GrpcClient {
     }
 
     /// Backward-compatible alias.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails or target client doesn't exist.
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn debug_send_keys(
         &mut self,

@@ -49,7 +49,7 @@ impl std::fmt::Display for ClientId {
 /// only the active driver owns how the 8-byte body is produced. A sentinel
 /// value of all-zeros indicates "no cursor seen yet".
 ///
-/// No text-domain fields (line, col, buffer_id) are exposed here.
+/// No text-domain fields (line, col, `buffer_id`) are exposed here.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CursorSnapshot(pub [u8; 8]);
 

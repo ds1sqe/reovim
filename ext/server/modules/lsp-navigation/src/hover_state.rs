@@ -67,7 +67,7 @@ impl HoverState {
     }
 
     /// Store the opaque cursor identity for stale-cursor dismissal.
-    pub fn set_origin_cursor(&mut self, cursor: &CursorSnapshot) {
+    pub const fn set_origin_cursor(&mut self, cursor: &CursorSnapshot) {
         self.origin_cursor = *cursor.as_bytes();
     }
 

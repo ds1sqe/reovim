@@ -266,6 +266,7 @@ impl PresenceTestClient {
     /// Get buffer content.
     ///
     /// Returns the content of the active buffer.
+    #[allow(clippy::unused_async)] // async kept for API compatibility with callers that .await
     pub async fn get_buffer(&mut self) -> Result<String, String> {
         Err(
             "get_buffer_content removed in proto v3; buffer content routes through projections"

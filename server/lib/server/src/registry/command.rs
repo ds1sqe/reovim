@@ -20,7 +20,7 @@ use {
 /// Entry in the command registry with optional ownership tracking.
 #[derive(Clone)]
 struct CommandEntry {
-    /// The command (metadata-only, execution via DomainDriver).
+    /// The command (metadata-only, execution via `DomainDriver`).
     handler: Arc<dyn Command>,
     /// The module that owns this command (if any).
     owner: Option<ModuleId>,

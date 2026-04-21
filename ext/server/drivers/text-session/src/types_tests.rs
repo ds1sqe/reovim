@@ -110,19 +110,8 @@ fn test_window_layout_add() {
     assert_eq!(layout.active_id(), Some(id2));
 }
 
-#[test]
-fn test_key_sequence() {
-    let mut seq = KeySequence::new();
-    assert!(seq.is_empty());
-
-    seq.push("d".to_string());
-    seq.push("w".to_string());
-    assert!(!seq.is_empty());
-    assert_eq!(seq.as_string(), "dw");
-
-    seq.clear();
-    assert!(seq.is_empty());
-}
+// removed: test_key_sequence — KeySequence moved to reovim-driver-text-input (Plan 14 I.6);
+// circular dep prevents importing it here. KeySequence tests live in text-input's test suite.
 
 #[test]
 fn test_session_new() {
@@ -147,7 +136,6 @@ fn test_session_bootstrap() {
     // BootstrapState has per-client initial state
     assert_eq!(bootstrap.mode_stack.current(), &mode);
     assert!(bootstrap.windows.is_empty());
-    assert!(bootstrap.pending_keys.is_empty());
     assert!(bootstrap.extensions.is_empty());
 }
 
@@ -348,53 +336,9 @@ fn test_window_layout_clone() {
     assert_eq!(cloned.active_id(), Some(id));
 }
 
-// =========================================================================
-// Additional KeySequence tests
-// =========================================================================
-
-#[test]
-fn test_key_sequence_keys() {
-    let mut seq = KeySequence::new();
-    seq.push("d".to_string());
-    seq.push("w".to_string());
-
-    let keys = seq.keys();
-    assert_eq!(keys.len(), 2);
-    assert_eq!(keys[0], "d");
-    assert_eq!(keys[1], "w");
-}
-
-#[test]
-fn test_key_sequence_default() {
-    let seq = KeySequence::default();
-    assert!(seq.is_empty());
-    assert!(seq.keys().is_empty());
-    assert!(seq.as_string().is_empty());
-}
-
-#[test]
-fn test_key_sequence_as_string_single() {
-    let mut seq = KeySequence::new();
-    seq.push("a".to_string());
-    assert_eq!(seq.as_string(), "a");
-}
-
-#[test]
-fn test_key_sequence_special_keys() {
-    let mut seq = KeySequence::new();
-    seq.push("<C-w>".to_string());
-    seq.push("h".to_string());
-    assert_eq!(seq.as_string(), "<C-w>h");
-    assert_eq!(seq.keys().len(), 2);
-}
-
-#[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn test_key_sequence_debug() {
-    let seq = KeySequence::new();
-    let debug = format!("{seq:?}");
-    assert!(debug.contains("KeySequence"));
-}
+// removed: test_key_sequence_keys, test_key_sequence_default, test_key_sequence_as_string_single,
+// test_key_sequence_special_keys, test_key_sequence_debug — KeySequence moved to
+// reovim-driver-text-input (Plan 14 I.6); circular dep prevents importing it here.
 
 // =========================================================================
 // Additional Viewport tests
@@ -611,7 +555,6 @@ fn test_bootstrap_state_new() {
 
     assert_eq!(state.mode_stack.current(), &mode);
     assert!(state.windows.is_empty());
-    assert!(state.pending_keys.is_empty());
     assert!(state.extensions.is_empty());
 }
 
@@ -624,7 +567,6 @@ fn test_bootstrap_state_with_buffer() {
     assert_eq!(state.mode_stack.current(), &mode);
     assert_eq!(state.windows.len(), 1);
     assert_eq!(state.windows.active().unwrap().buffer_id, Some(buf_id));
-    assert!(state.pending_keys.is_empty());
     assert!(state.extensions.is_empty());
 }
 

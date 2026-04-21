@@ -54,6 +54,8 @@ pub async fn keys(
 ///
 /// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::result_large_err)] // GrpcClientError is shared; boxing not warranted for a stub
+#[allow(clippy::unused_async)] // callers await; kept async for API stability
 pub async fn mode(
     _client: &mut GrpcClient,
     _target_client_id: u64,
@@ -171,6 +173,8 @@ pub async fn buffers(
 ///
 /// Returns an error if the gRPC call fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::result_large_err)] // GrpcClientError is shared; boxing not warranted for a stub
+#[allow(clippy::unused_async)] // callers await; kept async for API stability
 pub async fn buffer(
     client: &mut GrpcClient,
     id: Option<u64>,

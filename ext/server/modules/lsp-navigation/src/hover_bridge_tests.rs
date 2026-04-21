@@ -16,6 +16,7 @@ fn cursor_snapshot(
 fn set_cursor_shadow(map: &mut ExtensionMap, buffer_id: u64, line: u32, col: u32) {
     let shadow = map.get_or_insert::<TextCursorShadow>();
     shadow.update(
+        #[allow(clippy::cast_possible_truncation)] // test-only helper; buffer IDs are small
         reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize),
         line as usize,
         col as usize,

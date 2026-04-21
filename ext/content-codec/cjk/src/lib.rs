@@ -40,7 +40,7 @@ pub mod factory;
 
 pub use {classifier::CjkClassifier, codec::CjkCodec, factory::CjkCodecFactory};
 
-/// CJK content type → encoding_rs mapping used at registration time.
+/// CJK content type → `encoding_rs` mapping used at registration time.
 const CJK_ENCODINGS: &[(&str, &encoding_rs::Encoding)] = &[
     ("encoding/euc-kr", encoding_rs::EUC_KR),
     ("encoding/shift-jis", encoding_rs::SHIFT_JIS),
@@ -59,7 +59,7 @@ pub struct CodecCjkModule {
 impl CodecCjkModule {
     /// Create a new CJK codec module.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             registry: None,
             content_types: Vec::new(),

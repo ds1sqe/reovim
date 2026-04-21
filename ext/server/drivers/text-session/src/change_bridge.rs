@@ -26,10 +26,10 @@ use {
 /// Convert text-domain `StateChanges` to a `DispatchResult`.
 ///
 /// Extracts only the fields that `DispatchResult` cares about (buffer lifecycle
-/// and session directives). All signal flags (cursor_moved, mode_changed, etc.)
+/// and session directives). All signal flags (`cursor_moved`, `mode_changed`, etc.)
 /// remain driver/server-internal and are not exposed through the contract.
 #[must_use]
-pub(crate) fn state_changes_to_dispatch_result(changes: &StateChanges) -> DispatchResult {
+pub fn state_changes_to_dispatch_result(changes: &StateChanges) -> DispatchResult {
     let directive = if changes.should_quit {
         Directive::Quit
     } else {
@@ -48,7 +48,7 @@ pub(crate) fn state_changes_to_dispatch_result(changes: &StateChanges) -> Dispat
 
 /// Convert text-domain `StateChanges` to a `CommandResult`.
 #[must_use]
-pub(crate) fn state_changes_to_command_result(changes: &StateChanges) -> CommandResult {
+pub fn state_changes_to_command_result(changes: &StateChanges) -> CommandResult {
     CommandResult::Handled(state_changes_to_dispatch_result(changes))
 }
 

@@ -1,6 +1,6 @@
 //! Projection store — server-side cache for domain projections.
 //!
-//! Manages versioned projection state per (ClientId, ProjectionTag).
+//! Manages versioned projection state per (`ClientId`, `ProjectionTag`).
 //! Persistent projections are deduplicated by payload equality.
 //! Transient projections are forwarded immediately and never cached.
 
@@ -20,11 +20,11 @@ struct StoredProjection {
 
 /// Server-side projection store.
 ///
-/// Caches persistent projections per (ClientId, ProjectionTag).
+/// Caches persistent projections per (`ClientId`, `ProjectionTag`).
 /// Assigns monotonic versions per slot. Deduplicates by payload equality.
 #[derive(Debug, Default)]
 pub struct ProjectionStore {
-    /// Stored projections keyed by (client_id, tag).
+    /// Stored projections keyed by (`client_id`, tag).
     entries: HashMap<(usize, ProjectionTag), StoredProjection>,
     /// Next version to assign (monotonically increasing).
     next_version: u64,
@@ -55,8 +55,8 @@ impl ProjectionStore {
 
     /// Seed the store with initial projections for a new client.
     ///
-    /// Called BEFORE sending JoinResponse (D15 ordering).
-    /// Transient projections are debug_assert'd and filtered (D21).
+    /// Called BEFORE sending `JoinResponse` (D15 ordering).
+    /// Transient projections are `debug_assert`'d and filtered (D21).
     pub fn seed(&mut self, client_id: ClientId, projections: Vec<Projection>) {
         for proj in projections {
             if proj.delivery == ProjectionDelivery::Transient {
@@ -89,10 +89,10 @@ impl ProjectionStore {
                     let key = (client_id.as_usize(), proj.tag.clone());
 
                     // Deduplicate by payload equality
-                    if let Some(existing) = self.entries.get(&key) {
-                        if existing.projection.payload == proj.payload {
-                            continue; // No change, skip notification
-                        }
+                    if let Some(existing) = self.entries.get(&key)
+                        && existing.projection.payload == proj.payload
+                    {
+                        continue; // No change, skip notification
                     }
 
                     let version = self.next_version;
@@ -118,6 +118,7 @@ impl ProjectionStore {
     }
 
     /// Get all projections for a client (for state queries).
+    #[must_use]
     pub fn get_all(&self, client_id: ClientId) -> Vec<VersionedProjection> {
         self.entries
             .iter()

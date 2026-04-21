@@ -53,6 +53,16 @@ fn matches_tree(rel: &str, tree: &str) -> bool {
 }
 
 fn classify(rel_path: &str) -> Location {
+    // Repo-core trees — defined first to satisfy items_after_statements.
+    const REPO_CORE_TREES: &[&str] = &[
+        "arch",
+        "lib",
+        "uapi",
+        "server/lib/kernel",
+        "server/lib/subsys",
+        "server/lib/server",
+    ];
+
     let rel = rel_path.trim_start_matches("./").trim_end_matches('/');
 
     // Fixtures first (more specific than any parent).
@@ -92,15 +102,6 @@ fn classify(rel_path: &str) -> Location {
         return Location::App;
     }
 
-    // Repo-core trees.
-    const REPO_CORE_TREES: &[&str] = &[
-        "arch",
-        "lib",
-        "uapi",
-        "server/lib/kernel",
-        "server/lib/subsys",
-        "server/lib/server",
-    ];
     for tree in REPO_CORE_TREES {
         if matches_tree(rel, tree) {
             return Location::RepoCore;
@@ -145,16 +146,15 @@ fn no_repo_core_depends_on_ext() {
 
             let is_violation = match (origin, target) {
                 // Repo-core MUST NOT touch ext.
-                (Location::RepoCore, Location::ExtServer) => true,
-                (Location::RepoCore, Location::ExtClient { .. }) => true,
+                // Client-core must NOT touch server-side ext (server drivers,
+                // server modules, server domain, or shared client ext libs).
+                (Location::RepoCore | Location::ClientCore { .. }, Location::ExtServer)
+                | (Location::RepoCore, Location::ExtClient { .. }) => true,
 
                 // Client-core may only touch its own platform's ext.
                 (Location::ClientCore { platform }, Location::ExtClient { platform: p2 }) => {
                     platform != p2
                 }
-                // Client-core must NOT touch server-side ext (server drivers,
-                // server modules, server domain, or shared client ext libs).
-                (Location::ClientCore { .. }, Location::ExtServer) => true,
 
                 // App, Ext*, Fixture, Other have no restriction here.
                 _ => false,
@@ -162,7 +162,7 @@ fn no_repo_core_depends_on_ext() {
 
             if is_violation {
                 violations
-                    .push(format!("{} ({:?}) -> {} ({:?})", pkg.name, origin, dep.name, target,));
+                    .push(format!("{} ({:?}) -> {} ({:?})", pkg.name, origin, dep.name, target));
             }
         }
     }

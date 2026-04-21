@@ -20,6 +20,10 @@ impl KeybindingStore {
     }
 
     /// Add a keybinding to the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     pub fn add(&self, binding: KeybindingRegistration) {
         self.keybindings
             .write()
@@ -28,6 +32,10 @@ impl KeybindingStore {
     }
 
     /// Add multiple keybindings to the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     pub fn add_all(&self, bindings: impl IntoIterator<Item = KeybindingRegistration>) {
         self.keybindings
             .write()
@@ -36,6 +44,10 @@ impl KeybindingStore {
     }
 
     /// Take all keybindings, clearing the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     pub fn take_keybindings(&self) -> Vec<KeybindingRegistration> {
         std::mem::take(
             &mut *self
@@ -46,6 +58,10 @@ impl KeybindingStore {
     }
 
     /// Get the number of registered keybindings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn len(&self) -> usize {
         self.keybindings
@@ -55,6 +71,10 @@ impl KeybindingStore {
     }
 
     /// Check if the store is empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.keybindings

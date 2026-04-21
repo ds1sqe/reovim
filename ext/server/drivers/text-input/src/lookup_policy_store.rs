@@ -20,6 +20,10 @@ impl LookupPolicyStore {
     }
 
     /// Set the lookup policy.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     pub fn set(&self, policy: Arc<dyn KeyLookupPolicy>) {
         *self
             .policy
@@ -28,6 +32,10 @@ impl LookupPolicyStore {
     }
 
     /// Take the lookup policy, clearing the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     pub fn take(&self) -> Option<Arc<dyn KeyLookupPolicy>> {
         self.policy
             .write()
@@ -36,6 +44,10 @@ impl LookupPolicyStore {
     }
 
     /// Check if a policy has been registered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     #[must_use]
     pub fn has_policy(&self) -> bool {
         self.policy

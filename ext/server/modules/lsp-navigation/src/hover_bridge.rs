@@ -126,8 +126,7 @@ impl ExtensionStateBridge for HoverBridge {
         let origin_cursor = client_extensions
             .get::<TextCursorShadow>()
             .filter(|shadow| shadow.valid)
-            .map(TextCursorShadow::cursor_snapshot)
-            .unwrap_or(CursorSnapshot::SENTINEL);
+            .map_or(CursorSnapshot::SENTINEL, TextCursorShadow::cursor_snapshot);
 
         // Move the snapshot into per-client HoverState.
         let state = client_extensions.get_or_insert::<HoverState>();

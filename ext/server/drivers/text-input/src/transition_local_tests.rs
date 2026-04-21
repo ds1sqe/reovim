@@ -65,7 +65,7 @@ fn mode_transition_variants_store_mode_and_context() {
 
     match (ModeTransition::Push {
         mode: mode.clone(),
-        context: context.clone(),
+        context,
     }) {
         ModeTransition::Push {
             mode: pushed,

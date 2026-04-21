@@ -12,6 +12,10 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Enable for building as standalone dynamic library.
+dynamic = []
+
 [dependencies]
 reovim-input-codec = { workspace = true }
 reovim-module-macros = { workspace = true }

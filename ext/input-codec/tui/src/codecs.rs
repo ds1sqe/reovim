@@ -80,7 +80,7 @@
 //!
 //! # Header assembly helper
 //!
-//! To produce a full `InputEvent` payload from encode() output, callers
+//! To produce a full `InputEvent` payload from `encode()` output, callers
 //! assemble: `[kind_le, flags_le, context_le] + body`.
 //! The `build_full_payload` helper function does this.
 

@@ -16,11 +16,9 @@ impl Codec for MockCodec {
     }
 
     fn encode(&self, value: &dyn Any) -> Result<Vec<u8>, InputPayloadError> {
-        if let Some(bytes) = value.downcast_ref::<Vec<u8>>() {
-            Ok(bytes.clone())
-        } else {
-            Err(InputPayloadError::TooShort { got: 0, min: 1 })
-        }
+        value
+            .downcast_ref::<Vec<u8>>()
+            .map_or(Err(InputPayloadError::TooShort { got: 0, min: 1 }), |bytes| Ok(bytes.clone()))
     }
 
     fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, InputPayloadError> {

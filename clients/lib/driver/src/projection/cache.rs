@@ -253,11 +253,8 @@ mod tests {
         cache.update(&make_projection("text.cursor", 1, "1:0", 1));
         cache.update(&make_projection("3d.transform", 2, "xyz", 1));
 
-        let domain1: Vec<_> = cache.entries_for_domain(DomainId(1)).collect();
-        assert_eq!(domain1.len(), 2);
-
-        let domain2: Vec<_> = cache.entries_for_domain(DomainId(2)).collect();
-        assert_eq!(domain2.len(), 1);
+        assert_eq!(cache.entries_for_domain(DomainId(1)).count(), 2);
+        assert_eq!(cache.entries_for_domain(DomainId(2)).count(), 1);
     }
 
     #[test]

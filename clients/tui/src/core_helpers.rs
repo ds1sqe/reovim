@@ -178,7 +178,8 @@ pub fn create_default_window(state: &mut TuiCoreState, buffer_id: u64, width: u1
 ///
 /// Returns an error if buffer content fetch fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn fetch_buffer_contents(
+#[allow(clippy::result_large_err)] // TuiGrpcError contains tonic::Status; boxing not warranted
+pub fn fetch_buffer_contents(
     client: &mut TuiGrpcClient,
     state: &mut TuiCoreState,
 ) -> Result<(), TuiGrpcError> {
@@ -187,9 +188,7 @@ pub async fn fetch_buffer_contents(
 
     for buffer_id in buffer_ids {
         if let std::collections::hash_map::Entry::Vacant(e) = state.buffer_cache.entry(buffer_id) {
-            let content = client
-                .get_buffer_content(Some(buffer_id), None, None)
-                .await?;
+            let content = client.get_buffer_content(Some(buffer_id), None, None)?;
             e.insert(content.lines);
         }
     }
@@ -211,15 +210,14 @@ pub async fn fetch_buffer_contents(
 ///
 /// Returns an error if buffer content fetch fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub async fn refetch_buffer(
+#[allow(clippy::result_large_err)] // TuiGrpcError contains tonic::Status; boxing not warranted
+pub fn refetch_buffer(
     client: &mut TuiGrpcClient,
     state: &mut TuiCoreState,
     buffer_id: u64,
 ) -> Result<(), TuiGrpcError> {
     state.buffer_cache.remove(&buffer_id);
-    let content = client
-        .get_buffer_content(Some(buffer_id), None, None)
-        .await?;
+    let content = client.get_buffer_content(Some(buffer_id), None, None)?;
     state.buffer_cache.insert(buffer_id, content.lines);
     Ok(())
 }

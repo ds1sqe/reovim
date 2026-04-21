@@ -64,7 +64,7 @@ pub mod types;
 /// # Example
 ///
 /// ```no_run
-/// use reovim_driver_text_ffi_python::init_python;
+/// use reovim_driver_ffi_python::init_python;
 ///
 /// // Initialize Python with reovim module
 /// init_python();

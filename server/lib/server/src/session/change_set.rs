@@ -12,7 +12,7 @@ use {
 /// Internal server change set.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone)]
-pub(crate) struct ChangeSet {
+pub struct ChangeSet {
     pub modified_buffers: Vec<BufferId>,
     pub created_buffers: Vec<BufferId>,
     pub deleted_buffers: Vec<BufferId>,

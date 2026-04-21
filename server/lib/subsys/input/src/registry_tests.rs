@@ -1,4 +1,4 @@
-//! Tests for InputCodecRegistry — register/unregister/get contract.
+//! Tests for `InputCodecRegistry` — register/unregister/get contract.
 
 use {
     super::registry::{DefaultInputCodecRegistry, InputCodecRegistry},

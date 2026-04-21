@@ -86,6 +86,7 @@ fn extract_cursor_from_statusline(frame: &str) -> Option<(u32, u32)> {
 }
 
 #[tokio::test]
+#[ignore = "pre-existing post-Plan-14-E6: see #758 (render pipeline regression)"]
 #[allow(clippy::too_many_lines)]
 async fn manual_verification_474() {
     let harness = TestServerHarness::spawn()

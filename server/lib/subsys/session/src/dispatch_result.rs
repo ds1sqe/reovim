@@ -39,7 +39,7 @@ impl BufferChanges {
 
     /// Whether any buffer changes occurred.
     #[must_use]
-    pub fn has_changes(&self) -> bool {
+    pub const fn has_changes(&self) -> bool {
         !self.modified.is_empty() || !self.created.is_empty() || !self.closed.is_empty()
     }
 }
@@ -64,7 +64,7 @@ pub enum Directive {
 
 /// Result of dispatching a command to a domain driver.
 ///
-/// Distinguishes routing failure (NotHandled) from execution failure (Error).
+/// Distinguishes routing failure (`NotHandled`) from execution failure (`Error`).
 #[derive(Debug, Clone)]
 pub enum CommandResult {
     /// Command recognized and executed.

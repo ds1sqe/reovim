@@ -363,10 +363,9 @@ impl Client {
                 Some(ClientRelation::Following { target: old_target }),
                 Some(ClientRelation::Sharing { with: new_target }),
             ) = (&client.relation, &new_relation)
+                && old_target == new_target
             {
-                if old_target == new_target {
-                    return TransitionResult::RequiresDomainSync;
-                }
+                return TransitionResult::RequiresDomainSync;
             }
         }
 
@@ -490,7 +489,7 @@ impl Client {
 ///
 /// Contains per-client state needed for routing and layout operations.
 /// Text-domain state (windows, viewport, selection, tabs, registers, marks,
-/// jumplist, active_buffer) is owned by the domain driver (#753).
+/// jumplist, `active_buffer`) is owned by the domain driver (#753).
 pub struct EditingState {
     /// Mode stack (current mode on top).
     pub mode_stack: ModeStack,

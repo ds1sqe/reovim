@@ -58,7 +58,7 @@ pub struct CodecCsvModule {
 impl CodecCsvModule {
     /// Create a new CSV codec module.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             registry: None,
             content_types: Vec::new(),

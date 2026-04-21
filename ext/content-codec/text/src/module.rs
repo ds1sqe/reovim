@@ -30,7 +30,7 @@ pub struct TextContentCodecModule {
 impl TextContentCodecModule {
     /// Create a new instance with no registry bound yet.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { registry: None }
     }
 }

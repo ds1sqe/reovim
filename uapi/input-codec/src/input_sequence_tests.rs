@@ -1,4 +1,4 @@
-//! Tests for InputSequence — opaque payload sequence.
+//! Tests for `InputSequence` — opaque payload sequence.
 
 use {super::input_sequence::InputSequence, std::collections::HashSet};
 
@@ -95,10 +95,10 @@ fn starts_with_prefix_match() {
 
     let mut full = InputSequence::new();
     full.push(p1.clone());
-    full.push(p2.clone());
+    full.push(p2);
 
     let mut prefix = InputSequence::new();
-    prefix.push(p1.clone());
+    prefix.push(p1);
 
     assert!(full.starts_with(&prefix));
     assert!(!prefix.starts_with(&full));
@@ -121,7 +121,7 @@ fn equality_and_hash_consistent() {
     let mut a = InputSequence::new();
     a.push(p.clone());
     let mut b = InputSequence::new();
-    b.push(p.clone());
+    b.push(p);
 
     assert_eq!(a, b);
 

@@ -382,7 +382,7 @@ impl KeymapRegistry {
 /// directly; `InputSequence` stores `Vec<Vec<u8>>` and compares byte-wise,
 /// so any deterministic encoding suffices for dispatch tests.
 #[cfg(test)]
-pub(crate) mod test_helpers {
+pub mod test_helpers {
     use reovim_subsys_input::{INPUT_HEADER_SIZE, InputSequence};
 
     /// Build an `InputSequence` from a simple ASCII notation string.

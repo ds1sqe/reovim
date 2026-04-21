@@ -59,7 +59,7 @@ pub enum SyncMode {
 
 /// Presence state for a single connected client.
 ///
-/// Domain-neutral (#753 E6): cursor, visible_lines, and mode are domain-owned
+/// Domain-neutral (#753 E6): cursor, `visible_lines`, and mode are domain-owned
 /// state — they live in the domain driver's per-client `EditingState`, not here.
 /// The server presence layer only tracks connection identity and sync topology.
 #[derive(Debug, Clone)]

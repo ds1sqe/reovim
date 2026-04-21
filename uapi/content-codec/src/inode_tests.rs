@@ -336,6 +336,12 @@ fn apply_edit_bytes_variant_requires_codec_translation() {
 
 #[test]
 fn apply_edit_text_requires_translatable_codec() {
+    // A synthetic domain-edit payload — read-only codecs reject any
+    // DecodedEdit, so the wrapped value shape is irrelevant.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct DummyEdit;
+    crate::impl_domain_edit!(DummyEdit);
+
     let mut table = InodeTable::new();
     let id = table.insert(Arc::new(HeapByteSource::new(b"hello")));
     let handle = mount_with_buffer(
@@ -346,12 +352,6 @@ fn apply_edit_text_requires_translatable_codec() {
         Arc::new(CodecReadOnly) as Arc<dyn ContentCodec>,
     )
     .expect("mount");
-
-    // A synthetic domain-edit payload — read-only codecs reject any
-    // DecodedEdit, so the wrapped value shape is irrelevant.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct DummyEdit;
-    crate::impl_domain_edit!(DummyEdit);
 
     let edit = DecodedEdit::Domain(crate::DomainEdit::new(DummyEdit));
 

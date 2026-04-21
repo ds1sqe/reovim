@@ -99,8 +99,6 @@ pub use reovim_subsys_input::{
 #[cfg(test)]
 mod binding_info_tests;
 #[cfg(test)]
-mod dispatch_provider_tests;
-#[cfg(test)]
 mod fallback_tests;
 #[cfg(test)]
 mod input_sequence_bridge_tests;

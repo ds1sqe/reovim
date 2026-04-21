@@ -23,6 +23,10 @@ impl ModeInfoStore {
     }
 
     /// Add a mode to the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     pub fn add(&self, info: ModeInfo) {
         self.modes
             .write()
@@ -36,11 +40,19 @@ impl ModeInfoStore {
     }
 
     /// Take all modes, clearing the store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     pub fn take_modes(&self) -> Vec<ModeInfo> {
         std::mem::take(&mut *self.modes.write().expect("ModeInfoStore lock poisoned"))
     }
 
     /// Get the number of registered modes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     #[must_use]
     pub fn len(&self) -> usize {
         self.modes
@@ -50,6 +62,10 @@ impl ModeInfoStore {
     }
 
     /// Check if the store is empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.modes
@@ -59,6 +75,10 @@ impl ModeInfoStore {
     }
 
     /// Find a registered mode by module name and mode name.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned.
     #[must_use]
     pub fn find_by_name(&self, module: &str, name: &str) -> Option<ModeId> {
         self.modes

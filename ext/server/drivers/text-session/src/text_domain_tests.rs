@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use {
-    reovim_input_codec::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
+    reovim_codec_tui_input::{
+        KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseEvent, MouseEventKind, encode_key_event,
+        encode_mouse_event,
+    },
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, WindowId},
     reovim_provider_text::TextBufferRegistry,
     reovim_subsys_input::{INPUT_HEADER_SIZE, InputEvent},
@@ -275,8 +278,7 @@ fn test_cursors_with_window() {
 // ============================================================================
 
 fn key_input_event(key: KeyEvent) -> InputEvent {
-    InputEvent::new(reovim_input_codec::key::encode(&key), None, 0)
-        .expect("encoded key payload should be valid")
+    InputEvent::new(encode_key_event(&key), None, 0).expect("encoded key payload should be valid")
 }
 
 #[test]
@@ -320,10 +322,10 @@ fn dispatch_input_valid_key_decodes_and_forwards() {
     let client = ClientId::new(1);
     driver.on_client_added(client);
 
-    let payload = reovim_input_codec::key::encode(&reovim_input_codec::KeyEvent::full(
-        reovim_input_codec::KeyCode::Char('x'),
-        reovim_input_codec::Modifiers::CTRL | reovim_input_codec::Modifiers::SHIFT,
-        reovim_input_codec::KeyEventKind::Repeat,
+    let payload = encode_key_event(&KeyEvent::full(
+        KeyCode::Char('x'),
+        Modifiers::CTRL | Modifiers::SHIFT,
+        KeyEventKind::Repeat,
     ));
     let event = InputEvent::new(payload, None, 0).expect("key payload should be valid");
     let mut client_ext = reovim_subsys_session::ExtensionMap::new();
@@ -350,7 +352,7 @@ fn dispatch_input_malformed_key_payload_is_noop() {
     driver.on_client_added(client);
 
     let mut payload = vec![0_u8; INPUT_HEADER_SIZE];
-    payload[..2].copy_from_slice(&reovim_input_codec::key::KIND_KEY.to_le_bytes());
+    payload[..2].copy_from_slice(&reovim_codec_tui_input::KIND_KEY.to_le_bytes());
     let event = InputEvent::new(payload, None, 0).expect("header-sized payload should be valid");
     let mut client_ext = reovim_subsys_session::ExtensionMap::new();
     let mut shared_ext = reovim_subsys_session::ExtensionMap::new();
@@ -368,12 +370,8 @@ fn dispatch_input_unsupported_payload_is_noop() {
     let client = ClientId::new(1);
     driver.on_client_added(client);
 
-    let payload = reovim_input_codec::pointer::encode(&reovim_input_codec::pointer::PointerEvent {
-        x: 3,
-        y: 7,
-        button_mask: 1,
-        flags: reovim_subsys_input::InputFlags::PRESS,
-    });
+    // Use a mouse event payload (KIND_MOUSE = 0x0002) — not handled by the key dispatcher.
+    let payload = encode_mouse_event(&MouseEvent::new(MouseEventKind::Moved, 3, 7));
     let event = InputEvent::new(payload, None, 0).expect("pointer payload should be valid");
     let mut client_ext = reovim_subsys_session::ExtensionMap::new();
     let mut shared_ext = reovim_subsys_session::ExtensionMap::new();

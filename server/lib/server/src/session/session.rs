@@ -64,7 +64,7 @@ pub struct Session {
 
     /// Server-side projection cache (#753).
     ///
-    /// Stores versioned domain projections per (ClientId, ProjectionTag).
+    /// Stores versioned domain projections per (`ClientId`, `ProjectionTag`).
     /// Disjoint from `state`/`clients` locks — acquired independently after dispatch.
     projection_store: RwLock<super::projection_store::ProjectionStore>,
 
@@ -215,17 +215,18 @@ impl Session {
 
     /// Get the active buffer for a client via domain driver (#753 E3).
     ///
-    /// active_buffer is now exclusively owned by the domain driver.
+    /// `active_buffer` is now exclusively owned by the domain driver.
     /// Returns `None` when no domain driver is wired or driver has no buffer.
     #[must_use]
     pub fn active_buffer_for_client(
         &self,
         client_id: ClientId,
     ) -> Option<reovim_kernel::api::v1::BufferId> {
-        let driver = self.domain_driver.read();
-        let driver = driver.as_ref()?;
         let subsys_id = reovim_subsys_session::ClientId::new(client_id.as_usize());
-        driver.active_buffer(subsys_id)
+        let driver = self.domain_driver.read();
+        let result = driver.as_ref()?.active_buffer(subsys_id);
+        drop(driver);
+        result
     }
 
     /// Get the compositor generation for a client (#753 E5).
@@ -238,8 +239,7 @@ impl Session {
         clients
             .get(&client_id)
             .and_then(|c| c.state.compositor.as_ref())
-            .map(|c| c.generation())
-            .unwrap_or(0)
+            .map_or(0, |c| c.generation())
     }
 
     // =========================================================================
@@ -250,7 +250,7 @@ impl Session {
     ///
     /// Lock ordering: acquire AFTER releasing `clients`/`state` locks.
     /// The projection store lock is disjoint — no overlap with other session locks.
-    pub fn projection_store(&self) -> &RwLock<super::projection_store::ProjectionStore> {
+    pub const fn projection_store(&self) -> &RwLock<super::projection_store::ProjectionStore> {
         &self.projection_store
     }
 
@@ -276,7 +276,7 @@ impl Session {
     /// Add a client with metadata.
     ///
     /// Creates an independent client with the given metadata.
-    /// Text-domain state (windows, active_buffer, etc.) is managed by the
+    /// Text-domain state (windows, `active_buffer`, etc.) is managed by the
     /// domain driver via `on_client_added` (#753 E3).
     pub fn add_client_with_metadata(&self, client_id: ClientId, metadata: super::ClientMetadata) {
         use reovim_kernel::api::v1::ModeStack;
@@ -457,7 +457,7 @@ impl Session {
     // resolve_key_for_client: REMOVED (#753 E6).
     // Key resolution routes through DomainDriver via dispatch_input_for_client.
 
-    /// Dispatch an opaque InputEvent for a client (domain-neutral path).
+    /// Dispatch an opaque `InputEvent` for a client (domain-neutral path).
     ///
     /// This is the sole server-side dispatch entry point. The caller encodes its
     /// input source into `InputEvent`, then this method routes it to
@@ -523,9 +523,11 @@ impl Session {
         let target_id = ClientDirectory::find_input_target(&clients, client_id)?;
         drop(clients);
 
+        let subsys_id = reovim_subsys_session::ClientId::new(target_id.as_usize());
         let driver = self.domain_driver.read();
-        let driver = driver.as_ref()?;
-        driver.current_mode(reovim_subsys_session::ClientId::new(target_id.as_usize()))
+        let result = driver.as_ref()?.current_mode(subsys_id);
+        drop(driver);
+        result
     }
 
     /// Get access to a client's ring buffer.
@@ -573,10 +575,10 @@ impl Session {
 
     /// Read another client's history ring entry (`PeerHistory`).
     ///
-    /// clipboard_history is now domain-owned (#753 E3).
+    /// `clipboard_history` is now domain-owned (#753 E3).
     /// Returns `None` — use domain driver projections instead.
     #[must_use]
-    pub fn get_peer_history(&self, _client_id: ClientId, _index: u8) -> Option<Vec<u8>> {
+    pub const fn get_peer_history(&self, _client_id: ClientId, _index: u8) -> Option<Vec<u8>> {
         None
     }
 }

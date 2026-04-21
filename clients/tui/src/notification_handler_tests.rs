@@ -1,5 +1,4 @@
-use super::*;
-use crate::SelectionState;
+use {super::*, crate::SelectionState};
 
 // Mock context for testing
 struct MockContext {

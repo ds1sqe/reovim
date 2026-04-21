@@ -11,11 +11,11 @@
 //! - Access to gRPC client (`client_mut()`)
 //! - Optional hooks for interactive-specific behavior (`on_buffer_modified()`)
 //!
-//! In proto v3 the per-field notification variants (ModeChanged, CursorMoved,
-//! SelectionChanged, OptionChanged, BufferModified, ResizeRequest) are replaced
+//! In proto v3 the per-field notification variants (`ModeChanged`, `CursorMoved`,
+//! `SelectionChanged`, `OptionChanged`, `BufferModified`, `ResizeRequest`) are replaced
 //! by the generic `ProjectionUpdated` dispatch and `SurfaceChanged`.
-//! Only server-lifecycle notifications (LayoutChanged, RenderComplete, Detach,
-//! Capture, Presence) remain as typed arms.
+//! Only server-lifecycle notifications (`LayoutChanged`, `RenderComplete`, `Detach`,
+//! `Capture`, `Presence`) remain as typed arms.
 
 use reovim_protocol::v3::{Notification, notification::Payload};
 
@@ -225,7 +225,6 @@ pub async fn handle_notification<C: NotificationContext>(
                 match ctx
                     .client_mut()
                     .get_buffer_content(Some(buf_id), None, None)
-                    .await
                 {
                     Ok(content) => {
                         if !content.lines.is_empty() {

@@ -147,11 +147,11 @@ fn build_buffer_closed_notification(
 /// Build a layout changed notification.
 ///
 /// Uses the per-client compositor for geometry (#474).
-/// Window buffer_id and tabs are domain-owned (#753 E3) — queried via domain driver.
+/// Window `buffer_id` and tabs are domain-owned (#753 E3) — queried via domain driver.
 ///
 /// # Arguments
 ///
-/// * `session` - Session for reading per-client compositor and terminal_size
+/// * `session` - Session for reading per-client compositor and `terminal_size`
 /// * `timestamp` - Notification timestamp
 /// * `client_id` - Client for per-client compositor lookup
 #[allow(clippy::cast_possible_truncation, clippy::option_if_let_else)]

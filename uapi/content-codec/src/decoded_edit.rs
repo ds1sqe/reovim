@@ -323,7 +323,7 @@ impl DecodedEdit {
     /// the concrete edit (via [`DomainEdit::downcast_ref`] or tree-op
     /// dispatch) for domain-level insertion semantics.
     #[must_use]
-    pub fn is_byte_insertion(&self) -> bool {
+    pub const fn is_byte_insertion(&self) -> bool {
         match self {
             Self::Bytes { old_len, .. } => *old_len == 0,
             Self::Domain(_) | Self::Tree { .. } => false,
@@ -337,7 +337,7 @@ impl DecodedEdit {
     /// return `false` at this layer — inspect the concrete edit for
     /// domain-level deletion semantics.
     #[must_use]
-    pub fn is_byte_deletion(&self) -> bool {
+    pub const fn is_byte_deletion(&self) -> bool {
         match self {
             Self::Bytes {
                 old_len, new_bytes, ..

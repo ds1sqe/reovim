@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_driver_annotation::{
+//! use reovim_content_codec::{
 //!     Annotation, AnnotationKind, AnnotationTarget, AnnotationPayload,
 //! };
 //!
@@ -56,7 +56,7 @@ impl AnnotationKind {
     /// # Example
     ///
     /// ```
-    /// use reovim_driver_annotation::AnnotationKind;
+    /// use reovim_content_codec::AnnotationKind;
     ///
     /// let kind = AnnotationKind::new("diagnostic.error");
     /// assert_eq!(kind.name(), "diagnostic.error");
@@ -80,7 +80,7 @@ impl AnnotationKind {
     /// # Example
     ///
     /// ```
-    /// use reovim_driver_annotation::AnnotationKind;
+    /// use reovim_content_codec::AnnotationKind;
     ///
     /// let namespaced = AnnotationKind::new("diagnostic.error");
     /// assert_eq!(namespaced.namespace(), Some("diagnostic"));
@@ -100,7 +100,7 @@ impl AnnotationKind {
     /// # Example
     ///
     /// ```
-    /// use reovim_driver_annotation::AnnotationKind;
+    /// use reovim_content_codec::AnnotationKind;
     ///
     /// let kind = AnnotationKind::new("diagnostic.error");
     /// assert!(kind.is_prefix("diagnostic"));
@@ -177,7 +177,7 @@ impl AnnotationTarget {
     /// # Example
     ///
     /// ```
-    /// use reovim_driver_annotation::AnnotationTarget;
+    /// use reovim_content_codec::AnnotationTarget;
     ///
     /// let line = AnnotationTarget::Line(5);
     /// assert!(line.affects_line(5));
@@ -331,7 +331,7 @@ impl AnnotationPayload {
 /// # Example
 ///
 /// ```
-/// use reovim_driver_annotation::{
+/// use reovim_content_codec::{
 ///     Annotation, AnnotationKind, AnnotationTarget, AnnotationPayload,
 /// };
 ///

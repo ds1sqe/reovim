@@ -42,7 +42,7 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
     request
 }
 
-/// (#753) get_projections replaces get_mode, get_cursor, get_selection.
+/// (#753) `get_projections` replaces `get_mode`, `get_cursor`, `get_selection`.
 #[tokio::test]
 async fn test_get_projections_returns_empty_stub() {
     let (registry, session) = test_registry_with_session();
