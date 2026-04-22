@@ -4,6 +4,9 @@ coverage:
       default:
         target: 100%
         threshold: 0.5%
+      reovim-client-subsys-module:       # Phase B (02-subsys-module.md)
+        target: 100%
+        flags: [line]
     patch:
       default:
         target: 100%
@@ -12,12 +15,6 @@ coverage:
 # Entries stay commented out until the named crate appears in the workspace:
 # codecov's config validator rejects references to unknown packages, so the
 # carve-out ships dormant and each phase uncomments its line at sub-plan landing.
-# coverage:
-#   status:
-#     project:
-#       reovim-client-subsys-module:       # enable in Phase B (02-subsys-module.md)
-#         target: 100%
-#         flags: [line]
 #       reovim-client-subsys-chrome:       # enable in Phase C (03-subsys-chrome-render.md)
 #         target: 100%
 #         flags: [line]

@@ -173,6 +173,7 @@ members = [
     "clients/lib/model",
     "clients/lib/driver",
     "clients/lib/subsys/codec",
+    "clients/lib/subsys/module",
 
     # Client-side ext capabilities (TUI)
     "ext/client/tui/capabilities/cell",
@@ -334,6 +335,9 @@ reovim-client-driver = { path = "./clients/lib/driver", version = "0.15.0-dev" }
 
 # Client-side codec subsystem (FrameTarget + RenderHandler/SurfaceEncoder registries)
 reovim-client-subsys-codec = { path = "./clients/lib/subsys/codec", version = "0.15.0-dev" }
+
+# Client module ABI contract crate (ClientModule traits, FFI types, loader)
+reovim-client-subsys-module = { path = "./clients/lib/subsys/module", version = "0.15.0-dev" }
 
 # Client-side ext capabilities (TUI)
 reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }

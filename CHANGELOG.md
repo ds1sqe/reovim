@@ -38,6 +38,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Breaking Changes (Internal)
 
+- **driver/subsys**: **Extracted** `ClientModule` trait family, `ClientServiceRegistry`,
+  `ClientModuleLoader`, and all FFI boundary types from `reovim-client-driver` into a new
+  `reovim-client-subsys-module` crate (#753). `CLIENT_MODULE_API_VERSION` bumped from
+  `0.4.0` to `1.0.0` (semver-major). Driver retains `pub use` compat re-exports for all
+  20 non-pilot ext modules; no call-site changes required in those crates. The driver's
+  `traits`, `ffi`, `loader`, and `services` modules are now thin re-export wrappers.
+  `DomainProjection` moved to subsys types (driver's `projection/mod.rs` re-exports it).
+  `SyntaxToken` moved to subsys types (driver's `conceal` re-exports it). A new
+  `IncompatibleApiVersion` arm was added to `ClientModuleError` to carry both the expected
+  and advertised API version when a dynamic module rejects the version check. New depgraph
+  entry in `.codecov.yml` for `reovim-client-subsys-module` with 100% line coverage
+  requirement.
+
 - **driver**: **Renamed** the public `reovim_client_driver::RenderSurface` trait to `reovim_client_driver::ChromeSurface` (#753). The trait's method set is unchanged (`write_styled`, `apply_style`, `overlay_bg`, `fill`, `clear`, `size`); only the name changes. All `&mut dyn RenderSurface` parameters in RepoCore APIs (viewport, scoped_surface, chrome_utils, domain/text_view, ffi, handle, traits/mod.rs — 25 sites) rename to `&mut dyn ChromeSurface`. All 12 chrome module `impl`s rename accordingly. FFI vtable (`FfiRenderSurfaceHost` / `FfiRenderSurfaceRef` struct types) keeps its layout; only the trait name in the `impl ChromeSurface for FfiRenderSurfaceRef` block changes. Core/ext boundary preserved: the trait stays in RepoCore; `impl ChromeSurface for CellCapability` stays in the ext cell-capability crate via the already-allowed `ExtClient{tui} → RepoCore` edge.
 - **driver**: **Removed** the `reovim_client_driver::testing::RecordingSurface` + `reovim_client_driver::testing::WriteSurface` test fixtures (#753). Both lived in `testing/surface.rs`; they were replaced over Flights 70–72 by the `CellCapability` final-grid fixture (in `reovim-ext-client-tui-cap-cell`). External test crates must switch to `CellCapability`. Driver-crate-internal tests that cannot dev-depend on `cap-cell` (cyclic) use a new minimal `TestChromeGrid` fixture (under `testing::surface`, not re-exported from `testing::*`).
 - **tui**: Migrated test fixtures in `statusline`, `explorer`, and `bufferline` chrome modules to the `CellCapability` final-grid fixture (#753). Write-log assertions (`surface.writes().iter().any(|w| w.text.contains(...))`) rewritten against the composited grid via `text_at_row` / `char_at` / `style_at` / `text_at` helpers. Style assertions map driver `Color` → 19-arm `CellColor` palette (Black=0, DarkGrey=8, Magenta=13, Blue=12, etc.). Zero coverage loss; same invariants expressed on final-grid state instead of draw order. One precision clarification: bufferline's `render_at_top_right` test moved from a byte-length-based end-position check (`last.x + last.text.len() == 80`) to a visual-column-based range check (`last_content_x ∈ [74, 79]`) — the old assertion relied on a byte/column coincidence for ASCII-only labels; the new assertion measures the user-visible invariant directly.

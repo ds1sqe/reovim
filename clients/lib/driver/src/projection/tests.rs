@@ -1,4 +1,7 @@
-use super::*;
+use {
+    super::*,
+    reovim_subsys_coordination::{DomainId, ProjectionTag},
+};
 
 #[test]
 fn domain_projection_new() {

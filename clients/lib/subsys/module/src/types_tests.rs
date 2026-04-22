@@ -1,4 +1,4 @@
-use std::{borrow::Cow, error::Error};
+use std::error::Error;
 
 use super::*;
 
@@ -1527,8 +1527,6 @@ fn client_module_probe_capabilities_roundtrip_via_copy() {
 #[test]
 fn client_api_version_exists() {
     let v = CLIENT_MODULE_API_VERSION;
-    // Bumped to 1.0.0 in #753 Phase B when the type moved to
-    // reovim-client-subsys-module; driver re-exports from there.
     assert_eq!(v.major, 1);
     assert_eq!(v.minor, 0);
     assert_eq!(v.patch, 0);
@@ -1796,4 +1794,156 @@ fn client_module_probe_with_optional_dep_long_name() {
     let deps = probe.optional_deps();
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].len(), 64);
+}
+
+// =============================================================================
+// ClientModuleError::IncompatibleApiVersion
+// =============================================================================
+
+#[test]
+fn incompatible_api_version_constructor() {
+    let expected = Version::new(1, 0, 0);
+    let advertised = Version::new(0, 4, 0);
+    let err = ClientModuleError::incompatible_api_version(expected, advertised);
+    assert!(matches!(
+        err,
+        ClientModuleError::IncompatibleApiVersion { expected: e, advertised: a }
+        if e == expected && a == advertised
+    ));
+}
+
+#[test]
+fn incompatible_api_version_message() {
+    let err =
+        ClientModuleError::incompatible_api_version(Version::new(1, 0, 0), Version::new(0, 4, 0));
+    assert_eq!(err.message(), "incompatible API version");
+}
+
+#[test]
+fn incompatible_api_version_display() {
+    let err =
+        ClientModuleError::incompatible_api_version(Version::new(1, 0, 0), Version::new(0, 4, 0));
+    let msg = err.to_string();
+    assert!(msg.contains("1.0.0"), "display should mention expected version");
+    assert!(msg.contains("0.4.0"), "display should mention advertised version");
+}
+
+#[test]
+fn incompatible_api_version_source_is_none() {
+    use std::error::Error;
+    let err =
+        ClientModuleError::incompatible_api_version(Version::new(1, 0, 0), Version::new(0, 4, 0));
+    assert!(err.source().is_none());
+}
+
+#[test]
+fn incompatible_api_version_debug() {
+    let err =
+        ClientModuleError::incompatible_api_version(Version::new(1, 0, 0), Version::new(0, 4, 0));
+    let debug = format!("{err:?}");
+    assert!(debug.contains("IncompatibleApiVersion"));
+}
+
+// =============================================================================
+// SyntaxToken
+// =============================================================================
+
+#[test]
+fn syntax_token_construction() {
+    let tok = SyntaxToken {
+        line: 5,
+        start_col: 2,
+        end_col: 10,
+        category: "keyword".to_string(),
+    };
+    assert_eq!(tok.line, 5);
+    assert_eq!(tok.start_col, 2);
+    assert_eq!(tok.end_col, 10);
+    assert_eq!(tok.category, "keyword");
+}
+
+#[test]
+fn syntax_token_equality() {
+    let a = SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "function".to_string(),
+    };
+    let b = SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "function".to_string(),
+    };
+    assert_eq!(a, b);
+}
+
+#[test]
+fn syntax_token_inequality() {
+    let a = SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "keyword".to_string(),
+    };
+    let b = SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 5,
+        category: "type".to_string(),
+    };
+    assert_ne!(a, b);
+}
+
+#[test]
+fn syntax_token_clone() {
+    let a = SyntaxToken {
+        line: 1,
+        start_col: 3,
+        end_col: 8,
+        category: "string".to_string(),
+    };
+    let b = a.clone();
+    assert_eq!(a, b);
+}
+
+#[test]
+fn syntax_token_debug() {
+    let tok = SyntaxToken {
+        line: 0,
+        start_col: 0,
+        end_col: 0,
+        category: String::new(),
+    };
+    assert!(format!("{tok:?}").contains("SyntaxToken"));
+}
+
+// =============================================================================
+// DomainProjection
+// =============================================================================
+
+#[test]
+fn domain_projection_new() {
+    use reovim_subsys_coordination::{DomainId, ProjectionTag};
+    let tag = ProjectionTag::from("text.mode");
+    let domain = DomainId(1);
+    let proj = DomainProjection::new(tag, domain, vec![1, 2, 3], "Normal".to_string());
+    assert_eq!(proj.display, "Normal");
+    assert_eq!(proj.content, vec![1, 2, 3]);
+    assert!(!proj.transient);
+    assert_eq!(proj.version, 0);
+    assert_eq!(proj.client_id, 0);
+    assert!(proj.window_id.is_none());
+}
+
+#[test]
+fn domain_projection_clone() {
+    use reovim_subsys_coordination::{DomainId, ProjectionTag};
+    let tag = ProjectionTag::from("text.cursor");
+    let domain = DomainId(1);
+    let a = DomainProjection::new(tag, domain, Vec::new(), "cursor".to_string());
+    let b = a.clone();
+    assert_eq!(a.display, b.display);
+    assert_eq!(a.content, b.content);
 }

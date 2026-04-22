@@ -13,6 +13,7 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+reovim-client-subsys-module = { workspace = true }
 reovim-client-driver = { workspace = true }
 reovim-arch = { workspace = true }
 

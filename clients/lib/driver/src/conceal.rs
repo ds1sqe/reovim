@@ -5,22 +5,15 @@
 
 use crate::Style;
 
+// `SyntaxToken` was defined here before Phase B (#753). It now lives in
+// `reovim-client-subsys-module::types` and reaches this crate via
+// `crate::types::*`.  Re-export it from `conceal` so callers that import
+// `reovim_client_driver::conceal::SyntaxToken` keep compiling.
+pub use crate::types::SyntaxToken;
+
 // =============================================================================
 // Types
 // =============================================================================
-
-/// A syntax token with position info (line, column range, category).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyntaxToken {
-    /// Line number (0-indexed).
-    pub line: u32,
-    /// Start column (0-indexed, in characters).
-    pub start_col: u32,
-    /// End column (exclusive, in characters).
-    pub end_col: u32,
-    /// Token category (e.g., `"keyword"`, `"function.builtin"`).
-    pub category: String,
-}
 
 /// A decoration that conceals or hides a span of text.
 ///

@@ -20,9 +20,10 @@ use std::{
 use {
     reovim_arch::clock::{Clock, SystemClock},
     reovim_client_driver::{
-        BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, ClientModule,
-        ClientModuleError, ModuleContext, PlatformCapabilities, ProbeResult, Rect, Style, Version,
-        types::Color,
+        BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, Rect, Style, types::Color,
+    },
+    reovim_client_subsys_module::{
+        ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities, ProbeResult, Version,
     },
 };
 

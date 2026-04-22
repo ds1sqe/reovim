@@ -23,6 +23,7 @@ libloading = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
+reovim-client-subsys-module = { workspace = true }
 tracing = { workspace = true }
 unicode-width = { workspace = true }
 

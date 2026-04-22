@@ -1,0 +1,24 @@
+[package]
+name = "reovim-client-subsys-module"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client subsys: ClientModule trait family, FFI loader, and ClientServiceRegistry"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+testing = []
+
+[dependencies]
+libloading = { workspace = true }
+reovim-arch = { workspace = true }
+reovim-depgraph = { workspace = true }
+reovim-subsys-coordination = { workspace = true }
+tracing = { workspace = true }

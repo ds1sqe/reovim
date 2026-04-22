@@ -4,10 +4,10 @@
 //! text concealment, fold handling, virtual lines, and line numbers.
 
 use crate::{
-    BufferId, ChromeSurface, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities,
-    Rect, RenderBehavior, SelectionInfo, SelectionMode, Style, ThemeProvider, TokenProvider,
-    TransformedLine, ViewportContext, VirtualLinePosition,
-    conceal::{apply_conceals, dim_style, source_to_display_col},
+    BufferId, ChromeSurface, ClientModule, CursorInfo, PlatformCapabilities, Rect, RenderBehavior,
+    SelectionInfo, SelectionMode, Style, ThemeProvider, TokenProvider, TransformedLine,
+    ViewportContext, VirtualLinePosition,
+    conceal::{ConcealDecoration, apply_conceals, dim_style, source_to_display_col},
 };
 
 /// Default background color for opacity blending.
