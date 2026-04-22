@@ -45,7 +45,13 @@ fn valid_body_decodes_to_width_and_height() {
     let info = boxed
         .downcast::<CellGridSurfaceInfo>()
         .expect("downcast to CellGridSurfaceInfo");
-    assert_eq!(*info, CellGridSurfaceInfo { width: 80, height: 24 });
+    assert_eq!(
+        *info,
+        CellGridSurfaceInfo {
+            width: 80,
+            height: 24
+        }
+    );
 }
 
 #[test]
@@ -56,7 +62,13 @@ fn valid_body_with_zero_dims_decodes_without_error() {
     let body = be_bytes(0, 0);
     let boxed = handler().decode(&body).expect("ok");
     let info = boxed.downcast::<CellGridSurfaceInfo>().unwrap();
-    assert_eq!(*info, CellGridSurfaceInfo { width: 0, height: 0 });
+    assert_eq!(
+        *info,
+        CellGridSurfaceInfo {
+            width: 0,
+            height: 0
+        }
+    );
 }
 
 #[test]
@@ -67,25 +79,25 @@ fn zero_width_nonzero_height_decodes() {
         .unwrap()
         .downcast::<CellGridSurfaceInfo>()
         .unwrap();
-    assert_eq!(*info, CellGridSurfaceInfo { width: 0, height: 10 });
+    assert_eq!(
+        *info,
+        CellGridSurfaceInfo {
+            width: 0,
+            height: 10
+        }
+    );
 }
 
 #[test]
 fn body_too_short_returns_too_short_error() {
     let err = handler().decode(&[1, 2, 3]).unwrap_err();
-    assert_eq!(
-        err,
-        SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 }
-    );
+    assert_eq!(err, SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 });
 }
 
 #[test]
 fn empty_body_returns_too_short_error() {
     let err = handler().decode(&[]).unwrap_err();
-    assert_eq!(
-        err,
-        SurfaceDescriptorHandlerError::TooShort { got: 0, min: 8 }
-    );
+    assert_eq!(err, SurfaceDescriptorHandlerError::TooShort { got: 0, min: 8 });
 }
 
 #[test]
@@ -116,10 +128,7 @@ fn height_u32_max_is_out_of_range() {
 fn width_just_over_u16_max_is_out_of_range() {
     let body = be_bytes(u32::from(u16::MAX) + 1, 10);
     let err = handler().decode(&body).unwrap_err();
-    assert!(matches!(
-        err,
-        SurfaceDescriptorHandlerError::OutOfRange { .. }
-    ));
+    assert!(matches!(err, SurfaceDescriptorHandlerError::OutOfRange { .. }));
 }
 
 #[test]
@@ -145,7 +154,13 @@ fn body_with_trailing_bytes_is_accepted_but_ignored() {
         .unwrap()
         .downcast::<CellGridSurfaceInfo>()
         .unwrap();
-    assert_eq!(*info, CellGridSurfaceInfo { width: 80, height: 24 });
+    assert_eq!(
+        *info,
+        CellGridSurfaceInfo {
+            width: 80,
+            height: 24
+        }
+    );
 }
 
 #[test]
@@ -166,12 +181,21 @@ fn handler_is_copy() {
 
 #[test]
 fn cell_grid_surface_info_implements_copy_and_eq() {
-    let a = CellGridSurfaceInfo { width: 1, height: 2 };
+    let a = CellGridSurfaceInfo {
+        width: 1,
+        height: 2,
+    };
     let b = a;
     let c = a;
     assert_eq!(a, b);
     assert_eq!(a, c);
-    assert_ne!(a, CellGridSurfaceInfo { width: 2, height: 1 });
+    assert_ne!(
+        a,
+        CellGridSurfaceInfo {
+            width: 2,
+            height: 1
+        }
+    );
 }
 
 // =========================================================================
@@ -225,9 +249,10 @@ fn decode_and_apply_too_short_body_propagates_decode_error() {
         .unwrap_err();
     assert!(matches!(
         err,
-        SurfaceDescriptorApplyError::Decode(
-            SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 }
-        )
+        SurfaceDescriptorApplyError::Decode(SurfaceDescriptorHandlerError::TooShort {
+            got: 3,
+            min: 8
+        })
     ));
     assert_eq!(ctx.last, None);
 }
@@ -240,9 +265,7 @@ fn decode_and_apply_u32_overflow_propagates_decode_error() {
         .unwrap_err();
     assert!(matches!(
         err,
-        SurfaceDescriptorApplyError::Decode(
-            SurfaceDescriptorHandlerError::OutOfRange { .. }
-        )
+        SurfaceDescriptorApplyError::Decode(SurfaceDescriptorHandlerError::OutOfRange { .. })
     ));
     assert_eq!(ctx.last, None);
 }
@@ -254,16 +277,19 @@ fn decode_and_apply_u32_overflow_propagates_decode_error() {
 #[test]
 fn decode_info_valid_body_returns_typed_info() {
     let info = super::decode_info(&be_bytes(80, 24)).expect("ok");
-    assert_eq!(info, CellGridSurfaceInfo { width: 80, height: 24 });
+    assert_eq!(
+        info,
+        CellGridSurfaceInfo {
+            width: 80,
+            height: 24
+        }
+    );
 }
 
 #[test]
 fn decode_info_too_short_body_returns_too_short_error() {
     let err = super::decode_info(&[1, 2, 3]).unwrap_err();
-    assert_eq!(
-        err,
-        SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 }
-    );
+    assert_eq!(err, SurfaceDescriptorHandlerError::TooShort { got: 3, min: 8 });
 }
 
 #[test]

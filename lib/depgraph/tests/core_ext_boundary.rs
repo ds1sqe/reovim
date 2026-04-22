@@ -72,16 +72,47 @@ fn classify(rel_path: &str) -> Location {
 
     // ext/ (most specific).
     if let Some(rest) = rel.strip_prefix("ext/client/") {
+        // Flat-category paths must match BEFORE the legacy `ext/client/<platform>/`
+        // arm below so `platforms/<p>/`, `driver/<d>/`, `module/<m>/`, and
+        // `capabilities/<k>/` route to the correct variant.
+        if let Some(platform_rest) = rest.strip_prefix("platforms/") {
+            let platform = platform_rest.split('/').next().unwrap_or("").to_string();
+            return Location::ExtClient { platform };
+        }
+        if rest.starts_with("driver/")
+            || rest.starts_with("module/")
+            || rest.starts_with("capabilities/")
+        {
+            // Non-platform-scoped ext categories — use empty-string sentinel
+            // to mean "no platform affinity".
+            return Location::ExtClient {
+                platform: String::new(),
+            };
+        }
+
+        // Legacy `ext/client/<platform>/` paths (e.g. `ext/client/tui/…`) and
+        // the shared `ext/client/lib/` path. Extract the first segment.
         let platform = rest.split('/').next().unwrap_or("").to_string();
         if platform == "lib" {
             // Shared across client platforms — treat as server-like ext
             // (no platform affinity).
             return Location::ExtServer;
         }
+        // Legacy `ext/client/<platform>/` paths (e.g. ext/client/tui/…).
+        // Kept working for the existing ext/client/tui/* tree until Phase F
+        // flattens it into the new category structure.
         return Location::ExtClient { platform };
     }
     if rel.starts_with("ext/") {
         return Location::ExtServer;
+    }
+
+    // clients/lib/subsys/<x>/ → RepoCore (closed-contract subsys tier).
+    // This arm must come BEFORE the generic clients/lib/ arm so that subsys
+    // crates are classified as RepoCore (which they are — they are closed
+    // contracts with zero ext deps).
+    if matches_tree(rel, "clients/lib/subsys") {
+        return Location::RepoCore;
     }
 
     // clients/lib/ is repo-core (shared client infra).
@@ -152,8 +183,11 @@ fn no_repo_core_depends_on_ext() {
                 | (Location::RepoCore, Location::ExtClient { .. }) => true,
 
                 // Client-core may only touch its own platform's ext.
+                // Non-platform-scoped ext categories (driver/, module/,
+                // capabilities/) use the empty-string sentinel; they carry
+                // no platform affinity so the isolation rule does not apply.
                 (Location::ClientCore { platform }, Location::ExtClient { platform: p2 }) => {
-                    platform != p2
+                    !p2.is_empty() && platform != p2
                 }
 
                 // App, Ext*, Fixture, Other have no restriction here.

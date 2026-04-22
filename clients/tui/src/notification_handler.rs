@@ -583,10 +583,7 @@ fn decode_surface_descriptor<C: NotificationContext>(
     };
 
     let Some(handler) = registry.get(kind) else {
-        tracing::trace!(
-            kind,
-            "unknown surface descriptor kind — no handler registered",
-        );
+        tracing::trace!(kind, "unknown surface descriptor kind — no handler registered",);
         return;
     };
 

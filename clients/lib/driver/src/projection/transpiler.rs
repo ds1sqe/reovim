@@ -43,7 +43,7 @@ pub fn try_from_proto(
     Ok(DomainProjection {
         tag: ProjectionTag::new(&payload.tag),
         domain_id: DomainId(payload.domain_id),
-        window_id: payload.window_id.map(|id| id as usize),
+        window_id: payload.window_id.and_then(|id| usize::try_from(id).ok()),
         content: datum.content,
         display: datum.display.unwrap_or_default(),
         transient: payload.transient,

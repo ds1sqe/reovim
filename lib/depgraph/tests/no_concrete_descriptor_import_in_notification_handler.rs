@@ -12,8 +12,10 @@
 //! boxed type the handler produces, which is exactly what the
 //! `decode_and_apply` method eliminates.
 
-use cargo_metadata::MetadataCommand;
-use std::{fs, path::PathBuf};
+use {
+    cargo_metadata::MetadataCommand,
+    std::{fs, path::PathBuf},
+};
 
 const FORBIDDEN_IMPORTS: &[&str] = &[
     // Any reovim-tui-mod-*-cell-grid type import in notification_handler.rs

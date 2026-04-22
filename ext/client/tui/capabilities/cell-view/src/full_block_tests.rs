@@ -43,10 +43,7 @@ fn full_block_preserves_char_and_position() {
     let chars: Vec<char> = out.cells().iter().map(|c| c.ch).collect();
     assert_eq!(chars, vec!['a', 'b', 'c', 'd', 'e', 'f']);
     let positions: Vec<(u16, u16)> = out.cells().iter().map(|c| (c.x, c.y)).collect();
-    assert_eq!(
-        positions,
-        vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]
-    );
+    assert_eq!(positions, vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]);
 }
 
 #[test]

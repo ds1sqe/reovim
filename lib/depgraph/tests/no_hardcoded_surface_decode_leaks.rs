@@ -13,17 +13,15 @@
 //! line filter. Self-file (this test) and any test file that inlines
 //! a commented example are excluded.
 
-use cargo_metadata::MetadataCommand;
-use std::{
-    fs,
-    path::{Path, PathBuf},
+use {
+    cargo_metadata::MetadataCommand,
+    std::{
+        fs,
+        path::{Path, PathBuf},
+    },
 };
 
-const FORBIDDEN_PATTERNS: &[&str] = &[
-    "desc.kind ==",
-    "desc.kind== ",
-    "desc.kind==0x",
-];
+const FORBIDDEN_PATTERNS: &[&str] = &["desc.kind ==", "desc.kind== ", "desc.kind==0x"];
 
 /// Scan this directory (relative to workspace root).
 const SCAN_DIR: &str = "clients/tui/src";
@@ -92,10 +90,7 @@ fn walk_dir(dir: &Path, offenders: &mut Vec<(PathBuf, usize, String)>, self_path
 fn no_hardcoded_surface_decode_in_clients_tui() {
     let root = workspace_root();
     let scan_root = root.join(SCAN_DIR);
-    assert!(
-        scan_root.is_dir(),
-        "scan root {scan_root:?} not found — layout drifted",
-    );
+    assert!(scan_root.is_dir(), "scan root {scan_root:?} not found — layout drifted");
 
     let self_path = root.join("lib/depgraph/tests/no_hardcoded_surface_decode_leaks.rs");
 

@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::{CursorPosition, RemoteClient, SelectionState, layout_mirror::ServerLayoutMirror},
-    reovim_client_driver::{ChromePosition, PlatformCapabilities, Rect, ChromeSurface},
+    reovim_client_driver::{ChromePosition, ChromeSurface, PlatformCapabilities, Rect},
     reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan, ui::display_width},
     reovim_protocol::v3::{WindowInfo, WindowRect},
 };

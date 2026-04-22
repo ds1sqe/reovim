@@ -67,11 +67,7 @@ fn render_explorer_basic() {
     render_explorer(&mut surface, &data, &bounds);
 
     // Header row should contain "project"
-    assert_eq!(
-        text_at(&surface, 1, 0, 7),
-        "project",
-        "Expected header 'project' at (1, 0)"
-    );
+    assert_eq!(text_at(&surface, 1, 0, 7), "project", "Expected header 'project' at (1, 0)");
 }
 
 #[test]
@@ -194,11 +190,7 @@ fn render_at_offset() {
     render_explorer(&mut surface, &data, &bounds);
 
     // Header should be at (6, 3) -- bounds.x + 1, bounds.header_y
-    assert_eq!(
-        text_at(&surface, 6, 3, 7),
-        "project",
-        "Expected header at offset (6, 3)"
-    );
+    assert_eq!(text_at(&surface, 6, 3, 7), "project", "Expected header at offset (6, 3)");
 }
 
 #[test]

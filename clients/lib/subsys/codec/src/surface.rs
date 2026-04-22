@@ -56,10 +56,7 @@ pub trait SurfaceEncoder: Send + Sync {
     ///
     /// Returns [`SurfaceEncoderError`] when the required capability slot
     /// is absent or its state is invalid for encoding.
-    fn encode_from(
-        &self,
-        target: &crate::FrameTarget,
-    ) -> Result<Vec<u8>, SurfaceEncoderError>;
+    fn encode_from(&self, target: &crate::FrameTarget) -> Result<Vec<u8>, SurfaceEncoderError>;
 }
 
 /// Thread-safe registry of [`SurfaceEncoder`] trait objects keyed by

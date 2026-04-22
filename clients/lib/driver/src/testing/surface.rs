@@ -53,9 +53,7 @@ impl TestChromeGrid {
     /// True if any cell holds a non-space character.
     #[must_use]
     pub fn has_content(&self) -> bool {
-        self.cells
-            .iter()
-            .any(|row| row.iter().any(|c| c.ch != ' '))
+        self.cells.iter().any(|row| row.iter().any(|c| c.ch != ' '))
     }
 }
 

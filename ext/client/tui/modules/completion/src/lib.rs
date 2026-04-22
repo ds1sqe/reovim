@@ -7,8 +7,8 @@
 //! Native `ClientModule` implementation (no `TuiExtension` bridge).
 
 use reovim_client_driver::{
-    ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
+    ChromePosition, ChromeSurface, ClientModule, ClientModuleError, ModuleContext,
+    PlatformCapabilities, ProbeResult, Rect, Style, Version, types::Color,
 };
 
 /// Maximum number of visible items in the popup.

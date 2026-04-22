@@ -1,6 +1,6 @@
 //! Rendering logic for the microscope picker.
 
-use reovim_client_driver::{Rect, ChromeSurface, Style, types::Color};
+use reovim_client_driver::{ChromeSurface, Rect, Style, types::Color};
 
 use crate::{MicroscopeData, PreviewHighlightData, layout::LayoutBounds};
 

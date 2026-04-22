@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::{Rect, ChromeSurface, Style, types::Color};
+use crate::{ChromeSurface, Rect, Style, types::Color};
 
 use super::ScopedSurface;
 

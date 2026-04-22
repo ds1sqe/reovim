@@ -30,9 +30,11 @@ pub mod full_block;
 pub mod raster;
 pub mod rasterizer;
 
-pub use full_block::FullBlockRasterizer;
-pub use raster::{RasterCell, RasterOutput};
-pub use rasterizer::{ViewHint, ViewRasterizer};
+pub use {
+    full_block::FullBlockRasterizer,
+    raster::{RasterCell, RasterOutput},
+    rasterizer::{ViewHint, ViewRasterizer},
+};
 
 #[cfg(test)]
 mod full_block_tests;

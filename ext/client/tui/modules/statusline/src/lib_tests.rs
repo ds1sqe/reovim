@@ -421,10 +421,7 @@ fn statusline_renders_git_branch() {
     m.chrome_render(&mut surface, bounds(80), &test_caps());
     let row = text_at_row(&surface, 0);
     assert!(row.contains("main"), "Expected git branch 'main' in row");
-    assert!(
-        row.contains(GIT_BRANCH_ICON),
-        "Expected git branch icon in row"
-    );
+    assert!(row.contains(GIT_BRANCH_ICON), "Expected git branch icon in row");
 }
 
 #[test]

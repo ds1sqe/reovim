@@ -1,6 +1,5 @@
 use {
-    super::*,
-    reovim_client_driver::testing::MockPlatformCapabilities,
+    super::*, reovim_client_driver::testing::MockPlatformCapabilities,
     reovim_ext_client_tui_cap_cell::CellCapability,
 };
 

@@ -213,7 +213,10 @@ fn render_border_color_by_level() {
     // Toast at top-right, border should be red
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9))
+    );
 }
 
 #[test]
@@ -373,7 +376,10 @@ fn grouped_box_border_uses_highest_priority_level() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Top border at y=1 should have the border color
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9))
+    );
 }
 
 // =============================================================================
@@ -644,7 +650,10 @@ fn render_success_toast() {
     let surface = render(&m, 80, 24);
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10))
+    );
 }
 
 #[test]
@@ -654,7 +663,10 @@ fn render_warning_toast() {
     let surface = render(&m, 80, 24);
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11))
+    );
 }
 
 // =============================================================================
@@ -727,7 +739,10 @@ fn grouped_box_border_success_priority() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Success > Info, so border should be Green
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10))
+    );
 }
 
 // =============================================================================
@@ -747,7 +762,10 @@ fn grouped_box_border_warning_priority() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Warning > Success, so border should be Yellow
-    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
+    assert_eq!(
+        style_at(&surface, toast_x, 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11))
+    );
 }
 
 // =============================================================================

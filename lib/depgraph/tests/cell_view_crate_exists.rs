@@ -34,10 +34,7 @@ fn cell_view_crate_is_a_workspace_member() {
         .workspace_packages()
         .into_iter()
         .any(|p| p.name.as_str() == CELL_VIEW);
-    assert!(
-        found,
-        "{CELL_VIEW} must be a workspace member (Plan 25 introduces it)"
-    );
+    assert!(found, "{CELL_VIEW} must be a workspace member (Plan 25 introduces it)");
 }
 
 #[test]
@@ -70,10 +67,7 @@ fn cell_view_has_no_kernel_or_subsys_deps() {
             "{CELL_VIEW} must not depend on subsys crate '{dep}' — \
              this is a TUI ext crate, not a subsys consumer."
         );
-        assert_ne!(
-            dep, "reovim-kernel",
-            "{CELL_VIEW} must not depend on reovim-kernel."
-        );
+        assert_ne!(dep, "reovim-kernel", "{CELL_VIEW} must not depend on reovim-kernel.");
     }
 }
 

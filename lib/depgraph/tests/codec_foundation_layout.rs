@@ -34,8 +34,7 @@ const MUST_NOT_EXIST: &[&str] = &[
 /// be pulled into client `RepoCore`. No legitimate transitive path exists
 /// through the stated deps (`parking_lot` + `std`), so a direct-dep
 /// check is sufficient.
-const FORBIDDEN_DEPS: &[(&str, &str)] =
-    &[("reovim-client-subsys-codec", "reovim-kernel")];
+const FORBIDDEN_DEPS: &[(&str, &str)] = &[("reovim-client-subsys-codec", "reovim-kernel")];
 
 #[test]
 fn codec_foundation_present_and_old_tree_gone() {
@@ -81,10 +80,7 @@ fn client_codec_subsys_stays_kernel_free() {
         };
         for dep in &pkg.dependencies {
             if dep.name == *forbidden
-                && matches!(
-                    dep.kind,
-                    DependencyKind::Normal | DependencyKind::Development
-                )
+                && matches!(dep.kind, DependencyKind::Normal | DependencyKind::Development)
             {
                 let kind = match dep.kind {
                     DependencyKind::Normal => "normal",
@@ -115,10 +111,7 @@ fn no_retired_codec_dep_edge() {
     for pkg in metadata.workspace_packages() {
         for dep in &pkg.dependencies {
             if retired.contains(dep.name.as_str())
-                && matches!(
-                    dep.kind,
-                    DependencyKind::Normal | DependencyKind::Development
-                )
+                && matches!(dep.kind, DependencyKind::Normal | DependencyKind::Development)
             {
                 let kind = match dep.kind {
                     DependencyKind::Normal => "normal",

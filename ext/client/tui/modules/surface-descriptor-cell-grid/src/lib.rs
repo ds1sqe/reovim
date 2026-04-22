@@ -75,16 +75,14 @@ fn decode_info(body: &[u8]) -> Result<CellGridSurfaceInfo, SurfaceDescriptorHand
     let width_u32 = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
     let height_u32 = u32::from_be_bytes([body[4], body[5], body[6], body[7]]);
 
-    let width = u16::try_from(width_u32).map_err(|_| {
-        SurfaceDescriptorHandlerError::OutOfRange {
+    let width =
+        u16::try_from(width_u32).map_err(|_| SurfaceDescriptorHandlerError::OutOfRange {
             reason: "width exceeds u16::MAX",
-        }
-    })?;
-    let height = u16::try_from(height_u32).map_err(|_| {
-        SurfaceDescriptorHandlerError::OutOfRange {
+        })?;
+    let height =
+        u16::try_from(height_u32).map_err(|_| SurfaceDescriptorHandlerError::OutOfRange {
             reason: "height exceeds u16::MAX",
-        }
-    })?;
+        })?;
 
     Ok(CellGridSurfaceInfo { width, height })
 }
@@ -94,10 +92,7 @@ impl SurfaceDescriptorHandler for CellGridSurfaceHandler {
         KIND_CELL_GRID
     }
 
-    fn decode(
-        &self,
-        body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         decode_info(body).map(|info| {
             let boxed: Box<dyn Any + Send> = Box::new(info);
             boxed

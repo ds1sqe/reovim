@@ -49,9 +49,8 @@ pub use {
         DefaultSurfaceEncoderRegistry, SurfaceEncoder, SurfaceEncoderError, SurfaceEncoderRegistry,
     },
     surface_descriptor::{
-        DefaultSurfaceDescriptorHandlerRegistry, SurfaceApplyContext,
-        SurfaceDescriptorApplyError, SurfaceDescriptorHandler,
-        SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
+        DefaultSurfaceDescriptorHandlerRegistry, SurfaceApplyContext, SurfaceDescriptorApplyError,
+        SurfaceDescriptorHandler, SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
     },
     target::FrameTarget,
 };

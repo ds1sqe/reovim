@@ -110,6 +110,26 @@ mod proto_tests {
     }
 
     #[test]
+    fn try_from_proto_window_id_oversized_u64_yields_none_on_narrow_usize() {
+        // Regression guard for the `u64 → usize` conversion in `try_from_proto`:
+        // a window_id that does not fit in `usize` (only reachable on 32-bit
+        // targets) maps to `None` rather than silently truncating. On 64-bit
+        // targets any `u64` fits in `usize`, so the expected value there is
+        // `Some(id as usize)`.
+        let datum = DomainDatum {
+            content: vec![],
+            display: None,
+        };
+        let mut payload = make_payload("text.cursor", 1, Some(datum));
+        let oversized: u64 = u64::MAX;
+        payload.window_id = Some(oversized);
+
+        let proj = try_from_proto(payload).expect("transpile");
+        let expected = usize::try_from(oversized).ok();
+        assert_eq!(proj.window_id, expected);
+    }
+
+    #[test]
     #[should_panic(expected = "server contract violation")]
     fn from_proto_panics_on_missing_datum() {
         let payload = make_payload("text.mode", 1, None);

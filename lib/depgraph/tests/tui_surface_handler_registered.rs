@@ -57,14 +57,11 @@ fn tui_depends_on_codec_subsys_and_handler() {
 fn handler_crate_is_workspace_member_and_depends_on_subsys() {
     let metadata = MetadataCommand::new().exec().expect("cargo metadata");
 
-    let handler = workspace_package(
-        &metadata,
-        "reovim-tui-mod-surface-descriptor-cell-grid",
-    )
-    .expect(
-        "reovim-tui-mod-surface-descriptor-cell-grid is a workspace \
+    let handler = workspace_package(&metadata, "reovim-tui-mod-surface-descriptor-cell-grid")
+        .expect(
+            "reovim-tui-mod-surface-descriptor-cell-grid is a workspace \
          package (Plan 17-β.1 Phase B)",
-    );
+        );
 
     assert!(
         has_normal_dep(handler, "reovim-client-subsys-codec"),

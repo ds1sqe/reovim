@@ -21,14 +21,14 @@
 //!   preserve the `ChromeSurface` contract.
 
 use {
+    crate::{
+        capability::{Cell, CellCapability},
+        style::{CellAttrs, CellColor, CellStyle},
+    },
     reovim_client_driver::{
         Rect, Style,
         traits::ChromeSurface,
         types::{Attributes, Color},
-    },
-    crate::{
-        capability::{Cell, CellCapability},
-        style::{CellAttrs, CellColor, CellStyle},
     },
 };
 

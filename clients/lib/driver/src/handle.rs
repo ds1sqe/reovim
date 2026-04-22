@@ -21,10 +21,9 @@ use std::{
 };
 
 use crate::{
-    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
+    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, ClientModule,
     ClientModuleError, ClientModuleProbe, ColumnWidth, GutterCell, InlineDecoration, ModuleContext,
-    OptionValue, ProbeResult, Rect, RenderBehavior, ChromeSurface, TransformedLine, Version,
-    VirtualLine,
+    OptionValue, ProbeResult, Rect, RenderBehavior, TransformedLine, Version, VirtualLine,
     ffi::{
         FfiAnnotationContext, FfiColumnWidth, FfiFoldRange, FfiGutterCell, FfiInlineDecoration,
         FfiPlatformCaps, FfiRenderBehavior, FfiRenderSurface, FfiRenderSurfaceHost,

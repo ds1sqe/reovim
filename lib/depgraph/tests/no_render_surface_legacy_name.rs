@@ -29,8 +29,7 @@
 
 use std::{fs, path::PathBuf};
 
-use cargo_metadata::MetadataCommand;
-use walkdir::WalkDir;
+use {cargo_metadata::MetadataCommand, walkdir::WalkDir};
 
 fn workspace_root() -> PathBuf {
     MetadataCommand::new()
@@ -75,7 +74,8 @@ fn is_legacy_render_surface(line: &str) -> bool {
         let mut i = 0;
         while i + needle.len() <= bytes.len() {
             if &bytes[i..i + needle.len()] == needle {
-                let left_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_';
+                let left_ok =
+                    i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_';
                 let right = i + needle.len();
                 let right_ok = right == bytes.len()
                     || (!bytes[right].is_ascii_alphanumeric() && bytes[right] != b'_');
@@ -153,22 +153,14 @@ fn probe_detects_dyn_bound() {
 
 #[test]
 fn probe_detects_use_import() {
-    assert!(is_legacy_render_surface(
-        "use reovim_client_driver::RenderSurface;"
-    ));
-    assert!(is_legacy_render_surface(
-        "use crate::{ChromeSurface, RenderSurface};"
-    ));
+    assert!(is_legacy_render_surface("use reovim_client_driver::RenderSurface;"));
+    assert!(is_legacy_render_surface("use crate::{ChromeSurface, RenderSurface};"));
 }
 
 #[test]
 fn probe_skips_ffi_struct_names() {
-    assert!(!is_legacy_render_surface(
-        "pub struct FfiRenderSurfaceHost<'a> { ... }"
-    ));
-    assert!(!is_legacy_render_surface(
-        "let mut host = FfiRenderSurfaceHost::new(surface);"
-    ));
+    assert!(!is_legacy_render_surface("pub struct FfiRenderSurfaceHost<'a> { ... }"));
+    assert!(!is_legacy_render_surface("let mut host = FfiRenderSurfaceHost::new(surface);"));
     assert!(!is_legacy_render_surface(
         "    let mut ffi_surface = FfiRenderSurface::from_host(&mut host);"
     ));
@@ -178,7 +170,5 @@ fn probe_skips_ffi_struct_names() {
 fn probe_skips_chrome_surface() {
     assert!(!is_legacy_render_surface("pub trait ChromeSurface {"));
     assert!(!is_legacy_render_surface("    surface: &mut dyn ChromeSurface,"));
-    assert!(!is_legacy_render_surface(
-        "use reovim_client_driver::ChromeSurface;"
-    ));
+    assert!(!is_legacy_render_surface("use reovim_client_driver::ChromeSurface;"));
 }

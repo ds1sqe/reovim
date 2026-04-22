@@ -157,10 +157,7 @@ pub trait SurfaceDescriptorHandler: Send + Sync {
     /// Returns [`SurfaceDescriptorHandlerError`] when the payload is
     /// too short, malformed, or contains a field outside the range
     /// accepted by the handler's typed descriptor.
-    fn decode(
-        &self,
-        body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError>;
+    fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError>;
 
     /// Decode `body` and apply the resulting descriptor to `ctx` in
     /// one step. Implementations should decode, downcast to their

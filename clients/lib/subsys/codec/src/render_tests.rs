@@ -2,8 +2,7 @@ use {
     crate::{
         FrameTarget,
         render::{
-            DefaultRenderHandlerRegistry, RenderHandler, RenderHandlerError,
-            RenderHandlerRegistry,
+            DefaultRenderHandlerRegistry, RenderHandler, RenderHandlerError, RenderHandlerRegistry,
         },
     },
     std::sync::Arc,
@@ -21,11 +20,7 @@ impl RenderHandler for AppendCharsHandler {
     fn kind(&self) -> u16 {
         self.kind
     }
-    fn render(
-        &self,
-        body: &[u8],
-        target: &mut FrameTarget,
-    ) -> Result<(), RenderHandlerError> {
+    fn render(&self, body: &[u8], target: &mut FrameTarget) -> Result<(), RenderHandlerError> {
         if body.len() < self.min_len {
             return Err(RenderHandlerError::TooShort {
                 got: body.len(),
@@ -49,11 +44,7 @@ impl RenderHandler for AlwaysInvalid {
     fn kind(&self) -> u16 {
         0xBAD
     }
-    fn render(
-        &self,
-        _body: &[u8],
-        _target: &mut FrameTarget,
-    ) -> Result<(), RenderHandlerError> {
+    fn render(&self, _body: &[u8], _target: &mut FrameTarget) -> Result<(), RenderHandlerError> {
         Err(RenderHandlerError::InvalidData {
             reason: "always invalid for test",
         })
@@ -74,7 +65,10 @@ fn new_registry_has_no_handlers() {
 #[test]
 fn register_and_get_round_trip_by_kind() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     let handler = reg.get(1).expect("registered");
     assert_eq!(handler.kind(), 1);
 }
@@ -82,8 +76,14 @@ fn register_and_get_round_trip_by_kind() {
 #[test]
 fn register_replaces_existing_handler_for_same_kind() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 0 }));
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 10 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 0,
+    }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 10,
+    }));
     let handler = reg.get(1).expect("registered");
     let mut target = FrameTarget::new();
     target.insert(StringSlot::default());
@@ -94,7 +94,10 @@ fn register_replaces_existing_handler_for_same_kind() {
 #[test]
 fn unregister_removes_handler() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 7, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 7,
+        min_len: 0,
+    }));
     assert!(reg.get(7).is_some());
     reg.unregister(7);
     assert!(reg.get(7).is_none());
@@ -110,21 +113,24 @@ fn unregister_missing_kind_is_noop() {
 #[test]
 fn registered_handler_decodes_into_target_slot() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     let handler = reg.get(1).unwrap();
     let mut target = FrameTarget::new();
     target.insert(StringSlot::default());
     handler.render(b"hi", &mut target).expect("ok");
-    assert_eq!(
-        target.get::<StringSlot>(),
-        Some(&StringSlot("hi".to_owned()))
-    );
+    assert_eq!(target.get::<StringSlot>(), Some(&StringSlot("hi".to_owned())));
 }
 
 #[test]
 fn handler_errors_when_target_slot_missing() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     let handler = reg.get(1).unwrap();
     let mut target = FrameTarget::new();
     let err = handler.render(b"x", &mut target).unwrap_err();
@@ -155,10 +161,7 @@ fn capability_missing_error_formats_expected() {
     let err = RenderHandlerError::CapabilityMissing {
         expected: "CellCapability",
     };
-    assert_eq!(
-        format!("{err}"),
-        "capability missing on target: expected CellCapability"
-    );
+    assert_eq!(format!("{err}"), "capability missing on target: expected CellCapability");
 }
 
 #[test]
@@ -185,7 +188,10 @@ fn default_registry_equals_new() {
 #[test]
 fn debug_impl_reports_registered_kinds() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 3, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 3,
+        min_len: 0,
+    }));
     reg.register(Arc::new(AlwaysInvalid));
     let rendered = format!("{reg:?}");
     assert!(rendered.contains("DefaultRenderHandlerRegistry"));
@@ -195,7 +201,10 @@ fn debug_impl_reports_registered_kinds() {
 #[test]
 fn registry_supports_multiple_distinct_kinds_concurrently() {
     let reg = registry();
-    reg.register(Arc::new(AppendCharsHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(AppendCharsHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     reg.register(Arc::new(AlwaysInvalid)); // kind 0xBAD
     assert!(reg.get(1).is_some());
     assert!(reg.get(0xBAD).is_some());

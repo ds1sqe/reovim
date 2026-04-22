@@ -6,6 +6,33 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#753 Client Foundation — Phase A**: Added depgraph probe scaffolding
+  (8 new probes) and classifier support for the new client layer model.
+  No crate moves; probes fail closed when an incorrect edge is introduced
+  in later phases. Three probes are `#[ignore]`-gated until their
+  activation phase (E.1 for `ext_client_flat_categories`, F for
+  `no_client_driver_path` and `no_client_platform_dir`). Added dormant
+  codecov.yml carve-out for six future subsys crates (enable as each
+  lands). Created `.claude/rules/architecture.md` with the v7 client
+  layer model and intra-subsys DAG. `render → codec` candidate edge
+  audited and removed (zero-hop trace; `RenderTarget` has no codec
+  dependency).
+
+### Fixed
+
+- **driver**: split five inline `#[cfg(test)] mod tests { ... }` blocks
+  into separate `*_tests.rs` sibling files using the `#[cfg(test)]
+  #[path = "*_tests.rs"] mod tests;` redirect (pre-existing test-layout
+  violations in `clients/lib/driver/src/{render.rs, domain/mod.rs,
+  domain/text_view.rs, projection/cache.rs, traits/cell_grid.rs}`). Fixes
+  `./scripts/check-test-layout.sh --check`.
+- **driver**: fixed pre-existing clippy `cast_possible_truncation`
+  violation in `clients/lib/driver/src/projection/transpiler.rs:46` —
+  `window_id: payload.window_id.map(|id| id as usize)` replaced with
+  `payload.window_id.and_then(|id| usize::try_from(id).ok())` so the cast
+  is safe on 32-bit targets. Surfaced under `cargo clippy --all-features
+  --workspace -- -D warnings` (the flag combination `./scripts/check.sh`
+  uses).
 - **tui**: New ExtClient crate `reovim-ext-client-tui-cap-cell-view` at `ext/client/tui/capabilities/cell-view/` (#753). Carries the `ViewHint` enum (FullBlock default, HalfBlock and Braille reserved for 25.2 / 25.3), a narrow terminal-backend-level `RasterOutput` trait (`set_cell` + `size`; deliberately distinct from the input-side `ChromeSurface`), a `ViewRasterizer` trait, and a `FullBlockRasterizer` reference impl that maps one logical cell to one terminal cell. `TuiCoreState` gains a `window_view_hints: HashMap<u64, ViewHint>` map with a `view_hint_for(window_id)` accessor defaulting to `FullBlock` on unknown windows. A hint-dispatch `match` at the top of chrome rendering in `clients/tui/src/render_engine.rs` routes `FullBlock` to the existing direct-write path (unchanged output) and marks the `HalfBlock` / `Braille` arms `unreachable!()` until their rasterizers land. `FullBlockRasterizer` is not yet invoked in production — the chrome→`CellCapability`→rasterizer pipeline restructure is deferred to 25.2 where `HalfBlock` forces the buffering stage.
 - **depgraph**: Added `cell_view_crate_exists.rs` probe (4 assertions: workspace membership, dep on `cap-cell`, no kernel/subsys deps, no cycle with `cap-cell`). Added `vtable_layout_byte_size_stable.rs` probe (2 assertions: `size_of::<FfiRenderSurface>()` and `size_of::<FfiRenderSurfaceHost>()` match Plan-24 baselines expressed in pointer multiples, so accidental amendments to the `ChromeSurface` trait or FFI wrapper struct fail CI immediately rather than silently breaking modules compiled against the old ABI).
 

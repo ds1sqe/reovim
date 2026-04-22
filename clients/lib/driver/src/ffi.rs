@@ -69,7 +69,7 @@ use reovim_arch::Color;
 use crate::{
     AnnotationContext, BufferId, ColorDepth, ColumnWidth, GutterCell, InlineDecoration, Insets,
     Rect, RenderBehavior, RenderingModel, Style, TransformedLine, VirtualLine, VirtualLinePosition,
-    traits::{PlatformCapabilities, ChromeSurface, ThemeProvider},
+    traits::{ChromeSurface, PlatformCapabilities, ThemeProvider},
     types::Attributes,
 };
 

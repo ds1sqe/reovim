@@ -54,7 +54,10 @@ fn has_reports_slot_presence_per_type() {
     target.insert(CapA(1));
     assert!(target.has::<CapA>());
     assert!(!target.has::<CapB>());
-    target.insert(CapB { tag: "hi", count: 2 });
+    target.insert(CapB {
+        tag: "hi",
+        count: 2,
+    });
     assert!(target.has::<CapA>());
     assert!(target.has::<CapB>());
 }
@@ -72,12 +75,18 @@ fn insert_same_type_replaces_prior_slot() {
 fn insert_different_types_coexist() {
     let mut target = FrameTarget::new();
     target.insert(CapA(7));
-    target.insert(CapB { tag: "two", count: 2 });
+    target.insert(CapB {
+        tag: "two",
+        count: 2,
+    });
     assert_eq!(target.len(), 2);
     assert_eq!(target.get::<CapA>(), Some(&CapA(7)));
     assert_eq!(
         target.get::<CapB>(),
-        Some(&CapB { tag: "two", count: 2 })
+        Some(&CapB {
+            tag: "two",
+            count: 2
+        })
     );
 }
 
@@ -112,7 +121,10 @@ fn clear_drops_all_slots() {
 #[test]
 fn get_mut_allows_in_place_mutation_of_complex_cap() {
     let mut target = FrameTarget::new();
-    target.insert(CapB { tag: "start", count: 0 });
+    target.insert(CapB {
+        tag: "start",
+        count: 0,
+    });
 
     let cap = target.get_mut::<CapB>().unwrap();
     cap.count = 10;
@@ -120,7 +132,10 @@ fn get_mut_allows_in_place_mutation_of_complex_cap() {
 
     assert_eq!(
         target.get::<CapB>(),
-        Some(&CapB { tag: "updated", count: 10 })
+        Some(&CapB {
+            tag: "updated",
+            count: 10
+        })
     );
 }
 

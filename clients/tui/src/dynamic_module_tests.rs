@@ -15,8 +15,8 @@ use std::{collections::HashSet, path::PathBuf};
 use {
     super::{DynamicClientModule, load_filtered_dynamic_modules},
     reovim_client_driver::{
-        AnnotationContext, BufferId, ClientModule, ColumnWidth, GutterCell, Rect, RenderBehavior,
-        ChromeSurface, Style, TransformedLine, Version, handle::ClientModuleHandle,
+        AnnotationContext, BufferId, ChromeSurface, ClientModule, ColumnWidth, GutterCell, Rect,
+        RenderBehavior, Style, TransformedLine, Version, handle::ClientModuleHandle,
     },
 };
 

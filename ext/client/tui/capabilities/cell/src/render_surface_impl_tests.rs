@@ -52,22 +52,13 @@ fn convert_color_named_ansi_0_through_15() {
 #[test]
 fn convert_color_ansi_value_preserves_index() {
     assert_eq!(convert_color(Color::AnsiValue(42)), CellColor::Ansi256(42));
-    assert_eq!(
-        convert_color(Color::AnsiValue(0)),
-        CellColor::Ansi256(0),
-    );
-    assert_eq!(
-        convert_color(Color::AnsiValue(255)),
-        CellColor::Ansi256(255),
-    );
+    assert_eq!(convert_color(Color::AnsiValue(0)), CellColor::Ansi256(0),);
+    assert_eq!(convert_color(Color::AnsiValue(255)), CellColor::Ansi256(255),);
 }
 
 #[test]
 fn convert_color_rgb_preserves_components() {
-    assert_eq!(
-        convert_color(Color::Rgb { r: 1, g: 2, b: 3 }),
-        CellColor::Rgb(1, 2, 3),
-    );
+    assert_eq!(convert_color(Color::Rgb { r: 1, g: 2, b: 3 }), CellColor::Rgb(1, 2, 3),);
     assert_eq!(
         convert_color(Color::Rgb {
             r: 255,
@@ -99,10 +90,7 @@ fn convert_attrs_italic_maps() {
 
 #[test]
 fn convert_attrs_underline_maps() {
-    assert_eq!(
-        convert_attrs(Attributes::UNDERLINE),
-        CellAttrs::UNDERLINE,
-    );
+    assert_eq!(convert_attrs(Attributes::UNDERLINE), CellAttrs::UNDERLINE,);
 }
 
 #[test]
@@ -119,10 +107,7 @@ fn convert_attrs_dim_maps() {
 fn convert_attrs_strikethrough_is_dropped() {
     // STRIKETHROUGH has no CellAttrs counterpart per §2.2 locked.
     // The converter silently drops it.
-    assert_eq!(
-        convert_attrs(Attributes::STRIKETHROUGH),
-        CellAttrs::empty(),
-    );
+    assert_eq!(convert_attrs(Attributes::STRIKETHROUGH), CellAttrs::empty(),);
 }
 
 #[test]
@@ -194,10 +179,7 @@ fn write_styled_writes_chars_at_position() {
     assert_eq!(g.get_cell(3, 1).map(|c| c.ch), Some('b'));
     assert_eq!(g.get_cell(4, 1).map(|c| c.ch), Some('c'));
     // Style propagated.
-    assert_eq!(
-        g.get_cell(2, 1).unwrap().style.fg,
-        Some(CellColor::Named(9)),
-    );
+    assert_eq!(g.get_cell(2, 1).unwrap().style.fg, Some(CellColor::Named(9)),);
 }
 
 #[test]

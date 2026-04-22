@@ -4,9 +4,9 @@
 //! text concealment, fold handling, virtual lines, and line numbers.
 
 use crate::{
-    BufferId, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities, Rect,
-    RenderBehavior, ChromeSurface, SelectionInfo, SelectionMode, Style, ThemeProvider,
-    TokenProvider, TransformedLine, ViewportContext, VirtualLinePosition,
+    BufferId, ChromeSurface, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities,
+    Rect, RenderBehavior, SelectionInfo, SelectionMode, Style, ThemeProvider, TokenProvider,
+    TransformedLine, ViewportContext, VirtualLinePosition,
     conceal::{apply_conceals, dim_style, source_to_display_col},
 };
 

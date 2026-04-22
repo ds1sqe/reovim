@@ -1,6 +1,8 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, MockThemeProvider, TestModuleContext},
+    reovim_client_driver::testing::{
+        MockPlatformCapabilities, MockThemeProvider, TestModuleContext,
+    },
     reovim_ext_client_tui_cap_cell::{CellCapability, CellColor, CellStyle},
 };
 
@@ -39,9 +41,9 @@ fn find_text_x(g: &CellCapability, y: u16, needle: &str) -> Option<u16> {
 
 /// Highest column index on row `y` that holds a non-space cell, or `None` if row empty.
 fn last_content_x(g: &CellCapability, y: u16) -> Option<u16> {
-    (0..g.width()).rev().find(|&x| {
-        g.get_cell(x, y).is_some_and(|c| c.ch != ' ')
-    })
+    (0..g.width())
+        .rev()
+        .find(|&x| g.get_cell(x, y).is_some_and(|c| c.ch != ' '))
 }
 
 fn full_bounds() -> Rect {

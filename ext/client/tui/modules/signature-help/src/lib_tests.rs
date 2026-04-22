@@ -182,7 +182,10 @@ fn render_border_color_yellow() {
     let mut m = SignatureHelpModule::new();
     m.on_notification(&active_payload("fn foo()"));
     let surface = render(&m, 80, 24);
-    assert_eq!(style_at(&surface, 10, 2).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
+    assert_eq!(
+        style_at(&surface, 10, 2).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11))
+    );
 }
 
 #[test]
@@ -192,7 +195,10 @@ fn render_content_text() {
     let surface = render(&m, 80, 24);
     // Content at (px+1, py+1) = (11, 3)
     assert_eq!(char_at(&surface, 11, 3), 'f');
-    assert_eq!(style_at(&surface, 11, 3).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
+    assert_eq!(
+        style_at(&surface, 11, 3).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15))
+    );
 }
 
 #[test]

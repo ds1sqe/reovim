@@ -23,7 +23,7 @@
 use std::{fs, path::PathBuf};
 
 use reovim_client_driver::{
-    Color, ColorDepth, Insets, Rect, ChromeSurface, RenderingModel, Style, ThemeProvider,
+    ChromeSurface, Color, ColorDepth, Insets, Rect, RenderingModel, Style, ThemeProvider,
     handle::{ClientModuleHandle, HANDLE_LEAKS_PER_MODULE_FIXED, LoadError},
     traits::PlatformCapabilities,
 };

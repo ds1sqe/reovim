@@ -10,8 +10,8 @@ mod markdown;
 use {
     markdown::StyledSpan,
     reovim_client_driver::{
-        BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
+        BufferId, ChromePosition, ChromeSurface, ClientModule, ClientModuleError, ModuleContext,
+        PlatformCapabilities, ProbeResult, Rect, Style, Version, types::Color,
     },
     serde::Deserialize,
 };

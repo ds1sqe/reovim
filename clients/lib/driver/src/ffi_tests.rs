@@ -10,9 +10,9 @@ use std::{
 use {
     super::*,
     crate::{
-        AnnotationContext, BufferId, ColorDepth, ColumnWidth, GutterCell, InlineDecoration, Insets,
-        Rect, RenderBehavior, ChromeSurface, RenderingModel, Style, ThemeProvider, TransformedLine,
-        VirtualLine, VirtualLinePosition,
+        AnnotationContext, BufferId, ChromeSurface, ColorDepth, ColumnWidth, GutterCell,
+        InlineDecoration, Insets, Rect, RenderBehavior, RenderingModel, Style, ThemeProvider,
+        TransformedLine, VirtualLine, VirtualLinePosition,
         testing::{MockPlatformCapabilities, MockThemeProvider},
         types::{Attributes, Color},
     },

@@ -20,7 +20,7 @@
 //! +---------------------------+
 //! ```
 
-use reovim_client_driver::{Rect, ChromeSurface, Style, chrome_utils, types::Color};
+use reovim_client_driver::{ChromeSurface, Rect, Style, chrome_utils, types::Color};
 
 use crate::{BOARD_HEIGHT, BOARD_WIDTH, OpponentData, ResultPlayerData, TetrominoData};
 

@@ -24,8 +24,7 @@
 
 use std::collections::HashMap;
 
-use reovim_ext_client_tui_cap_cell_view::ViewHint;
-use reovim_protocol::v3::WindowInfo;
+use {reovim_ext_client_tui_cap_cell_view::ViewHint, reovim_protocol::v3::WindowInfo};
 
 /// Line number display mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

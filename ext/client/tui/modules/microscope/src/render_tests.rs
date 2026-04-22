@@ -337,7 +337,9 @@ fn scroll_shows_correct_items() {
 
     // First visible row should be item_03 (scroll offset = 3).
     let first_row = bounds.panel_start_y;
-    let text: String = (2..9).map(|col| char_at(&surface, col, first_row)).collect();
+    let text: String = (2..9)
+        .map(|col| char_at(&surface, col, first_row))
+        .collect();
     assert_eq!(text, "item_03");
 
     // Last visible row should be item_10 (selected, with '>').
@@ -370,7 +372,9 @@ fn no_scroll_when_selected_in_view() {
 
     // First item should be item_0 (no scroll).
     let first_row = bounds.panel_start_y;
-    let text: String = (2..8).map(|col| char_at(&surface, col, first_row)).collect();
+    let text: String = (2..8)
+        .map(|col| char_at(&surface, col, first_row))
+        .collect();
     assert_eq!(text, "item_0");
 
     // Third item (index 2) should have '>' indicator.

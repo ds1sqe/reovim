@@ -13,7 +13,7 @@
 //! scoped.write_styled(0, 0, "hello", style);
 //! ```
 
-use crate::{Rect, ChromeSurface, Style, types::Color};
+use crate::{ChromeSurface, Rect, Style, types::Color};
 
 /// A rendering surface that clips and offsets all operations to a bounded region.
 ///

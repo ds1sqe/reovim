@@ -3,8 +3,7 @@ use std::{sync::Arc, time::Duration};
 use reovim_arch::clock::TestClock;
 
 use {
-    super::*,
-    reovim_client_driver::testing::MockPlatformCapabilities,
+    super::*, reovim_client_driver::testing::MockPlatformCapabilities,
     reovim_ext_client_tui_cap_cell::CellCapability,
 };
 
@@ -160,10 +159,7 @@ fn render_content_centered() {
     // Top-left corner should be U+256D
     assert_eq!(char_at(&surface, box_x, box_y), '\u{256D}');
     // Top-right corner should be U+256E
-    assert_eq!(
-        char_at(&surface, box_x + BOX_WIDTH - 1, box_y),
-        '\u{256E}',
-    );
+    assert_eq!(char_at(&surface, box_x + BOX_WIDTH - 1, box_y), '\u{256E}',);
 }
 
 #[test]

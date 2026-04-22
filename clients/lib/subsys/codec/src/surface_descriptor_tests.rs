@@ -1,8 +1,7 @@
 use {
     crate::surface_descriptor::{
-        DefaultSurfaceDescriptorHandlerRegistry, SurfaceApplyContext,
-        SurfaceDescriptorApplyError, SurfaceDescriptorHandler,
-        SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
+        DefaultSurfaceDescriptorHandlerRegistry, SurfaceApplyContext, SurfaceDescriptorApplyError,
+        SurfaceDescriptorHandler, SurfaceDescriptorHandlerError, SurfaceDescriptorHandlerRegistry,
     },
     std::{any::Any, sync::Arc},
 };
@@ -23,10 +22,7 @@ impl SurfaceDescriptorHandler for ApplyingHandler {
     fn kind(&self) -> u16 {
         0x1111
     }
-    fn decode(
-        &self,
-        body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         if body.len() < 2 {
             return Err(SurfaceDescriptorHandlerError::TooShort {
                 got: body.len(),
@@ -57,10 +53,7 @@ impl SurfaceDescriptorHandler for RejectingHandler {
     fn kind(&self) -> u16 {
         0x2222
     }
-    fn decode(
-        &self,
-        _body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, _body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         Ok(Box::new(()))
     }
     fn decode_and_apply(
@@ -89,10 +82,7 @@ impl SurfaceDescriptorHandler for TestHandler {
     fn kind(&self) -> u16 {
         self.kind
     }
-    fn decode(
-        &self,
-        body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         if body.len() < self.min_len {
             return Err(SurfaceDescriptorHandlerError::TooShort {
                 got: body.len(),
@@ -111,10 +101,7 @@ impl SurfaceDescriptorHandler for AlwaysInvalidHandler {
     fn kind(&self) -> u16 {
         0xDEAD
     }
-    fn decode(
-        &self,
-        _body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, _body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         Err(SurfaceDescriptorHandlerError::InvalidData {
             reason: "always invalid",
         })
@@ -126,10 +113,7 @@ impl SurfaceDescriptorHandler for AlwaysOutOfRangeHandler {
     fn kind(&self) -> u16 {
         0xBEEF
     }
-    fn decode(
-        &self,
-        _body: &[u8],
-    ) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
+    fn decode(&self, _body: &[u8]) -> Result<Box<dyn Any + Send>, SurfaceDescriptorHandlerError> {
         Err(SurfaceDescriptorHandlerError::OutOfRange {
             reason: "always out of range",
         })
@@ -157,27 +141,36 @@ fn default_registry_equals_new() {
 #[test]
 fn register_and_get_round_trip_by_kind() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 7, min_len: 2 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 7,
+        min_len: 2,
+    }));
     assert_eq!(reg.get(7).map(|h| h.kind()), Some(7));
 }
 
 #[test]
 fn register_replaces_existing_handler_for_same_kind() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 1, min_len: 0 }));
-    reg.register(Arc::new(TestHandler { kind: 1, min_len: 10 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 1,
+        min_len: 0,
+    }));
+    reg.register(Arc::new(TestHandler {
+        kind: 1,
+        min_len: 10,
+    }));
     let handler = reg.get(1).expect("registered");
     let err = handler.decode(b"short").unwrap_err();
-    assert_eq!(
-        err,
-        SurfaceDescriptorHandlerError::TooShort { got: 5, min: 10 }
-    );
+    assert_eq!(err, SurfaceDescriptorHandlerError::TooShort { got: 5, min: 10 });
 }
 
 #[test]
 fn unregister_removes_handler() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 9, min_len: 0 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 9,
+        min_len: 0,
+    }));
     assert!(reg.get(9).is_some());
     reg.unregister(9);
     assert!(reg.get(9).is_none());
@@ -193,7 +186,10 @@ fn unregister_missing_kind_is_noop() {
 #[test]
 fn get_returns_none_for_unknown_kind_on_populated_registry() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     reg.register(Arc::new(AlwaysInvalidHandler));
     assert!(reg.get(99).is_none());
     assert!(reg.get(0).is_none());
@@ -202,7 +198,10 @@ fn get_returns_none_for_unknown_kind_on_populated_registry() {
 #[test]
 fn registered_handler_decodes_to_typed_descriptor_via_downcast() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 1, min_len: 2 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 1,
+        min_len: 2,
+    }));
     let handler = reg.get(1).unwrap();
     let boxed = handler.decode(&[3, 4, 5]).expect("ok");
     let info = boxed
@@ -253,7 +252,10 @@ fn error_implements_clone_and_eq() {
 #[test]
 fn debug_impl_reports_registered_kinds() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 3, min_len: 0 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 3,
+        min_len: 0,
+    }));
     reg.register(Arc::new(AlwaysOutOfRangeHandler));
     let rendered = format!("{reg:?}");
     assert!(rendered.contains("DefaultSurfaceDescriptorHandlerRegistry"));
@@ -263,7 +265,10 @@ fn debug_impl_reports_registered_kinds() {
 #[test]
 fn registry_supports_multiple_distinct_kinds_concurrently() {
     let reg = registry();
-    reg.register(Arc::new(TestHandler { kind: 1, min_len: 0 }));
+    reg.register(Arc::new(TestHandler {
+        kind: 1,
+        min_len: 0,
+    }));
     reg.register(Arc::new(AlwaysInvalidHandler));
     reg.register(Arc::new(AlwaysOutOfRangeHandler));
     assert!(reg.get(1).is_some());
@@ -292,7 +297,10 @@ fn handler_decode_invalid_data_surfaces_through_registry() {
 
 #[test]
 fn decode_and_apply_default_impl_runs_decode_without_side_effect() {
-    let handler = TestHandler { kind: 7, min_len: 2 };
+    let handler = TestHandler {
+        kind: 7,
+        min_len: 2,
+    };
     let mut ctx = CaptureCtx::default();
     handler.decode_and_apply(&[3, 4], &mut ctx).expect("ok");
     assert_eq!(ctx.last_size, None, "default impl has no side-effect");
@@ -300,7 +308,10 @@ fn decode_and_apply_default_impl_runs_decode_without_side_effect() {
 
 #[test]
 fn decode_and_apply_default_impl_propagates_decode_error() {
-    let handler = TestHandler { kind: 7, min_len: 10 };
+    let handler = TestHandler {
+        kind: 7,
+        min_len: 10,
+    };
     let mut ctx = CaptureCtx::default();
     let err = handler.decode_and_apply(b"short", &mut ctx).unwrap_err();
     assert!(matches!(err, SurfaceDescriptorApplyError::Decode(_)));
@@ -350,9 +361,9 @@ fn apply_error_decode_from_blanket_impl_wraps_decode_error() {
 
 #[test]
 fn apply_error_displays_each_variant_distinctly() {
-    let a = SurfaceDescriptorApplyError::Decode(
-        SurfaceDescriptorHandlerError::InvalidData { reason: "x" },
-    );
+    let a = SurfaceDescriptorApplyError::Decode(SurfaceDescriptorHandlerError::InvalidData {
+        reason: "x",
+    });
     let b = SurfaceDescriptorApplyError::StateApplyRejected { reason: "y" };
     let c = SurfaceDescriptorApplyError::Contextual { reason: "z" };
     assert!(format!("{a}").contains("decode failed"));

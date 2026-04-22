@@ -28,10 +28,12 @@
 //! locking detection behaviour beyond the happy-path "zero callers"
 //! case.
 
-use cargo_metadata::MetadataCommand;
-use std::{
-    fs,
-    path::{Path, PathBuf},
+use {
+    cargo_metadata::MetadataCommand,
+    std::{
+        fs,
+        path::{Path, PathBuf},
+    },
 };
 
 const SCAN_DIRS: &[&str] = &["clients", "ext/client", "apps/bin", "tools"];
@@ -135,11 +137,7 @@ fn scan_file(path: &Path, patterns: &[&str]) -> Vec<(usize, String)> {
     offenders
 }
 
-fn walk_dir(
-    dir: &Path,
-    patterns: &[&str],
-    out: &mut Vec<(PathBuf, usize, String)>,
-) {
+fn walk_dir(dir: &Path, patterns: &[&str], out: &mut Vec<(PathBuf, usize, String)>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };

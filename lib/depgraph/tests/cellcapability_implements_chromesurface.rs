@@ -8,8 +8,10 @@
 //!    `ChromeSurface` lives. The dep direction is `ExtClient{tui}` →
 //!    `RepoCore` (allowed by `core_ext_boundary.rs`).
 
-use cargo_metadata::{DependencyKind, MetadataCommand};
-use std::{fs, path::PathBuf};
+use {
+    cargo_metadata::{DependencyKind, MetadataCommand},
+    std::{fs, path::PathBuf},
+};
 
 fn workspace_root() -> PathBuf {
     MetadataCommand::new()

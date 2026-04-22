@@ -44,7 +44,13 @@ fn registered_handler_decodes_cell_grid_body() {
     };
     let boxed = handler.decode(&body).expect("ok");
     let info = boxed.downcast::<CellGridSurfaceInfo>().unwrap();
-    assert_eq!(*info, CellGridSurfaceInfo { width: 80, height: 24 });
+    assert_eq!(
+        *info,
+        CellGridSurfaceInfo {
+            width: 80,
+            height: 24
+        }
+    );
 }
 
 #[test]

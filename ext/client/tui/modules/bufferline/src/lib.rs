@@ -13,9 +13,8 @@
 
 use {
     reovim_client_driver::{
-        BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, ChromeSurface, Style, ThemeProvider, Version,
-        types::Color,
+        BufferId, ChromePosition, ChromeSurface, ClientModule, ClientModuleError, ModuleContext,
+        PlatformCapabilities, ProbeResult, Rect, Style, ThemeProvider, Version, types::Color,
     },
     serde::Deserialize,
 };

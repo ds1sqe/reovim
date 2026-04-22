@@ -1,8 +1,8 @@
 //! Sample client module fixture for #729 end-to-end validation.
 
 use reovim_client_driver::{
-    ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, ChromeSurface, Style, Version,
+    ChromePosition, ChromeSurface, ClientModule, ClientModuleError, ModuleContext,
+    PlatformCapabilities, ProbeResult, Rect, Style, Version,
 };
 
 pub struct SampleClientModule;

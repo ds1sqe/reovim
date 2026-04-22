@@ -27,7 +27,10 @@ fn module_name() {
 #[test]
 fn module_provides_codec() {
     let m = CodecUtf8Module::new();
-    assert!(m.provides().contains(&reovim_subsys_content_codec::capabilities::CODEC_PROVIDER));
+    assert!(
+        m.provides()
+            .contains(&reovim_subsys_content_codec::capabilities::CODEC_PROVIDER)
+    );
 }
 
 #[test]

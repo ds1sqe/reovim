@@ -9,8 +9,8 @@
 
 use {
     reovim_client_driver::{
-        ChromePosition, ClientModule, ColorDepth, Insets, PlatformCapabilities, Rect,
-        ChromeSurface, RenderingModel,
+        ChromePosition, ChromeSurface, ClientModule, ColorDepth, Insets, PlatformCapabilities,
+        Rect, RenderingModel,
     },
     reovim_driver_display::{
         Attributes as DisplayAttributes, ColorMode, DisplayCapabilities, Style as DisplayStyle,

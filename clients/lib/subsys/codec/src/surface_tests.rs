@@ -21,11 +21,11 @@ impl SurfaceEncoder for ByteSlotEncoder {
         self.kind
     }
     fn encode_from(&self, target: &FrameTarget) -> Result<Vec<u8>, SurfaceEncoderError> {
-        let slot = target.get::<ByteSlot>().ok_or(
-            SurfaceEncoderError::CapabilityMissing {
+        let slot = target
+            .get::<ByteSlot>()
+            .ok_or(SurfaceEncoderError::CapabilityMissing {
                 expected: "ByteSlot",
-            },
-        )?;
+            })?;
         if slot.0.is_empty() {
             return Err(SurfaceEncoderError::InvalidState {
                 reason: "empty byte slot",
@@ -124,15 +124,14 @@ fn capability_missing_error_formats_expected() {
     let err = SurfaceEncoderError::CapabilityMissing {
         expected: "CellCapability",
     };
-    assert_eq!(
-        format!("{err}"),
-        "capability missing on target: expected CellCapability"
-    );
+    assert_eq!(format!("{err}"), "capability missing on target: expected CellCapability");
 }
 
 #[test]
 fn invalid_state_error_formats_reason() {
-    let err = SurfaceEncoderError::InvalidState { reason: "zero-size" };
+    let err = SurfaceEncoderError::InvalidState {
+        reason: "zero-size",
+    };
     assert_eq!(format!("{err}"), "invalid capability state: zero-size");
 }
 

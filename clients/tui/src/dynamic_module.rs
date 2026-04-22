@@ -36,9 +36,9 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use reovim_client_driver::{
-    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
+    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, ClientModule,
     ClientModuleError, ColumnWidth, GutterCell, InlineDecoration, ModuleContext, OptionValue,
-    ProbeResult, Rect, RenderBehavior, ChromeSurface, TransformedLine, Version, VirtualLine,
+    ProbeResult, Rect, RenderBehavior, TransformedLine, Version, VirtualLine,
     handle::ClientModuleHandle,
     traits::{PlatformCapabilities, ThemeProvider},
 };

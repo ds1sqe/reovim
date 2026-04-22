@@ -277,7 +277,10 @@ fn render_border_color_plaintext() {
     let mut m = HoverModule::new();
     m.on_notification(&active_plaintext("hello"));
     let surface = render_hover(&m, 80, 24);
-    assert_eq!(style_at(&surface, 10, 6).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(7)));
+    assert_eq!(
+        style_at(&surface, 10, 6).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(7))
+    );
 }
 
 #[test]
@@ -286,7 +289,10 @@ fn render_border_color_markdown() {
     m.on_notification(&active_markdown("**bold**"));
     let surface = render_hover(&m, 80, 24);
     // Origin line=3, col=0. Popup at (0, 4)
-    assert_eq!(style_at(&surface, 0, 4).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(14)));
+    assert_eq!(
+        style_at(&surface, 0, 4).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(14))
+    );
 }
 
 #[test]
@@ -296,7 +302,10 @@ fn render_content_text() {
     let surface = render_hover(&m, 80, 24);
     // Content at (11, 7)
     assert_eq!(char_at(&surface, 11, 7), 'h');
-    assert_eq!(style_at(&surface, 11, 7).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
+    assert_eq!(
+        style_at(&surface, 11, 7).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15))
+    );
 }
 
 #[test]

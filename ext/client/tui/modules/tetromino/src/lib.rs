@@ -9,8 +9,8 @@
 pub mod render;
 
 use reovim_client_driver::{
-    ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, ChromeSurface, Version,
+    ChromePosition, ChromeSurface, ClientModule, ClientModuleError, ModuleContext,
+    PlatformCapabilities, ProbeResult, Rect, Version,
 };
 
 /// Board dimensions from the server game logic.

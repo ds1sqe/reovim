@@ -141,8 +141,10 @@ fn resize_to_zero_empties_the_grid() {
 #[test]
 fn iter_yields_row_major_coordinates() {
     let mut g = CellCapability::new(3, 2);
-    g.write_cell(2, 0, Cell::new('a', CellStyle::default())).unwrap();
-    g.write_cell(0, 1, Cell::new('b', CellStyle::default())).unwrap();
+    g.write_cell(2, 0, Cell::new('a', CellStyle::default()))
+        .unwrap();
+    g.write_cell(0, 1, Cell::new('b', CellStyle::default()))
+        .unwrap();
 
     let collected: Vec<_> = g.iter().collect();
     assert_eq!(collected.len(), 6);

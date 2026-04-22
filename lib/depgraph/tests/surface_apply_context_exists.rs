@@ -15,13 +15,12 @@
 //! silently reopens the policy-leak that 17-β.2a was designed to
 //! close.
 
-use cargo_metadata::MetadataCommand;
-use std::{fs, path::PathBuf};
+use {
+    cargo_metadata::MetadataCommand,
+    std::{fs, path::PathBuf},
+};
 
-const REQUIRED_EXPORTS: &[&str] = &[
-    "SurfaceApplyContext",
-    "SurfaceDescriptorApplyError",
-];
+const REQUIRED_EXPORTS: &[&str] = &["SurfaceApplyContext", "SurfaceDescriptorApplyError"];
 
 fn workspace_root() -> PathBuf {
     MetadataCommand::new()

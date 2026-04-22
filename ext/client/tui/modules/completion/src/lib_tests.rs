@@ -194,7 +194,10 @@ fn render_selected_item_highlighted() {
 
     // Selected item (index 1) should have Blue bg
     let row_y = py + 2; // py + 1 (border) + 1 (second item)
-    assert_eq!(style_at(&surface, px + 1, row_y).bg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(12)));
+    assert_eq!(
+        style_at(&surface, px + 1, row_y).bg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(12))
+    );
 }
 
 #[test]
@@ -208,7 +211,10 @@ fn render_kind_abbrev_yellow() {
     let py = 24u16.saturating_sub(1 + 2).saturating_sub(1);
 
     // Kind abbrev at (px+1, py+1) should be yellow
-    assert_eq!(style_at(&surface, px + 1, py + 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
+    assert_eq!(
+        style_at(&surface, px + 1, py + 1).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11))
+    );
 }
 
 // =============================================================================

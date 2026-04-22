@@ -1,7 +1,7 @@
 //! Panicking client module fixture for #723 panic-containment tests.
 
 use reovim_client_driver::{
-    ClientModule, ClientModuleError, ModuleContext, ProbeResult, Rect, ChromeSurface, Version,
+    ChromeSurface, ClientModule, ClientModuleError, ModuleContext, ProbeResult, Rect, Version,
     traits::{PlatformCapabilities, ThemeProvider},
 };
 
