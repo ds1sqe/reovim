@@ -17,7 +17,7 @@ use reovim_subsys_coordination::DomainId;
 /// no loaded view module claims. Logs a warning and renders a visible
 /// placeholder in the given surface region.
 pub fn render_unknown_domain_placeholder(
-    surface: &mut dyn crate::RenderSurface,
+    surface: &mut dyn crate::ChromeSurface,
     bounds: crate::Rect,
     domain_id: DomainId,
 ) {
@@ -31,11 +31,11 @@ pub fn render_unknown_domain_placeholder(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::testing::RecordingSurface};
+    use {super::*, crate::testing::surface::TestChromeGrid};
 
     #[test]
     fn unknown_domain_placeholder_renders_label() {
-        let mut surface = RecordingSurface::new(80, 24);
+        let mut surface = TestChromeGrid::new(80, 24);
         let bounds = crate::Rect::new(0, 0, 40, 5);
         render_unknown_domain_placeholder(&mut surface, bounds, DomainId(99));
         assert!(surface.has_content());
@@ -43,7 +43,7 @@ mod tests {
 
     #[test]
     fn unknown_domain_placeholder_empty_bounds_skips() {
-        let mut surface = RecordingSurface::new(80, 24);
+        let mut surface = TestChromeGrid::new(80, 24);
         let bounds = crate::Rect::new(0, 0, 0, 0);
         render_unknown_domain_placeholder(&mut surface, bounds, DomainId(99));
         assert!(!surface.has_content());

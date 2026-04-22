@@ -2,7 +2,7 @@
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+    ProbeResult, Rect, ChromeSurface, Style, Version,
 };
 
 pub struct SampleClientModule;
@@ -59,7 +59,7 @@ impl ClientModule for SampleClientModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

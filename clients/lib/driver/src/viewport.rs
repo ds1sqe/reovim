@@ -5,7 +5,7 @@
 
 use crate::{
     BufferId, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities, Rect,
-    RenderBehavior, RenderSurface, SelectionInfo, SelectionMode, Style, ThemeProvider,
+    RenderBehavior, ChromeSurface, SelectionInfo, SelectionMode, Style, ThemeProvider,
     TokenProvider, TransformedLine, ViewportContext, VirtualLinePosition,
     conceal::{apply_conceals, dim_style, source_to_display_col},
 };
@@ -50,7 +50,7 @@ impl crate::ViewportRenderer for DefaultViewportRenderer {
     #[allow(clippy::too_many_arguments)]
     fn render_viewport(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         viewport: Rect,
         ctx: &ViewportContext<'_>,
         modules: &[Box<dyn ClientModule>],
@@ -82,7 +82,7 @@ impl crate::ViewportRenderer for DefaultViewportRenderer {
 /// Render buffer content into the viewport.
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_buffer_content(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     viewport: Rect,
     ctx: &ViewportContext<'_>,
     modules: &[Box<dyn ClientModule>],
@@ -198,7 +198,7 @@ fn render_buffer_content(
 /// Returns the number of screen rows consumed.
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_positioned_virtual_lines(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     ctx: &ViewportContext<'_>,
     content_x: u16,
     viewport_y: u16,
@@ -238,7 +238,7 @@ fn render_positioned_virtual_lines(
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_line_content(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -364,7 +364,7 @@ fn render_line_content(
 /// Render a virtual line.
 #[allow(clippy::cast_possible_truncation)]
 fn render_virtual_line(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -385,7 +385,7 @@ fn render_virtual_line(
 /// Render a transformed line from a module.
 #[allow(clippy::cast_possible_truncation)]
 fn render_transformed_line(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -413,7 +413,7 @@ fn render_transformed_line(
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::cast_possible_truncation)]
 fn render_gutter_annotations(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     _total_width: u16,
@@ -682,7 +682,7 @@ const MAX_LABEL_WIDTH: usize = 16;
 /// Render all selections (local + remote) as background overlays.
 #[allow(clippy::cast_possible_truncation)]
 fn render_selections(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     ctx: &ViewportContext<'_>,
     content_x: u16,
     content_height: u16,
@@ -730,7 +730,7 @@ fn render_selections(
 /// Render a selection range with a background color overlay.
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_selection_range(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     sel: &SelectionInfo,
     content_x: u16,
     content_height: u16,
@@ -835,7 +835,7 @@ fn normalize_selection(sel: &SelectionInfo) -> (u64, u64, u64, u64) {
 /// Render remote client cursors.
 #[allow(clippy::cast_possible_truncation)]
 fn render_remote_cursors(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     ctx: &ViewportContext<'_>,
     content_x: u16,
     content_height: u16,
@@ -867,7 +867,7 @@ fn render_remote_cursors(
 /// Render name labels for remote cursors.
 #[allow(clippy::cast_possible_truncation)]
 fn render_remote_cursor_labels(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     ctx: &ViewportContext<'_>,
     content_x: u16,
     content_height: u16,
@@ -909,7 +909,7 @@ fn render_remote_cursor_labels(
 /// Render self cursor in the surface (for headless mode).
 #[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
 fn render_self_cursor(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     ctx: &ViewportContext<'_>,
     content_x: u16,
     content_height: u16,

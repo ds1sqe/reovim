@@ -1,8 +1,8 @@
-//! `impl RenderSurface for CellCapability` + Style/Color/Attrs
+//! `impl ChromeSurface for CellCapability` + Style/Color/Attrs
 //! translation layer (Plan 21 / 17-β.2b-impl-a).
 //!
 //! This module is the architectural unlock for 17-β.2b-impl-b: any
-//! `&mut dyn RenderSurface` call-site (of which there are ~30 today
+//! `&mut dyn ChromeSurface` call-site (of which there are ~30 today
 //! across chrome modules and driver helpers) accepts a
 //! `CellCapability` without changing the call-site signature. Test
 //! fixtures that today use `MockSurface` implementations can switch
@@ -16,14 +16,14 @@
 //!   handle width-aware rendering.
 //! - **Fallible writes**: `CellCapability::write_cell` returns
 //!   `Result<(), WriteCellError>` (Plan 17-α decision) while
-//!   `RenderSurface::write_styled` is documented as silent-noop on
+//!   `ChromeSurface::write_styled` is documented as silent-noop on
 //!   OOB. The impl ignores `write_cell` errors (`let _ = …`) to
-//!   preserve the `RenderSurface` contract.
+//!   preserve the `ChromeSurface` contract.
 
 use {
     reovim_client_driver::{
         Rect, Style,
-        traits::RenderSurface,
+        traits::ChromeSurface,
         types::{Attributes, Color},
     },
     crate::{
@@ -113,7 +113,7 @@ fn convert_style(s: &Style) -> CellStyle {
     }
 }
 
-impl RenderSurface for CellCapability {
+impl ChromeSurface for CellCapability {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         // §2.4 locked: one char = one cell, no Unicode width awareness.
         let cell_style = convert_style(&style);
@@ -165,10 +165,10 @@ impl RenderSurface for CellCapability {
     }
 
     fn clear(&mut self, rect: Rect) {
-        // Delegate to the RenderSurface::fill method defined on this
+        // Delegate to the ChromeSurface::fill method defined on this
         // same impl block (not CellCapability::fill which fills the
         // entire grid with no rect parameter).
-        <Self as RenderSurface>::fill(self, rect, ' ', Style::default());
+        <Self as ChromeSurface>::fill(self, rect, ' ', Style::default());
     }
 
     fn size(&self) -> (u16, u16) {

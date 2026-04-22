@@ -4,7 +4,7 @@
 //!
 //! Renders a sidebar tree view on the left side of the terminal.
 //! Receives state from the server via `on_notification()` and
-//! renders through `RenderSurface`.
+//! renders through `ChromeSurface`.
 //!
 //! # Layout
 //!
@@ -25,7 +25,7 @@ mod render;
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Version,
+    ProbeResult, Rect, ChromeSurface, Version,
 };
 
 use crate::layout::SidebarBounds;
@@ -208,7 +208,7 @@ impl ClientModule for ExplorerModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

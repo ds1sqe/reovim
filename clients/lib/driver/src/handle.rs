@@ -23,7 +23,7 @@ use std::{
 use crate::{
     AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
     ClientModuleError, ClientModuleProbe, ColumnWidth, GutterCell, InlineDecoration, ModuleContext,
-    OptionValue, ProbeResult, Rect, RenderBehavior, RenderSurface, TransformedLine, Version,
+    OptionValue, ProbeResult, Rect, RenderBehavior, ChromeSurface, TransformedLine, Version,
     VirtualLine,
     ffi::{
         FfiAnnotationContext, FfiColumnWidth, FfiFoldRange, FfiGutterCell, FfiInlineDecoration,
@@ -1228,7 +1228,7 @@ impl ClientModuleHandle {
     /// Render chrome into the given surface region.
     pub fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         caps: &dyn PlatformCapabilities,
     ) {

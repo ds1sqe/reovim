@@ -8,7 +8,7 @@
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+    ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
 };
 
 /// Maximum number of visible items in the popup.
@@ -188,7 +188,7 @@ impl ClientModule for CompletionModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
@@ -308,10 +308,10 @@ impl ClientModule for CompletionModule {
     }
 }
 
-/// Draw a simple box border on a `RenderSurface`.
+/// Draw a simple box border on a `ChromeSurface`.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn draw_simple_border(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     w: u16,

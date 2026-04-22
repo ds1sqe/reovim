@@ -16,7 +16,7 @@ use {
     super::{DynamicClientModule, load_filtered_dynamic_modules},
     reovim_client_driver::{
         AnnotationContext, BufferId, ClientModule, ColumnWidth, GutterCell, Rect, RenderBehavior,
-        RenderSurface, Style, TransformedLine, Version, handle::ClientModuleHandle,
+        ChromeSurface, Style, TransformedLine, Version, handle::ClientModuleHandle,
     },
 };
 
@@ -100,7 +100,7 @@ impl TestSurface {
     }
 }
 
-impl RenderSurface for TestSurface {
+impl ChromeSurface for TestSurface {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         self.writes.push((x, y, text.to_string(), style));
         u16::try_from(text.chars().count()).expect("test surface write length fits in u16")
@@ -153,7 +153,7 @@ impl ClientModule for WrapperTestModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         _bounds: Rect,
         _caps: &dyn reovim_client_driver::PlatformCapabilities,
     ) {

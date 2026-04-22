@@ -4,13 +4,13 @@
 //!
 //! Renders a centered tetromino game board as an overlay popup when active.
 //! Receives state from the server via `on_notification()` and renders
-//! through `RenderSurface`.
+//! through `ChromeSurface`.
 
 pub mod render;
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Version,
+    ProbeResult, Rect, ChromeSurface, Version,
 };
 
 /// Board dimensions from the server game logic.
@@ -351,7 +351,7 @@ impl ClientModule for TetrominoModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

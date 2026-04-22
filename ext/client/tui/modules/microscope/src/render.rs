@@ -1,12 +1,12 @@
 //! Rendering logic for the microscope picker.
 
-use reovim_client_driver::{Rect, RenderSurface, Style, types::Color};
+use reovim_client_driver::{Rect, ChromeSurface, Style, types::Color};
 
 use crate::{MicroscopeData, PreviewHighlightData, layout::LayoutBounds};
 
 /// Render the microscope overlay.
 pub fn render_microscope(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     data: &MicroscopeData,
     bounds: &LayoutBounds,
 ) {
@@ -22,14 +22,14 @@ pub fn render_microscope(
 }
 
 /// Clear the picker area with the background color.
-fn clear_area(surface: &mut dyn RenderSurface, bounds: &LayoutBounds) {
+fn clear_area(surface: &mut dyn ChromeSurface, bounds: &LayoutBounds) {
     let style = Style::new().bg(Color::AnsiValue(235));
     surface.fill(Rect::new(bounds.x, bounds.y, bounds.width, bounds.total_height), ' ', style);
 }
 
 /// Render the query input row: `{prompt}{query}  [{matched}/{total}]`
 #[allow(clippy::cast_possible_truncation)]
-fn render_query_row(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds: &LayoutBounds) {
+fn render_query_row(surface: &mut dyn ChromeSurface, data: &MicroscopeData, bounds: &LayoutBounds) {
     let row = bounds.query_row;
     let prompt_style = Style::new()
         .fg(Color::AnsiValue(75))
@@ -69,7 +69,7 @@ fn render_query_row(surface: &mut dyn RenderSurface, data: &MicroscopeData, boun
 }
 
 /// Render a horizontal separator line.
-fn render_separator(surface: &mut dyn RenderSurface, bounds: &LayoutBounds, row: u16) {
+fn render_separator(surface: &mut dyn ChromeSurface, bounds: &LayoutBounds, row: u16) {
     let style = Style::new()
         .fg(Color::AnsiValue(240))
         .bg(Color::AnsiValue(235));
@@ -81,7 +81,7 @@ fn render_separator(surface: &mut dyn RenderSurface, bounds: &LayoutBounds, row:
 }
 
 /// Render the vertical separator between results and preview.
-fn render_preview_separator(surface: &mut dyn RenderSurface, bounds: &LayoutBounds) {
+fn render_preview_separator(surface: &mut dyn ChromeSurface, bounds: &LayoutBounds) {
     let style = Style::new()
         .fg(Color::AnsiValue(240))
         .bg(Color::AnsiValue(235));
@@ -95,7 +95,7 @@ fn render_preview_separator(surface: &mut dyn RenderSurface, bounds: &LayoutBoun
 /// Render the results list.
 #[allow(clippy::cast_possible_truncation)]
 pub fn render_results(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     data: &MicroscopeData,
     bounds: &LayoutBounds,
 ) {
@@ -223,7 +223,7 @@ fn syntax_color_at(
 
 /// Render the preview panel.
 #[allow(clippy::cast_possible_truncation)]
-fn render_preview(surface: &mut dyn RenderSurface, data: &MicroscopeData, bounds: &LayoutBounds) {
+fn render_preview(surface: &mut dyn ChromeSurface, data: &MicroscopeData, bounds: &LayoutBounds) {
     let Some(ref preview) = data.preview else {
         return;
     };

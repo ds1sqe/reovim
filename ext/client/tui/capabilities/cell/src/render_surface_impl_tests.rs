@@ -6,7 +6,7 @@ use {
     },
     reovim_client_driver::{
         Rect, Style,
-        traits::RenderSurface,
+        traits::ChromeSurface,
         types::{Attributes, Color},
     },
 };
@@ -172,7 +172,7 @@ fn convert_style_unspecified_fg_bg_stay_none() {
 }
 
 // =========================================================================
-// RenderSurface impl — 6 methods + bounds behaviour
+// ChromeSurface impl — 6 methods + bounds behaviour
 // =========================================================================
 
 fn grid() -> CellCapability {
@@ -281,8 +281,8 @@ fn fill_paints_rect() {
         height: 2,
     };
     // Disambiguate: `g.fill(rect, ...)` would call CellCapability::fill
-    // (whole-grid, 2 args) — we want RenderSurface::fill (rect, 3 args).
-    RenderSurface::fill(&mut g, rect, '#', Style::new().fg(Color::Red));
+    // (whole-grid, 2 args) — we want ChromeSurface::fill (rect, 3 args).
+    ChromeSurface::fill(&mut g, rect, '#', Style::new().fg(Color::Red));
     for y in 1..3 {
         for x in 1..4 {
             let c = g.get_cell(x, y).unwrap();
@@ -305,7 +305,7 @@ fn fill_partially_oob_clamps_via_write_cell() {
         width: 5,
         height: 5,
     };
-    RenderSurface::fill(&mut g, rect, '@', Style::new());
+    ChromeSurface::fill(&mut g, rect, '@', Style::new());
     // In-bounds cells filled.
     assert_eq!(g.get_cell(8, 3).map(|c| c.ch), Some('@'));
     assert_eq!(g.get_cell(9, 4).map(|c| c.ch), Some('@'));
@@ -319,7 +319,7 @@ fn fill_with_zero_dim_rect_is_noop() {
     let mut g = grid();
     let before: Vec<_> = g.iter().map(|((x, y), c)| (x, y, c.clone())).collect();
 
-    RenderSurface::fill(
+    ChromeSurface::fill(
         &mut g,
         Rect {
             x: 5,
@@ -330,7 +330,7 @@ fn fill_with_zero_dim_rect_is_noop() {
         'X',
         Style::new(),
     );
-    RenderSurface::fill(
+    ChromeSurface::fill(
         &mut g,
         Rect {
             x: 5,
@@ -349,7 +349,7 @@ fn fill_with_zero_dim_rect_is_noop() {
 #[test]
 fn clear_resets_rect_to_default() {
     let mut g = grid();
-    RenderSurface::fill(
+    ChromeSurface::fill(
         &mut g,
         Rect {
             x: 0,
@@ -360,7 +360,7 @@ fn clear_resets_rect_to_default() {
         '*',
         Style::new().fg(Color::Red),
     );
-    RenderSurface::clear(
+    ChromeSurface::clear(
         &mut g,
         Rect {
             x: 2,
@@ -379,14 +379,14 @@ fn clear_resets_rect_to_default() {
     assert_eq!(g.get_cell(0, 0).map(|c| c.ch), Some('*'));
 }
 
-fn takes_surface(s: &mut dyn RenderSurface) {
+fn takes_surface(s: &mut dyn ChromeSurface) {
     s.write_styled(0, 0, "ok", Style::new());
 }
 
 #[test]
 fn cellcapability_is_usable_as_dyn_rendersurface() {
     // The core contract: a CellCapability can be passed anywhere a
-    // `&mut dyn RenderSurface` is expected. 17-β.2b-impl-b consumers
+    // `&mut dyn ChromeSurface` is expected. 17-β.2b-impl-b consumers
     // rely on this.
     let mut g = grid();
     takes_surface(&mut g);

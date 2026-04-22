@@ -9,7 +9,7 @@ use {
 // =============================================================================
 
 // Plan 23 / 17-β.2b-impl-c bulk migration: `RecordingSurface` swapped
-// for `CellCapability` (which implements `RenderSurface` since Plan 21).
+// for `CellCapability` (which implements `ChromeSurface` since Plan 21).
 // Per-file helpers replace the fixture's inspection API.
 
 fn has_content(g: &CellCapability) -> bool {

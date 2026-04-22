@@ -11,7 +11,7 @@ use {
     markdown::StyledSpan,
     reovim_client_driver::{
         BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+        PlatformCapabilities, ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
     },
     serde::Deserialize,
 };
@@ -198,7 +198,7 @@ impl ClientModule for HoverModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

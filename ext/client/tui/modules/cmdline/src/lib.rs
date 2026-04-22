@@ -9,7 +9,7 @@
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+    ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
 };
 
 const KIND: &str = "cmdline";
@@ -145,7 +145,7 @@ impl ClientModule for CmdlineModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

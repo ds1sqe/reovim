@@ -1,7 +1,7 @@
 //! Panicking client module fixture for #723 panic-containment tests.
 
 use reovim_client_driver::{
-    ClientModule, ClientModuleError, ModuleContext, ProbeResult, Rect, RenderSurface, Version,
+    ClientModule, ClientModuleError, ModuleContext, ProbeResult, Rect, ChromeSurface, Version,
     traits::{PlatformCapabilities, ThemeProvider},
 };
 
@@ -51,7 +51,7 @@ impl ClientModule for PanickingClientModule {
 
     fn chrome_render(
         &self,
-        _surface: &mut dyn RenderSurface,
+        _surface: &mut dyn ChromeSurface,
         _bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

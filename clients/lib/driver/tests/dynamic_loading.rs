@@ -23,7 +23,7 @@
 use std::{fs, path::PathBuf};
 
 use reovim_client_driver::{
-    Color, ColorDepth, Insets, Rect, RenderSurface, RenderingModel, Style, ThemeProvider,
+    Color, ColorDepth, Insets, Rect, ChromeSurface, RenderingModel, Style, ThemeProvider,
     handle::{ClientModuleHandle, HANDLE_LEAKS_PER_MODULE_FIXED, LoadError},
     traits::PlatformCapabilities,
 };
@@ -87,7 +87,7 @@ impl NoopSurface {
     }
 }
 
-impl RenderSurface for NoopSurface {
+impl ChromeSurface for NoopSurface {
     fn write_styled(&mut self, _x: u16, _y: u16, _text: &str, _style: Style) -> u16 {
         self.writes += 1;
         0

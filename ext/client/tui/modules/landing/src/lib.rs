@@ -21,7 +21,7 @@ use {
     reovim_arch::clock::{Clock, SystemClock},
     reovim_client_driver::{
         BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError,
-        ModuleContext, PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version,
+        ModuleContext, PlatformCapabilities, ProbeResult, Rect, ChromeSurface, Style, Version,
         types::Color,
     },
 };
@@ -282,7 +282,7 @@ impl ClientModule for LandingModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

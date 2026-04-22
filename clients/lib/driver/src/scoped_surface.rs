@@ -1,6 +1,6 @@
 //! Bounded rendering surface that clips and offsets coordinates.
 //!
-//! `ScopedSurface` wraps any `&mut dyn RenderSurface` with a `Rect` bounds.
+//! `ScopedSurface` wraps any `&mut dyn ChromeSurface` with a `Rect` bounds.
 //! All drawing operations are automatically offset to the bounds origin and
 //! clipped to the bounds dimensions. Modules use this to render into their
 //! allocated chrome region without manual coordinate arithmetic.
@@ -13,30 +13,30 @@
 //! scoped.write_styled(0, 0, "hello", style);
 //! ```
 
-use crate::{Rect, RenderSurface, Style, types::Color};
+use crate::{Rect, ChromeSurface, Style, types::Color};
 
 /// A rendering surface that clips and offsets all operations to a bounded region.
 ///
 /// Created via `ScopedSurface::new()` (standalone constructor, not a trait method,
-/// to preserve `RenderSurface` object safety).
+/// to preserve `ChromeSurface` object safety).
 pub struct ScopedSurface<'a> {
-    inner: &'a mut dyn RenderSurface,
+    inner: &'a mut dyn ChromeSurface,
     bounds: Rect,
 }
 
 impl<'a> ScopedSurface<'a> {
     /// Create a scoped surface that renders within the given bounds.
     ///
-    /// All coordinates passed to `RenderSurface` methods are relative to the
+    /// All coordinates passed to `ChromeSurface` methods are relative to the
     /// bounds origin (`bounds.x`, `bounds.y`). Operations outside the bounds
     /// are silently clipped.
     #[must_use]
-    pub fn new(inner: &'a mut dyn RenderSurface, bounds: Rect) -> Self {
+    pub fn new(inner: &'a mut dyn ChromeSurface, bounds: Rect) -> Self {
         Self { inner, bounds }
     }
 }
 
-impl RenderSurface for ScopedSurface<'_> {
+impl ChromeSurface for ScopedSurface<'_> {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         if y >= self.bounds.height || x >= self.bounds.width {
             return 0;

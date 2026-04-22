@@ -18,3 +18,4 @@ workspace = true
 
 [dev-dependencies]
 cargo_metadata = "0.23"
+walkdir = "2"

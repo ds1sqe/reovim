@@ -38,7 +38,7 @@ use std::path::Path;
 use reovim_client_driver::{
     AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
     ClientModuleError, ColumnWidth, GutterCell, InlineDecoration, ModuleContext, OptionValue,
-    ProbeResult, Rect, RenderBehavior, RenderSurface, TransformedLine, Version, VirtualLine,
+    ProbeResult, Rect, RenderBehavior, ChromeSurface, TransformedLine, Version, VirtualLine,
     handle::ClientModuleHandle,
     traits::{PlatformCapabilities, ThemeProvider},
 };
@@ -223,7 +223,7 @@ impl ClientModule for DynamicClientModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         caps: &dyn PlatformCapabilities,
     ) {

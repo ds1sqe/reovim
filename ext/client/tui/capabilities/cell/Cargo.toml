@@ -15,8 +15,7 @@ workspace = true
 [dependencies]
 bitflags = { workspace = true }
 
-# Plan 21 / 17-β.2b-impl-a: `impl RenderSurface for CellCapability`
-# (ExtClient{tui} → RepoCore edge, allowed by the classifier). Unlocks
-# consumer migration: any `&mut dyn RenderSurface` call-site accepts
-# a `CellCapability` without call-site changes.
+# `impl ChromeSurface for CellCapability` lives here (ExtClient{tui} →
+# RepoCore edge, allowed by the classifier). Every `&mut dyn
+# ChromeSurface` call-site accepts a `CellCapability`.
 reovim-client-driver = { workspace = true }

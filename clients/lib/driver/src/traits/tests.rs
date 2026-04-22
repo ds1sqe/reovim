@@ -4,8 +4,8 @@ use {
         BufferId, ChromePosition, ClientModuleError, ColorDepth, ColumnWidth, Insets, ProbeResult,
         Rect, RenderingModel, Style, Version,
         testing::{
-            MockPlatformCapabilities, MockServerHandle, MockThemeProvider, RecordingSurface,
-            TestModuleContext,
+            MockPlatformCapabilities, MockServerHandle, MockThemeProvider, TestModuleContext,
+            surface::TestChromeGrid,
         },
     },
 };
@@ -247,12 +247,12 @@ fn module_context_construction() {
 }
 
 // =============================================================================
-// RenderSurface trait (verify trait is object-safe)
+// ChromeSurface trait (verify trait is object-safe)
 // =============================================================================
 
 #[test]
 fn render_surface_object_safety() {
-    let mut surface: Box<dyn RenderSurface> = Box::new(RecordingSurface::new(80, 24));
+    let mut surface: Box<dyn ChromeSurface> = Box::new(TestChromeGrid::new(80, 24));
     let cols = surface.write_styled(0, 0, "hello", Style::default());
     assert_eq!(cols, 5);
     surface.apply_style(0, 0, Style::default());
@@ -320,7 +320,7 @@ impl ViewportRenderer for MockViewportRenderer {
     }
     fn render_viewport(
         &self,
-        _surface: &mut dyn RenderSurface,
+        _surface: &mut dyn ChromeSurface,
         _viewport: Rect,
         _ctx: &crate::ViewportContext<'_>,
         _modules: &[Box<dyn ClientModule>],

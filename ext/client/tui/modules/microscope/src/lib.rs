@@ -4,7 +4,7 @@
 //!
 //! Renders a Helix-style bottom-anchored fuzzy finder overlay.
 //! Receives state from the server via `on_notification()` and
-//! renders through `RenderSurface`.
+//! renders through `ChromeSurface`.
 //!
 //! # Layout
 //!
@@ -25,7 +25,7 @@ mod render;
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Version,
+    ProbeResult, Rect, ChromeSurface, Version,
 };
 
 use crate::layout::LayoutBounds;
@@ -230,7 +230,7 @@ impl ClientModule for MicroscopeModule {
 
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         _bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

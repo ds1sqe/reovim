@@ -6,7 +6,7 @@
 
 use {
     crate::{
-        ClientModule, ClientModuleError, PlatformCapabilities, ProbeResult, Rect, RenderSurface,
+        ClientModule, ClientModuleError, PlatformCapabilities, ProbeResult, Rect, ChromeSurface,
         Style, ThemeProvider, TokenProvider, Version, ViewportContext, ViewportRenderer,
         projection::DomainProjection,
         traits::{CellGridClientModule, LocalInputResult, ModuleContext},
@@ -56,7 +56,7 @@ impl TextDomainView {
     #[allow(clippy::too_many_arguments)]
     pub fn render_viewport(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         viewport: Rect,
         ctx: &ViewportContext<'_>,
         modules: &[Box<dyn ClientModule>],
@@ -116,7 +116,7 @@ impl ClientModule for TextDomainView {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn render_domain_surface(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
@@ -153,7 +153,7 @@ mod tests {
         crate::{
             Rect,
             projection::DomainProjection,
-            testing::{MockPlatformCapabilities, RecordingSurface, TestModuleContext},
+            testing::{MockPlatformCapabilities, TestModuleContext, surface::TestChromeGrid},
         },
         reovim_subsys_coordination::ProjectionTag,
     };
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn text_domain_view_render_viewport_delegates() {
         let view = TextDomainView::new(text_domain());
-        let mut surface = RecordingSurface::new(80, 24);
+        let mut surface = TestChromeGrid::new(80, 24);
         let viewport = Rect::new(0, 0, 80, 24);
         let ctx = ViewportContext {
             buffer_id: None,

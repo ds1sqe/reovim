@@ -69,7 +69,7 @@ use reovim_arch::Color;
 use crate::{
     AnnotationContext, BufferId, ColorDepth, ColumnWidth, GutterCell, InlineDecoration, Insets,
     Rect, RenderBehavior, RenderingModel, Style, TransformedLine, VirtualLine, VirtualLinePosition,
-    traits::{PlatformCapabilities, RenderSurface, ThemeProvider},
+    traits::{PlatformCapabilities, ChromeSurface, ThemeProvider},
     types::Attributes,
 };
 
@@ -1197,12 +1197,12 @@ impl FfiRenderBehavior {
 }
 
 // =============================================================================
-// FfiRenderSurface — vtable for `&mut dyn RenderSurface` across FFI
+// FfiRenderSurface — vtable for `&mut dyn ChromeSurface` across FFI
 // =============================================================================
 
 /// FFI-safe render surface vtable.
 ///
-/// The host constructs this by wrapping `&mut dyn RenderSurface` inside
+/// The host constructs this by wrapping `&mut dyn ChromeSurface` inside
 /// [`FfiRenderSurfaceHost`] and calling [`Self::from_host`]. The module
 /// receives `*mut FfiRenderSurface` and calls through the function pointers
 /// to reach the host's real surface.
@@ -1225,7 +1225,7 @@ pub struct FfiRenderSurface {
     pub size: unsafe extern "C" fn(*mut c_void) -> u32,
 }
 
-/// Host-side wrapper holding the fat pointer `&mut dyn RenderSurface`.
+/// Host-side wrapper holding the fat pointer `&mut dyn ChromeSurface`.
 ///
 /// Lives on the host's stack frame for the duration of a render
 /// trampoline call. The `PhantomData` anchors the lifetime `'a` so the
@@ -1237,14 +1237,14 @@ pub struct FfiRenderSurface {
 /// a runtime/protocol contract enforced by `catch_unwind` isolation and
 /// module-author documentation.
 pub struct FfiRenderSurfaceHost<'a> {
-    pub(crate) surface: &'a mut dyn RenderSurface,
-    _anchor: PhantomData<&'a mut dyn RenderSurface>,
+    pub(crate) surface: &'a mut dyn ChromeSurface,
+    _anchor: PhantomData<&'a mut dyn ChromeSurface>,
 }
 
 impl<'a> FfiRenderSurfaceHost<'a> {
     /// Wrap a borrowed render surface for FFI dispatch.
     #[must_use]
-    pub fn new(surface: &'a mut dyn RenderSurface) -> Self {
+    pub fn new(surface: &'a mut dyn ChromeSurface) -> Self {
         Self {
             surface,
             _anchor: PhantomData,
@@ -1335,7 +1335,7 @@ unsafe extern "C" fn ffi_rs_size(opaque: *mut c_void) -> u32 {
     }
 }
 
-/// Module-side wrapper: implements `RenderSurface` by calling through the
+/// Module-side wrapper: implements `ChromeSurface` by calling through the
 /// vtable. Used inside the `chrome_render` trampoline.
 pub struct FfiRenderSurfaceRef<'a> {
     ffi: &'a mut FfiRenderSurface,
@@ -1348,7 +1348,7 @@ impl<'a> FfiRenderSurfaceRef<'a> {
     }
 }
 
-impl RenderSurface for FfiRenderSurfaceRef<'_> {
+impl ChromeSurface for FfiRenderSurfaceRef<'_> {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         // SAFETY: vtable pointer is valid for the duration of the call.
         unsafe {

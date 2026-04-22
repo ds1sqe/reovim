@@ -165,7 +165,7 @@ pub trait ClientModule: Send + Sync + 'static {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn render_domain_surface(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         caps: &dyn PlatformCapabilities,
     ) {
@@ -213,7 +213,7 @@ pub trait ClientModule: Send + Sync + 'static {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         caps: &dyn PlatformCapabilities,
     ) {
@@ -379,14 +379,14 @@ pub trait PlatformCapabilities: Send + Sync {
 }
 
 // =============================================================================
-// RenderSurface
+// ChromeSurface
 // =============================================================================
 
-/// Abstraction over the rendering target.
+/// Abstraction over the rendering target for chrome + viewport modules.
 ///
 /// Provides primitive drawing operations. Platform adapters implement this
 /// for their specific rendering backend (cell grid, canvas, native views).
-pub trait RenderSurface {
+pub trait ChromeSurface {
     /// Write styled text at position. Returns the number of columns consumed.
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16;
 
@@ -493,7 +493,7 @@ pub trait ViewportRenderer: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn render_viewport(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         viewport: Rect,
         ctx: &ViewportContext<'_>,
         modules: &[Box<dyn ClientModule>],

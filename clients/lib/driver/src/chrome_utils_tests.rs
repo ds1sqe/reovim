@@ -33,7 +33,7 @@ impl MockSurface {
     }
 }
 
-impl RenderSurface for MockSurface {
+impl ChromeSurface for MockSurface {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         #[allow(clippy::cast_possible_truncation)]
         let len = text.len() as u16;

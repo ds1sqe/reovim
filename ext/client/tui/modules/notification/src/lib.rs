@@ -14,7 +14,7 @@ use std::{
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+    ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
 };
 
 // Re-export the Clock trait from arch for constructor usage.
@@ -276,7 +276,7 @@ impl ClientModule for NotificationModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {
@@ -332,7 +332,7 @@ impl ClientModule for NotificationModule {
 #[allow(clippy::cast_possible_truncation)]
 fn render_grouped_box(
     module: &NotificationModule,
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -420,7 +420,7 @@ fn render_grouped_box(
 #[allow(clippy::cast_possible_truncation)]
 fn render_standalone_toast(
     module: &NotificationModule,
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -468,7 +468,7 @@ fn render_standalone_toast(
 #[allow(clippy::cast_possible_truncation)]
 fn render_toast_content(
     _module: &NotificationModule,
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,
@@ -506,7 +506,7 @@ fn render_toast_content(
 #[allow(clippy::cast_possible_truncation)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_progress_bar(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     width: u16,

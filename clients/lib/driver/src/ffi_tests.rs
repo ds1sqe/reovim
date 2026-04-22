@@ -11,7 +11,7 @@ use {
     super::*,
     crate::{
         AnnotationContext, BufferId, ColorDepth, ColumnWidth, GutterCell, InlineDecoration, Insets,
-        Rect, RenderBehavior, RenderSurface, RenderingModel, Style, ThemeProvider, TransformedLine,
+        Rect, RenderBehavior, ChromeSurface, RenderingModel, Style, ThemeProvider, TransformedLine,
         VirtualLine, VirtualLinePosition,
         testing::{MockPlatformCapabilities, MockThemeProvider},
         types::{Attributes, Color},
@@ -65,7 +65,7 @@ impl MockRenderSurface {
     }
 }
 
-impl RenderSurface for MockRenderSurface {
+impl ChromeSurface for MockRenderSurface {
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         self.ops.push(RenderOp::Write {
             x,

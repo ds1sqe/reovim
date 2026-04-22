@@ -10,7 +10,7 @@
 use {
     reovim_client_driver::{
         ChromePosition, ClientModule, ColorDepth, Insets, PlatformCapabilities, Rect,
-        RenderSurface, RenderingModel,
+        ChromeSurface, RenderingModel,
     },
     reovim_driver_display::{
         Attributes as DisplayAttributes, ColorMode, DisplayCapabilities, Style as DisplayStyle,
@@ -24,7 +24,7 @@ use reovim_client_driver::types::Color;
 // BackendSurfaceAdapter
 // =============================================================================
 
-/// Wraps `&mut dyn RenderBackend` as `RenderSurface` for CORE dispatch.
+/// Wraps `&mut dyn RenderBackend` as `ChromeSurface` for CORE dispatch.
 ///
 /// Used by `render_engine.rs` to call `ClientModule::chrome_render()` with its
 /// existing `RenderBackend`. The bridge's `SurfaceBackendAdapter` then wraps
@@ -40,7 +40,7 @@ impl<'a> BackendSurfaceAdapter<'a> {
     }
 }
 
-impl RenderSurface for BackendSurfaceAdapter<'_> {
+impl ChromeSurface for BackendSurfaceAdapter<'_> {
     fn write_styled(
         &mut self,
         x: u16,
@@ -82,7 +82,7 @@ impl RenderSurface for BackendSurfaceAdapter<'_> {
 // TuiRenderSurface (generic)
 // =============================================================================
 
-/// Generic `RenderSurface` wrapping a concrete `RenderBackend`.
+/// Generic `ChromeSurface` wrapping a concrete `RenderBackend`.
 ///
 /// Unlike `BackendSurfaceAdapter` (which uses `dyn RenderBackend`), this is
 /// generic over `B` for monomorphization in the hot render path.
@@ -93,13 +93,13 @@ pub struct TuiRenderSurface<'a, B: RenderBackend> {
 }
 
 impl<'a, B: RenderBackend> TuiRenderSurface<'a, B> {
-    /// Wrap a concrete `RenderBackend` as `RenderSurface`.
+    /// Wrap a concrete `RenderBackend` as `ChromeSurface`.
     pub const fn new(backend: &'a mut B) -> Self {
         Self { backend }
     }
 }
 
-impl<B: RenderBackend> RenderSurface for TuiRenderSurface<'_, B> {
+impl<B: RenderBackend> ChromeSurface for TuiRenderSurface<'_, B> {
     fn write_styled(
         &mut self,
         x: u16,

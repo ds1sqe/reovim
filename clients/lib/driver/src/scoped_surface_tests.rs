@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::{Rect, RenderSurface, Style, types::Color};
+use crate::{Rect, ChromeSurface, Style, types::Color};
 
 use super::ScopedSurface;
 
@@ -37,7 +37,7 @@ impl RecordingSurface {
     }
 }
 
-impl RenderSurface for RecordingSurface {
+impl ChromeSurface for RecordingSurface {
     #[allow(clippy::cast_possible_truncation)]
     fn write_styled(&mut self, x: u16, y: u16, text: &str, _style: Style) -> u16 {
         self.ops.borrow_mut().push(Op::WriteStyled {

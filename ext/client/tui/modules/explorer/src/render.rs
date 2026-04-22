@@ -1,6 +1,6 @@
 //! Tree rendering for the explorer sidebar.
 
-use reovim_client_driver::{RenderSurface, Style, types::Color};
+use reovim_client_driver::{ChromeSurface, Style, types::Color};
 
 use crate::{ExplorerData, NodeData, layout::SidebarBounds};
 
@@ -15,7 +15,7 @@ const INPUT_BG: Color = Color::AnsiValue(236);
 
 /// Render the explorer sidebar into the given surface.
 pub fn render_explorer(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     data: &ExplorerData,
     bounds: &SidebarBounds,
 ) {
@@ -32,7 +32,7 @@ pub fn render_explorer(
 }
 
 /// Fill sidebar area with background color.
-fn render_background(surface: &mut dyn RenderSurface, bounds: &SidebarBounds) {
+fn render_background(surface: &mut dyn ChromeSurface, bounds: &SidebarBounds) {
     let style = Style::new().bg(SIDEBAR_BG);
     for row in 0..bounds.height {
         for col in 0..bounds.width.saturating_sub(1) {
@@ -42,7 +42,7 @@ fn render_background(surface: &mut dyn RenderSurface, bounds: &SidebarBounds) {
 }
 
 /// Render the header (root directory name).
-fn render_header(surface: &mut dyn RenderSurface, data: &ExplorerData, bounds: &SidebarBounds) {
+fn render_header(surface: &mut dyn ChromeSurface, data: &ExplorerData, bounds: &SidebarBounds) {
     let style = Style::new().fg(Color::White).bg(SIDEBAR_BG).bold();
 
     let available = bounds.width.saturating_sub(2) as usize;
@@ -57,7 +57,7 @@ fn render_header(surface: &mut dyn RenderSurface, data: &ExplorerData, bounds: &
 
 /// Render the visible tree nodes.
 #[allow(clippy::cast_possible_truncation)]
-fn render_tree_nodes(surface: &mut dyn RenderSurface, data: &ExplorerData, bounds: &SidebarBounds) {
+fn render_tree_nodes(surface: &mut dyn ChromeSurface, data: &ExplorerData, bounds: &SidebarBounds) {
     for row in 0..bounds.tree_height {
         let node_idx = data.scroll_offset + row as usize;
         if node_idx >= data.nodes.len() {
@@ -75,7 +75,7 @@ fn render_tree_nodes(surface: &mut dyn RenderSurface, data: &ExplorerData, bound
 /// Render a single tree node row.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_tree_node(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     node: &NodeData,
     x: u16,
     y: u16,
@@ -183,7 +183,7 @@ pub fn build_prefix(vertical_lines: &[bool], is_last: bool, depth: usize) -> Str
 }
 
 /// Render the right-edge separator line.
-fn render_separator(surface: &mut dyn RenderSurface, bounds: &SidebarBounds) {
+fn render_separator(surface: &mut dyn ChromeSurface, bounds: &SidebarBounds) {
     let style = Style::new().fg(Color::DarkGrey).bg(SIDEBAR_BG);
     let sep_x = bounds.x + bounds.width - 1;
     for row in 0..bounds.height {
@@ -193,7 +193,7 @@ fn render_separator(surface: &mut dyn RenderSurface, bounds: &SidebarBounds) {
 
 /// Render the input prompt at the bottom of the sidebar.
 fn render_input_prompt(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     data: &ExplorerData,
     y: u16,
     x: u16,
@@ -212,7 +212,7 @@ fn render_input_prompt(
 }
 
 /// Render a status message near the bottom.
-fn render_message(surface: &mut dyn RenderSurface, msg: &str, bounds: &SidebarBounds) {
+fn render_message(surface: &mut dyn ChromeSurface, msg: &str, bounds: &SidebarBounds) {
     let y = if bounds.input_y.is_some() {
         bounds.y + bounds.height.saturating_sub(2)
     } else {

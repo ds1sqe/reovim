@@ -13,7 +13,7 @@ use {
 // =============================================================================
 
 // Plan 22 / 17-β.2b-impl-b pilot migration: tests now construct a
-// CellCapability (which implements RenderSurface since Plan 21)
+// CellCapability (which implements ChromeSurface since Plan 21)
 // directly, instead of using the driver's RecordingSurface test
 // fixture. The two small helpers below replace RecordingSurface's
 // inspection API (`has_content` + `char_at`) using CellCapability's

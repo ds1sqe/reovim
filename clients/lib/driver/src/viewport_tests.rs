@@ -42,7 +42,7 @@ impl RecordingSurface {
     }
 }
 
-impl RenderSurface for RecordingSurface {
+impl ChromeSurface for RecordingSurface {
     #[allow(clippy::cast_possible_truncation)]
     fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         let width = text.chars().count() as u16;

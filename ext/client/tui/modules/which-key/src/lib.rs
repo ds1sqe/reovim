@@ -17,7 +17,7 @@ use std::{
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+    ProbeResult, Rect, ChromeSurface, Style, Version, types::Color,
 };
 
 // Re-export the Clock trait from arch for constructor usage.
@@ -99,7 +99,7 @@ impl Default for WhichKeyStyleConfig {
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(clippy::too_many_arguments)]
 fn render_hint_row(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     hint: &WhichKeyHint,
     py: u16,
     row_offset: u16,
@@ -309,7 +309,7 @@ impl ClientModule for WhichKeyModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

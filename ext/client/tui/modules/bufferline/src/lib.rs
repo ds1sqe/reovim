@@ -14,7 +14,7 @@
 use {
     reovim_client_driver::{
         BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-        PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, ThemeProvider, Version,
+        PlatformCapabilities, ProbeResult, Rect, ChromeSurface, Style, ThemeProvider, Version,
         types::Color,
     },
     serde::Deserialize,
@@ -275,7 +275,7 @@ impl ClientModule for BufferlineModule {
     #[allow(clippy::cast_possible_truncation)]
     fn chrome_render(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {

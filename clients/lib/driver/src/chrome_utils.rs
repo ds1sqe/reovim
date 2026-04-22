@@ -3,7 +3,7 @@
 //! Generic helpers for rendering bordered floating popups.
 //! Used by native `ClientModule` chrome implementations.
 
-use crate::{RenderSurface, Style};
+use crate::{ChromeSurface, Style};
 
 /// Calculate the popup width from the terminal width.
 ///
@@ -21,7 +21,7 @@ pub const fn popup_x(terminal_width: u16, pw: u16) -> u16 {
     terminal_width.saturating_sub(pw) / 2
 }
 
-/// Render a Unicode box border on a `RenderSurface`.
+/// Render a Unicode box border on a `ChromeSurface`.
 ///
 /// ```text
 /// ╭──────╮
@@ -29,7 +29,7 @@ pub const fn popup_x(terminal_width: u16, pw: u16) -> u16 {
 /// ╰──────╯
 /// ```
 pub fn render_box_border(
-    surface: &mut dyn RenderSurface,
+    surface: &mut dyn ChromeSurface,
     x: u16,
     y: u16,
     w: u16,

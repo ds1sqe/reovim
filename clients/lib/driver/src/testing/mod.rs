@@ -10,7 +10,8 @@ mod capabilities;
 mod context;
 mod registry;
 mod server;
-mod surface;
+#[cfg(test)]
+pub mod surface;
 mod theme;
 
 pub use {
@@ -18,9 +19,5 @@ pub use {
     context::{TestModuleContext, TestModuleContextBuilder},
     registry::MockModuleRegistry,
     server::MockServerHandle,
-    surface::{RecordingSurface, WriteSurface},
     theme::MockThemeProvider,
 };
-
-#[cfg(test)]
-mod tests;
