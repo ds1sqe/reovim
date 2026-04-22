@@ -1,0 +1,16 @@
+[package]
+name = "reovim-ext-client-tui-cap-cell-view"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TUI cell-grid view rasterization: ViewHint + ViewRasterizer + FullBlock"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-ext-client-tui-cap-cell = { workspace = true }

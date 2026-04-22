@@ -19,3 +19,9 @@ workspace = true
 [dev-dependencies]
 cargo_metadata = "0.23"
 walkdir = "2"
+
+# Used by `vtable_layout_byte_size_stable.rs` to assert the FFI
+# ChromeSurface vtable layout (FfiRenderSurface + FfiRenderSurfaceHost)
+# has not drifted since Plan 24. Dev-dep only — does not pollute the
+# dependency graph at build time.
+reovim-client-driver = { workspace = true }

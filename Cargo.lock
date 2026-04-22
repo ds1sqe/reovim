@@ -2411,6 +2411,7 @@ dependencies = [
  "reovim-client-subsys-codec",
  "reovim-driver-display",
  "reovim-driver-tui",
+ "reovim-ext-client-tui-cap-cell-view",
  "reovim-protocol",
  "reovim-subsys-layout",
  "reovim-subsys-module-registry",
@@ -2658,6 +2659,7 @@ name = "reovim-depgraph"
 version = "0.15.0-dev"
 dependencies = [
  "cargo_metadata",
+ "reovim-client-driver",
  "walkdir",
 ]
 
@@ -2920,6 +2922,13 @@ version = "0.15.0-dev"
 dependencies = [
  "bitflags 2.11.0",
  "reovim-client-driver",
+]
+
+[[package]]
+name = "reovim-ext-client-tui-cap-cell-view"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-ext-client-tui-cap-cell",
 ]
 
 [[package]]

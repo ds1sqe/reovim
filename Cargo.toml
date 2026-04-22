@@ -176,6 +176,7 @@ members = [
 
     # Client-side ext capabilities (TUI)
     "ext/client/tui/capabilities/cell",
+    "ext/client/tui/capabilities/cell-view",
 
     # Client-side ext handler modules (TUI)
     "ext/client/tui/modules/surface-descriptor-cell-grid",
@@ -336,6 +337,7 @@ reovim-client-subsys-codec = { path = "./clients/lib/subsys/codec", version = "0
 
 # Client-side ext capabilities (TUI)
 reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }
+reovim-ext-client-tui-cap-cell-view = { path = "./ext/client/tui/capabilities/cell-view", version = "0.15.0-dev" }
 
 # Application binary
 reovim = { path = "./apps/bin", version = "0.15.0-dev" }
