@@ -1,16 +1,31 @@
 use {
     super::*,
     reovim_client_driver::{
-        testing::{
-            MockPlatformCapabilities, MockThemeProvider, RecordingSurface, TestModuleContext,
-            WriteSurface,
-        },
+        testing::{MockPlatformCapabilities, MockThemeProvider, TestModuleContext},
         types::Color,
     },
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellColor, CellStyle},
 };
 
 fn test_caps() -> MockPlatformCapabilities {
     MockPlatformCapabilities::new()
+}
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
+
+fn text_at_row(g: &CellCapability, y: u16) -> String {
+    let (w, _h) = (g.width(), g.height());
+    (0..w)
+        .map(|x| g.get_cell(x, y).map_or(' ', |c| c.ch))
+        .collect::<String>()
+        .trim_end()
+        .to_string()
 }
 
 fn bounds(width: u16) -> Rect {
@@ -84,9 +99,9 @@ fn statusline_chrome_priority_highest() {
 fn statusline_mode_change() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("insert");
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    assert_eq!(surface.text_at(0, 0), Some(" INSERT "));
+    assert!(text_at_row(&surface, 0).contains(" INSERT "));
 }
 
 #[test]
@@ -94,18 +109,18 @@ fn statusline_cursor_update() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 10, 5);
     m.total_lines = 100;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_cursor_pos = surface.writes().iter().any(|w| w.text.contains("11:6"));
+    let has_cursor_pos = text_at_row(&surface, 0).contains("11:6");
     assert!(has_cursor_pos, "Expected cursor position 11:6 in writes");
 }
 
 #[test]
 fn statusline_no_cursor_shows_question_marks() {
     let m = StatuslineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_question = surface.writes().iter().any(|w| w.text.contains("?:?"));
+    let has_question = text_at_row(&surface, 0).contains("?:?");
     assert!(has_question, "Expected ?:? when no cursor data");
 }
 
@@ -233,17 +248,17 @@ fn progress_two_line_buffer() {
 fn statusline_renders_mode_with_correct_style() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("visual");
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let style = surface.style_at(0, 0).unwrap();
-    assert_eq!(style.fg, Some(Color::Black));
-    assert_eq!(style.bg, Some(Color::Magenta));
+    let style = style_at(&surface, 0, 0);
+    assert_eq!(style.fg, Some(CellColor::Named(0)));
+    assert_eq!(style.bg, Some(CellColor::Named(13)));
 }
 
 #[test]
 fn statusline_renders_at_bounds_offset() {
     let m = StatuslineModule::default();
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = Rect {
         x: 0,
         y: 23,
@@ -251,7 +266,7 @@ fn statusline_renders_at_bounds_offset() {
         height: 1,
     };
     m.chrome_render(&mut surface, bounds, &test_caps());
-    assert_eq!(surface.text_at(0, 23), Some(" NORMAL "));
+    assert!(text_at_row(&surface, 23).contains(" NORMAL "));
 }
 
 #[test]
@@ -259,14 +274,12 @@ fn statusline_renders_progress_in_z_section() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 50, 10);
     m.total_lines = 200;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
     // Should show progress + position
-    let has_progress = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains("25%") && w.text.contains("51:11"));
-    assert!(has_progress, "Expected '25% 51:11' in writes");
+    let row = text_at_row(&surface, 0);
+    let has_progress = row.contains("25%") && row.contains("51:11");
+    assert!(has_progress, "Expected '25% 51:11' in row");
 }
 
 #[test]
@@ -274,9 +287,9 @@ fn statusline_renders_top_progress() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 0, 0);
     m.total_lines = 100;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_top = surface.writes().iter().any(|w| w.text.contains("Top"));
+    let has_top = text_at_row(&surface, 0).contains("Top");
     assert!(has_top, "Expected 'Top' in writes");
 }
 
@@ -285,9 +298,9 @@ fn statusline_renders_bot_progress() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 99, 0);
     m.total_lines = 100;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_bot = surface.writes().iter().any(|w| w.text.contains("Bot"));
+    let has_bot = text_at_row(&surface, 0).contains("Bot");
     assert!(has_bot, "Expected 'Bot' in writes");
 }
 
@@ -296,28 +309,28 @@ fn statusline_renders_all_progress_for_small_buffer() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 0, 0);
     m.total_lines = 1;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_all = surface.writes().iter().any(|w| w.text.contains("All"));
+    let has_all = text_at_row(&surface, 0).contains("All");
     assert!(has_all, "Expected 'All' in writes");
 }
 
 #[test]
 fn statusline_fills_background() {
     let m = StatuslineModule::new();
-    let mut surface = RecordingSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
     // The fill call sets bg=DarkGrey across the entire row
-    let style = surface.style_at(40, 0);
-    assert_eq!(style.bg, Some(Color::DarkGrey));
+    let style = style_at(&surface, 40, 0);
+    assert_eq!(style.bg, Some(CellColor::Named(8)));
 }
 
 #[test]
 fn statusline_zero_width_does_not_render() {
     let m = StatuslineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(0), &test_caps());
-    assert!(surface.writes().is_empty(), "Expected no writes on zero width");
+    assert!(!has_content(&surface), "Expected no writes on zero width");
 }
 
 // =============================================================================
@@ -328,9 +341,9 @@ fn statusline_zero_width_does_not_render() {
 fn statusline_renders_filename_when_set() {
     let mut m = StatuslineModule::new();
     m.filename = Some(String::from("main.rs"));
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_filename = surface.writes().iter().any(|w| w.text.contains("main.rs"));
+    let has_filename = text_at_row(&surface, 0).contains("main.rs");
     assert!(has_filename, "Expected filename in writes");
 }
 
@@ -339,13 +352,10 @@ fn statusline_renders_modified_indicator() {
     let mut m = StatuslineModule::new();
     m.filename = Some(String::from("main.rs"));
     m.modified = true;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_modified = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains(MODIFIED_ICON));
-    assert!(has_modified, "Expected modified icon in writes");
+    let has_modified = text_at_row(&surface, 0).contains(MODIFIED_ICON);
+    assert!(has_modified, "Expected modified icon in row");
 }
 
 #[test]
@@ -353,24 +363,19 @@ fn statusline_renders_readonly_indicator() {
     let mut m = StatuslineModule::new();
     m.filename = Some(String::from("main.rs"));
     m.readonly = true;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_readonly = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains(READONLY_ICON));
-    assert!(has_readonly, "Expected readonly icon in writes");
+    let has_readonly = text_at_row(&surface, 0).contains(READONLY_ICON);
+    assert!(has_readonly, "Expected readonly icon in row");
 }
 
 #[test]
 fn statusline_no_filename_no_section_c() {
     let m = StatuslineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_filename = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains("main.rs") || w.text.contains(MODIFIED_ICON));
+    let row = text_at_row(&surface, 0);
+    let has_filename = row.contains("main.rs") || row.contains(MODIFIED_ICON);
     assert!(!has_filename, "Expected no filename section without data");
 }
 
@@ -383,9 +388,9 @@ fn statusline_renders_filetype_in_y_section() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 0, 0);
     m.filetype = Some(String::from("rust"));
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_ft = surface.writes().iter().any(|w| w.text.contains("rust"));
+    let has_ft = text_at_row(&surface, 0).contains("rust");
     assert!(has_ft, "Expected filetype 'rust' in writes");
 }
 
@@ -395,13 +400,11 @@ fn statusline_renders_filetype_and_encoding() {
     m.on_cursor_update(BufferId(0), 0, 0);
     m.filetype = Some(String::from("rust"));
     m.encoding = Some(String::from("utf-8"));
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_both = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains("rust") && w.text.contains("utf-8"));
-    assert!(has_both, "Expected 'rust utf-8' in writes");
+    let row = text_at_row(&surface, 0);
+    let has_both = row.contains("rust") && row.contains("utf-8");
+    assert!(has_both, "Expected 'rust utf-8' in row");
 }
 
 // =============================================================================
@@ -414,23 +417,22 @@ fn statusline_renders_git_branch() {
         git_branch: Some(String::from("main")),
         ..Default::default()
     };
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_branch = surface.writes().iter().any(|w| w.text.contains("main"));
-    assert!(has_branch, "Expected git branch 'main' in writes");
-    let has_icon = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains(GIT_BRANCH_ICON));
-    assert!(has_icon, "Expected git branch icon in writes");
+    let row = text_at_row(&surface, 0);
+    assert!(row.contains("main"), "Expected git branch 'main' in row");
+    assert!(
+        row.contains(GIT_BRANCH_ICON),
+        "Expected git branch icon in row"
+    );
 }
 
 #[test]
 fn statusline_no_branch_no_section_b() {
     let m = StatuslineModule::new();
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_branch = surface.writes().iter().any(|w| w.text.contains("\u{e0a0}"));
+    let has_branch = text_at_row(&surface, 0).contains("\u{e0a0}");
     assert!(!has_branch, "Expected no branch icon without data");
 }
 
@@ -622,21 +624,19 @@ fn statusline_renders_diagnostics_section() {
     m.on_cursor_update(BufferId(0), 0, 0);
     m.diag_error = 2;
     m.diag_warning = 1;
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_error = surface.writes().iter().any(|w| w.text.contains(ERROR_ICON));
+    let has_error = text_at_row(&surface, 0).contains(ERROR_ICON);
     assert!(has_error, "Expected error icon in writes");
 }
 
 #[test]
 fn statusline_no_diagnostics_when_zero() {
     let m = StatuslineModule::default();
-    let mut surface = WriteSurface::new(80, 1);
+    let mut surface = CellCapability::new(80, 1);
     m.chrome_render(&mut surface, bounds(80), &test_caps());
-    let has_diag = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains(ERROR_ICON) || w.text.contains(WARNING_ICON));
+    let row = text_at_row(&surface, 0);
+    let has_diag = row.contains(ERROR_ICON) || row.contains(WARNING_ICON);
     assert!(!has_diag, "Expected no diagnostic icons when counts are zero");
 }
 

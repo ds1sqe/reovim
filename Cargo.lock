@@ -2658,6 +2658,7 @@ name = "reovim-depgraph"
 version = "0.15.0-dev"
 dependencies = [
  "cargo_metadata",
+ "walkdir",
 ]
 
 [[package]]
@@ -4090,6 +4091,7 @@ name = "reovim-tui-mod-bufferline"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
 ]
@@ -4127,6 +4129,7 @@ name = "reovim-tui-mod-explorer"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4235,6 +4238,7 @@ name = "reovim-tui-mod-statusline"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
 ]

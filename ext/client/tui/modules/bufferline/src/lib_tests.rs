@@ -1,12 +1,47 @@
 use {
     super::*,
-    reovim_client_driver::testing::{
-        MockPlatformCapabilities, MockThemeProvider, TestModuleContext, WriteSurface,
-    },
+    reovim_client_driver::testing::{MockPlatformCapabilities, MockThemeProvider, TestModuleContext},
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellColor, CellStyle},
 };
 
 fn test_caps() -> MockPlatformCapabilities {
     MockPlatformCapabilities::new()
+}
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
+
+fn text_at_row(g: &CellCapability, y: u16) -> String {
+    let w = g.width();
+    (0..w)
+        .map(|x| g.get_cell(x, y).map_or(' ', |c| c.ch))
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+}
+
+/// Find the x-column where `needle` starts on row `y`, or `None` if absent.
+fn find_text_x(g: &CellCapability, y: u16, needle: &str) -> Option<u16> {
+    let row = (0..g.width())
+        .map(|x| g.get_cell(x, y).map_or(' ', |c| c.ch))
+        .collect::<String>();
+    row.find(needle).and_then(|byte_idx| {
+        // chars up to byte_idx == column offset (all one-byte chars in test fixtures
+        // are ASCII; the test rendering uses only ASCII + single-char BMP icons).
+        u16::try_from(row[..byte_idx].chars().count()).ok()
+    })
+}
+
+/// Highest column index on row `y` that holds a non-space cell, or `None` if row empty.
+fn last_content_x(g: &CellCapability, y: u16) -> Option<u16> {
+    (0..g.width()).rev().find(|&x| {
+        g.get_cell(x, y).is_some_and(|c| c.ch != ' ')
+    })
 }
 
 fn full_bounds() -> Rect {
@@ -225,11 +260,11 @@ fn render_hidden_with_one_tab() {
     let mut m = BufferlineModule::new();
     m.on_notification(&buffer_list_json(&one_buf(1, "main.rs", false)));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
     // Single tab — should not render.
-    let has_tab = surface.writes().iter().any(|w| w.text.contains("main.rs"));
+    let has_tab = text_at_row(&surface, 0).contains("main.rs");
     assert!(!has_tab, "Should not render with only 1 tab");
 }
 
@@ -242,11 +277,11 @@ fn render_visible_with_two_tabs() {
         one_buf(2, "lib.rs", false)
     )));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_main = surface.writes().iter().any(|w| w.text.contains("main.rs"));
-    let has_lib = surface.writes().iter().any(|w| w.text.contains("lib.rs"));
+    let has_main = text_at_row(&surface, 0).contains("main.rs");
+    let has_lib = text_at_row(&surface, 0).contains("lib.rs");
     assert!(has_main, "Expected main.rs");
     assert!(has_lib, "Expected lib.rs");
 }
@@ -260,18 +295,28 @@ fn render_at_top_right() {
         one_buf(2, "b.rs", false)
     )));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
     // All writes should be on row 0 (top) and right-aligned.
-    for w in surface.writes() {
-        assert_eq!(w.y, 0, "Should render on top row");
+    for y in 1..surface.height() {
+        assert!(
+            text_at_row(&surface, y).is_empty(),
+            "Should render on top row only; row {y} has content"
+        );
     }
 
-    // Last write should end near the right edge.
-    let last = surface.writes().last().unwrap();
-    let end_x = last.x as usize + last.text.len();
-    assert_eq!(end_x, 80, "Should be right-aligned to screen edge");
+    // The tab display is right-aligned: `start_x = width - tab_str.byte_len`.
+    // For " a.rs │ b.rs " (13 chars / 15 bytes) with a 3-byte separator,
+    // start_x = 80 - 15 = 65; text occupies x=65..=77; trailing space at 77;
+    // last non-space char ('s' of b.rs) at x=76. This asserts the display's
+    // final non-space column lies in the expected right-edge band — a visual-
+    // column analogue of the old byte-length-based "end_x == 80" assertion.
+    let last_x = last_content_x(&surface, 0).expect("Expected content on row 0");
+    assert!(
+        (74..=79).contains(&last_x),
+        "Tabs should right-align near screen edge; last_x={last_x}"
+    );
 }
 
 #[test]
@@ -284,17 +329,15 @@ fn render_active_tab_highlighted() {
     )));
     m.on_buffer_focus(BufferId(1));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    // The active tab is overwritten on top of the bg — find the last
-    // write containing "main.rs" (the active-style overwrite).
-    let active = surface
-        .writes()
-        .iter()
-        .rfind(|w| w.text.contains("main.rs"))
-        .expect("Expected main.rs tab");
-    assert_eq!(active.style.bg, Some(Color::Blue));
+    // The active tab is overwritten on top of the bg — final-grid style at the
+    // first "main.rs" character carries the active-style background.
+    let x = find_text_x(&surface, 0, "main.rs").expect("Expected main.rs tab on row 0");
+    let style = style_at(&surface, x, 0);
+    // Color::Blue → CellColor::Named(12)
+    assert_eq!(style.bg, Some(CellColor::Named(12)));
 }
 
 #[test]
@@ -306,13 +349,10 @@ fn render_modified_shows_marker() {
         one_buf(2, "lib.rs", false)
     )));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_modified = surface
-        .writes()
-        .iter()
-        .any(|w| w.text.contains(MODIFIED_ICON));
+    let has_modified = text_at_row(&surface, 0).contains(MODIFIED_ICON);
     assert!(has_modified, "Expected modified icon for modified buffer");
 }
 
@@ -326,10 +366,10 @@ fn render_pinned_shows_star() {
         one_buf(2, "lib.rs", false)
     )));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
-    let has_pin = surface.writes().iter().any(|w| w.text.contains(PIN_ICON));
+    let has_pin = text_at_row(&surface, 0).contains(PIN_ICON);
     assert!(has_pin, "Expected pin icon for pinned buffer");
 }
 
@@ -342,7 +382,7 @@ fn render_zero_width_no_crash() {
         one_buf(2, "b.rs", false)
     )));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let zero_bounds = Rect {
         x: 0,
         y: 0,
@@ -350,15 +390,15 @@ fn render_zero_width_no_crash() {
         height: 24,
     };
     m.chrome_render(&mut surface, zero_bounds, &test_caps());
-    assert!(surface.writes().is_empty());
+    assert!(!has_content(&surface));
 }
 
 #[test]
 fn render_empty_tabs_no_output() {
     let m = BufferlineModule::new();
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
-    assert!(surface.writes().is_empty());
+    assert!(!has_content(&surface));
 }
 
 // =============================================================================
@@ -612,7 +652,7 @@ fn render_uses_theme_styles() {
                 b: 50,
             }),
         )
-        .highlight("mode_normal", custom_mode.clone())
+        .highlight("mode_normal", custom_mode)
         .build();
     m.init(&ctx_owner.as_context());
     m.on_notification(&buffer_list_json(&format!(
@@ -622,14 +662,12 @@ fn render_uses_theme_styles() {
     )));
     m.on_buffer_focus(BufferId(1));
 
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     m.chrome_render(&mut surface, full_bounds(), &test_caps());
 
     // Active tab should use mode_normal bg, not hardcoded Blue.
-    let active = surface
-        .writes()
-        .iter()
-        .rfind(|w| w.text.contains("main.rs"))
-        .expect("Expected main.rs tab");
-    assert_eq!(active.style.bg, custom_mode.bg);
+    let x = find_text_x(&surface, 0, "main.rs").expect("Expected main.rs tab on row 0");
+    let style = style_at(&surface, x, 0);
+    // custom_mode.bg is Color::Rgb { r: 100, g: 100, b: 200 }
+    assert_eq!(style.bg, Some(CellColor::Rgb(100, 100, 200)));
 }

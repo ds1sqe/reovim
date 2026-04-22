@@ -1,10 +1,22 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, WriteSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::CellCapability,
 };
 
 fn test_caps() -> MockPlatformCapabilities {
     MockPlatformCapabilities::new()
+}
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn text_on_row_contains(g: &CellCapability, y: u16, needle: &str) -> bool {
+    let row: String = (0..g.width())
+        .map(|x| g.get_cell(x, y).map_or(' ', |c| c.ch))
+        .collect();
+    row.contains(needle)
 }
 
 // =============================================================================
@@ -271,40 +283,41 @@ fn cursor_position_active_with_input() {
 #[test]
 fn render_inactive_no_op() {
     let m = ExplorerModule::new();
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = Rect::new(0, 0, 30, 24);
     m.chrome_render(&mut surface, bounds, &test_caps());
-    assert!(surface.writes().is_empty());
+    assert!(!has_content(&surface));
 }
 
 #[test]
 fn render_shows_content_with_nodes() {
     let mut m = ExplorerModule::new();
     m.on_notification(&active_payload("project", &[("src", 0, true)]));
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = Rect::new(0, 0, 30, 24);
     m.chrome_render(&mut surface, bounds, &test_caps());
-    // Should have writes (background, header, nodes, separator)
-    assert!(!surface.writes().is_empty());
-    // Header should contain "project"
-    let has_header = surface.writes().iter().any(|w| w.text == "project");
-    assert!(has_header, "Expected header 'project' in writes");
+    // Should have content (background fill, header, nodes, separator)
+    assert!(has_content(&surface));
+    // Header row (y=0) should contain "project"
+    assert!(
+        text_on_row_contains(&surface, 0, "project"),
+        "Expected header 'project' on row 0"
+    );
 }
 
 #[test]
 fn render_at_offset_bounds() {
     let mut m = ExplorerModule::new();
     m.on_notification(&active_payload("proj", &[("file.rs", 0, false)]));
-    let mut surface = WriteSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     // Simulate chrome allocating at x=5, y=2
     let bounds = Rect::new(5, 2, 30, 20);
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Header write should be at x=6 (bounds.x + 1), y=2 (bounds.y)
-    let has_header_at_offset = surface
-        .writes()
-        .iter()
-        .any(|w| w.x == 6 && w.y == 2 && w.text == "proj");
-    assert!(has_header_at_offset, "Expected header at offset (6, 2) in writes");
+    let header: String = (6..10)
+        .map(|x| surface.get_cell(x, 2).map_or(' ', |c| c.ch))
+        .collect();
+    assert_eq!(header, "proj", "Expected header at offset (6, 2)");
 }
 
 // =============================================================================
