@@ -24,6 +24,8 @@ reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
 reovim-client-subsys-module = { workspace = true }
+reovim-client-subsys-chrome = { workspace = true }
+reovim-client-subsys-render = { workspace = true }
 tracing = { workspace = true }
 unicode-width = { workspace = true }
 

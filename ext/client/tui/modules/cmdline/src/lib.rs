@@ -133,8 +133,8 @@ impl ClientModule for CmdlineModule {
         if !self.active {
             return None;
         }
-        let pw = reovim_client_driver::chrome_utils::popup_width(w);
-        let px = reovim_client_driver::chrome_utils::popup_x(w, pw);
+        let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(w);
+        let px = reovim_client_subsys_chrome::chrome_utils::popup_x(w, pw);
         let content_x = px + 2; // border + padding
         let prompt_len = self.prompt.len() as u16;
         let cursor_x = content_x + prompt_len + self.cursor as u16;
@@ -155,8 +155,8 @@ impl ClientModule for CmdlineModule {
 
         let width = bounds.width;
 
-        let pw = reovim_client_driver::chrome_utils::popup_width(width);
-        let px = reovim_client_driver::chrome_utils::popup_x(width, pw);
+        let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(width);
+        let px = reovim_client_subsys_chrome::chrome_utils::popup_x(width, pw);
         let py: u16 = 1; // Near top of screen
 
         // Popup height: 3 (border + content + border) + completion rows
@@ -165,7 +165,7 @@ impl ClientModule for CmdlineModule {
 
         // Draw border
         let border_style = Style::new().fg(Color::DarkGrey);
-        reovim_client_driver::chrome_utils::render_box_border(
+        reovim_client_subsys_chrome::chrome_utils::render_box_border(
             surface,
             px,
             py,

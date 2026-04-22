@@ -1,4 +1,6 @@
-use {super::*, crate::types::Color};
+use reovim_client_subsys_module::{ChromeSurface, Rect, Style, types::Color};
+
+use super::*;
 
 // =============================================================================
 // MockSurface for testing chrome_utils
@@ -47,9 +49,9 @@ impl ChromeSurface for MockSurface {
 
     fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
 
-    fn fill(&mut self, _rect: crate::Rect, _ch: char, _style: Style) {}
+    fn fill(&mut self, _rect: Rect, _ch: char, _style: Style) {}
 
-    fn clear(&mut self, _rect: crate::Rect) {}
+    fn clear(&mut self, _rect: Rect) {}
 
     fn size(&self) -> (u16, u16) {
         (self.width, self.height)

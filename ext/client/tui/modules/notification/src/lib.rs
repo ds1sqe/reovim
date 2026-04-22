@@ -365,7 +365,7 @@ fn render_grouped_box(
     let border_style = Style::new().fg(border_color);
 
     // Draw border with source name in top border
-    reovim_client_driver::chrome_utils::render_box_border(
+    reovim_client_subsys_chrome::chrome_utils::render_box_border(
         surface,
         x,
         y,
@@ -378,7 +378,7 @@ fn render_grouped_box(
     if let Some(name) = source {
         let label = format!(" {name} ");
         let max_label = (width.saturating_sub(4)) as usize;
-        let display = reovim_client_driver::ui::truncate_end(&label, max_label);
+        let display = reovim_client_subsys_chrome::ui::truncate_end(&label, max_label);
         let label_style = Style::new().fg(border_color).bold();
         surface.write_styled(x + 2, y, &display, label_style);
     }
@@ -434,7 +434,7 @@ fn render_standalone_toast(
     let border_color = NotificationModule::level_color(toast.level);
     let border_style = Style::new().fg(border_color);
 
-    reovim_client_driver::chrome_utils::render_box_border(
+    reovim_client_subsys_chrome::chrome_utils::render_box_border(
         surface,
         x,
         y,
@@ -482,14 +482,15 @@ fn render_toast_content(
 
     let title_style = Style::new().fg(Color::White);
     let max_title_len = width.saturating_sub(2) as usize;
-    let title_display = reovim_client_driver::ui::truncate_end(&toast.title, max_title_len);
+    let title_display = reovim_client_subsys_chrome::ui::truncate_end(&toast.title, max_title_len);
     surface.write_styled(x + 2, y, &title_display, title_style);
 
     let mut current_row = y + 1;
 
     if !toast.body.is_empty() {
         let body_style = Style::new().fg(Color::DarkGrey);
-        let body_display = reovim_client_driver::ui::truncate_end(&toast.body, width as usize);
+        let body_display =
+            reovim_client_subsys_chrome::ui::truncate_end(&toast.body, width as usize);
         surface.write_styled(x, current_row, &body_display, body_style);
         current_row += 1;
     }
@@ -555,7 +556,7 @@ fn render_progress_bar(
     if !detail.is_empty() && detail_cols > 1 {
         let detail_x = bar_x + bar_width as u16 + 1;
         let max_detail = (detail_cols - 1) as usize;
-        let detail_display = reovim_client_driver::ui::truncate_end(detail, max_detail);
+        let detail_display = reovim_client_subsys_chrome::ui::truncate_end(detail, max_detail);
         let detail_style = Style::new().fg(Color::DarkGrey);
         surface.write_styled(detail_x, y, &detail_display, detail_style);
     }

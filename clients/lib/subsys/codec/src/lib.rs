@@ -27,6 +27,7 @@
 //! `ClientServiceRegistry` by consumers using the existing
 //! `Send + Sync + 'static` bound; no marker trait is required.
 
+pub mod projection;
 pub mod render;
 pub mod surface;
 pub mod surface_descriptor;

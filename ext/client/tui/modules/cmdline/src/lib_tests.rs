@@ -144,8 +144,8 @@ fn cursor_position_when_active() {
     // y should be 2 (popup at y=1, content at y=2)
     assert_eq!(y, 2);
     // x = popup_x + 2 (border) + 1 (prompt ":") + 2 (cursor pos)
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     assert_eq!(x, px + 2 + 1 + 2);
 }
 
@@ -175,8 +175,8 @@ fn render_shows_popup() {
     assert!(has_content(&surface));
 
     // Check border at py=1
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     assert_eq!(char_at(&surface, px, 1), '\u{256D}'); // top-left corner
     assert_eq!(char_at(&surface, px + pw - 1, 1), '\u{256E}'); // top-right corner
 
@@ -194,8 +194,8 @@ fn render_shows_completions() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let content_x = px + 2;
 
     // Height = 3 (border+content+border) + 2 completions = 5
@@ -216,8 +216,8 @@ fn render_cursor_style() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let content_x = px + 2;
     // cursor at position 2 in input, prompt is 1 char
     let cursor_x = content_x + 1 + 2;
@@ -235,8 +235,8 @@ fn render_cursor_at_end_of_input() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let content_x = px + 2;
     // cursor at position 2 (past end of 2-char input), prompt is 1 char
     let cursor_x = content_x + 1 + 2;
@@ -257,8 +257,8 @@ fn render_narrow_terminal() {
     let surface = render(&m, 32, 24);
 
     // Should render without panic
-    let pw = reovim_client_driver::chrome_utils::popup_width(32);
-    let px = reovim_client_driver::chrome_utils::popup_x(32, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(32);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(32, pw);
     assert_eq!(char_at(&surface, px, 1), '\u{256D}');
 }
 
@@ -283,8 +283,8 @@ fn render_prompt_style() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let content_x = px + 2;
 
     // Prompt should have yellow foreground
@@ -299,8 +299,8 @@ fn render_border_style() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
 
     // Border should have DarkGrey foreground
     let style = style_at(&surface, px, 1);
@@ -316,8 +316,8 @@ fn render_selected_completion_style() {
 
     let surface = render(&m, 80, 24);
 
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let content_x = px + 2;
 
     // First completion (index 0) is not selected -- default style

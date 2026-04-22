@@ -1,0 +1,15 @@
+[package]
+name = "reovim-client-subsys-render"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client render subsystem: RenderTarget trait and render pipeline contracts"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

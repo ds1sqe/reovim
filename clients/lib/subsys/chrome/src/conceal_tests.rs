@@ -1,4 +1,4 @@
-use {super::*, crate::Attributes};
+use {super::*, reovim_client_subsys_module::Attributes};
 
 // =============================================================================
 // ConcealedLine::identity

@@ -225,8 +225,8 @@ fn render_border_color() {
     m.tick();
 
     let surface = render(&m, 80, 24);
-    let pw = reovim_client_driver::chrome_utils::popup_width(80);
-    let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
+    let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(80);
+    let px = reovim_client_subsys_chrome::chrome_utils::popup_x(80, pw);
     let py = 24u16.saturating_sub(1 + 1 + 1 + 2); // 1 statusline + 1 hint + 1 category header + 2 borders
 
     assert_eq!(

@@ -14,9 +14,10 @@ workspace = true
 
 [dependencies]
 reovim-client-subsys-module = { workspace = true }
-reovim-client-driver = { workspace = true }
+reovim-client-subsys-chrome = { workspace = true }
 reovim-arch = { workspace = true }
 
 [dev-dependencies]
-reovim-client-driver = { workspace = true, features = ["testing"] }
+reovim-client-subsys-module = { workspace = true, features = ["testing"] }
+reovim-client-subsys-chrome = { workspace = true }
 reovim-ext-client-tui-cap-cell = { workspace = true }

@@ -122,14 +122,15 @@ fn render_hint_row(
         Style::new(),
     );
 
-    let key_display = reovim_client_driver::ui::truncate_end(&hint.key, 6);
+    let key_display = reovim_client_subsys_chrome::ui::truncate_end(&hint.key, 6);
     surface.write_styled(content_x, row_y, &key_display, key_style.clone());
 
     let cmd_x = content_x + 7;
     if cmd_x < px + pw - 2 {
         #[allow(clippy::cast_possible_truncation)]
         let max_cmd_width = (px + pw - 2).saturating_sub(cmd_x) as usize;
-        let cmd_display = reovim_client_driver::ui::truncate_end(&hint.command, max_cmd_width);
+        let cmd_display =
+            reovim_client_subsys_chrome::ui::truncate_end(&hint.command, max_cmd_width);
         surface.write_styled(cmd_x, row_y, &cmd_display, cmd_style.clone());
     }
 }
@@ -331,15 +332,15 @@ impl ClientModule for WhichKeyModule {
         let hint_count = self.hints.len() as u16;
         let popup_height = hint_count + header_rows + 2;
 
-        let pw = reovim_client_driver::chrome_utils::popup_width(width);
-        let px = reovim_client_driver::chrome_utils::popup_x(width, pw);
+        let pw = reovim_client_subsys_chrome::chrome_utils::popup_width(width);
+        let px = reovim_client_subsys_chrome::chrome_utils::popup_x(width, pw);
         // Position above the statusline (bottom-anchored)
         let py = height.saturating_sub(1 + popup_height);
 
         let border_style = Style::new().fg(self.style.border_color);
 
         // Draw border
-        reovim_client_driver::chrome_utils::render_box_border(
+        reovim_client_subsys_chrome::chrome_utils::render_box_border(
             surface,
             px,
             py,

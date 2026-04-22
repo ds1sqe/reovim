@@ -228,7 +228,7 @@ impl ClientModule for HoverModule {
         };
         let border_style = Style::new().fg(border_color);
 
-        reovim_client_driver::chrome_utils::render_box_border(
+        reovim_client_subsys_chrome::chrome_utils::render_box_border(
             surface,
             px,
             py,

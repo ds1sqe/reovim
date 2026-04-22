@@ -38,6 +38,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Breaking Changes (Internal)
 
+- **driver/chrome/render**: **Extracted** `chrome_utils`, `ScopedSurface`,
+  `ProjectionDisplayCache`, viewport renderer, and Unicode text utilities from
+  `reovim-client-driver` into a new `reovim-client-subsys-chrome` crate (#753).
+  **Extracted** `RenderTarget` + `RenderError` into a new `reovim-client-subsys-render`
+  crate. **Relocated** `DomainProjection` + `from_proto` transpiler from
+  `subsys-module/types.rs` to `subsys-codec/projection/` (corrective placement;
+  codec is the correct boundary for protocol-decode types). **Migrated** 6 ext chrome
+  modules (`cmdline`, `hover`, `landing`, `notification`, `signature-help`, `which-key`)
+  from `reovim_client_driver::chrome_utils::*` and `::ui::*` to the canonical
+  `reovim_client_subsys_chrome::` import paths. The `landing` pilot module drops
+  `reovim-client-driver` as a dep entirely; all remaining ext modules continue to depend
+  on driver for `BufferId`, `Style`, `Rect`, and other Phase B compat types (those move
+  in Phase D). Driver retains `pub use` compat re-exports for all chrome, render, conceal,
+  viewport, and ui types until Phase F decommissions the driver crate. Byte-equivalence
+  regression test added at `clients/lib/subsys/chrome/tests/byte_equivalence.rs` to lock
+  the chrome render output post-migration. Depgraph crate-count ratchet updated from
+  count >= 1 to count >= 4 (codec + module + chrome + render).
+
 - **driver/subsys**: **Extracted** `ClientModule` trait family, `ClientServiceRegistry`,
   `ClientModuleLoader`, and all FFI boundary types from `reovim-client-driver` into a new
   `reovim-client-subsys-module` crate (#753). `CLIENT_MODULE_API_VERSION` bumped from

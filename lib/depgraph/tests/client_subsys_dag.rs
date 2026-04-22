@@ -6,14 +6,19 @@
 //! crate declares a `[dependencies]` edge on another subsys crate unless that
 //! edge appears in the `ALLOWED_EDGES` array below.
 //!
-//! Allowed edges (locked, 2026-04-22):
+//! Allowed edges (locked, 2026-04-22; updated Phase C 2026-04-22):
 //!
 //! - module    → capability
 //! - module    → platform
 //! - module    → protocol
+//! - module    → codec       (Phase C: `ClientModule::on_projection` takes
+//!   `DomainProjection` from codec after Phase C corrective relocation)
 //! - chrome    → capability
 //! - chrome    → codec       (LOCKED α: `ProjectionDisplayCache` reads
 //!   `DomainProjection` produced by `codec::from_proto`)
+//! - chrome    → module      (Phase C: viewport.rs + helpers import `ChromeSurface`,
+//!   `Style`, `ClientModule`, etc. from module; removed in Phase D when those
+//!   types move to subsys-capability)
 //! - render    → chrome
 //! - render    → capability
 //! - codec     → capability
@@ -57,8 +62,17 @@ const ALLOWED_EDGES: &[(&str, &str)] = &[
     ("module", "capability"),
     ("module", "platform"),
     ("module", "protocol"),
+    // Phase C: `DomainProjection` moved to codec; `ClientModule::on_projection`
+    // in module/traits.rs imports it from codec. Edge locked in Phase C sub-plan.
+    ("module", "codec"),
     ("chrome", "capability"),
     ("chrome", "codec"),
+    // Phase C: viewport.rs, chrome_utils.rs, and scoped_surface.rs import
+    // `ChromeSurface`, `Style`, `Rect`, `ClientModule`, etc. from subsys-module.
+    // In Phase D, these types move to subsys-capability; at that point
+    // `chrome → module` is replaced by `chrome → capability` and this edge
+    // is removed.
+    ("chrome", "module"),
     ("render", "chrome"),
     ("render", "capability"),
     ("codec", "capability"),

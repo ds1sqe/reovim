@@ -6,13 +6,15 @@
 //!
 //! Ratchet schedule (from the #753 Client Foundation master plan):
 //!
-//! - Phase A landing (today): count = 1 (only `codec` exists).
+//! - Phase A landing (2026-04-22): count = 1 (only `codec` exists).
+//! - Phase C landing (2026-04-22): count = 4 (`codec`, `module`, `chrome`,
+//!   `render`). Updated from 1 → 4 at Phase C landing.
 //! - Phase D landing: count must be exactly 7:
 //!   `module`, `chrome`, `render`, `codec`, `capability`, `platform`,
 //!   `protocol`.
 //!
-//! The probe currently asserts count >= 1 (Phase A baseline). At Phase D
-//! landing, update the assertion to `== 7` and remove the `>= 1` form.
+//! The probe currently asserts count >= 4 (Phase C baseline). At Phase D
+//! landing, update the assertion to `== 7` and remove the `>= 4` form.
 //!
 //! Activation phase: Phase A (added). The probe's assertion is unconditional.
 //! Vacuous pass is a property of today's input (count = 1). Do not add an
@@ -20,16 +22,16 @@
 //! soon as the count drops below the expected minimum (regrowth guard) or
 //! exceeds an unexpected maximum.
 //!
-//! Non-vacuous ratchet: at Phase D landing, replace the `>=` assert below
-//! with `assert_eq!(count, 7, ...)`. No mode flag; rewrite the assertion
-//! directly.
+//! Non-vacuous ratchet: as of Phase C, count = 4 (codec, module, chrome,
+//! render). At Phase D landing, replace the `>=` assert below with
+//! `assert_eq!(count, 7, ...)`. No mode flag; rewrite the assertion directly.
 
 use {cargo_metadata::MetadataCommand, std::path::Path};
 
-/// The minimum expected number of clients/lib/subsys/* crates during Phase A.
+/// The minimum expected number of clients/lib/subsys/* crates during Phase C.
 /// Replace this probe's assert with `assert_eq!(count, 7, ...)` at Phase D
 /// landing.
-const EXPECTED_MIN_COUNT: usize = 1;
+const EXPECTED_MIN_COUNT: usize = 4;
 
 #[test]
 fn client_subsys_crate_count_matches_ratchet() {

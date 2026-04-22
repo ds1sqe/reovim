@@ -12,5 +12,13 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+proto = ["dep:reovim-protocol"]
+
 [dependencies]
 parking_lot = { workspace = true }
+reovim-subsys-coordination = { workspace = true }
+
+# Optional: proto boundary transpilation
+reovim-protocol = { workspace = true, features = ["grpc"], optional = true }

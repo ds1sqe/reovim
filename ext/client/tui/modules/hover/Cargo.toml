@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 reovim-client-driver = { workspace = true }
+reovim-client-subsys-chrome = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

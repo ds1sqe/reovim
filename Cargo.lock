@@ -2360,7 +2360,9 @@ version = "0.15.0-dev"
 dependencies = [
  "libloading",
  "reovim-arch",
+ "reovim-client-subsys-chrome",
  "reovim-client-subsys-module",
+ "reovim-client-subsys-render",
  "reovim-depgraph",
  "reovim-protocol",
  "reovim-subsys-coordination",
@@ -2391,10 +2393,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-subsys-chrome"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-client-subsys-codec",
+ "reovim-client-subsys-module",
+ "reovim-ext-client-tui-cap-cell",
+ "reovim-subsys-coordination",
+ "reovim-tui-mod-landing",
+ "unicode-width",
+]
+
+[[package]]
 name = "reovim-client-subsys-codec"
 version = "0.15.0-dev"
 dependencies = [
  "parking_lot",
+ "reovim-protocol",
+ "reovim-subsys-coordination",
 ]
 
 [[package]]
@@ -2403,10 +2420,15 @@ version = "0.15.0-dev"
 dependencies = [
  "libloading",
  "reovim-arch",
+ "reovim-client-subsys-codec",
  "reovim-depgraph",
  "reovim-subsys-coordination",
  "tracing",
 ]
+
+[[package]]
+name = "reovim-client-subsys-render"
+version = "0.15.0-dev"
 
 [[package]]
 name = "reovim-client-tui"
@@ -4122,6 +4144,7 @@ name = "reovim-tui-mod-cmdline"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
@@ -4168,6 +4191,7 @@ name = "reovim-tui-mod-hover"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
@@ -4196,7 +4220,7 @@ name = "reovim-tui-mod-landing"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
- "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-client-subsys-module",
  "reovim-ext-client-tui-cap-cell",
 ]
@@ -4231,6 +4255,7 @@ name = "reovim-tui-mod-notification"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
@@ -4250,6 +4275,7 @@ name = "reovim-tui-mod-signature-help"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
@@ -4286,6 +4312,7 @@ name = "reovim-tui-mod-whichkey"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-client-subsys-chrome",
  "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]

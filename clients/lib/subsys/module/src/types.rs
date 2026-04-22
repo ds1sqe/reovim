@@ -1195,66 +1195,11 @@ pub struct SyntaxToken {
     pub category: String,
 }
 
-/// Client-side domain projection — fully reconstructed from proto.
-///
-/// This is the domain-neutral projection data that client modules consume.
-/// No proto types are referenced; all fields are newtypes from subsys-coordination.
-/// `ClientModule::on_projection` references this type, so it lives here
-/// alongside the trait.
-#[derive(Debug, Clone)]
-pub struct DomainProjection {
-    /// Projection tag (e.g., "text.mode", "text.cursor").
-    pub tag: reovim_subsys_coordination::ProjectionTag,
-    /// Domain that produced this projection.
-    pub domain_id: reovim_subsys_coordination::DomainId,
-    /// Window scope (`None` = session-wide).
-    pub window_id: Option<usize>,
-    /// Opaque domain content bytes.
-    pub content: Vec<u8>,
-    /// Human-readable display string for chrome modules.
-    pub display: String,
-    /// Whether this is a transient (fire-and-forget) projection.
-    pub transient: bool,
-    /// Monotonic version for persistent projections (0 for transient).
-    pub version: u64,
-    /// Client that owns this projection state.
-    pub client_id: u64,
-}
-
-impl DomainProjection {
-    /// Create a new domain projection directly (for testing and non-proto paths).
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn new(
-        tag: reovim_subsys_coordination::ProjectionTag,
-        domain_id: reovim_subsys_coordination::DomainId,
-        content: Vec<u8>,
-        display: String,
-    ) -> Self {
-        Self {
-            tag,
-            domain_id,
-            window_id: None,
-            content,
-            display,
-            transient: false,
-            version: 0,
-            client_id: 0,
-        }
-    }
-
-    /// The projection tag.
-    #[must_use]
-    pub const fn tag(&self) -> &reovim_subsys_coordination::ProjectionTag {
-        &self.tag
-    }
-
-    /// Whether this projection is for a specific window.
-    #[must_use]
-    pub const fn is_windowed(&self) -> bool {
-        self.window_id.is_some()
-    }
-}
+// `DomainProjection` moved to `reovim-client-subsys-codec::projection` in Phase C (#753).
+// Re-export here for backward compatibility with callers that used
+// `reovim_client_subsys_module::types::DomainProjection` or `reovim_client_subsys_module::DomainProjection`.
+// TODO(#753): Remove re-export in Phase F when old import paths are cleaned up.
+pub use reovim_client_subsys_codec::projection::DomainProjection;
 
 #[cfg(test)]
 #[path = "types_tests.rs"]

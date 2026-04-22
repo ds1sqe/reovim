@@ -2,9 +2,10 @@ use std::{borrow::Cow, cell::RefCell};
 
 use {
     super::*,
-    crate::{
-        BufferId, CursorInfo, LineNumberMode, SyntaxToken, ViewportContext, ViewportRenderer,
-        VirtualLine, VirtualLinePosition,
+    reovim_client_subsys_module::{
+        BufferId, ChromeSurface, ClientModule, CursorInfo, LineNumberMode, Rect, RenderBehavior,
+        SelectionInfo, Style, SyntaxToken, ThemeProvider, TokenProvider, ViewportContext,
+        ViewportRenderer, VirtualLine, VirtualLinePosition,
     },
 };
 
@@ -244,13 +245,16 @@ fn classify_with_modules_no_buffer_contrib() {
         fn name(&self) -> &'static str {
             "Non-Contrib"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -538,13 +542,16 @@ fn render_line_content_with_conceal() {
         fn name(&self) -> &'static str {
             "Conceal"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -599,13 +606,16 @@ fn render_line_content_conceal_skip_in_insert() {
         fn name(&self) -> &'static str {
             "Conceal"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -657,13 +667,16 @@ fn render_line_content_with_background() {
         fn name(&self) -> &'static str {
             "Bg"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -716,13 +729,16 @@ fn render_line_content_with_hide() {
         fn name(&self) -> &'static str {
             "Hide"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -774,13 +790,16 @@ fn render_line_content_full_width_line() {
         fn name(&self) -> &'static str {
             "FWL"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -983,13 +1002,16 @@ fn render_buffer_content_with_gutter_annotations() {
         fn name(&self) -> &'static str {
             "Mock"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_annotations(&self) -> bool {
@@ -1000,17 +1022,17 @@ fn render_buffer_content_with_gutter_annotations() {
         }
         fn annotation_column_width(
             &self,
-            _ctx: &crate::AnnotationContext,
-            _caps: &dyn crate::PlatformCapabilities,
-        ) -> crate::ColumnWidth {
-            crate::ColumnWidth::Fixed(4)
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+            _caps: &dyn reovim_client_subsys_module::PlatformCapabilities,
+        ) -> reovim_client_subsys_module::ColumnWidth {
+            reovim_client_subsys_module::ColumnWidth::Fixed(4)
         }
         fn annotate(
             &self,
             line: usize,
-            _ctx: &crate::AnnotationContext,
-        ) -> Option<crate::GutterCell> {
-            Some(crate::GutterCell {
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+        ) -> Option<reovim_client_subsys_module::GutterCell> {
+            Some(reovim_client_subsys_module::GutterCell {
                 text: (line + 1).to_string(),
                 style: Style::new().fg(reovim_arch::Color::DarkGrey),
             })
@@ -1098,14 +1120,14 @@ fn default_viewport_renderer_render_viewport() {
 struct TestCaps;
 
 impl PlatformCapabilities for TestCaps {
-    fn rendering_model(&self) -> crate::RenderingModel {
-        crate::RenderingModel::CellGrid
+    fn rendering_model(&self) -> reovim_client_subsys_module::RenderingModel {
+        reovim_client_subsys_module::RenderingModel::CellGrid
     }
     fn grid_size(&self) -> Option<(u16, u16)> {
         Some((80, 24))
     }
-    fn color_depth(&self) -> crate::ColorDepth {
-        crate::ColorDepth::TrueColor
+    fn color_depth(&self) -> reovim_client_subsys_module::ColorDepth {
+        reovim_client_subsys_module::ColorDepth::TrueColor
     }
     fn pixel_size(&self) -> Option<(u32, u32)> {
         None
@@ -1128,8 +1150,8 @@ impl PlatformCapabilities for TestCaps {
     fn haptic(&self) -> bool {
         false
     }
-    fn safe_area(&self) -> crate::Insets {
-        crate::Insets::ZERO
+    fn safe_area(&self) -> reovim_client_subsys_module::Insets {
+        reovim_client_subsys_module::Insets::ZERO
     }
     fn has_focus(&self) -> bool {
         true
@@ -1153,7 +1175,7 @@ fn normalize_selection_already_normalized() {
         start_col: 0,
         end_line: 3,
         end_col: 5,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let (sl, sc, el, ec) = normalize_selection(&sel);
@@ -1167,7 +1189,7 @@ fn normalize_selection_reversed() {
         start_col: 10,
         end_line: 2,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let (sl, sc, el, ec) = normalize_selection(&sel);
@@ -1196,7 +1218,7 @@ fn render_selections_local_char_selection() {
         start_col: 2,
         end_line: 0,
         end_col: 5,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -1221,7 +1243,7 @@ fn render_selections_line_mode() {
         start_col: 0,
         end_line: 0,
         end_col: 0,
-        mode: crate::SelectionMode::Line,
+        mode: reovim_client_subsys_module::SelectionMode::Line,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -1241,7 +1263,7 @@ fn render_selections_line_mode() {
 fn render_selections_remote_client() {
     let mut surface = RecordingSurface::new(80, 24);
     let lines = vec!["hello world".to_string()];
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -1253,7 +1275,7 @@ fn render_selections_remote_client() {
             start_col: 0,
             end_line: 0,
             end_col: 3,
-            mode: crate::SelectionMode::Char,
+            mode: reovim_client_subsys_module::SelectionMode::Char,
             color: reovim_arch::Color::DarkBlue,
         }),
     };
@@ -1287,7 +1309,7 @@ fn render_remote_cursors_empty() {
 fn render_remote_cursors_visible() {
     let mut surface = RecordingSurface::new(80, 24);
     let lines = vec!["hello".to_string()];
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -1310,7 +1332,7 @@ fn render_remote_cursors_visible() {
 #[test]
 fn render_remote_cursors_before_scroll() {
     let mut surface = RecordingSurface::new(80, 24);
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Bob".to_string(),
         cursor_line: 2,
@@ -1521,7 +1543,7 @@ fn render_viewport_with_local_selection() {
         start_col: 0,
         end_line: 0,
         end_col: 4,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -1592,7 +1614,7 @@ fn render_selection_char_two_lines() {
         start_col: 2,
         end_line: 1,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -1622,7 +1644,7 @@ fn render_selection_char_three_lines() {
         start_col: 1,
         end_line: 2,
         end_col: 2,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Green,
     };
     let ctx = ViewportContext {
@@ -1653,7 +1675,7 @@ fn render_selection_block_mode() {
         start_col: 1,
         end_line: 2,
         end_col: 2,
-        mode: crate::SelectionMode::Block,
+        mode: reovim_client_subsys_module::SelectionMode::Block,
         color: reovim_arch::Color::Red,
     };
     let ctx = ViewportContext {
@@ -1683,13 +1705,16 @@ fn render_gutter_annotations_col_width_zero() {
         fn name(&self) -> &'static str {
             "Zero"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_annotations(&self) -> bool {
@@ -1697,17 +1722,17 @@ fn render_gutter_annotations_col_width_zero() {
         }
         fn annotation_column_width(
             &self,
-            _ctx: &crate::AnnotationContext,
-            _caps: &dyn crate::PlatformCapabilities,
-        ) -> crate::ColumnWidth {
-            crate::ColumnWidth::Fixed(0)
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+            _caps: &dyn reovim_client_subsys_module::PlatformCapabilities,
+        ) -> reovim_client_subsys_module::ColumnWidth {
+            reovim_client_subsys_module::ColumnWidth::Fixed(0)
         }
         fn annotate(
             &self,
             _line: usize,
-            _ctx: &crate::AnnotationContext,
-        ) -> Option<crate::GutterCell> {
-            Some(crate::GutterCell {
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+        ) -> Option<reovim_client_subsys_module::GutterCell> {
+            Some(reovim_client_subsys_module::GutterCell {
                 text: "X".to_string(),
                 style: Style::default(),
             })
@@ -1745,13 +1770,16 @@ fn render_gutter_annotations_annotate_returns_none() {
         fn name(&self) -> &'static str {
             "None"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_annotations(&self) -> bool {
@@ -1759,16 +1787,16 @@ fn render_gutter_annotations_annotate_returns_none() {
         }
         fn annotation_column_width(
             &self,
-            _ctx: &crate::AnnotationContext,
-            _caps: &dyn crate::PlatformCapabilities,
-        ) -> crate::ColumnWidth {
-            crate::ColumnWidth::Fixed(4)
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+            _caps: &dyn reovim_client_subsys_module::PlatformCapabilities,
+        ) -> reovim_client_subsys_module::ColumnWidth {
+            reovim_client_subsys_module::ColumnWidth::Fixed(4)
         }
         fn annotate(
             &self,
             _line: usize,
-            _ctx: &crate::AnnotationContext,
-        ) -> Option<crate::GutterCell> {
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+        ) -> Option<reovim_client_subsys_module::GutterCell> {
             None
         }
     }
@@ -1801,13 +1829,16 @@ fn render_gutter_annotations_dynamic_width() {
         fn name(&self) -> &'static str {
             "Dyn"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_annotations(&self) -> bool {
@@ -1815,17 +1846,17 @@ fn render_gutter_annotations_dynamic_width() {
         }
         fn annotation_column_width(
             &self,
-            _ctx: &crate::AnnotationContext,
-            _caps: &dyn crate::PlatformCapabilities,
-        ) -> crate::ColumnWidth {
-            crate::ColumnWidth::Dynamic(3)
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+            _caps: &dyn reovim_client_subsys_module::PlatformCapabilities,
+        ) -> reovim_client_subsys_module::ColumnWidth {
+            reovim_client_subsys_module::ColumnWidth::Dynamic(3)
         }
         fn annotate(
             &self,
             line: usize,
-            _ctx: &crate::AnnotationContext,
-        ) -> Option<crate::GutterCell> {
-            Some(crate::GutterCell {
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+        ) -> Option<reovim_client_subsys_module::GutterCell> {
+            Some(reovim_client_subsys_module::GutterCell {
                 text: (line + 1).to_string(),
                 style: Style::default(),
             })
@@ -1862,13 +1893,16 @@ fn compute_cursor_visual_col_with_conceals() {
         fn name(&self) -> &'static str {
             "Conceal"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -1927,13 +1961,16 @@ fn compute_cursor_visual_col_with_hide() {
         fn name(&self) -> &'static str {
             "Hide"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -1984,13 +2021,16 @@ fn compute_cursor_visual_col_with_full_width_line() {
         fn name(&self) -> &'static str {
             "FWL"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2036,7 +2076,7 @@ fn compute_cursor_visual_col_with_full_width_line() {
 fn render_remote_cursor_labels_visible() {
     let mut surface = RecordingSurface::new(80, 24);
     let lines = vec!["hello".to_string()];
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -2069,7 +2109,7 @@ fn render_remote_cursor_labels_overflow_skip() {
     // Use a very narrow surface so that label_x + label_width > width
     let mut surface = RecordingSurface::new(10, 24);
     let lines = vec!["hello".to_string()];
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "VeryLongName".to_string(),
         cursor_line: 0,
@@ -2097,7 +2137,7 @@ fn render_remote_cursor_labels_overflow_skip() {
 #[test]
 fn render_remote_cursor_labels_before_scroll() {
     let mut surface = RecordingSurface::new(80, 24);
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -2126,7 +2166,7 @@ fn render_remote_cursor_labels_before_scroll() {
 #[test]
 fn render_remote_cursor_labels_past_content_height() {
     let mut surface = RecordingSurface::new(80, 24);
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Bob".to_string(),
         cursor_line: 30,
@@ -2195,7 +2235,7 @@ fn render_buffer_content_vl_before_fills_viewport() {
 #[test]
 fn render_line_content_with_inline_decorations() {
     struct InlineDecModule {
-        decorations: Vec<crate::InlineDecoration>,
+        decorations: Vec<reovim_client_subsys_module::InlineDecoration>,
     }
     impl ClientModule for InlineDecModule {
         fn id(&self) -> &'static str {
@@ -2204,19 +2244,25 @@ fn render_line_content_with_inline_decorations() {
         fn name(&self) -> &'static str {
             "InlineDec"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
             true
         }
-        fn inline_decorations(&self, _line: usize) -> &[crate::InlineDecoration] {
+        fn inline_decorations(
+            &self,
+            _line: usize,
+        ) -> &[reovim_client_subsys_module::InlineDecoration] {
             &self.decorations
         }
     }
@@ -2224,7 +2270,7 @@ fn render_line_content_with_inline_decorations() {
     let mut surface = RecordingSurface::new(80, 24);
     let token_provider = MockTokenProvider::empty();
     let module = InlineDecModule {
-        decorations: vec![crate::InlineDecoration {
+        decorations: vec![reovim_client_subsys_module::InlineDecoration {
             col_start: 0,
             col_end: 3,
             style: Style::new().fg(reovim_arch::Color::Red),
@@ -2264,13 +2310,16 @@ fn default_viewport_renderer_gutter_width_dynamic() {
         fn name(&self) -> &'static str {
             "DynGutter"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_annotations(&self) -> bool {
@@ -2278,10 +2327,10 @@ fn default_viewport_renderer_gutter_width_dynamic() {
         }
         fn annotation_column_width(
             &self,
-            _ctx: &crate::AnnotationContext,
-            _caps: &dyn crate::PlatformCapabilities,
-        ) -> crate::ColumnWidth {
-            crate::ColumnWidth::Dynamic(5)
+            _ctx: &reovim_client_subsys_module::AnnotationContext,
+            _caps: &dyn reovim_client_subsys_module::PlatformCapabilities,
+        ) -> reovim_client_subsys_module::ColumnWidth {
+            reovim_client_subsys_module::ColumnWidth::Dynamic(5)
         }
     }
 
@@ -2322,7 +2371,7 @@ fn render_selection_before_scroll() {
         start_col: 0,
         end_line: 0,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2354,7 +2403,7 @@ fn render_selection_past_content_height() {
         start_col: 0,
         end_line: 10,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2385,13 +2434,16 @@ fn render_self_cursor_with_column_mapping() {
         fn name(&self) -> &'static str {
             "ColMap"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2425,7 +2477,7 @@ fn render_self_cursor_with_column_mapping() {
 #[test]
 fn render_remote_cursor_labels_no_buffer_lines() {
     let mut surface = RecordingSurface::new(80, 24);
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -2460,13 +2512,16 @@ fn render_selection_char_with_column_mapping_module() {
         fn name(&self) -> &'static str {
             "ColMap"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2486,7 +2541,7 @@ fn render_selection_char_with_column_mapping_module() {
         start_col: 1,
         end_line: 0,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2512,13 +2567,16 @@ fn render_selection_block_with_column_mapping_module() {
         fn name(&self) -> &'static str {
             "ColMap"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2537,7 +2595,7 @@ fn render_selection_block_with_column_mapping_module() {
         start_col: 1,
         end_line: 1,
         end_col: 2,
-        mode: crate::SelectionMode::Block,
+        mode: reovim_client_subsys_module::SelectionMode::Block,
         color: reovim_arch::Color::Red,
     };
     let ctx = ViewportContext {
@@ -2567,13 +2625,16 @@ fn render_selection_with_transform_line_visual_width() {
         fn name(&self) -> &'static str {
             "Transform"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2584,9 +2645,9 @@ fn render_selection_with_transform_line_visual_width() {
             _buf: BufferId,
             _line: usize,
             _text: &str,
-        ) -> Option<crate::TransformedLine> {
+        ) -> Option<reovim_client_subsys_module::TransformedLine> {
             // Transform yields a shorter visual representation
-            Some(crate::TransformedLine {
+            Some(reovim_client_subsys_module::TransformedLine {
                 segments: vec![("ab".to_string(), None), ("cd".to_string(), None)],
             })
         }
@@ -2599,7 +2660,7 @@ fn render_selection_with_transform_line_visual_width() {
         start_col: 0,
         end_line: 0,
         end_col: 2,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2628,7 +2689,7 @@ fn render_selection_no_buffer_lines() {
         start_col: 0,
         end_line: 0,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2658,13 +2719,16 @@ fn render_buffer_content_with_transformed_line() {
         fn name(&self) -> &'static str {
             "Transform"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2675,8 +2739,8 @@ fn render_buffer_content_with_transformed_line() {
             _buf: BufferId,
             _line: usize,
             _text: &str,
-        ) -> Option<crate::TransformedLine> {
-            Some(crate::TransformedLine {
+        ) -> Option<reovim_client_subsys_module::TransformedLine> {
+            Some(reovim_client_subsys_module::TransformedLine {
                 segments: vec![
                     (">>".to_string(), Some(Style::new().fg(reovim_arch::Color::Red))),
                     ("replaced".to_string(), None),
@@ -2717,13 +2781,16 @@ fn render_line_content_bg_token_zero_opacity() {
         fn name(&self) -> &'static str {
             "Bg"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2783,13 +2850,16 @@ fn render_line_content_conceal_tokens_skip_all_types() {
         fn name(&self) -> &'static str {
             "AllBehavior"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -2860,7 +2930,7 @@ fn render_line_content_conceal_tokens_skip_all_types() {
 fn render_remote_cursors_col_beyond_width() {
     let mut surface = RecordingSurface::new(20, 24);
     let lines = vec!["hello".to_string()];
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 0,
@@ -2889,7 +2959,7 @@ fn render_remote_cursors_col_beyond_width() {
 #[test]
 fn render_remote_cursors_past_content_height() {
     let mut surface = RecordingSurface::new(80, 24);
-    let remote = crate::RemoteClientInfo {
+    let remote = reovim_client_subsys_module::RemoteClientInfo {
         client_id: 1,
         display_name: "Alice".to_string(),
         cursor_line: 30,
@@ -2967,7 +3037,7 @@ fn render_selection_char_multiline_no_buffer_id() {
         start_col: 2,
         end_line: 1,
         end_col: 3,
-        mode: crate::SelectionMode::Char,
+        mode: reovim_client_subsys_module::SelectionMode::Char,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {
@@ -2999,13 +3069,16 @@ fn render_line_content_conceal_with_style_and_unmapped_cols() {
         fn name(&self) -> &'static str {
             "Conceal"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -3075,13 +3148,16 @@ fn render_line_content_bg_token_end_beyond_line() {
         fn name(&self) -> &'static str {
             "Bg"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -3138,13 +3214,16 @@ fn render_line_content_bg_token_col_beyond_width() {
         fn name(&self) -> &'static str {
             "Bg"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
@@ -3195,7 +3274,7 @@ fn render_line_content_bg_token_col_beyond_width() {
 #[test]
 fn render_line_content_inline_dec_clamped_by_width() {
     struct InlineDecModule {
-        decorations: Vec<crate::InlineDecoration>,
+        decorations: Vec<reovim_client_subsys_module::InlineDecoration>,
     }
     impl ClientModule for InlineDecModule {
         fn id(&self) -> &'static str {
@@ -3204,26 +3283,32 @@ fn render_line_content_inline_dec_clamped_by_width() {
         fn name(&self) -> &'static str {
             "InlineDec"
         }
-        fn version(&self) -> crate::Version {
-            crate::Version::new(1, 0, 0)
+        fn version(&self) -> reovim_client_subsys_module::Version {
+            reovim_client_subsys_module::Version::new(1, 0, 0)
         }
-        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
-            crate::ProbeResult::Success
+        fn init(
+            &mut self,
+            _ctx: &reovim_client_subsys_module::ModuleContext,
+        ) -> reovim_client_subsys_module::ProbeResult {
+            reovim_client_subsys_module::ProbeResult::Success
         }
-        fn exit(&mut self) -> Result<(), crate::ClientModuleError> {
+        fn exit(&mut self) -> Result<(), reovim_client_subsys_module::ClientModuleError> {
             Ok(())
         }
         fn has_buffer_contrib(&self) -> bool {
             true
         }
-        fn inline_decorations(&self, _line: usize) -> &[crate::InlineDecoration] {
+        fn inline_decorations(
+            &self,
+            _line: usize,
+        ) -> &[reovim_client_subsys_module::InlineDecoration] {
             &self.decorations
         }
     }
 
     let mut surface = RecordingSurface::new(80, 24);
     let module = InlineDecModule {
-        decorations: vec![crate::InlineDecoration {
+        decorations: vec![reovim_client_subsys_module::InlineDecoration {
             col_start: 0,
             col_end: 100, // far beyond width
             style: Style::new().fg(reovim_arch::Color::Red),
@@ -3303,9 +3388,9 @@ fn render_positioned_vl_past_content_height() {
 #[test]
 fn dummy_caps_coverage() {
     let caps = DummyCaps;
-    assert_eq!(caps.rendering_model(), crate::RenderingModel::CellGrid);
+    assert_eq!(caps.rendering_model(), reovim_client_subsys_module::RenderingModel::CellGrid);
     assert_eq!(caps.grid_size(), None);
-    assert_eq!(caps.color_depth(), crate::ColorDepth::TrueColor);
+    assert_eq!(caps.color_depth(), reovim_client_subsys_module::ColorDepth::TrueColor);
     assert_eq!(caps.pixel_size(), None);
     assert!(caps.reliable_unicode_width());
     assert!(caps.dark_mode());
@@ -3313,7 +3398,7 @@ fn dummy_caps_coverage() {
     assert!(!caps.pointer_events());
     assert!(!caps.touch_input());
     assert!(!caps.haptic());
-    assert_eq!(caps.safe_area(), crate::Insets::ZERO);
+    assert_eq!(caps.safe_area(), reovim_client_subsys_module::Insets::ZERO);
     assert!(caps.has_focus());
     assert!(caps.clipboard_available());
     assert!(!caps.screen_reader_active());
@@ -3332,7 +3417,7 @@ fn render_selection_line_mode_multi_line() {
         start_col: 0,
         end_line: 1,
         end_col: 0,
-        mode: crate::SelectionMode::Line,
+        mode: reovim_client_subsys_module::SelectionMode::Line,
         color: reovim_arch::Color::Blue,
     };
     let ctx = ViewportContext {

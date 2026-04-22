@@ -1,21 +1,24 @@
-//! Domain projection types and proto boundary transpilation.
+//! Driver-side compat re-exports for projection types.
 //!
-//! `DomainProjection` moved to `reovim-client-subsys-module::types` in Phase B
-//! (#753). This module re-exports it for backward compatibility and owns the
-//! proto-specific transpilation layer (`TranspileError`, `from_proto`).
+//! `DomainProjection` and `from_proto` are canonical in
+//! `reovim-client-subsys-codec::projection`; `ProjectionDisplayCache` is
+//! canonical in `reovim-client-subsys-chrome`. Re-exported here so existing
+//! `reovim_client_driver::projection::*` imports keep resolving; removed
+//! when the driver crate is decommissioned (TODO(#753)).
 
-mod cache;
 #[cfg(feature = "proto")]
 mod transpiler;
 
-pub use cache::ProjectionDisplayCache;
+// `ProjectionDisplayCache` is now canonical in `reovim-client-subsys-chrome`.
+// Re-export here for backward compat until Phase F.
+// TODO(#753): Remove when driver is decommissioned.
+pub use reovim_client_subsys_chrome::ProjectionDisplayCache;
 #[cfg(feature = "proto")]
 pub use transpiler::from_proto;
 
-// `DomainProjection` is now canonical in `reovim-client-subsys-module::types`.
-// Re-export here so callers that use `reovim_client_driver::projection::DomainProjection`
-// keep compiling without path changes until Phase F.
-// TODO(#753): Remove when driver is decommissioned.
+// TODO(#753): Remove this compat re-export when driver is decommissioned.
+// The canonical path is `reovim_client_subsys_codec::projection::DomainProjection`;
+// `subsys-module` also re-exports it in its own compat layer.
 pub use reovim_client_subsys_module::types::DomainProjection;
 
 // Keep `TranspileError` driver-local: it is proto-transpilation machinery that

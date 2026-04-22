@@ -1,0 +1,29 @@
+[package]
+name = "reovim-client-subsys-chrome"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client chrome subsystem: chrome_utils, ScopedSurface, ProjectionDisplayCache, viewport renderer"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+
+[dependencies]
+reovim-arch = { workspace = true }
+reovim-client-subsys-codec = { workspace = true }
+reovim-client-subsys-module = { workspace = true }
+reovim-subsys-coordination = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+reovim-arch = { workspace = true }
+reovim-client-subsys-module = { workspace = true, features = ["testing"] }
+reovim-ext-client-tui-cap-cell = { workspace = true }
+reovim-tui-mod-landing = { workspace = true }

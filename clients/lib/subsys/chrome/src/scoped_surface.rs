@@ -13,7 +13,7 @@
 //! scoped.write_styled(0, 0, "hello", style);
 //! ```
 
-use crate::{ChromeSurface, Rect, Style, types::Color};
+use reovim_client_subsys_module::{ChromeSurface, Rect, Style, types::Color};
 
 /// A rendering surface that clips and offsets all operations to a bounded region.
 ///

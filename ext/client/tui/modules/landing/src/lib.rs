@@ -19,11 +19,11 @@ use std::{
 
 use {
     reovim_arch::clock::{Clock, SystemClock},
-    reovim_client_driver::{
-        BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, Rect, Style, types::Color,
-    },
+    reovim_client_subsys_chrome::chrome_utils,
     reovim_client_subsys_module::{
-        ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities, ProbeResult, Version,
+        BufferId, BufferUpdateEvent, ChromePosition, ChromeSurface, ClientModule,
+        ClientModuleError, ModuleContext, PlatformCapabilities, ProbeResult, Rect, Style, Version,
+        types::Color,
     },
 };
 
@@ -335,7 +335,7 @@ impl ClientModule for LandingModule {
         );
 
         // Draw border.
-        reovim_client_driver::chrome_utils::render_box_border(
+        chrome_utils::render_box_border(
             surface,
             box_x,
             box_y,

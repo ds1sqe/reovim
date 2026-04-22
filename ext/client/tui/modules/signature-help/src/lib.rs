@@ -172,7 +172,7 @@ impl ClientModule for SignatureHelpModule {
 
         let border_style = Style::new().fg(Color::Yellow);
 
-        reovim_client_driver::chrome_utils::render_box_border(
+        reovim_client_subsys_chrome::chrome_utils::render_box_border(
             surface,
             px,
             py,
@@ -197,7 +197,8 @@ impl ClientModule for SignatureHelpModule {
         );
 
         let text_style = Style::new().fg(Color::White);
-        let display = reovim_client_driver::ui::truncate_end(&self.label, content_w as usize);
+        let display =
+            reovim_client_subsys_chrome::ui::truncate_end(&self.label, content_w as usize);
         surface.write_styled(content_x, py + 1, &display, text_style);
     }
 }
