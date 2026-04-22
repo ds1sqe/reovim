@@ -1,14 +1,29 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
+
+// Plan 23 / 17-β.2b-impl-c bulk migration helpers.
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn char_at(g: &CellCapability, x: u16, y: u16) -> char {
+    g.get_cell(x, y).map_or(' ', |c| c.ch)
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-fn render(module: &CmdlineModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(module: &CmdlineModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -148,7 +163,7 @@ fn cursor_position_when_inactive() {
 fn render_inactive_no_op() {
     let m = CmdlineModule::new();
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -157,17 +172,17 @@ fn render_shows_popup() {
     m.on_notification(r#"{"active":true,"prompt":":","input":"wq","cursor":2}"#);
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 
     // Check border at py=1
     let pw = reovim_client_driver::chrome_utils::popup_width(80);
     let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
-    assert_eq!(surface.char_at(px, 1), '\u{256D}'); // top-left corner
-    assert_eq!(surface.char_at(px + pw - 1, 1), '\u{256E}'); // top-right corner
+    assert_eq!(char_at(&surface, px, 1), '\u{256D}'); // top-left corner
+    assert_eq!(char_at(&surface, px + pw - 1, 1), '\u{256E}'); // top-right corner
 
     // Check prompt character
     let content_x = px + 2;
-    assert_eq!(surface.char_at(content_x, 2), ':');
+    assert_eq!(char_at(&surface, content_x, 2), ':');
 }
 
 #[test]
@@ -185,13 +200,13 @@ fn render_shows_completions() {
 
     // Height = 3 (border+content+border) + 2 completions = 5
     // Bottom border should be at y = 1 + 4 = 5
-    assert_eq!(surface.char_at(px, 5), '\u{2570}'); // bottom-left
+    assert_eq!(char_at(&surface, px, 5), '\u{2570}'); // bottom-left
 
     // Selected item should have indicator
-    assert_eq!(surface.char_at(content_x, 3), '\u{25B8}'); // selected indicator
+    assert_eq!(char_at(&surface, content_x, 3), '\u{25B8}'); // selected indicator
 
     // Second completion should have space indicator (not selected)
-    assert_eq!(surface.char_at(content_x, 4), ' ');
+    assert_eq!(char_at(&surface, content_x, 4), ' ');
 }
 
 #[test]
@@ -208,9 +223,9 @@ fn render_cursor_style() {
     let cursor_x = content_x + 1 + 2;
 
     // Cursor should have white bg and black fg (apply_style overrides)
-    let style = surface.style_at(cursor_x, 2);
-    assert_eq!(style.bg, Some(Color::White));
-    assert_eq!(style.fg, Some(Color::Black));
+    let style = style_at(&surface, cursor_x, 2);
+    assert_eq!(style.bg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
+    assert_eq!(style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(0)));
 }
 
 #[test]
@@ -227,10 +242,10 @@ fn render_cursor_at_end_of_input() {
     let cursor_x = content_x + 1 + 2;
 
     // When cursor is at end, a space with cursor style is written
-    let style = surface.style_at(cursor_x, 2);
-    assert_eq!(style.bg, Some(Color::White));
-    assert_eq!(style.fg, Some(Color::Black));
-    assert_eq!(surface.char_at(cursor_x, 2), ' ');
+    let style = style_at(&surface, cursor_x, 2);
+    assert_eq!(style.bg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
+    assert_eq!(style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(0)));
+    assert_eq!(char_at(&surface, cursor_x, 2), ' ');
 }
 
 #[test]
@@ -244,7 +259,7 @@ fn render_narrow_terminal() {
     // Should render without panic
     let pw = reovim_client_driver::chrome_utils::popup_width(32);
     let px = reovim_client_driver::chrome_utils::popup_x(32, pw);
-    assert_eq!(surface.char_at(px, 1), '\u{256D}');
+    assert_eq!(char_at(&surface, px, 1), '\u{256D}');
 }
 
 #[test]
@@ -258,7 +273,7 @@ fn render_overflow_narrow_popup() {
     // Very narrow terminal -- content overflows trigger break branches
     let surface = render(&m, 16, 24);
     // Should render without panic -- overflow branches hit
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -273,8 +288,8 @@ fn render_prompt_style() {
     let content_x = px + 2;
 
     // Prompt should have yellow foreground
-    let style = surface.style_at(content_x, 2);
-    assert_eq!(style.fg, Some(Color::Yellow));
+    let style = style_at(&surface, content_x, 2);
+    assert_eq!(style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
 }
 
 #[test]
@@ -288,8 +303,8 @@ fn render_border_style() {
     let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
 
     // Border should have DarkGrey foreground
-    let style = surface.style_at(px, 1);
-    assert_eq!(style.fg, Some(Color::DarkGrey));
+    let style = style_at(&surface, px, 1);
+    assert_eq!(style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(8)));
 }
 
 #[test]
@@ -306,13 +321,13 @@ fn render_selected_completion_style() {
     let content_x = px + 2;
 
     // First completion (index 0) is not selected -- default style
-    let first_style = surface.style_at(content_x, 3);
+    let first_style = style_at(&surface, content_x, 3);
     assert_eq!(first_style.bg, None);
 
     // Second completion (index 1) is selected -- DarkGrey bg, White fg
-    let second_style = surface.style_at(content_x, 4);
-    assert_eq!(second_style.bg, Some(Color::DarkGrey));
-    assert_eq!(second_style.fg, Some(Color::White));
+    let second_style = style_at(&surface, content_x, 4);
+    assert_eq!(second_style.bg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(8)));
+    assert_eq!(second_style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
 }
 
 #[test]

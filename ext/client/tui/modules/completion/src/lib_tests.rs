@@ -1,14 +1,25 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
+
+// Plan 23 / 17-β.2b-impl-c bulk migration helpers.
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-fn render(module: &CompletionModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(module: &CompletionModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -159,7 +170,7 @@ fn calculate_popup_width_clamped() {
 fn render_inactive_no_op() {
     let m = CompletionModule::new();
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -167,7 +178,7 @@ fn render_shows_popup() {
     let mut m = CompletionModule::new();
     m.on_notification(&single_item_payload());
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -183,7 +194,7 @@ fn render_selected_item_highlighted() {
 
     // Selected item (index 1) should have Blue bg
     let row_y = py + 2; // py + 1 (border) + 1 (second item)
-    assert_eq!(surface.style_at(px + 1, row_y).bg, Some(Color::Blue));
+    assert_eq!(style_at(&surface, px + 1, row_y).bg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(12)));
 }
 
 #[test]
@@ -197,7 +208,7 @@ fn render_kind_abbrev_yellow() {
     let py = 24u16.saturating_sub(1 + 2).saturating_sub(1);
 
     // Kind abbrev at (px+1, py+1) should be yellow
-    assert_eq!(surface.style_at(px + 1, py + 1).fg, Some(Color::Yellow));
+    assert_eq!(style_at(&surface, px + 1, py + 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
 }
 
 // =============================================================================

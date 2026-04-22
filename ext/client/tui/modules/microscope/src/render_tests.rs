@@ -1,8 +1,17 @@
 use {
     super::*,
     crate::{ItemData, PreviewData, PreviewHighlightData},
-    reovim_client_driver::testing::RecordingSurface,
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
+
+// Plan 23 / 17-β.2b-impl-c helpers.
+fn char_at(g: &CellCapability, x: u16, y: u16) -> char {
+    g.get_cell(x, y).map_or(' ', |c| c.ch)
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
 
 fn make_data(active: bool) -> MicroscopeData {
     MicroscopeData {
@@ -33,21 +42,21 @@ fn make_data(active: bool) -> MicroscopeData {
 
 #[test]
 fn render_with_items() {
-    let mut surface = RecordingSurface::new(100, 30);
+    let mut surface = CellCapability::new(100, 30);
     let data = make_data(true);
     let bounds = LayoutBounds::calculate(100, 30);
 
     render_microscope(&mut surface, &data, &bounds);
 
     // Query row should contain prompt and query.
-    assert_eq!(surface.char_at(0, bounds.query_row), '>');
-    assert_eq!(surface.char_at(1, bounds.query_row), ' ');
-    assert_eq!(surface.char_at(2, bounds.query_row), 't');
+    assert_eq!(char_at(&surface, 0, bounds.query_row), '>');
+    assert_eq!(char_at(&surface, 1, bounds.query_row), ' ');
+    assert_eq!(char_at(&surface, 2, bounds.query_row), 't');
 }
 
 #[test]
 fn render_without_items() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let data = MicroscopeData {
         active: true,
         prompt: "> ".to_owned(),
@@ -61,7 +70,7 @@ fn render_without_items() {
 
 #[test]
 fn render_with_preview() {
-    let mut surface = RecordingSurface::new(100, 30);
+    let mut surface = CellCapability::new(100, 30);
     let mut data = make_data(true);
     data.preview = Some(PreviewData {
         lines: vec!["fn main() {".to_owned(), "}".to_owned()],
@@ -76,13 +85,13 @@ fn render_with_preview() {
     if bounds.show_preview {
         let sep_col = bounds.results_width;
         let sep_row = bounds.panel_start_y;
-        assert_eq!(surface.char_at(sep_col, sep_row), '\u{2502}');
+        assert_eq!(char_at(&surface, sep_col, sep_row), '\u{2502}');
     }
 }
 
 #[test]
 fn render_narrow_no_preview() {
-    let mut surface = RecordingSurface::new(50, 24);
+    let mut surface = CellCapability::new(50, 24);
     let data = make_data(true);
     let bounds = LayoutBounds::calculate(50, 24);
 
@@ -92,35 +101,35 @@ fn render_narrow_no_preview() {
 
 #[test]
 fn separator_row() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let data = make_data(true);
     let bounds = LayoutBounds::calculate(80, 24);
 
     render_microscope(&mut surface, &data, &bounds);
 
-    assert_eq!(surface.char_at(0, bounds.query_row + 1), '\u{2500}');
+    assert_eq!(char_at(&surface, 0, bounds.query_row + 1), '\u{2500}');
 }
 
 #[test]
 fn selected_item_indicator() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let data = make_data(true);
     let bounds = LayoutBounds::calculate(80, 24);
 
     render_microscope(&mut surface, &data, &bounds);
 
     // First item should have '>' indicator.
-    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
+    assert_eq!(char_at(&surface, 0, bounds.panel_start_y), '>');
 
     // Second item should have ' ' indicator.
     if bounds.panel_height > 1 {
-        assert_eq!(surface.char_at(0, bounds.panel_start_y + 1), ' ');
+        assert_eq!(char_at(&surface, 0, bounds.panel_start_y + 1), ' ');
     }
 }
 
 #[test]
 fn render_items_overflow_panel_height() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = LayoutBounds::calculate(80, 24);
     let many_items: Vec<ItemData> = (0..100)
         .map(|i| ItemData {
@@ -141,7 +150,7 @@ fn render_items_overflow_panel_height() {
 
 #[test]
 fn render_long_display_text_truncated() {
-    let mut surface = RecordingSurface::new(30, 24);
+    let mut surface = CellCapability::new(30, 24);
     let bounds = LayoutBounds::calculate(30, 24);
     let data = MicroscopeData {
         active: true,
@@ -159,7 +168,7 @@ fn render_long_display_text_truncated() {
 
 #[test]
 fn render_long_detail_text_truncated() {
-    let mut surface = RecordingSurface::new(40, 24);
+    let mut surface = CellCapability::new(40, 24);
     let bounds = LayoutBounds::calculate(40, 24);
     let data = MicroscopeData {
         active: true,
@@ -177,7 +186,7 @@ fn render_long_detail_text_truncated() {
 
 #[test]
 fn render_preview_overflow_panel_height() {
-    let mut surface = RecordingSurface::new(100, 24);
+    let mut surface = CellCapability::new(100, 24);
     let bounds = LayoutBounds::calculate(100, 24);
     let data = MicroscopeData {
         active: true,
@@ -195,7 +204,7 @@ fn render_preview_overflow_panel_height() {
 
 #[test]
 fn render_preview_long_line_truncated() {
-    let mut surface = RecordingSurface::new(60, 24);
+    let mut surface = CellCapability::new(60, 24);
     let bounds = LayoutBounds::calculate(60, 24);
     let data = MicroscopeData {
         active: true,
@@ -213,7 +222,7 @@ fn render_preview_long_line_truncated() {
 
 #[test]
 fn render_preview_line_num_overflow() {
-    let mut surface = RecordingSurface::new(100, 30);
+    let mut surface = CellCapability::new(100, 30);
     let bounds = LayoutBounds {
         x: 0,
         y: 18,
@@ -243,7 +252,7 @@ fn render_preview_line_num_overflow() {
 
 #[test]
 fn count_indicator_on_right() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let data = make_data(true);
     let bounds = LayoutBounds::calculate(80, 24);
 
@@ -254,14 +263,14 @@ fn count_indicator_on_right() {
     #[allow(clippy::cast_possible_truncation)]
     let start = bounds.width - count_text.len() as u16;
     let rendered: String = (start..bounds.width)
-        .map(|col| surface.char_at(col, bounds.query_row))
+        .map(|col| char_at(&surface, col, bounds.query_row))
         .collect();
     assert_eq!(rendered, count_text);
 }
 
 #[test]
 fn selected_item_scrolled_into_view() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = LayoutBounds::calculate(80, 24);
     let many_items: Vec<ItemData> = (0..100)
         .map(|i| ItemData {
@@ -283,8 +292,8 @@ fn selected_item_scrolled_into_view() {
     // The selected item must appear somewhere in the panel.
     let mut found_selected = false;
     for row in bounds.panel_start_y..(bounds.panel_start_y + bounds.panel_height) {
-        if surface.char_at(0, row) == '>' {
-            let text: String = (2..10).map(|col| surface.char_at(col, row)).collect();
+        if char_at(&surface, 0, row) == '>' {
+            let text: String = (2..10).map(|col| char_at(&surface, col, row)).collect();
             assert!(text.starts_with("item_50"), "selected row shows: {text}");
             found_selected = true;
             break;
@@ -308,7 +317,7 @@ fn scroll_shows_correct_items() {
         preview_width: 0,
         preview_x: 0,
     };
-    let mut surface = RecordingSurface::new(80, 12);
+    let mut surface = CellCapability::new(80, 12);
     let many_items: Vec<ItemData> = (0..20)
         .map(|i| ItemData {
             display: format!("item_{i:02}"),
@@ -328,19 +337,19 @@ fn scroll_shows_correct_items() {
 
     // First visible row should be item_03 (scroll offset = 3).
     let first_row = bounds.panel_start_y;
-    let text: String = (2..9).map(|col| surface.char_at(col, first_row)).collect();
+    let text: String = (2..9).map(|col| char_at(&surface, col, first_row)).collect();
     assert_eq!(text, "item_03");
 
     // Last visible row should be item_10 (selected, with '>').
     let last_row = bounds.panel_start_y + bounds.panel_height - 1;
-    assert_eq!(surface.char_at(0, last_row), '>');
-    let text: String = (2..9).map(|col| surface.char_at(col, last_row)).collect();
+    assert_eq!(char_at(&surface, 0, last_row), '>');
+    let text: String = (2..9).map(|col| char_at(&surface, col, last_row)).collect();
     assert_eq!(text, "item_10");
 }
 
 #[test]
 fn no_scroll_when_selected_in_view() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = LayoutBounds::calculate(80, 24);
     let items: Vec<ItemData> = (0..5)
         .map(|i| ItemData {
@@ -361,12 +370,12 @@ fn no_scroll_when_selected_in_view() {
 
     // First item should be item_0 (no scroll).
     let first_row = bounds.panel_start_y;
-    let text: String = (2..8).map(|col| surface.char_at(col, first_row)).collect();
+    let text: String = (2..8).map(|col| char_at(&surface, col, first_row)).collect();
     assert_eq!(text, "item_0");
 
     // Third item (index 2) should have '>' indicator.
     let sel_row = bounds.panel_start_y + 2;
-    assert_eq!(surface.char_at(0, sel_row), '>');
+    assert_eq!(char_at(&surface, 0, sel_row), '>');
 }
 
 #[test]
@@ -384,7 +393,7 @@ fn query_row_overflow_narrow_width() {
         preview_width: 0,
         preview_x: 0,
     };
-    let mut surface = RecordingSurface::new(10, 10);
+    let mut surface = CellCapability::new(10, 10);
     let data = MicroscopeData {
         active: true,
         prompt: "> > > ".to_owned(), // 6 chars, wider than width=4
@@ -396,8 +405,8 @@ fn query_row_overflow_narrow_width() {
     render_microscope(&mut surface, &data, &bounds);
 
     // Cells beyond width should remain as default space.
-    assert_eq!(surface.char_at(4, 0), ' ');
-    assert_eq!(surface.char_at(5, 0), ' ');
+    assert_eq!(char_at(&surface, 4, 0), ' ');
+    assert_eq!(char_at(&surface, 5, 0), ' ');
 }
 
 #[test]
@@ -415,7 +424,7 @@ fn zero_panel_height_scroll() {
         preview_width: 0,
         preview_x: 0,
     };
-    let mut surface = RecordingSurface::new(80, 10);
+    let mut surface = CellCapability::new(80, 10);
     let data = MicroscopeData {
         active: true,
         items: vec![ItemData {
@@ -447,7 +456,7 @@ fn detail_skipped_when_no_room() {
         preview_width: 0,
         preview_x: 0,
     };
-    let mut surface = RecordingSurface::new(20, 10);
+    let mut surface = CellCapability::new(20, 10);
     let data = MicroscopeData {
         active: true,
         items: vec![ItemData {
@@ -465,7 +474,7 @@ fn detail_skipped_when_no_room() {
 
 #[test]
 fn icon_rendered_before_display_text() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = LayoutBounds::calculate(80, 24);
     let data = MicroscopeData {
         active: true,
@@ -482,15 +491,15 @@ fn icon_rendered_before_display_text() {
 
     // Layout: '>' ' ' icon ' ' 'm' 'a' 'i' 'n' ...
     // col 0: '>' (selected), col 1: ' ', col 2: icon, col 3: ' ', col 4: 'm'
-    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
-    assert_eq!(surface.char_at(2, bounds.panel_start_y), '\u{e7a8}');
-    assert_eq!(surface.char_at(3, bounds.panel_start_y), ' ');
-    assert_eq!(surface.char_at(4, bounds.panel_start_y), 'm');
+    assert_eq!(char_at(&surface, 0, bounds.panel_start_y), '>');
+    assert_eq!(char_at(&surface, 2, bounds.panel_start_y), '\u{e7a8}');
+    assert_eq!(char_at(&surface, 3, bounds.panel_start_y), ' ');
+    assert_eq!(char_at(&surface, 4, bounds.panel_start_y), 'm');
 }
 
 #[test]
 fn no_icon_same_position_as_before() {
-    let mut surface = RecordingSurface::new(80, 24);
+    let mut surface = CellCapability::new(80, 24);
     let bounds = LayoutBounds::calculate(80, 24);
     let data = MicroscopeData {
         active: true,
@@ -506,8 +515,8 @@ fn no_icon_same_position_as_before() {
     render_results(&mut surface, &data, &bounds);
 
     // Without icon: '>' ' ' 'm' 'a' 'i' 'n' ...
-    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
-    assert_eq!(surface.char_at(2, bounds.panel_start_y), 'm');
+    assert_eq!(char_at(&surface, 0, bounds.panel_start_y), '>');
+    assert_eq!(char_at(&surface, 2, bounds.panel_start_y), 'm');
 }
 
 #[test]
@@ -525,7 +534,7 @@ fn icon_skipped_when_no_room() {
         preview_width: 0,
         preview_x: 0,
     };
-    let mut surface = RecordingSurface::new(10, 10);
+    let mut surface = CellCapability::new(10, 10);
     let data = MicroscopeData {
         active: true,
         items: vec![ItemData {
@@ -540,7 +549,7 @@ fn icon_skipped_when_no_room() {
     render_results(&mut surface, &data, &bounds);
     // col=2 after indicator, col+2=4 which is NOT < results_width=4, so icon skipped.
     // Display text 'x' should be at col 2.
-    assert_eq!(surface.char_at(2, bounds.panel_start_y), 'x');
+    assert_eq!(char_at(&surface, 2, bounds.panel_start_y), 'x');
 }
 
 // ========================================================================
@@ -595,7 +604,7 @@ fn syntax_color_at_finds_matching_highlight() {
 
 #[test]
 fn render_preview_with_syntax_highlights() {
-    let mut surface = RecordingSurface::new(100, 30);
+    let mut surface = CellCapability::new(100, 30);
     let bounds = LayoutBounds::calculate(100, 30);
     let data = MicroscopeData {
         active: true,
@@ -619,11 +628,11 @@ fn render_preview_with_syntax_highlights() {
     // Line number takes 4 chars, so "f" is at preview_x + 4.
     let content_col = bounds.preview_x + 4;
     let row = bounds.panel_start_y;
-    let style = surface.style_at(content_col, row);
-    assert_eq!(style.fg, Some(Color::AnsiValue(141)));
+    let style = style_at(&surface, content_col, row);
+    assert_eq!(style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Ansi256(141)));
 
     // "m" in "main" (byte index 3) has no highlight, so uses default fg
     let main_col = content_col + 3;
-    let main_style = surface.style_at(main_col, row);
-    assert_eq!(main_style.fg, Some(Color::AnsiValue(250)));
+    let main_style = style_at(&surface, main_col, row);
+    assert_eq!(main_style.fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Ansi256(250)));
 }

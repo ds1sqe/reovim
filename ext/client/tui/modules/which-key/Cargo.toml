@@ -18,3 +18,4 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 reovim-client-driver = { workspace = true, features = ["testing"] }
+reovim-ext-client-tui-cap-cell = { workspace = true }

@@ -1,14 +1,19 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::CellCapability,
 };
 
 // =============================================================================
-// Helpers
+// Helpers (Plan 23 / 17-β.2b-impl-c bulk migration)
 // =============================================================================
 
-fn chrome_render(module: &TetrominoModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn chrome_render(module: &TetrominoModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -362,7 +367,7 @@ fn result_player_data_debug() {
 fn render_inactive_no_op() {
     let m = TetrominoModule::new();
     let surface = chrome_render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -370,7 +375,7 @@ fn render_menu_screen() {
     let mut m = TetrominoModule::new();
     m.on_notification(&menu_payload());
     let surface = chrome_render(&m, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -378,7 +383,7 @@ fn render_game_screen() {
     let mut m = TetrominoModule::new();
     m.on_notification(&make_game_json(false, false, 100, 1, 5));
     let surface = chrome_render(&m, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -386,5 +391,5 @@ fn render_small_terminal() {
     let mut m = TetrominoModule::new();
     m.on_notification(&make_game_json(false, false, 0, 0, 0));
     let surface = chrome_render(&m, 20, 10);
-    assert!(surface.has_content()); // "Terminal too small" message
+    assert!(has_content(&surface)); // "Terminal too small" message
 }

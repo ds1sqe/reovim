@@ -4,8 +4,14 @@ use {
         BOARD_HEIGHT, BOARD_WIDTH, HeldPieceData, OpponentData, PieceData, ResultPlayerData,
         TetrominoData,
     },
-    reovim_client_driver::{Rect, testing::RecordingSurface},
+    reovim_client_driver::Rect,
+    reovim_ext_client_tui_cap_cell::CellCapability,
 };
+
+// Plan 23: has_content helper replaces RecordingSurface::has_content.
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
 
 // =============================================================================
 // Helpers
@@ -52,8 +58,8 @@ fn make_active_data() -> TetrominoData {
     }
 }
 
-fn render(data: &TetrominoData, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(data: &TetrominoData, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -72,14 +78,14 @@ fn render(data: &TetrominoData, w: u16, h: u16) -> RecordingSurface {
 fn render_inactive_noop() {
     let data = TetrominoData::default();
     let surface = render(&data, 80, 30);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
 fn render_active_game() {
     let data = make_active_data();
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -87,7 +93,7 @@ fn render_paused() {
     let mut data = make_active_data();
     data.paused = true;
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -96,14 +102,14 @@ fn render_game_over() {
     data.game_over = true;
     data.active_piece = None;
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
 fn render_too_small_terminal() {
     let data = make_active_data();
     let surface = render(&data, 20, 10);
-    assert!(surface.has_content()); // "Terminal too small" message
+    assert!(has_content(&surface)); // "Terminal too small" message
 }
 
 // =============================================================================
@@ -186,7 +192,7 @@ fn render_board_with_all_colors() {
     data.board[14][2] = "sky".to_owned();
     data.board[14][3] = "coral".to_owned();
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -197,7 +203,7 @@ fn render_piece_at_negative_coords() {
         cells: vec![(-1, 4), (-1, 5), (0, 4), (0, 5)],
     });
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -205,7 +211,7 @@ fn render_board_with_grey() {
     let mut data = make_active_data();
     data.board[15][3] = "grey".to_owned();
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -217,7 +223,7 @@ fn render_board_empty() {
     };
     // Render directly via render_board (called through render_game)
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -228,14 +234,14 @@ fn render_with_held_piece() {
         color: "rose".to_owned(),
     });
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
 fn render_ghost_piece() {
     let data = make_active_data();
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -250,7 +256,7 @@ fn render_menu_screen() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -261,7 +267,7 @@ fn render_menu_too_small() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 10, 5);
-    assert!(surface.has_content()); // "Terminal too small" message
+    assert!(has_content(&surface)); // "Terminal too small" message
 }
 
 #[test]
@@ -284,7 +290,7 @@ fn render_lobby_screen() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -295,7 +301,7 @@ fn render_lobby_empty() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -306,7 +312,7 @@ fn render_lobby_too_small() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 10, 5);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -326,7 +332,7 @@ fn render_room_screen() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -343,7 +349,7 @@ fn render_room_not_ready() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -354,7 +360,7 @@ fn render_room_too_small() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 10, 5);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -371,7 +377,7 @@ fn render_countdown_screen() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -384,7 +390,7 @@ fn render_countdown_go() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -395,7 +401,7 @@ fn render_countdown_too_small() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 10, 3);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -415,7 +421,7 @@ fn render_game_with_opponents() {
         game_over: false,
     }];
     let surface = render(&data, 120, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -428,7 +434,7 @@ fn render_opponent_game_over() {
         game_over: true,
     }];
     let surface = render(&data, 120, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -449,7 +455,7 @@ fn render_multiple_opponents() {
         },
     ];
     let surface = render(&data, 120, 60);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -462,7 +468,7 @@ fn opponents_hidden_when_terminal_too_narrow() {
         game_over: false,
     }];
     let surface = render(&data, 40, 22);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -475,7 +481,7 @@ fn opponents_shown_when_terminal_wide_enough() {
         game_over: false,
     }];
     let surface = render(&data, 44, 22);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -502,7 +508,7 @@ fn opponents_limited_by_height() {
         },
     ];
     let surface = render(&data, 120, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -522,7 +528,7 @@ fn render_result_screen() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -535,7 +541,7 @@ fn render_result_no_winner() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -546,7 +552,7 @@ fn render_result_too_small() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 10, 5);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -559,7 +565,7 @@ fn render_result_empty_players() {
         ..TetrominoData::default()
     };
     let surface = render(&data, 80, 30);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -568,9 +574,9 @@ fn render_result_empty_players() {
 
 #[test]
 fn render_overlay_centered() {
-    let mut surface = RecordingSurface::new(80, 30);
+    let mut surface = CellCapability::new(80, 30);
     render_overlay(&mut surface, "TEST", 10, 5);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -579,8 +585,8 @@ fn render_overlay_centered() {
 
 #[test]
 fn render_side_panel_display() {
-    let mut surface = RecordingSurface::new(80, 30);
+    let mut surface = CellCapability::new(80, 30);
     let data = make_active_data();
     render_side_panel(&mut surface, &data, 40, 5);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }

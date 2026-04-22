@@ -4099,6 +4099,7 @@ name = "reovim-tui-mod-cmdline"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4107,6 +4108,7 @@ name = "reovim-tui-mod-completion"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4142,6 +4144,7 @@ name = "reovim-tui-mod-hover"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
 ]
@@ -4194,6 +4197,7 @@ name = "reovim-tui-mod-microscope"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4202,6 +4206,7 @@ name = "reovim-tui-mod-notification"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4220,6 +4225,7 @@ name = "reovim-tui-mod-signature-help"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde",
  "serde_json",
 ]
@@ -4245,6 +4251,7 @@ name = "reovim-tui-mod-tetromino"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 
@@ -4253,6 +4260,7 @@ name = "reovim-tui-mod-whichkey"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell",
  "serde_json",
 ]
 

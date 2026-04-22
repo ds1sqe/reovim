@@ -1,7 +1,18 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
+
+// Plan 23 helpers (17-β.2b-impl-c bulk migration).
+
+fn char_at(g: &CellCapability, x: u16, y: u16) -> char {
+    g.get_cell(x, y).map_or(' ', |c| c.ch)
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
 
 // =============================================================================
 // Helpers
@@ -17,8 +28,8 @@ fn inactive() -> String {
     r#"{"active":false}"#.to_owned()
 }
 
-fn render(module: &SignatureHelpModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(module: &SignatureHelpModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -154,7 +165,7 @@ fn notification_null_label() {
 fn render_inactive_no_op() {
     let m = SignatureHelpModule::new();
     let surface = render(&m, 80, 24);
-    assert_eq!(surface.char_at(0, 0), ' ');
+    assert_eq!(char_at(&surface, 0, 0), ' ');
 }
 
 #[test]
@@ -163,7 +174,7 @@ fn render_shows_popup_above_origin() {
     m.on_notification(&active_payload("fn foo(x: i32)"));
     let surface = render(&m, 80, 24);
     // Origin at line 5, popup_h=3 -> py = 5 - 3 = 2, px = 10
-    assert_eq!(surface.char_at(10, 2), '\u{256D}');
+    assert_eq!(char_at(&surface, 10, 2), '\u{256D}');
 }
 
 #[test]
@@ -171,7 +182,7 @@ fn render_border_color_yellow() {
     let mut m = SignatureHelpModule::new();
     m.on_notification(&active_payload("fn foo()"));
     let surface = render(&m, 80, 24);
-    assert_eq!(surface.style_at(10, 2).fg, Some(Color::Yellow));
+    assert_eq!(style_at(&surface, 10, 2).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
 }
 
 #[test]
@@ -180,8 +191,8 @@ fn render_content_text() {
     m.on_notification(&active_payload("fn foo()"));
     let surface = render(&m, 80, 24);
     // Content at (px+1, py+1) = (11, 3)
-    assert_eq!(surface.char_at(11, 3), 'f');
-    assert_eq!(surface.style_at(11, 3).fg, Some(Color::White));
+    assert_eq!(char_at(&surface, 11, 3), 'f');
+    assert_eq!(style_at(&surface, 11, 3).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(15)));
 }
 
 #[test]
@@ -192,7 +203,7 @@ fn render_popup_below_when_no_room_above() {
     );
     let surface = render(&m, 80, 24);
     // anchor_y=1, popup_h=3: 1 < 3, try below: 1+1+3=5 <= 24 -> py=2
-    assert_eq!(surface.char_at(0, 2), '\u{256D}');
+    assert_eq!(char_at(&surface, 0, 2), '\u{256D}');
 }
 
 #[test]
@@ -205,7 +216,7 @@ fn render_popup_at_top_fallback() {
     // Tiny terminal
     let surface = render(&m, 80, 4);
     // anchor_y=1: above needs 3, below needs 1+1+3=5 > 4. Fallback to 0.
-    assert_eq!(surface.char_at(0, 0), '\u{256D}');
+    assert_eq!(char_at(&surface, 0, 0), '\u{256D}');
 }
 
 #[test]
@@ -216,7 +227,7 @@ fn render_clamps_x_to_screen() {
     );
     let surface = render(&m, 80, 24);
     // popup_w = 10 (min), max_x = 80 - 10 = 70. col 75 > 70.
-    assert_eq!(surface.char_at(70, 2), '\u{256D}');
+    assert_eq!(char_at(&surface, 70, 2), '\u{256D}');
 }
 
 // =============================================================================

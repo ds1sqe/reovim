@@ -1,10 +1,26 @@
 use {
     super::*,
-    reovim_client_driver::{
-        reovim_arch::clock::TestClock,
-        testing::{MockPlatformCapabilities, RecordingSurface},
-    },
+    reovim_client_driver::{reovim_arch::clock::TestClock, testing::MockPlatformCapabilities},
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
+
+// Plan 23 / 17-β.2b-impl-c bulk migration helpers.
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
+
+fn text_at_row(g: &CellCapability, y: u16) -> String {
+    (0..g.width())
+        .map(|x| g.get_cell(x, y).map_or(' ', |c| c.ch))
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+}
 
 // =============================================================================
 // Helpers
@@ -16,8 +32,8 @@ fn test_module() -> (NotificationModule, Arc<TestClock>) {
     (module, clock)
 }
 
-fn render(module: &NotificationModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(module: &NotificationModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -178,7 +194,7 @@ fn tick_keeps_progress() {
 fn render_empty_no_op() {
     let m = NotificationModule::new();
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -186,7 +202,7 @@ fn render_shows_toast() {
     let (mut m, _clock) = test_module();
     m.on_notification(&info_toast(1, "Hello World"));
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -197,7 +213,7 @@ fn render_border_color_by_level() {
     // Toast at top-right, border should be red
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Red));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9)));
 }
 
 #[test]
@@ -305,9 +321,9 @@ fn render_grouped_source() {
     m.on_notification(&data);
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
     // Source name should appear in the rendered output
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("rust-analyzer"), "grouped box should show source name: {text}");
 }
 
@@ -322,7 +338,7 @@ fn render_mixed_sources_and_standalone() {
     m.on_notification(&data);
 
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     // Both grouped and standalone content visible
     assert!(text.contains("rust-analyzer"));
     assert!(text.contains("File saved"));
@@ -338,7 +354,7 @@ fn render_multiple_source_groups() {
     m.on_notification(&data);
 
     let surface = render(&m, 80, 30);
-    let text: String = (0..30).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..30).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("rust-analyzer"));
     assert!(text.contains("gopls"));
 }
@@ -357,7 +373,7 @@ fn grouped_box_border_uses_highest_priority_level() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Top border at y=1 should have the border color
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Red));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(9)));
 }
 
 // =============================================================================
@@ -403,7 +419,7 @@ fn render_toast_with_body() {
     let (mut m, _clock) = test_module();
     m.on_notification(&toast_with_body(1, "Alert", "Something happened"));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("Alert"), "should contain title: {text}");
     assert!(text.contains("Something happened"), "should contain body: {text}");
 }
@@ -417,7 +433,7 @@ fn render_progress_toast() {
     let (mut m, _clock) = test_module();
     m.on_notification(&progress_toast(1, "Building", 42, "compiling"));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("Building"), "should contain title: {text}");
     assert!(text.contains("42%"), "should contain percentage: {text}");
 }
@@ -431,7 +447,7 @@ fn render_progress_toast_no_detail() {
     let (mut m, _clock) = test_module();
     m.on_notification(&progress_toast(1, "Building", 75, ""));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("75%"), "should contain percentage: {text}");
 }
 
@@ -450,7 +466,7 @@ fn render_progress_toast_percent_over_100() {
     assert_eq!(m.toasts[0].progress, Some((120, "test".to_string())));
     // Rendering should still work (percent.min(100) in render_progress_bar)
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -506,7 +522,7 @@ fn render_standalone_toast_with_body_and_progress() {
     let (mut m, _clock) = test_module();
     m.on_notification(&toast_body_progress(1, "Indexing", "workspace files", 33, "parsing"));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("Indexing"), "should contain title: {text}");
     assert!(text.contains("workspace files"), "should contain body: {text}");
     assert!(text.contains("33%"), "should contain percentage: {text}");
@@ -529,7 +545,7 @@ fn render_grouped_box_with_body_and_progress() {
     });
 
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("ra"), "grouped box should show source name: {text}");
     assert!(text.contains("Server ready"), "should contain first title: {text}");
     assert!(text.contains("rust-analyzer v0.3"), "should contain first body: {text}");
@@ -554,7 +570,7 @@ fn render_max_visible_toasts() {
 
     // Render — only MAX_VISIBLE=5 should be rendered (newest first)
     let surface = render(&m, 80, 40);
-    let text: String = (0..40).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..40).map(|row| text_at_row(&surface, row)).collect();
     // Newest (id=7) should be visible, oldest (id=1) may not be
     assert!(text.contains("Toast7"), "newest toast should be visible");
 }
@@ -569,7 +585,7 @@ fn render_narrow_surface() {
     m.on_notification(&info_toast(1, "Hello World"));
     // Surface width=10 — toast_w = min(TOAST_WIDTH, 10-2) = 8
     let surface = render(&m, 10, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -604,7 +620,7 @@ fn render_progress_toast_zero_percent() {
     let (mut m, _clock) = test_module();
     m.on_notification(&progress_toast(1, "Starting", 0, "init"));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("0%"), "should contain 0%: {text}");
 }
 
@@ -613,7 +629,7 @@ fn render_progress_toast_hundred_percent() {
     let (mut m, _clock) = test_module();
     m.on_notification(&progress_toast(1, "Done", 100, "finished"));
     let surface = render(&m, 80, 24);
-    let text: String = (0..24).map(|row| surface.text_at_row(row)).collect();
+    let text: String = (0..24).map(|row| text_at_row(&surface, row)).collect();
     assert!(text.contains("100%"), "should contain 100%: {text}");
 }
 
@@ -628,7 +644,7 @@ fn render_success_toast() {
     let surface = render(&m, 80, 24);
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Green));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10)));
 }
 
 #[test]
@@ -638,7 +654,7 @@ fn render_warning_toast() {
     let surface = render(&m, 80, 24);
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Yellow));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
 }
 
 // =============================================================================
@@ -711,7 +727,7 @@ fn grouped_box_border_success_priority() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Success > Info, so border should be Green
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Green));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(10)));
 }
 
 // =============================================================================
@@ -731,7 +747,7 @@ fn grouped_box_border_warning_priority() {
     let toast_w = TOAST_WIDTH.min(78);
     let toast_x = 80 - toast_w - 1;
     // Warning > Success, so border should be Yellow
-    assert_eq!(surface.style_at(toast_x, 1).fg, Some(Color::Yellow));
+    assert_eq!(style_at(&surface, toast_x, 1).fg, Some(reovim_ext_client_tui_cap_cell::CellColor::Named(11)));
 }
 
 // =============================================================================
@@ -749,7 +765,7 @@ fn render_grouped_box_source_label_truncation() {
     m.on_notification(&data);
     let surface = render(&m, 80, 24);
     // Should render without panic; label is truncated
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 // =============================================================================
@@ -764,5 +780,5 @@ fn render_progress_bar_zero_available_width() {
     // In render_progress_bar: available = 0 => early return
     let surface = render(&m, 6, 24);
     // Should not panic
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }

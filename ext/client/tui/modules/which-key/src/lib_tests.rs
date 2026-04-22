@@ -1,14 +1,24 @@
 use {
     super::*,
-    reovim_client_driver::{
-        reovim_arch::clock::TestClock,
-        testing::{MockPlatformCapabilities, RecordingSurface},
-    },
+    reovim_client_driver::{reovim_arch::clock::TestClock, testing::MockPlatformCapabilities},
+    reovim_ext_client_tui_cap_cell::{CellCapability, CellStyle},
 };
 
 // =============================================================================
 // Helpers
 // =============================================================================
+
+// Plan 23 / 17-β.2b-impl-c bulk migration: `RecordingSurface` swapped
+// for `CellCapability` (which implements `RenderSurface` since Plan 21).
+// Per-file helpers replace the fixture's inspection API.
+
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+
+fn style_at(g: &CellCapability, x: u16, y: u16) -> CellStyle {
+    g.get_cell(x, y).map(|c| c.style).unwrap_or_default()
+}
 
 fn test_module() -> (WhichKeyModule, Arc<TestClock>) {
     let clock = Arc::new(TestClock::new());
@@ -16,8 +26,8 @@ fn test_module() -> (WhichKeyModule, Arc<TestClock>) {
     (module, clock)
 }
 
-fn render(module: &WhichKeyModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render(module: &WhichKeyModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -181,7 +191,7 @@ fn reactivation_resets_timer() {
 fn render_inactive_no_op() {
     let m = WhichKeyModule::new();
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -192,7 +202,7 @@ fn render_shows_popup() {
     m.tick();
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -204,7 +214,7 @@ fn render_no_popup_when_empty_hints() {
     m.visible = true;
 
     let surface = render(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -219,7 +229,10 @@ fn render_border_color() {
     let px = reovim_client_driver::chrome_utils::popup_x(80, pw);
     let py = 24u16.saturating_sub(1 + 1 + 1 + 2); // 1 statusline + 1 hint + 1 category header + 2 borders
 
-    assert_eq!(surface.style_at(px, py).fg, Some(Color::DarkGrey));
+    assert_eq!(
+        style_at(&surface, px, py).fg,
+        Some(reovim_ext_client_tui_cap_cell::CellColor::Named(8)),
+    );
 }
 
 // =============================================================================
@@ -337,7 +350,7 @@ fn render_no_categories_path() {
     m.tick();
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -357,7 +370,7 @@ fn render_multiple_categories() {
     m.tick();
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -371,7 +384,7 @@ fn render_with_empty_prefix() {
     m.tick();
 
     let surface = render(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -385,7 +398,7 @@ fn render_narrow_terminal() {
 
     // Render in narrow terminal
     let surface = render(&m, 30, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -407,7 +420,7 @@ fn render_many_hints() {
     m.tick();
 
     let surface = render(&m, 80, 40);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]

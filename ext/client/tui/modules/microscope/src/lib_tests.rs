@@ -1,7 +1,16 @@
 use {
     super::*,
-    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
+    reovim_client_driver::testing::MockPlatformCapabilities,
+    reovim_ext_client_tui_cap_cell::CellCapability,
 };
+
+// Plan 23 / 17-β.2b-impl-c helpers.
+fn has_content(g: &CellCapability) -> bool {
+    g.iter().any(|(_, c)| c.ch != ' ')
+}
+fn char_at(g: &CellCapability, x: u16, y: u16) -> char {
+    g.get_cell(x, y).map_or(' ', |c| c.ch)
+}
 
 // =============================================================================
 // Helpers
@@ -21,8 +30,8 @@ fn active_payload(query: &str, items: &[&str]) -> String {
     )
 }
 
-fn render_module(module: &MicroscopeModule, w: u16, h: u16) -> RecordingSurface {
-    let mut surface = RecordingSurface::new(w, h);
+fn render_module(module: &MicroscopeModule, w: u16, h: u16) -> CellCapability {
+    let mut surface = CellCapability::new(w, h);
     let bounds = Rect::new(0, 0, w, h);
     module.chrome_render(&mut surface, bounds, &MockPlatformCapabilities::new());
     surface
@@ -175,7 +184,7 @@ fn cursor_position_too_small_terminal() {
 fn render_inactive_no_op() {
     let m = MicroscopeModule::new();
     let surface = render_module(&m, 80, 24);
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
 
 #[test]
@@ -183,7 +192,7 @@ fn render_shows_content() {
     let mut m = MicroscopeModule::new();
     m.on_notification(&active_payload("test", &["main.rs", "lib.rs"]));
     let surface = render_module(&m, 80, 24);
-    assert!(surface.has_content());
+    assert!(has_content(&surface));
 }
 
 #[test]
@@ -195,10 +204,10 @@ fn render_selected_item_highlighted() {
     let surface = render_module(&m, 80, 24);
     // Verify content rendered (first item has '>' indicator).
     let bounds = LayoutBounds::calculate(80, 24);
-    assert_eq!(surface.char_at(0, bounds.panel_start_y), '>');
+    assert_eq!(char_at(&surface, 0, bounds.panel_start_y), '>');
     // Second item should have ' ' indicator.
     if bounds.panel_height > 1 {
-        assert_eq!(surface.char_at(0, bounds.panel_start_y + 1), ' ');
+        assert_eq!(char_at(&surface, 0, bounds.panel_start_y + 1), ' ');
     }
 }
 
@@ -208,5 +217,5 @@ fn render_too_small_screen() {
     m.on_notification(&active_payload("", &[]));
     let surface = render_module(&m, 10, 3);
     // Should not panic; small screen means nothing rendered.
-    assert!(!surface.has_content());
+    assert!(!has_content(&surface));
 }
