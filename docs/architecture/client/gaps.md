@@ -23,7 +23,7 @@ These will be added to `PlatformCapabilities` when the first non-TUI client
 is built. The trait is extensible — new methods with default implementations
 do not break existing modules.
 
-### RenderSurface bounds enforcement
+### ChromeSurface bounds enforcement
 
 Modules CAN write outside their allocated `Rect`. This is a design-time covenant,
 not a compile-time or runtime constraint. Consistent with every immediate-mode GUI.
@@ -53,7 +53,7 @@ can be added with the same pattern as the server.
 
 ### Document export (PDF, HTML, Markdown)
 
-`RenderSurface` covers interactive rendering. Document export needs a semantic
+`ChromeSurface` covers interactive rendering. Document export needs a semantic
 model (`begin_block`, `write_span`, `end_block`) — fundamentally different from
 positioned styled text. A future `DocumentRenderer` trait is the right answer.
 Modules that support export would implement both traits.
@@ -110,7 +110,7 @@ The existing `TuiExtension` trait has ~20 methods. The mapping is largely 1:1:
 4. **Extract Gutter framework** from window renderer into ViewportRenderer.
    Line numbers and git signs become annotation modules.
 
-5. **Replace `RenderBackend`** with `RenderSurface`.
+5. **Replace `RenderBackend`** with `ChromeSurface`.
    The TUI adapter wraps `Screen`/`FrameBuffer` behind the new trait.
 
 6. **Remove `TuiExtension`** and the bridge adapter when all extensions are migrated.

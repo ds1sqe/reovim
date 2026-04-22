@@ -139,7 +139,7 @@ trait ClientModule: Send + Sync + 'static {
 
     fn chrome_render(
         &self,
-        _surface: &mut dyn RenderSurface,
+        _surface: &mut dyn ChromeSurface,
         _bounds: Rect,
         _caps: &dyn PlatformCapabilities,
     ) {}

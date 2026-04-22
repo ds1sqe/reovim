@@ -9,7 +9,7 @@ Looks beyond TUI to Web, Android, and iOS.
 
 1. [Principles](principles.md) — Semantic, Presence, Adoption, Specialization
 2. [Layers](layers.md) — Layer diagram, rules, dependency graph
-3. [Platform](platform.md) — PlatformCapabilities, RenderSurface, InputSource
+3. [Platform](platform.md) — PlatformCapabilities, ChromeSurface, InputSource
 4. [Module](module.md) — ClientModule trait, lifecycle, roles
 5. [Rendering](rendering.md) — ViewportRenderer, chrome compositor, gutter
 6. [Data Flow](data-flow.md) — All flows, ServerHandle, cross-module

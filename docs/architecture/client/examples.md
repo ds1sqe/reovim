@@ -55,7 +55,7 @@ impl ClientModule for StatuslineModule {
         if caps.safe_area().bottom > 0 { 2 } else { 1 }
     }
 
-    fn chrome_render(&self, surface: &mut dyn RenderSurface, bounds: Rect,
+    fn chrome_render(&self, surface: &mut dyn ChromeSurface, bounds: Rect,
                      _caps: &dyn PlatformCapabilities) {
         surface.fill(bounds, ' ', self.status_style);
         // No allocation — reads pre-built cached_label

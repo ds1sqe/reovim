@@ -55,13 +55,13 @@ Examples of runtime changes:
 Modules that went dormant at init (capability not available) can activate
 when `on_capabilities_changed` delivers a newly available capability.
 
-## RenderSurface
+## ChromeSurface
 
 Abstract output target. Modules write styled text at logical positions.
 How that maps to physical output is the platform adapter's concern.
 
 ```rust
-trait RenderSurface: Send {
+trait ChromeSurface: Send {
     /// Write styled text at a logical position.
     /// Returns the number of columns consumed (needed for positioning
     /// subsequent content on the same line).
@@ -96,7 +96,7 @@ conflicts, no lifetime complexity.
 module.chrome_render(&mut surface, bounds, &caps);
 
 // Module writes within its bounds:
-fn chrome_render(&self, surface: &mut dyn RenderSurface, bounds: Rect, ...) {
+fn chrome_render(&self, surface: &mut dyn ChromeSurface, bounds: Rect, ...) {
     surface.write_styled(bounds.x, bounds.y, "content", style);
 }
 ```
@@ -107,11 +107,11 @@ See [Gaps](gaps.md) for discussion.
 
 ### Scope of abstraction
 
-`RenderSurface` covers interactive rendering: TUI, Canvas, Native.
+`ChromeSurface` covers interactive rendering: TUI, Canvas, Native.
 
 Document export (PDF, HTML, Markdown) is a different concern with a different
 model (semantic structure, not positioned text). A future `DocumentRenderer`
-trait is the right answer for export. `RenderSurface` does not try to be both.
+trait is the right answer for export. `ChromeSurface` does not try to be both.
 
 ## InputSource
 

@@ -11,7 +11,7 @@
 │                                                                      │
 │  Implements:                                                         │
 │    PlatformCapabilities — what this platform can do                   │
-│    RenderSurface        — how to put content on screen               │
+│    ChromeSurface        — how to put content on screen               │
 │    InputSource          — how to receive user input                   │
 │                                                                      │
 │  TUI:  crossterm, ANSI, cell grid, terminal resize                   │
@@ -55,7 +55,7 @@
 │  │  Rendering:                                                    │  │
 │  │    ViewportRenderer  — buffer rendering pipeline               │  │
 │  │    LayoutPolicy      — window arrangement                     │  │
-│  │    RenderSurface     — abstract output target                  │  │
+│  │    ChromeSurface     — abstract output target                  │  │
 │  │    PlatformCapabilities — what the platform offers             │  │
 │  │    ThemeProvider     — color scheme and highlight groups        │  │
 │  │                                                                │  │
@@ -84,7 +84,7 @@
 ### PLATFORM ADAPTER
 
 - IS the ground truth. Declares capabilities honestly.
-- Implements `PlatformCapabilities`, `RenderSurface`. Creates input channel.
+- Implements `PlatformCapabilities`, `ChromeSurface`. Creates input channel.
 - Never changes to accommodate modules. Modules adapt to it.
 - One adapter per platform binary (TUI binary, Web binary, Mobile binary).
 
@@ -93,7 +93,7 @@
 - ZERO knowledge of any specific UI feature.
 - ZERO knowledge of any specific platform.
 - Receives `PlatformCapabilities` at startup, passes to modules.
-- Outputs to `RenderSurface` (abstract), reads from input channel (concrete).
+- Outputs to `ChromeSurface` (abstract), reads from input channel (concrete).
 - Depends on CLIENT DRIVER for trait definitions.
 - Delegates buffer rendering to `ViewportRenderer` — never handles folds,
   virtual lines, transforms, or token classification directly.
@@ -103,7 +103,7 @@
 - Defines contracts, never instantiates modules.
 - All types are platform-agnostic.
 - `PlatformCapabilities` defined here, implemented by adapters.
-- `RenderSurface` defined here, implemented by adapters.
+- `ChromeSurface` defined here, implemented by adapters.
 - `ViewportRenderer` defined here with a default implementation.
 - `ThemeProvider` defined here.
 - May provide default implementations for bootstrapping.
@@ -126,7 +126,7 @@
                                │
                     ┌──────────┴──────────┐
                     │   CLIENT DRIVER     │  ClientModule, ViewportRenderer,
-                    │ (reovim-client-     │  PlatformCapabilities, RenderSurface,
+                    │ (reovim-client-     │  PlatformCapabilities, ChromeSurface,
                     │  driver)            │  ThemeProvider, PlatformEvent, Style
                     └──┬─────┬────────┬──┘
                        │     │        │

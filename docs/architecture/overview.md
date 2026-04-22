@@ -307,7 +307,7 @@ Clients follow a separate layered architecture defined by the
 │  COMMON CLIENT                               Platform-agnostic │
 │  ├── CLIENT CORE            Compositor, event dispatch        │
 │  ├── CLIENT DRIVER          Trait contracts (ClientModule,    │
-│  │                          ViewportRenderer, RenderSurface)  │
+│  │                          ViewportRenderer, ChromeSurface)  │
 │  └── CLIENT MODULE          Policy (statusline, line-numbers) │
 └──────────────────────────────────────────────────────────────┘
 ```

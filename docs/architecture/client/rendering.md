@@ -100,7 +100,7 @@ trait ViewportRenderer: Send + Sync {
     /// and has_annotations(). No per-frame allocation from CORE.
     fn render_viewport(
         &self,
-        surface: &mut dyn RenderSurface,
+        surface: &mut dyn ChromeSurface,
         viewport: Rect,
         modules: &[Box<dyn ClientModule>],
         buffer: &BufferContent,
