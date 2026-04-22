@@ -132,6 +132,22 @@ The default `ViewportRenderer` orchestrates:
 3. Render cursors (apply map_cursor_column)
 ```
 
+### Rasterization seam (17-γ)
+
+After chrome modules have drawn into their logical surface, the TUI
+shell picks a rasterization mode per window via `WindowViewHints` in
+`TuiCoreState`. 17-γ.1 ships `ViewHint::FullBlock` (1 logical cell →
+1 terminal cell, identity) on the existing direct-write path; 17-γ.2
+adds `HalfBlock` (2 stacked logical cells → 1 terminal cell via `▀`)
+and 17-γ.3 adds `Braille` (2×4 logical sub-grid → 1 terminal cell via
+`⠀…⣿`). The `ViewRasterizer` trait and the narrow terminal-backend-
+level `RasterOutput` trait live in
+`ext/client/tui/capabilities/cell-view/`. `RasterOutput` is
+deliberately separate from the module-facing `ChromeSurface`: input
+(where chrome modules write) and output (where rasterized terminal
+cells land) are different sides of the seam, and conflating them
+would make HalfBlock's fg=top / bg=bottom encoding unexpressible.
+
 ### Token classify merge strategy
 
 When multiple modules with `has_buffer_contrib()` both classify the same token:
