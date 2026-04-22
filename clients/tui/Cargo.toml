@@ -49,6 +49,9 @@ reovim-tui-mod-markdown = { workspace = true }
 reovim-tui-mod-bufferline = { workspace = true }
 reovim-tui-mod-surface-descriptor-cell-grid = { workspace = true }
 
+# Cell-view rasterization (17-γ.1 foundation)
+reovim-ext-client-tui-cap-cell-view = { workspace = true }
+
 # Client-side codec subsystem (surface-descriptor dispatch registry)
 reovim-client-subsys-codec = { workspace = true }
 

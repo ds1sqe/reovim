@@ -201,8 +201,42 @@ pub fn render_frame<B: RenderBackend>(
         );
     }
 
-    // Chrome rendering (CORE dispatch — position-based allocation)
-    render_chrome(backend, extensions, width, height, &caps);
+    dispatch_chrome_by_view_hint(backend, state, extensions, width, height, &caps);
+}
+
+/// 17-γ.1 hint-dispatch seam. The focused window's `ViewHint` picks
+/// the rasterization path. Only `FullBlock` is reachable in 25.1;
+/// `HalfBlock` (25.2 / Plan 26) and `Braille` (25.3 / Plan 27) land
+/// alongside their rasterizer impls and the chrome→`CellCapability`→
+/// `ViewRasterizer` pipeline restructure their buffering requires.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn dispatch_chrome_by_view_hint<B: RenderBackend>(
+    backend: &mut B,
+    state: &TuiCoreState,
+    extensions: &[Box<dyn ClientModule>],
+    width: u16,
+    height: u16,
+    caps: &TuiPlatformCapabilities,
+) {
+    match state.view_hint_for(state.focused_window_id) {
+        reovim_ext_client_tui_cap_cell_view::ViewHint::FullBlock => {
+            render_chrome(backend, extensions, width, height, caps);
+        }
+        reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock => {
+            unreachable!(
+                "ViewHint::HalfBlock rasterizer lands in Plan 26 (17-γ.2); \
+                 no code path in 25.1 constructs this variant in a \
+                 WindowViewHints entry."
+            );
+        }
+        reovim_ext_client_tui_cap_cell_view::ViewHint::Braille => {
+            unreachable!(
+                "ViewHint::Braille rasterizer lands in Plan 27 (17-γ.3); \
+                 no code path in 25.1 constructs this variant in a \
+                 WindowViewHints entry."
+            );
+        }
+    }
 }
 
 // =============================================================================

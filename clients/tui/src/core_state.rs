@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 
+use reovim_ext_client_tui_cap_cell_view::ViewHint;
 use reovim_protocol::v3::WindowInfo;
 
 /// Line number display mode.
@@ -213,6 +214,15 @@ pub struct TuiCoreState {
     /// Computed before each render frame from cursor position and viewport height.
     pub scroll_tops: HashMap<u64, usize>,
 
+    /// Per-window rasterization hint (17-γ.1 foundation).
+    ///
+    /// Maps `window_id` -> [`ViewHint`]. Unknown windows default to
+    /// [`ViewHint::FullBlock`] via [`Self::view_hint_for`]. In 17-γ.1
+    /// only `FullBlock` is reachable; `HalfBlock` and `Braille` arms
+    /// at the chrome dispatch point are `unreachable!()` until 25.2
+    /// and 25.3 land their rasterizers.
+    pub window_view_hints: HashMap<u64, ViewHint>,
+
     // =========================================================================
     // Multi-client awareness (#474)
     // =========================================================================
@@ -362,6 +372,21 @@ impl TuiCoreState {
             .retain(|id, _| current_window_ids.contains(id));
         self.scroll_tops
             .retain(|id, _| current_window_ids.contains(id));
+        self.window_view_hints
+            .retain(|id, _| current_window_ids.contains(id));
+    }
+
+    /// Per-window rasterization hint with default fallback.
+    ///
+    /// Unknown windows return [`ViewHint::FullBlock`]. In 17-γ.1 only
+    /// `FullBlock` is reachable on the production render path; 25.2
+    /// and 25.3 unlock the other variants.
+    #[must_use]
+    pub fn view_hint_for(&self, window_id: u64) -> ViewHint {
+        self.window_view_hints
+            .get(&window_id)
+            .copied()
+            .unwrap_or(ViewHint::FullBlock)
     }
 
     /// Get cursor position for the focused window.
