@@ -6,8 +6,9 @@
 //! the existing static (builtin) modules. This is a **driver** (mechanism layer)
 //! that handles:
 //!
-//! - Search path resolution and module file discovery
-//! - FFI symbol resolution via `libloading`
+//! - Search path resolution and module file discovery (delegated to
+//!   `reovim-dylib-loader`'s `PathResolver` + `scan_paths` mechanism)
+//! - FFI symbol resolution (delegated to `reovim-dylib-loader`'s `Library` wrapper)
 //! - Module handle management (static + dynamic)
 //! - Module registry with state FSM and lifecycle
 //! - Lock file generation with SHA-256 checksums

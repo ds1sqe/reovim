@@ -6,6 +6,41 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#769 ABI Foundation — Phase 1**: runtime cdylib discovery and the
+  OS-abstraction layer beneath the specialized loaders.
+  - New `lib/dylib-loader/` core-tier crate: safe `Library` wrapper
+    over `libloading`, six-rule `PathResolver` (CLI > env > XDG /
+    system with MERGE semantics, never replace), parallel
+    `scan_paths` via `rayon` with per-entry `ScanEntryError` on
+    failures (scan itself is infallible at the API level). Zero
+    `reovim-*` deps, enforced by the new
+    `dylib_loader_core_only.rs` depgraph probe. 100% line coverage.
+    100-cdylib scan benchmark stays well under the master-plan
+    budget (≤600 ms cold, ≤150 ms warm).
+  - New `LoadedClientRender::from_path_scan(root)` on the client
+    driver-loader: returns `Vec<Result<Self, ScanEntryError>>`
+    across every `.so` under `<root>/driver/`, wrapping filesystem
+    and ABI-validation failures into per-entry results.
+  - New `ModuleLoader::from_path_scan(root)` on the server
+    module-loader with the same shape. Both `from_path_scan` impls
+    carry `TODO(#769-phase-1.5)` markers for the future
+    `PathScannable` trait hoist.
+  - Existing `server/lib/subsys/module-loader/` `loader.rs` and
+    `handle.rs` retargeted onto `reovim_dylib_loader::Library`; the
+    legacy `default_search_paths()` helper coexists with the new
+    `PathResolver` path until Phase 3 cleans it up.
+  - New `cargo reovim-dev` subcommand (`tools/reovim-dev/`) for the
+    contributor dev loop: `stage` symlinks `target/debug/*.<ext>`
+    into `target/reovim-dev/{driver,modules}/` (Windows symlink →
+    copy fallback when Developer Mode is off), `scan --json` prints
+    the per-cdylib open-status report, `run -- <args>` exports
+    `REOVIM_LIBRARY_ROOT` and execs a reovim bin.
+  - New `.github/workflows/ci-cross-platform.yml` adds macOS-latest
+    and Windows-latest runners for the Phase 0 `dlopen_roundtrip`
+    suite plus Phase 1's path-resolution and non-fatal scan tests;
+    the 100-cdylib scan benchmark runs on nightly + main pushes
+    only.
+
 - **#769 ABI Foundation — Phase 0**: established the C-stable driver
   ABI contract for runtime-loaded driver cdylibs.
   - New `uapi/driver-macros/` proc-macro crate with

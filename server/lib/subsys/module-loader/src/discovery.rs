@@ -19,6 +19,14 @@ pub const MODULE_PATH_ENV: &str = "REOVIM_MODULE_PATH";
 /// 2. `$XDG_DATA_HOME/reovim/modules/` (user-installed)
 /// 3. `/usr/local/lib/reovim/modules/` (locally-compiled)
 /// 4. `/usr/lib/reovim/modules/` (system packages)
+///
+// TODO(#769-phase-3): this XDG + system logic duplicates
+// `reovim_dylib_loader::PathResolverBuilder::for_kind(Kind::Module)`'s
+// rule R5+R6. Both are live during Phase 1 because the existing public
+// API (`default_search_paths`) is consumed by `ModuleLoader::new`.
+// Phase 3's server-module cdylib migration removes this duplication:
+// `ModuleLoader::new` will switch to `PathResolver` directly and this
+// function will be deleted or re-expressed as a thin adapter.
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn default_search_paths() -> Vec<PathBuf> {
@@ -62,6 +70,11 @@ fn env_search_paths() -> Option<Vec<PathBuf>> {
 }
 
 /// Get shared library extension for the current platform.
+///
+// TODO(#769-phase-3): duplicates `reovim_dylib_loader::library_extension`.
+// Kept live during Phase 1 because the existing public API is consumed
+// by other server-side helpers; Phase 3's server-module cdylib migration
+// deletes this duplicate and has callers import from `reovim_dylib_loader`.
 #[must_use]
 pub const fn library_extension() -> &'static str {
     #[cfg(any(
@@ -91,6 +104,13 @@ pub const fn library_extension() -> &'static str {
 /// - Linux: `libreovim_module_{name}.so`
 /// - macOS: `libreovim_module_{name}.dylib`
 /// - Windows: `reovim_module_{name}.dll`
+///
+// TODO(#769-phase-3): partially duplicates
+// `reovim_dylib_loader::library_filename`. This helper also prefixes
+// the reovim-module namespace (`libreovim_module_<name>`) which the
+// generic helper doesn't know about. Phase 3's migration either hoists
+// the namespace prefix into the caller or keeps this as a thin adapter
+// over the core helper.
 #[must_use]
 pub fn library_filename(name: &str) -> String {
     let normalized = name.replace('-', "_");

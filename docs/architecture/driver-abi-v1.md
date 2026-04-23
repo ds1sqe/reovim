@@ -312,3 +312,30 @@ pub struct RenderTargetVTable {
                       ) -> c_int,
 }
 ```
+
+## Library-root discovery (Phase 1)
+
+Runtime discovery of driver and module cdylibs uses the
+`reovim-dylib-loader` crate's six-rule `PathResolver` with MERGE
+semantics (never replace):
+
+| # | Source                                              | Precedence |
+|---|-----------------------------------------------------|------------|
+| R1 | CLI `--driver <path>` (drivers only)               | highest    |
+| R2 | CLI `--module <path>` / `-m` / `--lib` (modules)   | highest    |
+| R3 | env `REOVIM_DRIVER_PATH` (colon-separated)         | middle     |
+| R4 | env `REOVIM_MODULE_PATH` (colon-separated)         | middle     |
+| R5 | env `REOVIM_LIBRARY_ROOT/<kind>/`                  | lower      |
+| R6 | XDG data + `/usr/local/lib/reovim/<kind>/` + `/usr/lib/reovim/<kind>/` | lowest |
+
+A path in a higher-precedence rule is searched first but does not
+evict lower-precedence entries. Empty colon-separated segments are
+filtered; an unset env var contributes zero entries. The two
+specialized subsys loaders (`clients/lib/subsys/driver-loader/` and
+`server/lib/subsys/module-loader/`) expose `from_path_scan(root)`
+constructors that walk `<root>/{driver,modules}/` via this resolver
+and return one per-entry result per candidate cdylib.
+
+See `lib/dylib-loader/` for the mechanism and the
+`02-loader-and-discovery.md` sub-plan under `~/docs/plans/reovim/769-abi-foundation/`
+for the design rationale and O2–O4 resolutions.

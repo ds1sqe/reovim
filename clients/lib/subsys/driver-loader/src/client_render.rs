@@ -2,14 +2,14 @@
 
 use {
     crate::{
-        error::{LoadError, ValidationError},
+        error::{LoadError, ScanEntryError, ValidationError},
         validation::{ClientRenderExpectations, check_client_render},
     },
-    libloading::{Library, Symbol},
     reovim_client_subsys_render::{
         abi::{ClientRenderVTable, RenderTargetVTable},
         target::{RenderError, RenderTarget},
     },
+    reovim_dylib_loader::{Kind, Library, PathResolverBuilder, Symbol, scan_paths},
     std::{
         ffi::{CStr, c_char, c_int, c_void},
         marker::PhantomData,
@@ -23,11 +23,11 @@ const VTABLE_SYMBOL: &[u8] = b"REOVIM_CLIENT_RENDER_DRIVER_VTABLE";
 
 /// A client-render driver loaded from a cdylib.
 ///
-/// Owns the `libloading::Library` handle, the driver instance pointer,
-/// and a `'static` reference to the driver's exported vtable. Field
-/// order matters: `Drop` runs `instance`-bound destructors first and
-/// drops `_lib` last so dispatching into the cdylib stays sound until
-/// the very end.
+/// Owns the [`reovim_dylib_loader::Library`] handle, the driver
+/// instance pointer, and a `'static` reference to the driver's
+/// exported vtable. Field order matters: `Drop` runs `instance`-bound
+/// destructors first and drops `_lib` last so dispatching into the
+/// cdylib stays sound until the very end.
 pub struct LoadedClientRender {
     /// Live instance handle; driver-owned heap pointer.
     instance: *mut c_void,
@@ -64,18 +64,50 @@ impl LoadedClientRender {
     ///   negative error code.
     /// - `LoadError::DriverPanicked` if `construct` caught a panic.
     pub fn load_from_path(path: &Path) -> Result<Self, LoadError> {
-        // SAFETY: `libloading::Library::new` is unsafe because loading
-        // a cdylib runs its static initializers, which can execute
-        // arbitrary code. Callers must only point this at trusted
-        // driver cdylibs resolved from the documented library root.
-        let lib = unsafe { Library::new(path) }.map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        let lib = Library::open(path).map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        Self::validate_and_construct(lib)
+    }
 
+    /// Load every `driver/`-kind cdylib under `root`, returning one
+    /// per-entry result per candidate.
+    ///
+    /// The scan is infallible at the API level: a malformed cdylib,
+    /// an unreadable file, or a missing `<root>/driver/` directory
+    /// never panics — it surfaces as a [`ScanEntryError`] on the
+    /// corresponding entry's `Err` arm. System fallback paths (XDG,
+    /// `/usr/lib/reovim/`) are not consulted; `root` is the single
+    /// search root so `reovim-dev` can point at staging directories
+    /// without shadowing.
+    ///
+    // TODO(#769-phase-1.5): hoist a shared `PathScannable` trait so
+    // this impl and the server-side `ModuleLoader::from_path_scan`
+    // share one signature instead of two parallel ones.
+    #[must_use]
+    pub fn from_path_scan(root: &Path) -> Vec<Result<Self, ScanEntryError>> {
+        let resolver = PathResolverBuilder::for_kind(Kind::Driver)
+            .without_system_fallback()
+            .push_cli_path(root.join(Kind::Driver.subdir()))
+            .build();
+        scan_paths(resolver.paths())
+            .into_entries()
+            .into_iter()
+            .map(|entry| match entry.outcome {
+                Ok(lib) => Self::validate_and_construct(lib).map_err(load_to_scan_error),
+                Err(e) => Err(ScanEntryError::Loader(e)),
+            })
+            .collect()
+    }
+
+    /// Run ABI validation and `construct` against an already-opened
+    /// library. Shared between [`Self::load_from_path`] and
+    /// [`Self::from_path_scan`].
+    fn validate_and_construct(lib: Library) -> Result<Self, LoadError> {
         // SAFETY: resolving a `*const T` symbol is unsafe because
         // `libloading` cannot verify the exported type matches. The
         // contract in `docs/architecture/driver-abi-v1.md` fixes this
         // symbol to a `ClientRenderVTable` static.
-        let sym: Symbol<'_, *const ClientRenderVTable> = unsafe { lib.get(VTABLE_SYMBOL) }
-            .map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        let sym: Symbol<'_, *const ClientRenderVTable> =
+            unsafe { lib.symbol(VTABLE_SYMBOL) }.map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
         let vtable_ptr: *const ClientRenderVTable = *sym;
 
         // SAFETY: The vtable's first three header fields are
@@ -126,6 +158,20 @@ impl LoadedClientRender {
             driver_vtable: self.vtable,
             _borrow: PhantomData,
         })
+    }
+}
+
+/// Convert a single-driver [`LoadError`] into the per-scan-entry
+/// [`ScanEntryError`] returned by [`LoadedClientRender::from_path_scan`].
+/// `LibraryOpen` at this point means the cdylib opened but its vtable
+/// symbol was missing — that is an ABI mismatch, not a filesystem
+/// failure, so it routes to `AbiMismatch` with `VtablePointerNull`.
+fn load_to_scan_error(err: LoadError) -> ScanEntryError {
+    match err {
+        LoadError::LibraryOpen(_) => ScanEntryError::AbiMismatch(ValidationError::VtablePointerNull),
+        LoadError::Validation(v) => ScanEntryError::AbiMismatch(v),
+        LoadError::DriverError(msg) => ScanEntryError::DriverError(msg),
+        LoadError::DriverPanicked => ScanEntryError::DriverPanicked,
     }
 }
 

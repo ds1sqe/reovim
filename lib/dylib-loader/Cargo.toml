@@ -1,0 +1,24 @@
+[package]
+name = "reovim-dylib-loader"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core-tier OS-abstraction wrapper over libloading: Library, PathResolver, scan_paths"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+libloading = { workspace = true }
+rayon = "1"
+thiserror = "2"
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim-driver-abi-poc = { path = "../../tools/driver-abi-poc", version = "0.15.0-dev" }
+tempfile = "3"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

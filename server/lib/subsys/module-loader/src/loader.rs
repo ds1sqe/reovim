@@ -10,7 +10,7 @@ use std::{
 };
 
 use {
-    libloading::{Library, Symbol},
+    reovim_dylib_loader::{Library, Symbol},
     reovim_kernel::api::v1::{API_VERSION, Module, ModuleError, ModuleId, Version, is_compatible},
 };
 
@@ -145,13 +145,13 @@ impl ModuleLoader {
         // SAFETY: All operations in this function require the caller to ensure
         // the shared library is ABI-compatible.
         unsafe {
-            // 1. Load shared library
-            let library = Library::new(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
+            // 1. Load shared library via the OS-abstraction wrapper.
+            let library = Library::open(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
 
             // 2. Check API version FIRST (static symbol, fast)
             let api_version: Symbol<&'static Version> =
                 library
-                    .get(b"REOVIM_MODULE_API_VERSION")
+                    .symbol(b"REOVIM_MODULE_API_VERSION")
                     .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let module_api = **api_version;
@@ -166,7 +166,7 @@ impl ModuleLoader {
 
             // 3. Get module probe (metadata without instantiation)
             let probe_fn: Symbol<ProbeFn> = library
-                .get(b"reovim_module_probe")
+                .symbol(b"reovim_module_probe")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let probe = probe_fn();
@@ -182,36 +182,36 @@ impl ModuleLoader {
 
             // 5. Resolve required FFI symbols
             let entry_fn: Symbol<EntryFn> = library
-                .get(b"reovim_module_entry")
+                .symbol(b"reovim_module_entry")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let init_fn: Symbol<InitFn> = library
-                .get(b"reovim_module_init")
+                .symbol(b"reovim_module_init")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let exit_fn: Symbol<ExitFn> = library
-                .get(b"reovim_module_exit")
+                .symbol(b"reovim_module_exit")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let destroy_fn: Symbol<DestroyFn> = library
-                .get(b"reovim_module_destroy")
+                .symbol(b"reovim_module_destroy")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             // 5b. Optional hot reload symbols
             let supports_hot_reload_fn: Option<Symbol<SupportsHotReloadFn>> =
-                library.get(b"reovim_module_supports_hot_reload").ok();
+                library.symbol(b"reovim_module_supports_hot_reload").ok();
             let save_state_fn: Option<Symbol<SaveStateFn>> =
-                library.get(b"reovim_module_save_state").ok();
+                library.symbol(b"reovim_module_save_state").ok();
             let restore_state_fn: Option<Symbol<RestoreStateFn>> =
-                library.get(b"reovim_module_restore_state").ok();
+                library.symbol(b"reovim_module_restore_state").ok();
             let free_state_fn: Option<Symbol<FreeStateFn>> =
-                library.get(b"reovim_module_free_state").ok();
+                library.symbol(b"reovim_module_free_state").ok();
 
             // 5c. Optional lifecycle hook (#725) — absent in pre-#725 `.so`
             // files, which is why it is resolved with `.ok()` rather than
             // treated as a hard failure.
             let on_all_loaded_fn: Option<Symbol<OnAllLoadedFn>> =
-                library.get(b"reovim_module_on_all_loaded").ok();
+                library.symbol(b"reovim_module_on_all_loaded").ok();
 
             // 6. Create module instance (returns OPAQUE thin pointer)
             let module_ptr = entry_fn();
@@ -267,6 +267,69 @@ impl ModuleLoader {
 
         // SAFETY: Caller ensures libraries are ABI-compatible
         unsafe { self.load_dynamic(&path) }
+    }
+
+    /// Scan `<root>/modules/` for cdylibs and load every valid module
+    /// into `self`. Returns one per-entry result per candidate file —
+    /// successes yield the loaded [`ModuleId`], failures yield a
+    /// [`ModuleError`] whose text folds in the underlying
+    /// `reovim_dylib_loader::ScanEntryError` when the scan layer
+    /// refused the file.
+    ///
+    /// The scan is infallible at the API level: a malformed cdylib,
+    /// unreadable file, or missing `<root>/modules/` directory never
+    /// panics — it lands as an `Err` on the corresponding entry.
+    /// System fallback paths (XDG, `/usr/lib/reovim/`) are not
+    /// consulted; the caller names the single search root.
+    ///
+    /// # Shape
+    ///
+    /// Plan 02 called for a `LoadedModule::from_path_scan` returning
+    /// `Vec<Result<Self, ScanEntryError>>` symmetric with the client
+    /// side's [`crate::LoadedClientRender::from_path_scan`]. Server
+    /// modules cannot own themselves: a [`super::handle::ModuleHandle`]
+    /// carries FFI symbol pointers plus the `Library` handle that
+    /// keeps the cdylib mapped, and the registry layer depends on
+    /// those handles living inside `ModuleLoader`'s own `HashMap`
+    /// for the `ModuleId` → handle lookup to work. The method
+    /// therefore registers each successful module into `&mut self`
+    /// and returns the resulting `ModuleId`. The client-side type is
+    /// a plain owned struct so direct-ownership return works; this
+    /// divergence falls out of existing ownership, not a new rule.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`Self::load_dynamic`]: the caller must ensure
+    /// every `.so` under `<root>/modules/` is ABI-compatible with the
+    /// host kernel.
+    ///
+    // TODO(#769-phase-1.5): hoist a shared `PathScannable` trait so
+    // this impl and `LoadedClientRender::from_path_scan` share one
+    // signature instead of two parallel ones.
+    #[allow(unsafe_code)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub unsafe fn from_path_scan(
+        &mut self,
+        root: &Path,
+    ) -> Vec<Result<ModuleId, ModuleError>> {
+        use reovim_dylib_loader::{Kind, PathResolverBuilder, scan_paths};
+
+        let resolver = PathResolverBuilder::for_kind(Kind::Module)
+            .without_system_fallback()
+            .push_cli_path(root.join(Kind::Module.subdir()))
+            .build();
+
+        scan_paths(resolver.paths())
+            .into_entries()
+            .into_iter()
+            .map(|entry| match entry.outcome {
+                // SAFETY: the caller's contract on `from_path_scan`
+                // forwards to `load_dynamic`; ABI compatibility is
+                // owned by the caller.
+                Ok(_lib) => unsafe { self.load_dynamic(&entry.path) },
+                Err(e) => Err(ModuleError::LoadFailed(e.to_string())),
+            })
+            .collect()
     }
 
     /// Unload a module.

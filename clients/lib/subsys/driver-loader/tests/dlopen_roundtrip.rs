@@ -160,3 +160,61 @@ fn load_from_cdylib_without_vtable_symbol_reports_library_open_error() {
         Err(other) => panic!("unexpected error kind: {other:?}"),
     }
 }
+
+#[test]
+fn from_path_scan_stages_all_four_poc_cdylibs_and_surfaces_per_entry_results() {
+    use {
+        reovim_client_subsys_driver_loader::ScanEntryError,
+        std::fs,
+    };
+
+    // Stage all four Phase 0 PoC cdylibs into a synthetic driver root.
+    let root = tempfile::tempdir().unwrap();
+    let driver_dir = root.path().join("driver");
+    fs::create_dir_all(&driver_dir).unwrap();
+
+    for stem in [
+        "reovim_driver_abi_poc",
+        "reovim_driver_abi_poc_panic",
+        "reovim_driver_abi_poc_construct_err",
+        "reovim_driver_abi_poc_empty",
+    ] {
+        let src = cdylib_path(stem);
+        assert!(src.exists(), "missing PoC at {}", src.display());
+        let dest = driver_dir.join(src.file_name().unwrap());
+        fs::copy(&src, &dest).unwrap_or_else(|e| panic!("copy {stem}: {e}"));
+    }
+
+    let results = LoadedClientRender::from_path_scan(root.path());
+    assert_eq!(results.len(), 4, "expected 4 entries, got {}", results.len());
+
+    let successes = results.iter().filter(|r| r.is_ok()).count();
+    let errors: Vec<&ScanEntryError> = results.iter().filter_map(|r| r.as_ref().err()).collect();
+
+    // Happy-path and panic PoCs both construct cleanly (panic PoC
+    // only panics inside submit, which from_path_scan does not call).
+    // construct-err surfaces as DriverError, empty cdylib as
+    // AbiMismatch (missing vtable symbol).
+    assert_eq!(successes, 2, "expected 2 successes (happy + panic), got {successes}");
+    assert_eq!(errors.len(), 2, "expected 2 per-entry errors");
+
+    let variant_names: Vec<&'static str> = errors
+        .iter()
+        .map(|e| match e {
+            ScanEntryError::Loader(_) => "Loader",
+            ScanEntryError::AbiMismatch(_) => "AbiMismatch",
+            ScanEntryError::DriverError(_) => "DriverError",
+            ScanEntryError::DriverPanicked => "DriverPanicked",
+        })
+        .collect();
+    assert!(variant_names.contains(&"DriverError"), "missing DriverError: {variant_names:?}");
+    assert!(variant_names.contains(&"AbiMismatch"), "missing AbiMismatch: {variant_names:?}");
+}
+
+#[test]
+fn from_path_scan_on_missing_driver_dir_returns_empty_vec() {
+    let root = tempfile::tempdir().unwrap();
+    // root/driver/ does not exist — scan layer warns and returns empty.
+    let results = LoadedClientRender::from_path_scan(root.path());
+    assert!(results.is_empty(), "expected empty; got {} entries", results.len());
+}

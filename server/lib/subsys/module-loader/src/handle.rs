@@ -7,7 +7,7 @@
 use std::{ffi::c_void, path::PathBuf};
 
 use {
-    libloading::Library,
+    reovim_dylib_loader::Library,
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ModuleProbe, ProbeResult, Version,
     },

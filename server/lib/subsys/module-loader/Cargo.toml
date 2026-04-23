@@ -16,7 +16,7 @@ workspace = true
 reovim-kernel = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
-libloading = { workspace = true }
+reovim-dylib-loader = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
@@ -30,3 +30,7 @@ tokio = { workspace = true, optional = true }
 
 [features]
 hot-reload = ["dep:notify", "dep:tokio"]
+
+[dev-dependencies]
+libloading = { workspace = true }
+tempfile = "3"

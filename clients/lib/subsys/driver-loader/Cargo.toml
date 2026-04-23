@@ -14,12 +14,14 @@ workspace = true
 
 [dependencies]
 reovim-client-subsys-render = { workspace = true }
+reovim-dylib-loader = { workspace = true }
 reovim-kernel = { workspace = true }
-libloading = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
+libloading = { workspace = true }
 reovim-driver-abi-poc = { path = "../../../../tools/driver-abi-poc", version = "0.15.0-dev" }
 reovim-driver-abi-poc-construct-err = { path = "../../../../tools/driver-abi-poc-construct-err", version = "0.15.0-dev" }
 reovim-driver-abi-poc-empty = { path = "../../../../tools/driver-abi-poc-empty", version = "0.15.0-dev" }
 reovim-driver-abi-poc-panic = { path = "../../../../tools/driver-abi-poc-panic", version = "0.15.0-dev" }
+tempfile = "3"

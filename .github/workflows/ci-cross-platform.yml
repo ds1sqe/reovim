@@ -1,0 +1,73 @@
+name: CI Cross-Platform
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  dylib-loader:
+    name: dylib-loader (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Phase 0 + Phase 1 crates
+        # --test-threads=1 keeps tempdir + symlink state deterministic
+        # across rayon-parallel scans on slower runners.
+        shell: bash
+        run: |
+          cargo build \
+            -p reovim-dylib-loader \
+            -p reovim-client-subsys-driver-loader \
+            -p reovim-subsys-module-loader \
+            -p reovim-dev \
+            --all-targets
+      - name: Run Phase 1 test subsets
+        shell: bash
+        run: |
+          cargo test -p reovim-dylib-loader --test path_resolver_rules -- --test-threads=1
+          cargo test -p reovim-dylib-loader --test scan_nonfatal -- --test-threads=1
+          cargo test -p reovim-dylib-loader --test open_symbol_roundtrip -- --test-threads=1
+      - name: Run Phase 0 dlopen_roundtrip
+        shell: bash
+        run: |
+          cargo build -p reovim-driver-abi-poc -p reovim-driver-abi-poc-panic \
+                      -p reovim-driver-abi-poc-construct-err -p reovim-driver-abi-poc-empty
+          cargo test -p reovim-client-subsys-driver-loader --test dlopen_roundtrip \
+                     -- --test-threads=1
+
+  # Cold-scan 100-cdylib benchmark. Gated to nightly + main pushes only
+  # because GHA IO variance dominates below ~50 ms and PR runs would
+  # flake. Phase 1 master-plan budget: <=600 ms cold, <=150 ms warm.
+  scan-budget-bench:
+    name: scan-budget-bench (${{ matrix.os }})
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build PoC fixture
+        shell: bash
+        run: cargo build -p reovim-driver-abi-poc --release
+      - name: Run scan_parallel_budget (ignored benchmark)
+        shell: bash
+        run: |
+          cargo test -p reovim-dylib-loader --test scan_parallel_budget \
+                     --release -- --ignored --nocapture

@@ -268,3 +268,18 @@ fn insert_handle_duplicate_id_returns_load_failed() {
         "expected LoadFailed for duplicate id, got {result:?}"
     );
 }
+
+// ============================================================================
+// from_path_scan
+// ============================================================================
+
+#[test]
+#[allow(unsafe_code)]
+fn from_path_scan_on_missing_modules_dir_returns_empty_vec() {
+    let mut loader = ModuleLoader::new();
+    let tmp = tempfile::tempdir().unwrap();
+    // root exists; root/modules does not. Scan warns + returns empty.
+    // SAFETY: contract is vacuous for an empty search.
+    let results = unsafe { loader.from_path_scan(tmp.path()) };
+    assert!(results.is_empty(), "expected empty results for missing dir");
+}

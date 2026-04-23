@@ -1,5 +1,6 @@
 //! Driver-loader error types.
 
+pub use reovim_dylib_loader::ScanEntryError as DylibScanError;
 use thiserror::Error;
 
 /// Failure to load or dispatch a driver cdylib.
@@ -49,4 +50,32 @@ pub enum ValidationError {
     /// have been added or reordered.
     #[error("size_of_self mismatch: driver={found}, host={expected}")]
     SizeOfSelfMismatch { found: usize, expected: usize },
+}
+
+/// Per-entry failure returned by
+/// [`crate::LoadedClientRender::from_path_scan`].
+///
+/// Bridges `reovim_dylib_loader`'s scan-level failures (filesystem
+/// access, malformed cdylib, dlopen refusal) with driver-loader's
+/// ABI-level failures (vtable validation, construct rejection). Every
+/// per-entry `Result` returned by `from_path_scan` carries one of
+/// these on its error arm.
+#[derive(Debug, Error)]
+pub enum ScanEntryError {
+    /// The scan layer rejected the candidate cdylib (missing,
+    /// malformed, or dlopen-refused).
+    #[error(transparent)]
+    Loader(#[from] DylibScanError),
+
+    /// The cdylib opened but its vtable header failed ABI validation.
+    #[error(transparent)]
+    AbiMismatch(#[from] ValidationError),
+
+    /// The driver's `construct` slot returned a non-zero error code.
+    #[error("driver returned error: {0}")]
+    DriverError(String),
+
+    /// The driver trampoline caught a panic (`construct` returned -2).
+    #[error("driver panicked at FFI boundary")]
+    DriverPanicked,
 }

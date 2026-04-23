@@ -1,0 +1,29 @@
+[package]
+name = "reovim-dev"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Contributor dev-loop tool: stage cdylibs from target/debug into target/reovim-dev/{driver,modules}/ and launch a reovim bin with REOVIM_LIBRARY_ROOT preset"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "cargo-reovim-dev"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-dylib-loader = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+reovim-driver-abi-poc = { path = "../driver-abi-poc", version = "0.15.0-dev" }
+tempfile = "3"

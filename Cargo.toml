@@ -10,6 +10,10 @@ members = [
     # Core libraries (Linux-style lib/) — no reovim-* deps allowed
     "lib/bench",
     "lib/depgraph",
+    "lib/dylib-loader",
+
+    # Contributor dev-loop tool (composition root — exempt from core/ext rules)
+    "tools/reovim-dev",
 
     # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
     "uapi/content-codec",
@@ -321,6 +325,7 @@ reovim-driver-text-ffi-python = { path = "./ext/server/drivers/text-ffi-python",
 reovim-driver-picker = { path = "./ext/server/drivers/picker", version = "0.15.0-dev" }
 reovim-driver-completion = { path = "./ext/server/drivers/completion", version = "0.15.0-dev" }
 reovim-depgraph = { path = "./lib/depgraph", version = "0.15.0-dev" }
+reovim-dylib-loader = { path = "./lib/dylib-loader", version = "0.15.0-dev" }
 reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
 reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
 reovim-provider-text = { path = "./ext/server/providers/text", version = "0.15.0-dev" }
