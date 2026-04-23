@@ -74,7 +74,6 @@ mod static_modules;
 /// Adapts a driver-tier `KeyLookupPolicy` to the domain-neutral subsys
 /// `LookupPolicy<CommandId>` trait. Used by the composition root to wire a
 /// module-registered policy (e.g. `VimLookupPolicy`) into the new registry.
-#[cfg_attr(coverage_nightly, coverage(off))]
 struct KeyPolicyAsLookupPolicy(Arc<dyn reovim_driver_text_input::KeyLookupPolicy>);
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -101,7 +100,6 @@ impl LookupPolicy<reovim_kernel::api::v1::CommandId> for KeyPolicyAsLookupPolicy
 /// Bridges a `CommandHandler` (from driver-command) to `CommandHandle` (from
 /// text-session api). Restored from pre-#753-E6 shape per the E6 comment
 /// directing bootstrap to own this adapter.
-#[cfg_attr(coverage_nightly, coverage(off))]
 struct HandlerBridge(Arc<dyn reovim_driver_command::CommandHandler>);
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -115,7 +113,6 @@ impl reovim_driver_text_session::api::CommandHandle for HandlerBridge {
     }
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 struct CommandHandlerExecutor(
     HashMap<reovim_kernel::api::v1::CommandId, Arc<dyn reovim_driver_command::CommandHandler>>,
 );
@@ -139,7 +136,6 @@ impl reovim_driver_text_session::api::CommandExecutor for CommandHandlerExecutor
 /// Key sequences are converted via `key_sequence_to_input_sequence` using the
 /// TUI codec from the `DefaultInputCodecRegistry`. If conversion fails (codec
 /// not registered or unknown token) the query returns `NotFound`/`false`/`None`.
-#[cfg_attr(coverage_nightly, coverage(off))]
 struct KeymapRegistryAdapter {
     inner: KeymapRegistry,
     codec_registry: Arc<DefaultInputCodecRegistry>,

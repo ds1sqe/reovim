@@ -13,6 +13,7 @@ members = [
 
     # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
     "uapi/content-codec",
+    "uapi/driver-macros",
     "uapi/module-macros",
     "uapi/protocol",
 
@@ -179,6 +180,7 @@ members = [
     "clients/lib/subsys/capability",
     "clients/lib/subsys/platform",
     "clients/lib/subsys/protocol",
+    "clients/lib/subsys/driver-loader",
 
     # Client-side ext platforms
     "ext/client/platforms/tui",
@@ -200,6 +202,10 @@ members = [
 
     # Tools (Rust) — python-test-sdk is Python, excluded below
     "tools/bench",
+    "tools/driver-abi-poc",
+    "tools/driver-abi-poc-construct-err",
+    "tools/driver-abi-poc-empty",
+    "tools/driver-abi-poc-panic",
     "tools/perf-report",
     "tools/testing",
 
@@ -275,6 +281,7 @@ chrono = "0.4"
 reovim-arch = { path = "./arch", version = "0.15.0-dev" }
 reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
 reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
+reovim-driver-macros = { path = "./uapi/driver-macros", version = "0.15.0-dev" }
 reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
 reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
 reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
@@ -361,6 +368,9 @@ reovim-client-subsys-platform = { path = "./clients/lib/subsys/platform", versio
 
 # Client protocol subsystem (NotificationDispatcher, DispatchOutcome, parse helpers)
 reovim-client-subsys-protocol = { path = "./clients/lib/subsys/protocol", version = "0.15.0-dev" }
+
+# Client driver-loader subsystem (safe wrappers over driver cdylibs; libloading)
+reovim-client-subsys-driver-loader = { path = "./clients/lib/subsys/driver-loader", version = "0.15.0-dev" }
 
 # Client-side ext platforms (TUI runtime entry point)
 reovim-client-ext-platform-tui = { path = "./ext/client/platforms/tui", version = "0.15.0-dev" }
@@ -508,3 +518,16 @@ zip = { version = "8", default-features = false }
 tar = "0.4"
 flate2 = "1"
 csv = "1.3"
+
+# FFI-boundary panic isolation requires `panic = "unwind"`. `panic = "abort"`
+# + FFI is undefined behaviour: a panicking `extern "C"` function unwinding
+# across the C ABI is UB with `abort`; Rust is only allowed to convert the
+# panic into an aborting trap. Every driver and module cdylib catches panics
+# at the trampoline boundary via `catch_unwind`, which requires unwind.
+# A CI grep over `**/Cargo.toml` forbids `panic = "abort"` anywhere in the
+# workspace.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"

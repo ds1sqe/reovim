@@ -14,6 +14,7 @@ use {
 
 const UAPI_ALLOWLIST: &[&str] = &[
     "reovim-content-codec",
+    "reovim-driver-macros",
     "reovim-input-codec",
     "reovim-module-macros",
     "reovim-protocol",

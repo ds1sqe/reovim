@@ -1,0 +1,25 @@
+[package]
+name = "reovim-client-subsys-driver-loader"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client driver-loader subsystem: safe wrappers over runtime-loaded driver cdylibs"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-subsys-render = { workspace = true }
+reovim-kernel = { workspace = true }
+libloading = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+reovim-driver-abi-poc = { path = "../../../../tools/driver-abi-poc", version = "0.15.0-dev" }
+reovim-driver-abi-poc-construct-err = { path = "../../../../tools/driver-abi-poc-construct-err", version = "0.15.0-dev" }
+reovim-driver-abi-poc-empty = { path = "../../../../tools/driver-abi-poc-empty", version = "0.15.0-dev" }
+reovim-driver-abi-poc-panic = { path = "../../../../tools/driver-abi-poc-panic", version = "0.15.0-dev" }

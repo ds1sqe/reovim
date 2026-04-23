@@ -272,6 +272,8 @@ if [ "$MODE" = "sequential" ]; then
     # shellcheck disable=SC2086
     run_step build-grpc cargo $TOOLCHAIN build -p reovim --features grpc
     # shellcheck disable=SC2086
+    run_step build-workspace cargo $TOOLCHAIN build --workspace $EXCLUDE
+    # shellcheck disable=SC2086
     run_step test cargo $TOOLCHAIN test --workspace $EXCLUDE
     generate_report
     for entry in "${RESULTS[@]}"; do
@@ -298,9 +300,14 @@ run_bg clippy env CARGO_TARGET_DIR="$CLIPPY_TARGET_DIR" \
     cargo $TOOLCHAIN clippy \
     --all-targets --all-features --workspace $EXCLUDE -- -D warnings
 
-# Job B: Build gRPC binary + run tests (chained because tests need the binary)
+# Job B: Build gRPC binary + all cdylib fixtures + run tests
+# (chained because integration tests dlopen cdylib fixtures that cargo
+# does not auto-build as dev-dep artifacts; `cargo build --workspace`
+# ensures every cdylib workspace member is materialized on disk before
+# `cargo test` runs.)
 # shellcheck disable=SC2086
 run_bg test bash -c "cargo $TOOLCHAIN build -p reovim --features grpc && \
+    cargo $TOOLCHAIN build --workspace $EXCLUDE && \
     cargo $TOOLCHAIN test --workspace $EXCLUDE"
 
 # Wait for all parallel jobs

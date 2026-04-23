@@ -11,6 +11,8 @@
 //!   `render`). Updated from 1 → 4 at Phase C landing.
 //! - Phase D landing (2026-04-23): count = 7 (`codec`, `module`, `chrome`,
 //!   `render`, `capability`, `platform`, `protocol`).
+//! - #769 Phase 0 landing (2026-04-23): count = 8 (adds `driver-loader`
+//!   for the runtime-loaded driver ABI).
 //!
 //! Activation phase: Phase A (added). The probe's assertion is unconditional.
 //! Do not add an `if count == 0 { return }` short-circuit — the probe must
@@ -19,8 +21,8 @@
 
 use {cargo_metadata::MetadataCommand, std::path::Path};
 
-/// The exact expected number of clients/lib/subsys/* crates at Phase D landing.
-const EXPECTED_COUNT: usize = 7;
+/// The exact expected number of clients/lib/subsys/* crates after #769 Phase 0.
+const EXPECTED_COUNT: usize = 8;
 
 #[test]
 fn client_subsys_crate_count_matches_ratchet() {
@@ -48,7 +50,7 @@ fn client_subsys_crate_count_matches_ratchet() {
         count, EXPECTED_COUNT,
         "clients/lib/subsys/* crate count is {count}, expected exactly \
          {EXPECTED_COUNT} (`codec`, `module`, `chrome`, `render`, `capability`, \
-         `platform`, `protocol`). A crate was added or removed unexpectedly. \
-         Found: {subsys_crates:?}"
+         `platform`, `protocol`, `driver-loader`). A crate was added or \
+         removed unexpectedly. Found: {subsys_crates:?}"
     );
 }

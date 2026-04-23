@@ -1,0 +1,21 @@
+[package]
+name = "reovim-driver-abi-poc-construct-err"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Test fixture: cdylib whose construct() returns an error; exercises the loader's DriverError path"
+repository.workspace = true
+keywords = ["reovim", "driver", "fixture"]
+categories.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-subsys-render = { workspace = true }
+reovim-driver-macros = { workspace = true }

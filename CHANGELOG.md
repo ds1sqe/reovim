@@ -6,6 +6,42 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#769 ABI Foundation — Phase 0**: established the C-stable driver
+  ABI contract for runtime-loaded driver cdylibs.
+  - New `uapi/driver-macros/` proc-macro crate with
+    `declare_client_render_driver!`. Sibling to `uapi/module-macros/`.
+    Generates the exported `REOVIM_CLIENT_RENDER_DRIVER_VTABLE` static
+    plus `catch_unwind`-wrapped trampolines.
+  - New `clients/lib/subsys/driver-loader/` subsys crate with
+    `LoadedClientRender` + `LoadedRenderTarget<'a>` safe wrappers over
+    `libloading`. Pre-dispatch vtable-header validation
+    (`abi_version` exact match, `api_version` semver, `size_of_self`
+    guard).
+  - Subsys extension in `clients/lib/subsys/render/`: new `abi` module
+    with `#[repr(C)] ClientRenderVTable` + `RenderTargetVTable`
+    sibling types and `REOVIM_CLIENT_RENDER_DRIVER_API_VERSION = 1.0.0`;
+    new `client_render` module with the `ClientRender` driver trait.
+  - Four test-fixture cdylibs under `tools/`: `driver-abi-poc/`
+    (happy-path dlopen → construct → submit → shutdown → drop pipeline
+    with a lifecycle-flag accessor for post-drop trace assertion),
+    `driver-abi-poc-panic/` (driver whose `submit` panics; verifies
+    the macro's `catch_unwind` isolates the panic at the FFI
+    boundary), `driver-abi-poc-construct-err/` (driver whose
+    `construct` returns `Err`; verifies the error-string round-trip
+    through the `destroy_error_string` slot), and
+    `driver-abi-poc-empty/` (linkable cdylib that intentionally omits
+    the exported vtable symbol; verifies the loader's symbol-lookup
+    failure path).
+  - New CI guard (`guard-panic-unwind`) greps all `**/Cargo.toml` for
+    `panic = "abort"` and fails the build if any entry is found.
+    Workspace root `Cargo.toml` explicitly locks
+    `[profile.dev] panic = "unwind"` and
+    `[profile.release] panic = "unwind"`.
+  - Spec doc at `docs/architecture/driver-abi-v1.md` covers the binary
+    contract (header layout, version policy, error convention, memory
+    ownership, sub-handle pattern, panic isolation).
+  - `client_subsys_crate_count` ratchet bumped 7 → 8; `uapi_closed`
+    allowlist gains `reovim-driver-macros`.
 - **#753 Client Foundation — Phase A**: Added depgraph probe scaffolding
   (8 new probes) and classifier support for the new client layer model.
   No crate moves; probes fail closed when an incorrect edge is introduced

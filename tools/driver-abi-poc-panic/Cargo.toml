@@ -1,0 +1,21 @@
+[package]
+name = "reovim-driver-abi-poc-panic"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Test fixture: cdylib whose submit() panics; exercises macro catch_unwind"
+repository.workspace = true
+keywords = ["reovim", "driver", "fixture"]
+categories.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-client-subsys-render = { workspace = true }
+reovim-driver-macros = { workspace = true }

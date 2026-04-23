@@ -2433,6 +2433,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-subsys-driver-loader"
+version = "0.15.0-dev"
+dependencies = [
+ "libloading",
+ "reovim-client-subsys-render",
+ "reovim-driver-abi-poc",
+ "reovim-driver-abi-poc-construct-err",
+ "reovim-driver-abi-poc-empty",
+ "reovim-driver-abi-poc-panic",
+ "reovim-kernel",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "reovim-client-subsys-module"
 version = "0.15.0-dev"
 dependencies = [
@@ -2466,6 +2480,9 @@ dependencies = [
 [[package]]
 name = "reovim-client-subsys-render"
 version = "0.15.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
 
 [[package]]
 name = "reovim-client-tui"
@@ -2758,6 +2775,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-abi-poc"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-render",
+ "reovim-driver-macros",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-abi-poc-construct-err"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-render",
+ "reovim-driver-macros",
+]
+
+[[package]]
+name = "reovim-driver-abi-poc-empty"
+version = "0.15.0-dev"
+
+[[package]]
+name = "reovim-driver-abi-poc-panic"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-render",
+ "reovim-driver-macros",
+]
+
+[[package]]
 name = "reovim-driver-annotation"
 version = "0.15.0-dev"
 dependencies = [
@@ -2814,6 +2860,16 @@ name = "reovim-driver-git"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-macros"
+version = "0.15.0-dev"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "reovim-client-subsys-render",
+ "syn",
 ]
 
 [[package]]
