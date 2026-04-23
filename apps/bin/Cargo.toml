@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [features]
 default = ["grpc-web", "static-modules"]
-grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui"]
+grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui", "dep:reovim-client-ext-platform-tui"]
 grpc-web = ["grpc", "reovim-server/grpc-web"]
 # Static module linking: compile all 40 modules into the binary (#620).
 # When disabled, modules are loaded as .so files from builtins.toml manifest.
@@ -120,6 +120,7 @@ reovim-driver-display = { workspace = true }
 # Client crates (optional, for CLI and TUI commands)
 reovim-client-cli = { workspace = true, optional = true }
 reovim-client-tui = { workspace = true, optional = true }
+reovim-client-ext-platform-tui = { workspace = true, optional = true }
 
 # CLI
 clap = { workspace = true }

@@ -13,6 +13,9 @@ coverage:
       reovim-client-subsys-render:       # Phase C (03-subsys-chrome-render.md)
         target: 100%
         flags: [line]
+      reovim-client-ext-platform-tui:    # Phase E.1 (05-ext-platforms-tui.md)
+        target: 100%
+        flags: [line]
     patch:
       default:
         target: 100%

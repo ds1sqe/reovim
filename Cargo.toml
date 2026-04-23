@@ -180,6 +180,9 @@ members = [
     "clients/lib/subsys/platform",
     "clients/lib/subsys/protocol",
 
+    # Client-side ext platforms
+    "ext/client/platforms/tui",
+
     # Client-side ext capabilities (TUI)
     "ext/client/tui/capabilities/cell",
     "ext/client/tui/capabilities/cell-view",
@@ -358,6 +361,9 @@ reovim-client-subsys-platform = { path = "./clients/lib/subsys/platform", versio
 
 # Client protocol subsystem (NotificationDispatcher, DispatchOutcome, parse helpers)
 reovim-client-subsys-protocol = { path = "./clients/lib/subsys/protocol", version = "0.15.0-dev" }
+
+# Client-side ext platforms (TUI runtime entry point)
+reovim-client-ext-platform-tui = { path = "./ext/client/platforms/tui", version = "0.15.0-dev" }
 
 # Client-side ext capabilities (TUI)
 reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }

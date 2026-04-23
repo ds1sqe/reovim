@@ -2211,6 +2211,7 @@ dependencies = [
  "clap",
  "parking_lot",
  "reovim-client-cli",
+ "reovim-client-ext-platform-tui",
  "reovim-client-tui",
  "reovim-content-codec-binary-struct",
  "reovim-content-codec-cjk",
@@ -2372,6 +2373,13 @@ dependencies = [
  "serde_json",
  "tracing",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-client-ext-platform-tui"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-tui",
 ]
 
 [[package]]

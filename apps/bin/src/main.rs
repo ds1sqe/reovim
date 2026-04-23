@@ -47,7 +47,7 @@ use {
 
 use {
     reovim_client_cli::OutputFormat,
-    reovim_client_tui::{connect_headless, connect_interactive},
+    reovim_client_ext_platform_tui::{connect_headless, connect_interactive},
 };
 
 /// Reovim editor.

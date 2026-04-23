@@ -1,0 +1,20 @@
+[package]
+name = "reovim-client-ext-platform-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reovim TUI platform runtime: event loop, gRPC notification fan-in, render/input/state machinery"
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["grpc"]
+grpc = ["reovim-client-tui/grpc"]
+
+[dependencies]
+reovim-client-tui = { workspace = true }
+
+[lints]
+workspace = true
