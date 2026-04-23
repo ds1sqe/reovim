@@ -38,6 +38,62 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Breaking Changes (Internal)
 
+- **subsys/capability/platform/protocol**: **Completed subsys decomposition** with three new crates (#753).
+
+  **Relocated to `reovim-client-subsys-capability`:**
+  `ChromeSurface` and `PlatformCapabilities` traits (moved from `subsys/module/src/traits.rs`).
+  Drawing primitives `Style`, `Color`, `ColorDepth`, `Rect`, `Insets`,
+  `RenderingModel`, `Attributes` co-locate here because they appear in
+  `ChromeSurface` and `PlatformCapabilities` method signatures and the
+  locked DAG places `capability` at the bottom — nothing the trait
+  parameter types reference can sit in a higher tier without inverting
+  layer order. `subsys/module` re-exports all relocated types so existing
+  downstream imports continue to compile.
+
+  **Newly defined in `reovim-client-subsys-capability`:**
+  `Capability` zero-method marker trait, `CapabilityId(u32)` and
+  `FeatureFlag(u32)` newtypes (`#[repr(C)] #[derive(Debug, Clone, Copy,
+  PartialEq, Eq, Hash)]`, FFI-safe, usable in `const` array literals).
+
+  **Newly defined in `reovim-client-subsys-platform`:**
+  `Requirements { caps: &'static [CapabilityId], features: &'static [FeatureFlag] }`
+  with `const fn new` and `const fn none` constructors. `Platform`
+  marker trait (`Debug + Send + Sync`). `subsys/module` re-exports
+  `Requirements`.
+
+  **Relocated to `reovim-client-subsys-protocol`:**
+  `parse_notification` and `parse_notification_field` helper functions
+  (moved from `clients/lib/driver/src/notification.rs`; feature-gated on
+  `serde`). Driver `notification.rs` becomes a re-export shim.
+
+  **Newly defined in `reovim-client-subsys-protocol`:**
+  `NotificationDispatcher` marker trait (zero-method today; concrete
+  dispatch logic lands when `ext/client/driver/rpc-grpc/` is created in
+  Phase E.2). `DispatchOutcome { Handled, Ignored, Unknown }` enum
+  (`#[non_exhaustive]`).
+
+  **Plan deviation — `chrome → module` edge persists.** The original
+  Phase D plan stated that ChromeSurface relocation alone would remove
+  the transient `chrome → module` edge. Implementation showed that
+  `subsys/chrome/src/viewport.rs` and `chrome_utils.rs` import many
+  additional types from `subsys/module` beyond `ChromeSurface`
+  (`ClientModule`, `BufferId`, `ViewportRenderer`, `ThemeProvider`,
+  `TokenProvider`, `CursorInfo`, `SelectionInfo`, `RenderBehavior`,
+  `TransformedLine`, `VirtualLine`, `ViewportContext`, etc.). Removing
+  these would require relocating most of `subsys/module` too — out of
+  Phase D scope. The `chrome → module` edge is retained in
+  `client_subsys_dag.rs::ALLOWED_EDGES` with a comment naming the
+  remaining types; full removal awaits Phase E.3 (module flatten + ext
+  crate split).
+
+  **Probes:** `client_subsys_crate_count` ratcheted from `>= 4` to
+  `== 7`. `client_subsys_dag` ALLOWED_EDGES adds `module → platform`,
+  `module → protocol`, `chrome → capability`, `render → capability`,
+  `codec → capability`, `platform → capability`, `protocol → codec`.
+  `module → capability` already covers the relocated trait imports.
+
+  **Codecov:** Entries for the three new crates uncommented.
+
 - **driver/chrome/render**: **Extracted** `chrome_utils`, `ScopedSurface`,
   `ProjectionDisplayCache`, viewport renderer, and Unicode text utilities from
   `reovim-client-driver` into a new `reovim-client-subsys-chrome` crate (#753).

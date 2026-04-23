@@ -396,7 +396,7 @@ pub struct FfiPlatformCaps {
     /// 1 if `pixel_size()` returned `Some`, else 0.
     pub has_pixel_size: u8,
     pub _pad2: [u8; 3],
-    /// Safe area insets (already `#[repr(C)]` since #723 Phase 2).
+    /// Safe area insets (`Insets` is `#[repr(C)]`, so embedded directly).
     pub safe_area: Insets,
 }
 

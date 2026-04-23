@@ -17,19 +17,15 @@ coverage:
       default:
         target: 100%
 
-# Client Foundation chain (#753) — enable each as the corresponding crate lands.
-# Entries stay commented out until the named crate appears in the workspace:
-# codecov's config validator rejects references to unknown packages, so the
-# carve-out ships dormant and each phase uncomments its line at sub-plan landing.
-#       reovim-client-subsys-capability:   # enable in Phase D (04-subsys-capability-platform-protocol.md)
-#         target: 100%
-#         flags: [line]
-#       reovim-client-subsys-platform:     # enable in Phase D
-#         target: 100%
-#         flags: [line]
-#       reovim-client-subsys-protocol:     # enable in Phase D
-#         target: 100%
-#         flags: [line]
+      reovim-client-subsys-capability:   # Phase D (04-subsys-capability-platform-protocol.md)
+        target: 100%
+        flags: [line]
+      reovim-client-subsys-platform:     # Phase D
+        target: 100%
+        flags: [line]
+      reovim-client-subsys-protocol:     # Phase D
+        target: 100%
+        flags: [line]
 
 ignore:
   - "tools/**"

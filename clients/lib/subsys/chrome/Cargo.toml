@@ -17,6 +17,7 @@ default = []
 
 [dependencies]
 reovim-arch = { workspace = true }
+reovim-client-subsys-capability = { workspace = true }
 reovim-client-subsys-codec = { workspace = true }
 reovim-client-subsys-module = { workspace = true }
 reovim-subsys-coordination = { workspace = true }

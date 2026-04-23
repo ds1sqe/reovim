@@ -2360,8 +2360,10 @@ version = "0.15.0-dev"
 dependencies = [
  "libloading",
  "reovim-arch",
+ "reovim-client-subsys-capability",
  "reovim-client-subsys-chrome",
  "reovim-client-subsys-module",
+ "reovim-client-subsys-protocol",
  "reovim-client-subsys-render",
  "reovim-depgraph",
  "reovim-protocol",
@@ -2393,10 +2395,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-subsys-capability"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-arch",
+]
+
+[[package]]
 name = "reovim-client-subsys-chrome"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-client-subsys-capability",
  "reovim-client-subsys-codec",
  "reovim-client-subsys-module",
  "reovim-ext-client-tui-cap-cell",
@@ -2420,10 +2430,29 @@ version = "0.15.0-dev"
 dependencies = [
  "libloading",
  "reovim-arch",
+ "reovim-client-subsys-capability",
  "reovim-client-subsys-codec",
+ "reovim-client-subsys-platform",
+ "reovim-client-subsys-protocol",
  "reovim-depgraph",
  "reovim-subsys-coordination",
  "tracing",
+]
+
+[[package]]
+name = "reovim-client-subsys-platform"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-capability",
+]
+
+[[package]]
+name = "reovim-client-subsys-protocol"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-codec",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

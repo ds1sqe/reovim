@@ -176,6 +176,9 @@ members = [
     "clients/lib/subsys/module",
     "clients/lib/subsys/chrome",
     "clients/lib/subsys/render",
+    "clients/lib/subsys/capability",
+    "clients/lib/subsys/platform",
+    "clients/lib/subsys/protocol",
 
     # Client-side ext capabilities (TUI)
     "ext/client/tui/capabilities/cell",
@@ -346,6 +349,15 @@ reovim-client-subsys-chrome = { path = "./clients/lib/subsys/chrome", version = 
 
 # Client render subsystem (RenderTarget trait and render pipeline contracts)
 reovim-client-subsys-render = { path = "./clients/lib/subsys/render", version = "0.15.0-dev" }
+
+# Client capability subsystem (Capability trait, ChromeSurface, PlatformCapabilities, drawing primitives)
+reovim-client-subsys-capability = { path = "./clients/lib/subsys/capability", version = "0.15.0-dev" }
+
+# Client platform subsystem (Requirements const + Platform trait)
+reovim-client-subsys-platform = { path = "./clients/lib/subsys/platform", version = "0.15.0-dev" }
+
+# Client protocol subsystem (NotificationDispatcher, DispatchOutcome, parse helpers)
+reovim-client-subsys-protocol = { path = "./clients/lib/subsys/protocol", version = "0.15.0-dev" }
 
 # Client-side ext capabilities (TUI)
 reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }

@@ -33,10 +33,17 @@ pub use types::{
 };
 
 pub use traits::{
-    ChromeSurface, ClientModule, ClientModuleRegistry, LayoutPolicy, LocalInputResult,
-    ModuleContext, PlatformCapabilities, ServerHandle, ThemeProvider, TokenProvider,
-    ViewportRenderer,
+    ClientModule, ClientModuleRegistry, LayoutPolicy, LocalInputResult, ModuleContext,
+    ServerHandle, ThemeProvider, TokenProvider, ViewportRenderer,
 };
+
+pub use reovim_client_subsys_capability::{
+    Capability, CapabilityId, ChromeSurface, FeatureFlag, PlatformCapabilities,
+};
+
+pub use reovim_client_subsys_platform::{Platform, Requirements};
+
+pub use reovim_client_subsys_protocol::{DispatchOutcome, NotificationDispatcher};
 
 pub use services::ClientServiceRegistry;
 

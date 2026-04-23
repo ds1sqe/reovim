@@ -19,7 +19,10 @@ testing = []
 [dependencies]
 libloading = { workspace = true }
 reovim-arch = { workspace = true }
+reovim-client-subsys-capability = { workspace = true }
 reovim-client-subsys-codec = { workspace = true }
+reovim-client-subsys-platform = { workspace = true }
+reovim-client-subsys-protocol = { workspace = true }
 reovim-depgraph = { workspace = true }
 reovim-subsys-coordination = { workspace = true }
 tracing = { workspace = true }

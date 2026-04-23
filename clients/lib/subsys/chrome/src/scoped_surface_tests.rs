@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use reovim_client_subsys_module::{ChromeSurface, Rect, Style, types::Color};
+use reovim_client_subsys_capability::{ChromeSurface, Color, Rect, Style};
 
 use super::ScopedSurface;
 

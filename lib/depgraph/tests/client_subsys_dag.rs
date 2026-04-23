@@ -1,40 +1,16 @@
 //! Guard: intra-subsys dependency edges must match the locked DAG.
 //!
-//! The allowed intra-subsys edges are locked by the #753 Client Foundation
-//! master plan (§Architecture intra-subsys DAG, 2026-04-22) after 3-agent
-//! review + countdown round 1. This probe enforces that no `clients/lib/subsys/*`
-//! crate declares a `[dependencies]` edge on another subsys crate unless that
-//! edge appears in the `ALLOWED_EDGES` array below.
+//! `ALLOWED_EDGES` below is the single source of truth for legal
+//! `[dependencies]` edges between `clients/lib/subsys/*` crates. Any
+//! edge not listed there fails the probe.
 //!
-//! Allowed edges (locked, 2026-04-22; updated Phase C 2026-04-22):
+//! `render → codec` is deliberately absent: `RenderTarget` is opaque
+//! over bytes and has no codec dependency. The probe fails closed if a
+//! future contributor wires that edge into a subsys crate's Cargo.toml.
 //!
-//! - module    → capability
-//! - module    → platform
-//! - module    → protocol
-//! - module    → codec       (Phase C: `ClientModule::on_projection` takes
-//!   `DomainProjection` from codec after Phase C corrective relocation)
-//! - chrome    → capability
-//! - chrome    → codec       (LOCKED α: `ProjectionDisplayCache` reads
-//!   `DomainProjection` produced by `codec::from_proto`)
-//! - chrome    → module      (Phase C: viewport.rs + helpers import `ChromeSurface`,
-//!   `Style`, `ClientModule`, etc. from module; removed in Phase D when those
-//!   types move to subsys-capability)
-//! - render    → chrome
-//! - render    → capability
-//! - codec     → capability
-//! - platform  → capability
-//! - protocol  → codec
-//!
-//! NOTE: `render → codec` was audited in Phase A and the outcome is REMOVE
-//! (zero-hop trace; `RenderTarget` has no codec dependency). It is NOT in
-//! `ALLOWED_EDGES`. The probe fails closed if a future contributor adds that
-//! edge to a subsys crate's Cargo.toml.
-//!
-//! Activation phase: Phase A (added). Vacuous-pass today — most subsys crates
-//! do not yet exist (only `codec` exists, with no intra-subsys deps). The
-//! probe's assertion is unconditional; vacuous pass is a property of today's
-//! input. Do not add an `if input is empty { return }` short-circuit — the
-//! probe must fail closed as soon as a non-vacuous input appears.
+//! The probe assertion is unconditional. Do not add an
+//! `if input is empty { return }` short-circuit — vacuous pass is a
+//! property of input, not the probe.
 
 use {
     cargo_metadata::{DependencyKind, MetadataCommand},
@@ -62,16 +38,19 @@ const ALLOWED_EDGES: &[(&str, &str)] = &[
     ("module", "capability"),
     ("module", "platform"),
     ("module", "protocol"),
-    // Phase C: `DomainProjection` moved to codec; `ClientModule::on_projection`
-    // in module/traits.rs imports it from codec. Edge locked in Phase C sub-plan.
+    // `ClientModule::on_projection` in module/traits.rs takes
+    // `DomainProjection` (defined in codec).
     ("module", "codec"),
     ("chrome", "capability"),
+    // `ProjectionDisplayCache` reads `DomainProjection` produced by
+    // `codec::from_proto`.
     ("chrome", "codec"),
-    // Phase C: viewport.rs, chrome_utils.rs, and scoped_surface.rs import
-    // `ChromeSurface`, `Style`, `Rect`, `ClientModule`, etc. from subsys-module.
-    // In Phase D, these types move to subsys-capability; at that point
-    // `chrome → module` is replaced by `chrome → capability` and this edge
-    // is removed.
+    // chrome → module remains because chrome/viewport.rs and
+    // chrome_utils.rs consume non-relocated module types: `ClientModule`,
+    // `BufferId`, `ViewportRenderer`, `ThemeProvider`, `TokenProvider`,
+    // `CursorInfo`, `SelectionInfo`, `RenderBehavior`, `TransformedLine`,
+    // `VirtualLine`, `ViewportContext`. Removing the edge requires
+    // relocating those types out of module first.
     ("chrome", "module"),
     ("render", "chrome"),
     ("render", "capability"),

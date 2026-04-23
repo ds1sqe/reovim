@@ -1,0 +1,24 @@
+[package]
+name = "reovim-client-subsys-protocol"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client protocol subsystem: notification-stream contracts (NotificationDispatcher marker + DispatchOutcome) + protocol-neutral parse helpers."
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+reovim-client-subsys-codec = { workspace = true }
+
+# Optional: notification parsing helpers
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

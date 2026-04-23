@@ -5,11 +5,13 @@
 
 use std::sync::Arc;
 
+pub use reovim_client_subsys_capability::{ChromeSurface, PlatformCapabilities};
+
 use crate::types::{
-    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError, Color,
-    ColorDepth, ColumnWidth, DomainProjection, GutterCell, InlineDecoration, Insets, OptionValue,
-    ProbeResult, Rect, RenderBehavior, RenderingModel, Style, SyntaxToken, TransformedLine,
-    Version, ViewportContext, VirtualLine, WindowId, WindowLayout,
+    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError, ColumnWidth,
+    DomainProjection, GutterCell, InlineDecoration, OptionValue, ProbeResult, Rect, RenderBehavior,
+    Style, SyntaxToken, TransformedLine, Version, ViewportContext, VirtualLine, WindowId,
+    WindowLayout,
 };
 
 use reovim_subsys_coordination::DomainId;
@@ -323,87 +325,6 @@ pub trait ClientModuleRegistry: Send + Sync {
 
     /// Count of currently running modules.
     fn running_count(&self) -> usize;
-}
-
-// =============================================================================
-// PlatformCapabilities
-// =============================================================================
-
-/// Platform capabilities and constraints.
-///
-/// Queried by modules to adapt their behavior to the current platform
-/// (terminal, web, mobile, etc.).
-#[allow(unused_variables)]
-pub trait PlatformCapabilities: Send + Sync {
-    /// The rendering model this platform uses.
-    fn rendering_model(&self) -> RenderingModel;
-
-    /// Grid size in cells (columns, rows). `None` if not a grid-based platform.
-    fn grid_size(&self) -> Option<(u16, u16)>;
-
-    /// Color depth supported by the display.
-    fn color_depth(&self) -> ColorDepth;
-
-    /// Pixel dimensions of the display. `None` if not available.
-    fn pixel_size(&self) -> Option<(u32, u32)>;
-
-    /// Whether Unicode width calculations are reliable on this platform.
-    fn reliable_unicode_width(&self) -> bool;
-
-    /// Whether the display is in dark mode.
-    fn dark_mode(&self) -> bool;
-
-    /// Whether smooth scrolling is supported.
-    fn smooth_scroll(&self) -> bool;
-
-    /// Whether pointer (mouse) events are available.
-    fn pointer_events(&self) -> bool;
-
-    /// Whether touch input is available.
-    fn touch_input(&self) -> bool;
-
-    /// Whether haptic feedback is available.
-    fn haptic(&self) -> bool;
-
-    /// Safe area insets (for notch/rounded corners).
-    fn safe_area(&self) -> Insets;
-
-    /// Whether the window currently has focus.
-    fn has_focus(&self) -> bool;
-
-    /// Whether clipboard access is available.
-    fn clipboard_available(&self) -> bool;
-
-    /// Whether a screen reader is active.
-    fn screen_reader_active(&self) -> bool;
-}
-
-// =============================================================================
-// ChromeSurface
-// =============================================================================
-
-/// Abstraction over the rendering target for chrome + viewport modules.
-///
-/// Provides primitive drawing operations. Platform adapters implement this
-/// for their specific rendering backend (cell grid, canvas, native views).
-pub trait ChromeSurface {
-    /// Write styled text at position. Returns the number of columns consumed.
-    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16;
-
-    /// Apply a style to an existing cell (without changing its content).
-    fn apply_style(&mut self, x: u16, y: u16, style: Style);
-
-    /// Override the background color of a cell.
-    fn overlay_bg(&mut self, x: u16, y: u16, bg: Color);
-
-    /// Fill a rectangle with a character and style.
-    fn fill(&mut self, rect: Rect, ch: char, style: Style);
-
-    /// Clear a rectangle (reset to default).
-    fn clear(&mut self, rect: Rect);
-
-    /// Size of the surface in cells (columns, rows).
-    fn size(&self) -> (u16, u16);
 }
 
 // =============================================================================

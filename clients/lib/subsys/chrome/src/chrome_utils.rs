@@ -3,7 +3,7 @@
 //! Generic helpers for rendering bordered floating popups.
 //! Used by native `ClientModule` chrome implementations.
 
-use reovim_client_subsys_module::{ChromeSurface, Style};
+use reovim_client_subsys_capability::{ChromeSurface, Style};
 
 /// Calculate the popup width from the terminal width.
 ///

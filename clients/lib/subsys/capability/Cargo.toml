@@ -1,0 +1,16 @@
+[package]
+name = "reovim-client-subsys-capability"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client capability subsystem: generic Capability trait, CapabilityId, FeatureFlag, PlatformCapabilities base, ChromeSurface trait."
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-arch = { workspace = true }
