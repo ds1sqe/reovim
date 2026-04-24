@@ -1,5 +1,3 @@
-#![cfg_attr(coverage_nightly, allow(unused_features))]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Lookup helpers for the split `reovim-*` bins (#769).
 //!
 //! The integration harness spawns the dedicated `reovim-server` bin

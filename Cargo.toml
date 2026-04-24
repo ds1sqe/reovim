@@ -17,9 +17,12 @@ members = [
     "lib/bench",
     "lib/depgraph",
     "lib/dylib-loader",
+    "lib/pkg-manifest",
+    "lib/pkg-lockfile",
 
     # Contributor dev-loop tool (composition root — exempt from core/ext rules)
     "tools/reovim-dev",
+    "tools/pkg",
 
     # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
     "uapi/content-codec",

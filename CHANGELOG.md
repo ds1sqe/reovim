@@ -140,6 +140,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Package Manager — manifest + lockfile formats + CLI scaffold**:
+  three net-new crates ship the reovim package manager's data layer and
+  user-facing binary. `lib/pkg-manifest/` parses and writes `pkg.toml`
+  (package name, reovim-version constraint, `[dependencies]` with bare-string
+  and inline-table forms, `[lazy]` triggers for `on-domain` / `on-event` /
+  `on-capability` / `eager = true`; `Dependency::into_detailed()` normalizes
+  both dependency forms for downstream consumers). `lib/pkg-lockfile/` parses
+  and writes `pkg.lock` cargo-style (top-level `version` + array of
+  `[[package]]` entries with rustc target triple and optional 64-hex-char
+  SHA-256 digest; writer sorts packages by `(name, version)` for
+  deterministic output). `tools/pkg/` provides the `pkg` CLI with
+  `--version`, `--help`, and stubs for `install`, `remove`, `list`, `lock`,
+  `resolve`, `doctor` that exit code 2 with a phase-specific hint until
+  later phases implement them. Round-trip and determinism tests verify
+  byte-stable re-serialization; 14 manifest tests, 17 lockfile tests, and
+  10 CLI tests cover every enum variant and error surface. (#771)
+
 - **#769 ABI Foundation — `reovim` dual-mode composition** (Phase 2b):
   The top-level `reovim` launcher now boots the server + selected client
   in one process by default (embedded mode, `inproc` transport),
