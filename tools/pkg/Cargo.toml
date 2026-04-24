@@ -17,10 +17,14 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+anyhow = "1"
 clap = { workspace = true }
 reovim-pkg-manifest = { path = "../../lib/pkg-manifest", version = "0.15.0-dev" }
 reovim-pkg-lockfile = { path = "../../lib/pkg-lockfile", version = "0.15.0-dev" }
+reovim-pkg-resolver = { workspace = true }
+semver = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+tempfile = "3"

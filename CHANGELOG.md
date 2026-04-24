@@ -140,6 +140,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Package Manager — resolver + `pkg lock` / `pkg resolve`**:
+  new `lib/pkg-resolver/` crate provides semver graph resolution over a
+  `pkg.toml` manifest and its local-path dependency tree. The DFS
+  walker validates every constraint, detects cycles, rejects
+  duplicate packages reached via different paths, enforces root
+  `reovim-version` compatibility against the runtime, and rejects
+  bare-version (registry) deps until a later epic. `tools/pkg` gains
+  two real subcommands: `pkg lock` writes a deterministic
+  `pkg.lock`, and `pkg resolve` prints the sorted resolved package
+  list without touching disk. Ten fixture projects (five green, five
+  error cases) plus a determinism test pin the contract; 37 resolver
+  tests and six CLI integration tests cover every `ResolveError`
+  variant. An additive `Package.version: Option<String>` field was
+  added to `lib/pkg-manifest/` so path-dep manifests can declare
+  their own pinnable version (Phase 0 was a user-config schema; the
+  field is required only on path-dep manifests). (#771)
+
 - **#771 Package Manager — manifest + lockfile formats + CLI scaffold**:
   three net-new crates ship the reovim package manager's data layer and
   user-facing binary. `lib/pkg-manifest/` parses and writes `pkg.toml`

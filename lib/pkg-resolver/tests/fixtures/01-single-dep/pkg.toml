@@ -1,0 +1,6 @@
+[package]
+name = "root-01"
+reovim-version = "^0.15"
+
+[dependencies]
+foo = { path = "foo" }

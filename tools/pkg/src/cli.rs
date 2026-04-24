@@ -6,6 +6,8 @@
 //! replace each stub with real behavior, but they do not extend the
 //! CLI surface. That keeps `--help` output stable across phases.
 
+#![allow(clippy::module_name_repetitions)]
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -35,13 +37,9 @@ pub enum Cmd {
     /// Phase 2 implements the real behavior.
     List,
     /// Resolve the manifest and write `pkg.lock`.
-    ///
-    /// Phase 1 implements the real behavior.
-    Lock,
+    Lock(LockArgs),
     /// Resolve the manifest without writing a lockfile (dry run).
-    ///
-    /// Phase 1 implements the real behavior.
-    Resolve,
+    Resolve(ResolveArgs),
     /// Audit the reovim library root.
     ///
     /// Phase 4 implements the real behavior.
@@ -68,4 +66,27 @@ pub struct DoctorArgs {
     /// Attempt to autoremediate safely-fixable issues.
     #[arg(long)]
     pub fix: bool,
+}
+
+/// Arguments to `pkg lock`.
+#[derive(Parser, Debug)]
+pub struct LockArgs {
+    /// Directory containing `pkg.toml`. Defaults to the current
+    /// working directory.
+    #[arg(long, default_value = ".")]
+    pub manifest_dir: PathBuf,
+
+    /// Output path for `pkg.lock`. Defaults to
+    /// `<manifest_dir>/pkg.lock`.
+    #[arg(long)]
+    pub lockfile: Option<PathBuf>,
+}
+
+/// Arguments to `pkg resolve`.
+#[derive(Parser, Debug)]
+pub struct ResolveArgs {
+    /// Directory containing `pkg.toml`. Defaults to the current
+    /// working directory.
+    #[arg(long, default_value = ".")]
+    pub manifest_dir: PathBuf,
 }

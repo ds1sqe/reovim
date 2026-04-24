@@ -1,16 +1,19 @@
 //! `pkg` — reovim package manager CLI binary.
 //!
-//! Phase 0.D scaffold: the full subcommand surface is present; each
-//! subcommand body prints a phase-specific "not yet implemented"
-//! message to stderr and exits with code 2. Later phases replace the
-//! stub body with real behavior without extending the CLI surface.
+//! Phase 0 scaffolded the subcommand surface; Phase 1 wires `lock`
+//! and `resolve` to the resolver. The remaining subcommands
+//! (install, remove, list, doctor) still print a phase-specific
+//! "not yet implemented" message to stderr and exit with code 2.
 //!
 //! Exit-code contract:
 //! - `0` = success (help, `--version`, successful subcommand).
-//! - `1` = user error (bad arguments, missing manifest, …).
-//! - `2` = unimplemented feature (Phase 0 stub for Phases 1/2/4).
+//! - `1` = user error (bad manifest path, unresolvable deps, conflict).
+//! - `2` = unimplemented feature (Phases 2 / 4 stubs).
 
 mod cli;
+mod lock;
+mod resolve;
+mod runtime;
 
 use std::process::ExitCode;
 
@@ -19,19 +22,30 @@ use clap::Parser;
 use crate::cli::{Cli, Cmd};
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
-    cli.cmd.as_ref().map_or(ExitCode::SUCCESS, run)
+    let Some(cmd) = Cli::parse().cmd else {
+        return ExitCode::SUCCESS;
+    };
+    match cmd {
+        Cmd::Lock(args) => dispatch_result(lock::run(&args)),
+        Cmd::Resolve(args) => dispatch_result(resolve::run(&args)),
+        Cmd::Install(_) => unimplemented_stub("install", 2),
+        Cmd::Remove(_) => unimplemented_stub("remove", 2),
+        Cmd::List => unimplemented_stub("list", 2),
+        Cmd::Doctor(_) => unimplemented_stub("doctor", 4),
+    }
 }
 
-fn run(cmd: &Cmd) -> ExitCode {
-    let (name, phase) = match cmd {
-        Cmd::Install(_) => ("install", 2u8),
-        Cmd::Remove(_) => ("remove", 2),
-        Cmd::List => ("list", 2),
-        Cmd::Lock => ("lock", 1),
-        Cmd::Resolve => ("resolve", 1),
-        Cmd::Doctor(_) => ("doctor", 4),
-    };
+fn dispatch_result(result: anyhow::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err:#}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn unimplemented_stub(name: &str, phase: u8) -> ExitCode {
     eprintln!("pkg {name} is not yet implemented (#771 Phase {phase})");
     ExitCode::from(2)
 }

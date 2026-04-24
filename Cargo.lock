@@ -4107,11 +4107,15 @@ dependencies = [
 name = "reovim-pkg"
 version = "0.15.0-dev"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "clap",
  "predicates",
  "reovim-pkg-lockfile",
  "reovim-pkg-manifest",
+ "reovim-pkg-resolver",
+ "semver",
+ "tempfile",
 ]
 
 [[package]]
@@ -4130,6 +4134,17 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-pkg-resolver"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-pkg-lockfile",
+ "reovim-pkg-manifest",
+ "semver",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

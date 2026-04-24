@@ -63,26 +63,6 @@ fn list_stub_exits_two_and_mentions_phase_two() {
 }
 
 #[test]
-fn lock_stub_exits_two_and_mentions_phase_one() {
-    pkg()
-        .arg("lock")
-        .assert()
-        .code(2)
-        .stderr(contains("lock"))
-        .stderr(contains("#771 Phase 1"));
-}
-
-#[test]
-fn resolve_stub_exits_two_and_mentions_phase_one() {
-    pkg()
-        .arg("resolve")
-        .assert()
-        .code(2)
-        .stderr(contains("resolve"))
-        .stderr(contains("#771 Phase 1"));
-}
-
-#[test]
 fn doctor_stub_exits_two_and_mentions_phase_four() {
     pkg()
         .arg("doctor")
