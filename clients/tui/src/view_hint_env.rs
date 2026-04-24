@@ -11,19 +11,15 @@ use reovim_ext_client_tui_cap_cell_view::ViewHint;
 /// the value is empty or unrecognized.
 ///
 /// Accepted forms (case-insensitive): `full`, `fullblock`, `full_block`,
-/// `full-block`, `half`, `halfblock`, `half_block`, `half-block`.
-///
-/// `braille` is **intentionally not accepted** yet: the Braille
-/// rasterizer lands in Flight 75. Until then the dispatch arm for
-/// [`ViewHint::Braille`] is a defence-in-depth `unreachable!()`, and
-/// this parser gate is what keeps the env-var path from reaching it.
-/// Flight 75 adds the `"braille"` match arm alongside the rasterizer.
+/// `full-block`, `half`, `halfblock`, `half_block`, `half-block`,
+/// `braille`.
 #[must_use]
 pub fn parse_view_hint(raw: &str) -> Option<ViewHint> {
     let normalized = raw.trim().to_ascii_lowercase().replace(['_', '-'], "");
     match normalized.as_str() {
         "full" | "fullblock" => Some(ViewHint::FullBlock),
         "half" | "halfblock" => Some(ViewHint::HalfBlock),
+        "braille" => Some(ViewHint::Braille),
         _ => None,
     }
 }

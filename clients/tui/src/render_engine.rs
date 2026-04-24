@@ -16,7 +16,7 @@ use {
     reovim_client_driver::{ChromeSurface, ClientModule},
     reovim_ext_client_tui_cap_cell::CellCapability,
     reovim_ext_client_tui_cap_cell_view::{
-        BackendRasterOutput, HalfBlockRasterizer, ViewRasterizer,
+        BackendRasterOutput, BrailleRasterizer, HalfBlockRasterizer, ViewRasterizer,
     },
 };
 
@@ -161,7 +161,7 @@ pub fn render_frame<B: RenderBackend>(
         }
 
         // Draw window separators between adjacent panes
-        draw_window_separators(backend, mirror, content_height);
+        draw_window_separators(backend, mirror);
     } else {
         // Single-window fast path (original code)
         let local_selection = build_local_selection(state);
@@ -214,10 +214,9 @@ pub fn render_frame<B: RenderBackend>(
 /// rasterization path. `FullBlock` writes directly through the
 /// backend; `HalfBlock` buffers chrome into a `CellCapability` twice
 /// as tall as the terminal and rasterizes with `HalfBlockRasterizer`;
-/// `Braille` lands in Flight 75 / `02-braille-rasterizer.md`. The
-/// Braille arm is a defence-in-depth `unreachable!()` — the env-var
-/// parser (`view_hint_env::parse_view_hint`) rejects `"braille"`
-/// until Flight 75, so no user input can reach it.
+/// `Braille` buffers chrome into a `CellCapability` twice as wide and
+/// four times as tall as the terminal and rasterizes with
+/// `BrailleRasterizer`.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn dispatch_chrome_by_view_hint<B: RenderBackend>(
     backend: &mut B,
@@ -235,14 +234,7 @@ fn dispatch_chrome_by_view_hint<B: RenderBackend>(
             dispatch_chrome_halfblock(backend, extensions, width, height);
         }
         reovim_ext_client_tui_cap_cell_view::ViewHint::Braille => {
-            unreachable!(
-                "ViewHint::Braille rasterizer lands in Flight 75 \
-                 (02-braille-rasterizer.md). This arm is gated by \
-                 `view_hint_env::parse_view_hint` which rejects \
-                 `REOVIM_VIEW_HINT=braille` until the rasterizer \
-                 ships; no other path currently constructs this \
-                 variant in a WindowViewHints entry."
-            );
+            dispatch_chrome_braille(backend, extensions, width, height);
         }
     }
 }
@@ -266,6 +258,30 @@ fn dispatch_chrome_halfblock<B: RenderBackend>(
     render_chrome_into_surface(&mut grid, extensions, width, logical_height, &caps_logical);
     let mut out = BackendRasterOutput::new(backend);
     HalfBlockRasterizer::new().rasterize(&grid, &mut out);
+}
+
+/// `Braille` dispatch: buffer chrome into a `CellCapability` sized
+/// `(width * 2, height * 4)` — twice as wide and four times as tall
+/// as the terminal — then rasterize via [`BrailleRasterizer`] into
+/// the backend. Chrome modules see a `TuiPlatformCapabilities`
+/// reporting the logical grid size, not the physical terminal size;
+/// the caps-doubling invariant in
+/// `docs/architecture/client/rendering.md` covers both the `HalfBlock`
+/// `×2` factor and this Braille `(×2, ×4)` factor.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn dispatch_chrome_braille<B: RenderBackend>(
+    backend: &mut B,
+    extensions: &[Box<dyn ClientModule>],
+    width: u16,
+    height: u16,
+) {
+    let logical_width = width.saturating_mul(2);
+    let logical_height = height.saturating_mul(4);
+    let mut grid = CellCapability::new(logical_width, logical_height);
+    let caps_logical = TuiPlatformCapabilities::for_test(logical_width, logical_height);
+    render_chrome_into_surface(&mut grid, extensions, logical_width, logical_height, &caps_logical);
+    let mut out = BackendRasterOutput::new(backend);
+    BrailleRasterizer::new().rasterize(&grid, &mut out);
 }
 
 // =============================================================================
@@ -413,11 +429,7 @@ fn build_viewport_context_for_window<'a>(
 
 /// Draw separators between adjacent windows.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn draw_window_separators<B: RenderBackend>(
-    backend: &mut B,
-    mirror: &ServerLayoutMirror,
-    _content_height: u16,
-) {
+fn draw_window_separators<B: RenderBackend>(backend: &mut B, mirror: &ServerLayoutMirror) {
     let sep_style = reovim_driver_display::Style {
         fg: Some(reovim_arch::Color::DarkGrey),
         ..reovim_driver_display::Style::default()

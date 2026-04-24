@@ -15,9 +15,7 @@ use crate::raster::RasterOutput;
 /// - [`ViewHint::HalfBlock`] — 2 stacked logical cells → 1 terminal cell
 ///   via `▀` (live since Flight 74; see [`crate::HalfBlockRasterizer`]).
 /// - [`ViewHint::Braille`] — 2×4 logical sub-grid → 1 terminal cell via
-///   `⠀…⣿`; rasterizer lands in Flight 75 and the dispatch arm in
-///   `clients/tui/src/render_engine.rs` remains a defence-in-depth
-///   `unreachable!()` until then.
+///   `⠀…⣿` (live since Flight 75; see [`crate::BrailleRasterizer`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewHint {
     /// 1 logical cell → 1 terminal cell. Default.
@@ -25,8 +23,8 @@ pub enum ViewHint {
     FullBlock,
     /// 2 stacked logical cells → 1 terminal cell via `▀`.
     HalfBlock,
-    /// 2×4 logical sub-grid → 1 terminal cell via `⠀…⣿`.
-    /// Rasterizer lands in Flight 75.
+    /// 2×4 logical sub-grid → 1 terminal cell via `⠀…⣿`. Monochrome
+    /// per glyph.
     Braille,
 }
 

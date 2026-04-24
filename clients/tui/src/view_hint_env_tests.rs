@@ -15,14 +15,10 @@ fn parses_fullblock_forms() {
 }
 
 #[test]
-fn rejects_braille_until_flight_75() {
-    // The Braille rasterizer is not implemented in Flight 74 and the
-    // dispatch arm is a defence-in-depth `unreachable!()`. Accepting
-    // the env-var value here would make the `unreachable!` reachable
-    // from user input. Flight 75 adds the match arm alongside the
-    // rasterizer.
-    assert_eq!(parse_view_hint("braille"), None);
-    assert_eq!(parse_view_hint("  Braille  "), None);
+fn parses_braille_forms() {
+    for v in ["braille", "Braille", "BRAILLE", "  braille  "] {
+        assert_eq!(parse_view_hint(v), Some(ViewHint::Braille), "input: {v}");
+    }
 }
 
 #[test]

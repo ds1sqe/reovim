@@ -1515,3 +1515,48 @@ fn test_halfblock_dispatch_preserves_upper_half_color() {
         assert_eq!(cell.style.fg, Some(blue), "col {col} should have fg=Blue");
     }
 }
+
+// =============================================================================
+// Braille dispatch tests
+// =============================================================================
+
+#[test]
+fn test_braille_dispatch_renders_dotted_chrome_onto_terminal() {
+    // Terminal: 40×10 → Braille logical grid: 80×40.
+    // A Bottom-docked, size=4 chrome module fills logical rows 36..=39
+    // (the four bottom rows of the logical grid, spanning the full
+    // 80-column width) with bg=Blue. Every 2×4 sub-grid along the
+    // terminal's bottom row has all 8 dots on and the same color, so
+    // each terminal cell should rasterize to `⣿` (U+28FF = U+2800 +
+    // 0xFF) with fg=Blue.
+    let mut fb = FrameBuffer::new(40, 10);
+    let mut state = TuiCoreState::new(1);
+    state
+        .window_view_hints
+        .insert(state.focused_window_id, reovim_ext_client_tui_cap_cell_view::ViewHint::Braille);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let blue = reovim_client_driver::types::Color::Rgb { r: 0, g: 0, b: 200 };
+    let fill = FillChromeModule {
+        position: ChromePosition::Bottom,
+        size: 4,
+        style: reovim_client_driver::Style {
+            bg: Some(blue),
+            ..reovim_client_driver::Style::default()
+        },
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(fill)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Terminal bottom row (y = 9): every column should be ⣿ fg=Blue.
+    for col in 0..40u16 {
+        let cell = fb.get(col, 9).unwrap();
+        assert_eq!(
+            cell.char, '\u{28FF}',
+            "bottom row col {col} should be fully-dotted braille glyph"
+        );
+        assert_eq!(cell.style.fg, Some(blue), "col {col} should have fg=Blue");
+    }
+}

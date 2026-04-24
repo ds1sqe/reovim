@@ -11,9 +11,9 @@
 //! - [`ViewHint::HalfBlock`] (live since Flight 74): each terminal
 //!   cell renders two stacked logical cells via `▀` / `▄` / space with
 //!   fg=top-half, bg=bottom-half — effective vertical resolution ×2.
-//! - [`ViewHint::Braille`]: each terminal cell renders a 2×4 logical
-//!   sub-grid via `⠀…⣿` — effective resolution ×8. Rasterizer lands
-//!   in Flight 75.
+//! - [`ViewHint::Braille`] (live since Flight 75): each terminal cell
+//!   renders a 2×4 logical sub-grid via `⠀…⣿` — effective resolution
+//!   ×8, monochrome per glyph.
 //!
 //! ## Trait layout
 //!
@@ -25,6 +25,7 @@
 //! impossible to express without trait gymnastics.
 
 pub mod backend_output;
+pub mod braille;
 pub mod full_block;
 pub mod half_block;
 pub mod raster;
@@ -32,6 +33,7 @@ pub mod rasterizer;
 
 pub use {
     backend_output::{BackendRasterOutput, convert_cell_style_to_display_style},
+    braille::BrailleRasterizer,
     full_block::FullBlockRasterizer,
     half_block::HalfBlockRasterizer,
     raster::{RasterCell, RasterOutput},
@@ -40,6 +42,8 @@ pub use {
 
 #[cfg(test)]
 mod backend_output_tests;
+#[cfg(test)]
+mod braille_tests;
 #[cfg(test)]
 mod full_block_tests;
 #[cfg(test)]

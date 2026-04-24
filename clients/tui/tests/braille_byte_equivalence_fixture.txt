@@ -1,0 +1,20 @@
+# Braille byte-equivalence fixture.
+#
+# Canonical 4×8 logical grid → 2×2 terminal output. Format mirrors the
+# HalfBlock fixture:
+#
+#   <x>,<y>,<ch>,<fg>,<bg>
+#
+# Pre-commit fixture checklist — verified by hand against the
+# doc-comment mapping table in `braille_byte_equivalence.rs`:
+#
+#   (0, 0) — fully-blank sub-grid                → ' '   plain
+#   (1, 0) — all-8-dots monochrome (ansi 1)      → '⣿'  fg=ansi:1
+#   (0, 1) — single-dot monochrome (ansi 2)      → '⠁'  fg=ansi:2
+#   (1, 1) — mixed-color first-in-scan (ansi 1)  → '⠑'  fg=ansi:1
+#
+# Row-major output order: (0,0), (1,0), (0,1), (1,1).
+0,0, ,-,-
+1,0,⣿,ansi:1,-
+0,1,⠁,ansi:2,-
+1,1,⠑,ansi:1,-

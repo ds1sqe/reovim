@@ -142,22 +142,33 @@ cell, identity) runs on the existing direct-write path;
 `▀`, live since Flight 74) buffers chrome into a `CellCapability`
 twice the terminal height and then projects it onto the backend via
 `HalfBlockRasterizer`; `ViewHint::Braille` (2×4 logical sub-grid → 1
-terminal cell via `⠀…⣿`) lands in Flight 75.  The `ViewRasterizer`
-trait and the narrow terminal-backend-level `RasterOutput` trait live
-in `ext/client/tui/capabilities/cell-view/`.  `RasterOutput` is
+terminal cell via `⠀…⣿`, live since Flight 75) buffers chrome into a
+`CellCapability` twice as wide and four times as tall as the terminal
+and projects via `BrailleRasterizer` (monochrome per glyph). The
+`ViewRasterizer` trait and the narrow terminal-backend-level
+`RasterOutput` trait live in
+`ext/client/tui/capabilities/cell-view/`.  `RasterOutput` is
 deliberately separate from the module-facing `ChromeSurface`: input
 (where chrome modules write) and output (where rasterized terminal
 cells land) are different sides of the seam, and conflating them
 would make HalfBlock's fg=top / bg=bottom encoding unexpressible.
 
-**Chrome capabilities doubling invariant (HalfBlock).** When a
-HalfBlock window dispatches chrome, the `TuiPlatformCapabilities`
-handed to each module reports the *logical* grid size
-`(width, height × 2)` — not the physical terminal size.  Bottom-docked
-chrome (e.g. statusline) lands at logical row `height × 2 − 1`, which
-the rasterizer maps back onto the terminal's bottom row.  Modules
-that compute their Rect from `caps.grid_size()` MUST NOT assume the
-reported height equals the physical terminal height.
+**Chrome capabilities doubling invariant.** When a non-FullBlock
+window dispatches chrome, the `TuiPlatformCapabilities` handed to each
+module reports the *logical* grid size — not the physical terminal
+size. The factor depends on the hint:
+
+| Hint | Logical grid size | Anchor for bottom-docked chrome |
+|------|-------------------|--------------------------------|
+| `FullBlock` | `(width, height)` | terminal row `height − 1` |
+| `HalfBlock` | `(width, height × 2)` | logical row `height × 2 − 1`, rasterizes to terminal row `height − 1` |
+| `Braille` | `(width × 2, height × 4)` | logical row `height × 4 − 1`, rasterizes to terminal row `height − 1` |
+
+Modules that compute their Rect from `caps.grid_size()` MUST NOT
+assume the reported size equals the physical terminal size. The
+rasterizer maps the logical grid back onto the terminal; the invariant
+is that bottom-docked chrome always lands at the terminal's bottom row
+regardless of hint.
 
 **Enablement.** Set `REOVIM_VIEW_HINT=halfblock` (also accepted:
 `full`, `fullblock`, `half`, `half_block`, `half-block`, `braille`)

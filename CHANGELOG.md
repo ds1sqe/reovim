@@ -391,6 +391,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
   `#[ignore]` pending the `/e2e` harness (TODO(#769)).
 
+- **#753 Codec Foundation — Braille rasterizer (Flight 75)**: the
+  `ViewHint::Braille` arm in `clients/tui/src/render_engine.rs` is now
+  live. Chrome modules for a Braille window are buffered into a
+  `reovim_ext_client_tui_cap_cell::CellCapability` sized
+  `(width * 2, height * 4)` — twice as wide and four times as tall as
+  the terminal — and then projected onto the backend through the new
+  `reovim_ext_client_tui_cap_cell_view::BrailleRasterizer`, which maps
+  each 2×4 logical sub-grid to one Unicode Braille glyph
+  (`U+2800..U+28FF`). Each "on" dot is a logical cell whose
+  `visible_color_of` is non-default; Braille is monochrome per glyph,
+  so the rasterizer picks the first-in-scan non-default color as the
+  glyph foreground. The defence-in-depth `unreachable!()` that
+  Flight 74 installed on this arm has been replaced with a real
+  `dispatch_chrome_braille` helper, and the parser-side gate in
+  `view_hint_env::parse_view_hint` is lifted: `REOVIM_VIEW_HINT=braille`
+  now routes end-to-end. Chrome modules that read
+  `TuiPlatformCapabilities::grid_size()` on a Braille window must
+  treat the reported size as the **logical grid size**
+  (`width * 2, height * 4`), not the physical terminal size — the
+  caps-doubling invariant documented in
+  `docs/architecture/client/rendering.md` extends to the Braille
+  factor.
+
 - **#753 Codec Foundation — HalfBlock rasterizer (Flight 74)**: the
   `ViewHint::HalfBlock` arm in `clients/tui/src/render_engine.rs` is
   now live.  Chrome modules for a HalfBlock window are buffered into a
