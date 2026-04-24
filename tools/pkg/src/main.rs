@@ -11,7 +11,10 @@
 //! - `2` = unimplemented feature (Phases 2 / 4 stubs).
 
 mod cli;
+mod install;
+mod list;
 mod lock;
+mod remove;
 mod resolve;
 mod runtime;
 
@@ -28,9 +31,9 @@ fn main() -> ExitCode {
     match cmd {
         Cmd::Lock(args) => dispatch_result(lock::run(&args)),
         Cmd::Resolve(args) => dispatch_result(resolve::run(&args)),
-        Cmd::Install(_) => unimplemented_stub("install", 2),
-        Cmd::Remove(_) => unimplemented_stub("remove", 2),
-        Cmd::List => unimplemented_stub("list", 2),
+        Cmd::Install(args) => dispatch_result(install::run(&args)),
+        Cmd::Remove(args) => dispatch_result(remove::run(&args)),
+        Cmd::List(args) => dispatch_result(list::run(&args)),
         Cmd::Doctor(_) => unimplemented_stub("doctor", 4),
     }
 }

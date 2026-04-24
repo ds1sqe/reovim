@@ -140,6 +140,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Package Manager — install / remove / list**: new
+  `lib/pkg-install/` crate materializes resolved cdylibs into
+  `$REOVIM_LIBRARY_ROOT` per the driver/modules layout shared with
+  `reovim-dylib-loader`. The installer runs a `dlopen` smoke test
+  and streams a SHA-256 digest over each cdylib; subsequent installs
+  detect byte-level tampering against the recorded digest. The
+  lockfile inventory is kept in sync: `pkg install`, `pkg remove`,
+  and `pkg list` share the `pkg.lock` as their source of truth.
+  CLI: `pkg install --library-root $REOVIM_LIBRARY_ROOT` resolves
+  and installs, `pkg remove <name>` removes, `pkg list` prints a
+  sorted inventory. Adds `Package.kind: Option<PackageKind>`
+  (`driver | module`) to `lib/pkg-manifest/` — optional on root
+  user-config manifests, required on path-dep manifests before
+  install — and `PackageLock.kind: Option<String>` to
+  `lib/pkg-lockfile/` so the installer can round-trip the
+  classification through the lockfile without pulling in the
+  manifest crate. (#771)
+
 - **#771 Package Manager — resolver + `pkg lock` / `pkg resolve`**:
   new `lib/pkg-resolver/` crate provides semver graph resolution over a
   `pkg.toml` manifest and its local-path dependency tree. The DFS

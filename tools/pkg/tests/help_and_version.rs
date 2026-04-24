@@ -33,36 +33,6 @@ fn no_args_exits_successfully() {
 }
 
 #[test]
-fn install_stub_exits_two_and_mentions_phase_two() {
-    pkg()
-        .arg("install")
-        .assert()
-        .code(2)
-        .stderr(contains("install"))
-        .stderr(contains("#771 Phase 2"));
-}
-
-#[test]
-fn remove_stub_exits_two_and_mentions_phase_two() {
-    pkg()
-        .args(["remove", "x"])
-        .assert()
-        .code(2)
-        .stderr(contains("remove"))
-        .stderr(contains("#771 Phase 2"));
-}
-
-#[test]
-fn list_stub_exits_two_and_mentions_phase_two() {
-    pkg()
-        .arg("list")
-        .assert()
-        .code(2)
-        .stderr(contains("list"))
-        .stderr(contains("#771 Phase 2"));
-}
-
-#[test]
 fn doctor_stub_exits_two_and_mentions_phase_four() {
     pkg()
         .arg("doctor")

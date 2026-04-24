@@ -4111,11 +4111,27 @@ dependencies = [
  "assert_cmd",
  "clap",
  "predicates",
+ "reovim-driver-abi-poc",
+ "reovim-pkg-install",
  "reovim-pkg-lockfile",
  "reovim-pkg-manifest",
  "reovim-pkg-resolver",
  "semver",
  "tempfile",
+]
+
+[[package]]
+name = "reovim-pkg-install"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-dylib-loader",
+ "reovim-pkg-lockfile",
+ "reovim-pkg-manifest",
+ "reovim-pkg-resolver",
+ "semver",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

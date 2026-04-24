@@ -1,0 +1,23 @@
+[package]
+name = "reovim-pkg-install"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Install / uninstall / list mechanism for reovim cdylib packages: cdylib discovery, dlopen smoke test, SHA-256 tamper detection, library-root placement"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-pkg-manifest = { path = "../pkg-manifest", version = "0.15.0-dev" }
+reovim-pkg-lockfile = { path = "../pkg-lockfile", version = "0.15.0-dev" }
+reovim-pkg-resolver = { workspace = true }
+reovim-dylib-loader = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+tempfile = "3"
+thiserror = "2"

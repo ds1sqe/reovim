@@ -82,6 +82,18 @@ bad-dep = { version = "1.0", features = "ripgrep" }
 }
 
 #[test]
+fn unknown_package_kind_fails_to_parse() {
+    let src = r#"
+[package]
+name = "x"
+kind = "both"
+reovim-version = "^0.15"
+"#;
+    let err = Manifest::from_toml_str(src).expect_err("unknown kind must fail");
+    assert!(matches!(err, ManifestError::TomlDe(_)));
+}
+
+#[test]
 fn error_messages_are_user_facing() {
     // `ManifestError::InvalidLazyTrigger` exposes the offending dep
     // name in its Display output so callers can surface it to users

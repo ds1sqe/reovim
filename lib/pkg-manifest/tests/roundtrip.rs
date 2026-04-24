@@ -47,6 +47,20 @@ fn typical_exercises_every_dependency_variant() {
 }
 
 #[test]
+fn kind_round_trips_for_driver_and_module() {
+    use reovim_pkg_manifest::PackageKind;
+
+    let typical = Manifest::from_toml_str(TYPICAL).expect("typical parse");
+    assert_eq!(typical.package.kind, Some(PackageKind::Module));
+
+    let full = Manifest::from_toml_str(FULL_LAZY).expect("full-lazy parse");
+    assert_eq!(full.package.kind, Some(PackageKind::Driver));
+
+    let minimal = Manifest::from_toml_str(MINIMAL).expect("minimal parse");
+    assert_eq!(minimal.package.kind, None, "minimal fixture omits kind");
+}
+
+#[test]
 fn full_lazy_exercises_every_trigger_variant() {
     use reovim_pkg_manifest::LazyTrigger;
 

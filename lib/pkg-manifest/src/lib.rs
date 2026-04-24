@@ -12,6 +12,7 @@
 #![forbid(missing_docs)]
 
 mod dependency;
+mod kind;
 mod lazy;
 mod package;
 mod parser;
@@ -21,6 +22,7 @@ use std::collections::BTreeMap;
 
 pub use crate::{
     dependency::{Dependency, DetailedDep},
+    kind::PackageKind,
     lazy::LazyTrigger,
     package::Package,
 };

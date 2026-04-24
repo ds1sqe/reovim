@@ -23,6 +23,7 @@ impl Resolved {
                 version: p.version.to_string(),
                 source: p.source,
                 target: None,
+                kind: None,
                 sha256: None,
                 dependencies: p.dependencies,
             })

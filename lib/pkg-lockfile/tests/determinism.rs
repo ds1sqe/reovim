@@ -30,6 +30,7 @@ fn shuffled_input_vec_serializes_identically() {
         version: "0.1.0".to_string(),
         source: Source::LocalPath(PathBuf::from("/a")),
         target: None,
+        kind: None,
         sha256: None,
         dependencies: vec![],
     };
@@ -38,6 +39,7 @@ fn shuffled_input_vec_serializes_identically() {
         version: "0.2.0".to_string(),
         source: Source::LocalPath(PathBuf::from("/b")),
         target: None,
+        kind: None,
         sha256: None,
         dependencies: vec![],
     };
@@ -63,6 +65,7 @@ fn versions_tie_break_by_version_string() {
         version: "1.0.0".to_string(),
         source: Source::LocalPath(PathBuf::from("/v1")),
         target: None,
+        kind: None,
         sha256: None,
         dependencies: vec![],
     };
@@ -71,6 +74,7 @@ fn versions_tie_break_by_version_string() {
         version: "2.0.0".to_string(),
         source: Source::LocalPath(PathBuf::from("/v2")),
         target: None,
+        kind: None,
         sha256: None,
         dependencies: vec![],
     };

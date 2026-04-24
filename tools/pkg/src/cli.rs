@@ -25,17 +25,11 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Cmd {
     /// Install a package into the reovim library root.
-    ///
-    /// Phase 2 implements the real behavior.
     Install(InstallArgs),
     /// Remove an installed package.
-    ///
-    /// Phase 2 implements the real behavior.
     Remove(RemoveArgs),
     /// List installed packages with versions and paths.
-    ///
-    /// Phase 2 implements the real behavior.
-    List,
+    List(ListArgs),
     /// Resolve the manifest and write `pkg.lock`.
     Lock(LockArgs),
     /// Resolve the manifest without writing a lockfile (dry run).
@@ -49,8 +43,20 @@ pub enum Cmd {
 /// Arguments to `pkg install`.
 #[derive(Parser, Debug)]
 pub struct InstallArgs {
-    /// Path to a cdylib file or a package manifest directory.
-    pub target: Option<PathBuf>,
+    /// Directory containing `pkg.toml`. Defaults to the current
+    /// working directory.
+    #[arg(long, default_value = ".")]
+    pub manifest_dir: PathBuf,
+
+    /// Library root to materialize cdylibs into. Defaults to
+    /// `$REOVIM_LIBRARY_ROOT`.
+    #[arg(long, env = "REOVIM_LIBRARY_ROOT")]
+    pub library_root: PathBuf,
+
+    /// Output path for `pkg.lock`. Defaults to
+    /// `<manifest_dir>/pkg.lock`.
+    #[arg(long)]
+    pub lockfile: Option<PathBuf>,
 }
 
 /// Arguments to `pkg remove`.
@@ -58,6 +64,28 @@ pub struct InstallArgs {
 pub struct RemoveArgs {
     /// Package name to remove.
     pub name: String,
+
+    /// Library root to remove the cdylib from. Defaults to
+    /// `$REOVIM_LIBRARY_ROOT`.
+    #[arg(long, env = "REOVIM_LIBRARY_ROOT")]
+    pub library_root: PathBuf,
+
+    /// Lockfile to sync. Defaults to `./pkg.lock`.
+    #[arg(long, default_value = "pkg.lock")]
+    pub lockfile: PathBuf,
+}
+
+/// Arguments to `pkg list`.
+#[derive(Parser, Debug)]
+pub struct ListArgs {
+    /// Library root to derive installed paths from. Defaults to
+    /// `$REOVIM_LIBRARY_ROOT`.
+    #[arg(long, env = "REOVIM_LIBRARY_ROOT")]
+    pub library_root: PathBuf,
+
+    /// Lockfile to read. Defaults to `./pkg.lock`.
+    #[arg(long, default_value = "pkg.lock")]
+    pub lockfile: PathBuf,
 }
 
 /// Arguments to `pkg doctor`.

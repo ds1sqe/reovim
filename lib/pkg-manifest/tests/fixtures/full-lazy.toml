@@ -1,5 +1,6 @@
 [package]
 name = "full-lazy-setup"
+kind = "driver"
 reovim-version = "^0.15"
 
 [dependencies]

@@ -1,5 +1,6 @@
 [package]
 name = "typical-setup"
+kind = "module"
 reovim-version = "^0.15"
 
 [dependencies]

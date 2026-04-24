@@ -17,12 +17,21 @@ pub struct PackageLock {
     /// rustc target triple the cdylib was built for (e.g.
     /// `"x86_64-unknown-linux-gnu"`).
     ///
-    /// `None` in fixtures that pre-date the install step. Phase 2's
-    /// install populates it so the lockfile distinguishes artifacts
-    /// across platforms. Declared in Phase 0 to lock the wire shape
-    /// before Phase 2 lands.
+    /// `None` until the installer materializes the artifact; the
+    /// install step populates it so the lockfile distinguishes
+    /// artifacts across platforms.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// Classification: `"driver"` or `"module"`. Selects the
+    /// `$REOVIM_LIBRARY_ROOT` subdir the cdylib was installed into.
+    ///
+    /// `None` on resolver-only output (before install); populated
+    /// once the install step places the artifact. Kept as a free
+    /// string at this tier to keep the lockfile crate free of
+    /// manifest-crate dependencies; the installer maps it to its
+    /// typed `PackageKind`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     /// SHA-256 hex digest of the cdylib file.
     ///
     /// `None` until Phase 2 install computes it. When set, must be a
