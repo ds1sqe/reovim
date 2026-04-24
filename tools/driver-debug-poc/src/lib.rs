@@ -62,12 +62,7 @@ impl DebugObserver for PocObserver {
 
 impl ClientDebugSurface for DebugPocDriver {
     fn probe() -> DebugProbe {
-        DebugProbe::new(
-            "debug-poc",
-            "Phase 0 debug-surface PoC",
-            &["poc-frames"],
-            &["poc-echo"],
-        )
+        DebugProbe::new("debug-poc", "Phase 0 debug-surface PoC", &["poc-frames"], &["poc-echo"])
     }
 
     fn construct(_platform: *mut c_void) -> Result<Self, DebugError> {
@@ -83,10 +78,7 @@ impl ClientDebugSurface for DebugPocDriver {
                 remaining: self.frame_count,
             }))
         } else {
-            Err(DebugError(format!(
-                "unknown selector: {}",
-                String::from_utf8_lossy(selector)
-            )))
+            Err(DebugError(format!("unknown selector: {}", String::from_utf8_lossy(selector))))
         }
     }
 

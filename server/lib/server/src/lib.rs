@@ -28,6 +28,7 @@
 //! ```
 
 pub mod app;
+pub mod client_debug_registry;
 pub mod config;
 pub mod debug;
 pub mod registry;
@@ -46,6 +47,9 @@ pub(crate) mod transport_pipe;
 // Public API
 pub use {
     app::AppState,
+    client_debug_registry::{
+        ClientDebugRegistry, DebugDriverHandle, DebugObserverHandle, ObserverPump, RegistryError,
+    },
     config::{ServerConfig, TransportMode},
     registry::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, LookupResult, ModeEntry,

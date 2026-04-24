@@ -27,6 +27,7 @@ fn compile_protos() {
                 "proto/reovim/v3/debug.proto",
                 "proto/reovim/v3/extension.proto",
                 "proto/reovim/v3/command.proto",
+                "proto/reovim/v3/client_debug.proto",
             ],
             &["proto"],
         )

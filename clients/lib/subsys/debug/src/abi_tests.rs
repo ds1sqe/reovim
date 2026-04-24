@@ -5,10 +5,7 @@ fn debug_observer_vtable_layout() {
     assert_eq!(mem::offset_of!(DebugObserverVTable, abi_version), 0);
     let ptr_size = mem::size_of::<usize>();
     assert!(mem::size_of::<DebugObserverVTable>() >= 2 * ptr_size);
-    assert_eq!(
-        mem::align_of::<DebugObserverVTable>(),
-        mem::align_of::<usize>()
-    );
+    assert_eq!(mem::align_of::<DebugObserverVTable>(), mem::align_of::<usize>());
 }
 
 #[test]
@@ -22,10 +19,7 @@ fn client_debug_vtable_layout() {
     let size_off = mem::offset_of!(ClientDebugVTable, size_of_self);
     assert!(size_off > api_off);
 
-    assert_eq!(
-        mem::align_of::<ClientDebugVTable>(),
-        mem::align_of::<usize>()
-    );
+    assert_eq!(mem::align_of::<ClientDebugVTable>(), mem::align_of::<usize>());
 }
 
 #[test]

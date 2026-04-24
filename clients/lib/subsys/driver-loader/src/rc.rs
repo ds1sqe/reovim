@@ -31,10 +31,7 @@ pub trait HasErrorStringDestructor {
 /// round-trip the buffer back through the driver's
 /// `destroy_error_string` slot. Returns `"<no error message>"` if the
 /// pointer was null.
-pub fn read_and_free_error<V: HasErrorStringDestructor>(
-    vtable: &V,
-    ptr: *mut c_char,
-) -> String {
+pub fn read_and_free_error<V: HasErrorStringDestructor>(vtable: &V, ptr: *mut c_char) -> String {
     if ptr.is_null() {
         return "<no error message>".to_owned();
     }

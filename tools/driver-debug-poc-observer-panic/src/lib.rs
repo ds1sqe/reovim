@@ -28,22 +28,14 @@ pub struct PanickingObserver {
 impl DebugObserver for PanickingObserver {
     fn next_frame(&mut self) -> Result<Option<Vec<u8>>, DebugError> {
         self.call_count += 1;
-        assert!(
-            self.call_count < 2,
-            "deliberate observer panic for catch_unwind test"
-        );
+        assert!(self.call_count < 2, "deliberate observer panic for catch_unwind test");
         Ok(Some(b"first-frame".to_vec()))
     }
 }
 
 impl ClientDebugSurface for ObserverPanicDriver {
     fn probe() -> DebugProbe {
-        DebugProbe::new(
-            "observer-panic",
-            "Observer-panic PoC",
-            &["panic-frames"],
-            &[],
-        )
+        DebugProbe::new("observer-panic", "Observer-panic PoC", &["panic-frames"], &[])
     }
 
     fn construct(_platform: *mut c_void) -> Result<Self, DebugError> {

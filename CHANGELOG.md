@@ -48,6 +48,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#770 Debug Surface — Phase 1**: `ClientDebugService` gRPC
+  bidirectional streaming RPC in `uapi/protocol/proto/reovim/v3/client_debug.proto`
+  (first bidirectional-streaming RPC in the codebase), a server-side
+  `ClientDebugRegistry` (`server/lib/server/src/client_debug_registry.rs`)
+  holding `LoadedClientDebug` instances keyed by driver name, and a
+  `ClientDebugServiceImpl` handler
+  (`server/lib/server/src/grpc/client_debug.rs`) that implements a
+  two-state machine (`NotSelected` / `Selected`), spawns observer
+  pump tasks with cancellation oneshots, and evicts drivers on FFI
+  panic (rc == -2 → `Status::internal`). Wired into both the gRPC
+  and gRPC-Web builder chains in `server::run_grpc` /
+  `assemble_grpc_router`. Server constructor gains a
+  `with_client_debug_registry(Arc<ClientDebugRegistry>)` builder so
+  composition roots can populate the registry before `run*()`.
+  Integration test `client_debug_stream_roundtrip` (5 tests
+  including the drop-safety and observer-panic cases) verifies the
+  end-to-end round-trip against the Phase 0 PoC cdylibs. (#770)
 - **#770 Debug Surface — Phase 0**: client debug-surface subsys crate
   (`reovim-client-subsys-debug`) exposing the `ClientDebugSurface`
   driver trait, `DebugObserver` sub-handle trait, `DebugProbe` static

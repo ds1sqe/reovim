@@ -1,0 +1,98 @@
+// Client-debug surface driver RPC (#770 Phase 1).
+//
+// `ClientDebugService` is a dumb transport for per-driver debug
+// protocols. The server holds `LoadedClientDebug` instances in a
+// `ClientDebugRegistry`; inspectors (CLI, tests) open a `DebugStream`
+// to route probe / observe / drive operations against a named driver.
+//
+// All user payloads (observe frames, drive commands, drive responses,
+// error bodies) are opaque bytes. Only selectors and schema names are
+// structured at ABI time. The CLI never inspects payload contents.
+
+syntax = "proto3";
+package reovim.v3;
+
+service ClientDebugService {
+  // Bidirectional stream for driver probe + observe + drive.
+  //
+  // State machine: the first client message MUST be `Select`.
+  // After Select, the stream accepts `ObserveStart`, `ObserveStop`,
+  // and `DriveCommand` messages; a second `Select` switches driver
+  // and drops any active observer.
+  //
+  // Driver errors surface as non-terminal `Error` messages; the
+  // stream stays open. Driver panics close the stream with
+  // `Status::internal` and evict the driver from the registry.
+  rpc DebugStream(stream DebugStreamClientMsg) returns (stream DebugStreamServerMsg);
+}
+
+// Client-to-server message on a DebugStream.
+message DebugStreamClientMsg {
+  oneof content {
+    DebugSelect select = 1;
+    DebugObserveStart observe_start = 2;
+    DebugObserveStop observe_stop = 3;
+    DebugDriveCommand drive_cmd = 4;
+  }
+}
+
+// Server-to-client message on a DebugStream.
+message DebugStreamServerMsg {
+  oneof content {
+    DebugProbeResponse probe_resp = 1;
+    DebugObserveFrame observe_frame = 2;
+    DebugDriveResponse drive_resp = 3;
+    DebugStreamError error = 4;
+  }
+}
+
+// Select a driver by name and request its probe metadata.
+//
+// The server replies with a `DebugProbeResponse` naming the driver's
+// observe and drive schemas, or a `DebugStreamError` if the driver is
+// not registered.
+message DebugSelect {
+  string driver_name = 1;
+}
+
+// Probe metadata returned after a successful Select.
+message DebugProbeResponse {
+  string driver_name = 1;
+  string description = 2;
+  repeated string observe_schemas = 3;
+  repeated string drive_schemas = 4;
+}
+
+// Start an observer for the given schema on the currently-selected
+// driver. The server begins streaming `DebugObserveFrame` messages
+// until EOS, `DebugObserveStop`, or stream close.
+message DebugObserveStart {
+  string schema = 1;
+}
+
+// Stop the active observer without closing the stream. The driver
+// stays registered; a subsequent `DebugObserveStart` is permitted.
+message DebugObserveStop {
+}
+
+// A single observer frame. Body bytes are driver-defined and opaque
+// to the transport.
+message DebugObserveFrame {
+  bytes body = 1;
+}
+
+// Drive the currently-selected driver with an opaque command.
+message DebugDriveCommand {
+  string schema = 1;
+  bytes body = 2;
+}
+
+// Response to a DebugDriveCommand.
+message DebugDriveResponse {
+  bytes body = 1;
+}
+
+// Non-terminal error surfaced to the inspector. Stream stays open.
+message DebugStreamError {
+  string message = 1;
+}

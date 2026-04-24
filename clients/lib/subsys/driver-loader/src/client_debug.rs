@@ -329,12 +329,7 @@ impl LoadedDebugObserver<'_> {
         // SAFETY: the trampoline is `catch_unwind`-wrapped by the
         // driver macro. Out-params are writable locals.
         let rc = unsafe {
-            next_frame(
-                self.handle,
-                &raw mut out_ptr,
-                &raw mut out_len,
-                &raw mut err_ptr,
-            )
+            next_frame(self.handle, &raw mut out_ptr, &raw mut out_len, &raw mut err_ptr)
         };
         // rc == 1 means end-of-stream — the observer vtable's custom
         // value outside the generic {0, -1, -2} set classify_rc
@@ -349,11 +344,7 @@ impl LoadedDebugObserver<'_> {
             return Ok(None);
         }
         match classify_rc(rc, err_ptr, self.driver_vtable) {
-            RcOutcome::Ok => Ok(Some(copy_and_free_bytes(
-                self.driver_vtable,
-                out_ptr,
-                out_len,
-            ))),
+            RcOutcome::Ok => Ok(Some(copy_and_free_bytes(self.driver_vtable, out_ptr, out_len))),
             RcOutcome::Panicked => Err(LoadError::DriverPanicked),
             RcOutcome::Error(msg) => Err(LoadError::DriverError(msg)),
         }

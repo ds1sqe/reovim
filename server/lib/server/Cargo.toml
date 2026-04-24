@@ -30,6 +30,13 @@ reovim-subsys-net = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 
+# Client-debug driver surface (#770). The server hosts LoadedClientDebug
+# instances in a ClientDebugRegistry on behalf of a same-process TUI in
+# embedded mode (#769 transport_inproc). Both crates are clients/lib/subsys/*
+# (subsys-tier core, zero ext deps) — permitted by core_ext_boundary.rs.
+reovim-client-subsys-debug = { workspace = true }
+reovim-client-subsys-driver-loader = { workspace = true }
+
 # Drivers: REMOVED from production deps (#753 E6).
 # All driver access routes through DomainDriver (subsys-session trait).
 # Driver crates are in [dev-dependencies] for test compatibility.
@@ -65,6 +72,8 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 tempfile = "3.0"
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
+reovim-driver-debug-poc = { path = "../../../tools/driver-debug-poc", version = "0.15.0-dev" }
+reovim-driver-debug-poc-observer-panic = { path = "../../../tools/driver-debug-poc-observer-panic", version = "0.15.0-dev" }
 tokio = { workspace = true, features = ["rt", "macros"] }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }

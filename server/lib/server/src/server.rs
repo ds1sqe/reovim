@@ -5,19 +5,21 @@ use std::sync::Arc;
 use {parking_lot::Mutex, reovim_kernel::api::v1::ServiceRegistry};
 
 use crate::{
-    ServerConfig, TransportMode,
+    ClientDebugRegistry, ServerConfig, TransportMode,
     session::{Session, SessionId, SessionRegistry, SessionState, TokenRegistry},
 };
 
 #[cfg(feature = "grpc")]
 use {
     crate::grpc::{
-        AuthInterceptor, BufferServiceImpl, CommandServiceImpl, DebugServiceImpl,
-        EditorServiceImpl, ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl,
-        NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
+        AuthInterceptor, BufferServiceImpl, ClientDebugServiceImpl, CommandServiceImpl,
+        DebugServiceImpl, EditorServiceImpl, ExtensionServiceImpl, InputServiceImpl,
+        ModuleServiceImpl, NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl,
+        StateServiceImpl,
     },
     reovim_protocol::v3::{
         buffer_service_server::BufferServiceServer,
+        client_debug_service_server::ClientDebugServiceServer,
         command_service_server::CommandServiceServer,
         debug_service_server::DebugServiceServer,
         editor_service_server::EditorServiceServer,
@@ -55,6 +57,7 @@ struct GrpcServicesBundle<M> {
     command: CommandServiceImpl,
     extension: ExtensionServiceImpl,
     debug: DebugServiceImpl,
+    client_debug: ClientDebugServiceImpl,
 }
 
 /// Session factory function type.
@@ -123,6 +126,10 @@ pub struct Server<M = DefaultModuleService> {
     /// the receiver into `serve_with_incoming_shutdown`, so draining
     /// in-flight RPCs is the tonic router's concern — not ours.
     shutdown_tx: tokio::sync::watch::Sender<bool>,
+
+    /// Registry of client-debug drivers routed by `ClientDebugService`
+    /// (#770). Populated by the composition root (empty by default).
+    client_debug_registry: Arc<ClientDebugRegistry>,
 }
 
 impl Server<DefaultModuleService> {
@@ -147,6 +154,7 @@ impl Server<DefaultModuleService> {
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
             shutdown_tx,
+            client_debug_registry: Arc::new(ClientDebugRegistry::new()),
         }
     }
 
@@ -187,6 +195,7 @@ impl Server<DefaultModuleService> {
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
             shutdown_tx,
+            client_debug_registry: Arc::new(ClientDebugRegistry::new()),
         }
     }
 
@@ -228,6 +237,7 @@ impl Server<DefaultModuleService> {
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
             shutdown_tx,
+            client_debug_registry: Arc::new(ClientDebugRegistry::new()),
         }
     }
 }
@@ -262,7 +272,17 @@ impl<M: Send + Sync> Server<M> {
             bridge_registry: self.bridge_registry,
             module_service,
             shutdown_tx: self.shutdown_tx,
+            client_debug_registry: self.client_debug_registry,
         }
+    }
+
+    /// Inject a populated client-debug registry (#770 Phase 1). The
+    /// default is an empty registry; composition roots that host
+    /// client-debug drivers call this before `run*()` to wire them up.
+    #[must_use]
+    pub fn with_client_debug_registry(mut self, registry: Arc<ClientDebugRegistry>) -> Self {
+        self.client_debug_registry = registry;
+        self
     }
 
     /// Inject a prebuilt default session state for one-time consumption.
@@ -618,7 +638,8 @@ impl<M: Send + Sync> Server<M> {
                 .add_service(svc!(PresenceServiceServer, services.presence, i.clone()))
                 .add_service(svc!(ExtensionServiceServer, services.extension, i.clone()))
                 .add_service(svc!(CommandServiceServer, services.command, i.clone()))
-                .add_service(svc!(DebugServiceServer, services.debug, i.clone()));
+                .add_service(svc!(DebugServiceServer, services.debug, i.clone()))
+                .add_service(svc!(ClientDebugServiceServer, services.client_debug, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -700,6 +721,7 @@ impl<M: Send + Sync> Server<M> {
             .add_service(svc!(ExtensionServiceServer, services.extension, i.clone()))
             .add_service(svc!(CommandServiceServer, services.command, i.clone()))
             .add_service(svc!(DebugServiceServer, services.debug, i.clone()))
+            .add_service(svc!(ClientDebugServiceServer, services.client_debug, i.clone()))
     }
 
     /// Install the server-driven tick scheduler into the default
@@ -772,6 +794,7 @@ impl<M: Send + Sync> Server<M> {
                 default_session_id.clone(),
                 Arc::clone(&self.bridge_registry),
             ),
+            client_debug: ClientDebugServiceImpl::new(Arc::clone(&self.client_debug_registry)),
         }
     }
 
