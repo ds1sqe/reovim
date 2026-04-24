@@ -3,6 +3,7 @@
 use {
     crate::{
         error::{LoadError, ScanEntryError, ValidationError},
+        rc::{HasErrorStringDestructor, RcOutcome, classify_rc, load_to_scan_error, translate_rc},
         validation::{ClientRenderExpectations, check_client_render},
     },
     reovim_client_subsys_render::{
@@ -11,12 +12,18 @@ use {
     },
     reovim_dylib_loader::{Kind, Library, PathResolverBuilder, Symbol, scan_paths},
     std::{
-        ffi::{CStr, c_char, c_int, c_void},
+        ffi::{c_char, c_void},
         marker::PhantomData,
         path::Path,
         ptr,
     },
 };
+
+impl HasErrorStringDestructor for ClientRenderVTable {
+    fn destroy_error_string_fn(&self) -> unsafe extern "C" fn(*mut c_char) {
+        self.destroy_error_string
+    }
+}
 
 /// Static-symbol name exported by a client-render driver cdylib.
 const VTABLE_SYMBOL: &[u8] = b"REOVIM_CLIENT_RENDER_DRIVER_VTABLE";
@@ -160,22 +167,6 @@ impl LoadedClientRender {
     }
 }
 
-/// Convert a single-driver [`LoadError`] into the per-scan-entry
-/// [`ScanEntryError`] returned by [`LoadedClientRender::from_path_scan`].
-/// `LibraryOpen` at this point means the cdylib opened but its vtable
-/// symbol was missing — that is an ABI mismatch, not a filesystem
-/// failure, so it routes to `AbiMismatch` with `VtablePointerNull`.
-fn load_to_scan_error(err: LoadError) -> ScanEntryError {
-    match err {
-        LoadError::LibraryOpen(_) => {
-            ScanEntryError::AbiMismatch(ValidationError::VtablePointerNull)
-        }
-        LoadError::Validation(v) => ScanEntryError::AbiMismatch(v),
-        LoadError::DriverError(msg) => ScanEntryError::DriverError(msg),
-        LoadError::DriverPanicked => ScanEntryError::DriverPanicked,
-    }
-}
-
 /// Invoke the driver's `target` trampoline and return the sub-vtable /
 /// sub-handle pair, or a `LoadError` if the trampoline reported failure
 /// or returned a null vtable pointer on success.
@@ -243,73 +234,6 @@ impl RenderTarget for LoadedRenderTarget<'_> {
             }
             RcOutcome::Error(msg) => Err(RenderError::InvalidData(msg)),
         }
-    }
-}
-
-/// Copy a driver-allocated error string into an owned `String`, then
-/// round-trip the buffer back through the driver's `destroy_error_string`
-/// slot. Returns `"<no error message>"` if the pointer was null.
-fn read_and_free_error(vtable: &ClientRenderVTable, ptr: *mut c_char) -> String {
-    if ptr.is_null() {
-        return "<no error message>".to_owned();
-    }
-    // SAFETY: `ptr` is a driver-allocated null-terminated C-string.
-    let message = unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned();
-    // SAFETY: ownership round-trips to the driver's allocator.
-    unsafe { (vtable.destroy_error_string)(ptr) };
-    message
-}
-
-/// Outcome of a trampoline `c_int` return + error-string out-param,
-/// decoupled from the specific `Error` type that a given call site
-/// wants to surface. `translate_rc` maps this to `LoadError`; `submit`
-/// maps it to `RenderError` directly.
-enum RcOutcome {
-    Ok,
-    Panicked,
-    Error(String),
-}
-
-/// Classify an FFI return code + error-string out-param into an
-/// `RcOutcome`. Always consumes `err_ptr` (frees spurious-on-success or
-/// panic-path strings, reads + frees the error-path string).
-fn classify_rc(rc: c_int, err_ptr: *mut c_char, vtable: &ClientRenderVTable) -> RcOutcome {
-    match rc {
-        0 => {
-            if !err_ptr.is_null() {
-                // Defensive: a driver that writes an error string on
-                // success is misbehaving but we still free the buffer.
-                // SAFETY: driver-allocated CString round-trip.
-                unsafe { (vtable.destroy_error_string)(err_ptr) };
-            }
-            RcOutcome::Ok
-        }
-        -2 => {
-            if !err_ptr.is_null() {
-                // SAFETY: driver-allocated CString round-trip.
-                unsafe { (vtable.destroy_error_string)(err_ptr) };
-            }
-            RcOutcome::Panicked
-        }
-        _ => RcOutcome::Error(read_and_free_error(vtable, err_ptr)),
-    }
-}
-
-/// Translate an FFI return code + error-string out-param into a
-/// `Result<(), LoadError>`. Drop-time shutdown call sites that must
-/// discard errors can call this and ignore the result; the error
-/// string is still round-tripped through the driver's destroy slot.
-fn translate_rc(
-    rc: c_int,
-    err_ptr: *mut c_char,
-    vtable: &ClientRenderVTable,
-) -> Result<(), LoadError> {
-    match classify_rc(rc, err_ptr, vtable) {
-        RcOutcome::Ok => Ok(()),
-        RcOutcome::Panicked => Err(LoadError::DriverPanicked),
-        RcOutcome::Error(msg) => Err(LoadError::DriverError(msg)),
     }
 }
 

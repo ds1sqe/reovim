@@ -10,11 +10,14 @@
 //! driver's capabilities as safe trait objects or borrowed
 //! sub-handles.
 
+pub mod client_debug;
 pub mod client_render;
 pub mod error;
+mod rc;
 pub mod validation;
 
 pub use {
+    client_debug::{LoadedClientDebug, LoadedDebugObserver},
     client_render::{LoadedClientRender, LoadedRenderTarget},
     error::{LoadError, ScanEntryError, ValidationError},
 };

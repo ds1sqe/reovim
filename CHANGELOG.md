@@ -46,6 +46,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `reovim-driver-display`.
   - **#753** — client-foundation resumption (lands the first concrete
     `ClientRender` implementor on top of #769's foundation).
+### Added
+
+- **#770 Debug Surface — Phase 0**: client debug-surface subsys crate
+  (`reovim-client-subsys-debug`) exposing the `ClientDebugSurface`
+  driver trait, `DebugObserver` sub-handle trait, `DebugProbe` static
+  metadata, and the `#[repr(C)]` sibling vtables; the
+  `declare_client_debug_driver!` proc-macro in `uapi/driver-macros/`
+  (emits the FFI trampolines with `catch_unwind` panic isolation,
+  including the novel observer sub-vtable `next_frame` slot); the
+  runtime loader wrapper in
+  `clients/lib/subsys/driver-loader/` (`LoadedClientDebug` +
+  `LoadedDebugObserver` + `probe_from_path` pre-construct scan);
+  shared `crate::rc` module with the generic FFI return-code helpers
+  (extracted from `client_render.rs` so both driver families share
+  one logic path). Ships two PoC cdylibs under `tools/` — a happy
+  path with lifecycle-flags sentinel and an observer-panic fixture
+  proving the `catch_unwind` wiring on the new iterator-pump slot.
+  (#770)
 
 ### Changed
 

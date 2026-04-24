@@ -13,6 +13,8 @@
 //!   `render`, `capability`, `platform`, `protocol`).
 //! - #769 Phase 0 landing (2026-04-23): count = 8 (adds `driver-loader`
 //!   for the runtime-loaded driver ABI).
+//! - #770 Phase 0 landing (2026-04-24): count = 9 (adds `debug` for the
+//!   driver-owned debug surface).
 //!
 //! Activation phase: Phase A (added). The probe's assertion is unconditional.
 //! Do not add an `if count == 0 { return }` short-circuit — the probe must
@@ -21,8 +23,8 @@
 
 use {cargo_metadata::MetadataCommand, std::path::Path};
 
-/// The exact expected number of clients/lib/subsys/* crates after #769 Phase 0.
-const EXPECTED_COUNT: usize = 8;
+/// The exact expected number of clients/lib/subsys/* crates after #770 Phase 0.
+const EXPECTED_COUNT: usize = 9;
 
 #[test]
 fn client_subsys_crate_count_matches_ratchet() {

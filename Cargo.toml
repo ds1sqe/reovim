@@ -191,6 +191,7 @@ members = [
     "clients/lib/subsys/platform",
     "clients/lib/subsys/protocol",
     "clients/lib/subsys/driver-loader",
+    "clients/lib/subsys/debug",
 
     # Client-side ext platforms
     "ext/client/platforms/tui",
@@ -216,6 +217,8 @@ members = [
     "tools/driver-abi-poc-construct-err",
     "tools/driver-abi-poc-empty",
     "tools/driver-abi-poc-panic",
+    "tools/driver-debug-poc",
+    "tools/driver-debug-poc-observer-panic",
     "tools/perf-report",
     "tools/testing",
 
@@ -390,6 +393,9 @@ reovim-client-subsys-protocol = { path = "./clients/lib/subsys/protocol", versio
 
 # Client driver-loader subsystem (safe wrappers over driver cdylibs; libloading)
 reovim-client-subsys-driver-loader = { path = "./clients/lib/subsys/driver-loader", version = "0.15.0-dev" }
+
+# Client debug-surface subsystem (ClientDebugSurface trait + observer contract)
+reovim-client-subsys-debug = { path = "./clients/lib/subsys/debug", version = "0.15.0-dev" }
 
 # Client-side ext platforms (TUI runtime entry point)
 reovim-client-ext-platform-tui = { path = "./ext/client/platforms/tui", version = "0.15.0-dev" }

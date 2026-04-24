@@ -6,6 +6,7 @@
 
 use {
     super::*,
+    crate::rc::{read_and_free_error, translate_rc},
     reovim_client_subsys_render::{
         abi::{ClientRenderVTable, RenderTargetVTable},
         client_render::ClientRenderDriverProbe,

@@ -1,0 +1,16 @@
+[package]
+name = "reovim-client-subsys-debug"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Client debug-surface subsystem: ClientDebugSurface trait and observer contract"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
