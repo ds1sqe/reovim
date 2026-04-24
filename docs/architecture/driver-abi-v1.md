@@ -376,3 +376,107 @@ behavior. See CHANGELOG for the transitional note.
 `apps_standalone_bin_isolation.rs` forbids `apps/*` cross-deps at 2a
 (empty allowlist); Phase 2b edits the allowlist to admit the embedded
 launcher's library edges.
+
+## Launcher composition (Phase 2b)
+
+Phase 2b (locked decision L9) turns `apps/reovim/` into a dual-mode
+composition root. The launcher owns composition policy; the server
+and client runtimes own mechanism. One clap CLI, one
+`reovim_app_launcher::run` entry point, two composition strategies,
+four transport kinds.
+
+### Mechanism vs policy
+
+- **Mechanism** — what wire protocol connects server and client:
+  `inproc` (tonic over an in-process `DuplexStream`), `uds` (tonic
+  over a Unix-domain socket), `tcp` (tonic over `127.0.0.1:port`),
+  or `pipe` (tonic over an OS pipe; server- and client-side both
+  still placeholder — see status marker in the matrix below).
+- **Policy** — how the launcher assembles server and client:
+  *embedded* boots both in one process (default, `--transport
+  inproc`); *subprocess* forks sibling bins over a real kernel
+  transport (`--subprocess`); *external-grpc* forks only the client
+  and points it at an already-running server (`--external-grpc
+  HOST:PORT`, implies `--transport tcp`).
+
+### Transport matrix
+
+The seven supported `(launch-mode, transport)` pairs and the two
+invalid-pair categories:
+
+| Launch mode     | `inproc` | `pipe`      | `uds`    | `tcp`  |
+|-----------------|----------|-------------|----------|--------|
+| Embedded        | ✓ live   | placeholder | ✓ live   | ✓ live |
+| Subprocess      | rejected | placeholder | ✓ live   | ✓ live |
+| External-grpc   | rejected | rejected    | rejected | ✓ live |
+
+- **live** — wired end to end; `/e2e` covers the keystroke→frame
+  roundtrip.
+- **placeholder** — CLI accepts the flag and the launcher falls into
+  an `Unsupported` return with a pointer comment. Server-side
+  `Server::run_pipe` and the client-side tonic-over-pipe connector
+  are follow-on work; the matrix reflects the code you see today,
+  not what a release artifact would enforce.
+- **rejected** — semantically invalid. `TransportChoice::resolve`
+  emits a typed error (`InprocRequiresEmbedded` or
+  `ExternalGrpcRequiresTcp`) before the launcher opens any I/O.
+
+### Crate layout
+
+```
+apps/reovim/src/
+├── lib.rs                — pub fn run(cli: Cli) -> io::Result<()>
+├── subprocess.rs         — clap CLI surface: Cli, Cmd, ClientKind
+├── subprocess_compose.rs — subprocess orchestrator: spawn roles + SIGINT fan-out
+├── embedded.rs           — embedded composition: run_inproc / run_uds / run_tcp
+├── lifecycle.rs          — ShutdownCoord (tokio broadcast wrapper)
+└── transport.rs          — LaunchMode, TransportKind, TransportChoice, resolve()
+```
+
+- `subprocess.rs` is purely the **CLI surface** — clap types (`Cli`,
+  `Cmd`, `ClientKind`) and the passthrough subcommand dispatch
+  (`reovim tui|cli|...` → `Command::new("reovim-<kind>")`).
+- `subprocess_compose.rs` is the **subprocess orchestrator** — it
+  spawns `reovim-server` plus the selected client bin and forwards
+  SIGINT to each child in reverse spawn order (client first, server
+  second), escalating to `Child::kill()` after a 5s grace window.
+- `embedded.rs` wires the single-process composition: one tokio
+  runtime hosts the server on a background task and the client on
+  the main task; `Server::shutdown` drains the server when the
+  client returns, with a 2s abort fallback
+  (`SHUTDOWN_DRAIN_TIMEOUT`) for tonic connections that cannot
+  converge.
+- `lifecycle.rs` holds `ShutdownCoord`, a `tokio::sync::broadcast`
+  wrapper that fans ctrl-c out to the server task.
+- `transport.rs` holds the composition-level validation rules —
+  clap admits every `(launch-mode, transport)` pair at the parse
+  stage; `TransportChoice::resolve` rejects the semantically
+  invalid combinations with typed errors so the launcher fails
+  before any I/O.
+
+### Embedded default and `cargo install`
+
+`cargo install reovim` produces a single binary that boots the
+embedded TUI on `inproc` by default — no sibling bins required on
+`$PATH`. This restores the OOB behavior broken at Phase 2a.
+Downstream packagers who prefer split bins can disable the
+`embedded-tui` default feature to get a subprocess-only launcher
+(the Phase 2a shape). The `embedded-cli` and `embedded-web`
+features are scaffold-only and light up alongside the one-shot CLI
+and SSR web paths.
+
+### Verification
+
+- `apps/reovim/tests/transport_matrix.rs` — enumerates the 7 valid
+  pairs and the invalid-pair rejections; the 4 rejections run
+  in-process; the 7 roundtrips are `#[ignore]`'d pending the `/e2e`
+  harness.
+- `apps/reovim/tests/embedded_smoke.rs` — asserts the lifecycle
+  sequencing invariant (client exits, `Server::shutdown` fires,
+  server task joins) with a mock client future.
+- `apps/reovim/tests/subprocess_smoke.rs` — `#[ignore]`'d live-process
+  SIGINT smoke pending the `/e2e` harness.
+- `scripts/cross-install-check.sh` — `cargo install --path
+  apps/reovim --root tmp/2b-install-check` then probes `--version`
+  and `--help` under a sanitised `PATH`. Validates master-plan
+  acceptance #6.

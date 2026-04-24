@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **#769 ABI Foundation — launcher lifecycle ordering** (Phase 2b):
+  Embedded mode drains the client before the server: when the TUI
+  returns, the launcher calls `Server::shutdown` on the shared
+  `Arc<Server>` and joins the server task with a 2s abort fallback
+  (`SHUTDOWN_DRAIN_TIMEOUT` in `apps/reovim/src/embedded.rs`) for
+  tonic connections stuck before the HTTP/2 preface. Subprocess
+  mode forwards SIGINT/SIGTERM to children in reverse spawn order
+  (client first, server second) with a 5s grace window before
+  escalating to `Child::kill()`. Both paths converge on
+  client-exits-then-server behavior (invariant #6 in the launcher
+  design).
+
 - **#769 ABI Foundation — server default transport**: `reovim server`
   (no flags) now defaults to gRPC on port 12540 (was TCP-with-fallback),
   matching the TUI and CLI client defaults so a bare `reovim-server` is
@@ -47,6 +59,38 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   feature-gated launcher-to-sibling edges.
 
 ### Added
+
+- **#769 ABI Foundation — `reovim` dual-mode composition** (Phase 2b):
+  The top-level `reovim` launcher now boots the server + selected client
+  in one process by default (embedded mode, `inproc` transport),
+  restoring the `cargo install reovim` out-of-the-box experience broken
+  at Phase 2a. Subprocess composition is opt-in via `--subprocess` or
+  `--external-grpc HOST:PORT`, which spawns sibling bins over the
+  configured transport and forwards SIGINT in reverse spawn order.
+  Composition is policy (selected via CLI flags); transport is
+  mechanism (selected via `--transport`). One clap surface, one
+  `reovim_app_launcher::run` entry point, seven supported
+  (launch-mode, transport) pairs.
+
+- **#769 ABI Foundation — transport selector CLI** (Phase 2b):
+  `reovim --transport <inproc|pipe|uds|tcp>` plus `--uds-path <PATH>`
+  and `--tcp-addr <HOST:PORT>` pick the gRPC transport regardless of
+  composition mode. Defaults resolve from the launch mode (embedded →
+  `inproc`, subprocess → `uds` on Unix / `tcp` elsewhere, external-grpc
+  → `tcp`). `transport::TransportChoice::resolve` enforces the semantic
+  rules layered on top of clap's raw parse: `--transport inproc` is
+  rejected under `--subprocess` / `--external-grpc`
+  (`InprocRequiresEmbedded`); `--transport pipe|uds` is rejected under
+  `--external-grpc` (`ExternalGrpcRequiresTcp`).
+
+- **#769 ABI Foundation — `embedded-{tui,cli,web}` cargo features**
+  (Phase 2b): `reovim-app-launcher` gains three opt-in features that
+  select which embedded client the launcher links into the bin.
+  `embedded-tui` is the default and brings in the TUI client runtime;
+  `embedded-cli` and `embedded-web` are scaffold-only today and will
+  light up alongside the one-shot CLI and SSR web paths. Opting out
+  (`--no-default-features`) yields a subprocess-only launcher — the
+  Phase 2a shape — for downstream packagers who prefer split bins.
 
 - **#769 ABI Foundation — transport matrix + install verification**
   (sub-phase 2b.G): `apps/reovim/tests/transport_matrix.rs` enumerates
