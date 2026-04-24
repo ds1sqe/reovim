@@ -7,6 +7,20 @@
 //! embedded composition. All other `apps/*` → `apps/*` edges are
 //! forbidden.
 //!
+//! Canonical edge list and the feature gates in `apps/reovim/Cargo.toml`
+//! that admit each edge:
+//!
+//! | Edge                                               | Admitting feature |
+//! |----------------------------------------------------|-------------------|
+//! | `reovim-app-launcher` → `reovim-app-server`        | `embedded`        |
+//! | `reovim-app-launcher` → `reovim-app-tui`           | `embedded-tui`    |
+//! | `reovim-app-launcher` → `reovim-app-cli`           | `embedded-cli`    |
+//! | `reovim-app-launcher` → `reovim-app-web`           | `embedded-web`    |
+//!
+//! The sibling-specific companion probe `apps_reovim_launcher_scope.rs`
+//! enforces the orthogonal rule that every admitted edge be declared
+//! `optional = true` and referenced as `dep:<name>` from its feature.
+//!
 //! Implementation borrows the `cargo_metadata`-based pattern from
 //! `core_ext_boundary.rs`:
 //!

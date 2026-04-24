@@ -11,6 +11,21 @@
 //! least one named feature (the feature gate is what admits the dep
 //! under cargo resolution). Any other `reovim-*` production dep, or
 //! an allowlisted dep not behind a feature gate, is a violation.
+//!
+//! Canonical allowlist and the feature gates that admit each entry:
+//!
+//! | Dep                 | Admitting feature(s)                |
+//! |---------------------|-------------------------------------|
+//! | `reovim-app-server` | `embedded` (shared root)            |
+//! | `reovim-server`     | `embedded` (shared root)            |
+//! | `reovim-app-tui`    | `embedded-tui` (transitively `embedded`) |
+//! | `reovim-app-cli`    | `embedded-cli` (transitively `embedded`) |
+//! | `reovim-app-web`    | `embedded-web` (transitively `embedded`) |
+//!
+//! `reovim-server` and `reovim-app-server` are admitted only via the
+//! shared `embedded` base feature — never directly from a per-client
+//! feature. That keeps the server-side wiring orthogonal to which
+//! client feature is selected.
 
 use {
     cargo_metadata::{DependencyKind, MetadataCommand},
