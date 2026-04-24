@@ -2221,7 +2221,11 @@ name = "reovim-app-launcher"
 version = "0.15.0-dev"
 dependencies = [
  "clap",
- "tokio",
+ "reovim-app-cli",
+ "reovim-app-server",
+ "reovim-app-tui",
+ "reovim-app-web",
+ "reovim-server",
 ]
 
 [[package]]

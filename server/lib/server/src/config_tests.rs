@@ -75,3 +75,39 @@ fn server_config_clone() {
     let cloned = config.clone();
     assert_eq!(cloned.instance_name, "test");
 }
+
+#[test]
+fn server_config_inproc() {
+    let config = ServerConfig::inproc();
+    assert!(matches!(config.transport, TransportMode::Inproc));
+    assert_eq!(config.instance_name, "default");
+}
+
+#[test]
+fn server_config_pipe() {
+    let config = ServerConfig::pipe();
+    assert!(matches!(config.transport, TransportMode::Pipe));
+    assert_eq!(config.instance_name, "default");
+}
+
+#[test]
+fn transport_mode_inproc_debug_is_clean() {
+    let mode = TransportMode::Inproc;
+    let debug = format!("{mode:?}");
+    assert!(debug.contains("Inproc"));
+}
+
+#[test]
+fn transport_mode_pipe_debug_is_clean() {
+    let mode = TransportMode::Pipe;
+    let debug = format!("{mode:?}");
+    assert!(debug.contains("Pipe"));
+}
+
+#[test]
+fn inproc_channel_pair_yields_two_independent_ends() {
+    // Smoke-check the constructor: returns two DuplexStream halves.
+    // Full echo-through exercising belongs with the transport loop
+    // that consumes the pair (tracked under #769).
+    let (_a, _b) = crate::inproc_channel_pair();
+}

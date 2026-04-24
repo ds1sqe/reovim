@@ -7,7 +7,14 @@ use std::path::PathBuf;
 
 /// Transport configuration for the server.
 ///
-/// Determines how the server accepts client connections.
+/// Determines how the server accepts client connections. `Inproc` and
+/// `Pipe` are marker discriminants: the underlying stream handles are
+/// passed to [`Server::run_inproc`] / [`Server::run_pipe`] separately
+/// so this enum stays `Clone + Debug` and the raw stream types don't
+/// leak through `ServerConfig`'s public surface.
+///
+/// [`Server::run_inproc`]: crate::Server::run_inproc
+/// [`Server::run_pipe`]: crate::Server::run_pipe
 #[derive(Debug, Clone, Default)]
 pub enum TransportMode {
     /// TCP with automatic port fallback (12540-12549 for new server).
@@ -35,6 +42,19 @@ pub enum TransportMode {
         /// Port to bind gRPC server to.
         port: u16,
     },
+
+    /// In-process composition — the server shares one `DuplexStream`
+    /// with an embedded client. Pair the stream with
+    /// [`inproc_channel_pair`](crate::inproc_channel_pair); the server
+    /// consumes one end via [`Server::run_inproc`](crate::Server::run_inproc).
+    Inproc,
+
+    /// OS-pipe transport — the server reads from / writes to a pair
+    /// of `AsyncRead + AsyncWrite` handles (typically the launcher's
+    /// child-stdio pair, or `stdin`/`stdout` for the standalone bin).
+    /// The handles are passed to
+    /// [`Server::run_pipe`](crate::Server::run_pipe).
+    Pipe,
 }
 
 /// Server configuration.
@@ -85,6 +105,32 @@ impl ServerConfig {
     pub fn unix_socket(path: impl Into<PathBuf>) -> Self {
         Self {
             transport: TransportMode::UnixSocket { path: path.into() },
+            ..Self::default()
+        }
+    }
+
+    /// Create config for in-process (inproc) transport.
+    ///
+    /// The server-side `DuplexStream` is handed to
+    /// [`Server::run_inproc`](crate::Server::run_inproc) separately;
+    /// this config carries only the marker discriminant.
+    #[must_use]
+    pub fn inproc() -> Self {
+        Self {
+            transport: TransportMode::Inproc,
+            ..Self::default()
+        }
+    }
+
+    /// Create config for OS-pipe transport.
+    ///
+    /// The `AsyncRead` + `AsyncWrite` pair is handed to
+    /// [`Server::run_pipe`](crate::Server::run_pipe) separately;
+    /// this config carries only the marker discriminant.
+    #[must_use]
+    pub fn pipe() -> Self {
+        Self {
+            transport: TransportMode::Pipe,
             ..Self::default()
         }
     }

@@ -1,13 +1,11 @@
 //! Standalone-bin isolation guard (#769).
 //!
-//! Every crate under `apps/` is a standalone composition root: no
-//! `apps/*` crate may declare a production dependency on another
-//! `apps/*` crate. The allowlist is empty.
-//!
-//! Relax this probe to allow specific
-//! `apps/reovim/` → `apps/{server,tui,cli,web}` library-target edges
-//! when an in-process launcher lands (as optional deps behind named
-//! features).
+//! Every crate under `apps/` is a standalone composition root. The
+//! only `apps/*` → `apps/*` edges permitted are the four
+//! `reovim-app-launcher` → `reovim-app-{server,tui,cli,web}` edges that
+//! the dual-mode launcher uses to pull sibling `lib` targets into an
+//! embedded composition. All other `apps/*` → `apps/*` edges are
+//! forbidden.
 //!
 //! Implementation borrows the `cargo_metadata`-based pattern from
 //! `core_ext_boundary.rs`:
@@ -28,8 +26,14 @@ use {
     },
 };
 
-/// Allowed `(origin, target)` edges inside `apps/`. Currently empty.
-const ALLOWED_EDGES: &[(&str, &str)] = &[];
+/// Allowed `(origin, target)` edges inside `apps/`. Exactly the four
+/// launcher-to-sibling-lib edges that embedded composition requires.
+const ALLOWED_EDGES: &[(&str, &str)] = &[
+    ("reovim-app-launcher", "reovim-app-server"),
+    ("reovim-app-launcher", "reovim-app-tui"),
+    ("reovim-app-launcher", "reovim-app-cli"),
+    ("reovim-app-launcher", "reovim-app-web"),
+];
 
 #[test]
 fn no_standalone_bin_depends_on_another() {
@@ -72,18 +76,15 @@ fn no_standalone_bin_depends_on_another() {
                 continue;
             }
 
-            violations.push(format!(
-                "{} ({}) -> {} ({})",
-                pkg.name, origin_rel, dep.name, target_rel,
-            ));
+            violations
+                .push(format!("{} ({}) -> {} ({})", pkg.name, origin_rel, dep.name, target_rel));
         }
     }
 
     assert!(
         violations.is_empty(),
-        "apps/* crates depend on each other (forbidden today; relax this probe when an \
-         in-process launcher is wired to allow apps/reovim/ → \
-         apps/{{server,tui,cli,web}} library-target edges):\n  {}",
+        "apps/* crates depend on each other (only the four launcher→sibling edges are \
+         permitted):\n  {}",
         violations.join("\n  "),
     );
 }

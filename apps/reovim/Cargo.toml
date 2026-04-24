@@ -4,23 +4,36 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "The reovim launcher bin (subprocess-only passthrough; embedded composition mode is not yet implemented)"
+description = "The reovim launcher bin: subprocess dispatcher today; optional dependencies and feature flags are declared for a future in-process composition mode tracked under #769."
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-# The `reovim` launcher bin — subprocess-only today, so the external
-# `cargo install reovim` contract resolves to a passthrough that
-# dispatches to `reovim-server`, `reovim-tui`, `reovim-cli`, or
-# `reovim-web`. Dual-mode (embedded + subprocess) composition lands
-# once the launcher grows to host an in-process runtime.
 [[bin]]
 name = "reovim"
 path = "src/main.rs"
 
+[features]
+default = ["embedded-tui", "subprocess"]
+# `embedded` is the shared root — pulls the server-lib + reovim-server
+# config types. Any `embedded-*` client feature turns it on.
+embedded = ["dep:reovim-app-server", "dep:reovim-server"]
+embedded-tui = ["dep:reovim-app-tui", "embedded"]
+embedded-cli = ["dep:reovim-app-cli", "embedded"]
+embedded-web = ["dep:reovim-app-web", "embedded"]
+# Subprocess mode has no reovim-* deps — it spawns sibling bins by
+# name. The feature exists so packagers can drop all embedded code
+# with `--no-default-features --features subprocess`.
+subprocess = []
+
 [dependencies]
 clap = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+
+reovim-app-server = { workspace = true, optional = true }
+reovim-app-tui = { workspace = true, optional = true }
+reovim-app-cli = { workspace = true, optional = true }
+reovim-app-web = { workspace = true, optional = true }
+reovim-server = { workspace = true, optional = true }
 
 [lints]
 workspace = true

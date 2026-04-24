@@ -27,8 +27,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Phase 2b (locked decision L9) grows `apps/reovim/` into a dual-mode
   composition root (embedded default + subprocess + four transports),
   restoring the OOB embedded behavior.
+- **#769 ABI Foundation — dual-mode composition scaffolding**: `apps/reovim/`
+  (package `reovim-app-launcher`) is promoted from a pure `[[bin]]` crate to a
+  `lib + bin` crate. Optional feature-gated deps on `reovim-app-server` and
+  `reovim-app-tui` enable the embedded path without forcing those crates into
+  the subprocess-only build. `apps/reovim/src/subprocess.rs` encapsulates
+  subprocess dispatch. `apps_reovim_launcher_scope` and
+  `apps_standalone_bin_isolation` depgraph probes relaxed to admit the
+  feature-gated launcher-to-sibling edges.
 
 ### Added
+
+- **#769 ABI Foundation — Inproc/Pipe transport variants**: `TransportMode` gains
+  `Inproc` and `Pipe` unit variants in `server/lib/server/src/config.rs`.
+  `Server::run_inproc` and `Server::run_pipe` entry points added alongside the
+  existing `run` / `run_tcp` paths. `inproc_channel_pair` constructor provides
+  paired in-process send/receive handles for test and embedded use.
+  `transport_inproc.rs` and `transport_pipe.rs` implement the respective
+  transport initialisation paths.
 
 - **#769 ABI Foundation — Phase 2a**: new `ext/client/platforms/tui::run(args)`
   entry point — `TuiArgs`, `TuiRunError`, `pub fn run(args: TuiArgs) ->

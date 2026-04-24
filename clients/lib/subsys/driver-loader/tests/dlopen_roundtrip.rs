@@ -69,10 +69,9 @@ fn dlopen_construct_submit_drop_roundtrip() {
     // SAFETY: the sentinel holds the cdylib mapped; the exported
     // `reovim_driver_abi_poc_lifecycle_flags` symbol is an
     // `extern "C" fn() -> u32`.
-    let flags_fn: Symbol<'_, unsafe extern "C" fn() -> u32> = unsafe {
-        sentinel.get(b"reovim_driver_abi_poc_lifecycle_flags")
-    }
-    .expect("find lifecycle flags accessor");
+    let flags_fn: Symbol<'_, unsafe extern "C" fn() -> u32> =
+        unsafe { sentinel.get(b"reovim_driver_abi_poc_lifecycle_flags") }
+            .expect("find lifecycle flags accessor");
     let flags = unsafe { flags_fn() };
     assert_eq!(
         flags & FLAG_SHUTDOWN,
@@ -95,18 +94,16 @@ fn panicking_driver_is_caught_at_trampoline_boundary() {
         path.display()
     );
 
-    let mut driver =
-        LoadedClientRender::load_from_path(&path).expect("load panic `PoC` cdylib");
+    let mut driver = LoadedClientRender::load_from_path(&path).expect("load panic `PoC` cdylib");
     let mut target = driver.target().expect("borrow target");
     let err = target.submit(b"triggers panic").unwrap_err();
     // Trampoline caught the panic, returned -2, host surfaced it as an
     // `InvalidData` with the "panicked" marker. If `catch_unwind` was
     // missing, this call would abort the test process instead.
     match err {
-        RenderError::InvalidData(ref m) => assert!(
-            m.contains("panicked"),
-            "expected panic-marked error message, got: {m}"
-        ),
+        RenderError::InvalidData(ref m) => {
+            assert!(m.contains("panicked"), "expected panic-marked error message, got: {m}");
+        }
         RenderError::NotReady => panic!("expected InvalidData error, got NotReady"),
     }
 }
@@ -163,10 +160,7 @@ fn load_from_cdylib_without_vtable_symbol_reports_library_open_error() {
 
 #[test]
 fn from_path_scan_stages_all_four_poc_cdylibs_and_surfaces_per_entry_results() {
-    use {
-        reovim_client_subsys_driver_loader::ScanEntryError,
-        std::fs,
-    };
+    use {reovim_client_subsys_driver_loader::ScanEntryError, std::fs};
 
     // Stage all four Phase 0 PoC cdylibs into a synthetic driver root.
     let root = tempfile::tempdir().unwrap();

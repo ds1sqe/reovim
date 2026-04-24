@@ -6,7 +6,9 @@ use super::*;
 
 #[test]
 fn dispatch_server_forwards_args_verbatim() {
-    let cmd = Cmd::Server { args: vec!["--grpc".into(), "12540".into()] };
+    let cmd = Cmd::Server {
+        args: vec!["--grpc".into(), "12540".into()],
+    };
     let d = dispatch_for(&cmd);
     assert_eq!(d.bin, "reovim-server");
     assert!(d.leading_args.is_empty());
@@ -22,7 +24,9 @@ fn dispatch_tui_uses_reovim_tui_bin() {
 
 #[test]
 fn dispatch_cli_uses_reovim_cli_bin() {
-    let cmd = Cmd::Cli { args: vec!["ping".into()] };
+    let cmd = Cmd::Cli {
+        args: vec!["ping".into()],
+    };
     let d = dispatch_for(&cmd);
     assert_eq!(d.bin, "reovim-cli");
     assert_eq!(d.forwarded_args, &["ping".to_owned()]);
@@ -32,7 +36,9 @@ fn dispatch_cli_uses_reovim_cli_bin() {
 fn dispatch_module_prefixes_reovim_server_with_module_leading_arg() {
     // `reovim module X` routes through `reovim-server module X`,
     // avoiding a separate module bin.
-    let cmd = Cmd::Module { args: vec!["list".into()] };
+    let cmd = Cmd::Module {
+        args: vec!["list".into()],
+    };
     let d = dispatch_for(&cmd);
     assert_eq!(d.bin, "reovim-server");
     assert_eq!(d.leading_args, &["module"]);
@@ -56,8 +62,11 @@ struct RecordingSpawner {
 impl CommandSpawn for RecordingSpawner {
     fn spawn(&self, dispatch: &Dispatch<'_>) -> std::io::Result<ExitStatus> {
         *self.seen_bin.borrow_mut() = Some(dispatch.bin.to_owned());
-        let mut captured: Vec<String> =
-            dispatch.leading_args.iter().map(ToString::to_string).collect();
+        let mut captured: Vec<String> = dispatch
+            .leading_args
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         captured.extend(dispatch.forwarded_args.iter().cloned());
         *self.seen_args.borrow_mut() = captured;
         Ok(exit_status_with_code(self.exit_code))
@@ -88,15 +97,14 @@ fn recording_spawner_captures_server_bin_name_and_args() {
         seen_bin: std::cell::RefCell::new(None),
         seen_args: std::cell::RefCell::new(Vec::new()),
     };
-    let cmd = Cmd::Server { args: vec!["--grpc".into(), "12540".into()] };
+    let cmd = Cmd::Server {
+        args: vec!["--grpc".into(), "12540".into()],
+    };
     let dispatch = dispatch_for(&cmd);
     let status = spawner.spawn(&dispatch).expect("spawn ok");
     assert_eq!(status.code(), Some(0));
     assert_eq!(spawner.seen_bin.borrow().as_deref(), Some("reovim-server"));
-    assert_eq!(
-        &*spawner.seen_args.borrow(),
-        &["--grpc".to_owned(), "12540".to_owned()]
-    );
+    assert_eq!(&*spawner.seen_args.borrow(), &["--grpc".to_owned(), "12540".to_owned()]);
 }
 
 #[cfg(unix)]
@@ -107,11 +115,10 @@ fn recording_spawner_captures_module_dispatch_prefix() {
         seen_bin: std::cell::RefCell::new(None),
         seen_args: std::cell::RefCell::new(Vec::new()),
     };
-    let cmd = Cmd::Module { args: vec!["list".into()] };
+    let cmd = Cmd::Module {
+        args: vec!["list".into()],
+    };
     let dispatch = dispatch_for(&cmd);
     let _ = spawner.spawn(&dispatch).expect("spawn ok");
-    assert_eq!(
-        &*spawner.seen_args.borrow(),
-        &["module".to_owned(), "list".to_owned()]
-    );
+    assert_eq!(&*spawner.seen_args.borrow(), &["module".to_owned(), "list".to_owned()]);
 }

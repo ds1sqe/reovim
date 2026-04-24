@@ -19,8 +19,10 @@
 
 use std::sync::Arc;
 
-use clap::{Parser, Subcommand};
-use reovim_server::{Server, ServerConfig, TransportMode};
+use {
+    clap::{Parser, Subcommand, ValueEnum},
+    reovim_server::{Server, ServerConfig, TransportMode},
+};
 
 pub mod bootstrap;
 pub mod logging;
@@ -66,9 +68,26 @@ pub struct ServerArgs {
     #[arg(long, global = true, value_name = "PATH")]
     pub log: Option<std::path::PathBuf>,
 
+    /// Transport kind for stream-based transports that do not fit the
+    /// port-style flags above. `pipe` wires the server's gRPC stack
+    /// over `stdin`/`stdout`; `inproc` is reserved for the embedded
+    /// launcher and is rejected at the standalone bin.
+    #[arg(long, value_name = "KIND", global = true)]
+    pub transport: Option<TransportArg>,
+
     /// Optional subcommand (e.g. `module`). If omitted, starts the server.
     #[command(subcommand)]
     pub command: Option<ServerCommand>,
+}
+
+/// CLI spelling of stream-based transport kinds accepted by the
+/// standalone `reovim-server` bin's `--transport` flag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum TransportArg {
+    /// Read from stdin, write to stdout.
+    Pipe,
+    /// Reserved for the embedded launcher; rejected at the standalone bin.
+    Inproc,
 }
 
 /// Subcommands under `reovim-server`.
@@ -135,11 +154,11 @@ fn init_tracing(verbose: bool, log: Option<&std::path::Path>) {
 /// 4. Custom panic handler
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn init_debug_infrastructure() {
-    use reovim_kernel::api::v1::{
-        DebugContext, install_panic_handler, set_debug_context_callback,
-    };
-    use reovim_server::debug::{
-        COMPOSITE_LOGGER, DebugRingBuffer, init_debug_ring, try_debug_ring,
+    use {
+        reovim_kernel::api::v1::{DebugContext, install_panic_handler, set_debug_context_callback},
+        reovim_server::debug::{
+            COMPOSITE_LOGGER, DebugRingBuffer, init_debug_ring, try_debug_ring,
+        },
     };
 
     // 1. Initialize global debug ring buffer
@@ -175,28 +194,48 @@ fn init_debug_infrastructure() {
 
 /// Determine transport mode from CLI arguments.
 ///
-/// Priority: gRPC > Unix socket > TCP > TCP fallback.
+/// `--transport pipe` takes priority and maps to `TransportMode::Pipe`.
+/// `--transport inproc` is rejected with a pointer at the embedded
+/// launcher. Port-style flags follow: gRPC > Unix socket > TCP > TCP
+/// fallback.
+///
+/// # Errors
+///
+/// Returns `InvalidInput` when `--transport inproc` is passed to the
+/// standalone bin — inproc has no OS-crossing wire and must be driven
+/// by the embedded launcher.
 #[allow(unused_variables)]
-#[must_use]
 pub(crate) fn determine_transport(
     tcp: Option<u16>,
     grpc: Option<u16>,
     #[cfg(unix)] socket: Option<std::path::PathBuf>,
-) -> TransportMode {
+    transport: Option<TransportArg>,
+) -> std::io::Result<TransportMode> {
+    if let Some(kind) = transport {
+        return match kind {
+            TransportArg::Pipe => Ok(TransportMode::Pipe),
+            TransportArg::Inproc => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "inproc transport requires embedded mode — invoke the reovim launcher \
+                 without --subprocess instead of running reovim-server --transport inproc",
+            )),
+        };
+    }
+
     if let Some(port) = grpc {
-        return TransportMode::Grpc { port };
+        return Ok(TransportMode::Grpc { port });
     }
 
     #[cfg(unix)]
     if let Some(path) = socket {
-        return TransportMode::UnixSocket { path };
+        return Ok(TransportMode::UnixSocket { path });
     }
 
     if let Some(port) = tcp {
-        return TransportMode::Tcp { port };
+        return Ok(TransportMode::Tcp { port });
     }
 
-    TransportMode::TcpWithFallback
+    Ok(TransportMode::TcpWithFallback)
 }
 
 /// Run the standalone `reovim-server` flow.
@@ -227,10 +266,11 @@ async fn run_server(args: ServerArgs) -> std::io::Result<()> {
         args.grpc,
         #[cfg(unix)]
         args.socket,
-    );
+        args.transport,
+    )?;
 
     let config = ServerConfig {
-        transport,
+        transport: transport.clone(),
         instance_name: args.instance,
         default_session_name: args.session,
     };
@@ -249,5 +289,10 @@ async fn run_server(args: ServerArgs) -> std::io::Result<()> {
     if let Some(driver) = bootstrap.domain_driver {
         server = server.with_domain_driver(driver);
     }
-    server.run().await
+    match transport {
+        TransportMode::Pipe => server
+            .run_pipe(tokio::io::stdin(), tokio::io::stdout())
+            .await,
+        _ => server.run().await,
+    }
 }

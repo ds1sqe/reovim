@@ -307,7 +307,52 @@ impl<M: Send + Sync> Server<M> {
             #[cfg(unix)]
             TransportMode::UnixSocket { path } => self.run_unix(path).await,
             TransportMode::Grpc { port } => self.run_grpc(*port, None, None).await,
+            TransportMode::Inproc => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "TransportMode::Inproc requires Server::run_inproc(stream) — \
+                 call it directly from the embedded launcher instead of run()",
+            )),
+            TransportMode::Pipe => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "TransportMode::Pipe requires Server::run_pipe(read, write) — \
+                 call it directly from the subprocess pipe launcher instead of run()",
+            )),
         }
+    }
+
+    /// Run the server over the in-process `DuplexStream` handed in by
+    /// an embedded launcher.
+    ///
+    /// Bypasses `Server::run`'s transport dispatch; call this method
+    /// directly when `config.transport == TransportMode::Inproc`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any transport error from the inproc gRPC loop.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn run_inproc(&self, stream: tokio::io::DuplexStream) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
+        crate::transport_inproc::run(stream).await
+    }
+
+    /// Run the server over an OS-pipe (`AsyncRead` + `AsyncWrite`) pair.
+    ///
+    /// Bypasses `Server::run`'s transport dispatch; call this method
+    /// directly when `config.transport == TransportMode::Pipe`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any transport error from the pipe gRPC loop.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn run_pipe<R, W>(&self, read: R, write: W) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+        R: tokio::io::AsyncRead + Send + Unpin + 'static,
+        W: tokio::io::AsyncWrite + Send + Unpin + 'static,
+    {
+        crate::transport_pipe::run(read, write).await
     }
 
     /// Run with TCP transport, trying ports 12540-12549.

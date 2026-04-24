@@ -40,6 +40,9 @@ mod server;
 #[cfg(feature = "grpc")]
 pub(crate) mod tick;
 
+pub mod transport_inproc;
+pub mod transport_pipe;
+
 // Public API
 pub use {
     app::AppState,
@@ -51,3 +54,21 @@ pub use {
     server::{Server, SessionFactory},
     session::{Session, SessionId, SessionRegistry, SessionState, SyntaxStreamState},
 };
+
+/// Creates a pair of bidirectional in-memory streams for inproc
+/// transport.
+///
+/// Returns `(server_side, client_side)`. The server end is passed to
+/// [`Server::run_inproc`]; the client end goes to the in-process
+/// client's connect function. Capacity is the tokio default
+/// `duplex()` size — enough for a keystroke-per-frame workload with
+/// headroom for burstier paint cycles.
+///
+/// Exposed as a constructor so callers don't re-export the raw
+/// `tokio::io::DuplexStream` type through the launcher's public
+/// surface.
+#[must_use]
+pub fn inproc_channel_pair() -> (tokio::io::DuplexStream, tokio::io::DuplexStream) {
+    const INPROC_BUFFER_BYTES: usize = 64 * 1024;
+    tokio::io::duplex(INPROC_BUFFER_BYTES)
+}
