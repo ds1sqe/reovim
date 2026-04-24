@@ -2,17 +2,72 @@
 //! dispatches to the matching sibling bin via
 //! `std::process::Command` and propagates the child's exit code.
 
-use std::process::{Command, ExitStatus};
+use std::{
+    path::PathBuf,
+    process::{Command, ExitStatus},
+};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+use crate::transport::TransportKind;
 
 /// Top-level CLI for the `reovim` launcher.
 #[derive(Parser, Debug)]
 #[command(name = "reovim")]
-#[command(version, about = "reovim launcher (subprocess-only today; in-process composition mode is tracked under #769)", long_about = None)]
+#[command(version, about = "reovim launcher (dual-mode: embedded default; subprocess via --subprocess)", long_about = None)]
 pub struct Cli {
+    /// Which embedded client to boot alongside the server.
+    ///
+    /// Only consulted when the launcher runs embedded mode (no
+    /// subcommand, no `--subprocess`, no `--external-grpc`). Passthrough
+    /// subcommands (`reovim tui|cli|...`) ignore this flag.
+    #[arg(long, value_enum, default_value_t = ClientKind::Tui)]
+    pub client: ClientKind,
+
+    /// Do not boot an embedded server; requires `--subprocess` or
+    /// `--external-grpc`.
+    #[arg(long)]
+    pub no_server: bool,
+
+    /// Force subprocess composition: launcher spawns each role as a
+    /// sibling bin over the configured transport.
+    #[arg(long)]
+    pub subprocess: bool,
+
+    /// Connect the embedded client to an already-running external gRPC
+    /// server at `HOST:PORT`; implies `--subprocess` (launcher spawns
+    /// no server) and `--transport tcp`.
+    #[arg(long, value_name = "HOST:PORT")]
+    pub external_grpc: Option<String>,
+
+    /// Transport selector. Default resolves from the launch mode:
+    /// embedded → `inproc`, subprocess → `uds` on Unix / `tcp`
+    /// elsewhere, external-grpc → `tcp`.
+    #[arg(long, value_enum)]
+    pub transport: Option<TransportKind>,
+
+    /// Override the Unix-socket path (`--transport uds` only).
+    #[arg(long, value_name = "PATH")]
+    pub uds_path: Option<PathBuf>,
+
+    /// Override the TCP address (`--transport tcp` only).
+    #[arg(long, value_name = "HOST:PORT")]
+    pub tcp_addr: Option<String>,
+
     #[command(subcommand)]
     pub command: Option<Cmd>,
+}
+
+/// Which embedded client the launcher boots when running embedded mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "lowercase")]
+pub enum ClientKind {
+    /// Terminal UI — the default, opt-out via `--client cli|web`.
+    Tui,
+    /// CLI one-shot commands against the embedded server.
+    Cli,
+    /// Web UI (stub today; `embedded-web` feature required to build in).
+    Web,
 }
 
 #[derive(Subcommand, Debug)]

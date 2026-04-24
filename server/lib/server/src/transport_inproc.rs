@@ -1,24 +1,32 @@
 //! In-process gRPC transport.
 //!
-//! Will eventually run the tonic gRPC stack over a single
-//! `DuplexStream` connection handed in by an embedded launcher. The
-//! service assembly is deferred (tracked under #769); the current
-//! body is a placeholder that surfaces the deferral as an
-//! `io::Error::other`.
+//! Serves the reovim tonic stack over a single
+//! [`tokio::io::DuplexStream`] connection supplied by an embedded
+//! launcher. Tonic 0.12 implements its own `Connected` impl for
+//! [`tokio::io::DuplexStream`], so no wrapper is required — the loop
+//! here is simply a single-item `Stream<Item = Result<DuplexStream,
+//! io::Error>>` handed to the pre-built router's
+//! `serve_with_incoming`.
+//!
+//! Graceful shutdown (broadcast signal + server drain) is the 2b.E
+//! deliverable; this path relies on the launcher aborting the tokio
+//! task that owns `run(..)` when the client side has exited, which
+//! drops the `DuplexStream` and ends the stream.
 
-use tokio::io::DuplexStream;
+use {tokio::io::DuplexStream, tonic::transport::server::Router};
 
-/// Drives the server's gRPC stack over a single `DuplexStream`
-/// connection (the server-side end of a
-/// [`crate::inproc_channel_pair`] duplex).
+/// Serve the pre-built `router` over `stream`.
 ///
 /// # Errors
 ///
-/// Placeholder — always returns `io::Error::other(..)` until the
-/// tonic service assembly is wired. Tracked under #769.
-// Async signature reserved for the future tonic service assembly — a
-// sync stub would force a breaking signature change later.
-#[allow(clippy::unused_async)]
-pub async fn run(_stream: DuplexStream) -> std::io::Result<()> {
-    Err(std::io::Error::other("inproc transport not yet wired"))
+/// Returns the tonic transport error when the service loop stops with
+/// a failure (the happy path ends when the stream is dropped and no
+/// new connections are produced).
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn run(stream: DuplexStream, router: Router) -> std::io::Result<()> {
+    let incoming = tokio_stream::once(Ok::<DuplexStream, std::io::Error>(stream));
+    router
+        .serve_with_incoming(incoming)
+        .await
+        .map_err(std::io::Error::other)
 }

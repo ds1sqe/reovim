@@ -46,6 +46,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `transport_inproc.rs` and `transport_pipe.rs` implement the respective
   transport initialisation paths.
 
+- **#769 ABI Foundation — embedded-mode CLI surface + functional inproc
+  transport**: `apps/reovim/` gains the dual-mode CLI surface (`--client`,
+  `--subprocess`, `--external-grpc`, `--transport`, `--uds-path`,
+  `--tcp-addr`, `--no-server`) plus a `transport::TransportChoice`
+  resolver that enforces the launch-mode/transport compatibility rules
+  (e.g. `--transport inproc --subprocess` is a hard error). The launcher
+  now dispatches to `embedded::run_embedded` as the default no-arg path.
+  Server-side `transport_inproc.rs` is live: it serves the full tonic
+  gRPC stack over a `tokio::io::DuplexStream` via a shared
+  `Server::assemble_grpc_router` helper that the non-gRPC-Web path of
+  `run_grpc` now reuses. The client-side in-process `DuplexStream`
+  connect is the remaining piece and is tracked as the next sub-phase
+  under #769 alongside lifecycle orchestration.
+
 - **#769 ABI Foundation — Phase 2a**: new `ext/client/platforms/tui::run(args)`
   entry point — `TuiArgs`, `TuiRunError`, `pub fn run(args: TuiArgs) ->
   Result<(), TuiRunError>` — relocated from the former

@@ -2226,6 +2226,7 @@ dependencies = [
  "reovim-app-tui",
  "reovim-app-web",
  "reovim-server",
+ "tokio",
 ]
 
 [[package]]

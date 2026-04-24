@@ -40,8 +40,8 @@ mod server;
 #[cfg(feature = "grpc")]
 pub(crate) mod tick;
 
-pub mod transport_inproc;
-pub mod transport_pipe;
+pub(crate) mod transport_inproc;
+pub(crate) mod transport_pipe;
 
 // Public API
 pub use {
