@@ -1,32 +1,34 @@
 //! Enforces that every `reovim_*` crate referenced by
-//! `apps/bin/src/bootstrap.rs` is declared as a direct dependency in
-//! `apps/bin/Cargo.toml`.
+//! `apps/server/src/bootstrap.rs` is declared as a direct dependency
+//! in `apps/server/Cargo.toml`.
 //!
-//! `apps/bin` is the composition root — it wires concrete server
-//! drivers, subsys contracts, and modules into a runnable binary.
-//! When `bootstrap.rs` references a crate via a transitive build-graph
-//! edge rather than a direct `[dependencies]` entry, the build is
-//! fragile: any future trimming of the transitive path breaks the
-//! binary silently. This test catches the divergence at depgraph-
-//! check time rather than at downstream build time.
+//! `apps/server/` is the server-side composition root — it wires
+//! concrete server drivers, subsys contracts, and modules into a
+//! runnable binary. When `bootstrap.rs` references a crate via a
+//! transitive build-graph edge rather than a direct `[dependencies]`
+//! entry, the build is fragile: any future trimming of the transitive
+//! path breaks the binary silently. This probe catches the divergence
+//! at depgraph-check time rather than at downstream build time.
 //!
-//! Enforcement strategy (Plan 14 D.3 style — no AST parse):
+//! Enforcement strategy (no AST parse):
 //!
-//! 1. Use `cargo_metadata` to list `apps/bin`'s declared
-//!    production dependencies.
-//! 2. Read `apps/bin/src/bootstrap.rs` as a string.
-//! 3. Extract every `reovim_<ident>` crate path prefix that appears
-//!    in a `use` statement or an inline fully-qualified path.
+//! 1. Use `cargo_metadata` to list `apps/server`'s declared production
+//!    dependencies.
+//! 2. Read `apps/server/src/bootstrap.rs` as a string. Existence-check
+//!    fails closed if the file is missing — a guard against a
+//!    silently-vacuous pass after future relocations.
+//! 3. Extract every `reovim_<ident>` crate-path prefix that appears in
+//!    a `use` statement or an inline fully-qualified path.
 //! 4. For each extracted identifier, canonicalize
 //!    `reovim_foo_bar` → `reovim-foo-bar` and assert it is in the
 //!    declared dependency set.
 //!
-//! Baseline sentry: `checked_count >= 6`. The expected post-Plan-14.1
-//! bootstrap.rs import surface includes at minimum: `reovim_kernel`,
-//! `reovim_server`, `reovim_driver_text_syntax`, `reovim_subsys_session`,
+//! Baseline sentry: `checked_count >= 6`. The bootstrap import surface
+//! includes at minimum `reovim_kernel`, `reovim_server`,
+//! `reovim_driver_text_syntax`, `reovim_subsys_session`,
 //! `reovim_driver_text_input`, `reovim_driver_command`. A detected
-//! count below 6 means the regex missed imports — broken probe, NOT a
-//! clean bootstrap.
+//! count below 6 means the extractor regressed — the probe flags a
+//! broken scanner, not a clean import set.
 
 use cargo_metadata::{DependencyKind, MetadataCommand};
 use std::{
@@ -38,14 +40,14 @@ use std::{
     path::Path,
 };
 
-const APPS_BIN_PACKAGE: &str = "reovim";
-const BOOTSTRAP_REL_PATH: &str = "apps/bin/src/bootstrap.rs";
+const APPS_SERVER_PACKAGE: &str = "reovim-app-server";
+const BOOTSTRAP_REL_PATH: &str = "apps/server/src/bootstrap.rs";
 const SENTRY_MIN_COUNT: usize = 6;
 
 /// Extract every `reovim_<snake_ident>` identifier that appears as a
 /// crate-path root in the source — i.e., followed by `::`.
 ///
-/// Covers the import forms documented in Plan 14.1 Phase 3:
+/// Covers the import forms documented in the upstream probe:
 /// - `use reovim_foo_bar::Thing;`
 /// - `use reovim_foo_bar::{A, B};`
 /// - `reovim_foo_bar::Thing::new(...)` (inline qualified path)
@@ -57,11 +59,6 @@ const SENTRY_MIN_COUNT: usize = 6;
 /// must not match. Similarly `use reovim_foo as alias;` (bare rename)
 /// is rare enough in bootstrap.rs to ignore; we only detect crate
 /// roots that resolve a path.
-///
-/// Approach: scan for the literal `reovim_` prefix (rejecting matches
-/// immediately preceded by an ident-byte), extend while ident-bytes
-/// follow, and only record the identifier if the next two bytes are
-/// `::`.
 fn extract_reovim_crate_idents(source: &str) -> BTreeSet<String> {
     let mut found: BTreeSet<String> = BTreeSet::new();
     let bytes = source.as_bytes();
@@ -108,22 +105,22 @@ fn crate_name_from_ident(ident: &str) -> String {
 }
 
 #[test]
-fn apps_bin_bootstrap_imports_are_declared() {
+fn apps_server_bootstrap_imports_are_declared() {
     let metadata = MetadataCommand::new().exec().expect("cargo metadata");
     let workspace_root: &Path = metadata.workspace_root.as_std_path();
 
-    let apps_bin_pkg = metadata
+    let apps_server_pkg = metadata
         .packages
         .iter()
-        .find(|p| p.name.as_str() == APPS_BIN_PACKAGE)
+        .find(|p| p.name.as_str() == APPS_SERVER_PACKAGE)
         .unwrap_or_else(|| {
             panic!(
-                "package `{APPS_BIN_PACKAGE}` not found in workspace — did apps/bin's \
-                 Cargo.toml `name` field change?",
+                "package `{APPS_SERVER_PACKAGE}` not found in workspace — did \
+                 apps/server's Cargo.toml `name` field change?",
             )
         });
 
-    let declared: HashSet<String> = apps_bin_pkg
+    let declared: HashSet<String> = apps_server_pkg
         .dependencies
         .iter()
         .filter(|d| d.kind == DependencyKind::Normal)
@@ -131,6 +128,11 @@ fn apps_bin_bootstrap_imports_are_declared() {
         .collect();
 
     let bootstrap_path = workspace_root.join(BOOTSTRAP_REL_PATH);
+    assert!(
+        bootstrap_path.exists(),
+        "{BOOTSTRAP_REL_PATH} does not exist — probe cannot vacuous-pass. \
+         Update this probe if apps/server/src/bootstrap.rs moved again."
+    );
     let source = fs::read_to_string(&bootstrap_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", bootstrap_path.display()));
 
@@ -151,23 +153,23 @@ fn apps_bin_bootstrap_imports_are_declared() {
 
     // Spot-check log (visible with `cargo test -- --nocapture`).
     eprintln!(
-        "apps_bin_imports_declared: extracted {checked_count} reovim_* crate idents: {extracted:?}"
+        "apps_server_imports_declared: extracted {checked_count} reovim_* crate idents: {extracted:?}"
     );
 
     assert!(
         checked_count >= SENTRY_MIN_COUNT,
         "extracted only {checked_count} reovim_* crate identifiers from {BOOTSTRAP_REL_PATH} \
-         — expected at least {SENTRY_MIN_COUNT}. The import-extraction regex is likely broken \
-         (NOT the import set). Extracted set: {extracted:?}",
+         — expected at least {SENTRY_MIN_COUNT}. The import-extraction scanner is likely \
+         broken (NOT the import set). Extracted set: {extracted:?}",
     );
 
     assert!(
         missing.is_empty(),
-        "apps/bin/src/bootstrap.rs references reovim_* crates not declared in \
-         apps/bin/Cargo.toml `[dependencies]`:\n  {}\n\
+        "apps/server/src/bootstrap.rs references reovim_* crates not declared in \
+         apps/server/Cargo.toml `[dependencies]`:\n  {}\n\
          \n\
-         Each imported crate must be a direct production dep of `{APPS_BIN_PACKAGE}` so the \
-         build graph is stable against future transitive-dep trimming.",
+         Each imported crate must be a direct production dep of `{APPS_SERVER_PACKAGE}` so \
+         the build graph is stable against future transitive-dep trimming.",
         missing.join("\n  ")
     );
 }

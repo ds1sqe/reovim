@@ -21,11 +21,15 @@ fn test_workspace_module_dir_is_absolute() {
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn test_binary_path_ends_with_reovim() {
+fn test_binary_path_ends_with_reovim_server() {
     let path = binary_path();
+    #[cfg(windows)]
+    let expected = "reovim-server.exe";
+    #[cfg(not(windows))]
+    let expected = "reovim-server";
     assert!(
-        path.file_name().is_some_and(|n| n == "reovim"),
-        "Expected path ending with reovim, got: {}",
+        path.file_name().is_some_and(|n| n == expected),
+        "Expected path ending with {expected}, got: {}",
         path.display()
     );
 }

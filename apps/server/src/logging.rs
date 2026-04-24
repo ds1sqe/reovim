@@ -98,6 +98,12 @@ impl From<io::Error> for LogError {
     }
 }
 
+/// Install the tracing subscriber described by `config`.
+///
+/// # Errors
+///
+/// Returns a [`LogError`] if the env-filter fails to parse or the
+/// configured log file cannot be opened.
 pub fn init_logging(config: &LogConfig) -> Result<(), LogError> {
     let filter = build_filter(config)?;
 

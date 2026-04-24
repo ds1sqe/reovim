@@ -5,7 +5,7 @@
 //! `DefaultsModule` god-crate with direct imports gated behind a feature flag.
 //!
 //! When `static-modules` is disabled, modules are loaded dynamically from
-//! `.so` files via `ModuleLoader` (Phase 5).
+//! `.so` files via `ModuleLoader`.
 
 use std::collections::HashMap;
 

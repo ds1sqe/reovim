@@ -1,23 +1,25 @@
 [package]
-name = "reovim"
+name = "reovim-app-server"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
-description = "Reovim - the new architecture binary"
+license.workspace = true
+description = "Standalone reovim-server bin + lib (gRPC server runtime composition root)"
 repository.workspace = true
-homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
-name = "reovim"
+name = "reovim-server"
 path = "src/main.rs"
 
+[lib]
+name = "reovim_app_server"
+path = "src/lib.rs"
+
 [features]
-default = ["grpc-web", "static-modules"]
-grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui", "dep:reovim-client-ext-platform-tui"]
-grpc-web = ["grpc", "reovim-server/grpc-web"]
-# Static module linking: compile all 40 modules into the binary (#620).
+default = ["static-modules"]
+# Static module linking: compile all 40+ modules into the binary (#620).
 # When disabled, modules are loaded as .so files from builtins.toml manifest.
 static-modules = [
     "dep:reovim-module-undo",
@@ -116,11 +118,6 @@ reovim-provider-text = { workspace = true }
 
 # Display driver (for SharedThemeManager + ThemeLoader bootstrap)
 reovim-driver-display = { workspace = true }
-
-# Client crates (optional, for CLI and TUI commands)
-reovim-client-cli = { workspace = true, optional = true }
-reovim-client-tui = { workspace = true, optional = true }
-reovim-client-ext-platform-tui = { workspace = true, optional = true }
 
 # CLI
 clap = { workspace = true }

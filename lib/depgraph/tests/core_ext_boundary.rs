@@ -8,10 +8,10 @@
 //! - **Repo-core** (`arch/`, `lib/`, `uapi/`,
 //!   `server/lib/{kernel,subsys,server}/`, `clients/lib/`) MUST NOT
 //!   declare a production (`[dependencies]`) edge into any `ext/` crate.
-//! - **Composition roots** (`apps/bin/`, `tools/*`) are exempt — the
-//!   application binary and dev tools (benchmarks, perf reports, test
-//!   harnesses) legitimately pull in extensions to wire or exercise the
-//!   system.
+//! - **Composition roots** (every `apps/<bin>/` + `tools/*`) are exempt
+//!   — application binaries and dev tools (benchmarks, perf reports,
+//!   test harnesses) legitimately pull in extensions to wire or
+//!   exercise the system.
 //! - **Client-core** (`clients/<platform>/` where `<platform>` is not
 //!   `lib`) MAY depend on its OWN platform's ext tree
 //!   (`ext/client/<platform>/*`) but MUST NOT depend on another
@@ -27,7 +27,7 @@ use {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Location {
-    /// Composition roots (`apps/bin/`, `tools/*`) — may depend on anything.
+    /// Composition roots (every `apps/<bin>/` + `tools/*`) — may depend on anything.
     App,
     /// Repo-core: MUST NOT depend on ext/.
     RepoCore,

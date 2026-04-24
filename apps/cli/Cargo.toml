@@ -1,0 +1,33 @@
+[package]
+name = "reovim-app-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Standalone reovim-cli bin + lib (dispatches to reovim-client-cli::CliArgs::execute)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "reovim-cli"
+path = "src/main.rs"
+
+[lib]
+name = "reovim_app_cli"
+path = "src/lib.rs"
+
+[dependencies]
+# CLM v7 — the bin is a thin launcher over `reovim-client-cli`. The
+# client crate owns the CLI schema (`CliArgs`) and the gRPC execution
+# path (`CliArgs::execute`); `apps/cli/` only parses and dispatches.
+reovim-client-cli = { workspace = true }
+reovim-protocol = { workspace = true, features = ["grpc"] }
+
+clap = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

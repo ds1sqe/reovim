@@ -1,8 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    # Top-level runner (thin wrapper)
-    "apps/bin",
+    # Phase 2a apps/ bin split — `apps/bin/` was deleted in 2a.G
+    # and the per-kind bins below are the composition roots.
+    # `apps/reovim/` produces the top-level `reovim` launcher bin.
+    "apps/server",
+    "apps/tui",
+    "apps/cli",
+    "apps/web",
+    "apps/reovim",
 
     # Platform abstraction layer (Linux-style arch/)
     "arch",
@@ -227,7 +233,7 @@ exclude = [
     # Python projects (not Rust)
     "tools/python-test-sdk",
 ]
-default-members = ["apps/bin"]
+default-members = ["apps/reovim"]
 
 [workspace.package]
 rust-version = "1.92"
@@ -303,6 +309,13 @@ reovim-subsys-content-codec = { path = "./server/lib/subsys/content-codec", vers
 # Server crates
 reovim-kernel = { path = "./server/lib/kernel", version = "0.15.0-dev" }
 reovim-server = { path = "./server/lib/server", version = "0.15.0-dev" }
+
+# Per-role standalone app crates (#769 Phase 2a).
+reovim-app-server = { path = "./apps/server", version = "0.15.0-dev" }
+reovim-app-tui = { path = "./apps/tui", version = "0.15.0-dev" }
+reovim-app-cli = { path = "./apps/cli", version = "0.15.0-dev" }
+reovim-app-web = { path = "./apps/web", version = "0.15.0-dev" }
+reovim-app-launcher = { path = "./apps/reovim", version = "0.15.0-dev" }
 
 # Server drivers
 reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", version = "0.15.0-dev" }
@@ -383,9 +396,6 @@ reovim-client-ext-platform-tui = { path = "./ext/client/platforms/tui", version 
 # Client-side ext capabilities (TUI)
 reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }
 reovim-ext-client-tui-cap-cell-view = { path = "./ext/client/tui/capabilities/cell-view", version = "0.15.0-dev" }
-
-# Application binary
-reovim = { path = "./apps/bin", version = "0.15.0-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }

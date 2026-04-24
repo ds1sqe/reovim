@@ -36,7 +36,7 @@ use {
     },
 };
 
-const SCAN_DIRS: &[&str] = &["clients", "ext/client", "apps/bin", "tools"];
+const SCAN_DIRS: &[&str] = &["clients", "ext/client", "apps", "tools"];
 
 /// Patterns that indicate a direct `.decode(` call on
 /// `SurfaceDescriptorHandler`. We match on the method name plus a

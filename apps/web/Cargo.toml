@@ -1,0 +1,28 @@
+[package]
+name = "reovim-app-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Standalone reovim-web bin + lib (SSR runtime not yet implemented)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "reovim-web"
+path = "src/main.rs"
+
+[lib]
+name = "reovim_app_web"
+path = "src/lib.rs"
+
+[dependencies]
+reovim-protocol = { workspace = true }
+
+clap = { workspace = true }
+thiserror = "2"
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,26 @@
+[package]
+name = "reovim-app-launcher"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "The reovim launcher bin (subprocess-only passthrough; embedded composition mode is not yet implemented)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# The `reovim` launcher bin — subprocess-only today, so the external
+# `cargo install reovim` contract resolves to a passthrough that
+# dispatches to `reovim-server`, `reovim-tui`, `reovim-cli`, or
+# `reovim-web`. Dual-mode (embedded + subprocess) composition lands
+# once the launcher grows to host an in-process runtime.
+[[bin]]
+name = "reovim"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

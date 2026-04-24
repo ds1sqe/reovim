@@ -47,45 +47,21 @@ const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Default log directory for test logs
 const TEST_LOG_DIR: &str = "tmp/test-logs";
 
-/// Get path to the reovim binary.
+/// Get path to the `reovim-server` bin (#769).
 ///
-/// Resolution order:
-/// 1. `REOVIM_TEST_BINARY` env var (explicit override)
-/// 2. Inferred from `std::env::current_exe()` — the test binary lives in
-///    `target/<target-dir>/debug/deps/`, so `../../reovim` gives the
-///    server binary. This works with any target directory including
-///    `cargo-llvm-cov`'s `target/llvm-cov-target/`.
-/// 3. Fallback to `{workspace}/target/debug/reovim` via `CARGO_MANIFEST_DIR`.
+/// Thin wrapper over the shared `bin_paths::which_reovim_server()`
+/// helper. Legacy `REOVIM_TEST_BINARY` override is still honored for
+/// one deprecation cycle so existing CI scripts keep working while
+/// they migrate to `REOVIM_TEST_SERVER_BINARY`.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn binary_path() -> PathBuf {
-    // Check for override (useful for testing release builds)
+    // Back-compat: the old monolithic `reovim` bin was split into
+    // per-kind bins; keep the old override working until downstream
+    // CI migrates.
     if let Ok(path) = std::env::var("REOVIM_TEST_BINARY") {
         return PathBuf::from(path);
     }
-
-    // Infer from the running test binary's location.
-    // Test binaries live in `target/<dir>/debug/deps/test_name-hash`.
-    // The server binary is at `target/<dir>/debug/reovim`.
-    if let Ok(exe) = std::env::current_exe() {
-        let debug_dir = exe
-            .parent() // .../debug/deps/
-            .and_then(Path::parent); // .../debug/
-        if let Some(dir) = debug_dir {
-            let candidate = dir.join("reovim");
-            if candidate.exists() {
-                return candidate;
-            }
-        }
-    }
-
-    // Fallback: compile-time workspace root
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest_dir)
-        .parent()
-        .expect("lib/testing should have parent")
-        .parent()
-        .expect("lib should have parent (workspace root)")
-        .join("target/debug/reovim")
+    crate::bin_paths::which_reovim_server()
 }
 
 /// Get the target/debug directory for module loading.
@@ -341,8 +317,11 @@ impl TestServerHarness {
         // Use worktree modules instead of globally installed ones (#433)
         let module_dir = workspace_module_dir();
 
+        // `reovim-server` takes transport flags at the top level (no
+        // `server` subcommand — that was the pre-#769-2a.G
+        // `reovim server …` shape).
         let mut cmd = Command::new(binary_path());
-        cmd.args(["server", "--grpc", "0"])
+        cmd.args(["--grpc", "0"])
             .env("REOVIM_LOG", &log_level)
             .env("RUST_LOG", &log_level) // Enable tracing output for log capture
             .env("REOVIM_MODULE_PATH", &module_dir)

@@ -2205,14 +2205,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
-name = "reovim"
+name = "reovim-app-cli"
+version = "0.15.0-dev"
+dependencies = [
+ "clap",
+ "reovim-client-cli",
+ "reovim-protocol",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-app-launcher"
+version = "0.15.0-dev"
+dependencies = [
+ "clap",
+ "tokio",
+]
+
+[[package]]
+name = "reovim-app-server"
 version = "0.15.0-dev"
 dependencies = [
  "clap",
  "parking_lot",
- "reovim-client-cli",
- "reovim-client-ext-platform-tui",
- "reovim-client-tui",
  "reovim-content-codec-binary-struct",
  "reovim-content-codec-cjk",
  "reovim-content-codec-csv",
@@ -2294,6 +2311,26 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-app-tui"
+version = "0.15.0-dev"
+dependencies = [
+ "clap",
+ "reovim-client-ext-platform-tui",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-app-web"
+version = "0.15.0-dev"
+dependencies = [
+ "clap",
+ "reovim-protocol",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -2379,7 +2416,14 @@ dependencies = [
 name = "reovim-client-ext-platform-tui"
 version = "0.15.0-dev"
 dependencies = [
+ "clap",
  "reovim-client-tui",
+ "reovim-testing",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]

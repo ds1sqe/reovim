@@ -16,5 +16,24 @@ grpc = ["reovim-client-tui/grpc"]
 [dependencies]
 reovim-client-tui = { workspace = true }
 
+# CLI + error machinery for the `run(args)` entry point (FD lock [B] —
+# platform crate owns runtime concerns, including args parsing).
+clap = { workspace = true }
+thiserror = "2"
+
+# Async runtime handle for `run(args)`; `tokio::signal::ctrl_c` is used
+# by headless mode. The platform crate does not construct a runtime —
+# callers supply one — but it borrows async primitives.
+tokio = { workspace = true }
+
+# Logging is owned by the platform crate so the standalone bin and
+# the embedded launcher share one setup path.
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+tracing-appender = { workspace = true }
+
+[dev-dependencies]
+reovim-testing = { workspace = true }
+
 [lints]
 workspace = true

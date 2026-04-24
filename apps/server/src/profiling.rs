@@ -109,6 +109,12 @@ impl Profiler for TracingProfiler {
 
 static TRACING_PROFILER: std::sync::OnceLock<TracingProfiler> = std::sync::OnceLock::new();
 
+/// Install the tracing profiler so `profile_scope!` emits flame-graph
+/// spans. No-op unless `REOVIM_PROFILE` is set.
+///
+/// # Errors
+///
+/// Returns [`SetProfilerError`] if a profiler is already installed.
 pub fn init_profiling() -> Result<(), SetProfilerError> {
     let profiler = TRACING_PROFILER.get_or_init(TracingProfiler::new);
     set_profiler(profiler)

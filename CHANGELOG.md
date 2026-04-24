@@ -4,8 +4,50 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.15.0-dev] - Unreleased
 
+### Changed
+
+- **#769 ABI Foundation — Phase 2a**: `apps/bin/` split into
+  `apps/{server,tui,cli,web,reovim}` so each user-facing bin is its own
+  composition root. `apps/server/` (package `reovim-app-server`, bin
+  `reovim-server`) owns the server-side wiring (bootstrap, module
+  lifecycle, `static-modules` feature, subsys/driver deps).
+  `apps/tui/` (package `reovim-app-tui`, bin `reovim-tui`) is a thin
+  launcher that delegates to the new
+  `reovim_client_ext_platform_tui::run` entry point. `apps/cli/`
+  (package `reovim-app-cli`, bin `reovim-cli`) wraps `reovim-client-cli`.
+  `apps/web/` (package `reovim-app-web`, bin `reovim-web`) is a
+  scaffold-only stub returning `NotImplemented` until Phase 5 resolves
+  the SSR strategy (O6). `apps/reovim/` (package `reovim-app-launcher`,
+  bin `reovim`) is the top-level `reovim` launcher.
+- **#769 ABI Foundation — Phase 2a**: the `reovim` launcher is
+  subprocess-only at Phase 2a — it parses a clap dispatch table and
+  forwards to sibling bins via `std::process::Command::new("reovim-<kind>")`.
+  `cargo install reovim` therefore requires `reovim-server` and
+  `reovim-tui` to also be on `$PATH` during the Phase 2a transition.
+  Phase 2b (locked decision L9) grows `apps/reovim/` into a dual-mode
+  composition root (embedded default + subprocess + four transports),
+  restoring the OOB embedded behavior.
+
 ### Added
 
+- **#769 ABI Foundation — Phase 2a**: new `ext/client/platforms/tui::run(args)`
+  entry point — `TuiArgs`, `TuiRunError`, `pub fn run(args: TuiArgs) ->
+  Result<(), TuiRunError>` — relocated from the former
+  `apps/bin/src/main.rs::{run_headless_tui, run_interactive_tui}` so
+  both the standalone `reovim-tui` bin and Phase 2b's embedded
+  launcher share one TUI entry point. Platform-owned file logging
+  (`ext/client/platforms/tui::logging::init`) travels with it per FD
+  lock [B].
+- **#769 ABI Foundation — Phase 2a**: per-bin depgraph probes in
+  `lib/depgraph/tests/` — `apps_standalone_bin_isolation.rs` (no
+  `apps/*` crate depends on another), `apps_server_scope.rs`,
+  `apps_tui_scope.rs`, `apps_cli_scope.rs`, `apps_web_scope.rs`,
+  `apps_reovim_launcher_scope.rs` (per-bin dep surface guards), the
+  relocated `apps_server_imports_declared.rs` (every `reovim_*`
+  import in `apps/server/src/bootstrap.rs` declared as a direct dep),
+  and a dormant `no_static_modules_feature.rs` (Phase-3 activation
+  point, `#[ignore]` at 2a). `apps_bin_client_scope.rs` and
+  `apps_bin_imports_declared.rs` retired.
 - **#769 ABI Foundation — Phase 1**: runtime cdylib discovery and the
   OS-abstraction layer beneath the specialized loaders.
   - New `lib/dylib-loader/` core-tier crate: safe `Library` wrapper

@@ -339,3 +339,40 @@ and return one per-entry result per candidate cdylib.
 See `lib/dylib-loader/` for the mechanism and the
 `02-loader-and-discovery.md` sub-plan under `~/docs/plans/reovim/769-abi-foundation/`
 for the design rationale and O2–O4 resolutions.
+
+## Bin layout (Phase 2a)
+
+Phase 2a of #769 split the legacy `apps/bin/` monolith into five
+composition-root bin crates under `apps/`, so each user-facing bin
+owns exactly its subset of the driver/module stack:
+
+| Bin          | Crate path       | Package name           | Role                                                                    |
+|--------------|------------------|------------------------|-------------------------------------------------------------------------|
+| `reovim-server` | `apps/server/` | `reovim-app-server`    | Server runtime composition root. Owns bootstrap, module loader, drivers.|
+| `reovim-tui`    | `apps/tui/`    | `reovim-app-tui`       | Thin TUI launcher; delegates to `ext/client/platforms/tui::run`.        |
+| `reovim-cli`    | `apps/cli/`    | `reovim-app-cli`       | One-shot gRPC CLI client (wraps `reovim-client-cli`).                   |
+| `reovim-web`    | `apps/web/`    | `reovim-app-web`       | Web UI scaffold; SSR strategy lands in Phase 5 (O6).                    |
+| `reovim`        | `apps/reovim/` | `reovim-app-launcher`  | Top-level launcher. Subprocess-only at 2a; Phase 2b adds embedded mode. |
+
+**Launcher vs standalone.** At Phase 2a the `reovim` launcher
+(`apps/reovim/`) is a pure subprocess passthrough: `reovim server …`
+execs `reovim-server`, `reovim tui …` execs `reovim-tui`, and so on.
+It declares zero `reovim-*` workspace deps (enforced by
+`apps_reovim_launcher_scope.rs`). Phase 2b per locked decision L9
+grows this crate into a dual-mode composition root — embedded default
+plus subprocess fallback plus four transport variants — at which
+point the `apps_reovim_launcher_scope.rs` probe relaxes to allow the
+embedded-mode library edges into `apps/{server,tui,cli,web}`.
+
+**Cargo install.** `cargo install reovim` at Phase 2a requires
+`reovim-server` and `reovim-tui` to also be on `$PATH`; the launcher
+spawns them as subprocesses. Phase 2b restores the single-bin OOB
+behavior. See CHANGELOG for the transitional note.
+
+**Depgraph guards.** Every bin carries a dedicated probe in
+`lib/depgraph/tests/`: `apps_server_scope.rs`, `apps_tui_scope.rs`,
+`apps_cli_scope.rs`, `apps_web_scope.rs`, and
+`apps_reovim_launcher_scope.rs`. A global
+`apps_standalone_bin_isolation.rs` forbids `apps/*` cross-deps at 2a
+(empty allowlist); Phase 2b edits the allowlist to admit the embedded
+launcher's library edges.
