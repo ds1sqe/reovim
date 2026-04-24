@@ -13,11 +13,12 @@
 //! which is sufficient for the happy path exercised by the smoke
 //! tests.
 
-use std::io;
+use std::{io, sync::Arc};
 
 use reovim_server::{Server, ServerConfig, inproc_channel_pair};
 
 use crate::{
+    lifecycle::ShutdownCoord,
     subprocess::ClientKind,
     transport::{LaunchMode, TransportChoice, TransportError, TransportKind},
 };
@@ -64,12 +65,6 @@ impl EmbeddedArgs {
 ///
 /// Propagates any I/O error raised by the embedded server task, the
 /// embedded client task, or the transport validation.
-// LIFECYCLE: this function holds the composition root; the 2b.E
-// `ShutdownCoord` will replace the `handle.abort()` server-stop path
-// with a broadcast signal + `Server::shutdown` drain. The body today
-// is still under the 40-LOC launcher-thin ceiling because the inproc
-// branch delegates service bootstrap to `run_embedded_inproc` and the
-// external branches are single-transport tokio::spawn pairs.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn run_embedded(args: EmbeddedArgs) -> io::Result<()> {
     match args.transport {
@@ -91,21 +86,103 @@ pub async fn run_embedded(args: EmbeddedArgs) -> io::Result<()> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 async fn run_inproc(client: ClientKind) -> io::Result<()> {
     let (server_half, client_half) = inproc_channel_pair();
+    let server = Arc::new(Server::new(ServerConfig::inproc()));
 
-    let server_task = tokio::spawn(async move {
-        let server = Server::new(ServerConfig::inproc());
-        server.run_inproc(server_half).await
+    // LIFECYCLE: Route ctrl-c through the `ShutdownCoord` broadcast so
+    // signal delivery is decoupled from the shutdown target. Today the
+    // inproc path has one subscriber (the server listener below);
+    // keeping the indirection isolates the select!'s ctrl-c arm from
+    // any future fan-out to additional drain targets.
+    let coord = ShutdownCoord::new();
+    let mut server_rx = coord.subscribe();
+    let server_for_signal = Arc::clone(&server);
+    let signal_listener = tokio::spawn(async move {
+        if server_rx.recv().await.is_ok() {
+            let _ = server_for_signal.shutdown().await;
+        }
     });
 
-    let client_result = spawn_client(client, client_half).await;
+    let result = run_inproc_with(Arc::clone(&server), server_half, async move {
+        tokio::select! {
+            res = spawn_client(client, client_half) => res,
+            sig = tokio::signal::ctrl_c() => {
+                let _ = coord.notify_server();
+                sig
+            },
+        }
+    })
+    .await;
 
-    server_task.abort();
-    // Drain the server task's final result but treat a post-abort
-    // JoinError as a normal shutdown — the launcher-driven abort is
-    // the success path for the 2b.D wiring.
-    let _ = server_task.await;
+    signal_listener.abort();
+    result
+}
 
-    client_result
+/// Orchestrate the embedded composition: run `client_fut` concurrently
+/// with a server task, then fire [`Server::shutdown`] and join the
+/// server task.
+///
+/// Sequencing invariant:
+/// 1. client task awaits,
+/// 2. client exits,
+/// 3. [`Server::shutdown`] fires on the cloned handle,
+/// 4. server drains in-flight RPCs and the tonic loop returns,
+/// 5. server task joins,
+/// 6. this function returns the client's result.
+///
+/// Exposed so the `embedded_smoke` integration test can inject a
+/// mock client future and observe the ordering without a real
+/// tonic-over-duplex wiring.
+///
+/// # Errors
+///
+/// Propagates server shutdown errors, server-task join errors, the
+/// server's final `run_inproc` result, and the client future's error.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn run_inproc_with<F>(
+    server: Arc<Server>,
+    server_half: tokio::io::DuplexStream,
+    client_fut: F,
+) -> io::Result<()>
+where
+    F: std::future::Future<Output = io::Result<()>>,
+{
+    // LIFECYCLE: spawn the server on a separate task so the client
+    // future can own the main task. The `abort_handle` is the escape
+    // hatch for a shutdown that tonic cannot drain (see the timeout
+    // block below).
+    let server_for_stop = Arc::clone(&server);
+    let server_task = tokio::spawn(async move { server.run_inproc(server_half).await });
+    let server_abort = server_task.abort_handle();
+
+    let client_result = client_fut.await;
+
+    // LIFECYCLE: client has exited — signal graceful server shutdown.
+    server_for_stop.shutdown().await?;
+
+    // Tonic drains in-flight RPCs on graceful shutdown. A connection
+    // stuck before the HTTP/2 preface (or any non-RPC read) cannot
+    // drain, so the serve loop would block indefinitely. Fall back to
+    // abort after a short grace window so the embedded smoke tests
+    // (and any future idle-client path) converge.
+    let server_join = tokio::time::timeout(std::time::Duration::from_secs(2), server_task)
+        .await
+        .map_or_else(
+            |_| {
+                server_abort.abort();
+                None
+            },
+            Some,
+        );
+
+    // The client's exit is the application's exit (invariant #6). Once
+    // the client has returned, any remaining server-side error is
+    // diagnostic tail: surface it only when the client itself was Ok.
+    client_result?;
+    match server_join {
+        Some(Ok(server_result)) => server_result,
+        Some(Err(join_err)) => Err(io::Error::other(format!("server task: {join_err}"))),
+        None => Ok(()),
+    }
 }
 
 /// Dispatch to the feature-gated client runtime.

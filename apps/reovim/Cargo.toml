@@ -29,6 +29,8 @@ subprocess = []
 [dependencies]
 clap = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
+libc = { workspace = true }
 
 reovim-app-server = { workspace = true, optional = true }
 reovim-app-tui = { workspace = true, optional = true }

@@ -28,7 +28,7 @@ reovim-driver-text-session = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
 
 # FFI support
-libc = "0.2"
+libc = { workspace = true }
 
 # Logging for FFI wrappers
 tracing = "0.1"

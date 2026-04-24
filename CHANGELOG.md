@@ -48,6 +48,36 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#769 ABI Foundation — subprocess composition path**: `apps/reovim/`
+  gains `subprocess_compose::run_subprocess`, which spawns `reovim-server`
+  and the selected client bin (`reovim-tui` / `reovim-cli` / `reovim-web`)
+  as separate OS processes wired by the resolved `TransportChoice`.
+  `--subprocess` spawns both; `--external-grpc HOST:PORT` and `--no-server`
+  skip the server spawn and point the client at an external address.
+  A `tokio::signal::ctrl_c()` handler forwards SIGINT to each child in
+  reverse spawn order (client first, server second) and escalates to
+  `Child::kill()` after a 5 s grace window (unix via `libc::kill`;
+  Windows relies on the kill-on-timeout path per [O-P2b-2]). The launcher
+  previously returned `Unsupported` for these flags.
+
+- **#769 ABI Foundation — lifecycle orchestration**: `reovim_server::Server`
+  gains a graceful-shutdown primitive (`Server::shutdown`) backed by a
+  `tokio::sync::watch<bool>`. `Server::run_inproc` now subscribes to that
+  signal and hands the receiver to tonic's `serve_with_incoming_shutdown`,
+  so embedded-mode servers drain cleanly when the launcher exits.
+  `apps/reovim/src/lifecycle.rs` adds `ShutdownCoord`, a
+  `tokio::sync::broadcast` wrapper the launcher will use for
+  cross-composition shutdown fan-out. `apps/reovim/src/embedded.rs`
+  reorganises inproc boot around a new `run_inproc_with<F>` test seam
+  that enforces the sequencing invariant: client future awaits, then
+  `Server::shutdown` fires on a cloned `Arc<Server>`, then the server
+  task joins (with a 2-second abort fallback for idle tonic connections
+  that cannot drain). The sequencing invariant is exercised by two
+  new integration smoke tests in `apps/reovim/tests/embedded_smoke.rs`
+  using an `AtomicUsize` ticket counter. The paired live-process
+  SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
+  `#[ignore]` pending the `/e2e` harness (TODO(#769)).
+
 - **#769 ABI Foundation — Inproc/Pipe transport variants**: `TransportMode` gains
   `Inproc` and `Pipe` unit variants in `server/lib/server/src/config.rs`.
   `Server::run_inproc` and `Server::run_pipe` entry points added alongside the

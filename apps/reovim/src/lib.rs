@@ -9,15 +9,18 @@
 //!    launcher did.
 //! 2. External gRPC (`--external-grpc HOST:PORT`) — the launcher spawns
 //!    only the chosen client and points it at an already-running
-//!    server. Subprocess wiring is tracked as the 2b.E deliverable.
+//!    server. See [`subprocess_compose::run_subprocess`].
 //! 3. Subprocess (`--subprocess`) — launcher forks server + client as
-//!    separate sibling-bin processes. Also 2b.E territory.
+//!    separate sibling-bin processes. See
+//!    [`subprocess_compose::run_subprocess`].
 //! 4. Embedded (default) — launcher runs server + client in a single
 //!    process connected by the selected in-process transport (`inproc`
 //!    by default). See [`embedded::run_embedded`].
 
 pub mod embedded;
+pub mod lifecycle;
 pub mod subprocess;
+pub mod subprocess_compose;
 pub mod transport;
 
 pub use subprocess::{Cli, ClientKind, Cmd};
@@ -46,12 +49,12 @@ pub fn run(cli: Cli) -> std::io::Result<()> {
         return subprocess::run(cli);
     }
 
+    // Subprocess, external-gRPC, and --no-server all follow the
+    // subprocess-composition path. `--external-grpc` and `--no-server`
+    // imply "launcher does not spawn a server"; `--subprocess` alone
+    // spawns both server and client.
     if cli.subprocess || cli.external_grpc.is_some() || cli.no_server {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "subprocess composition (--subprocess / --external-grpc / \
-             --no-server) is not yet wired; tracked under #769",
-        ));
+        return run_subprocess_on_tokio_runtime(cli);
     }
 
     let args = embedded::EmbeddedArgs::resolve(
@@ -75,4 +78,51 @@ fn run_embedded_on_tokio_runtime(args: embedded::EmbeddedArgs) -> std::io::Resul
         .enable_all()
         .build()?;
     runtime.block_on(embedded::run_embedded(args))
+}
+
+/// Spin up a tokio runtime and run the subprocess composition on it.
+///
+/// Resolves the launch mode (Subprocess vs `ExternalGrpc`) and the
+/// transport choice from `cli`, then delegates to
+/// [`subprocess_compose::run_subprocess`]. The client's exit code is
+/// propagated via [`std::process::exit`].
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_subprocess_on_tokio_runtime(cli: Cli) -> std::io::Result<()> {
+    let launch_mode = if cli.external_grpc.is_some() {
+        transport::LaunchMode::ExternalGrpc
+    } else {
+        transport::LaunchMode::Subprocess
+    };
+
+    // Default transport: external-grpc → tcp; subprocess → uds on unix,
+    // tcp elsewhere. Overridable via `--transport`.
+    let default_kind = match launch_mode {
+        transport::LaunchMode::ExternalGrpc => transport::TransportKind::Tcp,
+        transport::LaunchMode::Subprocess => {
+            if cfg!(unix) {
+                transport::TransportKind::Uds
+            } else {
+                transport::TransportKind::Tcp
+            }
+        }
+        transport::LaunchMode::Embedded => transport::TransportKind::Inproc,
+    };
+
+    let kind = cli.transport.unwrap_or(default_kind);
+    let tcp_addr = cli.external_grpc.as_deref().or(cli.tcp_addr.as_deref());
+
+    let transport =
+        transport::TransportChoice::resolve(kind, launch_mode, cli.uds_path.as_deref(), tcp_addr)
+            .map_err(std::io::Error::from)?;
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let exit_code = runtime.block_on(subprocess_compose::run_subprocess(
+        launch_mode,
+        transport,
+        cli.client,
+        cli.external_grpc,
+    ))?;
+    std::process::exit(exit_code);
 }

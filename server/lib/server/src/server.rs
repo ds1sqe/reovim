@@ -117,6 +117,12 @@ pub struct Server<M = DefaultModuleService> {
     /// Concrete gRPC module service implementation.
     #[cfg(feature = "grpc")]
     module_service: M,
+
+    /// Shutdown signal. Flipped `true` by [`Server::shutdown`]; serve
+    /// loops subscribe via [`Server::subscribe_shutdown`] and thread
+    /// the receiver into `serve_with_incoming_shutdown`, so draining
+    /// in-flight RPCs is the tonic router's concern — not ours.
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
 }
 
 impl Server<DefaultModuleService> {
@@ -127,6 +133,7 @@ impl Server<DefaultModuleService> {
     /// inject module-initialized registries.
     #[must_use]
     pub fn new(config: ServerConfig) -> Self {
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
@@ -139,6 +146,7 @@ impl Server<DefaultModuleService> {
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
+            shutdown_tx,
         }
     }
 
@@ -165,6 +173,7 @@ impl Server<DefaultModuleService> {
     /// ```
     #[must_use]
     pub fn with_services(config: ServerConfig, services: Arc<ServiceRegistry>) -> Self {
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
@@ -177,6 +186,7 @@ impl Server<DefaultModuleService> {
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
+            shutdown_tx,
         }
     }
 
@@ -204,6 +214,7 @@ impl Server<DefaultModuleService> {
     /// ```
     #[must_use]
     pub fn with_session_factory(config: ServerConfig, factory: SessionFactory) -> Self {
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
@@ -216,6 +227,7 @@ impl Server<DefaultModuleService> {
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
             module_service: ModuleServiceImpl::new(),
+            shutdown_tx,
         }
     }
 }
@@ -249,6 +261,7 @@ impl<M: Send + Sync> Server<M> {
             domain_driver: self.domain_driver,
             bridge_registry: self.bridge_registry,
             module_service,
+            shutdown_tx: self.shutdown_tx,
         }
     }
 
@@ -322,13 +335,42 @@ impl<M: Send + Sync> Server<M> {
         }
     }
 
+    /// Signal every subscribed serve loop to shut down gracefully.
+    ///
+    /// Flips the internal shutdown watch to `true`; any serve loop
+    /// currently awaiting the signal (via `serve_with_incoming_shutdown`)
+    /// drains its in-flight RPCs and returns `Ok(())`. Idempotent —
+    /// calling `shutdown` after the serve loop has already exited is a
+    /// no-op.
+    ///
+    /// # Errors
+    ///
+    /// Never fails today. The result type is retained so a future
+    /// drain-await can propagate an error without breaking callers.
+    #[allow(clippy::unused_async)] // Async today for symmetry with a future drain-await.
+    pub async fn shutdown(&self) -> std::io::Result<()> {
+        // `send` errors only when every receiver has been dropped,
+        // which means the serve loop already exited — equivalent to a
+        // successful shutdown from the caller's perspective.
+        let _ = self.shutdown_tx.send(true);
+        Ok(())
+    }
+
+    /// Subscribe to the shutdown signal. Serve loops await the
+    /// returned receiver and exit when [`Server::shutdown`] fires.
+    fn subscribe_shutdown(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.shutdown_tx.subscribe()
+    }
+
     /// Run the server over the in-process `DuplexStream` handed in by
     /// an embedded launcher.
     ///
     /// Bypasses `Server::run`'s transport dispatch; call this method
     /// directly when `config.transport == TransportMode::Inproc`. The
     /// body does the same session-bootstrap as `Server::run` and then
-    /// serves the full tonic gRPC stack over the caller's duplex.
+    /// serves the full tonic gRPC stack over the caller's duplex. The
+    /// loop returns when the caller fires [`Server::shutdown`] or the
+    /// peer drops the duplex.
     ///
     /// # Errors
     ///
@@ -341,7 +383,10 @@ impl<M: Send + Sync> Server<M> {
     {
         let default_session_id = self.bootstrap_default_session();
         let router = self.assemble_grpc_router(&default_session_id);
-        crate::transport_inproc::run(stream, router).await
+        let mut rx = self.subscribe_shutdown();
+        let shutdown_fut =
+            async move { while !*rx.borrow_and_update() && rx.changed().await.is_ok() {} };
+        crate::transport_inproc::run(stream, router, shutdown_fut).await
     }
 
     /// Run the server over an OS-pipe (`AsyncRead` + `AsyncWrite`) pair.

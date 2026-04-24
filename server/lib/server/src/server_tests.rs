@@ -348,3 +348,17 @@ async fn run_with_custom_session_name() {
     handle.abort();
     let _ = handle.await;
 }
+
+#[tokio::test]
+async fn shutdown_is_idempotent_across_repeated_calls() {
+    // Two callers may race on shutdown (embedded `run_inproc_with`
+    // signals after client exit; `run_inproc`'s ctrl-c listener also
+    // signals). The second call must be a no-op even when no receiver
+    // is alive to observe it.
+    let server = Server::new(ServerConfig::default());
+    server.shutdown().await.expect("first shutdown");
+    server
+        .shutdown()
+        .await
+        .expect("second shutdown after receivers gone");
+}
