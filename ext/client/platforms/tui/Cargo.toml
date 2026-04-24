@@ -11,7 +11,14 @@ homepage.workspace = true
 
 [features]
 default = ["grpc"]
-grpc = ["reovim-client-tui/grpc"]
+grpc = [
+    "reovim-client-tui/grpc",
+    "dep:tonic",
+    "dep:tower",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:http",
+]
 
 [dependencies]
 reovim-client-tui = { workspace = true }
@@ -23,8 +30,23 @@ thiserror = "2"
 
 # Async runtime handle for `run(args)`; `tokio::signal::ctrl_c` is used
 # by headless mode. The platform crate does not construct a runtime —
-# callers supply one — but it borrows async primitives.
-tokio = { workspace = true }
+# callers supply one — but it borrows async primitives. `net` enables
+# `tokio::net::UnixStream` for the UDS connect path; `io-util` brings
+# in `tokio::io::DuplexStream` for the in-process transport.
+tokio = { workspace = true, features = ["net", "io-util", "signal"] }
+
+# Non-TCP tonic transports (UDS + in-process `DuplexStream`) build a
+# `tonic::transport::Channel` via `Endpoint::connect_with_connector`.
+# Tower supplies `service_fn`; hyper-util wraps `tokio::io` handles
+# into the `hyper::rt::Read + Write` bounds the connector needs; the
+# bounds themselves live in `hyper::rt` (hyper 1.x). All four
+# dependencies ride the `grpc` feature — without it, the platform
+# crate's gRPC path is stubbed out.
+tonic = { workspace = true, optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+hyper = { version = "1", optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
+http = { version = "1", optional = true }
 
 # Logging is owned by the platform crate so the standalone bin and
 # the embedded launcher share one setup path.

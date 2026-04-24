@@ -133,7 +133,10 @@ pub use {
 
 // Unified TUI app exports
 #[cfg(feature = "grpc")]
-pub use app::{TuiApp, TuiAppError, connect_headless, connect_interactive};
+pub use app::{
+    TuiApp, TuiAppError, connect_common_with_client, connect_headless,
+    connect_headless_with_client, connect_interactive, connect_interactive_with_client,
+};
 
 // gRPC v2 client exports
 #[cfg(feature = "grpc")]

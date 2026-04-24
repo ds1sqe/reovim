@@ -30,3 +30,22 @@ pub async fn run(args: TuiArgs) -> io::Result<()> {
         .await
         .map_err(io::Error::from)
 }
+
+/// Run the standalone TUI flow over a pre-built in-process
+/// [`tokio::io::DuplexStream`].
+///
+/// Used by the embedded launcher to speak tonic-over-duplex to an
+/// in-process `reovim-server`. Logging is NOT initialized here — the
+/// launcher owns the terminal and logging target — so the caller must
+/// set up their own subscriber if they want TUI-side tracing.
+///
+/// # Errors
+///
+/// Returns an I/O error if the gRPC handshake fails or the TUI event
+/// loop errors.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn run_with_stream(stream: tokio::io::DuplexStream, args: TuiArgs) -> io::Result<()> {
+    reovim_client_ext_platform_tui::run_with_stream(stream, args)
+        .await
+        .map_err(io::Error::from)
+}

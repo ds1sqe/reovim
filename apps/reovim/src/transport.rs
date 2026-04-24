@@ -225,22 +225,21 @@ impl TransportChoice {
         }
     }
 
-    /// Shape the client-side `--grpc host:port` connect string.
+    /// Shape the client-side `--grpc` connect string.
     ///
     /// Returns `None` for [`TransportChoice::Inproc`] and
     /// [`TransportChoice::Pipe`] (those transports pipe a stream
     /// directly into the client and don't use a connect string).
     ///
     /// [`TransportChoice::Tcp`] returns `"host:port"`, unambiguous for
-    /// the TUI's `--grpc` flag. [`TransportChoice::Uds`] returns the
-    /// socket path verbatim; the client-side UDS connect currently
-    /// consumes this via its own dedicated path (tracked under #769 —
-    /// the UDS client path is completed in a later sub-phase).
+    /// the TUI's `--grpc` flag. [`TransportChoice::Uds`] returns
+    /// `"uds://<path>"` so the TUI's connect dispatch can route the
+    /// string to the UDS connector without adding a separate CLI flag.
     #[must_use]
     pub fn to_client_connect_string(&self) -> Option<String> {
         match self {
             Self::Inproc | Self::Pipe => None,
-            Self::Uds { path } => Some(path.display().to_string()),
+            Self::Uds { path } => Some(format!("uds://{}", path.display())),
             Self::Tcp { addr } => Some(addr.to_string()),
         }
     }

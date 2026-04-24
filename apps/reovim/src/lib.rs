@@ -32,12 +32,12 @@ pub use subprocess::{Cli, ClientKind, Cmd};
 ///
 /// Embedded mode boots the reovim server and the chosen client in
 /// one process, connected by the selected in-process transport
-/// (default: `inproc`, a `tokio::io::DuplexStream`). The
-/// server-side tonic-over-duplex loop is live; the client-side
-/// `DuplexStream` connect path (via
-/// `tonic::transport::Endpoint::connect_with_connector`) lands with
-/// `#769` sub-phase 2b.E alongside `ShutdownCoord` and the
-/// integration smoke tests.
+/// (default: `inproc`, a `tokio::io::DuplexStream`). Both halves of
+/// the inproc transport are live — server side via
+/// `reovim_server::Server::run_inproc` + `transport_inproc::run`,
+/// client side via `reovim_app_tui::run_with_stream`
+/// (`Endpoint::connect_with_connector` + `TokioIo`). UDS and TCP
+/// transports route through real OS sockets.
 ///
 /// # Errors
 ///

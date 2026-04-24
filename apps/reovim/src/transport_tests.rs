@@ -171,7 +171,7 @@ fn to_client_connect_uds_exposes_path() {
     let choice = TransportChoice::Uds {
         path: PathBuf::from("/tmp/reovim-y.sock"),
     };
-    assert_eq!(choice.to_client_connect_string().as_deref(), Some("/tmp/reovim-y.sock"),);
+    assert_eq!(choice.to_client_connect_string().as_deref(), Some("uds:///tmp/reovim-y.sock"),);
 }
 
 #[test]

@@ -65,7 +65,9 @@ fn subprocess_uds_cli_builds_socket_flag() {
     assert_eq!(specs[0].bin, "reovim-server");
     assert_eq!(specs[0].args, vec!["--socket".to_owned(), "/tmp/reovim.sock".to_owned()]);
     assert_eq!(specs[1].bin, "reovim-cli");
-    assert_eq!(specs[1].args, vec!["--grpc".to_owned(), "/tmp/reovim.sock".to_owned()]);
+    // 2b.G: client gets the `uds://` prefix so its connect dispatch can
+    // route the string to the UDS connector without a separate flag.
+    assert_eq!(specs[1].args, vec!["--grpc".to_owned(), "uds:///tmp/reovim.sock".to_owned()]);
 }
 
 #[test]

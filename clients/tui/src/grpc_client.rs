@@ -166,7 +166,7 @@ pub struct TuiGrpcClient {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl TuiGrpcClient {
-    /// Connect to a gRPC server at the given address.
+    /// Connect to a gRPC server at the given TCP address.
     ///
     /// # Arguments
     ///
@@ -182,7 +182,19 @@ impl TuiGrpcClient {
             .connect()
             .await?;
 
-        Ok(Self {
+        Ok(Self::from_channel(channel))
+    }
+
+    /// Build a client from a pre-constructed [`tonic::transport::Channel`].
+    ///
+    /// Used by the platform crate when it builds a channel over a
+    /// non-TCP transport (UDS, in-process `DuplexStream`) via
+    /// `Endpoint::connect_with_connector`. Keeps the service-client
+    /// wiring (size caps, token state) in one place instead of
+    /// duplicating it per transport.
+    #[must_use]
+    pub fn from_channel(channel: Channel) -> Self {
+        Self {
             input: InputServiceClient::new(channel.clone())
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
@@ -208,7 +220,7 @@ impl TuiGrpcClient {
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             session_token: None,
-        })
+        }
     }
 
     /// Wrap a proto message in a `tonic::Request` with session token metadata (#483).

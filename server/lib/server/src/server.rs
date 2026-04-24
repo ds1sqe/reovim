@@ -313,15 +313,29 @@ impl<M: Send + Sync> Server<M> {
     where
         M: ModuleService + Clone + Send + Sync + 'static,
     {
-        let _default_session_id = self.bootstrap_default_session();
-
-        // Start the appropriate transport
+        // Start the appropriate transport.
+        //
+        // `run_grpc` expects the caller to have bootstrapped the default
+        // session (it derives the session id locally). `run_unix` self-
+        // bootstraps — mirrors `run_inproc`/`run_pipe` — so the launcher
+        // can call it directly. The placeholder tcp paths do not consume
+        // the default session today but still bootstrap here to match
+        // the 0.9 behaviour.
         match &self.config.transport {
-            TransportMode::TcpWithFallback => self.run_tcp_fallback().await,
-            TransportMode::Tcp { port } => self.run_tcp(*port).await,
+            TransportMode::TcpWithFallback => {
+                let _ = self.bootstrap_default_session();
+                self.run_tcp_fallback().await
+            }
+            TransportMode::Tcp { port } => {
+                let _ = self.bootstrap_default_session();
+                self.run_tcp(*port).await
+            }
             #[cfg(unix)]
             TransportMode::UnixSocket { path } => self.run_unix(path).await,
-            TransportMode::Grpc { port } => self.run_grpc(*port, None, None).await,
+            TransportMode::Grpc { port } => {
+                let _ = self.bootstrap_default_session();
+                self.run_grpc(*port, None, None).await
+            }
             TransportMode::Inproc => Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
                 "TransportMode::Inproc requires Server::run_inproc(stream) — \
@@ -459,12 +473,62 @@ impl<M: Send + Sync> Server<M> {
         Ok(())
     }
 
-    /// Run with Unix socket transport.
-    #[cfg(unix)]
+    /// Run the gRPC stack over a Unix-domain socket listener bound at
+    /// `path`.
+    ///
+    /// Self-bootstraps the default session and serves tonic through
+    /// [`Server::assemble_grpc_router`] until [`Server::shutdown`]
+    /// fires on the shared watch. The caller (embedded launcher or the
+    /// `run()` dispatcher) owns the shutdown trigger; this method does
+    /// not install a ctrl-c handler of its own.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any `std::io::Error` from binding the listener or
+    /// from the tonic serve loop.
+    #[cfg(all(unix, feature = "grpc"))]
     #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn run_unix(&self, path: &std::path::Path) -> std::io::Result<()>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
+        tracing::info!(path = %path.display(), "Starting Unix socket gRPC server");
+
+        // Pre-remove a stale socket file so repeated launches don't
+        // fail with EADDRINUSE. Ignore a NotFound result.
+        if let Err(e) = tokio::fs::remove_file(path).await
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(e);
+        }
+
+        let listener = tokio::net::UnixListener::bind(path)?;
+
+        let default_session_id = self.bootstrap_default_session();
+        let router = self.assemble_grpc_router(&default_session_id);
+
+        let mut rx = self.subscribe_shutdown();
+        let shutdown_fut =
+            async move { while !*rx.borrow_and_update() && rx.changed().await.is_ok() {} };
+
+        let incoming = tokio_stream::wrappers::UnixListenerStream::new(listener);
+        router
+            .serve_with_incoming_shutdown(incoming, shutdown_fut)
+            .await
+            .map_err(std::io::Error::other)
+    }
+
+    /// Fallback stub for builds without the `grpc` feature or on
+    /// non-unix platforms. Preserves the `run()` dispatch signature
+    /// without dragging in the tonic router.
+    #[cfg(all(unix, not(feature = "grpc")))]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(clippy::unused_async)] // Async reserved for the grpc-feature body.
     async fn run_unix(&self, path: &std::path::Path) -> std::io::Result<()> {
-        tracing::info!(path = %path.display(), "Starting Unix socket server");
-        // TODO: Implement Unix socket server
+        tracing::warn!(
+            path = %path.display(),
+            "run_unix called without the `grpc` feature; no service exposed"
+        );
         std::future::pending::<()>().await;
         Ok(())
     }

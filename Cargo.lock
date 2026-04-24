@@ -2424,10 +2424,15 @@ name = "reovim-client-ext-platform-tui"
 version = "0.15.0-dev"
 dependencies = [
  "clap",
+ "http",
+ "hyper",
+ "hyper-util",
  "reovim-client-tui",
  "reovim-testing",
  "thiserror 2.0.18",
  "tokio",
+ "tonic",
+ "tower 0.5.3",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

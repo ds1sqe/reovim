@@ -64,44 +64,31 @@ async fn run_embedded_pipe_is_unsupported() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn run_embedded_uds_is_not_yet_wired() {
+#[test]
+fn run_embedded_uds_args_accept_path() {
+    // UDS is wired now (2b.G). Unit-testing a full boot would require a
+    // running tokio runtime and a TTY; that lives in the integration
+    // suite (`tests/transport_matrix.rs`). This test pins the arg
+    // surface instead — a UDS transport choice holds the requested
+    // path and survives a resolve round-trip.
+    let path = std::path::PathBuf::from("/tmp/reovim-test-uds-resolve.sock");
     let args = EmbeddedArgs {
         client: ClientKind::Tui,
-        transport: TransportChoice::Uds {
-            path: std::path::PathBuf::from("/tmp/reovim-test.sock"),
-        },
+        transport: TransportChoice::Uds { path: path.clone() },
     };
-    let err = run_embedded(args).await.unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
-    assert!(err.to_string().contains("uds/tcp"));
-}
-
-#[tokio::test]
-async fn run_embedded_tcp_is_not_yet_wired() {
-    let args = EmbeddedArgs {
-        client: ClientKind::Tui,
-        transport: TransportChoice::Tcp {
-            addr: "127.0.0.1:0".parse().unwrap(),
-        },
+    let TransportChoice::Uds { path: resolved } = args.transport else {
+        panic!("expected Uds transport");
     };
-    let err = run_embedded(args).await.unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
-    assert!(err.to_string().contains("uds/tcp"));
+    assert_eq!(resolved, path);
 }
 
 #[cfg(feature = "embedded-tui")]
-#[tokio::test]
-async fn run_embedded_inproc_tui_client_is_2b_e_followup() {
-    let args = EmbeddedArgs {
-        client: ClientKind::Tui,
-        transport: TransportChoice::Inproc,
-    };
-    let err = run_embedded(args).await.unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::Unsupported);
-    // The server side is already live; the Unsupported message must
-    // point at the 2b.E follow-up so a reader of the error can locate
-    // the next sub-phase.
-    assert!(err.to_string().contains("2b.E"));
-    assert!(err.to_string().contains("transport_inproc"));
+#[test]
+fn run_embedded_inproc_args_match_shape() {
+    // Inproc is wired now (2b.G). As above, a full boot is an
+    // integration test. Here we just assert the arg shape: the default
+    // inproc resolution produces `TransportChoice::Inproc`.
+    let args = EmbeddedArgs::resolve(ClientKind::Tui, None, None, None).unwrap();
+    assert_eq!(args.client, ClientKind::Tui);
+    assert_eq!(args.transport, TransportChoice::Inproc);
 }

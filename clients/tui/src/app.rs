@@ -1087,16 +1087,36 @@ pub async fn connect_headless<S: std::hash::BuildHasher + Send + Sync>(
     Ok((app, handle))
 }
 
-/// Common connection logic for both modes.
+/// Common connection logic for both modes (TCP path).
 #[cfg_attr(coverage_nightly, coverage(off))]
 async fn connect_common(
     addr: &str,
     width: u16,
     height: u16,
 ) -> Result<(TuiGrpcClient, Streaming<Notification>, TuiCoreState), TuiAppError> {
-    // Connect gRPC client
-    let mut client = TuiGrpcClient::connect(addr).await?;
+    let client = TuiGrpcClient::connect(addr).await?;
+    connect_common_with_client(client, width, height).await
+}
 
+/// Finish the TUI handshake given an already-built [`TuiGrpcClient`].
+///
+/// Exposed for callers (the platform crate's UDS / in-process
+/// transports) that built a [`tonic::transport::Channel`] via
+/// `Endpoint::connect_with_connector` and constructed a
+/// [`TuiGrpcClient::from_channel`]. Keeps the presence-join / subscribe
+/// / surface-changed sequence — critical for token-based auth (#483)
+/// and subscription token wrapping — in one place.
+///
+/// # Errors
+///
+/// Propagates any [`TuiAppError`] raised by presence-join, subscribe,
+/// or surface-changed.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn connect_common_with_client(
+    mut client: TuiGrpcClient,
+    width: u16,
+    height: u16,
+) -> Result<(TuiGrpcClient, Streaming<Notification>, TuiCoreState), TuiAppError> {
     // Join presence session FIRST to get session token.
     // subscribe_all() and resize() must come AFTER join so the token is
     // attached to requests. Without the token, the notification stream
@@ -1149,6 +1169,95 @@ async fn connect_common(
     state.other_clients = other_clients;
 
     Ok((client, notification_stream, state))
+}
+
+/// Build a headless TUI app from an already-connected [`TuiGrpcClient`].
+///
+/// Mirrors [`connect_headless`] but skips the internal TCP connect —
+/// the platform crate owns the transport (UDS or in-process duplex) and
+/// hands in a ready client.
+///
+/// # Errors
+///
+/// See [`connect_common_with_client`] for the error taxonomy.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn connect_headless_with_client<S: std::hash::BuildHasher + Send + Sync>(
+    client: TuiGrpcClient,
+    display_hint: &str,
+    width: u16,
+    height: u16,
+    debug_config: Option<TuiDebugConfig>,
+    theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
+) -> Result<(TuiApp<HeadlessOutput>, TuiHandle), TuiAppError> {
+    let output = HeadlessOutput;
+    let (input_tx, input_rx) = mpsc::channel(16);
+
+    let (client, notification_stream, state) =
+        connect_common_with_client(client, width, height).await?;
+    let frame_buffer = FrameBuffer::new(width, height);
+
+    let app = TuiApp::new(
+        output,
+        frame_buffer,
+        input_rx,
+        client,
+        notification_stream,
+        state,
+        display_hint.to_string(),
+        debug_config,
+        theme,
+        disabled_kinds,
+    );
+
+    let handle = TuiHandle::new(input_tx);
+    Ok((app, handle))
+}
+
+/// Build an interactive TUI app from an already-connected [`TuiGrpcClient`].
+///
+/// Mirrors [`connect_interactive`] but skips the internal TCP connect.
+///
+/// # Errors
+///
+/// Propagates terminal-init errors from [`TerminalOutput::new`] and
+/// [`TerminalOutput::terminal_size`] in addition to the
+/// [`connect_common_with_client`] taxonomy.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn connect_interactive_with_client<S: std::hash::BuildHasher + Send + Sync>(
+    client: TuiGrpcClient,
+    display_hint: &str,
+    debug_config: Option<TuiDebugConfig>,
+    theme: Option<&str>,
+    disabled_kinds: &std::collections::HashSet<String, S>,
+) -> Result<(TuiApp<TerminalOutput>, TuiHandle), TuiAppError> {
+    let output = TerminalOutput::new()?;
+    let (width, height) = TerminalOutput::terminal_size()?;
+
+    let (input_tx, input_rx) = mpsc::channel(16);
+
+    // Spawn TTY reader task that feeds keyboard input to the common channel
+    let _tty_reader = crate::handle::spawn_tty_reader(input_tx.clone());
+
+    let (client, notification_stream, state) =
+        connect_common_with_client(client, width, height).await?;
+    let frame_buffer = FrameBuffer::new(width, height);
+
+    let app = TuiApp::new(
+        output,
+        frame_buffer,
+        input_rx,
+        client,
+        notification_stream,
+        state,
+        display_hint.to_string(),
+        debug_config,
+        theme,
+        disabled_kinds,
+    );
+
+    let handle = TuiHandle::new(input_tx);
+    Ok((app, handle))
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ pub mod logging;
 pub mod run;
 
 #[cfg(feature = "grpc")]
-pub use run::{TuiArgs, TuiRunError, run};
+pub use run::{TuiArgs, TuiRunError, run, run_with_stream};
 
 #[cfg(all(test, feature = "grpc"))]
 #[path = "run_tests.rs"]

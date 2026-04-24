@@ -48,6 +48,35 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#769 ABI Foundation — transport matrix + install verification**
+  (sub-phase 2b.G): `apps/reovim/tests/transport_matrix.rs` enumerates
+  the 7 valid (launch-mode, transport) pairs and the invalid-pair
+  rejections (`Inproc` under `Subprocess`/`ExternalGrpc`, `Pipe`/`Uds`
+  under `ExternalGrpc`) that `TransportChoice::resolve` flags with
+  typed `TransportError`s. The 7 roundtrip tests are `#[ignore]`'d
+  and their execution is deferred to the `/e2e` harness (TODO #769).
+  `scripts/cross-install-check.sh` runs `cargo install --path
+  apps/reovim --root tmp/2b-install-check` and probes the installed
+  binary under a sanitised `PATH`, restoring master-plan acceptance
+  #6 ("OOB install-and-run"). `.claude/skills/e2e/SKILL.md` grows
+  Embedded-default (inproc) and Subprocess-UDS scenarios.
+
+- **#769 ABI Foundation — embedded UDS + inproc client wire-up**
+  (sub-phase 2b.G): `Server::run_unix` now binds a real
+  `tokio::net::UnixListener` and serves the full tonic stack over
+  UDS via the shared `assemble_grpc_router` helper. On the client
+  side, `ext/client/platforms/tui/` grows a `uds://<path>` prefix
+  on its `--grpc` arg plus a new `run_with_stream(stream, args)`
+  entry point that builds a `tonic::transport::Channel` from a
+  pre-connected `tokio::io::DuplexStream` via
+  `Endpoint::connect_with_connector` (`tower` + `hyper` + `hyper-util`
+  added as platform-crate deps). `apps/reovim/src/embedded.rs`
+  gains `run_uds` (mirrors `run_tcp`) and wires the inproc path
+  straight through to `run_tui_client(stream)` instead of dropping
+  the client-side duplex. The embedded launcher now boots a real
+  gRPC service over all three embedded transports (inproc default,
+  uds, tcp); pipe remains deferred.
+
 - **#769 ABI Foundation — subprocess composition path**: `apps/reovim/`
   gains `subprocess_compose::run_subprocess`, which spawns `reovim-server`
   and the selected client bin (`reovim-tui` / `reovim-cli` / `reovim-web`)
