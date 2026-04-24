@@ -391,6 +391,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
   `#[ignore]` pending the `/e2e` harness (TODO(#769)).
 
+- **#753 Codec Foundation — HalfBlock rasterizer (Flight 74)**: the
+  `ViewHint::HalfBlock` arm in `clients/tui/src/render_engine.rs` is
+  now live.  Chrome modules for a HalfBlock window are buffered into a
+  `reovim_ext_client_tui_cap_cell::CellCapability` sized `(width,
+  height * 2)` — i.e. twice the terminal height — and then projected
+  onto the backend through the new
+  `reovim_ext_client_tui_cap_cell_view::HalfBlockRasterizer`, which
+  pairs stacked logical cells into one terminal cell via `▀` / `▄` /
+  space per the encoding-policy matrix documented in
+  `half_block.rs`.  The `BackendRasterOutput` adapter wraps any
+  `RenderBackend` as a `RasterOutput`; `size()` deliberately reports
+  the physical terminal dimensions so the rasterizer's out-of-bounds
+  clamp stays effective.  Chrome modules that read
+  `TuiPlatformCapabilities::grid_size()` on a HalfBlock window must
+  treat the reported height as the **logical grid height** (terminal
+  height × 2), not the physical terminal height.  Enablement is via
+  `REOVIM_VIEW_HINT=halfblock` at client startup — the value is
+  parsed by `reovim_client_tui::view_hint_env::parse_view_hint` and
+  stored in `TuiCoreState::default_view_hint`, which `view_hint_for`
+  consults as a fall-back below any per-window hint.
+
 - **#769 ABI Foundation — Inproc/Pipe transport variants**: `TransportMode` gains
   `Inproc` and `Pipe` unit variants in `server/lib/server/src/config.rs`.
   `Server::run_inproc` and `Server::run_pipe` entry points added alongside the

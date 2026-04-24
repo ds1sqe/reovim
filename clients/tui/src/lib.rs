@@ -95,6 +95,7 @@ pub mod render_engine;
 pub mod render_engine_bridge;
 pub mod surface_decoding;
 pub mod tui_output;
+pub mod view_hint_env;
 
 // gRPC v3 client
 #[cfg(feature = "grpc")]

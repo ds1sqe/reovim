@@ -12,7 +12,13 @@ use {
     reovim_driver_display::{AnnotationCacheManager, ThemeManager},
 };
 
-use reovim_client_driver::ClientModule;
+use {
+    reovim_client_driver::{ChromeSurface, ClientModule},
+    reovim_ext_client_tui_cap_cell::CellCapability,
+    reovim_ext_client_tui_cap_cell_view::{
+        BackendRasterOutput, HalfBlockRasterizer, ViewRasterizer,
+    },
+};
 
 use crate::{
     LineNumberMode, TuiCoreState,
@@ -204,11 +210,14 @@ pub fn render_frame<B: RenderBackend>(
     dispatch_chrome_by_view_hint(backend, state, extensions, width, height, &caps);
 }
 
-/// 17-γ.1 hint-dispatch seam. The focused window's `ViewHint` picks
-/// the rasterization path. Only `FullBlock` is reachable in 25.1;
-/// `HalfBlock` (25.2 / Plan 26) and `Braille` (25.3 / Plan 27) land
-/// alongside their rasterizer impls and the chrome→`CellCapability`→
-/// `ViewRasterizer` pipeline restructure their buffering requires.
+/// Hint-dispatch seam. The focused window's `ViewHint` picks the
+/// rasterization path. `FullBlock` writes directly through the
+/// backend; `HalfBlock` buffers chrome into a `CellCapability` twice
+/// as tall as the terminal and rasterizes with `HalfBlockRasterizer`;
+/// `Braille` lands in Flight 75 / `02-braille-rasterizer.md`. The
+/// Braille arm is a defence-in-depth `unreachable!()` — the env-var
+/// parser (`view_hint_env::parse_view_hint`) rejects `"braille"`
+/// until Flight 75, so no user input can reach it.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn dispatch_chrome_by_view_hint<B: RenderBackend>(
     backend: &mut B,
@@ -223,20 +232,40 @@ fn dispatch_chrome_by_view_hint<B: RenderBackend>(
             render_chrome(backend, extensions, width, height, caps);
         }
         reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock => {
-            unreachable!(
-                "ViewHint::HalfBlock rasterizer lands in Plan 26 (17-γ.2); \
-                 no code path in 25.1 constructs this variant in a \
-                 WindowViewHints entry."
-            );
+            dispatch_chrome_halfblock(backend, extensions, width, height);
         }
         reovim_ext_client_tui_cap_cell_view::ViewHint::Braille => {
             unreachable!(
-                "ViewHint::Braille rasterizer lands in Plan 27 (17-γ.3); \
-                 no code path in 25.1 constructs this variant in a \
-                 WindowViewHints entry."
+                "ViewHint::Braille rasterizer lands in Flight 75 \
+                 (02-braille-rasterizer.md). This arm is gated by \
+                 `view_hint_env::parse_view_hint` which rejects \
+                 `REOVIM_VIEW_HINT=braille` until the rasterizer \
+                 ships; no other path currently constructs this \
+                 variant in a WindowViewHints entry."
             );
         }
     }
+}
+
+/// `HalfBlock` dispatch: buffer chrome into a logical-height-doubled
+/// `CellCapability`, then rasterize via [`HalfBlockRasterizer`] into
+/// the backend. Chrome modules see a `TuiPlatformCapabilities` whose
+/// reported grid size is `(width, height * 2)` — bottom-docked chrome
+/// lands at logical row `height * 2 - 1`, which the rasterizer maps to
+/// the terminal's bottom row.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn dispatch_chrome_halfblock<B: RenderBackend>(
+    backend: &mut B,
+    extensions: &[Box<dyn ClientModule>],
+    width: u16,
+    height: u16,
+) {
+    let logical_height = height.saturating_mul(2);
+    let mut grid = CellCapability::new(width, logical_height);
+    let caps_logical = TuiPlatformCapabilities::for_test(width, logical_height);
+    render_chrome_into_surface(&mut grid, extensions, width, logical_height, &caps_logical);
+    let mut out = BackendRasterOutput::new(backend);
+    HalfBlockRasterizer::new().rasterize(&grid, &mut out);
 }
 
 // =============================================================================
@@ -426,16 +455,31 @@ fn render_chrome<B: RenderBackend>(
     height: u16,
     caps: &dyn reovim_client_driver::PlatformCapabilities,
 ) {
+    let mut surface = BackendSurfaceAdapter::new(backend);
+    render_chrome_into_surface(&mut surface, extensions, width, height, caps);
+}
+
+/// Chrome-module layout + render loop parameterised on the destination
+/// surface. `render_chrome` wraps the backend; `dispatch_chrome_halfblock`
+/// passes a `CellCapability` (which implements `ChromeSurface` directly)
+/// so the half-block rasterizer can project it onto the backend in a
+/// second pass.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn render_chrome_into_surface(
+    surface: &mut dyn ChromeSurface,
+    extensions: &[Box<dyn ClientModule>],
+    width: u16,
+    height: u16,
+    caps: &dyn reovim_client_driver::PlatformCapabilities,
+) {
     use reovim_client_driver::ChromePosition;
 
-    // Collect chrome modules with their indices for stable sort
     let mut chrome_modules: Vec<(usize, &Box<dyn ClientModule>)> = extensions
         .iter()
         .enumerate()
         .filter(|(_, ext)| ext.has_chrome())
         .collect();
 
-    // Sort by priority descending (highest priority gets allocated first)
     chrome_modules.sort_by_key(|b| std::cmp::Reverse(b.1.chrome_priority()));
 
     let mut allocated_bottom: u16 = 0;
@@ -486,19 +530,15 @@ fn render_chrome<B: RenderBackend>(
                     height,
                 }
             }
-            ChromePosition::Overlay => {
-                // Overlays get full screen bounds
-                reovim_client_driver::Rect {
-                    x: 0,
-                    y: 0,
-                    width,
-                    height,
-                }
-            }
+            ChromePosition::Overlay => reovim_client_driver::Rect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
         };
 
-        let mut surface = BackendSurfaceAdapter::new(backend);
-        ext.chrome_render(&mut surface, bounds, caps);
+        ext.chrome_render(surface, bounds, caps);
     }
 }
 

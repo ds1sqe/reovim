@@ -215,12 +215,18 @@ pub struct TuiCoreState {
 
     /// Per-window rasterization hint (17-γ.1 foundation).
     ///
-    /// Maps `window_id` -> [`ViewHint`]. Unknown windows default to
-    /// [`ViewHint::FullBlock`] via [`Self::view_hint_for`]. In 17-γ.1
-    /// only `FullBlock` is reachable; `HalfBlock` and `Braille` arms
-    /// at the chrome dispatch point are `unreachable!()` until 25.2
-    /// and 25.3 land their rasterizers.
+    /// Maps `window_id` -> [`ViewHint`]. Unknown windows fall back to
+    /// [`Self::default_view_hint`] (and finally to [`ViewHint::FullBlock`])
+    /// via [`Self::view_hint_for`].
     pub window_view_hints: HashMap<u64, ViewHint>,
+
+    /// Process-wide rasterization default (Plan 01 §Phase E).
+    ///
+    /// Set at client startup from the `REOVIM_VIEW_HINT` environment
+    /// variable. Applies to every window that has no explicit entry in
+    /// [`Self::window_view_hints`]. `None` means "no override" — unknown
+    /// windows render as [`ViewHint::FullBlock`].
+    pub default_view_hint: Option<ViewHint>,
 
     // =========================================================================
     // Multi-client awareness (#474)
@@ -377,14 +383,15 @@ impl TuiCoreState {
 
     /// Per-window rasterization hint with default fallback.
     ///
-    /// Unknown windows return [`ViewHint::FullBlock`]. In 17-γ.1 only
-    /// `FullBlock` is reachable on the production render path; 25.2
-    /// and 25.3 unlock the other variants.
+    /// Resolution order: explicit per-window hint →
+    /// [`Self::default_view_hint`] (from `REOVIM_VIEW_HINT`) →
+    /// [`ViewHint::FullBlock`].
     #[must_use]
     pub fn view_hint_for(&self, window_id: u64) -> ViewHint {
         self.window_view_hints
             .get(&window_id)
             .copied()
+            .or(self.default_view_hint)
             .unwrap_or(ViewHint::FullBlock)
     }
 

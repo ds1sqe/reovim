@@ -136,17 +136,35 @@ The default `ViewportRenderer` orchestrates:
 
 After chrome modules have drawn into their logical surface, the TUI
 shell picks a rasterization mode per window via `WindowViewHints` in
-`TuiCoreState`. 17-γ.1 ships `ViewHint::FullBlock` (1 logical cell →
-1 terminal cell, identity) on the existing direct-write path; 17-γ.2
-adds `HalfBlock` (2 stacked logical cells → 1 terminal cell via `▀`)
-and 17-γ.3 adds `Braille` (2×4 logical sub-grid → 1 terminal cell via
-`⠀…⣿`). The `ViewRasterizer` trait and the narrow terminal-backend-
-level `RasterOutput` trait live in
-`ext/client/tui/capabilities/cell-view/`. `RasterOutput` is
+`TuiCoreState`. `ViewHint::FullBlock` (1 logical cell → 1 terminal
+cell, identity) runs on the existing direct-write path;
+`ViewHint::HalfBlock` (2 stacked logical cells → 1 terminal cell via
+`▀`, live since Flight 74) buffers chrome into a `CellCapability`
+twice the terminal height and then projects it onto the backend via
+`HalfBlockRasterizer`; `ViewHint::Braille` (2×4 logical sub-grid → 1
+terminal cell via `⠀…⣿`) lands in Flight 75.  The `ViewRasterizer`
+trait and the narrow terminal-backend-level `RasterOutput` trait live
+in `ext/client/tui/capabilities/cell-view/`.  `RasterOutput` is
 deliberately separate from the module-facing `ChromeSurface`: input
 (where chrome modules write) and output (where rasterized terminal
 cells land) are different sides of the seam, and conflating them
 would make HalfBlock's fg=top / bg=bottom encoding unexpressible.
+
+**Chrome capabilities doubling invariant (HalfBlock).** When a
+HalfBlock window dispatches chrome, the `TuiPlatformCapabilities`
+handed to each module reports the *logical* grid size
+`(width, height × 2)` — not the physical terminal size.  Bottom-docked
+chrome (e.g. statusline) lands at logical row `height × 2 − 1`, which
+the rasterizer maps back onto the terminal's bottom row.  Modules
+that compute their Rect from `caps.grid_size()` MUST NOT assume the
+reported height equals the physical terminal height.
+
+**Enablement.** Set `REOVIM_VIEW_HINT=halfblock` (also accepted:
+`full`, `fullblock`, `half`, `half_block`, `half-block`, `braille`)
+before launching the TUI.  The value is parsed by
+`reovim_client_tui::view_hint_env::parse_view_hint` and stored in
+`TuiCoreState::default_view_hint`; windows with no explicit hint fall
+through to it.
 
 ### Token classify merge strategy
 

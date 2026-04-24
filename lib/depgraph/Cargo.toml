@@ -25,3 +25,7 @@ walkdir = "2"
 # has not drifted since Plan 24. Dev-dep only — does not pollute the
 # dependency graph at build time.
 reovim-client-driver = { workspace = true }
+
+# Used by `cell_view_half_block_exists.rs` to smoke-compile the Flight 74
+# public API surface (`BackendRasterOutput`, `HalfBlockRasterizer`).
+reovim-ext-client-tui-cap-cell-view = { workspace = true }

@@ -1167,6 +1167,10 @@ pub async fn connect_common_with_client(
     // Build state with client ID and viewport size
     let mut state = TuiCoreState::new_with_size(my_client_id, width, height);
     state.other_clients = other_clients;
+    state.default_view_hint = std::env::var("REOVIM_VIEW_HINT")
+        .ok()
+        .as_deref()
+        .and_then(crate::view_hint_env::parse_view_hint);
 
     Ok((client, notification_stream, state))
 }

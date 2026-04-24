@@ -2586,6 +2586,7 @@ dependencies = [
  "reovim-client-subsys-codec",
  "reovim-driver-display",
  "reovim-driver-tui",
+ "reovim-ext-client-tui-cap-cell",
  "reovim-ext-client-tui-cap-cell-view",
  "reovim-protocol",
  "reovim-subsys-layout",
@@ -2835,6 +2836,7 @@ version = "0.15.0-dev"
 dependencies = [
  "cargo_metadata",
  "reovim-client-driver",
+ "reovim-ext-client-tui-cap-cell-view",
  "walkdir",
 ]
 
@@ -3188,6 +3190,7 @@ dependencies = [
 name = "reovim-ext-client-tui-cap-cell-view"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-display",
  "reovim-ext-client-tui-cap-cell",
 ]
 

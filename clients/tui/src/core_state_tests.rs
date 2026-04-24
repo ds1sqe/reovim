@@ -444,3 +444,39 @@ fn test_get_focused_buffer_id_none_buffer() {
     }];
     assert_eq!(state.get_focused_buffer_id(), None);
 }
+
+// =============================================================================
+// view_hint_for resolution order
+// =============================================================================
+
+#[test]
+fn test_view_hint_for_returns_fullblock_when_no_entry_and_no_default() {
+    let state = TuiCoreState::new(1);
+    assert_eq!(
+        state.view_hint_for(42),
+        reovim_ext_client_tui_cap_cell_view::ViewHint::FullBlock
+    );
+}
+
+#[test]
+fn test_view_hint_for_falls_back_to_default() {
+    let mut state = TuiCoreState::new(1);
+    state.default_view_hint = Some(reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock);
+    // No explicit entry for window 99 → fall through to default.
+    assert_eq!(
+        state.view_hint_for(99),
+        reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock
+    );
+}
+
+#[test]
+fn test_view_hint_for_per_window_overrides_default() {
+    let mut state = TuiCoreState::new(1);
+    state.default_view_hint = Some(reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock);
+    state
+        .window_view_hints
+        .insert(7, reovim_ext_client_tui_cap_cell_view::ViewHint::FullBlock);
+    assert_eq!(state.view_hint_for(7), reovim_ext_client_tui_cap_cell_view::ViewHint::FullBlock);
+    // Other windows still see the default.
+    assert_eq!(state.view_hint_for(8), reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock);
+}

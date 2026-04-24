@@ -1,0 +1,35 @@
+# HalfBlock byte-equivalence fixture.
+#
+# Canonical 4×6 logical grid → 4×3 terminal output. Each non-comment,
+# non-blank line holds one emitted RasterCell in the order set_cell was
+# called (row-major by terminal (y, x)). Fields:
+#
+#   <x>,<y>,<ch>,<fg>,<bg>
+#
+# where fg / bg are `-` (None), `default` (Some(Default)), `ansi:N`
+# (Some(Ansi256(N))), `named:N` (Some(Named(N))), or `rgb:R,G,B`
+# (Some(Rgb(R,G,B))). `ch` is the raw character (comma is forbidden in
+# this column; use the emitted halfblock glyphs `▀` / `▄` or space).
+#
+# All 5 rows of the encoding-policy matrix must be exercised at least
+# once. Lookup table for this fixture:
+#   plain                               — terminal (0,0), (0,1), (0,2),
+#                                         (2,1), (3,2): both halves default
+#   space + bg=C                        — terminal (1,0)=ansi:1,
+#                                         (2,2)=ansi:6, (3,1)=ansi:4
+#   ▀ + fg=C                            — terminal (1,1)=ansi:2
+#   ▄ + fg=C                            — terminal (1,2)=ansi:3
+#   ▀ + fg=C1 + bg=C2 (mixed)           — terminal (2,0)=ansi:5/ansi:4,
+#                                         (3,0)=ansi:7/ansi:0
+0,0, ,-,-
+1,0, ,-,ansi:1
+2,0,▀,ansi:5,ansi:4
+3,0,▀,ansi:7,ansi:0
+0,1, ,-,-
+1,1,▀,ansi:2,-
+2,1, ,-,-
+3,1, ,-,ansi:4
+0,2, ,-,-
+1,2,▄,ansi:3,-
+2,2, ,-,ansi:6
+3,2, ,-,-

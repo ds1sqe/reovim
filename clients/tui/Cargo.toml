@@ -49,6 +49,9 @@ reovim-tui-mod-markdown = { workspace = true }
 reovim-tui-mod-bufferline = { workspace = true }
 reovim-tui-mod-surface-descriptor-cell-grid = { workspace = true }
 
+# Cell grid capability (CellCapability → ChromeSurface for HalfBlock buffering)
+reovim-ext-client-tui-cap-cell = { workspace = true }
+
 # Cell-view rasterization (17-γ.1 foundation)
 reovim-ext-client-tui-cap-cell-view = { workspace = true }
 

@@ -1386,3 +1386,132 @@ fn test_render_chrome_right_position() {
     let cell = fb.get(35, 0).unwrap();
     assert_eq!(cell.char, 'R');
 }
+
+// =============================================================================
+// HalfBlock dispatch tests
+// =============================================================================
+
+/// Chrome module that fills its entire bounds with a single style. Used
+/// by the `HalfBlock` dispatch test so the rasterizer sees a predictable
+/// colored region in the logical grid.
+struct FillChromeModule {
+    position: ChromePosition,
+    size: u16,
+    style: reovim_client_driver::Style,
+}
+
+impl ClientModule for FillChromeModule {
+    fn id(&self) -> &'static str {
+        "fill-chrome"
+    }
+    fn name(&self) -> &'static str {
+        "Fill Chrome"
+    }
+    fn version(&self) -> reovim_client_driver::Version {
+        reovim_client_driver::Version::new(0, 1, 0)
+    }
+    fn init(
+        &mut self,
+        _ctx: &reovim_client_driver::ModuleContext,
+    ) -> reovim_client_driver::ProbeResult {
+        reovim_client_driver::ProbeResult::Success
+    }
+    fn exit(&mut self) -> Result<(), reovim_client_driver::ClientModuleError> {
+        Ok(())
+    }
+    fn has_chrome(&self) -> bool {
+        true
+    }
+    fn chrome_position(&self) -> ChromePosition {
+        self.position
+    }
+    fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
+        self.size
+    }
+    fn chrome_priority(&self) -> u16 {
+        100
+    }
+    fn chrome_render(
+        &self,
+        surface: &mut dyn ChromeSurface,
+        bounds: Rect,
+        _caps: &dyn PlatformCapabilities,
+    ) {
+        surface.fill(bounds, ' ', self.style.clone());
+    }
+}
+
+#[test]
+fn test_halfblock_dispatch_renders_bottom_chrome_onto_terminal_bottom_row() {
+    // Terminal: 40×10 → HalfBlock logical grid: 40×20.
+    // A Bottom-docked, size=2 chrome module fills logical rows 18..=19
+    // with bg=Red. Rasterized pair = same non-default color → emits
+    // space with bg=Red on terminal row 9 (the bottom row).
+    let mut fb = FrameBuffer::new(40, 10);
+    let mut state = TuiCoreState::new(1);
+    state.window_view_hints.insert(
+        state.focused_window_id,
+        reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock,
+    );
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let red = reovim_client_driver::types::Color::Rgb { r: 200, g: 0, b: 0 };
+    let fill = FillChromeModule {
+        position: ChromePosition::Bottom,
+        size: 2,
+        style: reovim_client_driver::Style {
+            bg: Some(red),
+            ..reovim_client_driver::Style::default()
+        },
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(fill)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Terminal bottom row (y = 9) should carry bg=Red at every column.
+    for col in 0..40u16 {
+        let cell = fb.get(col, 9).unwrap();
+        assert_eq!(
+            cell.style.bg,
+            Some(red),
+            "bottom row, col {col} should have HalfBlock-rasterized red bg"
+        );
+    }
+}
+
+#[test]
+fn test_halfblock_dispatch_preserves_upper_half_color() {
+    // Terminal: 40×10 → logical: 40×20. A Top-docked, size=1 chrome
+    // fills logical row 0 with bg=Blue; logical row 1 stays default.
+    // Rasterized pair (row 0 = Blue, row 1 = Default) → '▀' with
+    // fg=Blue on terminal row 0.
+    let mut fb = FrameBuffer::new(40, 10);
+    let mut state = TuiCoreState::new(1);
+    state.window_view_hints.insert(
+        state.focused_window_id,
+        reovim_ext_client_tui_cap_cell_view::ViewHint::HalfBlock,
+    );
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
+    let mirror = ServerLayoutMirror::new(40, 10);
+
+    let blue = reovim_client_driver::types::Color::Rgb { r: 0, g: 0, b: 200 };
+    let fill = FillChromeModule {
+        position: ChromePosition::Top,
+        size: 1,
+        style: reovim_client_driver::Style {
+            bg: Some(blue),
+            ..reovim_client_driver::Style::default()
+        },
+    };
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(fill)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm, &mirror);
+
+    // Terminal row 0 should show '▀' with fg=Blue at every column.
+    for col in 0..40u16 {
+        let cell = fb.get(col, 0).unwrap();
+        assert_eq!(cell.char, '\u{2580}', "col {col} should be upper-half glyph");
+        assert_eq!(cell.style.fg, Some(blue), "col {col} should have fg=Blue");
+    }
+}

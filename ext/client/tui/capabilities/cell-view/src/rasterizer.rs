@@ -11,28 +11,22 @@ use crate::raster::RasterOutput;
 
 /// Per-window rasterization mode.
 ///
-/// - [`ViewHint::FullBlock`] — 1 logical cell → 1 terminal cell. This
-///   is the default and matches today's TUI output byte-for-byte.
-/// - [`ViewHint::HalfBlock`] — *declared but unreachable in 25.1.*
-///   A rasterizer lands in Plan 26 (17-γ.2).
-/// - [`ViewHint::Braille`] — *declared but unreachable in 25.1.*
-///   A rasterizer lands in Plan 27 (17-γ.3).
-///
-/// The two future variants are defined here rather than added later so
-/// downstream match expressions written in 25.1 (e.g. the hint→
-/// rasterizer selector in the TUI shell) can be made exhaustive now;
-/// unreachable arms document the design invariant explicitly at their
-/// call sites.
+/// - [`ViewHint::FullBlock`] — 1 logical cell → 1 terminal cell. Default.
+/// - [`ViewHint::HalfBlock`] — 2 stacked logical cells → 1 terminal cell
+///   via `▀` (live since Flight 74; see [`crate::HalfBlockRasterizer`]).
+/// - [`ViewHint::Braille`] — 2×4 logical sub-grid → 1 terminal cell via
+///   `⠀…⣿`; rasterizer lands in Flight 75 and the dispatch arm in
+///   `clients/tui/src/render_engine.rs` remains a defence-in-depth
+///   `unreachable!()` until then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewHint {
     /// 1 logical cell → 1 terminal cell. Default.
     #[default]
     FullBlock,
     /// 2 stacked logical cells → 1 terminal cell via `▀`.
-    /// Rasterizer lands in 17-γ.2.
     HalfBlock,
     /// 2×4 logical sub-grid → 1 terminal cell via `⠀…⣿`.
-    /// Rasterizer lands in 17-γ.3.
+    /// Rasterizer lands in Flight 75.
     Braille,
 }
 

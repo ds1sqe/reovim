@@ -14,3 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-ext-client-tui-cap-cell = { workspace = true }
+reovim-driver-display = { workspace = true }
