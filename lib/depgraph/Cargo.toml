@@ -33,3 +33,8 @@ reovim-ext-client-tui-cap-cell-view = { workspace = true }
 # Used by `platforms_web_exists.rs` to smoke-compile the Flight 76
 # public API surface (`run`, `WebArgs`, `render_page`, …).
 reovim-client-ext-platform-web = { workspace = true }
+
+# Used by `domain_mesh_exists.rs` to smoke-compile the Flight 77
+# public API surface (`Mesh`, `MeshPosition`, `MeshEdit`, ...).
+reovim-domain = { workspace = true }
+reovim-domain-mesh = { workspace = true }

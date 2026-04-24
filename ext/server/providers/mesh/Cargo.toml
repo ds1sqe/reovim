@@ -1,0 +1,18 @@
+[package]
+name = "reovim-provider-mesh"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Mesh content provider stub for reovim (#753 Flight 77). Companion to reovim-domain-mesh; proves provider-under-domain pattern for a non-text shape."
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Domain types. Provider depends on its domain only — no kernel,
+# no subsys, no third-party deps. Zero-edit invariant starts here.
+reovim-domain-mesh = { workspace = true }

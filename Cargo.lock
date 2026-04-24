@@ -2845,6 +2845,8 @@ dependencies = [
  "cargo_metadata",
  "reovim-client-driver",
  "reovim-client-ext-platform-web",
+ "reovim-domain",
+ "reovim-domain-mesh",
  "reovim-ext-client-tui-cap-cell-view",
  "walkdir",
 ]
@@ -2866,6 +2868,14 @@ dependencies = [
 [[package]]
 name = "reovim-domain"
 version = "0.15.0-dev"
+
+[[package]]
+name = "reovim-domain-mesh"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-domain",
+ "reovim-domain-text",
+]
 
 [[package]]
 name = "reovim-domain-text"
@@ -4239,6 +4249,13 @@ dependencies = [
  "tempfile",
  "tonic",
  "tonic-build",
+]
+
+[[package]]
+name = "reovim-provider-mesh"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-domain-mesh",
 ]
 
 [[package]]

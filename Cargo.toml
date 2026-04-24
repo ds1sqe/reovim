@@ -86,6 +86,7 @@ members = [
 
     # Providers (domain logic, above drivers)
     "ext/server/providers/text",
+    "ext/server/providers/mesh",
 
     # Server modules
     "ext/server/modules/vim",
@@ -217,6 +218,7 @@ members = [
     "ext/server/domain/text",
     "ext/server/domain/text/capabilities",
     "ext/server/domain/text/events",
+    "ext/server/domain/mesh",
 
     # Tools (Rust) — python-test-sdk is Python, excluded below
     "tools/bench",
@@ -309,6 +311,7 @@ reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
 reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
 reovim-domain-text-capabilities = { path = "./ext/server/domain/text/capabilities", version = "0.15.0-dev" }
 reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
+reovim-domain-mesh = { path = "./ext/server/domain/mesh", version = "0.15.0-dev" }
 reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
 reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }
 reovim-content-codec = { path = "./uapi/content-codec", version = "0.15.0-dev" }
@@ -353,6 +356,7 @@ reovim-dylib-loader = { path = "./lib/dylib-loader", version = "0.15.0-dev" }
 reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
 reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
 reovim-provider-text = { path = "./ext/server/providers/text", version = "0.15.0-dev" }
+reovim-provider-mesh = { path = "./ext/server/providers/mesh", version = "0.15.0-dev" }
 reovim-subsys-module-loader = { path = "./server/lib/subsys/module-loader", version = "0.15.0-dev" }
 reovim-driver-git = { path = "./ext/server/drivers/git", version = "0.15.0-dev" }
 reovim-subsys-module-registry = { path = "./server/lib/subsys/module-registry", version = "0.15.0-dev" }

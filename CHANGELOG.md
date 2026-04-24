@@ -390,6 +390,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   using an `AtomicUsize` ticket counter. The paired live-process
   SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
   `#[ignore]` pending the `/e2e` harness (TODO(#769)).
+- **#753 Codec Foundation — Mesh domain scaffold (Flight 77)**:
+  two new crates, `reovim-domain-mesh` and `reovim-provider-mesh`,
+  sitting beside the pre-existing text domain in
+  `ext/server/domain/` and `ext/server/providers/`. The mesh domain
+  implements the closed `reovim_domain::Domain` trait with
+  placeholder associated types (`MeshPosition { vertex: u32 }`,
+  `MeshEdit::Replace(Vec<Vertex>)`, `MeshContent = Vec<Vertex>`) —
+  deliberately narrow so the trait bounds have a visible shape
+  without committing to a topology. The provider stub offers a
+  trivial `MeshStore` with `apply_edit` round-tripping. A new
+  `domain_mesh_exists` depgraph probe locks the two crates' shape
+  (workspace membership, `reovim-domain-mesh` deps only on
+  `reovim-domain`, `reovim-provider-mesh` deps only on
+  `reovim-domain-mesh`, compile-time public-symbol smoke). The
+  zero-edit-for-new-domain invariant — no kernel, subsys, or
+  render-pipeline change visible from Flight 77 — is carried by
+  the pre-existing prefix-match probes `kernel_no_domain`,
+  `server_no_domain`, and `subsys_no_domain`. A domain-neutrality
+  integration test instantiates a single generic function over
+  both `Text` and `Mesh` without knowing either. Topology, per-
+  vertex / per-face edits, mesh file formats, a client-side
+  rasterizer, and gRPC integration are all deferred.
+
 - **#753 Codec Foundation — Web client pipe-up (Flight 76 spike)**:
   new `ext/client/platforms/web/` crate
   (`reovim-client-ext-platform-web`) and the `reovim-web` bin now
