@@ -48,6 +48,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#770 Debug Surface — Phase 2**: CLI verbs `reovim cli debug
+  {probe, observe, drive}` that consume the Phase 1 `DebugStream`
+  bidirectional RPC. The CLI never decodes driver payloads — bytes
+  in, bytes out. New module `clients/cli/src/commands/debug.rs`
+  splits each verb into `build_*_client_stream` (outbound) +
+  `consume_*_response_stream` (inbound) halves, keeping unit tests
+  zero-dependency on a running server while exercising all rendering
+  and state-machine paths. 30 new unit tests + 5 end-to-end
+  integration tests in `clients/cli/tests/debug_verbs_e2e.rs` that
+  spawn a real `reovim-server` + `reovim-cli` subprocess pair and
+  round-trip the Phase 0 PoC cdylib. Outputs support `--format
+  {plain|json}`; `--input @path` for binary payloads from files;
+  `--count N` for bounded observation. `pkg`-based no-arg `probe`
+  listing is deferred to epic #771. Also: new
+  `tools/testing::which_reovim_cli()` helper and first CLI E2E test
+  using `bin_paths` in the tree. (#770)
 - **#770 Debug Surface — Phase 1**: `ClientDebugService` gRPC
   bidirectional streaming RPC in `uapi/protocol/proto/reovim/v3/client_debug.proto`
   (first bidirectional-streaming RPC in the codebase), a server-side

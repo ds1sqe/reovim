@@ -90,6 +90,15 @@ pub fn which_reovim_tui() -> PathBuf {
     resolve_bin("reovim-tui", "REOVIM_TEST_TUI_BINARY", "CARGO_BIN_EXE_reovim-tui")
 }
 
+/// Absolute path to the `reovim-cli` bin (`apps/cli/`).
+///
+/// See module docs for the resolution order.
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub fn which_reovim_cli() -> PathBuf {
+    resolve_bin("reovim-cli", "REOVIM_TEST_CLI_BINARY", "CARGO_BIN_EXE_reovim-cli")
+}
+
 #[cfg(test)]
 #[path = "bin_paths_tests.rs"]
 mod bin_paths_tests;

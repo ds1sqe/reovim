@@ -56,7 +56,7 @@ mod presence;
 mod step_test;
 
 pub use {
-    bin_paths::{which_reovim_server, which_reovim_tui},
+    bin_paths::{which_reovim_cli, which_reovim_server, which_reovim_tui},
     harness::TestServerHarness,
     integration::{IntegrationTest, RegisterInfo, TestResult},
     multi_client::{MultiClientTest, TestClient},

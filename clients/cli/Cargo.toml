@@ -18,12 +18,14 @@ tonic = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # CLI
 clap = { workspace = true, features = ["derive"] }
 
 # Serialization (for JSON output)
 serde_json = { workspace = true }
+base64 = "0.22"
 
 # Local module registry workflow
 reovim-subsys-module-registry = { workspace = true }
@@ -34,6 +36,11 @@ tracing = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
 tempfile = "3"
+reovim-testing = { workspace = true }
+reovim-server = { workspace = true, features = ["grpc"] }
+reovim-client-subsys-debug = { workspace = true }
+reovim-client-subsys-driver-loader = { workspace = true }
+reovim-driver-debug-poc = { path = "../../tools/driver-debug-poc", version = "0.15.0-dev" }
 
 [lints]
 workspace = true

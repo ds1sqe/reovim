@@ -2,6 +2,8 @@
 //!
 //! Each function executes a CLI command and formats the output.
 
+pub mod debug;
+
 use std::{collections::HashSet, fmt::Write};
 
 use {

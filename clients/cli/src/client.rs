@@ -8,18 +8,21 @@ use {
         DebugGetExtensionStateResponse, DebugGetProjectionsRequest, DebugGetProjectionsResponse,
         DebugListClientsRequest, DebugListClientsResponse, DebugListExtensionsRequest,
         DebugListExtensionsResponse, DebugSendInputRequest, DebugSendInputResponse,
-        GetProjectionsRequest, GetProjectionsResponse, GetRegistersRequest, GetRegistersResponse,
-        GetScreenContentRequest, GetScreenContentResponse, InfoRequest, InfoResponse, JoinRequest,
-        JoinResponse, LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse,
-        ListClientsRequest, ListClientsResponse, ListModulesRequest, ListModulesResponse,
-        LogTailRequest, LogTailResponse, PingRequest, PingResponse, SendInputRequest,
-        SendInputResponse, SetSyncModeRequest, SetSyncModeResponse, UpdatePresenceRequest,
-        UpdatePresenceResponse, buffer_service_client::BufferServiceClient,
+        DebugStreamClientMsg, DebugStreamServerMsg, GetProjectionsRequest, GetProjectionsResponse,
+        GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
+        GetScreenContentResponse, InfoRequest, InfoResponse, JoinRequest, JoinResponse,
+        LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse, ListClientsRequest,
+        ListClientsResponse, ListModulesRequest, ListModulesResponse, LogTailRequest,
+        LogTailResponse, PingRequest, PingResponse, SendInputRequest, SendInputResponse,
+        SetSyncModeRequest, SetSyncModeResponse, UpdatePresenceRequest, UpdatePresenceResponse,
+        buffer_service_client::BufferServiceClient,
+        client_debug_service_client::ClientDebugServiceClient,
         debug_service_client::DebugServiceClient, input_service_client::InputServiceClient,
         module_service_client::ModuleServiceClient, presence_service_client::PresenceServiceClient,
         server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
     },
-    tonic::{Request, transport::Channel},
+    tokio_stream::Stream,
+    tonic::{Request, Streaming, transport::Channel},
 };
 
 /// Error type for gRPC client operations.
@@ -88,6 +91,9 @@ pub struct GrpcClient {
     module: ModuleServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
     debug: DebugServiceClient<Channel>,
+    /// Driver-owned debug-surface client (#770). Separate from the
+    /// legacy `debug` field — different service.
+    client_debug: ClientDebugServiceClient<Channel>,
     /// Server address for error messages.
     address: String,
     /// Client ID assigned by server (None until joined).
@@ -137,7 +143,10 @@ impl GrpcClient {
             presence: PresenceServiceClient::new(channel.clone())
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
-            debug: DebugServiceClient::new(channel)
+            debug: DebugServiceClient::new(channel.clone())
+                .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
+            client_debug: ClientDebugServiceClient::new(channel)
                 .max_decoding_message_size(GRPC_MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(GRPC_MAX_MESSAGE_SIZE),
             address: addr.to_string(),
@@ -688,6 +697,24 @@ impl GrpcClient {
     ) -> Result<DebugListExtensionsResponse, GrpcClientError> {
         let request = Request::new(DebugListExtensionsRequest {});
         let response = self.debug.debug_list_extensions(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Open a bidirectional `ClientDebugService::DebugStream` (#770).
+    ///
+    /// `requests` is the outbound client message stream; the returned
+    /// `Streaming<DebugStreamServerMsg>` yields server responses until
+    /// EOS or error.
+    ///
+    /// # Errors
+    /// Returns a `GrpcClientError::GrpcError` if the stream cannot be
+    /// opened (e.g. service not registered on the server).
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_stream(
+        &mut self,
+        requests: impl Stream<Item = DebugStreamClientMsg> + Send + 'static,
+    ) -> Result<Streaming<DebugStreamServerMsg>, GrpcClientError> {
+        let response = self.client_debug.debug_stream(requests).await?;
         Ok(response.into_inner())
     }
 }

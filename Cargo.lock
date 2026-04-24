@@ -2334,12 +2334,19 @@ dependencies = [
 name = "reovim-client-cli"
 version = "0.15.0-dev"
 dependencies = [
+ "base64",
  "clap",
+ "reovim-client-subsys-debug",
+ "reovim-client-subsys-driver-loader",
+ "reovim-driver-debug-poc",
  "reovim-protocol",
+ "reovim-server",
  "reovim-subsys-module-registry",
+ "reovim-testing",
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
 ]

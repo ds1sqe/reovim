@@ -181,6 +181,59 @@ pub enum CliCommand {
         #[command(subcommand)]
         subcommand: ModuleSubcommand,
     },
+
+    /// Driver-owned debug surface verbs (#770). All payloads are
+    /// opaque to the CLI; the driver owns the wire vocabulary.
+    Debug {
+        /// Debug-surface subcommand.
+        #[command(subcommand)]
+        subcommand: DebugSubcommand,
+    },
+}
+
+/// Driver-owned debug-surface subcommands (#770 Phase 2).
+#[derive(Debug, Subcommand)]
+pub enum DebugSubcommand {
+    /// Probe a registered driver: print its metadata and schema lists.
+    Probe {
+        /// Driver name (required; no-arg listing deferred to #771 pkg).
+        #[arg(long)]
+        driver: String,
+    },
+
+    /// Observe a stream of frames from a driver schema. Runs until
+    /// the driver emits EOS, the user hits Ctrl-C, or `--count N`
+    /// frames have been printed.
+    Observe {
+        /// Driver name.
+        #[arg(long)]
+        driver: String,
+
+        /// Observe-schema name as declared in the driver probe.
+        #[arg(long)]
+        schema: String,
+
+        /// Stop after printing N frames (sends `ObserveStop` before
+        /// closing the client stream).
+        #[arg(long)]
+        count: Option<u32>,
+    },
+
+    /// Drive a driver command: send opaque bytes, print the response.
+    Drive {
+        /// Driver name.
+        #[arg(long)]
+        driver: String,
+
+        /// Drive-schema name as declared in the driver probe.
+        #[arg(long)]
+        schema: String,
+
+        /// Input bytes. Prefix with `@` to read from a file path,
+        /// otherwise the string is passed through as UTF-8 bytes.
+        #[arg(long)]
+        input: String,
+    },
 }
 
 /// Module management subcommands.
@@ -329,6 +382,10 @@ impl CliArgs {
             }
             CliCommand::Module { subcommand } => {
                 commands::module(client.as_mut(), subcommand, self.format).await
+            }
+            CliCommand::Debug { subcommand } => {
+                let client = connected_client(&mut client, "debug")?;
+                commands::debug::dispatch(client, subcommand, self.format).await
             }
         }
     }
