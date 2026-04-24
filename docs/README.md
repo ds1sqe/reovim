@@ -9,6 +9,7 @@ Welcome to the Reovim documentation. This guide covers the **Linux kernel-inspir
 | Architecture | [architecture/overview.md](./architecture/overview.md) | System design, layer diagram |
 | Client Architecture | [architecture/client/overview.md](./architecture/client/overview.md) | Client Layer Model |
 | Contributing | [contributing/overview.md](./contributing/overview.md) | Contributor guides |
+| Deployment | [deployment/library-root.md](./deployment/library-root.md) | Module install layouts |
 | User Guide | [user-guide/](./user-guide/) | Configuration, commands |
 | Philosophy | [contributing/philosophy/mechanism-vs-policy.md](./contributing/philosophy/mechanism-vs-policy.md) | Core design principle |
 
@@ -27,6 +28,7 @@ docs/
 │   ├── philosophy/  # Design principles
 │   ├── guides/      # How-to guides
 │   └── internals/   # Deep technical docs
+├── deployment/      # Install layouts, library roots
 ├── user-guide/      # End-user documentation
 └── heritage/        # Foundational documents
 ```
@@ -154,6 +156,16 @@ Contributor documentation.
 | Document | Description |
 |----------|-------------|
 | [Concurrency](./contributing/internals/concurrency.md) | Lock patterns, async |
+
+---
+
+### [Deployment](./deployment/)
+
+Install layouts and deployment tooling.
+
+| Document | Description |
+|----------|-------------|
+| [Library Root](./deployment/library-root.md) | Server module search paths, install layouts, overrides |
 
 ---
 

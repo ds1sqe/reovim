@@ -40,7 +40,7 @@ use {
         SyntaxFactoryStore, SyntaxSessionState,
     },
     reovim_kernel::api::v1::{
-        ConfigPaths, EventBus, KernelContext, ModeId, Module, ModuleContext, ModuleId, ModuleState,
+        ConfigPaths, EventBus, KernelContext, ModeId, ModuleContext, ModuleId, ModuleState,
         OptionRegistry, ServiceRegistry,
     },
     reovim_server::{
@@ -57,12 +57,6 @@ use {
     },
     reovim_subsys_vfs::VfsInstance,
 };
-
-// #620: Static module factories — only available when static-modules feature is on.
-// Replaces the DefaultsModule god-crate with direct, feature-gated imports.
-#[cfg(feature = "static-modules")]
-#[path = "static_modules.rs"]
-mod static_modules;
 
 // ============================================================================
 // Composition-root adapters (#753 E6)
@@ -297,45 +291,6 @@ fn register_module_config_store(config: &ModulesConfig, services: &Arc<ServiceRe
     }
 }
 
-/// Compute the set of extension kinds that should be disabled on the client.
-///
-/// For each disabled server module, looks up its `extension_kinds()` and
-/// collects them into a `HashSet`. This set is passed to the TUI so it
-/// can skip loading extensions for disabled server modules.
-#[must_use]
-#[cfg_attr(coverage_nightly, coverage(off))]
-pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
-    #[cfg(feature = "static-modules")]
-    {
-        let config = load_module_config();
-        let mut disabled_kinds = std::collections::HashSet::new();
-
-        // #620: Use static factory map instead of DefaultsModule
-        let registry = static_modules::builtin_registry();
-        for (id, factory) in &registry {
-            if !config.is_module_enabled(id) {
-                let module = factory();
-                for kind in module.extension_kinds() {
-                    disabled_kinds.insert((*kind).to_string());
-                }
-            }
-        }
-
-        if !disabled_kinds.is_empty() {
-            tracing::info!(?disabled_kinds, "Computed disabled extension kinds from module config");
-        }
-        disabled_kinds
-    }
-
-    #[cfg(not(feature = "static-modules"))]
-    {
-        // Dynamic path: cannot query extension_kinds without loading .so files.
-        // Extension filtering requires static modules or dynamic loader (Phase 5).
-        tracing::debug!("Static modules disabled, extension kind filtering unavailable");
-        std::collections::HashSet::new()
-    }
-}
-
 /// Collect extension bridges from modules via `BridgeProvider`.
 ///
 /// Initializes modules in a temporary `ServiceRegistry` to collect bridges.
@@ -385,7 +340,7 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     build_and_register_load_report(&config, &initialized.tracked, &services);
 
     // Collect bridges from the same bootstrap pass used for the session and registry.
-    let bridges = collect_bridges_from_services(&services, &initialized.tracked);
+    let bridges = collect_bridges_from_services(&services);
 
     let module_registry = build_live_module_registry(initialized);
 
@@ -854,27 +809,10 @@ fn initialize_modules_with_dependents(
     config: &ModulesConfig,
     ctx: &ModuleContext,
 ) -> InitializedModules {
-    // #620: Create builtin modules from static factory map (or empty for dynamic path)
-    #[cfg(feature = "static-modules")]
-    let all_modules: Vec<Box<dyn Module>> = {
-        let manifest = parse_builtin_manifest();
-        let registry = static_modules::builtin_registry();
-        manifest
-            .module_ids()
-            .into_iter()
-            .filter(|id| config.is_module_enabled(id))
-            .filter_map(|id| registry.get(id).map(|factory| factory()))
-            .collect()
-    };
-
-    #[cfg(not(feature = "static-modules"))]
-    let all_modules: Vec<Box<dyn Module>> = Vec::new();
-
-    // Convert Box<dyn Module> → ModuleHandle for unified static/dynamic interface (#620)
-    let all_handles: Vec<ModuleHandle> = all_modules
-        .into_iter()
-        .map(ModuleHandle::from_boxed)
-        .collect();
+    // All builtin modules are loaded dynamically as .so files from the search
+    // paths resolved by `ModuleLoader::discover()`. `discover_and_load_externals`
+    // below picks them up alongside any third-party modules on the system.
+    let all_handles: Vec<ModuleHandle> = Vec::new();
 
     // Collect builtin IDs before external discovery (for dedup)
     let builtin_ids: Vec<ModuleId> = all_handles.iter().map(|h| h.id().clone()).collect();
@@ -1011,33 +949,21 @@ fn initialize_modules_with_dependents(
 
 fn collect_bridges_from_services(
     services: &Arc<ServiceRegistry>,
-    tracked: &[TrackedModule],
 ) -> reovim_driver_text_session::bridges::BridgeRegistry {
-    use reovim_driver_text_session::bridges::BridgeRegistry;
+    use reovim_driver_text_session::bridges::{BridgeProvider, BridgeRegistry};
 
-    #[cfg(feature = "static-modules")]
-    {
-        use reovim_driver_text_session::bridges::BridgeProvider;
-
-        let mut registry = BridgeRegistry::new();
-        if let Some(provider) = services.get::<BridgeProvider>() {
-            for bridge in provider.take_bridges() {
-                registry.register_boxed(bridge);
-            }
+    let mut registry = BridgeRegistry::new();
+    if let Some(provider) = services.get::<BridgeProvider>() {
+        for bridge in provider.take_bridges() {
+            registry.register_boxed(bridge);
         }
-
-        let available_kinds = collect_available_kinds(tracked);
-        validate_extension_contracts(tracked, &registry);
-        registry.set_available_kinds(available_kinds);
-        registry
     }
-
-    #[cfg(not(feature = "static-modules"))]
-    {
-        let _ = tracked;
-        tracing::debug!("Static modules disabled, bridge collection unavailable");
-        BridgeRegistry::new()
-    }
+    // `available_kinds` remains empty until dynamic `ModuleHandle` exposes
+    // `extension_kinds()` (Phase 5 FFI surface, #769). The `ListExtensions`
+    // RPC reports the bridge kinds that were actually registered via
+    // `BridgeProvider` above; its `available_kinds` field will be empty
+    // until the Phase 5 handle extension lands.
+    registry
 }
 
 fn build_live_module_registry(initialized: InitializedModules) -> Arc<ModuleRegistry> {
@@ -1365,75 +1291,6 @@ fn log_shadow_comparison(
             }
         }
     }
-}
-
-/// Collect the union of all `extension_kinds()` from running modules (#584).
-///
-/// Returns a sorted, deduplicated list of extension kind identifiers
-/// declared by loaded server modules. Used to populate `BridgeRegistry`
-/// and expose to clients via the `ListExtensions` RPC.
-#[cfg(feature = "static-modules")]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn collect_available_kinds(modules: &[TrackedModule]) -> Vec<&'static str> {
-    use std::collections::BTreeSet;
-
-    let kinds: BTreeSet<&'static str> = modules
-        .iter()
-        .filter(|tm| tm.state == ModuleState::Running)
-        .flat_map(|tm| tm.handle.extension_kinds().iter().copied())
-        .collect();
-
-    kinds.into_iter().collect()
-}
-
-/// Validate that bridge registry kinds match module `extension_kinds()` declarations (#584).
-///
-/// Logs warnings for:
-/// - Orphaned bridges: bridge kind registered but no module declares it
-/// - Orphaned module kinds: module declares a kind but no bridge matches
-///
-/// This is non-fatal — the system continues with graceful degradation.
-#[cfg(feature = "static-modules")]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn validate_extension_contracts(
-    modules: &[TrackedModule],
-    bridge_registry: &reovim_driver_text_session::bridges::BridgeRegistry,
-) {
-    use std::collections::HashSet;
-
-    let module_kinds: HashSet<&str> = modules
-        .iter()
-        .filter(|tm| tm.state == ModuleState::Running)
-        .flat_map(|tm| tm.handle.extension_kinds().iter().copied())
-        .collect();
-
-    let bridge_kinds: HashSet<&str> = bridge_registry.kinds().into_iter().collect();
-
-    for kind in &bridge_kinds {
-        if !module_kinds.contains(kind) {
-            tracing::warn!(
-                kind,
-                "Orphaned bridge: registered but no module declares this extension_kind"
-            );
-        }
-    }
-
-    for kind in &module_kinds {
-        if !bridge_kinds.contains(kind) {
-            tracing::warn!(
-                kind,
-                "Orphaned module kind: declared in extension_kinds() but no bridge registered"
-            );
-        }
-    }
-
-    let matched = module_kinds.intersection(&bridge_kinds).count();
-    tracing::info!(
-        matched,
-        module_kinds = module_kinds.len(),
-        bridge_kinds = bridge_kinds.len(),
-        "Extension contract validation complete"
-    );
 }
 
 /// Configure syntax highlighting from `SyntaxFactoryStore`.

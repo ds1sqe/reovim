@@ -20,13 +20,10 @@ pub const MODULE_PATH_ENV: &str = "REOVIM_MODULE_PATH";
 /// 3. `/usr/local/lib/reovim/modules/` (locally-compiled)
 /// 4. `/usr/lib/reovim/modules/` (system packages)
 ///
-// TODO(#769-phase-3): this XDG + system logic duplicates
+// TODO(#772): this XDG + system logic duplicates
 // `reovim_dylib_loader::PathResolverBuilder::for_kind(Kind::Module)`'s
-// rule R5+R6. Both are live during Phase 1 because the existing public
-// API (`default_search_paths`) is consumed by `ModuleLoader::new`.
-// Phase 3's server-module cdylib migration removes this duplication:
-// `ModuleLoader::new` will switch to `PathResolver` directly and this
-// function will be deleted or re-expressed as a thin adapter.
+// rule R5+R6. Consolidate once `ModuleLoader::new` switches to
+// `PathResolver` directly.
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[must_use]
 pub fn default_search_paths() -> Vec<PathBuf> {
@@ -71,10 +68,9 @@ fn env_search_paths() -> Option<Vec<PathBuf>> {
 
 /// Get shared library extension for the current platform.
 ///
-// TODO(#769-phase-3): duplicates `reovim_dylib_loader::library_extension`.
-// Kept live during Phase 1 because the existing public API is consumed
-// by other server-side helpers; Phase 3's server-module cdylib migration
-// deletes this duplicate and has callers import from `reovim_dylib_loader`.
+// TODO(#772): duplicates `reovim_dylib_loader::library_extension`.
+// Consolidate alongside the search-path helper when `ModuleLoader::new`
+// switches to `PathResolver`.
 #[must_use]
 pub const fn library_extension() -> &'static str {
     #[cfg(any(

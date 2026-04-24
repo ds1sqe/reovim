@@ -13,42 +13,6 @@ fn test_create_session_state() {
 }
 
 #[test]
-fn test_modules_register_services() {
-    use reovim_driver_text_input::ResolverRegistry;
-
-    let services = Arc::new(ServiceRegistry::new());
-    let kernel = create_kernel_context(Arc::clone(&services));
-    let ctx = create_module_context(kernel, Arc::clone(&services));
-
-    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
-
-    // After module initialization, services should be registered
-    // Check for ResolverRegistry (registered by VimModule)
-    let resolver_registry = services.get::<ResolverRegistry>();
-    assert!(
-        resolver_registry.is_some(),
-        "ResolverRegistry should be registered by VimModule"
-    );
-}
-
-#[test]
-fn test_resolve_mode_str_valid() {
-    let state = create_session_state();
-    let mode_reg = {
-        let services = Arc::new(ServiceRegistry::new());
-        let kernel = create_kernel_context(Arc::clone(&services));
-        let ctx = create_module_context(kernel, Arc::clone(&services));
-        let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
-        let (mode_registry, _, _, _, _) = extract_registries(&services);
-        mode_registry
-    };
-    // vim:normal should exist after module init
-    let result = resolve_mode_str("vim:normal", &mode_reg);
-    assert!(result.is_some());
-    drop(state);
-}
-
-#[test]
 fn test_resolve_mode_str_no_colon() {
     let mode_reg = ModeRegistry::new();
     let result = resolve_mode_str("normal", &mode_reg);
@@ -86,71 +50,6 @@ fn test_create_kernel_context_valid() {
     drop(kernel);
 }
 
-/// Helper: create all builtin modules for test assertions.
-///
-/// Uses static factory map + manifest ordering (#620).
-#[cfg(feature = "static-modules")]
-fn create_all_builtin_modules() -> Vec<Box<dyn Module>> {
-    let manifest = parse_builtin_manifest();
-    let registry = static_modules::builtin_registry();
-    manifest
-        .module_ids()
-        .into_iter()
-        .filter_map(|id| registry.get(id).map(|factory| factory()))
-        .collect()
-}
-
-#[test]
-fn test_all_module_deps_resolve() {
-    // Verify all default modules form a valid dependency graph (#582)
-    let modules = create_all_builtin_modules();
-    let entries: Vec<DepEntry<ModuleId>> = modules
-        .iter()
-        .map(|m| DepEntry {
-            key: m.id(),
-            required: m.dependencies(),
-            optional: m.optional_dependencies(),
-            provides_caps: m.provides().to_vec(),
-            requires_caps: m.requires().to_vec(),
-        })
-        .collect();
-    let result = resolve_dependencies(&entries);
-    assert!(result.is_ok(), "Module dependency graph has errors: {result:?}");
-    let order = result.unwrap();
-    assert_eq!(order.order.len(), modules.len());
-}
-
-#[test]
-fn test_tier_ordering() {
-    // Verify dependency order constraints (#582)
-    let modules = create_all_builtin_modules();
-    let entries: Vec<DepEntry<ModuleId>> = modules
-        .iter()
-        .map(|m| DepEntry {
-            key: m.id(),
-            required: m.dependencies(),
-            optional: m.optional_dependencies(),
-            provides_caps: m.provides().to_vec(),
-            requires_caps: m.requires().to_vec(),
-        })
-        .collect();
-    let order = resolve_dependencies(&entries).unwrap();
-    let pos = |name: &str| {
-        order
-            .order
-            .iter()
-            .position(|id| id.as_str() == name)
-            .unwrap()
-    };
-
-    // vim must come after editor and motions
-    assert!(pos("editor") < pos("vim"), "editor must init before vim");
-    assert!(pos("motions") < pos("vim"), "motions must init before vim");
-    // #585: snippet and range-finder optionally depend on vim (ModeBridgeStore)
-    assert!(pos("vim") < pos("snippet"), "vim must init before snippet");
-    assert!(pos("vim") < pos("range-finder"), "vim must init before range-finder");
-}
-
 #[test]
 fn test_on_all_loaded_wired() {
     // Verify on_all_loaded() is called without panic (#582)
@@ -171,38 +70,9 @@ fn test_on_all_loaded_wired() {
 // ============================================================================
 
 #[test]
-fn test_bootstrap_with_external_discovery() {
-    // Bootstrap initializes all builtin modules even when external .so files
-    // exist on system search paths. External modules that duplicate builtins
-    // are filtered out (#587).
-    //
-    // Since #725 Phase 3, this test also implicitly covers P3-T2:
-    // `tracked` now contains BOTH builtin and external modules, and the
-    // loop below asserts every entry is `Running`. If an external `.so`
-    // is discoverable in the test environment, it passes through the same
-    // unified init loop as builtins and must also reach `Running` — not
-    // the old "init deferred" state. Explicit fixture-based P3-T2
-    // coverage (loading `libreovim_test_dynamic_module.so` via a
-    // controlled `REOVIM_MODULE_PATH`) is deferred to #729 where the E2E
-    // sample module pair exercises the full stack.
-    let services = Arc::new(ServiceRegistry::new());
-    let kernel = create_kernel_context(Arc::clone(&services));
-    let ctx = create_module_context(kernel, Arc::clone(&services));
-    let tracked = initialize_modules(&ModulesConfig::official(), &ctx);
-
-    // All builtins (and any externals that happened to be on the search
-    // path) must be in Running state — never deferred.
-    assert!(!tracked.is_empty());
-    for tm in &tracked {
-        assert_eq!(tm.state, ModuleState::Running);
-    }
-}
-
-#[test]
 fn test_discover_and_load_externals_graceful() {
     // External module discovery never panics, regardless of what's on disk.
     // Duplicate builtins are filtered, failed loads are logged and skipped.
-    // #620: Use manifest IDs instead of DefaultsModule::create_modules()
     let manifest = parse_builtin_manifest();
     let builtin_ids: Vec<ModuleId> = manifest
         .module_ids()
@@ -232,20 +102,6 @@ fn test_default_bootstrap_uses_vim_normal() {
 }
 
 #[test]
-fn test_initial_mode_provider_registered_by_vim() {
-    let services = Arc::new(ServiceRegistry::new());
-    let kernel = create_kernel_context(Arc::clone(&services));
-    let ctx = create_module_context(kernel, Arc::clone(&services));
-    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
-
-    let provider = services
-        .get::<reovim_driver_text_session::InitialModeProvider>()
-        .expect("VimModule should register InitialModeProvider");
-    let mode = provider.get().expect("initial mode should be set");
-    assert_eq!(mode, ModeId::new(ModuleId::new("vim"), "normal"));
-}
-
-#[test]
 fn test_fallback_without_personality_module() {
     // If no personality module registers an initial mode, bootstrap falls back
     // to vim:normal.
@@ -272,23 +128,6 @@ fn test_parse_builtin_manifest() {
     assert!(ids.contains(&"editor"));
     assert!(ids.contains(&"motions"));
     assert!(ids.contains(&"undo"));
-}
-
-#[cfg(feature = "static-modules")]
-#[test]
-fn test_static_registry_covers_manifest() {
-    // Verify the static factory map covers all manifest entries (except emacs)
-    let manifest = parse_builtin_manifest();
-    let registry = static_modules::builtin_registry();
-    for id in manifest.module_ids() {
-        if id == "emacs" {
-            continue; // Alternative personality, not in static registry
-        }
-        assert!(
-            registry.contains_key(id),
-            "Static registry missing module '{id}' from builtins.toml"
-        );
-    }
 }
 
 // ============================================================================

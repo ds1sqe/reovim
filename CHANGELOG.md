@@ -6,6 +6,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **#769 ABI Foundation — server modules load as cdylib only** (Phase 3):
+  `apps/server` no longer statically links its builtin modules. The
+  `static-modules` Cargo feature, the 55 optional `reovim-module-*` /
+  `reovim-content-codec-*` / `reovim-picker-*` dependencies, and the
+  `static_modules.rs` factory map are removed. `apps/server/builtins.toml`
+  remains as the canonical cdylib-scan module-id list (embedded via
+  `include_str!`); only the `static-modules`-conditional reader code is
+  deleted. `ModuleLoader::discover()` is now the single module-loading
+  path: all 55 builtins plus any third-party modules are loaded as `.so`
+  files from `$REOVIM_MODULE_PATH`, `$XDG_DATA_HOME/reovim/modules/`, and
+  the system library roots. `compute_disabled_extension_kinds()` and
+  `BridgeRegistry::available_kinds()` return empty sets until
+  `ModuleHandle` exposes `extension_kinds()` for dynamic modules
+  (Phase 5). The `lib/depgraph/tests/no_static_modules_feature.rs` ratchet
+  probe is un-ignored and enforced workspace-wide.
+
 - **#769 ABI Foundation — launcher lifecycle ordering** (Phase 2b):
   Embedded mode drains the client before the server: when the TUI
   returns, the launcher calls `Server::shutdown` on the shared
