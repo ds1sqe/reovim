@@ -146,13 +146,13 @@ impl ModuleLoader {
         // the shared library is ABI-compatible.
         unsafe {
             // 1. Load shared library via the OS-abstraction wrapper.
-            let library = Library::open(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
+            let library =
+                Library::open(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
 
             // 2. Check API version FIRST (static symbol, fast)
-            let api_version: Symbol<&'static Version> =
-                library
-                    .symbol(b"REOVIM_MODULE_API_VERSION")
-                    .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
+            let api_version: Symbol<&'static Version> = library
+                .symbol(b"REOVIM_MODULE_API_VERSION")
+                .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let module_api = **api_version;
 
@@ -308,10 +308,7 @@ impl ModuleLoader {
     // signature instead of two parallel ones.
     #[allow(unsafe_code)]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub unsafe fn from_path_scan(
-        &mut self,
-        root: &Path,
-    ) -> Vec<Result<ModuleId, ModuleError>> {
+    pub unsafe fn from_path_scan(&mut self, root: &Path) -> Vec<Result<ModuleId, ModuleError>> {
         use reovim_dylib_loader::{Kind, PathResolverBuilder, scan_paths};
 
         let resolver = PathResolverBuilder::for_kind(Kind::Module)

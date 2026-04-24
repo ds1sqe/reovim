@@ -38,9 +38,11 @@ fn poc_cdylib_source() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf();
-    let target = env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace.join("target"), PathBuf::from);
-    target.join("debug").join(library_filename("reovim_driver_abi_poc"))
+    let target =
+        env::var("CARGO_TARGET_DIR").map_or_else(|_| workspace.join("target"), PathBuf::from);
+    target
+        .join("debug")
+        .join(library_filename("reovim_driver_abi_poc"))
 }
 
 #[test]
@@ -68,12 +70,7 @@ fn scan_100_cdylibs_cold_and_warm_are_within_budget() {
     let cold_start = Instant::now();
     let cold = scan_paths(std::slice::from_ref(&root));
     let cold_elapsed = cold_start.elapsed();
-    assert_eq!(
-        cold.len(),
-        COUNT,
-        "cold pass found {} entries, expected {COUNT}",
-        cold.len()
-    );
+    assert_eq!(cold.len(), COUNT, "cold pass found {} entries, expected {COUNT}", cold.len());
     let cold_oks = cold.entries().iter().filter(|e| e.outcome.is_ok()).count();
     assert_eq!(cold_oks, COUNT, "cold pass had {cold_oks} successes, expected {COUNT}");
 

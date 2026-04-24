@@ -6,8 +6,10 @@
 
 use {
     super::*,
-    reovim_client_subsys_render::abi::{ClientRenderVTable, RenderTargetVTable},
-    reovim_client_subsys_render::client_render::ClientRenderDriverProbe,
+    reovim_client_subsys_render::{
+        abi::{ClientRenderVTable, RenderTargetVTable},
+        client_render::ClientRenderDriverProbe,
+    },
     reovim_kernel::api::v1::Version,
     std::{
         ffi::{CString, c_char, c_int, c_void},

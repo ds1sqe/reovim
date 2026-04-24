@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **#769 ABI Foundation — server default transport**: `reovim server`
+  (no flags) now defaults to gRPC on port 12540 (was TCP-with-fallback),
+  matching the TUI and CLI client defaults so a bare `reovim-server` is
+  immediately connectable without extra flags. Post-flip reachability of
+  `TransportMode` variants via the `reovim-server` CLI:
+  `Grpc { port }` default + `--grpc PORT`; `Tcp { port }` via `--tcp PORT`;
+  `UnixSocket { path }` via `--socket PATH` (unix); `Pipe` via
+  `--transport pipe`; `Inproc` rejected (embedded-only); `TcpWithFallback`
+  retired — not removed, still reachable via `ServerConfig::default()` for
+  direct-API callers. (#760)
 - **#769 ABI Foundation — Phase 2a**: `apps/bin/` split into
   `apps/{server,tui,cli,web,reovim}` so each user-facing bin is its own
   composition root. `apps/server/` (package `reovim-app-server`, bin

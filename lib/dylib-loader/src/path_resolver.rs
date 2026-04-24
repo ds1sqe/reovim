@@ -99,10 +99,10 @@ pub fn split_paths(s: &str) -> Vec<PathBuf> {
 fn default_fallback_paths<E: EnvProvider + ?Sized>(env: &E, kind: Kind) -> Vec<PathBuf> {
     let mut out = Vec::new();
 
-    let user_root = env
-        .get("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env.get("HOME").map(|h| PathBuf::from(h).join(".local/share")));
+    let user_root = env.get("XDG_DATA_HOME").map(PathBuf::from).or_else(|| {
+        env.get("HOME")
+            .map(|h| PathBuf::from(h).join(".local/share"))
+    });
 
     if let Some(root) = user_root {
         out.push(root.join("reovim").join(kind.subdir()));
@@ -244,20 +244,5 @@ fn dedup_preserving_order(paths: &mut Vec<PathBuf>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn std_env_matches_std_env_var_for_path() {
-        // PATH is reliably set in CI and dev shells. Don't mutate the
-        // environment — concurrent tests would race, and 2024-edition
-        // set_var/remove_var are unsafe.
-        assert_eq!(StdEnv.get("PATH"), std::env::var("PATH").ok());
-    }
-
-    #[test]
-    fn std_env_returns_none_for_unset_key() {
-        let key = "REOVIM_DYLIB_LOADER_DEFINITELY_UNSET_XYZ_12345";
-        assert_eq!(StdEnv.get(key), None);
-    }
-}
+#[path = "path_resolver_tests.rs"]
+mod path_resolver_tests;

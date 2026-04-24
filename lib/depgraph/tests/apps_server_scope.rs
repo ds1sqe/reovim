@@ -56,7 +56,9 @@ fn apps_server_dep_surface_is_correct() {
         .collect();
     missing_required.sort_unstable();
 
-    let has_required_prefix = declared.iter().any(|name| name.starts_with(REQUIRED_PREFIX));
+    let has_required_prefix = declared
+        .iter()
+        .any(|name| name.starts_with(REQUIRED_PREFIX));
 
     let mut forbidden: Vec<String> = Vec::new();
     for dep in &declared {

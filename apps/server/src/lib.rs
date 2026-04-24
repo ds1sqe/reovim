@@ -30,11 +30,16 @@ pub mod module_cli;
 pub mod module_service;
 pub mod profiling;
 
+#[cfg(test)]
+#[path = "lib_tests.rs"]
+mod lib_tests;
+
 /// Top-level CLI for the standalone `reovim-server` binary.
 ///
 /// Accepts server transport flags directly (default action: start the
-/// server) and optionally a `module` subcommand for offline module
-/// lifecycle operations that do not require a running server.
+/// server on gRPC port 12540) and optionally a `module` subcommand for
+/// offline module lifecycle operations that do not require a running
+/// server.
 #[derive(Parser, Debug)]
 #[command(name = "reovim-server")]
 #[command(version, about, long_about = None)]
@@ -43,7 +48,7 @@ pub struct ServerArgs {
     #[arg(long, value_name = "PORT", global = true)]
     pub tcp: Option<u16>,
 
-    /// gRPC port to listen on.
+    /// gRPC port to listen on (default: 12540 when no transport flag is set).
     #[arg(long, value_name = "PORT", global = true)]
     pub grpc: Option<u16>,
 
@@ -196,8 +201,10 @@ fn init_debug_infrastructure() {
 ///
 /// `--transport pipe` takes priority and maps to `TransportMode::Pipe`.
 /// `--transport inproc` is rejected with a pointer at the embedded
-/// launcher. Port-style flags follow: gRPC > Unix socket > TCP > TCP
-/// fallback.
+/// launcher. Port-style flags follow: gRPC > Unix socket > TCP. When no
+/// transport flag is set, the default is gRPC on port 12540, matching
+/// the TUI and CLI client defaults so a bare `reovim-server` is
+/// immediately connectable without extra flags.
 ///
 /// # Errors
 ///
@@ -235,7 +242,7 @@ pub(crate) fn determine_transport(
         return Ok(TransportMode::Tcp { port });
     }
 
-    Ok(TransportMode::TcpWithFallback)
+    Ok(TransportMode::Grpc { port: 12540 })
 }
 
 /// Run the standalone `reovim-server` flow.
@@ -290,9 +297,11 @@ async fn run_server(args: ServerArgs) -> std::io::Result<()> {
         server = server.with_domain_driver(driver);
     }
     match transport {
-        TransportMode::Pipe => server
-            .run_pipe(tokio::io::stdin(), tokio::io::stdout())
-            .await,
+        TransportMode::Pipe => {
+            server
+                .run_pipe(tokio::io::stdin(), tokio::io::stdout())
+                .await
+        }
         _ => server.run().await,
     }
 }

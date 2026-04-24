@@ -10,8 +10,8 @@
 use std::time::Duration;
 
 use {
-    reovim_testing::TestServerHarness,
     super::run::{TuiArgs, run},
+    reovim_testing::TestServerHarness,
 };
 
 #[tokio::test]

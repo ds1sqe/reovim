@@ -14,5 +14,7 @@ pub mod client_render;
 pub mod error;
 pub mod validation;
 
-pub use client_render::{LoadedClientRender, LoadedRenderTarget};
-pub use error::{LoadError, ScanEntryError, ValidationError};
+pub use {
+    client_render::{LoadedClientRender, LoadedRenderTarget},
+    error::{LoadError, ScanEntryError, ValidationError},
+};

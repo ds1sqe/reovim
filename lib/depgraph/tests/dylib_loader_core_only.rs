@@ -31,9 +31,8 @@ fn dylib_loader_has_no_reovim_deps() {
 
         let name = dep.name.as_str();
         if name.starts_with("reovim-") || name.starts_with("reovim_") {
-            violations.push(format!(
-                "reovim-dylib-loader must not depend on reovim-* crate `{name}`"
-            ));
+            violations
+                .push(format!("reovim-dylib-loader must not depend on reovim-* crate `{name}`"));
             continue;
         }
 

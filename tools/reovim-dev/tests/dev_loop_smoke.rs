@@ -24,9 +24,11 @@ fn poc_cdylib_source() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf();
-    let target = env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace.join("target"), PathBuf::from);
-    target.join("debug").join(reovim_dylib_loader::library_filename("reovim_driver_abi_poc"))
+    let target =
+        env::var("CARGO_TARGET_DIR").map_or_else(|_| workspace.join("target"), PathBuf::from);
+    target
+        .join("debug")
+        .join(reovim_dylib_loader::library_filename("reovim_driver_abi_poc"))
 }
 
 #[test]
@@ -43,8 +45,7 @@ fn stage_then_scan_surfaces_the_poc_cdylib() {
     let ws = tempfile::tempdir().unwrap();
     let debug = ws.path().join("target").join("debug");
     fs::create_dir_all(&debug).unwrap();
-    let staged_src =
-        debug.join(reovim_dylib_loader::library_filename("reovim_driver_abi_poc"));
+    let staged_src = debug.join(reovim_dylib_loader::library_filename("reovim_driver_abi_poc"));
     fs::copy(&src, &staged_src).unwrap();
 
     let report = stage_all(ws.path()).expect("stage_all");

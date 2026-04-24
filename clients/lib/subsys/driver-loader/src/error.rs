@@ -37,7 +37,9 @@ pub enum ValidationError {
     AbiVersionMismatch { found: u32, expected: u32 },
 
     /// `api_version` major differs or driver's minor is below required.
-    #[error("API version incompatible: driver={found_major}.{found_minor}.{found_patch}, host requires {expected_major}.{expected_minor}+")]
+    #[error(
+        "API version incompatible: driver={found_major}.{found_minor}.{found_patch}, host requires {expected_major}.{expected_minor}+"
+    )]
     ApiVersionIncompatible {
         found_major: u32,
         found_minor: u32,

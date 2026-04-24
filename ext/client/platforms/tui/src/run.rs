@@ -145,10 +145,7 @@ async fn run_headless(
 ///
 /// See [`run`] for the error taxonomy.
 #[cfg_attr(coverage_nightly, coverage(off))]
-async fn run_interactive(
-    addr: &str,
-    disabled: &HashSet<String>,
-) -> Result<(), TuiRunError> {
+async fn run_interactive(addr: &str, disabled: &HashSet<String>) -> Result<(), TuiRunError> {
     tracing::info!("Connecting interactive TUI to {addr}");
 
     let (mut app, _handle) = connect_interactive(addr, None, None, disabled)

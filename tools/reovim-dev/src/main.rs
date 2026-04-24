@@ -94,13 +94,14 @@ fn run(cli: Cli) -> Result<(), String> {
         Cmd::Scan { workspace } => {
             let ws = resolve_workspace(workspace)?;
             let scan = stage::scan_staging(&ws);
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&scan).map_err(|e| e.to_string())?
-            );
+            println!("{}", serde_json::to_string_pretty(&scan).map_err(|e| e.to_string())?);
             Ok(())
         }
-        Cmd::Run { workspace, bin, args } => {
+        Cmd::Run {
+            workspace,
+            bin,
+            args,
+        } => {
             let ws = resolve_workspace(workspace)?;
             launch::exec(&ws, bin.as_deref().unwrap_or("reovim"), &args)
         }

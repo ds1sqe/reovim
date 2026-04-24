@@ -39,12 +39,11 @@ impl Library {
         // the specialized loaders validate the ABI vtable header
         // immediately after `open` returns). Wrapping the call here
         // centralizes the trust boundary in one place.
-        let raw = unsafe { libloading::Library::new(path) }.map_err(|e| {
-            LoaderError::LibraryOpen {
+        let raw =
+            unsafe { libloading::Library::new(path) }.map_err(|e| LoaderError::LibraryOpen {
                 path: path.to_path_buf(),
                 source_text: e.to_string(),
-            }
-        })?;
+            })?;
         Ok(Self(raw))
     }
 
@@ -72,4 +71,3 @@ impl Library {
         })
     }
 }
-

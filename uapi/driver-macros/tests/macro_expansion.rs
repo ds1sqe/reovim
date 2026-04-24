@@ -8,14 +8,13 @@
 mod hygienic {
     #![no_implicit_prelude]
 
-    use ::reovim_client_subsys_render::{
-        client_render::{ClientRender, ClientRenderDriverProbe, ClientRenderError},
-        target::{RenderError, RenderTarget},
-    };
-    use ::reovim_driver_macros::declare_client_render_driver;
-    use ::std::{
-        ffi::c_void,
-        result::Result,
+    use {
+        ::reovim_client_subsys_render::{
+            client_render::{ClientRender, ClientRenderDriverProbe, ClientRenderError},
+            target::{RenderError, RenderTarget},
+        },
+        ::reovim_driver_macros::declare_client_render_driver,
+        ::std::{ffi::c_void, result::Result},
     };
 
     pub struct HygieneProbeDriver {
@@ -35,9 +34,7 @@ mod hygienic {
             ClientRenderDriverProbe::new("hygiene", "Hygiene Probe")
         }
         fn construct(_platform: *mut c_void) -> Result<Self, ClientRenderError> {
-            Result::Ok(Self {
-                tgt: HygieneTarget,
-            })
+            Result::Ok(Self { tgt: HygieneTarget })
         }
         fn target(&mut self) -> &mut dyn RenderTarget {
             &mut self.tgt

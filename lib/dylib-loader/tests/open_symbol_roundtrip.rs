@@ -20,9 +20,11 @@ fn poc_cdylib_path() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf();
-    let target = env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace.join("target"), PathBuf::from);
-    target.join("debug").join(library_filename("reovim_driver_abi_poc"))
+    let target =
+        env::var("CARGO_TARGET_DIR").map_or_else(|_| workspace.join("target"), PathBuf::from);
+    target
+        .join("debug")
+        .join(library_filename("reovim_driver_abi_poc"))
 }
 
 #[test]

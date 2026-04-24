@@ -96,10 +96,7 @@ pub struct ClientRenderVTable {
     ) -> c_int,
     /// Drain outstanding work. Called before `destroy` in the happy
     /// path.
-    pub shutdown: unsafe extern "C" fn(
-        instance: *mut c_void,
-        out_err: *mut *mut c_char,
-    ) -> c_int,
+    pub shutdown: unsafe extern "C" fn(instance: *mut c_void, out_err: *mut *mut c_char) -> c_int,
     /// Destroy the instance and reclaim its memory.
     ///
     /// Called after `shutdown` (or immediately in a Drop-on-error

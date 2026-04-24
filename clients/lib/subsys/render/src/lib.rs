@@ -10,5 +10,7 @@ pub mod abi;
 pub mod client_render;
 pub mod target;
 
-pub use client_render::{ClientRender, ClientRenderDriverProbe, ClientRenderError};
-pub use target::{RenderError, RenderTarget};
+pub use {
+    client_render::{ClientRender, ClientRenderDriverProbe, ClientRenderError},
+    target::{RenderError, RenderTarget},
+};

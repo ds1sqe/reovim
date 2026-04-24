@@ -1,7 +1,12 @@
 use {
-    super::*, reovim_client_subsys_render::abi::ClientRenderVTable,
-    reovim_client_subsys_render::client_render::ClientRenderDriverProbe,
-    std::ffi::{c_char, c_int, c_void}, std::ptr,
+    super::*,
+    reovim_client_subsys_render::{
+        abi::ClientRenderVTable, client_render::ClientRenderDriverProbe,
+    },
+    std::{
+        ffi::{c_char, c_int, c_void},
+        ptr,
+    },
 };
 
 unsafe extern "C" fn stub_probe() -> ClientRenderDriverProbe {
@@ -70,11 +75,7 @@ fn rejects_abi_mismatch() {
 #[test]
 fn rejects_api_major_mismatch() {
     let h = host();
-    let vt = vtable(
-        h.abi_version,
-        Version::new(h.api_version.major + 1, 0, 0),
-        h.size_of_self,
-    );
+    let vt = vtable(h.abi_version, Version::new(h.api_version.major + 1, 0, 0), h.size_of_self);
     let err = unsafe { check_client_render(&raw const vt, h) }.unwrap_err();
     assert!(matches!(err, ValidationError::ApiVersionIncompatible { .. }));
 }

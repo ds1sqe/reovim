@@ -106,8 +106,8 @@ impl LoadedClientRender {
         // `libloading` cannot verify the exported type matches. The
         // contract in `docs/architecture/driver-abi-v1.md` fixes this
         // symbol to a `ClientRenderVTable` static.
-        let sym: Symbol<'_, *const ClientRenderVTable> =
-            unsafe { lib.symbol(VTABLE_SYMBOL) }.map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        let sym: Symbol<'_, *const ClientRenderVTable> = unsafe { lib.symbol(VTABLE_SYMBOL) }
+            .map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
         let vtable_ptr: *const ClientRenderVTable = *sym;
 
         // SAFETY: The vtable's first three header fields are
@@ -131,8 +131,7 @@ impl LoadedClientRender {
         // are writable locals. The trampoline body is wrapped in
         // `catch_unwind` by the driver macro, so panics do not unwind
         // across the FFI boundary.
-        let rc =
-            unsafe { (vtable.construct)(platform, &raw mut instance, &raw mut err_ptr) };
+        let rc = unsafe { (vtable.construct)(platform, &raw mut instance, &raw mut err_ptr) };
         translate_rc(rc, err_ptr, vtable)?;
         Ok(Self {
             instance,
@@ -168,7 +167,9 @@ impl LoadedClientRender {
 /// failure, so it routes to `AbiMismatch` with `VtablePointerNull`.
 fn load_to_scan_error(err: LoadError) -> ScanEntryError {
     match err {
-        LoadError::LibraryOpen(_) => ScanEntryError::AbiMismatch(ValidationError::VtablePointerNull),
+        LoadError::LibraryOpen(_) => {
+            ScanEntryError::AbiMismatch(ValidationError::VtablePointerNull)
+        }
         LoadError::Validation(v) => ScanEntryError::AbiMismatch(v),
         LoadError::DriverError(msg) => ScanEntryError::DriverError(msg),
         LoadError::DriverPanicked => ScanEntryError::DriverPanicked,
@@ -190,12 +191,7 @@ fn call_target(
     // at load time; `instance` is the pointer the driver returned from
     // `construct`. Out-params are local.
     let rc = unsafe {
-        (vtable.target)(
-            instance,
-            &raw mut sub_vtable,
-            &raw mut sub_handle,
-            &raw mut err_ptr,
-        )
+        (vtable.target)(instance, &raw mut sub_vtable, &raw mut sub_handle, &raw mut err_ptr)
     };
     translate_rc(rc, err_ptr, vtable)?;
     if sub_vtable.is_null() {
@@ -279,11 +275,7 @@ enum RcOutcome {
 /// Classify an FFI return code + error-string out-param into an
 /// `RcOutcome`. Always consumes `err_ptr` (frees spurious-on-success or
 /// panic-path strings, reads + frees the error-path string).
-fn classify_rc(
-    rc: c_int,
-    err_ptr: *mut c_char,
-    vtable: &ClientRenderVTable,
-) -> RcOutcome {
+fn classify_rc(rc: c_int, err_ptr: *mut c_char, vtable: &ClientRenderVTable) -> RcOutcome {
     match rc {
         0 => {
             if !err_ptr.is_null() {

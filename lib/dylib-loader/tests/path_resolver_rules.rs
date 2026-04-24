@@ -28,7 +28,10 @@ impl MockEnv {
     }
 
     fn set(self, key: &str, value: &str) -> Self {
-        self.map.lock().unwrap().insert(key.to_owned(), value.to_owned());
+        self.map
+            .lock()
+            .unwrap()
+            .insert(key.to_owned(), value.to_owned());
         self
     }
 }
@@ -176,14 +179,18 @@ fn r5_library_root_absent_contributes_nothing() {
 #[test]
 fn r6_xdg_fallback_honors_xdg_data_home_for_driver() {
     let env = MockEnv::new().set("XDG_DATA_HOME", "/custom-xdg");
-    let resolver = PathResolverBuilder::for_kind(Kind::Driver).with_env(env).build();
+    let resolver = PathResolverBuilder::for_kind(Kind::Driver)
+        .with_env(env)
+        .build();
     assert!(contains_path(resolver.paths(), Path::new("/custom-xdg/reovim/driver")));
 }
 
 #[test]
 fn r6_xdg_fallback_honors_home_when_xdg_absent() {
     let env = MockEnv::new().set("HOME", "/home/user");
-    let resolver = PathResolverBuilder::for_kind(Kind::Module).with_env(env).build();
+    let resolver = PathResolverBuilder::for_kind(Kind::Module)
+        .with_env(env)
+        .build();
     assert!(contains_path(
         resolver.paths(),
         Path::new("/home/user/.local/share/reovim/modules"),
@@ -252,7 +259,9 @@ fn all_six_rules_populated_produce_expected_precedence_order() {
 #[test]
 fn r5_set_does_not_evict_r6_system_defaults() {
     let env = MockEnv::new().set("REOVIM_LIBRARY_ROOT", "/root");
-    let resolver = PathResolverBuilder::for_kind(Kind::Driver).with_env(env).build();
+    let resolver = PathResolverBuilder::for_kind(Kind::Driver)
+        .with_env(env)
+        .build();
     assert!(contains_path(resolver.paths(), Path::new("/root/driver")));
     assert!(contains_path(resolver.paths(), Path::new("/usr/local/lib/reovim/driver")));
     assert!(contains_path(resolver.paths(), Path::new("/usr/lib/reovim/driver")));
@@ -298,7 +307,11 @@ fn duplicate_path_across_rules_appears_once_at_highest_precedence() {
         .push_cli_path("/shared")
         .without_system_fallback()
         .build();
-    let occurrences = resolver.paths().iter().filter(|p| p.as_path() == Path::new("/shared")).count();
+    let occurrences = resolver
+        .paths()
+        .iter()
+        .filter(|p| p.as_path() == Path::new("/shared"))
+        .count();
     assert_eq!(occurrences, 1);
     assert_eq!(resolver.paths().first(), Some(&PathBuf::from("/shared")));
 }

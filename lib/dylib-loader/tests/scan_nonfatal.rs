@@ -13,11 +13,7 @@
 
 use {
     reovim_dylib_loader::{ScanEntryError, library_filename, scan_paths},
-    std::{
-        env,
-        fs,
-        path::PathBuf,
-    },
+    std::{env, fs, path::PathBuf},
 };
 
 fn poc_cdylib_source() -> PathBuf {
@@ -27,9 +23,11 @@ fn poc_cdylib_source() -> PathBuf {
         .nth(2)
         .expect("workspace root")
         .to_path_buf();
-    let target = env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace.join("target"), PathBuf::from);
-    target.join("debug").join(library_filename("reovim_driver_abi_poc"))
+    let target =
+        env::var("CARGO_TARGET_DIR").map_or_else(|_| workspace.join("target"), PathBuf::from);
+    target
+        .join("debug")
+        .join(library_filename("reovim_driver_abi_poc"))
 }
 
 #[test]
@@ -88,7 +86,9 @@ fn scan_reports_not_a_library_for_garbage_bytes_with_cdylib_extension() {
     let report = scan_paths(&[dir.path().to_path_buf()]);
     assert_eq!(report.len(), 1);
     match &report.entries()[0].outcome {
-        Err(ScanEntryError::NotALibrary { path, .. } | ScanEntryError::DlopenFailed { path, .. }) => {
+        Err(
+            ScanEntryError::NotALibrary { path, .. } | ScanEntryError::DlopenFailed { path, .. },
+        ) => {
             assert_eq!(path, &garbage);
         }
         other => panic!("expected NotALibrary/DlopenFailed, got {other:?}"),
@@ -136,10 +136,7 @@ fn scan_mixed_directory_surfaces_both_successes_and_failures() {
     let report = scan_paths(&[dir.path().to_path_buf()]);
     assert_eq!(report.len(), 2, "expected 2 cdylib candidates (README skipped)");
 
-    let (oks, errs): (Vec<_>, Vec<_>) = report
-        .entries()
-        .iter()
-        .partition(|e| e.outcome.is_ok());
+    let (oks, errs): (Vec<_>, Vec<_>) = report.entries().iter().partition(|e| e.outcome.is_ok());
     assert_eq!(oks.len(), 1, "expected 1 successful open");
     assert_eq!(errs.len(), 1, "expected 1 error");
 }
