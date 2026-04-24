@@ -48,6 +48,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#770 Debug Surface — Phase 4: Docs**: User guide
+  `docs/user-guide/debug-surface.md` and architecture doc
+  `docs/architecture/debug-surface.md` covering CLI verbs, ABI, registry,
+  `DebugStream` RPC, and the driver extension recipe. (#770)
 - **#770 Debug Surface — Phase 2**: CLI verbs `reovim cli debug
   {probe, observe, drive}` that consume the Phase 1 `DebugStream`
   bidirectional RPC. The CLI never decodes driver payloads — bytes
