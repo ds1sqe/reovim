@@ -8,8 +8,10 @@
 //! any `reovim-domain-*` and `reovim-provider-*` crate — including
 //! the two introduced by this flight.
 
-use cargo_metadata::{DependencyKind, MetadataCommand};
-use reovim_domain_mesh::{Mesh, MeshContent, MeshEdit, MeshPosition, Vertex};
+use {
+    cargo_metadata::{DependencyKind, MetadataCommand},
+    reovim_domain_mesh::{Mesh, MeshContent, MeshEdit, MeshPosition, Vertex},
+};
 
 const DOMAIN_CRATE: &str = "reovim-domain-mesh";
 const PROVIDER_CRATE: &str = "reovim-provider-mesh";

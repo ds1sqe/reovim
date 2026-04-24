@@ -390,6 +390,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   using an `AtomicUsize` ticket counter. The paired live-process
   SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
   `#[ignore]` pending the `/e2e` harness (TODO(#769)).
+- **#753 Codec Foundation — chain closeout (Flight 78)**: new
+  `docs/architecture/codec-foundation.md` ties Flights 74–77 into
+  one chain-level architecture reference. Documents the surface-
+  neutral client pipeline (FullBlock / HalfBlock / Braille / Web
+  SSR) and the domain-neutral server pipeline (Text + Mesh), names
+  the four preexisting purity probes that enforce the
+  zero-edit-for-new-domain invariant, and carries forward the
+  ten explicit deferrals that this chain consciously did not
+  close (gRPC/WebSocket streaming, TypeScript-client integration
+  with `reovim-web`, SVG backgrounds and styled text on the web
+  surface, `WebFrame` ↔ `CellCapability` unification (Phase E.1),
+  mesh topology, per-vertex / per-face mesh edits, mesh file
+  formats, a client-side mesh rasterizer, gRPC for the mesh
+  domain, and live-server `/e2e` smokes). The master-plan
+  deliverable named "mesh-domain.md" is satisfied by the already-
+  landed `docs/architecture/domains/mesh/overview.md` (Flight 77);
+  consolidating the chain-level story into one reference rather
+  than adding a parallel file avoids duplication with the
+  crate-level doc-comments and the rendering / mesh subtrees.
+  Flight 78 also folds in two `cargo fmt --check` repairs on
+  Flight-77 test files that slipped through (whitespace-only,
+  zero semantic change) so the workspace stays fmt-clean.
+
 - **#753 Codec Foundation — Mesh domain scaffold (Flight 77)**:
   two new crates, `reovim-domain-mesh` and `reovim-provider-mesh`,
   sitting beside the pre-existing text domain in

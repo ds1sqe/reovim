@@ -5,7 +5,8 @@ const fn assert_copy<T: Copy>() {}
 /// Compile-time `T: Send + Sync + 'static` proof.
 const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
 /// Compile-time `Domain::Position` bound proof (includes `PartialEq`).
-const fn assert_position_bounds<T: Send + Sync + Clone + core::fmt::Debug + PartialEq + 'static>() {}
+const fn assert_position_bounds<T: Send + Sync + Clone + core::fmt::Debug + PartialEq + 'static>() {
+}
 /// Compile-time `Domain::Edit` / `Domain::Content` bound proof.
 const fn assert_edit_content_bounds<T: Send + Sync + Clone + core::fmt::Debug + 'static>() {}
 
@@ -24,7 +25,14 @@ fn vertex_construction_and_equality() {
     assert_eq!(a, b);
     // `PartialEq` on `f32` is fine when comparing values constructed
     // from identical literals — no arithmetic has run, no ULP drift.
-    assert_eq!(a, Vertex { x: 1.0, y: 2.0, z: 3.0 });
+    assert_eq!(
+        a,
+        Vertex {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0
+        }
+    );
 }
 
 #[test]
