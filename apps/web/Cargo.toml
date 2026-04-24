@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Standalone reovim-web bin + lib (SSR runtime not yet implemented)"
+description = "Standalone reovim-web bin + lib: delegates to the web platform runtime"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -19,10 +19,9 @@ path = "src/lib.rs"
 
 [dependencies]
 reovim-protocol = { workspace = true }
+reovim-client-ext-platform-web = { workspace = true }
 
 clap = { workspace = true }
-thiserror = "2"
-tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true

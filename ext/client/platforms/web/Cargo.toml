@@ -1,0 +1,18 @@
+[package]
+name = "reovim-client-ext-platform-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reovim Web platform runtime: canonical-frame SVG server (Flight 76 spike)"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+thiserror = "2"
+tokio = { workspace = true, features = ["net", "io-util", "macros", "rt-multi-thread", "signal", "time"] }

@@ -29,3 +29,7 @@ reovim-client-driver = { workspace = true }
 # Used by `cell_view_half_block_exists.rs` to smoke-compile the Flight 74
 # public API surface (`BackendRasterOutput`, `HalfBlockRasterizer`).
 reovim-ext-client-tui-cap-cell-view = { workspace = true }
+
+# Used by `platforms_web_exists.rs` to smoke-compile the Flight 76
+# public API surface (`run`, `WebArgs`, `render_page`, …).
+reovim-client-ext-platform-web = { workspace = true }

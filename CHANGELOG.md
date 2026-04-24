@@ -390,6 +390,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   using an `AtomicUsize` ticket counter. The paired live-process
   SIGINT smoke (`apps/reovim/tests/subprocess_smoke.rs`) is scaffolded
   `#[ignore]` pending the `/e2e` harness (TODO(#769)).
+- **#753 Codec Foundation — Web client pipe-up (Flight 76 spike)**:
+  new `ext/client/platforms/web/` crate
+  (`reovim-client-ext-platform-web`) and the `reovim-web` bin now
+  serves a canonical frame as inline SVG inside a minimal HTML5
+  document over HTTP/1.1. Flight 76 is a Phase-17-δ spike proving the
+  `render-codec` substrate has a non-TUI surface; gRPC, the
+  TypeScript client, SVG backgrounds, and styled text are explicitly
+  out of scope. The platform crate keeps its cell-grid primitives
+  (`WebFrame`, `WebCell`, `WebColor`) self-contained — CLM v7 forbids
+  `ext/client/platforms/* → ext/client/capabilities/*` direct edges;
+  unification with `CellCapability` is deferred to Phase E.1 of #753.
+  The HTTP server is a hand-rolled `tokio::net::TcpListener` loop
+  (no hyper / axum); a locked 8 KiB header read cap guards against
+  unbounded requests. The `apps/web/` bin delegates to
+  `reovim-client-ext-platform-web::run`; its `ErrorKind::Unsupported`
+  stub from the pre-#769 scaffolding is retired. A new
+  `platforms_web_exists` depgraph probe pins workspace membership,
+  the `tokio` / `clap` / `thiserror` direct-dep set, and the
+  forbidden-edge assertion; `apps_web_scope` is relaxed to mirror
+  `apps_tui_scope`, allowlisting the single
+  `reovim-client-ext-platform-web` edge.
 
 - **#753 Codec Foundation — Braille rasterizer (Flight 75)**: the
   `ViewHint::Braille` arm in `clients/tui/src/render_engine.rs` is now

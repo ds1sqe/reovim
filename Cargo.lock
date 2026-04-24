@@ -2347,9 +2347,8 @@ name = "reovim-app-web"
 version = "0.15.0-dev"
 dependencies = [
  "clap",
+ "reovim-client-ext-platform-web",
  "reovim-protocol",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
@@ -2455,6 +2454,15 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-client-ext-platform-web"
+version = "0.15.0-dev"
+dependencies = [
+ "clap",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -2836,6 +2844,7 @@ version = "0.15.0-dev"
 dependencies = [
  "cargo_metadata",
  "reovim-client-driver",
+ "reovim-client-ext-platform-web",
  "reovim-ext-client-tui-cap-cell-view",
  "walkdir",
 ]

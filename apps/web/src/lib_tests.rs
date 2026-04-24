@@ -1,6 +1,7 @@
-//! Coverage for the web stub. `run()` always errors with
-//! `Unsupported`; `WebArgs` derives clap's `Args` so the default
-//! listen address is the only runtime behavior worth asserting.
+//! Coverage for the `reovim-app-web` wrapper. `run()` is a thin
+//! delegation to the platform crate, so the lib-level tests verify
+//! only the argument-parsing surface that `apps/web` owns. End-to-end
+//! HTTP coverage lives in the platform crate's `server_tests.rs`.
 
 use super::*;
 
@@ -11,17 +12,6 @@ use clap::Parser;
 struct TestCli {
     #[command(flatten)]
     web: WebArgs,
-}
-
-#[test]
-fn run_returns_unsupported_with_ssr_hint() {
-    let cli = TestCli::parse_from(["reovim-web-test"]);
-    let err = run(cli.web).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
-    assert!(
-        err.to_string().contains("SSR"),
-        "error message should cite the SSR deferral: {err}"
-    );
 }
 
 #[test]

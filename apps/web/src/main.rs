@@ -4,7 +4,7 @@
 
 use clap::Parser;
 
-use reovim_app_web::{WebArgs, run};
+use reovim_app_web::{RunError, WebArgs, run};
 
 #[derive(Parser, Debug)]
 #[command(name = "reovim-web")]
@@ -15,7 +15,7 @@ struct Cli {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), RunError> {
     let cli = Cli::parse();
     run(cli.web)
 }

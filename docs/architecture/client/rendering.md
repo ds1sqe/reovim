@@ -177,6 +177,43 @@ before launching the TUI.  The value is parsed by
 `TuiCoreState::default_view_hint`; windows with no explicit hint fall
 through to it.
 
+### Web SSR pipeline (Flight 76 spike)
+
+Flight 76 adds the first non-TUI surface for the `render-codec`
+substrate: `ext/client/platforms/web/` (package
+`reovim-client-ext-platform-web`). The `reovim-web` bin delegates to
+this crate, which boots a hand-rolled HTTP/1.1 responder on the
+`--listen` address and serves a canonical 20×3 banner frame as inline
+SVG inside a minimal HTML5 document. A locked 8 KiB header-read cap
+guards against unbounded requests; no hyper / axum framework is
+pulled in — the one-route, one-body server is a `tokio::net::TcpListener`
+loop.
+
+The platform crate keeps its cell-grid primitives (`WebFrame`,
+`WebCell`, `WebColor`) self-contained rather than reusing
+`CellCapability`. CLM v7 forbids a direct
+`ext/client/platforms/* → ext/client/capabilities/*` edge; the
+≤60 LOC duplication between `WebFrame` and `CellCapability` is
+acknowledged and deferred to Phase E.1 of #753, which will absorb
+client-side rendering into platform-owned pipelines.
+
+**SVG encoding policy.** One `<text>` element per non-blank cell,
+absolutely positioned at `x = col * 8`, `y = (row + 1) * 16 - 3`;
+root `<svg>` carries `viewBox`, `font-family="monospace"`, and
+`font-size="14"`. `fg = Some(WebColor::Rgb(r, g, b))` emits
+`fill="#rrggbb"`; `Some(WebColor::Named(n))` emits `fill="{n}"`;
+`Default` or `None` omits the attribute. Space glyphs are skipped.
+Background rectangles are not emitted in Flight 76. The canonical
+frame is locked as a `include_str!` fixture
+(`tests/canonical_frame_fixture.svg`) and asserted byte-for-byte by
+`canonical_svg_matches_fixture_byte_for_byte`.
+
+**Deferrals.** No gRPC / WebSocket streaming, no TypeScript-client
+integration (`clients/web/` continues to render via its own TS
+pipeline), no styled underlines / bold / italic, no background
+rectangles. All explicit in the master plan and the Flight 76 plan
+(`~/docs/plans/reovim/753-phase-a-codec-foundation-continuation/03-web-pipe-up.md`).
+
 ### Token classify merge strategy
 
 When multiple modules with `has_buffer_contrib()` both classify the same token:
