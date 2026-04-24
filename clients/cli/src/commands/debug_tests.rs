@@ -20,34 +20,28 @@ use {
 
 fn probe_resp(name: &str, obs: &[&str], drv: &[&str]) -> DebugStreamServerMsg {
     DebugStreamServerMsg {
-        content: Some(debug_stream_server_msg::Content::ProbeResp(
-            DebugProbeResponse {
-                driver_name: name.into(),
-                description: "test".into(),
-                observe_schemas: obs.iter().map(|s| (*s).to_string()).collect(),
-                drive_schemas: drv.iter().map(|s| (*s).to_string()).collect(),
-            },
-        )),
+        content: Some(debug_stream_server_msg::Content::ProbeResp(DebugProbeResponse {
+            driver_name: name.into(),
+            description: "test".into(),
+            observe_schemas: obs.iter().map(|s| (*s).to_string()).collect(),
+            drive_schemas: drv.iter().map(|s| (*s).to_string()).collect(),
+        })),
     }
 }
 
 fn observe_frame(body: &[u8]) -> DebugStreamServerMsg {
     DebugStreamServerMsg {
-        content: Some(debug_stream_server_msg::Content::ObserveFrame(
-            DebugObserveFrame {
-                body: body.to_vec(),
-            },
-        )),
+        content: Some(debug_stream_server_msg::Content::ObserveFrame(DebugObserveFrame {
+            body: body.to_vec(),
+        })),
     }
 }
 
 fn drive_resp(body: &[u8]) -> DebugStreamServerMsg {
     DebugStreamServerMsg {
-        content: Some(debug_stream_server_msg::Content::DriveResp(
-            DebugDriveResponse {
-                body: body.to_vec(),
-            },
-        )),
+        content: Some(debug_stream_server_msg::Content::DriveResp(DebugDriveResponse {
+            body: body.to_vec(),
+        })),
     }
 }
 
@@ -308,10 +302,7 @@ async fn consume_drive_ok() {
 
 #[tokio::test]
 async fn consume_drive_ignores_pre_resp_frames() {
-    let s = stream_of(vec![
-        Ok(probe_resp("d", &[], &["e"])),
-        Ok(drive_resp(b"X")),
-    ]);
+    let s = stream_of(vec![Ok(probe_resp("d", &[], &["e"])), Ok(drive_resp(b"X"))]);
     let out = consume_drive_response_stream(s, OutputFormat::Plain)
         .await
         .unwrap();
@@ -361,8 +352,7 @@ async fn consume_drive_json() {
 
 #[tokio::test]
 async fn build_probe_client_stream_yields_select() {
-    use super::build_probe_client_stream;
-    use tokio_stream::StreamExt;
+    use {super::build_probe_client_stream, tokio_stream::StreamExt};
     let stream = build_probe_client_stream("xyz");
     tokio::pin!(stream);
     let first = stream.next().await.expect("one message");
@@ -377,8 +367,7 @@ async fn build_probe_client_stream_yields_select() {
 
 #[tokio::test]
 async fn build_observe_client_stream_yields_select_then_observe_start() {
-    use super::build_observe_client_stream;
-    use tokio_stream::StreamExt;
+    use {super::build_observe_client_stream, tokio_stream::StreamExt};
     let (stream, _stop_tx) = build_observe_client_stream("drv", "sch");
     tokio::pin!(stream);
     let first = stream.next().await.unwrap();
@@ -397,8 +386,7 @@ async fn build_observe_client_stream_yields_select_then_observe_start() {
 
 #[tokio::test]
 async fn build_drive_client_stream_yields_select_then_drive_cmd() {
-    use super::build_drive_client_stream;
-    use tokio_stream::StreamExt;
+    use {super::build_drive_client_stream, tokio_stream::StreamExt};
     let stream = build_drive_client_stream("drv", "sch", b"body".to_vec());
     tokio::pin!(stream);
     let first = stream.next().await.unwrap();

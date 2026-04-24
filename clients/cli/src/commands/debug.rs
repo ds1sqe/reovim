@@ -23,9 +23,8 @@ use {
     crate::{DebugSubcommand, GrpcClient, GrpcClientError, OutputFormat},
     base64::{Engine as _, engine::general_purpose::STANDARD as BASE64},
     reovim_protocol::v3::{
-        DebugDriveCommand, DebugObserveStart, DebugObserveStop, DebugSelect,
-        DebugStreamClientMsg, DebugStreamServerMsg, debug_stream_client_msg,
-        debug_stream_server_msg,
+        DebugDriveCommand, DebugObserveStart, DebugObserveStop, DebugSelect, DebugStreamClientMsg,
+        DebugStreamServerMsg, debug_stream_client_msg, debug_stream_server_msg,
     },
     std::{fmt::Write, fs, path::Path},
     tokio::sync::mpsc,
@@ -81,7 +80,9 @@ pub async fn probe(
     consume_probe_response_stream(stream, format).await
 }
 
-fn build_probe_client_stream(driver: &str) -> impl Stream<Item = DebugStreamClientMsg> + Send + 'static {
+fn build_probe_client_stream(
+    driver: &str,
+) -> impl Stream<Item = DebugStreamClientMsg> + Send + 'static {
     let (tx, rx) = mpsc::channel(2);
     let driver = driver.to_owned();
     tokio::spawn(async move {
@@ -112,15 +113,10 @@ async fn consume_probe_response_stream(
             _ => {} // ignore stray frames before probe_resp
         }
     }
-    Err(GrpcClientError::OperationFailed(
-        "stream closed before probe response".into(),
-    ))
+    Err(GrpcClientError::OperationFailed("stream closed before probe response".into()))
 }
 
-fn render_probe(
-    r: &reovim_protocol::v3::DebugProbeResponse,
-    format: OutputFormat,
-) -> String {
+fn render_probe(r: &reovim_protocol::v3::DebugProbeResponse, format: OutputFormat) -> String {
     match format {
         OutputFormat::Plain => {
             let mut out = String::new();
@@ -194,9 +190,9 @@ fn build_observe_client_stream(
             .await;
         let _ = tx_clone
             .send(DebugStreamClientMsg {
-                content: Some(debug_stream_client_msg::Content::ObserveStart(
-                    DebugObserveStart { schema },
-                )),
+                content: Some(debug_stream_client_msg::Content::ObserveStart(DebugObserveStart {
+                    schema,
+                })),
             })
             .await;
     });
@@ -295,9 +291,10 @@ fn build_drive_client_stream(
             .await;
         let _ = tx
             .send(DebugStreamClientMsg {
-                content: Some(debug_stream_client_msg::Content::DriveCmd(
-                    DebugDriveCommand { schema, body },
-                )),
+                content: Some(debug_stream_client_msg::Content::DriveCmd(DebugDriveCommand {
+                    schema,
+                    body,
+                })),
             })
             .await;
     });
@@ -320,9 +317,7 @@ async fn consume_drive_response_stream(
             _ => {}
         }
     }
-    Err(GrpcClientError::OperationFailed(
-        "stream closed before drive response".into(),
-    ))
+    Err(GrpcClientError::OperationFailed("stream closed before drive response".into()))
 }
 
 fn render_drive(body: &[u8], format: OutputFormat) -> String {

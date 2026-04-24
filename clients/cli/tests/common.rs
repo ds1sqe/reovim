@@ -15,9 +15,7 @@
 
 use {
     reovim_client_subsys_driver_loader::LoadedClientDebug,
-    reovim_server::{
-        ClientDebugRegistry, DebugDriverHandle, Server, ServerConfig, TransportMode,
-    },
+    reovim_server::{ClientDebugRegistry, DebugDriverHandle, Server, ServerConfig, TransportMode},
     std::{env, path::PathBuf, sync::Arc},
     tokio::sync::oneshot,
 };

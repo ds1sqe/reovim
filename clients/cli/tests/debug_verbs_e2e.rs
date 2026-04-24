@@ -56,7 +56,8 @@ async fn run_cli_await(addr: &str, args: &[&str]) -> std::process::Output {
 #[tokio::test]
 async fn e2e_debug_probe_prints_driver_metadata() {
     let server = start_server_with_poc().await;
-    let out = run_cli_await(&server.grpc_addr(), &["debug", "probe", "--driver", "debug-poc"]).await;
+    let out =
+        run_cli_await(&server.grpc_addr(), &["debug", "probe", "--driver", "debug-poc"]).await;
     assert!(
         out.status.success(),
         "cli exit {:?}; stderr:\n{}",
@@ -98,10 +99,7 @@ async fn e2e_debug_observe_prints_three_frames() {
             use std::fmt::Write;
             write!(&mut hex, "{b:02x}").unwrap();
         }
-        assert!(
-            stdout.contains(&hex),
-            "expected hex of {frame} in stdout:\n{stdout}"
-        );
+        assert!(stdout.contains(&hex), "expected hex of {frame} in stdout:\n{stdout}");
     }
 }
 
@@ -130,10 +128,7 @@ async fn e2e_debug_drive_echoes_input() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     // "hello" = 68656c6c6f
-    assert!(
-        stdout.contains("response=68656c6c6f"),
-        "stdout:\n{stdout}"
-    );
+    assert!(stdout.contains("response=68656c6c6f"), "stdout:\n{stdout}");
 }
 
 #[tokio::test]
@@ -155,20 +150,14 @@ async fn e2e_debug_drive_at_path_file_not_found_errors() {
     .await;
     assert!(!out.status.success(), "expected non-zero exit");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("nonexistent/deadbeef.bin"),
-        "stderr:\n{stderr}"
-    );
+    assert!(stderr.contains("nonexistent/deadbeef.bin"), "stderr:\n{stderr}");
 }
 
 #[tokio::test]
 async fn e2e_debug_probe_unknown_driver_errors() {
     let server = start_server_with_poc().await;
-    let out = run_cli_await(
-        &server.grpc_addr(),
-        &["debug", "probe", "--driver", "not-registered"],
-    )
-    .await;
+    let out =
+        run_cli_await(&server.grpc_addr(), &["debug", "probe", "--driver", "not-registered"]).await;
     assert!(!out.status.success(), "expected non-zero exit");
     let combined = format!(
         "{}{}",
