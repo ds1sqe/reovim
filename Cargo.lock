@@ -4272,6 +4272,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-pkg-runtime-loader"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-dylib-loader",
+ "reovim-pkg-lazyload",
+ "reovim-pkg-lockfile",
+ "reovim-pkg-manifest",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-protocol"
 version = "0.15.0-dev"
 dependencies = [

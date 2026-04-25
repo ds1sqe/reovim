@@ -1,0 +1,24 @@
+[package]
+name = "reovim-pkg-runtime-loader"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Runtime-side bridge that resolves $REOVIM_LIBRARY_ROOT/pkg.lock and builds a LazyRegistry for both server and client loaders"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-pkg-lazyload = { path = "../pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-lockfile = { path = "../pkg-lockfile", version = "0.15.0-dev" }
+reovim-dylib-loader = { workspace = true }
+thiserror = "2"
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim-pkg-manifest = { path = "../pkg-manifest", version = "0.15.0-dev" }
+tempfile = "3"

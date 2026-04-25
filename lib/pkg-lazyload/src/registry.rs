@@ -21,6 +21,20 @@ pub struct LazyRegistry {
 }
 
 impl LazyRegistry {
+    /// An empty registry — every package falls through as
+    /// [`LazyTrigger::Eager`].
+    ///
+    /// Used by the runtime loader on hosts that have not run
+    /// `pkg install` yet: with no `pkg.lock` to read, every cdylib in
+    /// the library root is treated as eager, preserving the
+    /// pre-package-manager dlopen-everything behavior.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            by_name: BTreeMap::new(),
+        }
+    }
+
     /// Parse every package's `trigger` field into a [`LazyTrigger`].
     ///
     /// A missing `trigger` defaults to [`LazyTrigger::Eager`].

@@ -30,6 +30,14 @@ fn lockfile(packages: Vec<PackageLock>) -> Lockfile {
 }
 
 #[test]
+fn registry_empty_treats_every_name_as_eager() {
+    let reg = LazyRegistry::empty();
+    assert_eq!(reg.entries().count(), 0);
+    assert_eq!(reg.trigger_for("anything"), LazyTrigger::Eager);
+    assert!(!reg.is_lazy("anything"));
+}
+
+#[test]
 fn registry_from_lockfile_happy_path() {
     let lock = lockfile(vec![
         pkg("eager-one", Some("eager")),

@@ -154,6 +154,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Wave 3a (foundation)**: `reovim-pkg-runtime-loader` core crate
+  that resolves `$REOVIM_LIBRARY_ROOT/pkg.lock` and builds the runtime
+  `LazyRegistry`. Consumed by server- and client-side loader wiring in
+  subsequent flights. Also adds a one-line `LazyRegistry::empty()`
+  constructor on `pkg-lazyload` so a missing lockfile yields an empty
+  registry (every package falls through as eager, preserving Wave-2
+  dlopen-everything behavior). New depgraph probe pins the bridge's
+  production deps to the locked set
+  (`pkg-lazyload`, `pkg-lockfile`, `dylib-loader`, `thiserror`,
+  `tracing`) and forbids any `reovim-server*` / `reovim-client-*` /
+  `reovim-subsys-*` / `reovim-ext-*` edge. (#771)
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
   `:codecs` lists available codec factories (from
   `ContentCodecFactoryStore::available()`) and active mounts on the

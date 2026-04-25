@@ -22,6 +22,7 @@ members = [
     "lib/pkg-resolver",
     "lib/pkg-install",
     "lib/pkg-lazyload",
+    "lib/pkg-runtime-loader",
 
     # Contributor dev-loop tool (composition root — exempt from core/ext rules)
     "tools/reovim-dev",
@@ -526,6 +527,7 @@ reovim-tui-mod-surface-descriptor-cell-grid = { path = "./ext/client/tui/modules
 reovim-pkg-resolver = { path = "./lib/pkg-resolver", version = "0.15.0-dev" }
 reovim-pkg-install = { path = "./lib/pkg-install", version = "0.15.0-dev" }
 reovim-pkg-lazyload = { path = "./lib/pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-runtime-loader = { path = "./lib/pkg-runtime-loader", version = "0.15.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
