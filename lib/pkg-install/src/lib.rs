@@ -21,6 +21,7 @@
 #![forbid(missing_docs)]
 
 mod artifact;
+mod doctor;
 mod error;
 mod hash;
 mod inventory;
@@ -30,6 +31,10 @@ mod probe;
 use std::path::{Path, PathBuf};
 
 pub use crate::{
+    doctor::{
+        DoctorReport, DriftFinding, MissingFinding, OrphanFinding, RepairOutcome,
+        UnloadableFinding, audit, repair,
+    },
     error::InstallError,
     inventory::{InstalledPackage, list},
 };

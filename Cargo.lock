@@ -4119,6 +4119,7 @@ dependencies = [
  "reovim-pkg-manifest",
  "reovim-pkg-resolver",
  "semver",
+ "sha2",
  "tempfile",
 ]
 
@@ -4126,6 +4127,7 @@ dependencies = [
 name = "reovim-pkg-install"
 version = "0.15.0-dev"
 dependencies = [
+ "reovim-driver-abi-poc",
  "reovim-dylib-loader",
  "reovim-pkg-lockfile",
  "reovim-pkg-manifest",

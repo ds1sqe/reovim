@@ -93,9 +93,19 @@ pub struct ListArgs {
 /// Arguments to `pkg doctor`.
 #[derive(Parser, Debug)]
 pub struct DoctorArgs {
-    /// Attempt to autoremediate safely-fixable issues.
+    /// Attempt to autoremediate safely-fixable issues (orphans +
+    /// missing inventory entries). Unloadable + drift findings are
+    /// left for the user.
     #[arg(long)]
     pub fix: bool,
+
+    /// Library root to audit. Defaults to `$REOVIM_LIBRARY_ROOT`.
+    #[arg(long, env = "REOVIM_LIBRARY_ROOT")]
+    pub library_root: PathBuf,
+
+    /// Lockfile to read (and write if `--fix`). Defaults to `./pkg.lock`.
+    #[arg(long, default_value = "pkg.lock")]
+    pub lockfile: PathBuf,
 }
 
 /// Arguments to `pkg lock`.

@@ -140,6 +140,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Package Manager — doctor**: new `pkg doctor` subcommand
+  audits a `$REOVIM_LIBRARY_ROOT` against its `pkg.lock` inventory
+  and reports four fault classes per package: **unloadable** (cdylib
+  fails to `dlopen`), **orphan** (file in the library root with no
+  inventory entry), **missing** (inventory entry whose cdylib is
+  gone from disk), and **drift** (on-disk SHA-256 disagrees with the
+  recorded digest). Exit code is 0 when there are no findings, 1
+  when any class fires. `pkg doctor --fix` auto-remediates orphans
+  (delete the unowned file) and missing entries (drop the stale
+  inventory record); unloadable + drift are left for the user.
+  Implementation lives at `lib/pkg-install/src/doctor/` and re-uses
+  the Phase 2 install pipeline's helpers (`probe`, `hash`, scan, and
+  inventory) plus the lifted `pkg_name_from_cdylib_filename` /
+  `Kind: FromStr` helpers from `reovim-dylib-loader` so doctor
+  speaks the same filename + kind conventions as install. (#771)
 - **#771 Package Manager — lazy load**: new `lib/pkg-lazyload/`
   crate carries the runtime-side trigger machinery. `LazyRegistry`
   is built from a lockfile and answers `trigger_for(name)` /

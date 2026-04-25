@@ -1,16 +1,13 @@
 //! `pkg` — reovim package manager CLI binary.
 //!
-//! Phase 0 scaffolded the subcommand surface; Phase 1 wires `lock`
-//! and `resolve` to the resolver. The remaining subcommands
-//! (install, remove, list, doctor) still print a phase-specific
-//! "not yet implemented" message to stderr and exit with code 2.
-//!
 //! Exit-code contract:
-//! - `0` = success (help, `--version`, successful subcommand).
-//! - `1` = user error (bad manifest path, unresolvable deps, conflict).
-//! - `2` = unimplemented feature (Phases 2 / 4 stubs).
+//! - `0` = success (help, `--version`, successful subcommand,
+//!   `pkg doctor` with no findings, `pkg doctor --fix` that
+//!   resolved every fault).
+//! - `1` = user error OR `pkg doctor` finished with residual findings.
 
 mod cli;
+mod doctor;
 mod install;
 mod list;
 mod lock;
@@ -35,7 +32,14 @@ fn main() -> ExitCode {
         Cmd::Install(args) => dispatch_result(install::run(&args)),
         Cmd::Remove(args) => dispatch_result(remove::run(&args)),
         Cmd::List(args) => dispatch_result(list::run(&args)),
-        Cmd::Doctor(_) => unimplemented_stub("doctor", 4),
+        Cmd::Doctor(args) => match doctor::run(&args) {
+            Ok(doctor::DoctorExit::Clean) => ExitCode::SUCCESS,
+            Ok(doctor::DoctorExit::Findings) => ExitCode::from(1),
+            Err(err) => {
+                eprintln!("{err:#}");
+                ExitCode::from(1)
+            }
+        },
         Cmd::Trigger(args) => dispatch_result(trigger::run(&args)),
     }
 }
@@ -48,9 +52,4 @@ fn dispatch_result(result: anyhow::Result<()>) -> ExitCode {
             ExitCode::from(1)
         }
     }
-}
-
-fn unimplemented_stub(name: &str, phase: u8) -> ExitCode {
-    eprintln!("pkg {name} is not yet implemented (#771 Phase {phase})");
-    ExitCode::from(2)
 }

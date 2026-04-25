@@ -31,4 +31,5 @@ semver = { workspace = true }
 assert_cmd = "2"
 predicates = "3"
 reovim-driver-abi-poc = { path = "../driver-abi-poc", version = "0.15.0-dev" }
+sha2 = { workspace = true }
 tempfile = "3"

@@ -33,16 +33,6 @@ fn no_args_exits_successfully() {
 }
 
 #[test]
-fn doctor_stub_exits_two_and_mentions_phase_four() {
-    pkg()
-        .arg("doctor")
-        .assert()
-        .code(2)
-        .stderr(contains("doctor"))
-        .stderr(contains("#771 Phase 4"));
-}
-
-#[test]
 fn unknown_subcommand_exits_with_clap_error() {
     pkg().arg("nonsense").assert().failure();
 }
