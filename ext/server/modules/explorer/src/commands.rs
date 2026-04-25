@@ -12,6 +12,9 @@ use {
     },
     reovim_kernel::api::v1::{CommandId, events::kernel::FileOpened},
     reovim_subsys_command_types::{CommandContext, CommandResult},
+    reovim_subsys_content_codec::{
+        ContentClassifierStore, ContentCodecFactoryStore, FileOpenError, decode_file_bytes,
+    },
     std::path::{Path, PathBuf},
 };
 
@@ -358,34 +361,65 @@ impl CommandHandler for Open {
         } else {
             match vfs.read(&path) {
                 Ok(content) => {
-                    let text = String::from_utf8_lossy(&content);
-
-                    // Canonicalize so LSP and project-root discovery get absolute paths.
+                    // Canonicalize so LSP and project-root discovery get absolute
+                    // paths. Computed before the codec call so the canonical path
+                    // is also the filename we hand to extension-aware classifiers.
                     let canonical = std::fs::canonicalize(&path).map_or_else(
                         |_| path.to_string_lossy().into_owned(),
                         |p| p.to_string_lossy().into_owned(),
                     );
 
-                    let buf_id = runtime.create_buffer(Some(&canonical), &text);
-                    runtime.set_active_buffer(Some(buf_id));
-                    runtime.record_buffer_modified(buf_id);
+                    let decode_result = {
+                        let services = &runtime.kernel().services;
+                        let classifier_store = services.get::<ContentClassifierStore>();
+                        let factory_store = services.get::<ContentCodecFactoryStore>();
+                        if let (Some(class), Some(fact)) = (&classifier_store, &factory_store) {
+                            decode_file_bytes(&content, &canonical, class, fact)
+                        } else {
+                            String::from_utf8(content)
+                                .map(|s| (s, None))
+                                .map_err(|err| FileOpenError::NotUtf8 {
+                                    offset: err.utf8_error().valid_up_to(),
+                                })
+                        }
+                    };
 
-                    if let Some(window) = runtime.active_window() {
-                        let _ = runtime.set_window_buffer(window, buf_id);
+                    match decode_result {
+                        Ok((text, _content_type)) => {
+                            let buf_id = runtime.create_buffer(Some(&canonical), &text);
+                            runtime.set_active_buffer(Some(buf_id));
+                            runtime.record_buffer_modified(buf_id);
+
+                            if let Some(window) = runtime.active_window() {
+                                let _ = runtime.set_window_buffer(window, buf_id);
+                            }
+
+                            #[allow(clippy::cast_possible_truncation)]
+                            let buf_id_raw = buf_id.as_usize() as u64;
+                            runtime.kernel().event_bus.emit(FileOpened {
+                                buffer_id: buf_id_raw,
+                                path: canonical,
+                            });
+
+                            let state = runtime.ext_mut::<ExplorerState>();
+                            state.active = false;
+                            state.reset_snapshot_generation();
+                            let _ = runtime.pop_mode(None);
+                        }
+                        Err(FileOpenError::TooLarge { len, .. }) => {
+                            let state = runtime.ext_mut::<ExplorerState>();
+                            state.message = Some(format!(
+                                "File too large ({len} bytes); use :e to open via the streaming path"
+                            ));
+                        }
+                        Err(FileOpenError::NotUtf8 { offset }) => {
+                            let state = runtime.ext_mut::<ExplorerState>();
+                            state.message = Some(format!(
+                                "Cannot decode {}: not valid UTF-8 (invalid byte at offset {offset})",
+                                path.display()
+                            ));
+                        }
                     }
-
-                    // Emit FileOpened so LSP, syntax, and other subscribers are notified.
-                    #[allow(clippy::cast_possible_truncation)]
-                    let buf_id_raw = buf_id.as_usize() as u64;
-                    runtime.kernel().event_bus.emit(FileOpened {
-                        buffer_id: buf_id_raw,
-                        path: canonical,
-                    });
-
-                    let state = runtime.ext_mut::<ExplorerState>();
-                    state.active = false;
-                    state.reset_snapshot_generation();
-                    let _ = runtime.pop_mode(None);
                 }
                 Err(e) => {
                     let state = runtime.ext_mut::<ExplorerState>();

@@ -14,7 +14,10 @@
 //! share a registry.
 
 // Re-export the uapi so callers only need a single crate for trait + registry.
-pub use reovim_content_codec::{ContentCodec, ContentType};
+pub use reovim_content_codec::{
+    Annotation, CodecError, CodecMetadata, ContentClassifier, ContentClassifierStore, ContentCodec,
+    ContentCodecFactory, ContentCodecFactoryStore, ContentType, DecodeResult,
+};
 
 pub mod capabilities;
 pub mod file_open;

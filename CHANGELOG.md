@@ -48,6 +48,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 2: explorer routed through codec
+  pipeline.** Explorer's `Open` command now decodes via
+  `decode_file_bytes()` instead of `String::from_utf8_lossy()`. Binary
+  files open via the codec when classifier+factory stores are
+  registered; missing stores or unmatched bytes fall through to a
+  UTF-8 conversion that preserves the legacy explorer behaviour. Files
+  over the 64 MiB cap surface a `File too large; use :e` message;
+  non-UTF-8 fallback surfaces a `Cannot decode … not valid UTF-8`
+  message. Both error paths leave the explorer open and do not create
+  a buffer. (#737)
 - **#737 Codec Hot-Attach — Phase 1: shared file-open helper.** New
   `decode_file_bytes()` pure function in `reovim-subsys-content-codec`
   drives raw bytes through the classifier and factory stores to a

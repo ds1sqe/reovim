@@ -3427,6 +3427,7 @@ dependencies = [
  "reovim-module-vim",
  "reovim-protocol",
  "reovim-subsys-command-types",
+ "reovim-subsys-content-codec",
  "reovim-subsys-vfs",
  "reovim-testing",
  "serde_json",
