@@ -1,4 +1,4 @@
-# Library Root — Server Module Install Layout
+# Library Root — Server Module + Driver Install Layout
 
 After #769 Phase 3, `reovim-server` no longer statically links its builtin
 modules. All 55 builtin modules plus any third-party modules are discovered
@@ -7,12 +7,19 @@ at runtime as `cdylib` shared libraries (`.so` on Linux, `.dylib` on macOS,
 discovered files against an embedded manifest, and loads them in dependency
 order.
 
+After #769 Phase 4 scaffolding lands, the same library-root convention also
+covers server-side **drivers**. The migrated driver set is currently empty
+(see [Drivers (server-side)](#drivers-server-side) below); driver
+migrations land at follow-up issue #774. The layout described here is the
+target operators should expect once #774 starts populating it.
+
 This document covers:
 
-1. Search-path priority
-2. Manifest contract
-3. Install layouts (dev, system, user overlay)
-4. Override knobs
+1. Search-path priority (modules)
+2. Manifest contract (modules)
+3. Install layouts (dev, system, user overlay) — modules
+4. Override knobs — modules
+5. Drivers (server-side) — layout, search path, currently-empty disclaimer
 
 See also [Server Mode](../user-guide/server-mode.md) and
 [Server Overview](../architecture/server/overview.md).
@@ -188,3 +195,112 @@ To restore a working install from a workspace build after `cargo install`:
 mkdir -p ~/.local/share/reovim/modules
 cp target/debug/libreovim_*.so ~/.local/share/reovim/modules/
 ```
+
+## Drivers (server-side)
+
+After #769 Phase 4, the library root also hosts server-side **driver**
+shared libraries under a sibling directory. Drivers are runtime-loaded
+cdylibs that implement subsys trait contracts (e.g. the per-trait vtable
+exported as `REOVIM_<KIND>_DRIVER_VTABLE`).
+
+> **Status (v0.15.0-dev):** The driver set is currently **empty**.
+> Migrated drivers land under follow-up #774. This section documents
+> the layout for future driver releases. Operators do not need to
+> install any driver `.so` files for the current release.
+
+### Currently empty
+
+As of #769 Phase 4, the **server-driver migrated set is empty**. Phase 4
+ships scaffolding only:
+
+- The `lib/depgraph/tests/no_static_drivers_feature.rs` ratchet probe
+  (asserts no workspace `Cargo.toml` defines a `static-drivers` feature,
+  preserving the master plan's L1 invariant).
+- The `scripts/build-driver.sh` build pipeline (handles the empty
+  driver set gracefully; logs and exits 0).
+- This documentation describing the future layout.
+
+Driver migrations land at follow-up issue **#774**
+(`feat(server-drivers): redesign net-grpc / command / text-session /
+text-input / text-syntax trait surfaces for FFI-routability`).
+**Operators do not need to install any driver `.so` files for the
+v0.15.0-dev release**; the existing in-process driver implementations
+continue to work via compile-time linkage in `apps/server`. The
+`# trait-redesign deferred to #774` rationale comments on the
+`apps/server/Cargo.toml` driver deps document this.
+
+### Search-path priority (target layout, post-#774)
+
+Per the master plan §"Loader + library-root discovery", driver discovery
+will use these search paths in priority order (first-match wins):
+
+1. `$REOVIM_DRIVER_PATH` (env var, colon-separated on Unix,
+   semicolon-separated on Windows)
+2. `$REOVIM_LIBRARY_ROOT/driver/server/`
+3. `$XDG_DATA_HOME/reovim/driver/server/` (defaults to
+   `~/.local/share/reovim/driver/server/` when `XDG_DATA_HOME` is unset)
+4. `/usr/local/lib/reovim/driver/server/` (locally-compiled system
+   install)
+5. `/usr/lib/reovim/driver/server/` (distribution package install)
+
+Confirmation against `lib/dylib-loader/`'s actual rule lands when #774
+populates the migrated set — until then, the path-resolution rule may
+mirror the module-side default and resolve through Phase 1's loader
+plumbing.
+
+### Layout under the library root
+
+```
+$REOVIM_LIBRARY_ROOT/
+├── modules/
+│   ├── server/...
+│   └── client/...
+└── driver/
+    ├── server/...      # ← this section's scope
+    └── <platform>/...  # tui, cli, web — Phase 5 (#769)
+```
+
+### Builtin-vs-external priority
+
+The same priority rule that applies to modules applies to drivers: a
+driver found at a higher-priority path masks the same vtable kind at a
+lower-priority path. This lets a developer override a system-installed
+driver by dropping a freshly-built `.so` into their user directory
+without disturbing the package install.
+
+### CLI flags
+
+Once #774 lands a migrated driver, the per-bin CLI gains driver-specific
+flags mirroring the existing module flags:
+
+- `--driver <PATH>` / `-d <PATH>` — additional driver directories
+  (high-priority, prepended to the search list). Multiple values
+  allowed.
+
+These flags are **not introduced** until #774 lands a driver; the bin
+has no use for them in the empty-set state. This section documents the
+expected interface so operators can plan their packaging story.
+
+### Build pipeline
+
+`scripts/build-driver.sh` is the canonical build path for driver
+cdylibs (sibling to `scripts/build-module.sh`):
+
+```bash
+./scripts/build-driver.sh --all          # Build all migrated drivers (release)
+./scripts/build-driver.sh --all --debug  # Build all migrated drivers (debug)
+./scripts/build-driver.sh <name>         # Build single migrated driver
+```
+
+The script iterates a hardcoded `MIGRATED_DRIVERS` array and:
+
+1. Builds each crate with `--features dynamic`.
+2. Verifies the produced `.so` exports exactly one
+   `REOVIM_<KIND>_DRIVER_VTABLE` symbol (per acceptance criterion #7).
+3. Stages the `.so` to `target/<profile>/lib/reovim/driver/server/`.
+
+When #774 lands a driver, adding the crate name to the
+`MIGRATED_DRIVERS` array is the only edit needed to extend the script.
+
+The script handles the empty-set case (current Phase 4 state) by
+logging the empty-set notice and exiting 0.

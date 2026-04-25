@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **#769 ABI Foundation Phase 4 — driver-loader infrastructure scaffolded.**
+  Adds the `no_static_drivers_feature` depgraph ratchet,
+  `scripts/build-driver.sh` build pipeline, and documentation for the
+  `$ROOT/driver/server/` layout. The migrated driver set is empty this
+  phase; trait-redesign work for the existing server drivers
+  (net-grpc, command, text-session, text-syntax, possibly text-input)
+  is tracked at follow-up #774. `apps/server/Cargo.toml` carries
+  `# trait-redesign deferred to #774` rationale comments on retained
+  driver deps. No `static-drivers` feature is introduced; L1's
+  no-escape-hatch invariant is preserved.
+
 - **#769 ABI Foundation — server modules load as cdylib only** (Phase 3):
   `apps/server` no longer statically links its builtin modules. The
   `static-modules` Cargo feature, the 55 optional `reovim-module-*` /
