@@ -63,6 +63,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 6: `:umount` ex-command.** Users
+  can remove a codec mount from the active buffer with `:umount`
+  (most-recent mount, by max `MountId`) or `:umount <mount_id>`
+  (specific mount). The command bridges
+  `CodecSessionState::unmount_codec`. Zero-valued mount ids surface
+  an explicit error to guard against the `NonZeroU64` panic. The
+  `:mount` command was also updated to call `set_active_view`
+  after registration so mounts created via `:mount` are findable
+  by `:umount` (the prior implementation set up the inode but not
+  the active-view binding `unmount_codec` scans). (#737)
 - **#737 Codec Hot-Attach — Phase 5: `:mount` ex-command.** Users can
   manually mount a content codec on the active buffer with `:mount
   <content_type>` (or shorthand `:mount hex|elf|rlib|zip|pdf`). The

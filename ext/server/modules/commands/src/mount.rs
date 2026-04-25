@@ -107,7 +107,17 @@ impl CommandHandler for MountCommand {
             )
         };
         match first {
-            Ok(_) => return CommandResult::Success,
+            Ok(_) => {
+                // `unmount_codec` iterates `active_view` keys to locate
+                // mounts; without an `active_view` entry the mount is
+                // unmountable. The canonical `:e` path goes through
+                // `mount_decoded` which sets this; the `:mount` path
+                // bypasses that orchestration, so we set it explicitly.
+                if let Some(state) = runtime.shared_ext_mut::<CodecSessionState>() {
+                    state.set_active_view(buffer_id, "default".to_string());
+                }
+                return CommandResult::Success;
+            }
             Err(MountCodecError::NoCodec { content_type }) => {
                 return CommandResult::Error(format!(
                     "no codec registered for content type {content_type}"
@@ -146,7 +156,10 @@ impl CommandHandler for MountCommand {
             "default".to_string(),
             MountMode::Summary,
         ) {
-            Ok(_) => CommandResult::Success,
+            Ok(_) => {
+                state.set_active_view(buffer_id, "default".to_string());
+                CommandResult::Success
+            }
             Err(MountCodecError::NoCanonicalBytes) => {
                 CommandResult::Error("buffer has no canonical bytes after VFS load".to_string())
             }

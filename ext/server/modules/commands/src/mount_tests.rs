@@ -27,7 +27,7 @@ use {
 /// Codec stub: emits a fixed string on every decode call. Mount only
 /// invokes the codec lazily on the next render frame (Phase 5 design),
 /// but having a real codec keeps the factory's `create` path honest.
-struct SimpleTestCodec;
+pub struct SimpleTestCodec;
 
 impl ContentCodec for SimpleTestCodec {
     fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
@@ -45,8 +45,8 @@ impl ContentCodec for SimpleTestCodec {
 /// Factory that creates `SimpleTestCodec` for one specific content type
 /// and rejects everything else. Tests register one factory per content
 /// type they want to exercise (`text/test`, `binary/raw`).
-struct SimpleTestFactory {
-    matches: ContentType,
+pub struct SimpleTestFactory {
+    pub matches: ContentType,
 }
 
 impl ContentCodecFactory for SimpleTestFactory {
@@ -71,7 +71,7 @@ fn ctx_with_type(content_type: &str) -> CommandContext {
     ctx
 }
 
-fn factory_store_for(content_type: &str) -> Arc<ContentCodecFactoryStore> {
+pub fn factory_store_for(content_type: &str) -> Arc<ContentCodecFactoryStore> {
     let store = Arc::new(ContentCodecFactoryStore::new());
     store.add_factory(Arc::new(SimpleTestFactory {
         matches: ContentType::new(content_type),

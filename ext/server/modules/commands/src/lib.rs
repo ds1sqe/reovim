@@ -21,10 +21,13 @@ mod quit;
 mod session;
 mod set;
 mod substitute;
+mod umount;
 mod write;
 
 #[cfg(test)]
 mod mount_tests;
+#[cfg(test)]
+mod umount_tests;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore},
@@ -40,6 +43,7 @@ pub use {
     session::{DetachCommand, KillServerCommand, ServersCommand},
     set::SetCommand,
     substitute::SubstituteCommand,
+    umount::UmountCommand,
     write::{WriteCommand, WriteQuitCommand},
 };
 
@@ -49,6 +53,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
     let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
         Box::new(EditCommand),
         Box::new(MountCommand),
+        Box::new(UmountCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
