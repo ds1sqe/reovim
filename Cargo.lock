@@ -3324,6 +3324,7 @@ dependencies = [
  "reovim-provider-text",
  "reovim-subsys-command",
  "reovim-subsys-command-types",
+ "reovim-subsys-content-codec",
  "reovim-subsys-layout",
  "reovim-subsys-vfs",
  "tempfile",

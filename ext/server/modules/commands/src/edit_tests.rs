@@ -512,3 +512,86 @@ fn decode_file_content_codec_decode_error_falls_back_to_utf8() {
         assert_eq!(result, Ok("valid utf8 after codec fail".to_string()));
     });
 }
+
+// ============================================================================
+// Phase-4 wrapper-refactor coverage (#737)
+// ============================================================================
+
+/// Pre-Phase-4 behaviour mounted UTF-8 metadata when the classifier returned
+/// `None` (the wrapper coerced the type to `ContentType::UTF8` and tried the
+/// UTF-8 codec). Phase 4 drops that branch — the helper falls through to a
+/// direct `String::from_utf8`, no codec runs, no metadata is mounted. This
+/// test pins the new contract so Phases 5–6 (`:mount`/`:umount`) can rely on
+/// it.
+#[test]
+fn edit_decode_file_content_drops_mount_for_utf8_fallback() {
+    use reovim_driver_text_session::testing::TestSessionRuntime;
+
+    /// Classifier that always returns `None` (no match), forcing the wrapper
+    /// onto the helper's UTF-8 fallback arm.
+    struct NoMatchClassifier;
+    impl ContentClassifier for NoMatchClassifier {
+        fn classify(&self, _raw: &[u8], _path: &str) -> Option<ContentType> {
+            None
+        }
+        fn name(&self) -> &'static str {
+            "test-no-match-classifier"
+        }
+    }
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+
+    let classifier_store = Arc::new(ContentClassifierStore::new());
+    classifier_store.add(Arc::new(NoMatchClassifier));
+    let factory_store = Arc::new(ContentCodecFactoryStore::new());
+    // SimpleTestFactory matches `text/test`; not `text/utf-8`. Even if a
+    // UTF-8 codec WERE registered, the helper's None-classifier path skips
+    // factory lookup entirely.
+    factory_store.add_factory(Arc::new(SimpleTestFactory { truncated: false }));
+
+    harness.kernel().services.register(classifier_store);
+    harness.kernel().services.register(factory_store);
+    harness
+        .shared_extensions
+        .get_or_insert::<CodecSessionState>();
+
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(b"plain utf8", "noclass.txt", runtime);
+        assert_eq!(result, Ok("plain utf8".to_string()));
+    });
+
+    let buf_id = harness.active_buffer().unwrap();
+    let codec_state = harness
+        .shared_extensions
+        .get::<CodecSessionState>()
+        .expect("CodecSessionState should still exist (just empty for this buffer)");
+    assert!(
+        !codec_state.contains(buf_id),
+        "no codec mount expected when classifier returns None"
+    );
+}
+
+/// Files exceeding `MAX_FILE_SIZE` propagate `Err("File too large; ...")`
+/// from the wrapper. This is a new error path introduced by Phase 4's
+/// delegation to `decode_file_bytes` — `MAX_FILE_SIZE` is enforced inside
+/// the helper, so the wrapper sees `Err(FileOpenError::TooLarge)` and
+/// converts it to a string error.
+#[test]
+fn edit_decode_file_content_too_large_errors() {
+    use {
+        reovim_driver_text_session::testing::TestSessionRuntime,
+        reovim_subsys_content_codec::MAX_FILE_SIZE,
+    };
+
+    let mut harness = TestSessionRuntime::with_buffer("placeholder");
+    let bytes = vec![b'a'; MAX_FILE_SIZE + 1];
+    harness.with_runtime(|runtime| {
+        let result = decode_file_content(&bytes, "huge.txt", runtime);
+        assert!(result.is_err(), "expected error, got {result:?}");
+        let err = result.unwrap_err();
+        assert!(
+            err.starts_with("File too large"),
+            "expected 'File too large' prefix, got {err:?}"
+        );
+    });
+}

@@ -46,6 +46,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `reovim-driver-display`.
   - **#753** — client-foundation resumption (lands the first concrete
     `ClientRender` implementor on top of #769's foundation).
+
+### Changed
+
+- **#737 Codec Hot-Attach — Phase 4: `:e` routed through shared
+  helper.** `EditCommand::execute()`'s small-file path now delegates
+  classify+decode+fallback to `decode_file_bytes()` from
+  `reovim-subsys-content-codec` instead of an in-module copy of the
+  same logic. The `mount_decoded` round-trip metadata step stays in
+  `edit.rs` because `CodecSessionState` is session-side, not
+  subsys-side. Behavioural drift: UTF-8-classified files no longer
+  mount UTF-8 metadata (mount was a no-op for plain UTF-8 anyway
+  since `inode.bytes` round-trips directly). Files exceeding the
+  64 MiB cap now return `Err("File too large; ...")` instead of
+  loading silently. (#737)
+
 ### Added
 
 - **#737 Codec Hot-Attach — Phase 3: picker-files routed through codec
