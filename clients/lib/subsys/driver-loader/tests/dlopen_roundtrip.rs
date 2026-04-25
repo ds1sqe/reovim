@@ -212,3 +212,128 @@ fn from_path_scan_on_missing_driver_dir_returns_empty_vec() {
     let results = LoadedClientRender::from_path_scan(root.path());
     assert!(results.is_empty(), "expected empty; got {} entries", results.len());
 }
+
+// ============================================================================
+// Wave 3a Phase 3.A — from_path_scan_filtered (render)
+// Wave 3a Phase 3.B — probe_from_path (render)
+// ============================================================================
+
+use {
+    reovim_dylib_loader::cdylib_filename,
+    reovim_pkg_lazyload::LazyRegistry,
+    reovim_pkg_lockfile::{Lockfile, PackageLock, Source},
+};
+
+fn render_so() -> Option<std::path::PathBuf> {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent()?.parent()?.parent()?.parent()?;
+    let so = workspace_root
+        .join("target")
+        .join("debug")
+        .join("libreovim_driver_abi_poc.so");
+    so.exists().then_some(so)
+}
+
+fn debug_so() -> Option<std::path::PathBuf> {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent()?.parent()?.parent()?.parent()?;
+    let so = workspace_root
+        .join("target")
+        .join("debug")
+        .join("libreovim_driver_debug_poc.so");
+    so.exists().then_some(so)
+}
+
+fn stage_render(pkg: &str) -> Option<(tempfile::TempDir, std::path::PathBuf)> {
+    let so = render_so()?;
+    let tmp = tempfile::tempdir().ok()?;
+    let dir = tmp.path().join("driver");
+    std::fs::create_dir_all(&dir).ok()?;
+    let staged = dir.join(cdylib_filename(pkg));
+    std::fs::copy(&so, &staged).ok()?;
+    Some((tmp, staged))
+}
+
+fn registry_with(packages: Vec<PackageLock>) -> LazyRegistry {
+    LazyRegistry::from_lockfile(&Lockfile {
+        version: 1,
+        packages,
+    })
+    .expect("registry")
+}
+
+fn pkg_lock(name: &str, trigger: Option<&str>) -> PackageLock {
+    PackageLock {
+        name: name.into(),
+        version: "1.0.0".into(),
+        source: Source::LocalPath(format!("/pkgs/{name}").into()),
+        target: None,
+        kind: None,
+        sha256: None,
+        trigger: trigger.map(str::to_owned),
+        dependencies: Vec::new(),
+    }
+}
+
+#[test]
+fn render_filtered_empty_registry_loads_all() {
+    let Some((tmp, _)) = stage_render("demo") else {
+        eprintln!("SKIP: render fixture .so missing");
+        return;
+    };
+    let registry = LazyRegistry::empty();
+    let results = LoadedClientRender::from_path_scan_filtered(tmp.path(), &registry);
+    assert_eq!(results.len(), 1, "empty registry must keep every entry");
+    results[0].as_ref().expect("loaded");
+}
+
+#[test]
+fn render_filtered_skips_lazy_entry() {
+    let Some((tmp, _)) = stage_render("demo") else {
+        eprintln!("SKIP: render fixture .so missing");
+        return;
+    };
+    let registry = registry_with(vec![pkg_lock("demo", Some("on-capability:cell"))]);
+    let results = LoadedClientRender::from_path_scan_filtered(tmp.path(), &registry);
+    assert!(results.is_empty(), "lazy entry should be filtered before construct");
+}
+
+#[test]
+fn render_filtered_loads_non_convention_filename() {
+    let Some(so) = render_so() else {
+        eprintln!("SKIP: render fixture .so missing");
+        return;
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("driver");
+    std::fs::create_dir_all(&dir).expect("driver dir");
+    let staged = dir.join(so.file_name().unwrap());
+    std::fs::copy(&so, &staged).expect("copy");
+
+    let registry = registry_with(vec![pkg_lock("unrelated", Some("on-capability:cell"))]);
+    let results = LoadedClientRender::from_path_scan_filtered(tmp.path(), &registry);
+    assert_eq!(results.len(), 1, "non-convention name falls through to eager");
+    results[0].as_ref().expect("loaded");
+}
+
+#[test]
+fn render_probe_succeeds_on_render_cdylib() {
+    let Some((_tmp, path)) = stage_render("demo") else {
+        eprintln!("SKIP: render fixture .so missing");
+        return;
+    };
+    LoadedClientRender::probe_from_path(&path).expect("render probe");
+}
+
+#[test]
+fn render_probe_fails_on_debug_cdylib() {
+    let Some(so) = debug_so() else {
+        eprintln!("SKIP: debug fixture .so missing");
+        return;
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let staged = tmp.path().join(so.file_name().unwrap());
+    std::fs::copy(&so, &staged).expect("copy");
+    LoadedClientRender::probe_from_path(&staged)
+        .expect_err("render probe must fail on a debug-only cdylib");
+}

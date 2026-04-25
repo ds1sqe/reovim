@@ -190,6 +190,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   ModuleLoader ownership chain (the `external.take()`-into-tracked-
   modules path consumes the loader before runtime dispatchers could
   share it). (#771)
+- **#771 Wave 3a (client)**: client driver loader consults `pkg.lock`
+  at TUI platform startup; only eager driver entries dlopen on
+  bootstrap. Drivers with `on-capability = "<name>"` triggers dlopen
+  via `CapabilityLazyHook::dispatch_capability` in a boot-time
+  fan-out over the platform's static `PROVIDED_CAPABILITY_NAMES`
+  list (TUI declares `&["cell"]`). New
+  `LoadedClientRender::probe_from_path` (header-only check, cdylib
+  unmapped before return) lets the hook disambiguate render-vs-debug
+  cdylibs without committing to a heavy `load_from_path`. New
+  `LoadedClientRender::from_path_scan_filtered` and
+  `LoadedClientDebug::from_path_scan_filtered` are single-pass
+  eager filters sharing the existing scan walk. Web and CLI are
+  intentionally out of scope: Web is a WASM cdylib root with no host
+  filesystem, and the CLI is a pure gRPC client with no local driver
+  layer. The TUI's loaded driver vectors and the lazy hook are held
+  alive at the platform-startup site to keep cdylibs mapped; threading
+  them through into the live render path is a follow-up flight. (#771)
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
   `:codecs` lists available codec factories (from
   `ContentCodecFactoryStore::available()`) and active mounts on the

@@ -2453,7 +2453,10 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
+ "reovim-client-subsys-driver-loader",
  "reovim-client-tui",
+ "reovim-pkg-lazyload",
+ "reovim-pkg-runtime-loader",
  "reovim-testing",
  "thiserror 2.0.18",
  "tokio",
@@ -2535,6 +2538,7 @@ name = "reovim-client-subsys-driver-loader"
 version = "0.15.0-dev"
 dependencies = [
  "libloading",
+ "parking_lot",
  "reovim-client-subsys-debug",
  "reovim-client-subsys-render",
  "reovim-driver-abi-poc",
@@ -2545,6 +2549,10 @@ dependencies = [
  "reovim-driver-debug-poc-observer-panic",
  "reovim-dylib-loader",
  "reovim-kernel",
+ "reovim-pkg-lazyload",
+ "reovim-pkg-lockfile",
+ "reovim-pkg-manifest",
+ "reovim-pkg-runtime-loader",
  "tempfile",
  "thiserror 2.0.18",
 ]

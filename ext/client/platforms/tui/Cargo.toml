@@ -23,6 +23,11 @@ grpc = [
 [dependencies]
 reovim-client-tui = { workspace = true }
 
+# Wave 3a (#771): package-manager-aware lazy load
+reovim-client-subsys-driver-loader = { workspace = true }
+reovim-pkg-lazyload = { path = "../../../../lib/pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-runtime-loader = { workspace = true }
+
 # CLI + error machinery for the `run(args)` entry point (FD lock [B] —
 # platform crate owns runtime concerns, including args parsing).
 clap = { workspace = true }

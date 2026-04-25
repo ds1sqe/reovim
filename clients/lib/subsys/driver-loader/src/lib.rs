@@ -13,6 +13,7 @@
 pub mod client_debug;
 pub mod client_render;
 pub mod error;
+pub mod lazy_capability;
 mod rc;
 pub mod validation;
 
@@ -20,4 +21,5 @@ pub use {
     client_debug::{LoadedClientDebug, LoadedDebugObserver},
     client_render::{LoadedClientRender, LoadedRenderTarget},
     error::{LoadError, ScanEntryError, ValidationError},
+    lazy_capability::{CapabilityLazyHook, DriverStore},
 };

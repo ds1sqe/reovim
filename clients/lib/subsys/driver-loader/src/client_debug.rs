@@ -113,6 +113,34 @@ impl LoadedClientDebug {
     /// Same scan-path policy as `LoadedClientRender::from_path_scan`.
     #[must_use]
     pub fn from_path_scan(root: &Path) -> Vec<Result<Self, ScanEntryError>> {
+        Self::scan_and_construct(root, |_| true)
+    }
+
+    /// Eager-filtered variant of [`Self::from_path_scan`].
+    ///
+    /// Same `keep` semantics as
+    /// [`LoadedClientRender::from_path_scan_filtered`] — the filter
+    /// drops registry-lazy entries before construction; non-convention
+    /// filenames fall through to the eager path.
+    ///
+    /// [`LoadedClientRender::from_path_scan_filtered`]: crate::LoadedClientRender::from_path_scan_filtered
+    #[must_use]
+    pub fn from_path_scan_filtered(
+        root: &Path,
+        registry: &reovim_pkg_lazyload::LazyRegistry,
+    ) -> Vec<Result<Self, ScanEntryError>> {
+        Self::scan_and_construct(root, |path| {
+            reovim_pkg_runtime_loader::package_name_for_path(path)
+                .is_none_or(|name| !registry.is_lazy(&name))
+        })
+    }
+
+    /// Single-pass scan + construct helper shared by `from_path_scan`
+    /// and `from_path_scan_filtered`.
+    fn scan_and_construct(
+        root: &Path,
+        keep: impl Fn(&Path) -> bool,
+    ) -> Vec<Result<Self, ScanEntryError>> {
         let resolver = PathResolverBuilder::for_kind(Kind::Driver)
             .without_system_fallback()
             .push_cli_path(root.join(Kind::Driver.subdir()))
@@ -120,6 +148,7 @@ impl LoadedClientDebug {
         scan_paths(resolver.paths())
             .into_entries()
             .into_iter()
+            .filter(|entry| keep(&entry.path))
             .map(|entry| match entry.outcome {
                 Ok(lib) => Self::validate_and_construct(lib).map_err(load_to_scan_error),
                 Err(e) => Err(ScanEntryError::Loader(e)),

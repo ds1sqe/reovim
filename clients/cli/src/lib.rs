@@ -5,6 +5,13 @@
 //! This crate provides a CLI client for interacting with reovim servers
 //! using the gRPC v2 protocol.
 //!
+//! Wave 3a (#771) note: the CLI is a pure gRPC client. It talks to a
+//! reovim server over the wire and does not load driver cdylibs
+//! locally — the server it connects to handles all driver loading.
+//! Wave 3a's package-manager-aware lazy load applies to the client
+//! platforms that own a local driver layer (TUI today; Web is also
+//! out of scope per the WASM model). No CLI wiring is performed.
+//!
 //! # Example
 //!
 //! ```ignore

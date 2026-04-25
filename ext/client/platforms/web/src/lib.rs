@@ -2,6 +2,13 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim Web platform runtime (Flight 76 spike).
 //!
+//! Wave 3a (#771) note: this platform is intentionally NOT wired into
+//! the package-manager runtime loader. The Web target is a WASM
+//! cdylib root with no host filesystem — `pkg-runtime-loader` reads
+//! `pkg.lock` from a filesystem path, and `dylib-loader::Library::open`
+//! does not apply to WASM modules. Wave 3a wires only OS-dylib
+//! platforms; a WASM-aware loader is out of scope until post-Wave-3c.
+//!
 //! Serves the canonical frame as an inline SVG inside a minimal HTML5
 //! document over HTTP/1.1. Exposes three orthogonal pieces:
 //!

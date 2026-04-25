@@ -75,6 +75,39 @@ impl LoadedClientRender {
         Self::validate_and_construct(lib)
     }
 
+    /// Header-only check: does the cdylib at `path` export a valid
+    /// client-render-driver vtable?
+    ///
+    /// Opens the cdylib, resolves the vtable symbol, and runs the same
+    /// header validation `load_from_path` runs. The cdylib is unmapped
+    /// before this function returns; no driver instance is constructed
+    /// (so the driver's `construct` slot is never called). Used by the
+    /// runtime lazy-load path to disambiguate render-vs-debug cdylibs
+    /// before committing to the heavier `load_from_path`.
+    ///
+    /// # Errors
+    ///
+    /// - `LoadError::LibraryOpen` if `dlopen` or symbol resolution
+    ///   fails (typical when the cdylib does not export the render
+    ///   vtable, e.g. because it is a debug driver).
+    /// - `LoadError::Validation` if the vtable header does not match
+    ///   the host's expectations.
+    pub fn probe_from_path(path: &Path) -> Result<(), LoadError> {
+        let lib = Library::open(path).map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        // SAFETY: `VTABLE_SYMBOL` is the stable contract exported by
+        // every client-render driver cdylib (see
+        // `docs/architecture/driver-abi-v1.md`).
+        let sym: Symbol<'_, *const ClientRenderVTable> = unsafe { lib.symbol(VTABLE_SYMBOL) }
+            .map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
+        let vtable_ptr: *const ClientRenderVTable = *sym;
+        // SAFETY: header fields are initialized by the cdylib's static
+        // initializer; reading them before any other vtable field is
+        // sound regardless of validation outcome.
+        unsafe { check_client_render(vtable_ptr, ClientRenderExpectations::from_host()) }?;
+        drop(lib);
+        Ok(())
+    }
+
     /// Load every `driver/`-kind cdylib under `root`, returning one
     /// per-entry result per candidate.
     ///
@@ -91,6 +124,37 @@ impl LoadedClientRender {
     // share one signature instead of two parallel ones.
     #[must_use]
     pub fn from_path_scan(root: &Path) -> Vec<Result<Self, ScanEntryError>> {
+        Self::scan_and_construct(root, |_| true)
+    }
+
+    /// Eager-filtered variant of [`Self::from_path_scan`].
+    ///
+    /// Walks the same single-pass scan and skips entries whose package
+    /// name (recovered via [`pkg_name_from_cdylib_filename`]) is
+    /// registry-classified lazy. Entries whose filename does not match
+    /// the convention fall through to the eager path — the filter is
+    /// conservative.
+    ///
+    /// [`pkg_name_from_cdylib_filename`]: reovim_dylib_loader::pkg_name_from_cdylib_filename
+    #[must_use]
+    pub fn from_path_scan_filtered(
+        root: &Path,
+        registry: &reovim_pkg_lazyload::LazyRegistry,
+    ) -> Vec<Result<Self, ScanEntryError>> {
+        Self::scan_and_construct(root, |path| {
+            reovim_pkg_runtime_loader::package_name_for_path(path)
+                .is_none_or(|name| !registry.is_lazy(&name))
+        })
+    }
+
+    /// Single-pass scan + construct helper shared by `from_path_scan`
+    /// and `from_path_scan_filtered`. The caller's `keep` predicate
+    /// is applied before `validate_and_construct` so a filtered-out
+    /// entry is never opened beyond the initial scan.
+    fn scan_and_construct(
+        root: &Path,
+        keep: impl Fn(&Path) -> bool,
+    ) -> Vec<Result<Self, ScanEntryError>> {
         let resolver = PathResolverBuilder::for_kind(Kind::Driver)
             .without_system_fallback()
             .push_cli_path(root.join(Kind::Driver.subdir()))
@@ -98,6 +162,7 @@ impl LoadedClientRender {
         scan_paths(resolver.paths())
             .into_entries()
             .into_iter()
+            .filter(|entry| keep(&entry.path))
             .map(|entry| match entry.outcome {
                 Ok(lib) => Self::validate_and_construct(lib).map_err(load_to_scan_error),
                 Err(e) => Err(ScanEntryError::Loader(e)),

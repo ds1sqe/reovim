@@ -197,3 +197,73 @@ fn debug_observer_next_frame_panic_is_caught_at_trampoline() {
         Err(other) => panic!("expected DriverPanicked, got: {other:?}"),
     }
 }
+
+// ============================================================================
+// Wave 3a Phase 3.A — from_path_scan_filtered (debug)
+// ============================================================================
+
+use {
+    reovim_dylib_loader::cdylib_filename,
+    reovim_pkg_lazyload::LazyRegistry,
+    reovim_pkg_lockfile::{Lockfile, PackageLock as PkgLock, Source as PkgSource},
+};
+
+fn debug_so_path() -> Option<std::path::PathBuf> {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent()?.parent()?.parent()?.parent()?;
+    let so = workspace_root
+        .join("target")
+        .join("debug")
+        .join("libreovim_driver_debug_poc.so");
+    so.exists().then_some(so)
+}
+
+fn stage_debug(pkg: &str) -> Option<tempfile::TempDir> {
+    let so = debug_so_path()?;
+    let tmp = tempfile::tempdir().ok()?;
+    let dir = tmp.path().join("driver");
+    std::fs::create_dir_all(&dir).ok()?;
+    let staged = dir.join(cdylib_filename(pkg));
+    std::fs::copy(&so, &staged).ok()?;
+    Some(tmp)
+}
+
+fn pkg_lock(name: &str, trigger: Option<&str>) -> PkgLock {
+    PkgLock {
+        name: name.into(),
+        version: "1.0.0".into(),
+        source: PkgSource::LocalPath(format!("/pkgs/{name}").into()),
+        target: None,
+        kind: None,
+        sha256: None,
+        trigger: trigger.map(str::to_owned),
+        dependencies: Vec::new(),
+    }
+}
+
+#[test]
+fn debug_filtered_empty_registry_loads_all() {
+    let Some(tmp) = stage_debug("demo") else {
+        eprintln!("SKIP: debug fixture .so missing");
+        return;
+    };
+    let registry = LazyRegistry::empty();
+    let results = LoadedClientDebug::from_path_scan_filtered(tmp.path(), &registry);
+    assert_eq!(results.len(), 1);
+    results[0].as_ref().expect("loaded");
+}
+
+#[test]
+fn debug_filtered_skips_lazy_entry() {
+    let Some(tmp) = stage_debug("demo") else {
+        eprintln!("SKIP: debug fixture .so missing");
+        return;
+    };
+    let registry = LazyRegistry::from_lockfile(&Lockfile {
+        version: 1,
+        packages: vec![pkg_lock("demo", Some("on-capability:debug"))],
+    })
+    .expect("registry");
+    let results = LoadedClientDebug::from_path_scan_filtered(tmp.path(), &registry);
+    assert!(results.is_empty(), "lazy entry must be filtered");
+}

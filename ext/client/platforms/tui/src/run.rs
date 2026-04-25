@@ -158,6 +158,13 @@ pub async fn run(args: TuiArgs) -> Result<(), TuiRunError> {
     // richer entry.
     let disabled: HashSet<String> = HashSet::new();
 
+    // Wave 3a (#771): consult `pkg.lock` if present, eager-filter the
+    // driver scan, and fan out `on-capability` triggers for the static
+    // `PROVIDED_CAPABILITY_NAMES` list. The loaded drivers and the
+    // hook are held to keep their cdylibs mapped; wiring them into
+    // the live TUI render path is a follow-up flight.
+    let _packaged = load_packaged_drivers();
+
     if let Some(path) = args.grpc.strip_prefix(UDS_PREFIX) {
         return run_over_uds(path, &args, &disabled).await;
     }
@@ -381,4 +388,86 @@ async fn dispatch_mode_with_channel(
         drop(app);
         result
     }
+}
+
+// ============================================================================
+// Wave 3a (#771): packaged-driver lazy load
+// ============================================================================
+
+/// Capabilities the TUI platform provides, fanned out at startup so
+/// any package whose `pkg.lock` `on-capability = "<name>"` trigger
+/// matches one of these names is dlopen'd.
+const PROVIDED_CAPABILITY_NAMES: &[&str] = &["cell"];
+
+/// Bundle of resources from a successful packaged-driver load.
+///
+/// Held by the platform runtime to keep loaded cdylibs mapped for
+/// the process lifetime. The follow-up flight that wires these into
+/// the live TUI render path will read each field separately.
+struct PackagedDrivers {
+    /// Eagerly-loaded render drivers, one entry per cdylib that
+    /// passed the eager filter.
+    _eager_render: Vec<
+        Result<
+            reovim_client_subsys_driver_loader::LoadedClientRender,
+            reovim_client_subsys_driver_loader::ScanEntryError,
+        >,
+    >,
+    /// Eagerly-loaded debug drivers.
+    _eager_debug: Vec<
+        Result<
+            reovim_client_subsys_driver_loader::LoadedClientDebug,
+            reovim_client_subsys_driver_loader::ScanEntryError,
+        >,
+    >,
+    /// Lazy hook holding deferred drivers loaded via the boot-time
+    /// capability fan-out.
+    _lazy_hook: reovim_client_subsys_driver_loader::CapabilityLazyHook,
+}
+
+/// Eager-filter the package-manager driver scan and fan out
+/// `on-capability` triggers.
+///
+/// Returns `None` when no library root resolves (the platform then
+/// boots without packaged drivers). The returned bundle is held
+/// alive at the call site so its cdylibs stay mapped — see
+/// [`PackagedDrivers`].
+fn load_packaged_drivers() -> Option<PackagedDrivers> {
+    let library_root = reovim_pkg_runtime_loader::resolve_library_root()?;
+    let registry = match reovim_pkg_runtime_loader::load_registry(&library_root) {
+        Ok(reg) => reg,
+        Err(err) => {
+            tracing::warn!(?err, "could not load runtime LazyRegistry; falling back to empty");
+            std::sync::Arc::new(reovim_pkg_lazyload::LazyRegistry::empty())
+        }
+    };
+
+    let eager_render =
+        reovim_client_subsys_driver_loader::LoadedClientRender::from_path_scan_filtered(
+            &library_root,
+            &registry,
+        );
+    let eager_debug =
+        reovim_client_subsys_driver_loader::LoadedClientDebug::from_path_scan_filtered(
+            &library_root,
+            &registry,
+        );
+
+    let lazy_hook = reovim_client_subsys_driver_loader::CapabilityLazyHook::new(
+        std::sync::Arc::clone(&registry),
+        library_root,
+    );
+    for cap in PROVIDED_CAPABILITY_NAMES {
+        if let Err(err) = lazy_hook.dispatch_capability(cap) {
+            tracing::warn!(capability = cap, ?err, "lazy capability dispatch failed");
+        }
+    }
+
+    // TODO(#771): Wave-3b — thread the eager driver vectors and the
+    // lazy hook through into the live TUI render path.
+    Some(PackagedDrivers {
+        _eager_render: eager_render,
+        _eager_debug: eager_debug,
+        _lazy_hook: lazy_hook,
+    })
 }
