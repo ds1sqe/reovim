@@ -17,9 +17,15 @@
 pub use reovim_content_codec::{ContentCodec, ContentType};
 
 pub mod capabilities;
+pub mod file_open;
 mod registry;
 
 #[cfg(test)]
+mod file_open_tests;
+#[cfg(test)]
 mod registry_tests;
 
-pub use registry::{ContentCodecRegistry, DefaultContentCodecRegistry};
+pub use {
+    file_open::{FileOpenError, MAX_FILE_SIZE, decode_file_bytes},
+    registry::{ContentCodecRegistry, DefaultContentCodecRegistry},
+};

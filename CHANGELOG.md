@@ -48,6 +48,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 1: shared file-open helper.** New
+  `decode_file_bytes()` pure function in `reovim-subsys-content-codec`
+  drives raw bytes through the classifier and factory stores to a
+  decoded `String` plus an optional `ContentType` tag. The helper
+  forwards a `filename` argument to extension-aware classifiers and
+  falls back to UTF-8 on any classifier/factory/codec miss. Two error
+  variants: `TooLarge` (over the 64 MiB cap) and `NotUtf8` (fallback
+  failed). Phases 2-7 will route the explorer, picker-files, and `:e`
+  through this helper. (#737)
 - **#770 Debug Surface — Phase 4: Docs**: User guide
   `docs/user-guide/debug-surface.md` and architecture doc
   `docs/architecture/debug-surface.md` covering CLI verbs, ABI, registry,
