@@ -73,6 +73,46 @@ impl RuntimeLoaderConfig {
     }
 }
 
+/// Walk the runtime-side library-root fallback chain.
+///
+/// Returns the first existing directory among:
+/// 1. `$REOVIM_LIBRARY_ROOT`
+/// 2. `$XDG_DATA_HOME/reovim/`
+/// 3. `$HOME/.local/share/reovim/`
+///
+/// Returns `None` when none of these point at an existing directory —
+/// callers treat that as "no installed packages" and fall back to an
+/// empty registry. The runtime resolver is intentionally more
+/// permissive than `pkg install`'s writer-side requirement that
+/// `REOVIM_LIBRARY_ROOT` be set explicitly.
+#[must_use]
+pub fn resolve_library_root() -> Option<PathBuf> {
+    fn from_env(key: &str) -> Option<PathBuf> {
+        std::env::var_os(key)
+            .map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+    }
+
+    if let Some(root) = from_env("REOVIM_LIBRARY_ROOT")
+        && root.is_dir()
+    {
+        return Some(root);
+    }
+    if let Some(xdg) = from_env("XDG_DATA_HOME") {
+        let candidate = xdg.join("reovim");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    if let Some(home) = from_env("HOME") {
+        let candidate = home.join(".local").join("share").join("reovim");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod config_tests;

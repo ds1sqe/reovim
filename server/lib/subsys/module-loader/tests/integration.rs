@@ -411,3 +411,106 @@ fn test_loader_take_removes_and_returns_handle() {
 
     assert!(loader.take(&id).is_none(), "second take should return None");
 }
+
+// ============================================================================
+// from_path_scan_filtered (Wave 3a Phase 2.C)
+// ============================================================================
+
+use {
+    reovim_dylib_loader::cdylib_filename,
+    reovim_pkg_lazyload::LazyRegistry,
+    reovim_pkg_lockfile::{Lockfile, PackageLock, Source},
+};
+
+/// Build a fixture library root with a single cdylib copied from the
+/// real test module under the package-manager filename convention.
+/// Returns the tempdir (kept alive by the caller) and the package name.
+fn stage_packaged_cdylib(pkg_name: &str) -> (tempfile::TempDir, String) {
+    let so_path = test_module_path().unwrap_or_else(|| {
+        panic!("test module .so missing; run `cargo build -p reovim-test-dynamic-module`")
+    });
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules_dir = tmp.path().join("modules");
+    std::fs::create_dir_all(&modules_dir).expect("modules dir");
+    let staged = modules_dir.join(cdylib_filename(pkg_name));
+    std::fs::copy(&so_path, &staged).expect("copy fixture so");
+
+    (tmp, pkg_name.to_owned())
+}
+
+fn build_registry(packages: Vec<PackageLock>) -> LazyRegistry {
+    LazyRegistry::from_lockfile(&Lockfile {
+        version: 1,
+        packages,
+    })
+    .expect("build registry")
+}
+
+fn pkg_lock(name: &str, trigger: Option<&str>) -> PackageLock {
+    PackageLock {
+        name: name.into(),
+        version: "1.0.0".into(),
+        source: Source::LocalPath(format!("/pkgs/{name}").into()),
+        target: None,
+        kind: None,
+        sha256: None,
+        trigger: trigger.map(str::to_owned),
+        dependencies: Vec::new(),
+    }
+}
+
+#[test]
+fn from_path_scan_filtered_empty_registry_loads_all() {
+    let _so = require_so!();
+    let (tmp, _name) = stage_packaged_cdylib("demo");
+
+    let registry = LazyRegistry::empty();
+    let mut loader = ModuleLoader::new();
+    #[allow(unsafe_code)]
+    let results = unsafe { loader.from_path_scan_filtered(tmp.path(), &registry) };
+
+    assert_eq!(results.len(), 1, "empty registry must load every entry");
+    results[0].as_ref().expect("module loaded");
+    assert_eq!(loader.len(), 1);
+}
+
+#[test]
+fn from_path_scan_filtered_skips_lazy_entry() {
+    let _so = require_so!();
+    let (tmp, name) = stage_packaged_cdylib("demo");
+
+    let registry = build_registry(vec![pkg_lock(&name, Some("on-event:save"))]);
+    let mut loader = ModuleLoader::new();
+    #[allow(unsafe_code)]
+    let results = unsafe { loader.from_path_scan_filtered(tmp.path(), &registry) };
+
+    assert!(
+        results.is_empty(),
+        "lazy entry should be filtered before load_dynamic; got {results:?}"
+    );
+    assert_eq!(loader.len(), 0);
+}
+
+#[test]
+fn from_path_scan_filtered_loads_non_convention_filename() {
+    // Fixture filename `libreovim_test_dynamic_module.so` does NOT
+    // match the `libreovim_pkg_*` convention, so `package_name_for_path`
+    // returns None and the filter falls through to the eager path.
+    let so_path = require_so!();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules_dir = tmp.path().join("modules");
+    std::fs::create_dir_all(&modules_dir).expect("modules dir");
+    let staged = modules_dir.join(so_path.file_name().unwrap());
+    std::fs::copy(&so_path, &staged).expect("copy");
+
+    // Even with a registry that classifies SOMETHING as lazy, the
+    // non-convention filename is loaded.
+    let registry = build_registry(vec![pkg_lock("unrelated", Some("on-event:save"))]);
+    let mut loader = ModuleLoader::new();
+    #[allow(unsafe_code)]
+    let results = unsafe { loader.from_path_scan_filtered(tmp.path(), &registry) };
+
+    assert_eq!(results.len(), 1);
+    results[0].as_ref().expect("non-convention module loaded");
+}

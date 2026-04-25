@@ -20,5 +20,6 @@ thiserror = "2"
 tracing = { workspace = true }
 
 [dev-dependencies]
+parking_lot = { workspace = true }
 reovim-pkg-manifest = { path = "../pkg-manifest", version = "0.15.0-dev" }
 tempfile = "3"

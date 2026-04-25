@@ -79,7 +79,8 @@ fn test_discover_and_load_externals_graceful() {
         .into_iter()
         .map(|id| ModuleId::from_string(id.to_string()))
         .collect();
-    let _loader = discover_and_load_externals(&ModulesConfig::official(), &builtin_ids);
+    let mut loader = ModuleLoader::new();
+    discover_and_load_externals_into(&mut loader, &ModulesConfig::official(), &builtin_ids);
     // Success = no panic, no matter what .so files are on the system
 }
 

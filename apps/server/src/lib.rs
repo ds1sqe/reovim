@@ -25,6 +25,8 @@ use {
 };
 
 pub mod bootstrap;
+pub mod lazy_command_dispatch;
+pub mod lazy_domain_dispatch;
 pub mod logging;
 pub mod module_cli;
 pub mod module_service;

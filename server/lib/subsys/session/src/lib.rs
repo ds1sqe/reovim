@@ -28,6 +28,7 @@ pub mod dispatch_result;
 #[cfg(test)]
 mod dispatch_result_tests;
 mod domain_driver;
+mod domain_register_listener;
 mod empty_handler;
 mod extension;
 mod handler_key;
@@ -47,6 +48,7 @@ pub use {
     buffer_content::{BufferContentProvider, DisplayLine},
     dispatch_result::{BufferChanges, CommandResult, Directive, DispatchResult},
     domain_driver::{DomainDriver, DomainRouting},
+    domain_register_listener::DomainRegisterListener,
     option_change::OptionChange,
     window::Window as DomainWindow,
 };

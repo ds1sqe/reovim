@@ -19,6 +19,7 @@
 pub mod discovery;
 pub mod handle;
 pub mod loader;
+pub mod loader_handle;
 pub mod lockfile;
 pub mod registry;
 pub mod report;

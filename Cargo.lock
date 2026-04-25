@@ -2312,11 +2312,17 @@ dependencies = [
  "reovim-driver-text-input",
  "reovim-driver-text-session",
  "reovim-driver-text-syntax",
+ "reovim-dylib-loader",
  "reovim-kernel",
+ "reovim-pkg-lazyload",
+ "reovim-pkg-lockfile",
+ "reovim-pkg-manifest",
+ "reovim-pkg-runtime-loader",
  "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
  "reovim-subsys-buffer",
+ "reovim-subsys-command",
  "reovim-subsys-driver-loader",
  "reovim-subsys-input",
  "reovim-subsys-layout",
@@ -2326,6 +2332,7 @@ dependencies = [
  "reovim-subsys-net",
  "reovim-subsys-session",
  "reovim-subsys-vfs",
+ "tempfile",
  "tokio",
  "tonic",
  "tracing",
@@ -4275,6 +4282,7 @@ dependencies = [
 name = "reovim-pkg-runtime-loader"
 version = "0.15.0-dev"
 dependencies = [
+ "parking_lot",
  "reovim-dylib-loader",
  "reovim-pkg-lazyload",
  "reovim-pkg-lockfile",
@@ -4376,6 +4384,7 @@ dependencies = [
 name = "reovim-subsys-command"
 version = "0.15.0-dev"
 dependencies = [
+ "parking_lot",
  "reovim-kernel",
  "reovim-subsys-command-types",
 ]
@@ -4470,10 +4479,14 @@ dependencies = [
  "hex",
  "libloading",
  "notify",
+ "parking_lot",
  "reovim-arch",
  "reovim-depgraph",
  "reovim-dylib-loader",
  "reovim-kernel",
+ "reovim-pkg-lazyload",
+ "reovim-pkg-lockfile",
+ "reovim-pkg-runtime-loader",
  "serde",
  "sha2",
  "tempfile",

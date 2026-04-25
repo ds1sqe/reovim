@@ -55,6 +55,13 @@ reovim-subsys-module-config = { workspace = true }
 # Dynamic module loading — external .so modules (#587)
 reovim-subsys-module-loader = { workspace = true }
 
+# Wave 3a — package-manager-aware lazy load
+reovim-dylib-loader = { workspace = true }
+reovim-pkg-lazyload = { path = "../../lib/pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-manifest = { path = "../../lib/pkg-manifest", version = "0.15.0-dev" }
+reovim-pkg-runtime-loader = { workspace = true }
+reovim-subsys-command = { workspace = true }
+
 # Module distribution registry — install/remove/update third-party modules (#621)
 reovim-subsys-module-registry = { workspace = true }
 
@@ -81,6 +88,10 @@ tracing-appender = { workspace = true }
 
 # Sync primitives for KernelContext
 parking_lot = { workspace = true }
+
+[dev-dependencies]
+reovim-pkg-lockfile = { path = "../../lib/pkg-lockfile", version = "0.15.0-dev" }
+tempfile = "3"
 
 [lints]
 workspace = true

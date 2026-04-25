@@ -4,7 +4,8 @@
 //! Built at bootstrap from `CommandRegistry`, stored in `ServiceRegistry`.
 
 use {
-    crate::traits::Command,
+    crate::{resolution_listener::CommandResolutionListener, traits::Command},
+    parking_lot::RwLock,
     reovim_kernel::api::v1::{CommandId, Service},
     std::{collections::HashMap, fmt, sync::Arc},
 };
@@ -42,6 +43,14 @@ impl std::error::Error for AmbiguousPrefix {}
 pub struct CommandNameIndex {
     /// Name → (`CommandId`, `Command` trait object) for lookup and completion.
     by_name: HashMap<String, (CommandId, Arc<dyn Command>)>,
+    /// Side-effect listeners fired before every `resolve*` call.
+    ///
+    /// Used by the lazy-load runtime to observe command-name
+    /// resolution and dlopen packages whose `on-event` trigger
+    /// matches the queried name. Listeners may not influence the
+    /// lookup result on this call — see
+    /// [`CommandResolutionListener`].
+    listeners: RwLock<Vec<Arc<dyn CommandResolutionListener>>>,
 }
 
 impl CommandNameIndex {
@@ -50,6 +59,7 @@ impl CommandNameIndex {
     pub fn new() -> Self {
         Self {
             by_name: HashMap::new(),
+            listeners: RwLock::new(Vec::new()),
         }
     }
 
@@ -61,9 +71,31 @@ impl CommandNameIndex {
         self.by_name.insert(name, (id, cmd));
     }
 
+    /// Register a side-effect listener fired before every `resolve*`
+    /// lookup.
+    ///
+    /// Listeners run in registration order. They may not influence
+    /// the lookup result on the same call — see
+    /// [`CommandResolutionListener`].
+    pub fn add_listener(&self, listener: Arc<dyn CommandResolutionListener>) {
+        self.listeners.write().push(listener);
+    }
+
+    /// Fire every registered listener with `name`.
+    ///
+    /// Called from each `resolve*` entry point. Listeners are invoked
+    /// in registration order; the index never branches on their
+    /// behavior.
+    fn fire_listeners(&self, name: &str) {
+        for listener in self.listeners.read().iter() {
+            listener.on_resolve(name);
+        }
+    }
+
     /// Resolve a command name to its `CommandId`.
     #[must_use]
     pub fn resolve(&self, name: &str) -> Option<&CommandId> {
+        self.fire_listeners(name);
         self.by_name.get(name).map(|(id, _)| id)
     }
 
@@ -73,6 +105,7 @@ impl CommandNameIndex {
     /// callers can access `Command::args()` for spec-driven argument binding.
     #[must_use]
     pub fn resolve_entry(&self, name: &str) -> Option<(&CommandId, &dyn Command)> {
+        self.fire_listeners(name);
         self.by_name.get(name).map(|(id, cmd)| (id, cmd.as_ref()))
     }
 
@@ -94,6 +127,7 @@ impl CommandNameIndex {
         &self,
         name: &str,
     ) -> Result<Option<(&CommandId, &dyn Command)>, AmbiguousPrefix> {
+        self.fire_listeners(name);
         if name.is_empty() {
             return Ok(None);
         }
@@ -184,6 +218,7 @@ impl std::fmt::Debug for CommandNameIndex {
         f.debug_struct("CommandNameIndex")
             .field("name_count", &self.by_name.len())
             .field("unique_commands", &self.count())
+            .field("listener_count", &self.listeners.read().len())
             .finish()
     }
 }

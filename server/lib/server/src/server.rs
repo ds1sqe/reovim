@@ -110,6 +110,12 @@ pub struct Server<M = DefaultModuleService> {
     /// Dispatch routes through the domain driver when wired.
     domain_driver: Option<Arc<dyn reovim_subsys_session::DomainDriver>>,
 
+    /// Optional listener registered on every newly-created session
+    /// before the domain driver is installed. Used by the package
+    /// manager's lazy-load runtime to dispatch `on-domain` triggers
+    /// (#771 Wave 3a).
+    domain_listener: Option<Arc<dyn reovim_subsys_session::DomainRegisterListener>>,
+
     /// Extension bridge registry for gRPC notification emission (#468).
     ///
     /// Bridges are collected from `BridgeProvider` in bootstrap.
@@ -149,6 +155,7 @@ impl Server<DefaultModuleService> {
             session_factory: None,
             initial_session_state: None,
             domain_driver: None,
+            domain_listener: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -190,6 +197,7 @@ impl Server<DefaultModuleService> {
             session_factory: None,
             initial_session_state: None,
             domain_driver: None,
+            domain_listener: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -232,6 +240,7 @@ impl Server<DefaultModuleService> {
             session_factory: Some(factory),
             initial_session_state: None,
             domain_driver: None,
+            domain_listener: None,
             #[cfg(feature = "grpc")]
             bridge_registry: Arc::new(BridgeRegistry::default()),
             #[cfg(feature = "grpc")]
@@ -269,6 +278,7 @@ impl<M: Send + Sync> Server<M> {
             session_factory: self.session_factory,
             initial_session_state: self.initial_session_state,
             domain_driver: self.domain_driver,
+            domain_listener: self.domain_listener,
             bridge_registry: self.bridge_registry,
             module_service,
             shutdown_tx: self.shutdown_tx,
@@ -302,6 +312,23 @@ impl<M: Send + Sync> Server<M> {
         driver: Arc<dyn reovim_subsys_session::DomainDriver>,
     ) -> Self {
         self.domain_driver = Some(driver);
+        self
+    }
+
+    /// Attach a session-level [`DomainRegisterListener`] applied to every
+    /// session created by this server (#771 Wave 3a).
+    ///
+    /// The listener is registered on the new session BEFORE the domain
+    /// driver is installed, so the first `set_domain_driver` invocation
+    /// fires it.
+    ///
+    /// [`DomainRegisterListener`]: reovim_subsys_session::DomainRegisterListener
+    #[must_use]
+    pub fn with_domain_listener(
+        mut self,
+        listener: Arc<dyn reovim_subsys_session::DomainRegisterListener>,
+    ) -> Self {
+        self.domain_listener = Some(listener);
         self
     }
 
@@ -450,6 +477,10 @@ impl<M: Send + Sync> Server<M> {
         let session_state = self.create_session_state();
         let session_id = SessionId::new(&*self.config.default_session_name);
         let default_session = Arc::new(Session::from_state(session_id.clone(), session_state));
+
+        if let Some(ref listener) = self.domain_listener {
+            default_session.register_domain_listener(Arc::clone(listener));
+        }
 
         if let Some(ref driver) = self.domain_driver {
             default_session.set_domain_driver(Arc::clone(driver));

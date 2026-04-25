@@ -10,12 +10,14 @@ pub mod capabilities;
 mod name_index;
 mod parse;
 mod query;
+mod resolution_listener;
 mod traits;
 
 pub use {
     name_index::{AmbiguousPrefix, CommandNameIndex},
     parse::{ArgError, ParsedCmdline, bind_args, parse_cmdline, tokenize_args},
     query::{CommandInfo, CommandQueryProvider, CommandQueryService},
+    resolution_listener::CommandResolutionListener,
     traits::{Command, CommandPriority},
 };
 

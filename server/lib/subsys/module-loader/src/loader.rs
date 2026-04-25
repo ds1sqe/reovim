@@ -309,6 +309,55 @@ impl ModuleLoader {
     #[allow(unsafe_code)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub unsafe fn from_path_scan(&mut self, root: &Path) -> Vec<Result<ModuleId, ModuleError>> {
+        // SAFETY: caller's contract on `from_path_scan` is forwarded
+        // unchanged to `load_dynamic`.
+        unsafe { self.scan_and_load(root, |_| true) }
+    }
+
+    /// Eager-filtered variant of [`Self::from_path_scan`].
+    ///
+    /// Walks the same single-pass scan and skips entries whose package
+    /// name (recovered via [`pkg_name_from_cdylib_filename`]) is
+    /// registry-classified lazy. Entries whose filename does not match
+    /// the convention fall through to the eager path — the filter is
+    /// conservative.
+    ///
+    /// [`pkg_name_from_cdylib_filename`]: reovim_dylib_loader::pkg_name_from_cdylib_filename
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`Self::from_path_scan`].
+    #[allow(unsafe_code)]
+    pub unsafe fn from_path_scan_filtered(
+        &mut self,
+        root: &Path,
+        registry: &reovim_pkg_lazyload::LazyRegistry,
+    ) -> Vec<Result<ModuleId, ModuleError>> {
+        // SAFETY: same forwarding contract as `from_path_scan`.
+        unsafe {
+            self.scan_and_load(root, |path| {
+                reovim_pkg_runtime_loader::package_name_for_path(path)
+                    .is_none_or(|name| !registry.is_lazy(&name))
+            })
+        }
+    }
+
+    /// Single-pass scan + load helper shared by `from_path_scan` and
+    /// `from_path_scan_filtered`. The caller's `keep` predicate is
+    /// applied before `load_dynamic` so a filtered-out entry is never
+    /// dlopen'd.
+    ///
+    /// # Safety
+    ///
+    /// `load_dynamic` is unsafe; the caller must guarantee ABI
+    /// compatibility for every retained entry.
+    #[allow(unsafe_code)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    unsafe fn scan_and_load(
+        &mut self,
+        root: &Path,
+        keep: impl Fn(&Path) -> bool,
+    ) -> Vec<Result<ModuleId, ModuleError>> {
         use reovim_dylib_loader::{Kind, PathResolverBuilder, scan_paths};
 
         let resolver = PathResolverBuilder::for_kind(Kind::Module)
@@ -319,10 +368,9 @@ impl ModuleLoader {
         scan_paths(resolver.paths())
             .into_entries()
             .into_iter()
+            .filter(|entry| keep(&entry.path))
             .map(|entry| match entry.outcome {
-                // SAFETY: the caller's contract on `from_path_scan`
-                // forwards to `load_dynamic`; ABI compatibility is
-                // owned by the caller.
+                // SAFETY: forwarded from the caller of `scan_and_load`.
                 Ok(_lib) => unsafe { self.load_dynamic(&entry.path) },
                 Err(e) => Err(ModuleError::LoadFailed(e.to_string())),
             })

@@ -24,7 +24,7 @@ use super::CaptureTracker;
 use super::PresenceService;
 use {
     reovim_subsys_input::InputEvent,
-    reovim_subsys_session::{DomainDriver, ExtensionMap},
+    reovim_subsys_session::{DomainDriver, DomainRegisterListener, ExtensionMap},
 };
 
 // active_buffer is now domain-owned; only reachable via domain driver (#753).
@@ -61,6 +61,11 @@ pub struct Session {
     /// When `None`, input is dropped with a warning.
     /// Set by the runner at session creation via [`Session::set_domain_driver`].
     domain_driver: RwLock<Option<Arc<dyn DomainDriver>>>,
+
+    /// Listeners notified after every successful `set_domain_driver`
+    /// call. Held under a separate lock so a listener cannot deadlock
+    /// against the `domain_driver` writer.
+    domain_listeners: RwLock<Vec<Arc<dyn DomainRegisterListener>>>,
 
     /// Server-side projection cache (#753).
     ///
@@ -107,6 +112,7 @@ impl Session {
             state: RwLock::new(SessionState::default()),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            domain_listeners: RwLock::new(Vec::new()),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -147,6 +153,7 @@ impl Session {
             state: RwLock::new(state),
             clients: ClientDirectory::new(),
             domain_driver: RwLock::new(None),
+            domain_listeners: RwLock::new(Vec::new()),
             projection_store: RwLock::new(super::projection_store::ProjectionStore::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
@@ -199,8 +206,32 @@ impl Session {
     ///
     /// After this is called, `dispatch_input_for_client` delegates to the domain
     /// driver instead of using the inline dispatch path in `SessionState`.
+    ///
+    /// Every listener registered via [`Session::register_domain_listener`]
+    /// receives `driver.domain_name()` after the writer-lock has been
+    /// released so a listener cannot deadlock against the
+    /// `domain_driver` lock or the listener-list lock.
+    ///
+    /// `domain_name()` is sampled BEFORE the `domain_driver` write
+    /// lock is acquired so the listener observes the same name the
+    /// caller passed in. Implementations of `DomainDriver::domain_name`
+    /// must therefore be pure accessors — no I/O, no locks.
     pub fn set_domain_driver(&self, driver: Arc<dyn DomainDriver>) {
-        *self.domain_driver.write() = Some(driver);
+        let name = driver.domain_name();
+        {
+            let mut slot = self.domain_driver.write();
+            *slot = Some(driver);
+        }
+        let listeners: Vec<Arc<dyn DomainRegisterListener>> = self.domain_listeners.read().clone();
+        for listener in &listeners {
+            listener.on_register(name);
+        }
+    }
+
+    /// Register a listener notified each time
+    /// [`Session::set_domain_driver`] is called.
+    pub fn register_domain_listener(&self, listener: Arc<dyn DomainRegisterListener>) {
+        self.domain_listeners.write().push(listener);
     }
 
     /// Get the domain driver (if wired).

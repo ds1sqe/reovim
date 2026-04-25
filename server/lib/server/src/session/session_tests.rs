@@ -1545,3 +1545,63 @@ async fn dispatch_input_fallback_without_domain_driver() {
     // Fallback stub returns None when no domain driver is active (#753 E3)
     assert!(result.is_none(), "should return None when no domain driver active");
 }
+
+#[derive(Default)]
+struct RecordingDomainListener {
+    seen: parking_lot::Mutex<Vec<String>>,
+}
+
+impl RecordingDomainListener {
+    fn drain(&self) -> Vec<String> {
+        std::mem::take(&mut *self.seen.lock())
+    }
+}
+
+impl reovim_subsys_session::DomainRegisterListener for RecordingDomainListener {
+    fn on_register(&self, domain_name: &str) {
+        self.seen.lock().push(domain_name.to_owned());
+    }
+}
+
+#[test]
+fn register_domain_listener_fires_on_set_domain_driver() {
+    let session = Session::new(SessionId::new("test"));
+    let listener = std::sync::Arc::new(RecordingDomainListener::default());
+    session.register_domain_listener(std::sync::Arc::clone(&listener)
+        as std::sync::Arc<dyn reovim_subsys_session::DomainRegisterListener>);
+
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
+
+    assert_eq!(listener.drain(), vec!["test".to_owned()]);
+}
+
+#[test]
+fn multiple_domain_listeners_all_fire() {
+    let session = Session::new(SessionId::new("test"));
+    let a = std::sync::Arc::new(RecordingDomainListener::default());
+    let b = std::sync::Arc::new(RecordingDomainListener::default());
+    session.register_domain_listener(std::sync::Arc::clone(&a)
+        as std::sync::Arc<dyn reovim_subsys_session::DomainRegisterListener>);
+    session.register_domain_listener(std::sync::Arc::clone(&b)
+        as std::sync::Arc<dyn reovim_subsys_session::DomainRegisterListener>);
+
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
+
+    assert_eq!(a.drain(), vec!["test".to_owned()]);
+    assert_eq!(b.drain(), vec!["test".to_owned()]);
+}
+
+#[test]
+fn domain_listener_fires_on_each_set_call() {
+    // No internal dedup — that is dispatcher policy. The session's job
+    // is to surface every register, even repeats.
+    let session = Session::new(SessionId::new("test"));
+    let listener = std::sync::Arc::new(RecordingDomainListener::default());
+    session.register_domain_listener(std::sync::Arc::clone(&listener)
+        as std::sync::Arc<dyn reovim_subsys_session::DomainRegisterListener>);
+
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
+    session.set_domain_driver(std::sync::Arc::new(SessionDispatchTestDriver::new()));
+
+    assert_eq!(listener.drain(), vec!["test".to_owned(), "test".to_owned()]);
+}

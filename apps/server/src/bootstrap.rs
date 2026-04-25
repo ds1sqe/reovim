@@ -58,6 +58,33 @@ use {
     reovim_subsys_vfs::VfsInstance,
 };
 
+use {
+    reovim_pkg_lazyload::LazyRegistry,
+    reovim_pkg_runtime_loader::{lockfile_path, resolve_library_root},
+};
+
+/// Service-tier wrapper around the runtime [`LazyRegistry`] (#771
+/// Wave 3a).
+///
+/// `LazyRegistry` lives in `lib/pkg-lazyload/` and intentionally has
+/// no kernel dep. The composition root wraps it here so the
+/// kernel-side `ServiceRegistry` can hand it back via `services.get`.
+pub struct RuntimeLazyRegistry {
+    /// Held so the registry stays alive for the whole server lifetime.
+    /// Read accessors are added when the first consumer needs them.
+    _inner: Arc<LazyRegistry>,
+}
+
+impl RuntimeLazyRegistry {
+    /// Wrap an existing shared registry.
+    #[must_use]
+    pub const fn new(inner: Arc<LazyRegistry>) -> Self {
+        Self { _inner: inner }
+    }
+}
+
+impl reovim_kernel::api::v1::Service for RuntimeLazyRegistry {}
+
 // ============================================================================
 // Composition-root adapters (#753 E6)
 // These bridge driver-tier types to the domain-neutral subsys contracts.
@@ -368,6 +395,33 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     let name_index = Arc::new(command_registry.build_name_index());
     tracing::info!(count = name_index.count(), "Built command name index");
     services.register(name_index);
+
+    // Wave 3a (#771): publish the runtime LazyRegistry into the
+    // service registry so downstream wiring (sub-plan 04 ABI
+    // diagnostics, follow-up dispatcher hookup) can read it.
+    if let Some(library_root) = resolve_library_root() {
+        match reovim_pkg_runtime_loader::load_registry(&library_root) {
+            Ok(reg) => {
+                tracing::info!(
+                    library_root = %library_root.display(),
+                    lazy_entries = reg.entries().count(),
+                    "Registered runtime LazyRegistry into ServiceRegistry"
+                );
+                services.register(Arc::new(RuntimeLazyRegistry::new(reg)));
+            }
+            Err(err) => {
+                tracing::warn!(
+                    lockfile = %lockfile_path(&library_root).display(),
+                    ?err,
+                    "could not load pkg-runtime registry; registering empty"
+                );
+                services
+                    .register(Arc::new(RuntimeLazyRegistry::new(Arc::new(LazyRegistry::empty()))));
+            }
+        }
+    } else {
+        services.register(Arc::new(RuntimeLazyRegistry::new(Arc::new(LazyRegistry::empty()))));
+    }
 
     // #623: Read initial mode from personality module, fallback to vim:normal
     let initial_mode = services
@@ -841,8 +895,14 @@ fn initialize_modules_with_dependents(
     // Collect builtin IDs before external discovery (for dedup)
     let builtin_ids: Vec<ModuleId> = all_handles.iter().map(|h| h.id().clone()).collect();
 
+    // Packaged-module eager-filtered scan: modules with a non-eager
+    // `pkg.lock` trigger are skipped here and load lazily on the
+    // matching runtime trigger.
+    let mut external = ModuleLoader::new();
+    load_packaged_modules(&mut external);
+
     // Discover and load external .so modules (#587)
-    let mut external = discover_and_load_externals(config, &builtin_ids);
+    discover_and_load_externals_into(&mut external, config, &builtin_ids);
 
     // Load registry-installed modules (#725) into the same loader so they
     // participate in dependency resolution + unified init alongside builtins
@@ -1069,12 +1129,14 @@ fn call_on_all_loaded(modules: &mut [TrackedModule], ctx: &ModuleContext) {
 /// as warnings but don't prevent other modules from loading.
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(unsafe_code)]
-fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId]) -> ModuleLoader {
-    let mut loader = ModuleLoader::new();
-
+fn discover_and_load_externals_into(
+    loader: &mut ModuleLoader,
+    config: &ModulesConfig,
+    builtin_ids: &[ModuleId],
+) {
     let discovered = loader.discover();
     if discovered.is_empty() {
-        return loader;
+        return;
     }
 
     tracing::info!(count = discovered.len(), "Discovered external module files");
@@ -1112,8 +1174,45 @@ fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId])
     if ext_count > 0 {
         tracing::info!(count = ext_count, "External modules loaded");
     }
+}
 
-    loader
+/// Resolve `$REOVIM_LIBRARY_ROOT`, read `<root>/pkg.lock` if present,
+/// and run the eager-filtered scan on `loader`.
+///
+/// Lazy entries (`on-domain` / `on-event`) are skipped here and
+/// dlopen later from the matching runtime trigger; eager entries
+/// load now. A no-resolve library root is normal and yields an
+/// untouched loader.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unsafe_code)]
+fn load_packaged_modules(loader: &mut ModuleLoader) {
+    let Some(library_root) = resolve_library_root() else {
+        return;
+    };
+
+    let registry = match reovim_pkg_runtime_loader::load_registry(&library_root) {
+        Ok(reg) => reg,
+        Err(err) => {
+            tracing::warn!(
+                lockfile = %lockfile_path(&library_root).display(),
+                ?err,
+                "could not load pkg-runtime registry; falling back to empty"
+            );
+            Arc::new(LazyRegistry::empty())
+        }
+    };
+
+    // SAFETY: every cdylib under `<library_root>/modules/` was placed
+    // by `pkg install` and is treated as ABI-compatible.
+    let results = unsafe { loader.from_path_scan_filtered(&library_root, &registry) };
+    let ok_count = results.iter().filter(|r| r.is_ok()).count();
+    let failed = results.len() - ok_count;
+    tracing::info!(
+        library_root = %library_root.display(),
+        eager_loaded = ok_count,
+        failed,
+        "Packaged modules eager-scan complete"
+    );
 }
 
 /// Load registry-installed modules into an existing loader (#725).

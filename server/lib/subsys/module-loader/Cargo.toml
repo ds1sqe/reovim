@@ -17,6 +17,9 @@ reovim-kernel = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
 reovim-dylib-loader = { workspace = true }
+reovim-pkg-lazyload = { path = "../../../../lib/pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-runtime-loader = { workspace = true }
+parking_lot = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
@@ -33,4 +36,5 @@ hot-reload = ["dep:notify", "dep:tokio"]
 
 [dev-dependencies]
 libloading = { workspace = true }
+reovim-pkg-lockfile = { path = "../../../../lib/pkg-lockfile", version = "0.15.0-dev" }
 tempfile = "3"

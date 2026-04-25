@@ -165,6 +165,31 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (`pkg-lazyload`, `pkg-lockfile`, `dylib-loader`, `thiserror`,
   `tracing`) and forbids any `reovim-server*` / `reovim-client-*` /
   `reovim-subsys-*` / `reovim-ext-*` edge. (#771)
+- **#771 Wave 3a (server)**: server-side runtime loader plumbing for
+  lockfile-aware module loading. New `CommandResolutionListener` trait
+  in `subsys/command` fired by `CommandNameIndex::resolve*` (the
+  `on-event = "<name>"` trigger surface — kernel `EventBus` is left
+  untouched per the kernel-purity policy). New `DomainRegisterListener`
+  trait in `subsys/session` fired by `SessionState::set_domain_driver`
+  (the `on-domain = "<name>"` trigger surface). New
+  `LoaderHandle` (parking_lot::Mutex-wrapped `ModuleLoader`),
+  `LazyCommandDispatcher`, and `LazyDomainDispatcher` concrete
+  listeners in `apps/server`. New
+  `ModuleLoader::from_path_scan_filtered` single-pass eager filter on
+  the existing scan walk. Bootstrap now resolves `$REOVIM_LIBRARY_ROOT`
+  (with `$XDG_DATA_HOME/reovim/` and `$HOME/.local/share/reovim/`
+  fallbacks), runs the eager-filtered scan first, and registers the
+  shared `LazyRegistry` into `ServiceRegistry` via the new
+  `RuntimeLazyRegistry` wrapper. `Server::with_domain_listener` builder
+  threads the domain dispatcher into every newly-created session.
+  **Deferred to a follow-up flight**: the bootstrap-time runtime
+  dispatcher *registration* (attaching the dispatchers to the live
+  `CommandNameIndex` / `Server`). The dispatchers themselves are unit-
+  tested end-to-end against fixture cdylibs; the live wiring requires a
+  refactor of `apps/server/src/bootstrap.rs`'s existing `external`
+  ModuleLoader ownership chain (the `external.take()`-into-tracked-
+  modules path consumes the loader before runtime dispatchers could
+  share it). (#771)
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
   `:codecs` lists available codec factories (from
   `ContentCodecFactoryStore::available()`) and active mounts on the

@@ -334,6 +334,100 @@ fn test_resolve_prefix_exact_beats_prefix() {
     assert_eq!(result.0.name(), "quit");
 }
 
+struct RecordingListener {
+    seen: parking_lot::Mutex<Vec<String>>,
+}
+
+impl RecordingListener {
+    fn new() -> Self {
+        Self {
+            seen: parking_lot::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn drain(&self) -> Vec<String> {
+        std::mem::take(&mut *self.seen.lock())
+    }
+}
+
+impl crate::CommandResolutionListener for RecordingListener {
+    fn on_resolve(&self, name: &str) {
+        self.seen.lock().push(name.to_owned());
+    }
+}
+
+#[test]
+fn listener_fires_on_resolve_with_queried_name() {
+    let idx = make_index();
+    let listener = Arc::new(RecordingListener::new());
+    idx.add_listener(listener.clone() as Arc<dyn crate::CommandResolutionListener>);
+
+    let _ = idx.resolve("write");
+    let _ = idx.resolve_entry("quit");
+    let _ = idx.resolve_prefix("w");
+
+    assert_eq!(listener.drain(), vec!["write", "quit", "w"]);
+}
+
+#[test]
+fn listener_runs_on_unresolved_names_too() {
+    let idx = make_index();
+    let listener = Arc::new(RecordingListener::new());
+    idx.add_listener(listener.clone() as Arc<dyn crate::CommandResolutionListener>);
+
+    assert!(idx.resolve("does-not-exist").is_none());
+    assert_eq!(listener.drain(), vec!["does-not-exist"]);
+}
+
+struct OrderedListener {
+    tag: &'static str,
+    order: Arc<parking_lot::Mutex<Vec<&'static str>>>,
+}
+
+impl crate::CommandResolutionListener for OrderedListener {
+    fn on_resolve(&self, _: &str) {
+        self.order.lock().push(self.tag);
+    }
+}
+
+#[test]
+fn multiple_listeners_fire_in_registration_order() {
+    let idx = make_index();
+    let order = Arc::new(parking_lot::Mutex::new(Vec::<&'static str>::new()));
+
+    idx.add_listener(Arc::new(OrderedListener {
+        tag: "first",
+        order: Arc::clone(&order),
+    }));
+    idx.add_listener(Arc::new(OrderedListener {
+        tag: "second",
+        order: Arc::clone(&order),
+    }));
+
+    let _ = idx.resolve("write");
+
+    assert_eq!(*order.lock(), vec!["first", "second"]);
+}
+
+struct InertListener;
+
+impl crate::CommandResolutionListener for InertListener {
+    fn on_resolve(&self, _: &str) {}
+}
+
+#[test]
+fn listener_side_effect_does_not_change_lookup_on_same_call() {
+    // A listener may dlopen a package and register new commands at runtime,
+    // but those new commands MUST NOT be visible on the same `resolve` that
+    // triggered the listener — the listener fires before the HashMap
+    // lookup, but the index itself is not mutated by the listener.
+    let idx = make_index();
+    idx.add_listener(Arc::new(InertListener));
+
+    assert!(idx.resolve("does-not-exist").is_none());
+    assert!(idx.resolve("write").is_some());
+}
+
 #[test]
 fn test_insert_overwrites() {
     let mut idx = CommandNameIndex::new();

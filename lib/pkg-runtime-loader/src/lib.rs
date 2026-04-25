@@ -24,7 +24,7 @@ mod registry_load;
 
 pub use {
     crate::{
-        config::RuntimeLoaderConfig,
+        config::{RuntimeLoaderConfig, resolve_library_root},
         error::RuntimeLoaderError,
         package_lookup::package_name_for_path,
         registry_load::{load_registry, lockfile_path},
