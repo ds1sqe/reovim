@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **#769 ABI Foundation Phase 5 — client-side driver-loader infrastructure scaffolded.**
+  Extends `scripts/build-driver.sh` to stage client-side driver `.so`
+  files to `$ROOT/driver/client/`. Documents the client-side layout
+  in `docs/deployment/library-root.md`. The migrated client-driver set
+  is empty this phase; trait-redesign work for `ChromeSurface` and
+  `DisplayDriver` is tracked at follow-up #774. `ClientRender` migration
+  deferred to #753 client-foundation resumption per countdown decision
+  C1 Path B. `clients/tui/Cargo.toml` carries `# trait-redesign deferred
+  to #774` rationale comments on retained client-driver deps.
+
 - **#769 ABI Foundation Phase 4 — driver-loader infrastructure scaffolded.**
   Adds the `no_static_drivers_feature` depgraph ratchet,
   `scripts/build-driver.sh` build pipeline, and documentation for the

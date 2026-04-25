@@ -8,10 +8,12 @@ discovered files against an embedded manifest, and loads them in dependency
 order.
 
 After #769 Phase 4 scaffolding lands, the same library-root convention also
-covers server-side **drivers**. The migrated driver set is currently empty
-(see [Drivers (server-side)](#drivers-server-side) below); driver
-migrations land at follow-up issue #774. The layout described here is the
-target operators should expect once #774 starts populating it.
+covers server-side **drivers**. After #769 Phase 5, it also covers
+client-side **drivers**. Both migrated driver sets are currently empty
+(see [Drivers](#drivers) below); server driver migrations land at follow-up
+issue #774, and client driver migrations land at #753 client-foundation
+resumption (pending #774 trait redesigns). The layout described here is the
+target operators should expect once those issues populate it.
 
 This document covers:
 
@@ -19,7 +21,7 @@ This document covers:
 2. Manifest contract (modules)
 3. Install layouts (dev, system, user overlay) — modules
 4. Override knobs — modules
-5. Drivers (server-side) — layout, search path, currently-empty disclaimer
+5. Drivers — server-side and client-side layout, search paths, currently-empty disclaimers
 
 See also [Server Mode](../user-guide/server-mode.md) and
 [Server Overview](../architecture/server/overview.md).
@@ -196,43 +198,59 @@ mkdir -p ~/.local/share/reovim/modules
 cp target/debug/libreovim_*.so ~/.local/share/reovim/modules/
 ```
 
-## Drivers (server-side)
+## Drivers
 
-After #769 Phase 4, the library root also hosts server-side **driver**
-shared libraries under a sibling directory. Drivers are runtime-loaded
-cdylibs that implement subsys trait contracts (e.g. the per-trait vtable
-exported as `REOVIM_<KIND>_DRIVER_VTABLE`).
+After #769 Phase 4 and Phase 5, the library root also hosts **driver**
+shared libraries for both server-side and client-side drivers. Drivers are
+runtime-loaded cdylibs that implement subsys trait contracts (e.g. the
+per-trait vtable exported as `REOVIM_<KIND>_DRIVER_VTABLE`).
 
-> **Status (v0.15.0-dev):** The driver set is currently **empty**.
-> Migrated drivers land under follow-up #774. This section documents
-> the layout for future driver releases. Operators do not need to
-> install any driver `.so` files for the current release.
+`scripts/build-driver.sh` is the canonical build path for both tiers
+(sibling to `scripts/build-module.sh`):
 
-### Currently empty
+```bash
+./scripts/build-driver.sh --all          # Build all migrated drivers (release)
+./scripts/build-driver.sh --all --debug  # Build all migrated drivers (debug)
+./scripts/build-driver.sh <name>         # Build single migrated driver
+```
 
-As of #769 Phase 4, the **server-driver migrated set is empty**. Phase 4
-ships scaffolding only:
+The script maintains two arrays (`MIGRATED_SERVER_DRIVERS` and
+`MIGRATED_CLIENT_DRIVERS`) and stages `.so` artifacts to the appropriate
+tier directory. Both arrays are currently empty; the script handles the
+empty-set case by logging a notice and exiting 0.
+
+### Server-side drivers
+
+After #769 Phase 4, the library root hosts server-side driver shared
+libraries under `$ROOT/driver/server/`.
+
+> **Status (v0.15.0-dev):** The server-driver migrated set is currently
+> **empty**. Migrated server drivers land under follow-up #774. Operators
+> do not need to install any server driver `.so` files for the current
+> release.
+
+As of #769 Phase 4, the scaffolding ships:
 
 - The `lib/depgraph/tests/no_static_drivers_feature.rs` ratchet probe
   (asserts no workspace `Cargo.toml` defines a `static-drivers` feature,
   preserving the master plan's L1 invariant).
-- The `scripts/build-driver.sh` build pipeline (handles the empty
-  driver set gracefully; logs and exits 0).
+- The `scripts/build-driver.sh` build pipeline (`MIGRATED_SERVER_DRIVERS`
+  array; handles the empty set gracefully).
 - This documentation describing the future layout.
 
-Driver migrations land at follow-up issue **#774**
+Server driver migrations land at follow-up issue **#774**
 (`feat(server-drivers): redesign net-grpc / command / text-session /
 text-input / text-syntax trait surfaces for FFI-routability`).
-**Operators do not need to install any driver `.so` files for the
+**Operators do not need to install any server driver `.so` files for the
 v0.15.0-dev release**; the existing in-process driver implementations
 continue to work via compile-time linkage in `apps/server`. The
 `# trait-redesign deferred to #774` rationale comments on the
 `apps/server/Cargo.toml` driver deps document this.
 
-### Search-path priority (target layout, post-#774)
+#### Search-path priority (target layout, post-#774)
 
-Per the master plan §"Loader + library-root discovery", driver discovery
-will use these search paths in priority order (first-match wins):
+Per the master plan §"Loader + library-root discovery", server driver
+discovery will use these search paths in priority order (first-match wins):
 
 1. `$REOVIM_DRIVER_PATH` (env var, colon-separated on Unix,
    semicolon-separated on Windows)
@@ -244,11 +262,9 @@ will use these search paths in priority order (first-match wins):
 5. `/usr/lib/reovim/driver/server/` (distribution package install)
 
 Confirmation against `lib/dylib-loader/`'s actual rule lands when #774
-populates the migrated set — until then, the path-resolution rule may
-mirror the module-side default and resolve through Phase 1's loader
-plumbing.
+populates the migrated set.
 
-### Layout under the library root
+#### Layout under the library root
 
 ```
 $REOVIM_LIBRARY_ROOT/
@@ -256,11 +272,11 @@ $REOVIM_LIBRARY_ROOT/
 │   ├── server/...
 │   └── client/...
 └── driver/
-    ├── server/...      # ← this section's scope
-    └── <platform>/...  # tui, cli, web — Phase 5 (#769)
+    ├── server/...      # ← server-side drivers (this subsection)
+    └── client/...      # ← client-side drivers (next subsection)
 ```
 
-### Builtin-vs-external priority
+#### Builtin-vs-external priority
 
 The same priority rule that applies to modules applies to drivers: a
 driver found at a higher-priority path masks the same vtable kind at a
@@ -268,39 +284,88 @@ lower-priority path. This lets a developer override a system-installed
 driver by dropping a freshly-built `.so` into their user directory
 without disturbing the package install.
 
-### CLI flags
+#### CLI flags
 
-Once #774 lands a migrated driver, the per-bin CLI gains driver-specific
-flags mirroring the existing module flags:
+Once #774 lands a migrated server driver, the per-bin CLI gains
+driver-specific flags mirroring the existing module flags:
 
 - `--driver <PATH>` / `-d <PATH>` — additional driver directories
   (high-priority, prepended to the search list). Multiple values
   allowed.
 
 These flags are **not introduced** until #774 lands a driver; the bin
-has no use for them in the empty-set state. This section documents the
-expected interface so operators can plan their packaging story.
+has no use for them in the empty-set state.
 
-### Build pipeline
+### Client-side drivers
 
-`scripts/build-driver.sh` is the canonical build path for driver
-cdylibs (sibling to `scripts/build-module.sh`):
+After #769 Phase 5, the library root also hosts client-side driver
+shared libraries under `$ROOT/driver/client/`.
 
-```bash
-./scripts/build-driver.sh --all          # Build all migrated drivers (release)
-./scripts/build-driver.sh --all --debug  # Build all migrated drivers (debug)
-./scripts/build-driver.sh <name>         # Build single migrated driver
+> **Status (v0.15.0-dev):** The client-driver migrated set is currently
+> **empty**. Client driver trait-redesign work for `ChromeSurface` and
+> `DisplayDriver` is tracked at follow-up #774. The `ClientRender`
+> concrete implementor migration is deferred to #753 client-foundation
+> resumption (pending #774 trait redesigns). Operators do not need to
+> install any client driver `.so` files for the current release.
+
+As of #769 Phase 5, the scaffolding ships:
+
+- The `scripts/build-driver.sh` build pipeline (`MIGRATED_CLIENT_DRIVERS`
+  array; handles the empty set gracefully; stages to `driver/client/`).
+- The `uapi/driver-macros/src/client_render.rs` macro and the companion
+  `ClientRenderVTable` + `RenderTargetVTable` types at
+  `clients/lib/subsys/render/src/abi.rs` (Phase 0 deliverables; the
+  foundation is operational).
+- The `clients/tui/Cargo.toml` driver deps carry
+  `# trait-redesign deferred to #774` rationale comments documenting the
+  pending migrations.
+- This documentation describing the future layout.
+
+Client driver migrations land at:
+
+- **#774** — `ChromeSurface`-family and `DisplayDriver` trait redesigns
+  for FFI-routability, then cdylib migration.
+- **#753 client-foundation resumption** — `ClientRender` concrete
+  implementor landing once #753 Phase E's v7 flat-category layout is
+  established.
+
+#### Search-path priority (TBD — pending first migration)
+
+Client driver discovery will use a parallel set of search paths under the
+`client/` suffix. The exact `$REOVIM_CLIENT_DRIVER_PATH` env-var name and
+priority order mirror the server-side pattern and will be confirmed when
+#774 or #753 lands the first client driver migration. Expected form:
+
+1. `$REOVIM_CLIENT_DRIVER_PATH` (env var, colon-separated on Unix)
+2. `$REOVIM_LIBRARY_ROOT/driver/client/`
+3. `$XDG_DATA_HOME/reovim/driver/client/` (defaults to
+   `~/.local/share/reovim/driver/client/`)
+4. `/usr/local/lib/reovim/driver/client/`
+5. `/usr/lib/reovim/driver/client/`
+
+Confirmation against `lib/dylib-loader/`'s actual rule lands when #774
+or #753 populates the migrated set.
+
+#### Layout under the library root
+
+```
+$REOVIM_LIBRARY_ROOT/
+└── driver/
+    ├── server/...      # server-side drivers
+    └── client/...      # ← client-side drivers (this subsection)
 ```
 
-The script iterates a hardcoded `MIGRATED_DRIVERS` array and:
+#### CLI flags
 
-1. Builds each crate with `--features dynamic`.
-2. Verifies the produced `.so` exports exactly one
-   `REOVIM_<KIND>_DRIVER_VTABLE` symbol (per acceptance criterion #7).
-3. Stages the `.so` to `target/<profile>/lib/reovim/driver/server/`.
+Not introduced until a client driver migrates. The expected interface
+mirrors the server-side `--driver` / `-d` flags; operators can plan their
+packaging story on that basis.
 
-When #774 lands a driver, adding the crate name to the
-`MIGRATED_DRIVERS` array is the only edit needed to extend the script.
+#### Build pipeline
 
-The script handles the empty-set case (current Phase 4 state) by
-logging the empty-set notice and exiting 0.
+`scripts/build-driver.sh` handles client-driver `.so` staging via its
+`MIGRATED_CLIENT_DRIVERS` array. When #774 or #753 lands a client driver,
+adding the crate short-name to that array is the only edit needed. The
+script stages the `.so` to `target/<profile>/lib/reovim/driver/client/`,
+mirrors the server-side `nm`-based vtable symbol audit, and handles the
+empty-set case by logging a notice and exiting 0.

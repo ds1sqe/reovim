@@ -24,7 +24,7 @@ tonic = { workspace = true, optional = true }
 tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 
 # Display driver (FrameBuffer, FrameRenderer, Style)
-reovim-driver-display = { workspace = true }
+reovim-driver-display = { workspace = true }   # trait-redesign deferred to #774; bootstrap-site refactor deferred to #775
 
 # Native ClientModule implementations
 reovim-tui-mod-statusline = { workspace = true }
@@ -62,7 +62,7 @@ reovim-client-model = { workspace = true }
 reovim-client-driver = { workspace = true }
 
 # TUI driver (Terminal, Screen, InputReader, Cursor)
-reovim-driver-tui = { workspace = true }
+reovim-driver-tui = { workspace = true }       # platform substrate, static by design (not a loadable driver)
 
 # Platform abstraction (dirs)
 reovim-arch = { workspace = true }

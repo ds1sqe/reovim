@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Build reovim server drivers as shared libraries for dynamic loading.
+# Build reovim drivers (server-side and client-side) as shared libraries
+# for dynamic loading.
 #
-# Sibling to scripts/build-module.sh. Iterates the migrated server-driver
-# crate set, builds each with `--features dynamic`, stages the resulting
-# .so artifacts to a discoverable layout under `target/<profile>/lib/reovim/driver/server/`,
-# and audits each artifact for exactly one `REOVIM_*_DRIVER_VTABLE` symbol.
+# Sibling to scripts/build-module.sh. Two migrated-driver arrays govern the
+# build:
 #
-# Phase 4 (#769) reduced its cdylib migration to scaffolding-only after
-# the round-3 trait FFI-routability audit. The migrated server-driver set
-# is currently empty; #774 will populate it. This script handles the
-# empty set gracefully: it logs the empty-set notice and exits 0.
+#   MIGRATED_SERVER_DRIVERS  — server-tier drivers staged to driver/server/
+#   MIGRATED_CLIENT_DRIVERS  — client-tier drivers staged to driver/client/
 #
-# When #774 lands a driver, add the crate name to the MIGRATED_DRIVERS
-# array below — that is the only edit needed to extend the script.
+# Both arrays are currently empty (#769 Phase 4 and Phase 5 are
+# scaffolding-only). Server drivers land at follow-up #774; client drivers
+# land at #753 client-foundation resumption (after #774 trait redesigns).
+# This script handles the empty-set case gracefully: it logs a notice and
+# exits 0 when both arrays are empty.
+#
+# To add a driver, append its crate short-name to the appropriate array.
+# Example (server): MIGRATED_SERVER_DRIVERS=("text-syntax")
+# Example (client): MIGRATED_CLIENT_DRIVERS=("render-tui")
+# That is the only edit needed to extend the script.
+#
+# Each driver is built with `--features dynamic` and audited for exactly
+# one `REOVIM_*_DRIVER_VTABLE` symbol before staging.
 #
 # Usage:
 #   ./scripts/build-driver.sh --all          # Build all migrated drivers (release)
@@ -29,7 +37,8 @@
 #   Release: target/release/libreovim_driver_<name>.so (Linux)
 #            target/release/libreovim_driver_<name>.dylib (macOS)
 #            target/release/reovim_driver_<name>.dll (Windows)
-#   Staging: target/<profile>/lib/reovim/driver/server/<basename>
+#   Staging (server): target/<profile>/lib/reovim/driver/server/<basename>
+#   Staging (client): target/<profile>/lib/reovim/driver/client/<basename>
 set -euo pipefail
 
 # Colors
@@ -44,16 +53,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ============================================================================
-# Migrated driver set — Phase 4 scaffolding-only (#769)
+# Migrated driver sets — Phase 4+5 scaffolding-only (#769)
 # ============================================================================
-# Add a crate name to this array when #774 lands a server-driver cdylib
+# Server-tier drivers (staged to driver/server/).
+# Add a crate short-name here when #774 lands a server-driver cdylib
 # migration. Example:
-#     MIGRATED_DRIVERS=("text-syntax")
+#     MIGRATED_SERVER_DRIVERS=("text-syntax")
 #
-# The empty array below is intentional. When empty the script logs and
-# exits 0 (--all path) or errors with a clear message (single-driver path).
+# Client-tier drivers (staged to driver/client/).
+# Add a crate short-name here when #753/#774 lands a client-driver cdylib
+# migration. Example:
+#     MIGRATED_CLIENT_DRIVERS=("render-tui")
+#
+# Both arrays are intentionally empty. When both are empty the script logs
+# and exits 0 (--all path) or errors with a clear message (single-driver path).
 # ============================================================================
-MIGRATED_DRIVERS=()
+MIGRATED_SERVER_DRIVERS=()
+MIGRATED_CLIENT_DRIVERS=()
 
 # Default options
 BUILD_MODE="release"
@@ -178,29 +194,41 @@ verify_driver_vtable_symbol() {
     return 0
 }
 
-# Stage the produced .so into target/<profile>/lib/reovim/driver/server/.
+# Stage the produced .so into the appropriate tier directory.
+# $1 = lib_path, $2 = tier ("server" or "client")
 stage_artifact() {
     local lib_path=$1
+    local tier=${2:-server}
 
-    local stage_dir="$REPO_ROOT/target/$BUILD_MODE/lib/reovim/driver/server"
+    local stage_dir="$REPO_ROOT/target/$BUILD_MODE/lib/reovim/driver/$tier"
     mkdir -p "$stage_dir"
     cp "$lib_path" "$stage_dir/"
 
     echo -e "${GREEN}  Staged: $stage_dir/$(basename "$lib_path")${NC}"
 }
 
-# Build a single migrated driver
+# Build a single migrated driver.
+# $1 = driver short-name, $2 = tier ("server" or "client")
 build_driver() {
     local driver=$1
+    local tier=${2:-server}
 
-    echo -e "${YELLOW}==> Building driver: $driver${NC}"
+    echo -e "${YELLOW}==> Building $tier driver: $driver${NC}"
 
     local package_name
     package_name=$(get_package_name "$driver")
-    local cargo_toml="$REPO_ROOT/ext/server/drivers/$driver/Cargo.toml"
+
+    # Server drivers live under ext/server/drivers/; client drivers live
+    # under ext/client/tui/drivers/ (legacy layout, pre-#753 flatten).
+    local cargo_toml
+    if [[ "$tier" == "client" ]]; then
+        cargo_toml="$REPO_ROOT/ext/client/tui/drivers/$driver/Cargo.toml"
+    else
+        cargo_toml="$REPO_ROOT/ext/server/drivers/$driver/Cargo.toml"
+    fi
 
     if [[ ! -f "$cargo_toml" ]]; then
-        echo -e "${RED}Error: Driver '$driver' not found at ext/server/drivers/$driver/${NC}" >&2
+        echo -e "${RED}Error: Driver '$driver' not found at $cargo_toml${NC}" >&2
         return 1
     fi
 
@@ -238,8 +266,8 @@ build_driver() {
         verify_driver_vtable_symbol "$lib_path" || return 1
     fi
 
-    # Stage to the runtime-discoverable layout
-    stage_artifact "$lib_path"
+    # Stage to the runtime-discoverable layout (tier-specific directory)
+    stage_artifact "$lib_path" "$tier"
 
     return 0
 }
@@ -248,49 +276,78 @@ build_driver() {
 cd "$REPO_ROOT"
 
 if [[ "$BUILD_ALL" == true ]]; then
-    if [[ ${#MIGRATED_DRIVERS[@]} -eq 0 ]]; then
-        echo -e "${BLUE}==> No migrated server drivers yet (#769 Phase 4 is scaffolding-only;${NC}"
-        echo -e "${BLUE}    #774 will populate the migrated set). Exiting cleanly.${NC}"
+    total=$(( ${#MIGRATED_SERVER_DRIVERS[@]} + ${#MIGRATED_CLIENT_DRIVERS[@]} ))
+    if [[ $total -eq 0 ]]; then
+        echo -e "${BLUE}==> No migrated drivers (server or client) yet (#769 Phases 4+5 are${NC}"
+        echo -e "${BLUE}    scaffolding-only; #774 and #753 will populate the migrated sets).${NC}"
+        echo -e "${BLUE}    Exiting cleanly.${NC}"
         exit 0
     fi
 
-    echo -e "${YELLOW}==> Building all migrated server drivers${NC}"
-    echo -e "${BLUE}Found ${#MIGRATED_DRIVERS[@]} driver(s): ${MIGRATED_DRIVERS[*]}${NC}"
-
     failed=0
-    for driver in "${MIGRATED_DRIVERS[@]}"; do
-        if ! build_driver "$driver"; then
-            failed=$((failed + 1))
-        fi
-        echo ""
-    done
+
+    if [[ ${#MIGRATED_SERVER_DRIVERS[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}==> Building all migrated server drivers${NC}"
+        echo -e "${BLUE}Found ${#MIGRATED_SERVER_DRIVERS[@]} server driver(s): ${MIGRATED_SERVER_DRIVERS[*]}${NC}"
+        for driver in "${MIGRATED_SERVER_DRIVERS[@]}"; do
+            if ! build_driver "$driver" "server"; then
+                failed=$((failed + 1))
+            fi
+            echo ""
+        done
+    fi
+
+    if [[ ${#MIGRATED_CLIENT_DRIVERS[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}==> Building all migrated client drivers${NC}"
+        echo -e "${BLUE}Found ${#MIGRATED_CLIENT_DRIVERS[@]} client driver(s): ${MIGRATED_CLIENT_DRIVERS[*]}${NC}"
+        for driver in "${MIGRATED_CLIENT_DRIVERS[@]}"; do
+            if ! build_driver "$driver" "client"; then
+                failed=$((failed + 1))
+            fi
+            echo ""
+        done
+    fi
 
     if [[ $failed -gt 0 ]]; then
         echo -e "${RED}==> $failed driver(s) failed to build${NC}"
         exit 1
     fi
 
-    echo -e "${GREEN}==> All ${#MIGRATED_DRIVERS[@]} driver(s) built successfully!${NC}"
+    echo -e "${GREEN}==> All $total driver(s) built successfully!${NC}"
 else
-    # Single-driver path: must appear in the migrated set
-    found=false
-    for driver in "${MIGRATED_DRIVERS[@]}"; do
+    # Single-driver path: must appear in one of the migrated sets
+    found_tier=""
+    for driver in "${MIGRATED_SERVER_DRIVERS[@]}"; do
         if [[ "$driver" == "$DRIVER_NAME" ]]; then
-            found=true
+            found_tier="server"
             break
         fi
     done
+    if [[ -z "$found_tier" ]]; then
+        for driver in "${MIGRATED_CLIENT_DRIVERS[@]}"; do
+            if [[ "$driver" == "$DRIVER_NAME" ]]; then
+                found_tier="client"
+                break
+            fi
+        done
+    fi
 
-    if [[ "$found" == false ]]; then
-        if [[ ${#MIGRATED_DRIVERS[@]} -eq 0 ]]; then
-            echo -e "${RED}Error: No migrated server drivers exist yet (#769 Phase 4 is${NC}" >&2
-            echo -e "${RED}scaffolding-only; #774 will populate the migrated set).${NC}" >&2
+    if [[ -z "$found_tier" ]]; then
+        total=$(( ${#MIGRATED_SERVER_DRIVERS[@]} + ${#MIGRATED_CLIENT_DRIVERS[@]} ))
+        if [[ $total -eq 0 ]]; then
+            echo -e "${RED}Error: No migrated drivers exist yet (#769 Phases 4+5 are${NC}" >&2
+            echo -e "${RED}scaffolding-only; #774 and #753 will populate the migrated sets).${NC}" >&2
         else
-            echo -e "${RED}Error: Driver '$DRIVER_NAME' is not in the migrated set.${NC}" >&2
-            echo -e "${YELLOW}Migrated drivers: ${MIGRATED_DRIVERS[*]}${NC}" >&2
+            echo -e "${RED}Error: Driver '$DRIVER_NAME' is not in either migrated set.${NC}" >&2
+            if [[ ${#MIGRATED_SERVER_DRIVERS[@]} -gt 0 ]]; then
+                echo -e "${YELLOW}Migrated server drivers: ${MIGRATED_SERVER_DRIVERS[*]}${NC}" >&2
+            fi
+            if [[ ${#MIGRATED_CLIENT_DRIVERS[@]} -gt 0 ]]; then
+                echo -e "${YELLOW}Migrated client drivers: ${MIGRATED_CLIENT_DRIVERS[*]}${NC}" >&2
+            fi
         fi
         exit 1
     fi
 
-    build_driver "$DRIVER_NAME"
+    build_driver "$DRIVER_NAME" "$found_tier"
 fi
