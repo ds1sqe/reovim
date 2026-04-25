@@ -2,23 +2,9 @@
 
 use std::fs;
 
-use tempfile::tempdir;
+use {reovim_dylib_loader::cdylib_filename, tempfile::tempdir};
 
-use {
-    super::{cdylib_filename, discover},
-    crate::error::InstallError,
-};
-
-#[test]
-fn filename_normalizes_hyphens_to_underscores() {
-    let name = cdylib_filename("my-cool-theme");
-    #[cfg(target_os = "linux")]
-    assert_eq!(name, "libreovim_pkg_my_cool_theme.so");
-    #[cfg(target_os = "macos")]
-    assert_eq!(name, "libreovim_pkg_my_cool_theme.dylib");
-    #[cfg(windows)]
-    assert_eq!(name, "reovim_pkg_my_cool_theme.dll");
-}
+use {super::discover, crate::error::InstallError};
 
 #[test]
 fn discover_finds_artifact_in_dist() {

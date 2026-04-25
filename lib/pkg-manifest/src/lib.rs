@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 pub use crate::{
     dependency::{Dependency, DetailedDep},
     kind::PackageKind,
-    lazy::LazyTrigger,
+    lazy::{LazyTrigger, parse_trigger, trigger_str},
     package::Package,
 };
 
@@ -62,5 +62,15 @@ pub enum ManifestError {
     InvalidLazyTrigger {
         /// Dependency name whose `[lazy.<dep>]` entry was invalid.
         dep: String,
+    },
+    /// A serialised trigger string (as stored in the lockfile's
+    /// `trigger` field) did not match the `on-domain:<n>` /
+    /// `on-event:<n>` / `on-capability:<n>` / `eager` grammar.
+    #[error(
+        "malformed lazy trigger `{value}`: expected `on-domain:<name>`, `on-event:<name>`, `on-capability:<name>`, or `eager`"
+    )]
+    MalformedTrigger {
+        /// The offending string as read from the lockfile.
+        value: String,
     },
 }

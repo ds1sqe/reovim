@@ -140,6 +140,49 @@ fn remove_exits_one_when_package_not_installed() {
 }
 
 #[test]
+fn install_lazy_dep_emits_trigger_in_lockfile() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+
+    fs::write(
+        root.join("pkg.toml"),
+        "[package]\n\
+         name = \"root-setup\"\n\
+         reovim-version = \"^0.15\"\n\
+         \n\
+         [dependencies]\n\
+         alpha = { path = \"alpha\" }\n\
+         \n\
+         [lazy]\n\
+         alpha = { on-domain = \"text\" }\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("alpha/dist")).unwrap();
+    fs::write(
+        root.join("alpha/pkg.toml"),
+        "[package]\nname = \"alpha\"\nversion = \"1.0.0\"\nkind = \"module\"\nreovim-version = \"^0.15\"\n",
+    )
+    .unwrap();
+    fs::copy(driver_poc_so(), root.join("alpha/dist/libreovim_pkg_alpha.so")).unwrap();
+    let lib = root.join("library-root");
+
+    pkg()
+        .arg("install")
+        .arg("--manifest-dir")
+        .arg(root)
+        .arg("--library-root")
+        .arg(&lib)
+        .assert()
+        .success();
+
+    let lock = fs::read_to_string(root.join("pkg.lock")).expect("read lock");
+    assert!(
+        lock.contains("trigger = \"on-domain:text\""),
+        "trigger not emitted in lockfile:\n{lock}",
+    );
+}
+
+#[test]
 fn list_on_missing_lockfile_is_empty_not_error() {
     let dir = tempfile::tempdir().unwrap();
     let lib = dir.path().join("library-root");

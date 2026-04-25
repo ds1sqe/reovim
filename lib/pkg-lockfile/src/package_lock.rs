@@ -38,6 +38,15 @@ pub struct PackageLock {
     /// 64-character lowercase hex string; the parser validates this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// Serialised lazy-load trigger for this package.
+    ///
+    /// Format: `"on-domain:<name>"`, `"on-event:<name>"`,
+    /// `"on-capability:<name>"`, or `"eager"`. `None` (or absent) is
+    /// equivalent to `"eager"` — i.e. load on startup. Stored as a
+    /// free string so the lockfile tier stays free of pkg-manifest
+    /// deps; pkg-manifest owns the encode/decode helpers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<String>,
     /// Names of the resolved dependencies of this package.
     ///
     /// Version-free: resolution is exact by the time a lockfile is

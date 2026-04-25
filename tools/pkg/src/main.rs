@@ -17,6 +17,7 @@ mod lock;
 mod remove;
 mod resolve;
 mod runtime;
+mod trigger;
 
 use std::process::ExitCode;
 
@@ -35,6 +36,7 @@ fn main() -> ExitCode {
         Cmd::Remove(args) => dispatch_result(remove::run(&args)),
         Cmd::List(args) => dispatch_result(list::run(&args)),
         Cmd::Doctor(_) => unimplemented_stub("doctor", 4),
+        Cmd::Trigger(args) => dispatch_result(trigger::run(&args)),
     }
 }
 

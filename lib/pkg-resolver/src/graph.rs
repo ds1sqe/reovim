@@ -19,7 +19,7 @@ use std::{
 
 use {
     reovim_pkg_lockfile::Source,
-    reovim_pkg_manifest::{Dependency, DetailedDep, ManifestError},
+    reovim_pkg_manifest::{Dependency, DetailedDep, LazyTrigger, ManifestError},
     semver::{Version, VersionReq},
 };
 
@@ -33,6 +33,11 @@ use crate::{
 pub struct Resolved {
     /// Resolved packages sorted by `(name, version)`.
     pub packages: Vec<ResolvedPackage>,
+    /// Lazy-load triggers declared in the root manifest's `[lazy]`
+    /// table. Names matching an entry in `packages` will have their
+    /// trigger propagated into the lockfile; unknown names are
+    /// recorded here so the lockfile writer can surface them.
+    pub lazy: Vec<(String, LazyTrigger)>,
 }
 
 /// A single resolved package entry.
@@ -193,7 +198,13 @@ pub fn resolve(
 
     let mut walker = Walker::new();
     walker.walk_root(&root)?;
-    Ok(walker.into_resolved())
+    let lazy: Vec<(String, LazyTrigger)> = root
+        .manifest
+        .lazy
+        .iter()
+        .map(|(name, trigger)| (name.clone(), trigger.clone()))
+        .collect();
+    Ok(walker.into_resolved(lazy))
 }
 
 fn check_reovim_version(root: &LoadedManifest, runtime: &Version) -> Result<(), ResolveError> {
@@ -334,7 +345,7 @@ impl Walker {
         Ok(())
     }
 
-    fn into_resolved(self) -> Resolved {
+    fn into_resolved(self, lazy: Vec<(String, LazyTrigger)>) -> Resolved {
         let mut packages: Vec<ResolvedPackage> = self
             .accum
             .into_values()
@@ -348,7 +359,7 @@ impl Walker {
         // Names are unique because `accum` keys by package name; sorting
         // by name is sufficient for deterministic output.
         packages.sort_by(|a, b| a.name.cmp(&b.name));
-        Resolved { packages }
+        Resolved { packages, lazy }
     }
 }
 

@@ -23,6 +23,8 @@ reovim-pkg-manifest = { path = "../../lib/pkg-manifest", version = "0.15.0-dev" 
 reovim-pkg-lockfile = { path = "../../lib/pkg-lockfile", version = "0.15.0-dev" }
 reovim-pkg-resolver = { workspace = true }
 reovim-pkg-install = { workspace = true }
+reovim-pkg-lazyload = { workspace = true }
+reovim-dylib-loader = { workspace = true }
 semver = { workspace = true }
 
 [dev-dependencies]

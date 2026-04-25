@@ -60,6 +60,23 @@ impl Kind {
     }
 }
 
+impl std::str::FromStr for Kind {
+    type Err = UnknownKind;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "driver" => Ok(Self::Driver),
+            "module" => Ok(Self::Module),
+            other => Err(UnknownKind(other.to_string())),
+        }
+    }
+}
+
+/// String could not be parsed as a [`Kind`].
+#[derive(Debug, thiserror::Error)]
+#[error("unknown package kind `{0}`: expected `driver` or `module`")]
+pub struct UnknownKind(String);
+
 /// Lookup seam for `std::env::var` so tests can inject a mock map.
 ///
 /// Every method takes `&self` so implementations can be cheaply

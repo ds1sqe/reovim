@@ -110,3 +110,24 @@ bad-entry = {}
     let msg = err.to_string();
     assert!(msg.contains("bad-entry"), "error Display should mention dep name, got: {msg}");
 }
+
+#[test]
+fn parse_trigger_rejects_garbage() {
+    use reovim_pkg_manifest::parse_trigger;
+    let err = parse_trigger("not-a-real-trigger").expect_err("must fail");
+    assert!(
+        matches!(err, ManifestError::MalformedTrigger { ref value } if value == "not-a-real-trigger")
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("not-a-real-trigger"),
+        "error Display should echo the bad value, got: {msg}"
+    );
+}
+
+#[test]
+fn parse_trigger_rejects_eager_with_payload() {
+    use reovim_pkg_manifest::parse_trigger;
+    let err = parse_trigger("eager:extra").expect_err("must fail");
+    assert!(matches!(err, ManifestError::MalformedTrigger { .. }));
+}

@@ -29,7 +29,11 @@ mod scan;
 pub use self::{
     error::{LoaderError, ScanEntryError},
     library::{Library, Symbol},
-    path_resolver::{EnvProvider, Kind, PathResolver, PathResolverBuilder, StdEnv, split_paths},
-    platform::{library_extension, library_filename},
+    path_resolver::{
+        EnvProvider, Kind, PathResolver, PathResolverBuilder, StdEnv, UnknownKind, split_paths,
+    },
+    platform::{
+        cdylib_filename, library_extension, library_filename, pkg_name_from_cdylib_filename,
+    },
     scan::{ScanEntry, ScanReport, scan_paths},
 };

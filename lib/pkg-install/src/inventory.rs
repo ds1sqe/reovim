@@ -10,11 +10,12 @@
 use std::path::{Path, PathBuf};
 
 use {
+    reovim_dylib_loader::cdylib_filename,
     reovim_pkg_lockfile::{Lockfile, PackageLock, Source},
-    reovim_pkg_manifest::PackageKind,
+    reovim_pkg_manifest::{LazyTrigger, PackageKind, parse_trigger, trigger_str},
 };
 
-use crate::{artifact::cdylib_filename, error::InstallError, place::kind_subdir};
+use crate::{error::InstallError, place::kind_subdir};
 
 /// A package that has been materialized into the library root.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,9 @@ pub struct InstalledPackage {
     pub target: String,
     /// SHA-256 of the installed cdylib bytes.
     pub sha256: String,
+    /// Lazy-load trigger for this package. `None` is equivalent to
+    /// [`LazyTrigger::Eager`] — the cdylib loads on startup.
+    pub trigger: Option<LazyTrigger>,
     /// Absolute path to the cdylib in the library root. Derived
     /// from `(library_root, kind, name)`; not serialized.
     pub installed_path: PathBuf,
@@ -64,6 +68,15 @@ pub fn read_inventory(
         let installed_path = library_root
             .join(kind_subdir(kind))
             .join(cdylib_filename(&pkg.name));
+        let trigger = pkg
+            .trigger
+            .as_deref()
+            .map(parse_trigger)
+            .transpose()
+            .map_err(|source| InstallError::Manifest {
+                at: lockfile.to_path_buf(),
+                source,
+            })?;
         out.push(InstalledPackage {
             name: pkg.name,
             version: pkg.version,
@@ -71,6 +84,7 @@ pub fn read_inventory(
             kind,
             target: pkg.target.unwrap_or_default(),
             sha256: pkg.sha256.unwrap_or_default(),
+            trigger,
             installed_path,
         });
     }
@@ -88,6 +102,7 @@ pub fn write_inventory(lockfile: &Path, items: &[InstalledPackage]) -> Result<()
             target: Some(p.target.clone()),
             kind: Some(p.kind.as_str().to_string()),
             sha256: Some(p.sha256.clone()),
+            trigger: p.trigger.as_ref().map(trigger_str),
             dependencies: Vec::new(),
         })
         .collect();

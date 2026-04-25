@@ -89,6 +89,11 @@ pub fn install(
 
         let placement = crate::place::place(&artifact, kind, library_root)?;
 
+        let trigger = resolved
+            .lazy
+            .iter()
+            .find_map(|(name, t)| (name == &pkg.name).then(|| t.clone()));
+
         installed.push(InstalledPackage {
             name: pkg.name.clone(),
             version: pkg.version.to_string(),
@@ -96,6 +101,7 @@ pub fn install(
             kind,
             target: target_triple.clone(),
             sha256: sha,
+            trigger,
             installed_path: placement.dst,
         });
     }

@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// Top-level `pkg` CLI.
 #[derive(Parser, Debug)]
@@ -38,6 +38,8 @@ pub enum Cmd {
     ///
     /// Phase 4 implements the real behavior.
     Doctor(DoctorArgs),
+    /// Open the cdylibs gated on a runtime trigger event.
+    Trigger(TriggerArgs),
 }
 
 /// Arguments to `pkg install`.
@@ -117,4 +119,35 @@ pub struct ResolveArgs {
     /// working directory.
     #[arg(long, default_value = ".")]
     pub manifest_dir: PathBuf,
+}
+
+/// Trigger event flavor — must match a [`reovim_pkg_manifest::LazyTrigger`]
+/// variant.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum TriggerKind {
+    /// `LazyTrigger::OnDomain`.
+    Domain,
+    /// `LazyTrigger::OnEvent`.
+    Event,
+    /// `LazyTrigger::OnCapability`.
+    Capability,
+}
+
+/// Arguments to `pkg trigger`.
+#[derive(Parser, Debug)]
+pub struct TriggerArgs {
+    /// Trigger flavor (domain, event, capability).
+    pub kind: TriggerKind,
+
+    /// Trigger name to fire.
+    pub name: String,
+
+    /// Library root the cdylibs were installed into. Defaults to
+    /// `$REOVIM_LIBRARY_ROOT`.
+    #[arg(long, env = "REOVIM_LIBRARY_ROOT")]
+    pub library_root: PathBuf,
+
+    /// Lockfile to read. Defaults to `./pkg.lock`.
+    #[arg(long, default_value = "pkg.lock")]
+    pub lockfile: PathBuf,
 }

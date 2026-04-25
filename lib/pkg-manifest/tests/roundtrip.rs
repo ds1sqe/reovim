@@ -4,7 +4,7 @@
 //! Three fixtures cover minimal, typical, and full-lazy cases. Every
 //! [`Dependency`] and [`LazyTrigger`] enum variant is exercised.
 
-use reovim_pkg_manifest::Manifest;
+use reovim_pkg_manifest::{LazyTrigger, Manifest, parse_trigger, trigger_str};
 
 const MINIMAL: &str = include_str!("fixtures/minimal.toml");
 const TYPICAL: &str = include_str!("fixtures/typical.toml");
@@ -83,4 +83,19 @@ fn full_lazy_exercises_every_trigger_variant() {
         Some(&LazyTrigger::OnDomain("text".to_string())),
         "on-domain trigger",
     );
+}
+
+#[test]
+fn trigger_str_round_trips_every_variant() {
+    let cases = [
+        LazyTrigger::OnDomain("text".to_string()),
+        LazyTrigger::OnEvent("buffer-opened".to_string()),
+        LazyTrigger::OnCapability("theme-provider".to_string()),
+        LazyTrigger::Eager,
+    ];
+    for original in cases {
+        let encoded = trigger_str(&original);
+        let decoded = parse_trigger(&encoded).expect("parse");
+        assert_eq!(original, decoded, "round-trip failed for `{encoded}`");
+    }
 }

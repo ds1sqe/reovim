@@ -32,6 +32,7 @@ fn shuffled_input_vec_serializes_identically() {
         target: None,
         kind: None,
         sha256: None,
+        trigger: None,
         dependencies: vec![],
     };
     let pkg_b = PackageLock {
@@ -41,6 +42,7 @@ fn shuffled_input_vec_serializes_identically() {
         target: None,
         kind: None,
         sha256: None,
+        trigger: None,
         dependencies: vec![],
     };
 
@@ -67,6 +69,7 @@ fn versions_tie_break_by_version_string() {
         target: None,
         kind: None,
         sha256: None,
+        trigger: None,
         dependencies: vec![],
     };
     let pkg_v2 = PackageLock {
@@ -76,6 +79,7 @@ fn versions_tie_break_by_version_string() {
         target: None,
         kind: None,
         sha256: None,
+        trigger: None,
         dependencies: vec![],
     };
 

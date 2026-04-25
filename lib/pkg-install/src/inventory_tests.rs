@@ -2,7 +2,10 @@
 
 use std::path::PathBuf;
 
-use {reovim_pkg_lockfile::Source, reovim_pkg_manifest::PackageKind, tempfile::tempdir};
+use {
+    reovim_dylib_loader::cdylib_filename, reovim_pkg_lockfile::Source,
+    reovim_pkg_manifest::PackageKind, tempfile::tempdir,
+};
 
 use {
     super::{InstalledPackage, list, read_inventory, remove_from_inventory, write_inventory},
@@ -14,7 +17,7 @@ fn entry(name: &str, kind: PackageKind, library_root: &std::path::Path) -> Insta
         PackageKind::Driver => "driver",
         PackageKind::Module => "modules",
     };
-    let filename = super::cdylib_filename(name);
+    let filename = cdylib_filename(name);
     InstalledPackage {
         name: name.to_string(),
         version: "1.0.0".to_string(),
@@ -22,6 +25,7 @@ fn entry(name: &str, kind: PackageKind, library_root: &std::path::Path) -> Insta
         kind,
         target: "x86_64-unknown-linux-gnu".to_string(),
         sha256: "a".repeat(64),
+        trigger: None,
         installed_path: library_root.join(sub).join(filename),
     }
 }

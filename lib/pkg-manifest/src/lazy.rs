@@ -71,3 +71,41 @@ impl From<&LazyTrigger> for RawLazy {
         raw
     }
 }
+
+/// Encode a trigger as the flat lockfile-friendly string consumed by
+/// [`parse_trigger`]: `on-domain:<n>`, `on-event:<n>`,
+/// `on-capability:<n>`, or `eager`.
+#[must_use]
+pub fn trigger_str(trigger: &LazyTrigger) -> String {
+    match trigger {
+        LazyTrigger::OnDomain(s) => format!("on-domain:{s}"),
+        LazyTrigger::OnEvent(s) => format!("on-event:{s}"),
+        LazyTrigger::OnCapability(s) => format!("on-capability:{s}"),
+        LazyTrigger::Eager => "eager".to_string(),
+    }
+}
+
+/// Parse the string produced by [`trigger_str`] back into a
+/// [`LazyTrigger`].
+///
+/// # Errors
+///
+/// Returns [`ManifestError::MalformedTrigger`] if `s` is not one of
+/// the four recognised forms.
+pub fn parse_trigger(s: &str) -> Result<LazyTrigger, ManifestError> {
+    if s == "eager" {
+        return Ok(LazyTrigger::Eager);
+    }
+    if let Some(name) = s.strip_prefix("on-domain:") {
+        return Ok(LazyTrigger::OnDomain(name.to_string()));
+    }
+    if let Some(name) = s.strip_prefix("on-event:") {
+        return Ok(LazyTrigger::OnEvent(name.to_string()));
+    }
+    if let Some(name) = s.strip_prefix("on-capability:") {
+        return Ok(LazyTrigger::OnCapability(name.to_string()));
+    }
+    Err(ManifestError::MalformedTrigger {
+        value: s.to_string(),
+    })
+}

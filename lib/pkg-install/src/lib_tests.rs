@@ -46,7 +46,7 @@ fn stage_module_package(root: &Path, name: &str) {
             "[package]\nname = \"{name}\"\nversion = \"1.0.0\"\nkind = \"module\"\nreovim-version = \"^0.15\"\n",
         ),
     );
-    let filename = super::artifact::cdylib_filename(name);
+    let filename = reovim_dylib_loader::cdylib_filename(name);
     let dst = root.join(name).join("dist").join(&filename);
     fs::create_dir_all(dst.parent().unwrap()).unwrap();
     fs::write(&dst, driver_poc_bytes()).unwrap();
@@ -96,7 +96,7 @@ fn install_detects_tamper_against_existing_lockfile() {
     let art = dir
         .path()
         .join("alpha/dist")
-        .join(super::artifact::cdylib_filename("alpha"));
+        .join(reovim_dylib_loader::cdylib_filename("alpha"));
     let mut bytes = fs::read(&art).unwrap();
     bytes.extend_from_slice(b"extra-bytes-that-change-the-hash");
     fs::write(&art, &bytes).unwrap();
@@ -156,7 +156,7 @@ fn install_handles_driver_kind() {
         &dir.path().join("alpha/pkg.toml"),
         "[package]\nname = \"alpha\"\nversion = \"1.0.0\"\nkind = \"driver\"\nreovim-version = \"^0.15\"\n",
     );
-    let fname = super::artifact::cdylib_filename("alpha");
+    let fname = reovim_dylib_loader::cdylib_filename("alpha");
     let dst = dir.path().join("alpha/dist").join(&fname);
     fs::create_dir_all(dst.parent().unwrap()).unwrap();
     fs::write(&dst, driver_poc_bytes()).unwrap();
@@ -184,7 +184,7 @@ fn install_handles_mixed_kinds_in_one_graph() {
         &dir.path().join("drv-dep/pkg.toml"),
         "[package]\nname = \"drv-dep\"\nversion = \"1.0.0\"\nkind = \"driver\"\nreovim-version = \"^0.15\"\n",
     );
-    let fname = super::artifact::cdylib_filename("drv-dep");
+    let fname = reovim_dylib_loader::cdylib_filename("drv-dep");
     let dst = dir.path().join("drv-dep/dist").join(&fname);
     fs::create_dir_all(dst.parent().unwrap()).unwrap();
     fs::write(&dst, driver_poc_bytes()).unwrap();
@@ -230,7 +230,7 @@ fn install_rejects_missing_kind_in_path_manifest() {
         &dir.path().join("alpha/pkg.toml"),
         "[package]\nname = \"alpha\"\nversion = \"1.0.0\"\nreovim-version = \"^0.15\"\n",
     );
-    let fname = super::artifact::cdylib_filename("alpha");
+    let fname = reovim_dylib_loader::cdylib_filename("alpha");
     let dst = dir.path().join("alpha/dist").join(&fname);
     fs::create_dir_all(dst.parent().unwrap()).unwrap();
     fs::write(&dst, driver_poc_bytes()).unwrap();
@@ -263,4 +263,49 @@ fn install_reports_malformed_path_dep_manifest() {
     let lib = dir.path().join("library-root");
     let err = install(&resolved, &lib, &lock).expect_err("bad manifest must fail");
     assert!(matches!(err, InstallError::Manifest { .. }), "got {err:?}");
+}
+
+#[test]
+fn install_round_trip_preserves_trigger() {
+    use reovim_pkg_manifest::LazyTrigger;
+
+    let dir = tempdir().unwrap();
+    stage_module_package(dir.path(), "lazy-dep");
+    stage_module_package(dir.path(), "eager-dep");
+    write(
+        &dir.path().join("pkg.toml"),
+        "[package]\n\
+         name = \"root-setup\"\n\
+         reovim-version = \"^0.15\"\n\
+         \n\
+         [dependencies]\n\
+         lazy-dep = { path = \"lazy-dep\" }\n\
+         eager-dep = { path = \"eager-dep\" }\n\
+         \n\
+         [lazy]\n\
+         lazy-dep = { on-domain = \"text\" }\n\
+         eager-dep = { eager = true }\n",
+    );
+
+    let resolved = resolve(dir.path(), &Version::new(0, 15, 0)).expect("resolve");
+    let lock = dir.path().join("pkg.lock");
+    let lib = dir.path().join("library-root");
+    let installed = install(&resolved, &lib, &lock).expect("install");
+
+    let by_name: std::collections::BTreeMap<&str, &super::InstalledPackage> =
+        installed.iter().map(|p| (p.name.as_str(), p)).collect();
+    assert_eq!(
+        by_name["lazy-dep"].trigger.as_ref(),
+        Some(&LazyTrigger::OnDomain("text".into())),
+    );
+    assert_eq!(by_name["eager-dep"].trigger.as_ref(), Some(&LazyTrigger::Eager));
+
+    let listed = crate::inventory::list(&lock, &lib).expect("list");
+    let listed_by_name: std::collections::BTreeMap<&str, &super::InstalledPackage> =
+        listed.iter().map(|p| (p.name.as_str(), p)).collect();
+    assert_eq!(
+        listed_by_name["lazy-dep"].trigger.as_ref(),
+        Some(&LazyTrigger::OnDomain("text".into())),
+    );
+    assert_eq!(listed_by_name["eager-dep"].trigger.as_ref(), Some(&LazyTrigger::Eager),);
 }

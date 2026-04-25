@@ -89,3 +89,27 @@ fn fixture_05_eager_lazy_mix_resolves() {
         vec![("eager-dep", "0.1.0".into()), ("lazy-dep", "0.1.0".into()),],
     );
 }
+
+#[test]
+fn resolve_propagates_lazy_triggers() {
+    use reovim_pkg_manifest::LazyTrigger;
+    let resolved = resolve(&fixture("05-eager-lazy-mix"), &runtime()).expect("ok");
+    let lazy: std::collections::BTreeMap<_, _> = resolved
+        .lazy
+        .iter()
+        .map(|(n, t)| (n.as_str(), t.clone()))
+        .collect();
+    assert_eq!(lazy.get("eager-dep"), Some(&LazyTrigger::Eager));
+    assert_eq!(lazy.get("lazy-dep"), Some(&LazyTrigger::OnDomain("text".into())),);
+}
+
+#[test]
+fn into_lockfile_writes_triggers_for_resolved_fixture() {
+    let lock = resolve(&fixture("05-eager-lazy-mix"), &runtime())
+        .expect("ok")
+        .into_lockfile();
+    let by_name: std::collections::BTreeMap<_, _> =
+        lock.packages.iter().map(|p| (p.name.as_str(), p)).collect();
+    assert_eq!(by_name["eager-dep"].trigger.as_deref(), Some("eager"));
+    assert_eq!(by_name["lazy-dep"].trigger.as_deref(), Some("on-domain:text"),);
+}

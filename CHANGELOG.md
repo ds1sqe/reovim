@@ -140,6 +140,28 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#771 Package Manager — lazy load**: new `lib/pkg-lazyload/`
+  crate carries the runtime-side trigger machinery. `LazyRegistry`
+  is built from a lockfile and answers `trigger_for(name)` /
+  `is_lazy(name)`. `scan_eager(library_root, kind, registry)` wraps
+  `reovim_dylib_loader::scan_paths` and drops every cdylib whose
+  package is gated on a non-eager trigger.
+  `names_to_load(registry, &TriggerEvent)` and
+  `load_triggered(library_root, kind, registry, &TriggerEvent)` open
+  the cdylibs whose trigger fires for a given runtime event
+  (`Domain` / `Event` / `Capability`). The lockfile schema gains an
+  optional `trigger` string per package (`on-domain:<name>` /
+  `on-event:<name>` / `on-capability:<name>` / `eager`); a missing
+  trigger defaults to `eager`, so Phase 2 lockfiles parse unchanged.
+  `pkg install` propagates each package's trigger from the root
+  manifest's `[lazy]` table into the lockfile, and the new
+  `pkg trigger <kind> <name>` subcommand opens every cdylib whose
+  trigger fires for the supplied event. The `cdylib_filename`
+  helper moved to `reovim-dylib-loader` next to `library_filename`,
+  consolidating the platform-naming convention; `trigger_str` and
+  `parse_trigger` were added to `reovim-pkg-manifest` so the three
+  consumers (resolver, install, lazyload) share one
+  encode/decode pair without duplication. (#771)
 - **#771 Package Manager — install / remove / list**: new
   `lib/pkg-install/` crate materializes resolved cdylibs into
   `$REOVIM_LIBRARY_ROOT` per the driver/modules layout shared with

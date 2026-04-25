@@ -1,16 +1,14 @@
 //! Locate the pre-built cdylib for a package inside
 //! `<pkg-dir>/dist/`.
 //!
-//! The filename convention is `libreovim_pkg_<snake_name>.<ext>`
-//! where `<ext>` is computed by
-//! [`reovim_dylib_loader::library_filename`] (platform-specific:
-//! `.so` / `.dll` / `.dylib`) and the `_` form is produced by
-//! replacing hyphens in the package name with underscores (cargo's
-//! cdylib convention).
+//! The filename convention lives on
+//! [`reovim_dylib_loader::cdylib_filename`] — platform-specific
+//! `.so` / `.dll` / `.dylib` with the `reovim_pkg_<snake_name>` cargo
+//! stem.
 
 use std::path::{Path, PathBuf};
 
-use reovim_dylib_loader::library_filename;
+use reovim_dylib_loader::cdylib_filename;
 
 use crate::error::InstallError;
 
@@ -18,15 +16,6 @@ use crate::error::InstallError;
 pub struct DiscoveredArtifact {
     pub abs_path: PathBuf,
     pub filename: String,
-}
-
-/// Platform-specific cdylib filename for a package, e.g.
-/// `libreovim_pkg_my_theme.so`. Public so the lockfile writer can
-/// derive the installed path without re-implementing the convention.
-#[must_use]
-pub fn cdylib_filename(pkg_name: &str) -> String {
-    let stem = format!("reovim_pkg_{}", pkg_name.replace('-', "_"));
-    library_filename(&stem)
 }
 
 pub fn discover(pkg_dir: &Path, pkg_name: &str) -> Result<DiscoveredArtifact, InstallError> {

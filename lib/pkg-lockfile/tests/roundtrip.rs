@@ -30,6 +30,37 @@ fn with_sha_round_trips() {
 }
 
 #[test]
+fn lazy_trigger_round_trips() {
+    use {
+        reovim_pkg_lockfile::{Lockfile, PackageLock, Source},
+        std::path::PathBuf,
+    };
+    let lock = Lockfile {
+        version: 1,
+        packages: vec![PackageLock {
+            name: "lazy-pkg".into(),
+            version: "1.0.0".into(),
+            source: Source::LocalPath(PathBuf::from("/src/lazy-pkg")),
+            target: None,
+            kind: None,
+            sha256: None,
+            trigger: Some("on-domain:text".into()),
+            dependencies: Vec::new(),
+        }],
+    };
+    let text = lock.to_toml_string().expect("serialize");
+    assert!(text.contains("trigger = \"on-domain:text\""), "body: {text}");
+    let reparsed = Lockfile::from_toml_str(&text).expect("reparse");
+    assert_eq!(reparsed.packages[0].trigger.as_deref(), Some("on-domain:text"));
+}
+
+#[test]
+fn missing_trigger_defaults_to_none() {
+    let parsed = Lockfile::from_toml_str(MINIMAL).expect("parse minimal");
+    assert!(parsed.packages.iter().all(|p| p.trigger.is_none()));
+}
+
+#[test]
 fn with_sha_exercises_target_and_sha_fields() {
     let parsed = Lockfile::from_toml_str(WITH_SHA).expect("parse");
     assert_eq!(parsed.version, 1);
@@ -71,6 +102,7 @@ fn writer_sorts_packages_by_name() {
                 target: None,
                 kind: None,
                 sha256: None,
+                trigger: None,
                 dependencies: vec![],
             },
             PackageLock {
@@ -80,6 +112,7 @@ fn writer_sorts_packages_by_name() {
                 target: None,
                 kind: None,
                 sha256: None,
+                trigger: None,
                 dependencies: vec![],
             },
         ],
@@ -105,6 +138,7 @@ fn registry_source_round_trips() {
             target: None,
             kind: None,
             sha256: None,
+            trigger: None,
             dependencies: vec![],
         }],
     };

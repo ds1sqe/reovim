@@ -1,0 +1,23 @@
+[package]
+name = "reovim-pkg-lazyload"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Lazy-load registry, scan filter, and runtime trigger dispatcher for reovim cdylib packages"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-pkg-manifest = { path = "../pkg-manifest", version = "0.15.0-dev" }
+reovim-pkg-lockfile = { path = "../pkg-lockfile", version = "0.15.0-dev" }
+reovim-dylib-loader = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+reovim-driver-abi-poc = { path = "../../tools/driver-abi-poc", version = "0.15.0-dev" }
+tempfile = "3"
