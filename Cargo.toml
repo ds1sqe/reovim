@@ -69,6 +69,7 @@ members = [
     "server/lib/subsys/session",
     "ext/server/drivers/annotation",
     "ext/server/drivers/statusline",
+    "ext/server/drivers/display-registry",
     "server/lib/subsys/coordination",
     "ext/content-codec/text",
 
@@ -364,6 +365,7 @@ reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-
 reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.0-dev" }
 reovim-driver-annotation = { path = "./ext/server/drivers/annotation", version = "0.15.0-dev" }
 reovim-driver-statusline = { path = "./ext/server/drivers/statusline", version = "0.15.0-dev" }
+reovim-driver-display-registry = { path = "./ext/server/drivers/display-registry", version = "0.15.0-dev" }
 reovim-subsys-coordination = { path = "./server/lib/subsys/coordination", version = "0.15.0-dev" }
 reovim-content-codec-xxd = { path = "./ext/content-codec/xxd", version = "0.15.0-dev" }
 

@@ -2098,6 +2098,8 @@ static TOKYO_NIGHT_ORANGE_PALETTE: LazyLock<HashMap<&'static str, Style>> = Lazy
 /// Get the palette for a builtin theme variant.
 ///
 /// Returns a reference to the lazily-initialized palette `HashMap`.
+/// `super::BuiltinTheme` is re-exported from
+/// `reovim-driver-display-registry::theme::BuiltinTheme`.
 pub fn get_palette(variant: super::BuiltinTheme) -> &'static HashMap<&'static str, Style> {
     match variant {
         super::BuiltinTheme::Dark => &DARK_PALETTE,

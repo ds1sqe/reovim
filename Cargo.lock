@@ -2307,7 +2307,7 @@ dependencies = [
  "reovim-depgraph",
  "reovim-domain-text",
  "reovim-driver-command",
- "reovim-driver-display",
+ "reovim-driver-display-registry",
  "reovim-driver-net-grpc",
  "reovim-driver-text-buffer",
  "reovim-driver-text-input",
@@ -2973,18 +2973,29 @@ dependencies = [
 name = "reovim-driver-display"
 version = "0.15.0-dev"
 dependencies = [
- "dirs",
  "reovim-arch",
  "reovim-client-model",
  "reovim-driver-annotation",
+ "reovim-driver-display-registry",
  "reovim-driver-statusline",
  "reovim-kernel",
  "reovim-subsys-layout",
  "serde",
  "smallvec",
- "tempfile",
  "toml 0.8.23",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-driver-display-registry"
+version = "0.15.0-dev"
+dependencies = [
+ "dirs",
+ "reovim-arch",
+ "reovim-driver-annotation",
+ "reovim-driver-statusline",
+ "reovim-kernel",
+ "tempfile",
 ]
 
 [[package]]
@@ -3317,7 +3328,7 @@ dependencies = [
  "reovim-content-codec-text",
  "reovim-domain-text",
  "reovim-driver-command",
- "reovim-driver-display",
+ "reovim-driver-display-registry",
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",

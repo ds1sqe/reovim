@@ -4,6 +4,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.15.0-dev] - Unreleased
 
+### Refactored
+
+- **`apps/server` decoupled from `reovim-driver-display`** (#775). The
+  three call sites in `apps/server/src/bootstrap.rs` (theme manager,
+  gutter renderer construction, statusline component adapter) and the
+  one site in `ext/server/modules/commands/src/colorscheme.rs` no
+  longer compile-time-import from the client-tier
+  `reovim-driver-display` crate. `apps/server/Cargo.toml` and
+  `ext/server/modules/commands/Cargo.toml` drop the dep entirely.
+  Theme types (`BuiltinTheme`, `SharedThemeManager`, `ThemeProvider`,
+  `ThemeLoader`, `ThemeInfo`, `ThemeError`) move to a new server-tier
+  crate `reovim-driver-display-registry` at
+  `ext/server/drivers/display-registry/`; the display crate's
+  concrete `Style`-aware impls register themselves at startup via a
+  `ThemeFactory` indirection so the registry crate stays `Style`-free.
+  Bootstrap sites 2 and 3 (gutter + statusline component construction)
+  delete entirely under construction inversion (Path 3d): no
+  production code path consumed those registries today, and the
+  display driver populates them in its own init when consumers
+  arrive. New depgraph probe
+  `lib/depgraph/tests/apps_server_no_client_driver.rs` ratchets the
+  boundary going forward.
+
 ### Breaking
 
 - **`static-modules` Cargo feature removed** workspace-wide (#769 Phase 3).

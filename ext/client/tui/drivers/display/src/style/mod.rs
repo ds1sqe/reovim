@@ -7,64 +7,77 @@
 //!
 //! The style system follows mechanism vs policy separation:
 //!
-//! - **Mechanism** (this module): Defines `ThemeProvider`, `IconProvider` traits
-//!   and provides `ThemeManager`, `IconRegistry` implementations.
-//! - **Policy** (server/modules): Server decides which theme to use, modules
-//!   provide custom icon mappings.
+//! - **Mechanism** (this module): Defines `IconProvider`, the
+//!   `StyledTheme` super-trait that turns the registry's slim
+//!   [`ThemeProvider`] into a `Style`-aware view, and the
+//!   [`StyledThemeManagerExt`] extension trait that adds
+//!   `get_style(group) -> Style` to the slim
+//!   [`ThemeManager`].
+//! - **Policy** (server/modules): Server decides which theme to use,
+//!   modules provide custom icon mappings.
 //!
-//! # Theme System
+//! # Theme Surface (post-#775 split)
 //!
-//! ```ignore
-//! use reovim_driver_display::style::{ThemeManager, BuiltinTheme};
+//! The slim trait/registry surface — [`BuiltinTheme`],
+//! [`ThemeProvider`], [`ThemeManager`], [`SharedThemeManager`],
+//! [`ThemeLoader`], [`ThemeInfo`], [`ThemeError`] — lives in
+//! `reovim-driver-display-registry::theme`. This module re-exports
+//! those types under their pre-split paths so existing client-side
+//! consumers keep compiling.
 //!
-//! // Create theme manager (runner owns this)
-//! let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+//! The display tier adds `Style`-aware extensions:
 //!
-//! // Override specific styles
-//! manager.set_override("keyword", keyword_style);
-//!
-//! // Get style for rendering
-//! let style = manager.get_style("keyword");
-//! ```
+//! - [`StyledTheme`] — super-trait of `ThemeProvider` that exposes
+//!   `get_style(group) -> Option<Style>` and `default_style() -> Style`.
+//!   `SimpleBuiltinTheme` and `FileTheme` implement it.
+//! - [`StyledThemeManagerExt`] — extension on the slim manager that
+//!   walks the current `ThemeProvider`'s hierarchical groups and
+//!   resolves a `Style`.
+//! - [`install_theme_factory`] — registers the display tier's
+//!   [`DisplayThemeFactory`] in the registry crate's process-global
+//!   factory slot. Must be called before
+//!   `BuiltinTheme::Dark.load()` is expected to return a
+//!   `Style`-aware provider.
 //!
 //! # Icon System
 //!
 //! ```ignore
-//! use reovim_driver_display::style::{IconRegistry, IconSet, BuiltinFileIconProvider};
+//! use reovim_driver_display::style::{
+//!     IconRegistry, IconSet, BuiltinFileIconProvider,
+//! };
 //!
-//! // Create registry with default icon set
 //! let mut registry = IconRegistry::new(IconSet::Nerd);
-//!
-//! // Register built-in provider
 //! registry.register(Box::new(BuiltinFileIconProvider));
-//!
-//! // Get icon for file
 //! let icon = registry.file_icon("main.rs", Some("rs"));
 //! ```
-//!
-//! # Note
-//!
-//! The `HighlightGroup` enum (~70 variants) remains in `reovim-core::highlight`
-//! for now. This theme system uses string-based group names for flexibility.
-//! Future Phase 6 may migrate `HighlightGroup` to this driver.
 
 mod builtin;
+pub mod factory;
 pub mod file;
 pub mod groups;
 mod icons;
-pub mod loader;
 mod manager;
 mod registry;
 mod theme;
 
 pub use {
-    file::{FileTheme, ThemeError, ThemeFile},
+    factory::{DisplayThemeFactory, install_theme_factory},
+    file::FileTheme,
     groups::ALL_GROUPS,
     icons::{
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
-    loader::{ThemeInfo, ThemeLoader},
-    manager::{SharedThemeManager, ThemeManager},
+    manager::{StyledDowncaster, StyledThemeManagerExt, register_styled_downcaster},
     registry::StyleGroupRegistry,
-    theme::{BuiltinTheme, ThemeProvider},
+    theme::StyledTheme,
+};
+
+// Re-export the slim trait/registry surface from the server-tier
+// `reovim-driver-display-registry` crate. After #775 these types
+// canonically live there; this re-export keeps the pre-split paths
+// (`reovim_driver_display::style::ThemeManager`, etc.) compiling for
+// client-side consumers.
+pub use reovim_driver_display_registry::theme::{
+    BuiltinTheme, SharedThemeManager, ThemeError, ThemeInfo, ThemeLoader, ThemeManager,
+    ThemeProvider,
 };

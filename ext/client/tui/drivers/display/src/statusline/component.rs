@@ -274,21 +274,30 @@ impl ServiceKey for ComponentProviderKey {
 /// Other modules can register custom statusline components during their `init()` phase.
 /// The statusline provider can then look up these components by key.
 ///
-/// # Cross-Module Registration
+/// # Registration in Display-Driver Init
+///
+/// `ComponentProviderRegistry` is populated by the display driver's
+/// own initialization path, NOT by `apps/server` bootstrap. The
+/// server tier owns the `Style`-free `ComponentDataProviderRegistry`
+/// (in `reovim-driver-statusline`); the display driver wraps each
+/// `ComponentDataProvider` into a `ComponentProvider` via
+/// [`DataProviderAdapter`] and registers the resulting registry into
+/// the shared `ServiceRegistry` from a display-side init hook.
 ///
 /// ```ignore
-/// // In git module's init():
+/// // In the display driver's init path (e.g. clients/tui/src/app.rs):
 /// use reovim_driver_display::statusline::{
-///     ComponentProviderKey, ComponentProviderRegistry,
+///     ComponentProviderKey, ComponentProviderRegistry, DataProviderAdapter,
 /// };
+/// use reovim_driver_statusline::ComponentDataProviderRegistry;
 ///
-/// fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-///     let registry = ctx.services.get_or_create::<ComponentProviderRegistry>();
-///     registry.register(
-///         ComponentProviderKey::new("branch"),
-///         Arc::new(BranchComponent::new()),
-///     );
-///     ProbeResult::Success
+/// if let Some(data_registry) = services.get::<ComponentDataProviderRegistry>() {
+///     let provider_registry = services.get_or_create::<ComponentProviderRegistry>();
+///     for data_provider in data_registry.values() {
+///         let key = ComponentProviderKey::new(data_provider.id());
+///         provider_registry
+///             .register(key, Arc::new(DataProviderAdapter::new(data_provider)));
+///     }
 /// }
 /// ```
 ///

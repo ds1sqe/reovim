@@ -1,38 +1,37 @@
-//! Theme provider trait for style lookups.
+//! Display-tier theme extensions.
 //!
-//! Defines the interface for theme implementations and provides
-//! built-in themes.
+//! [`StyledTheme`] is the `Style`-aware super-trait that the display
+//! tier layers on top of the registry's slim [`ThemeProvider`]. The
+//! display crate's concrete theme implementations (`SimpleBuiltinTheme`,
+//! `FileTheme`) implement BOTH traits; the registry-side `ThemeManager`
+//! holds them as `Arc<dyn ThemeProvider>` and the display side recovers
+//! the styled view via `Any` downcast — see
+//! [`StyledThemeManagerExt`](super::StyledThemeManagerExt).
+//!
+//! [`ThemeProvider`]: reovim_driver_display_registry::theme::ThemeProvider
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
+
+use reovim_driver_display_registry::theme::ThemeProvider;
 
 use crate::highlight::Style;
 
-/// Theme provides styles for highlight groups.
+/// Display-tier `Style`-aware view of a [`ThemeProvider`].
 ///
-/// # Example
+/// Concrete theme types (`SimpleBuiltinTheme`, `FileTheme`) implement
+/// both `ThemeProvider` (the registry-tier slim trait, exposing only
+/// the theme name) and `StyledTheme` (this trait, exposing
+/// `get_style`). Code that holds an `Arc<dyn ThemeProvider>` recovers
+/// the styled view by downcasting via `AsAny`; see
+/// [`StyledThemeManagerExt::current_styled_theme`].
 ///
-/// ```ignore
-/// struct CustomTheme { /* ... */ }
-///
-/// impl ThemeProvider for CustomTheme {
-///     fn get_style(&self, group: &str) -> Option<Style> {
-///         match group {
-///             "keyword" => Some(Style { fg: Some(Color::Blue), ..Default::default() }),
-///             _ => None,
-///         }
-///     }
-///
-///     fn name(&self) -> &str { "custom" }
-/// }
-/// ```
-pub trait ThemeProvider: Send + Sync {
+/// [`StyledThemeManagerExt::current_styled_theme`]:
+///     super::StyledThemeManagerExt::current_styled_theme
+pub trait StyledTheme: ThemeProvider {
     /// Get the style for a highlight group by name.
     ///
     /// Returns `None` if the group is not defined in this theme.
     fn get_style(&self, group: &str) -> Option<Style>;
-
-    /// Get the theme name.
-    fn name(&self) -> &str;
 
     /// Get the default/fallback style.
     fn default_style(&self) -> Style {
@@ -40,64 +39,41 @@ pub trait ThemeProvider: Send + Sync {
     }
 }
 
-/// Built-in theme variants.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum BuiltinTheme {
-    /// Dark theme (OneDark-inspired)
-    #[default]
-    Dark,
-    /// Light theme
-    Light,
-    /// Tokyo Night Orange variant
-    TokyoNightOrange,
-}
-
-impl BuiltinTheme {
-    /// Load the theme as a `ThemeProvider`.
-    ///
-    /// This creates a boxed theme that can be used with `ThemeManager`.
-    #[must_use]
-    pub fn load(self) -> Arc<dyn ThemeProvider> {
-        Arc::new(SimpleBuiltinTheme { variant: self })
-    }
-
-    /// Get the theme name.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Dark => "dark",
-            Self::Light => "light",
-            Self::TokyoNightOrange => "tokyo-night-orange",
-        }
-    }
-
-    /// List all available built-in themes.
-    #[must_use]
-    pub const fn all() -> &'static [Self] {
-        &[Self::Dark, Self::Light, Self::TokyoNightOrange]
-    }
-}
-
 /// Simple implementation of built-in themes.
 ///
-/// Theme definitions are self-contained in this crate.
-struct SimpleBuiltinTheme {
-    variant: BuiltinTheme,
+/// Theme color tables live in [`super::builtin`] as
+/// `LazyLock<HashMap<&'static str, Style>>` palettes; this struct is
+/// the concrete provider that consults them. Construction goes
+/// through [`super::factory::DisplayThemeFactory::load_builtin`] so
+/// the registry crate doesn't see the `Style` type.
+pub(super) struct SimpleBuiltinTheme {
+    pub(super) variant: super::BuiltinTheme,
+}
+
+impl SimpleBuiltinTheme {
+    pub(super) fn into_arc(variant: super::BuiltinTheme) -> Arc<dyn ThemeProvider> {
+        Arc::new(Self { variant })
+    }
 }
 
 impl ThemeProvider for SimpleBuiltinTheme {
+    fn name(&self) -> &str {
+        self.variant.name()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl StyledTheme for SimpleBuiltinTheme {
     fn get_style(&self, group: &str) -> Option<Style> {
         super::builtin::get_palette(self.variant)
             .get(group)
             .cloned()
     }
 
-    fn name(&self) -> &str {
-        self.variant.name()
-    }
-
     fn default_style(&self) -> Style {
-        // Return foreground style as default
         self.get_style(super::groups::FOREGROUND)
             .unwrap_or_default()
     }

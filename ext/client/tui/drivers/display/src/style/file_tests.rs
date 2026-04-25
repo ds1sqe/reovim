@@ -1,4 +1,11 @@
 use super::*;
+// `super::*` from `file.rs` only pulls items defined in / pub-used
+// from the module. `ThemeError`, `ThemeProvider`, `Color`,
+// `Attributes` are imported privately by `file.rs` and so are NOT
+// reachable through the glob; bring them in explicitly here.
+use {reovim_arch::Color, reovim_driver_display_registry::theme::ThemeError};
+
+use crate::{highlight::Attributes, style::StyledTheme};
 
 #[test]
 fn test_parse_minimal_theme() {
@@ -225,7 +232,7 @@ fn test_theme_error_display_io() {
 #[test]
 fn test_theme_error_display_parse() {
     let parse_err = toml::from_str::<ThemeFile>("{{invalid toml").unwrap_err();
-    let err = ThemeError::Parse(parse_err);
+    let err = ThemeError::Parse(Box::new(parse_err));
     let msg = err.to_string();
     assert!(msg.starts_with("TOML parse error:"));
 }
@@ -260,7 +267,7 @@ fn test_theme_error_source_io() {
 fn test_theme_error_source_parse() {
     use std::error::Error as _;
     let parse_err = toml::from_str::<ThemeFile>("{{invalid").unwrap_err();
-    let err = ThemeError::Parse(parse_err);
+    let err = ThemeError::Parse(Box::new(parse_err));
     assert!(err.source().is_some());
 }
 
@@ -292,9 +299,13 @@ fn test_theme_error_from_io() {
 }
 
 #[test]
-fn test_theme_error_from_toml() {
+fn test_theme_error_parse_via_factory() {
+    // The registry's ThemeError::Parse takes a boxed dyn error so
+    // the registry crate doesn't depend on `toml`. Display-side
+    // parse failures wrap the toml error explicitly via
+    // `parse_error()` (mirrored here).
     let parse_err = toml::from_str::<ThemeFile>("{{bad").unwrap_err();
-    let err: ThemeError = parse_err.into();
+    let err = ThemeError::Parse(Box::new(parse_err));
     assert!(matches!(err, ThemeError::Parse(_)));
 }
 

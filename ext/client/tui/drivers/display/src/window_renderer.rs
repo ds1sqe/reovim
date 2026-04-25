@@ -99,7 +99,7 @@ impl WindowRendererConfig {
     /// ```
     #[must_use]
     pub fn from_theme(manager: &crate::style::ThemeManager) -> Self {
-        use crate::style::groups;
+        use crate::style::{StyledThemeManagerExt as _, groups};
 
         Self {
             line_numbers: LineNumberMode::Absolute,

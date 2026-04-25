@@ -1047,16 +1047,39 @@ impl TestDisplayTheme {
 }
 
 impl reovim_driver_display::style::ThemeProvider for TestDisplayTheme {
-    fn get_style(&self, group: &str) -> Option<DisplayStyle> {
-        self.styles.get(group).cloned()
-    }
     fn name(&self) -> &'static str {
         "test-theme"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl reovim_driver_display::style::StyledTheme for TestDisplayTheme {
+    fn get_style(&self, group: &str) -> Option<DisplayStyle> {
+        self.styles.get(group).cloned()
+    }
+}
+
+/// Register the `TestDisplayTheme` downcaster with the display
+/// crate's styled-provider lookup so the `ThemeProviderAdapter` tests
+/// can recover `&dyn StyledTheme` from the slim `Arc<dyn ThemeProvider>`
+/// they construct. Idempotent through `Once`.
+fn ensure_test_theme_downcaster_registered() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        reovim_driver_display::style::register_styled_downcaster(|any| {
+            any.downcast_ref::<TestDisplayTheme>()
+                .map(|t| t as &dyn reovim_driver_display::style::StyledTheme)
+        });
+    });
 }
 
 #[test]
 fn theme_provider_adapter_highlight() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style("Keyword", {
         let mut attrs = DisplayAttributes::new();
         attrs.set(DisplayAttributes::BOLD);
@@ -1081,6 +1104,7 @@ fn theme_provider_adapter_highlight() {
 
 #[test]
 fn theme_provider_adapter_highlight_with_fallback_first_match() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Function",
         DisplayStyle {
@@ -1102,6 +1126,7 @@ fn theme_provider_adapter_highlight_with_fallback_first_match() {
 
 #[test]
 fn theme_provider_adapter_highlight_with_fallback_no_match() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new();
     let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
     let adapter = ThemeProviderAdapter::new(&manager);
@@ -1115,6 +1140,7 @@ fn theme_provider_adapter_highlight_with_fallback_no_match() {
 
 #[test]
 fn theme_provider_adapter_foreground() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Normal",
         DisplayStyle {
@@ -1145,6 +1171,7 @@ fn theme_provider_adapter_foreground() {
 
 #[test]
 fn theme_provider_adapter_background() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Normal",
         DisplayStyle {
@@ -1176,6 +1203,7 @@ fn theme_provider_adapter_background() {
 
 #[test]
 fn theme_provider_adapter_is_dark_no_normal() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new();
     let manager = reovim_driver_display::ThemeManager::new(std::sync::Arc::new(theme));
     let adapter = ThemeProviderAdapter::new(&manager);
@@ -1185,6 +1213,7 @@ fn theme_provider_adapter_is_dark_no_normal() {
 
 #[test]
 fn theme_provider_adapter_is_dark_dark_bg() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Normal",
         DisplayStyle {
@@ -1205,6 +1234,7 @@ fn theme_provider_adapter_is_dark_dark_bg() {
 
 #[test]
 fn theme_provider_adapter_is_dark_light_bg() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Normal",
         DisplayStyle {
@@ -1225,6 +1255,7 @@ fn theme_provider_adapter_is_dark_light_bg() {
 
 #[test]
 fn theme_provider_adapter_is_dark_non_rgb_bg() {
+    ensure_test_theme_downcaster_registered();
     let theme = TestDisplayTheme::new().with_style(
         "Normal",
         DisplayStyle {

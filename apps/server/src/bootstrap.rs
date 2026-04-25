@@ -373,54 +373,18 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     // Register VFS in ServiceRegistry so ex-commands can access it (#465)
     services.register(Arc::new(VfsInstance::new(Arc::clone(&vfs))));
 
-    // Register theme system (#541): SharedThemeManager + ThemeLoader
+    // Register theme system (#541): SharedThemeManager + ThemeLoader.
+    // After #775 these types live in `reovim-driver-display-registry`
+    // (server-tier slice); the display crate provides the
+    // `Style`-aware concrete impls via the registered `ThemeFactory`.
     {
-        use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader};
+        use reovim_driver_display_registry::theme::{
+            BuiltinTheme, SharedThemeManager, ThemeLoader,
+        };
         let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
         services.register(Arc::new(theme_manager));
         let theme_loader = ThemeLoader::new();
         services.register(Arc::new(theme_loader));
-    }
-
-    // Build GutterRenderer from registered annotation sources + display presenters.
-    {
-        use reovim_driver_display::{
-            AnnotationSourceRegistry, BlamePresenter, DiagnosticPresenter, GitSignsPresenter,
-            GutterRenderer, GutterRendererKey, GutterRendererRegistry, LineNumberPresenter,
-        };
-        if let Some(source_registry) = services.get::<AnnotationSourceRegistry>() {
-            let renderer = GutterRenderer::new();
-            for source in source_registry.values() {
-                renderer.register_source(source);
-            }
-            renderer.register_presenter(Arc::new(LineNumberPresenter::new()));
-            renderer.register_presenter(Arc::new(GitSignsPresenter::new()));
-            renderer.register_presenter(Arc::new(BlamePresenter::new()));
-            renderer.register_presenter(Arc::new(DiagnosticPresenter::new()));
-
-            let renderer_registry = services.get_or_create::<GutterRendererRegistry>();
-            renderer_registry.register(GutterRendererKey::Default, Arc::new(renderer));
-            tracing::info!("Built GutterRenderer from annotation sources");
-        }
-    }
-
-    // Wrap server-side ComponentDataProviders into display-side ComponentProviders.
-    {
-        use reovim_driver_display::statusline::{
-            ComponentDataProviderRegistry, ComponentProviderKey, ComponentProviderRegistry,
-            DataProviderAdapter,
-        };
-        if let Some(data_registry) = services.get::<ComponentDataProviderRegistry>() {
-            let provider_registry = services.get_or_create::<ComponentProviderRegistry>();
-            for data_provider in data_registry.values() {
-                let key = ComponentProviderKey::new(data_provider.id());
-                provider_registry.register(key, Arc::new(DataProviderAdapter::new(data_provider)));
-            }
-            tracing::info!(
-                "Wrapped {} data providers into ComponentProviders",
-                data_registry.len()
-            );
-        }
     }
 
     // Extract compositor from CompositorRegistry (populated by layout module)

@@ -315,8 +315,11 @@ fn test_visible_lines_top_beyond_end() {
 
 #[test]
 fn test_from_theme_creates_config_with_theme_styles() {
-    use crate::style::{BuiltinTheme, ThemeManager, groups};
+    use crate::style::{
+        BuiltinTheme, StyledThemeManagerExt as _, ThemeManager, groups, install_theme_factory,
+    };
 
+    install_theme_factory();
     let manager = ThemeManager::new(BuiltinTheme::Dark.load());
     let config = WindowRendererConfig::from_theme(&manager);
 
@@ -334,8 +337,11 @@ fn test_from_theme_creates_config_with_theme_styles() {
 
 #[test]
 fn test_from_theme_with_light_theme() {
-    use crate::style::{BuiltinTheme, ThemeManager, groups};
+    use crate::style::{
+        BuiltinTheme, StyledThemeManagerExt as _, ThemeManager, groups, install_theme_factory,
+    };
 
+    install_theme_factory();
     let manager = ThemeManager::new(BuiltinTheme::Light.load());
     let config = WindowRendererConfig::from_theme(&manager);
 

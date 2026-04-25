@@ -178,6 +178,14 @@ impl<O: TuiOutput> TuiApp<O> {
         // Create server layout mirror
         let layout_mirror = ServerLayoutMirror::new(width, height);
 
+        // Install the display-tier theme factory in the registry's
+        // process-global slot before constructing themes. The slim
+        // `BuiltinTheme::load()` delegates to the factory; without
+        // this call the slim manager would hold a stub provider and
+        // `StyledThemeManagerExt::get_style` would always return
+        // `Style::default()`. Idempotent.
+        reovim_driver_display::style::install_theme_factory();
+
         // Create token cache and theme managers
         let token_cache_manager = AnnotationCacheManager::new();
         let theme_loader = ThemeLoader::new();

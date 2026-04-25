@@ -1,8 +1,13 @@
 //! TOML theme file parsing and loading.
 //!
-//! This module provides types for parsing user-defined themes from TOML files.
-//! Themes follow a Helix/Zed-inspired format with palette, syntax, UI,
-//! diagnostic, and gutter sections.
+//! This module provides types for parsing user-defined themes from
+//! TOML files. Themes follow a Helix/Zed-inspired format with
+//! palette, syntax, UI, diagnostic, and gutter sections.
+//!
+//! `FileTheme` implements both [`ThemeProvider`] (the registry's slim
+//! trait) and [`StyledTheme`] (the display-tier `Style`-aware
+//! super-trait). The registered [`DisplayThemeFactory`] dispatches
+//! parsing here from the registry crate's `ThemeLoader`.
 //!
 //! # File Format
 //!
@@ -29,74 +34,26 @@
 //! [gutter]
 //! sign.add = { fg = "#98c379" }
 //! ```
+//!
+//! [`DisplayThemeFactory`]: super::factory::DisplayThemeFactory
+//! [`ThemeProvider`]: reovim_driver_display_registry::theme::ThemeProvider
+//! [`StyledTheme`]: super::theme::StyledTheme
 
-use std::{collections::HashMap, sync::Arc};
+use std::{any::Any, collections::HashMap, sync::Arc};
 
-use {reovim_arch::Color, serde::Deserialize};
+use {
+    reovim_arch::Color,
+    reovim_driver_display_registry::theme::{ThemeError, ThemeProvider},
+    serde::Deserialize,
+};
 
 use crate::highlight::{Attributes, Style};
 
-use super::ThemeProvider;
+use super::theme::StyledTheme;
 
-// =============================================================================
-// Error Types
-// =============================================================================
-
-/// Errors that can occur when loading a theme file.
-#[derive(Debug)]
-pub enum ThemeError {
-    /// Failed to read the theme file.
-    Io(std::io::Error),
-    /// Failed to parse TOML syntax.
-    Parse(toml::de::Error),
-    /// Invalid color value in theme.
-    InvalidColor { key: String, value: String },
-    /// Referenced palette color not found.
-    PaletteNotFound { key: String, reference: String },
-    /// Invalid base theme name.
-    InvalidBase { name: String },
-}
-
-impl std::fmt::Display for ThemeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "IO error: {e}"),
-            Self::Parse(e) => write!(f, "TOML parse error: {e}"),
-            Self::InvalidColor { key, value } => {
-                write!(f, "Invalid color '{value}' for key '{key}'")
-            }
-            Self::PaletteNotFound { key, reference } => {
-                write!(f, "Palette color '{reference}' not found for key '{key}'")
-            }
-            Self::InvalidBase { name } => {
-                write!(f, "Invalid base theme: '{name}'")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ThemeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io(e) => Some(e),
-            Self::Parse(e) => Some(e),
-            Self::InvalidColor { .. } | Self::PaletteNotFound { .. } | Self::InvalidBase { .. } => {
-                None
-            }
-        }
-    }
-}
-
-impl From<std::io::Error> for ThemeError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
-}
-
-impl From<toml::de::Error> for ThemeError {
-    fn from(e: toml::de::Error) -> Self {
-        Self::Parse(e)
-    }
+/// Wrap a `toml::de::Error` into the registry-tier [`ThemeError::Parse`].
+fn parse_error(err: toml::de::Error) -> ThemeError {
+    ThemeError::Parse(Box::new(err))
 }
 
 // =============================================================================
@@ -104,6 +61,9 @@ impl From<toml::de::Error> for ThemeError {
 // =============================================================================
 
 /// Raw theme file structure as parsed from TOML.
+///
+/// Public so internal tests and any future direct parsing tooling can
+/// reach it; consumers usually go through [`FileTheme::parse`].
 #[derive(Debug, Deserialize)]
 pub struct ThemeFile {
     /// Theme metadata.
@@ -150,7 +110,7 @@ pub struct ThemeMeta {
     #[serde(default)]
     pub version: Option<String>,
 
-    /// Base built-in theme to inherit from (e.g. "dark", "light", "tokyo-night-orange").
+    /// Base built-in theme to inherit from.
     #[serde(default)]
     pub base: Option<String>,
 }
@@ -166,7 +126,7 @@ fn default_theme_name() -> String {
 /// - Named color: `"red"`, `"blue"`
 /// - Palette reference: `"my_red"` (if defined in `[palette]`)
 #[derive(Debug, Default, Deserialize)]
-#[allow(clippy::struct_excessive_bools)] // Bools are natural for style attributes in TOML
+#[allow(clippy::struct_excessive_bools)]
 pub struct StyleDef {
     /// Foreground color.
     pub fg: Option<String>,
@@ -200,8 +160,8 @@ pub struct StyleDef {
 
 /// A theme loaded from a TOML file with resolved styles.
 ///
-/// This is the runtime representation of a user theme. All palette references
-/// have been resolved to actual colors.
+/// This is the runtime representation of a user theme. All palette
+/// references have been resolved to actual colors.
 #[derive(Debug)]
 pub struct FileTheme {
     /// Theme name.
@@ -212,7 +172,6 @@ pub struct FileTheme {
     author: Option<String>,
 
     /// Resolved styles indexed by group name.
-    /// Keys are normalized: `keyword`, `keyword.control`, `diagnostic.error`, etc.
     styles: HashMap<String, Style>,
 
     /// Default foreground style.
@@ -224,16 +183,18 @@ impl FileTheme {
     ///
     /// # Errors
     ///
-    /// Returns `ThemeError` if:
-    /// - TOML syntax is invalid
-    /// - A color value cannot be parsed
-    /// - A palette reference is undefined
+    /// Returns [`ThemeError`] if:
+    /// - TOML syntax is invalid (wrapped as
+    ///   [`ThemeError::Parse`]),
+    /// - a color value cannot be parsed,
+    /// - a palette reference is undefined,
+    /// - a `meta.base` reference does not match a built-in theme.
     pub fn parse(content: &str) -> Result<Self, ThemeError> {
-        let file: ThemeFile = toml::from_str(content)?;
+        let file: ThemeFile = toml::from_str(content).map_err(parse_error)?;
         Self::from_file(file)
     }
 
-    /// Resolve a base theme name to a `BuiltinTheme` variant.
+    /// Resolve a base theme name to a [`super::BuiltinTheme`] variant.
     fn resolve_base_theme(name: &str) -> Option<super::BuiltinTheme> {
         super::BuiltinTheme::all()
             .iter()
@@ -245,7 +206,6 @@ impl FileTheme {
     fn from_file(file: ThemeFile) -> Result<Self, ThemeError> {
         let mut styles = HashMap::new();
 
-        // If base theme specified, pre-populate with its styles
         if let Some(ref base_name) = file.meta.base {
             let base_variant =
                 Self::resolve_base_theme(base_name).ok_or_else(|| ThemeError::InvalidBase {
@@ -257,14 +217,12 @@ impl FileTheme {
             }
         }
 
-        // Resolve all style sections (overlays on top of base)
         Self::resolve_section(&file.palette, &file.syntax, &mut styles, "")?;
         Self::resolve_section(&file.palette, &file.ui, &mut styles, "")?;
         Self::resolve_section(&file.palette, &file.diagnostic, &mut styles, "diagnostic.")?;
         Self::resolve_section(&file.palette, &file.decoration, &mut styles, "decoration.")?;
         Self::resolve_section(&file.palette, &file.gutter, &mut styles, "")?;
 
-        // Determine default style from foreground or fallback
         let default_style = styles
             .get("foreground")
             .cloned()
@@ -298,7 +256,7 @@ impl FileTheme {
         Ok(())
     }
 
-    /// Resolve a single style definition to a Style.
+    /// Resolve a single style definition to a `Style`.
     fn resolve_style_def(
         palette: &HashMap<String, String>,
         key: &str,
@@ -344,36 +302,35 @@ impl FileTheme {
         })
     }
 
-    /// Resolve a color string to a Color.
+    /// Resolve a color string to a `Color`.
     ///
     /// Lookup order:
-    /// 1. Palette reference (if key exists in palette)
-    /// 2. Hex color (#rrggbb or #rgb)
-    /// 3. Named ANSI color (red, blue, etc.)
+    /// 1. Palette reference (if key exists in palette).
+    /// 2. Hex color (`#rrggbb` or `#rgb`).
+    /// 3. Named ANSI color (red, blue, etc.).
     fn resolve_color(
         palette: &HashMap<String, String>,
         key: &str,
         value: &str,
     ) -> Result<Color, ThemeError> {
-        // Check palette first
         if let Some(resolved) = palette.get(value) {
             return Self::parse_color_value(key, resolved);
         }
 
-        // Parse directly
         Self::parse_color_value(key, value)
     }
 
-    /// Parse a color value string to Color.
+    /// Parse a color value string to `Color`.
     fn parse_color_value(key: &str, value: &str) -> Result<Color, ThemeError> {
-        // Try Color::parse which handles hex and named colors
         Color::parse(value).ok_or_else(|| ThemeError::InvalidColor {
             key: key.to_string(),
             value: value.to_string(),
         })
     }
 
-    /// Load this theme as an Arc for use with `ThemeManager`.
+    /// Load this theme as an `Arc<dyn ThemeProvider>` for use with
+    /// the slim
+    /// [`ThemeManager`](reovim_driver_display_registry::theme::ThemeManager).
     #[must_use]
     pub fn into_arc(self) -> Arc<dyn ThemeProvider> {
         Arc::new(self)
@@ -381,22 +338,24 @@ impl FileTheme {
 }
 
 impl ThemeProvider for FileTheme {
-    fn get_style(&self, group: &str) -> Option<Style> {
-        self.styles.get(group).cloned()
-    }
-
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl StyledTheme for FileTheme {
+    fn get_style(&self, group: &str) -> Option<Style> {
+        self.styles.get(group).cloned()
     }
 
     fn default_style(&self) -> Style {
         self.default_style.clone()
     }
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 #[path = "file_tests.rs"]

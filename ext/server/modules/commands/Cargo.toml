@@ -21,7 +21,7 @@ reovim-content-codec = { workspace = true }
 reovim-content-codec-text = { workspace = true }
 reovim-subsys-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
-reovim-driver-display = { workspace = true }
+reovim-driver-display-registry = { workspace = true }
 reovim-driver-text-session = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-kernel = { workspace = true }

@@ -517,10 +517,12 @@ impl<'a> ThemeProviderAdapter<'a> {
 
 impl reovim_client_driver::ThemeProvider for ThemeProviderAdapter<'_> {
     fn highlight(&self, group: &str) -> reovim_client_driver::Style {
+        use reovim_driver_display::style::StyledThemeManagerExt as _;
         convert_display_style_to_driver_style(&self.theme.get_style(group))
     }
 
     fn highlight_with_fallback(&self, groups: &[&str]) -> reovim_client_driver::Style {
+        use reovim_driver_display::style::StyledThemeManagerExt as _;
         for group in groups {
             let style = self.theme.get_style(group);
             if style != reovim_driver_display::Style::default() {
@@ -531,10 +533,12 @@ impl reovim_client_driver::ThemeProvider for ThemeProviderAdapter<'_> {
     }
 
     fn foreground(&self) -> reovim_client_driver::Style {
+        use reovim_driver_display::style::StyledThemeManagerExt as _;
         convert_display_style_to_driver_style(&self.theme.get_style("Normal"))
     }
 
     fn background(&self) -> reovim_client_driver::Style {
+        use reovim_driver_display::style::StyledThemeManagerExt as _;
         let style = self.theme.get_style("Normal");
         reovim_client_driver::Style {
             fg: None,
@@ -544,6 +548,7 @@ impl reovim_client_driver::ThemeProvider for ThemeProviderAdapter<'_> {
     }
 
     fn is_dark(&self) -> bool {
+        use reovim_driver_display::style::StyledThemeManagerExt as _;
         // Heuristic: if Normal bg is dark or absent, assume dark
         let style = self.theme.get_style("Normal");
         style.bg.is_none_or(|c| {

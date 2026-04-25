@@ -4,7 +4,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader},
+    reovim_driver_display_registry::theme::{BuiltinTheme, SharedThemeManager, ThemeLoader},
     reovim_driver_text_session::SessionRuntime,
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };

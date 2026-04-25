@@ -54,10 +54,10 @@ reovim-subsys-module-registry = { workspace = true }
 reovim-driver-text-syntax = { workspace = true }    # trait-redesign deferred to #774
 reovim-provider-text = { workspace = true }
 
-# Display dep removal deferred to #775 — apps/server/src/bootstrap.rs imports from this
-# crate at three sites (theme manager, gutter renderer types, statusline presenter
-# types); refactor needed before the dep can be dropped.
-reovim-driver-display = { workspace = true }
+# Display registry (server-tier theme/gutter/statusline contracts; Style-free).
+# Replaces the prior compile-time dep on the client-tier `reovim-driver-display`
+# (closed in #775 via the Path 3d construction inversion).
+reovim-driver-display-registry = { workspace = true }
 
 # CLI
 clap = { workspace = true }

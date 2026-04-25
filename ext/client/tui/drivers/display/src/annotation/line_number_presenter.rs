@@ -42,7 +42,7 @@ impl LineNumberPresenter {
     #[must_use]
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn from_theme(manager: &crate::style::ThemeManager) -> Self {
-        use crate::style::groups;
+        use crate::style::{StyledThemeManagerExt as _, groups};
         Self {
             line_number_style: manager.get_style(groups::LINE_NUMBER),
             cursor_line_style: manager.get_style(groups::LINE_NUMBER_ACTIVE),
