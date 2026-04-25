@@ -48,6 +48,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `ClientRender` implementor on top of #769's foundation).
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 3: picker-files routed through codec
+  pipeline.** File picker's `open_file()` now decodes via
+  `decode_file_bytes()` instead of `read_to_string()`. Binary files
+  open via the codec when classifier+factory stores are registered;
+  missing stores fall through to a direct UTF-8 conversion. Oversized
+  files (over the 64 MiB cap) and non-UTF-8 fallback failures log a
+  `tracing::warn!` and skip the buffer-create instead of silently
+  loading an empty buffer (the prior behaviour). The buffer-reuse
+  short-circuit is preserved so re-opened files don't re-run the
+  codec pipeline. (#737)
 - **#737 Codec Hot-Attach — Phase 2: explorer routed through codec
   pipeline.** Explorer's `Open` command now decodes via
   `decode_file_bytes()` instead of `String::from_utf8_lossy()`. Binary

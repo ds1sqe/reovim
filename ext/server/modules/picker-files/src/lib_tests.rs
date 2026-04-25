@@ -266,3 +266,257 @@ fn module_init_registers_picker() {
     let reg = registry.unwrap();
     assert!(reg.get("files").is_some());
 }
+
+// ============================================================================
+// open_file — codec-pipeline path (Phase 3 of #737)
+// ============================================================================
+//
+// Each test wires a single file into a `MockVfs`, registers a
+// `VfsInstance`, optionally registers `ContentClassifierStore` and
+// `ContentCodecFactoryStore` with stub classifiers / codecs, then
+// invokes `open_file` on a `TestSessionRuntime` and asserts on
+// observable runtime state. Five tests cover the four return shapes of
+// `decode_file_bytes` plus the buffer-reuse short-circuit invariant.
+
+mod open_file_codec {
+    use {
+        super::super::open_file,
+        reovim_driver_text_session::{BufferApi, testing::TestSessionRuntime},
+        reovim_subsys_content_codec::{
+            Annotation, CodecError, CodecMetadata, ContentClassifier, ContentClassifierStore,
+            ContentCodec, ContentCodecFactory, ContentCodecFactoryStore, ContentType, DecodeResult,
+            MAX_FILE_SIZE,
+        },
+        reovim_subsys_vfs::{MockVfs, VfsDriver, VfsInstance},
+        std::{
+            path::Path,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+        },
+    };
+
+    const STUB_TYPE: &str = "test/stub";
+
+    struct PrefixClassifier {
+        prefix: Vec<u8>,
+        content_type: ContentType,
+    }
+    impl ContentClassifier for PrefixClassifier {
+        fn classify(&self, raw: &[u8], _path: &str) -> Option<ContentType> {
+            if raw.starts_with(&self.prefix) {
+                Some(self.content_type.clone())
+            } else {
+                None
+            }
+        }
+        fn name(&self) -> &'static str {
+            "test-prefix-classifier"
+        }
+    }
+
+    struct PanickingClassifier;
+    impl ContentClassifier for PanickingClassifier {
+        fn classify(&self, _raw: &[u8], _path: &str) -> Option<ContentType> {
+            panic!("classifier must not run when buffer is reused");
+        }
+        fn name(&self) -> &'static str {
+            "test-panicking-classifier"
+        }
+    }
+
+    struct EchoCodec {
+        output: &'static str,
+        fail_count: AtomicUsize,
+    }
+    impl ContentCodec for EchoCodec {
+        fn decode(&self, _raw: &[u8]) -> Result<DecodeResult, CodecError> {
+            if self.fail_count.fetch_sub(1, Ordering::SeqCst) > 0 {
+                return Err(CodecError::InvalidSequence {
+                    offset: 0,
+                    detail: "test-injected".into(),
+                });
+            }
+            Ok(DecodeResult {
+                content: self.output.to_string(),
+                annotations: Vec::<Annotation>::new(),
+                metadata: CodecMetadata::new(ContentType::new(STUB_TYPE)),
+                lossy: false,
+                readonly: false,
+                truncated: false,
+            })
+        }
+    }
+
+    struct EchoFactory {
+        codec: Arc<EchoCodec>,
+        matches_type: ContentType,
+    }
+    impl ContentCodecFactory for EchoFactory {
+        fn create(&self, content_type: &ContentType) -> Option<Arc<dyn ContentCodec>> {
+            if content_type == &self.matches_type {
+                Some(self.codec.clone() as Arc<dyn ContentCodec>)
+            } else {
+                None
+            }
+        }
+        fn supported_content_types(&self) -> Vec<&str> {
+            vec![STUB_TYPE]
+        }
+        fn name(&self) -> &'static str {
+            "test-echo-factory"
+        }
+    }
+
+    fn vfs_with_file(path: &str, bytes: &[u8]) -> Arc<MockVfs> {
+        let vfs = Arc::new(MockVfs::new());
+        vfs.add_file(path, bytes);
+        vfs
+    }
+
+    fn register_vfs(runtime: &reovim_driver_text_session::SessionRuntime<'_>, vfs: Arc<MockVfs>) {
+        let instance = Arc::new(VfsInstance::new(vfs as Arc<dyn VfsDriver>));
+        runtime.kernel().services.register(instance);
+    }
+
+    #[test]
+    fn picker_open_codec_decoded_buffer_uses_codec_text() {
+        let mut harness = TestSessionRuntime::with_buffer("initial");
+        let vfs = vfs_with_file("/root/file.bin", b"\x7fELFrest");
+        harness.with_runtime(|runtime| {
+            register_vfs(runtime, vfs);
+
+            let stub_type = ContentType::new(STUB_TYPE);
+            let classifier_store = Arc::new(ContentClassifierStore::new());
+            classifier_store.add(Arc::new(PrefixClassifier {
+                prefix: b"\x7fELF".to_vec(),
+                content_type: stub_type.clone(),
+            }));
+            let factory_store = Arc::new(ContentCodecFactoryStore::new());
+            factory_store.add_factory(Arc::new(EchoFactory {
+                codec: Arc::new(EchoCodec {
+                    output: "[ELF summary]",
+                    fail_count: AtomicUsize::new(0),
+                }),
+                matches_type: stub_type,
+            }));
+            runtime.kernel().services.register(classifier_store);
+            runtime.kernel().services.register(factory_store);
+
+            open_file(runtime, Path::new("/root/file.bin"));
+
+            let active_id = runtime.active_buffer().expect("buffer must be set");
+            assert_eq!(runtime.buffer_content(active_id).unwrap(), "[ELF summary]");
+        });
+    }
+
+    #[test]
+    fn picker_open_utf8_fallback_buffer_uses_raw_text() {
+        let mut harness = TestSessionRuntime::with_buffer("initial");
+        let vfs = vfs_with_file("/root/file.txt", b"hello world");
+        harness.with_runtime(|runtime| {
+            register_vfs(runtime, vfs);
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentClassifierStore::new()));
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentCodecFactoryStore::new()));
+
+            open_file(runtime, Path::new("/root/file.txt"));
+
+            let active_id = runtime.active_buffer().expect("buffer must be set");
+            assert_eq!(runtime.buffer_content(active_id).unwrap(), "hello world");
+        });
+    }
+
+    #[test]
+    fn picker_open_too_large_skips_buffer_create() {
+        let mut harness = TestSessionRuntime::with_buffer("initial");
+        let initial_id = harness.active_buffer().expect("initial buffer");
+        let big = vec![b'a'; MAX_FILE_SIZE + 1];
+        let vfs = vfs_with_file("/root/big.txt", &big);
+        harness.with_runtime(|runtime| {
+            let initial_count = runtime.kernel().buffers.list().len();
+            register_vfs(runtime, vfs);
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentClassifierStore::new()));
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentCodecFactoryStore::new()));
+
+            open_file(runtime, Path::new("/root/big.txt"));
+
+            assert_eq!(
+                runtime.kernel().buffers.list().len(),
+                initial_count,
+                "no new buffer should be created on TooLarge"
+            );
+            assert_eq!(runtime.active_buffer(), Some(initial_id));
+        });
+    }
+
+    #[test]
+    fn picker_open_not_utf8_skips_buffer_create() {
+        let mut harness = TestSessionRuntime::with_buffer("initial");
+        let initial_id = harness.active_buffer().expect("initial buffer");
+        let vfs = vfs_with_file("/root/garbage.bin", b"abc\xFFdef");
+        harness.with_runtime(|runtime| {
+            let initial_count = runtime.kernel().buffers.list().len();
+            register_vfs(runtime, vfs);
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentClassifierStore::new()));
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentCodecFactoryStore::new()));
+
+            open_file(runtime, Path::new("/root/garbage.bin"));
+
+            assert_eq!(
+                runtime.kernel().buffers.list().len(),
+                initial_count,
+                "no new buffer should be created on NotUtf8"
+            );
+            assert_eq!(runtime.active_buffer(), Some(initial_id));
+        });
+    }
+
+    #[test]
+    fn picker_open_existing_buffer_reused_no_codec_call() {
+        let mut harness = TestSessionRuntime::with_buffer("initial");
+        let vfs = vfs_with_file("/root/reused.txt", b"will not be read");
+        harness.with_runtime(|runtime| {
+            register_vfs(runtime, vfs);
+            // Pre-create a buffer matching the canonical path so the
+            // reuse short-circuit triggers and the panicking classifier
+            // (registered below) is never reached.
+            let canonical = Path::new("/root/reused.txt")
+                .canonicalize()
+                .unwrap_or_else(|_| Path::new("/root/reused.txt").to_path_buf());
+            let existing_id =
+                runtime.create_buffer(Some(&canonical.to_string_lossy()), "pre-existing content");
+
+            let classifier_store = Arc::new(ContentClassifierStore::new());
+            classifier_store.add(Arc::new(PanickingClassifier));
+            runtime.kernel().services.register(classifier_store);
+            runtime
+                .kernel()
+                .services
+                .register(Arc::new(ContentCodecFactoryStore::new()));
+
+            open_file(runtime, Path::new("/root/reused.txt"));
+
+            assert_eq!(runtime.active_buffer(), Some(existing_id));
+            assert_eq!(runtime.buffer_content(existing_id).unwrap(), "pre-existing content");
+        });
+    }
+}

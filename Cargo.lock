@@ -4095,8 +4095,10 @@ dependencies = [
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-content-codec",
  "reovim-subsys-vfs",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
