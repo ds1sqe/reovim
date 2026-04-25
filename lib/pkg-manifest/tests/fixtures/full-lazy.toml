@@ -1,0 +1,14 @@
+[package]
+name = "full-lazy-setup"
+kind = "driver"
+reovim-version = "^0.15"
+
+[dependencies]
+core-kit = "2.0"
+git-tools = { version = "1.2", features = ["signs", "blame"] }
+theme-solar = { path = "/local/themes/solar-0.3" }
+
+[lazy]
+core-kit = { eager = true }
+git-tools = { on-event = "buffer-opened" }
+theme-solar = { on-capability = "theme-provider" }

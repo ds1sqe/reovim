@@ -1,0 +1,6 @@
+[package]
+name = "root-07"
+reovim-version = "^0.15"
+
+[dependencies]
+loop-pkg = { path = "loop-pkg" }

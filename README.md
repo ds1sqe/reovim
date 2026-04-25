@@ -343,6 +343,7 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Module System](./docs/architecture/modules/overview.md) - Module trait, registration
 - [Server Runtime](./docs/architecture/server/overview.md) - gRPC server, sessions
 - [Client Architecture](./docs/architecture/client/overview.md) - Client Layer Model
+- [Package Manager](./docs/architecture/pkg-manager.md) - First-class `pkg` subsystem: manifest, lockfile, resolver, install, lazy-load, doctor
 
 **Contributing:**
 - [Getting Started](./docs/contributing/getting-started.md) - Development setup
@@ -356,6 +357,7 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Commands](./docs/user-guide/commands.md) - Command system and keybindings
 - [Text Objects](./docs/user-guide/text-objects.md) - Delimiter and semantic text objects
 - [Server Mode](./docs/user-guide/server-mode.md) - RPC server usage
+- [Package Manager (`pkg`)](./docs/user-guide/pkg.md) - Install, list, remove, lock, resolve, trigger, doctor
 - [Troubleshooting](./docs/user-guide/troubleshooting.md) - Common issues
 
 **Archive (v0.8.x legacy):**

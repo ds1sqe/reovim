@@ -1,0 +1,22 @@
+version = 1
+
+[[package]]
+name = "alpha"
+version = "0.1.0"
+target = "x86_64-unknown-linux-gnu"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000001"
+
+[package.source]
+kind = "local-path"
+path = "/local/alpha-0.1.0"
+
+[[package]]
+name = "beta"
+version = "0.2.0"
+target = "x86_64-unknown-linux-gnu"
+sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+dependencies = ["alpha"]
+
+[package.source]
+kind = "local-path"
+path = "/local/beta-0.2.0"

@@ -23,9 +23,6 @@ pub const fn library_extension() -> &'static str {
     }
     #[cfg(target_os = "windows")]
     {
-        // TODO(#769-O4): confirm LoadLibrary behavior on the Windows
-        // CI matrix in Phase 1.F and document any divergence in
-        // docs/architecture/driver-abi-v1.md.
         "dll"
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -46,15 +43,46 @@ pub const fn library_extension() -> &'static str {
 pub fn library_filename(stem: &str) -> String {
     #[cfg(target_os = "windows")]
     {
-        // TODO(#769-O4): Windows cdylibs are emitted without the `lib`
-        // prefix by default; if the target matrix surfaces tooling that
-        // emits `libfoo.dll`, loosen this to accept both forms.
         format!("{stem}.{ext}", ext = library_extension())
     }
     #[cfg(not(target_os = "windows"))]
     {
         format!("lib{stem}.{ext}", ext = library_extension())
     }
+}
+
+/// Compose the conventional cdylib filename for a reovim package
+/// name, e.g. `"libreovim_pkg_my_theme.so"` for `"my-theme"` on
+/// linux.
+///
+/// Builds the cargo `cdylib` stem `reovim_pkg_<snake_name>` (hyphens
+/// replaced with underscores) and delegates to [`library_filename`]
+/// for the OS-specific `lib...` prefix and `.so` / `.dylib` / `.dll`
+/// extension. Used by the package manager to locate and place
+/// extension cdylibs.
+#[must_use]
+pub fn cdylib_filename(pkg_name: &str) -> String {
+    let stem = format!("reovim_pkg_{}", pkg_name.replace('-', "_"));
+    library_filename(&stem)
+}
+
+/// Inverse of [`cdylib_filename`]: parse a cdylib filename into its
+/// reovim package name.
+///
+/// Returns `Some(name)` when `filename` matches the reovim convention
+/// (`libreovim_pkg_<snake>.<ext>` on linux/macos, `reovim_pkg_<snake>.dll`
+/// on windows). Returns `None` for any filename outside that
+/// convention — the caller should treat such cdylibs as foreign.
+#[must_use]
+pub fn pkg_name_from_cdylib_filename(filename: &str) -> Option<String> {
+    #[cfg(target_os = "windows")]
+    const PREFIX: &str = "";
+    #[cfg(not(target_os = "windows"))]
+    const PREFIX: &str = "lib";
+    let suffix = format!(".{}", library_extension());
+    let stem = filename.strip_prefix(PREFIX)?.strip_suffix(&suffix)?;
+    let snake = stem.strip_prefix("reovim_pkg_")?;
+    Some(snake.replace('_', "-"))
 }
 
 #[cfg(test)]

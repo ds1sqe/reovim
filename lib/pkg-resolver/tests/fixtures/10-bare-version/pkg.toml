@@ -1,0 +1,6 @@
+[package]
+name = "root-10"
+reovim-version = "^0.15"
+
+[dependencies]
+vim-core = "1.0"

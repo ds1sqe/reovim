@@ -1,0 +1,35 @@
+[package]
+name = "reovim-pkg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Reovim package manager CLI (pkg): install, list, remove, lock, resolve, doctor"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "pkg"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1"
+clap = { workspace = true }
+reovim-pkg-manifest = { path = "../../lib/pkg-manifest", version = "0.15.0-dev" }
+reovim-pkg-lockfile = { path = "../../lib/pkg-lockfile", version = "0.15.0-dev" }
+reovim-pkg-resolver = { workspace = true }
+reovim-pkg-install = { workspace = true }
+reovim-pkg-lazyload = { workspace = true }
+reovim-dylib-loader = { workspace = true }
+semver = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+reovim-driver-abi-poc = { path = "../driver-abi-poc", version = "0.15.0-dev" }
+sha2 = { workspace = true }
+tempfile = "3"
