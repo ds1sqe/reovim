@@ -16,11 +16,15 @@
 mod buffer;
 mod colorscheme;
 mod edit;
+mod mount;
 mod quit;
 mod session;
 mod set;
 mod substitute;
 mod write;
+
+#[cfg(test)]
+mod mount_tests;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore},
@@ -31,6 +35,7 @@ pub use {
     buffer::{BdeleteCommand, BnextCommand, BpreviousCommand, QuitAllCommand},
     colorscheme::ColorschemeCommand,
     edit::EditCommand,
+    mount::MountCommand,
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
     set::SetCommand,
@@ -43,6 +48,7 @@ pub use {
 pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
     let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
         Box::new(EditCommand),
+        Box::new(MountCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),

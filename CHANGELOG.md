@@ -63,6 +63,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 5: `:mount` ex-command.** Users can
+  manually mount a content codec on the active buffer with `:mount
+  <content_type>` (or shorthand `:mount hex|elf|rlib|zip|pdf`). The
+  command resolves the shorthand against a small constant table,
+  loads canonical bytes from VFS if the buffer's inode is empty, and
+  registers the mount via `CodecSessionState::mount_codec`. The
+  decoded view becomes active on the next render frame. Always
+  mounts in `Summary` mode; structural-edit mode lands in a
+  follow-on phase. (#737)
 - **#737 Codec Hot-Attach — Phase 3: picker-files routed through codec
   pipeline.** File picker's `open_file()` now decodes via
   `decode_file_bytes()` instead of `read_to_string()`. Binary files
