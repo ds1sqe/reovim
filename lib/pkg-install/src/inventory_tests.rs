@@ -83,25 +83,78 @@ fn remove_from_inventory_on_missing_errors() {
 }
 
 #[test]
-fn missing_kind_field_surfaces_error() {
+fn read_inventory_rejects_invalid_kind() {
+    // A lockfile with `kind = "garbage"` is corrupted; the parser
+    // surfaces it as `MissingPackageKind` rather than silently
+    // skipping the entry.
     let dir = tempdir().unwrap();
     let lock = dir.path().join("pkg.lock");
     let src = r#"
 version = 1
 
 [[package]]
-name = "stray"
+name = "broken"
 version = "1.0.0"
+kind = "garbage"
 target = "x86_64-unknown-linux-gnu"
 sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 [package.source]
 kind = "local-path"
-path = "/src/stray"
+path = "/src/broken"
 "#;
     std::fs::write(&lock, src).unwrap();
     let err = read_inventory(&lock, dir.path()).expect_err("must fail");
-    assert!(matches!(err, InstallError::MissingPackageKind { ref pkg } if pkg == "stray"));
+    assert!(matches!(err, InstallError::MissingPackageKind { ref pkg } if pkg == "broken"));
+}
+
+#[test]
+fn read_inventory_rejects_malformed_trigger() {
+    let dir = tempdir().unwrap();
+    let lock = dir.path().join("pkg.lock");
+    let src = r#"
+version = 1
+
+[[package]]
+name = "lazy"
+version = "1.0.0"
+kind = "module"
+target = "x86_64-unknown-linux-gnu"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+trigger = "garbage"
+
+[package.source]
+kind = "local-path"
+path = "/src/lazy"
+"#;
+    std::fs::write(&lock, src).unwrap();
+    let err = read_inventory(&lock, dir.path()).expect_err("must fail");
+    assert!(matches!(err, InstallError::Manifest { .. }), "got {err:?}");
+}
+
+#[test]
+fn read_inventory_skips_pre_install_entries() {
+    // `pkg lock` writes lockfile entries with `kind = None` (kind
+    // is install-time metadata). `read_inventory` must treat those
+    // entries as "not yet installed" and skip them, so that a
+    // subsequent `pkg install` can populate the real inventory
+    // without tripping the missing-kind error.
+    let dir = tempdir().unwrap();
+    let lock = dir.path().join("pkg.lock");
+    let src = r#"
+version = 1
+
+[[package]]
+name = "pre-install"
+version = "1.0.0"
+
+[package.source]
+kind = "local-path"
+path = "/src/pre-install"
+"#;
+    std::fs::write(&lock, src).unwrap();
+    let inventory = read_inventory(&lock, dir.path()).expect("read inventory");
+    assert!(inventory.is_empty(), "pre-install entries must not appear: {inventory:?}");
 }
 
 #[test]

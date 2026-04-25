@@ -64,6 +64,12 @@ pub fn read_inventory(
     let lock = Lockfile::from_toml_str(&src)?;
     let mut out: Vec<InstalledPackage> = Vec::new();
     for pkg in lock.packages {
+        if pkg.kind.is_none() {
+            // `pkg lock` writes resolution-only entries with no
+            // `kind`; they are not yet installed and don't belong in
+            // the inventory.
+            continue;
+        }
         let kind = parse_kind(&pkg)?;
         let installed_path = library_root
             .join(kind_subdir(kind))

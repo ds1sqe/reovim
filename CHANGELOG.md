@@ -140,94 +140,110 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- **#771 Package Manager — doctor**: new `pkg doctor` subcommand
-  audits a `$REOVIM_LIBRARY_ROOT` against its `pkg.lock` inventory
-  and reports four fault classes per package: **unloadable** (cdylib
-  fails to `dlopen`), **orphan** (file in the library root with no
-  inventory entry), **missing** (inventory entry whose cdylib is
-  gone from disk), and **drift** (on-disk SHA-256 disagrees with the
-  recorded digest). Exit code is 0 when there are no findings, 1
-  when any class fires. `pkg doctor --fix` auto-remediates orphans
-  (delete the unowned file) and missing entries (drop the stale
-  inventory record); unloadable + drift are left for the user.
-  Implementation lives at `lib/pkg-install/src/doctor/` and re-uses
-  the Phase 2 install pipeline's helpers (`probe`, `hash`, scan, and
-  inventory) plus the lifted `pkg_name_from_cdylib_filename` /
-  `Kind: FromStr` helpers from `reovim-dylib-loader` so doctor
-  speaks the same filename + kind conventions as install. (#771)
-- **#771 Package Manager — lazy load**: new `lib/pkg-lazyload/`
-  crate carries the runtime-side trigger machinery. `LazyRegistry`
-  is built from a lockfile and answers `trigger_for(name)` /
-  `is_lazy(name)`. `scan_eager(library_root, kind, registry)` wraps
-  `reovim_dylib_loader::scan_paths` and drops every cdylib whose
-  package is gated on a non-eager trigger.
-  `names_to_load(registry, &TriggerEvent)` and
-  `load_triggered(library_root, kind, registry, &TriggerEvent)` open
-  the cdylibs whose trigger fires for a given runtime event
-  (`Domain` / `Event` / `Capability`). The lockfile schema gains an
-  optional `trigger` string per package (`on-domain:<name>` /
-  `on-event:<name>` / `on-capability:<name>` / `eager`); a missing
-  trigger defaults to `eager`, so Phase 2 lockfiles parse unchanged.
-  `pkg install` propagates each package's trigger from the root
-  manifest's `[lazy]` table into the lockfile, and the new
-  `pkg trigger <kind> <name>` subcommand opens every cdylib whose
-  trigger fires for the supplied event. The `cdylib_filename`
-  helper moved to `reovim-dylib-loader` next to `library_filename`,
-  consolidating the platform-naming convention; `trigger_str` and
-  `parse_trigger` were added to `reovim-pkg-manifest` so the three
-  consumers (resolver, install, lazyload) share one
-  encode/decode pair without duplication. (#771)
-- **#771 Package Manager — install / remove / list**: new
-  `lib/pkg-install/` crate materializes resolved cdylibs into
-  `$REOVIM_LIBRARY_ROOT` per the driver/modules layout shared with
-  `reovim-dylib-loader`. The installer runs a `dlopen` smoke test
-  and streams a SHA-256 digest over each cdylib; subsequent installs
-  detect byte-level tampering against the recorded digest. The
-  lockfile inventory is kept in sync: `pkg install`, `pkg remove`,
-  and `pkg list` share the `pkg.lock` as their source of truth.
-  CLI: `pkg install --library-root $REOVIM_LIBRARY_ROOT` resolves
-  and installs, `pkg remove <name>` removes, `pkg list` prints a
-  sorted inventory. Adds `Package.kind: Option<PackageKind>`
-  (`driver | module`) to `lib/pkg-manifest/` — optional on root
-  user-config manifests, required on path-dep manifests before
-  install — and `PackageLock.kind: Option<String>` to
-  `lib/pkg-lockfile/` so the installer can round-trip the
-  classification through the lockfile without pulling in the
-  manifest crate. (#771)
-
-- **#771 Package Manager — resolver + `pkg lock` / `pkg resolve`**:
-  new `lib/pkg-resolver/` crate provides semver graph resolution over a
-  `pkg.toml` manifest and its local-path dependency tree. The DFS
-  walker validates every constraint, detects cycles, rejects
-  duplicate packages reached via different paths, enforces root
-  `reovim-version` compatibility against the runtime, and rejects
-  bare-version (registry) deps until a later epic. `tools/pkg` gains
-  two real subcommands: `pkg lock` writes a deterministic
-  `pkg.lock`, and `pkg resolve` prints the sorted resolved package
-  list without touching disk. Ten fixture projects (five green, five
-  error cases) plus a determinism test pin the contract; 37 resolver
-  tests and six CLI integration tests cover every `ResolveError`
-  variant. An additive `Package.version: Option<String>` field was
-  added to `lib/pkg-manifest/` so path-dep manifests can declare
-  their own pinnable version (Phase 0 was a user-config schema; the
-  field is required only on path-dep manifests). (#771)
-
-- **#771 Package Manager — manifest + lockfile formats + CLI scaffold**:
-  three net-new crates ship the reovim package manager's data layer and
-  user-facing binary. `lib/pkg-manifest/` parses and writes `pkg.toml`
-  (package name, reovim-version constraint, `[dependencies]` with bare-string
-  and inline-table forms, `[lazy]` triggers for `on-domain` / `on-event` /
-  `on-capability` / `eager = true`; `Dependency::into_detailed()` normalizes
-  both dependency forms for downstream consumers). `lib/pkg-lockfile/` parses
-  and writes `pkg.lock` cargo-style (top-level `version` + array of
-  `[[package]]` entries with rustc target triple and optional 64-hex-char
-  SHA-256 digest; writer sorts packages by `(name, version)` for
-  deterministic output). `tools/pkg/` provides the `pkg` CLI with
-  `--version`, `--help`, and stubs for `install`, `remove`, `list`, `lock`,
-  `resolve`, `doctor` that exit code 2 with a phase-specific hint until
-  later phases implement them. Round-trip and determinism tests verify
-  byte-stable re-serialization; 14 manifest tests, 17 lockfile tests, and
-  10 CLI tests cover every enum variant and error surface. (#771)
+- **#771 Package Manager**: ship the `pkg` family of commands and
+  the supporting crate stack (`lib/pkg-{manifest,lockfile,resolver,
+  install,lazyload}`, `lib/dylib-loader` extensions, `tools/pkg`) as
+  a first-class reovim subsystem alongside kernel, drivers, and
+  client architecture. End-user workflow at
+  [docs/user-guide/pkg.md](docs/user-guide/pkg.md); internal
+  pipeline at
+  [docs/architecture/pkg-manager.md](docs/architecture/pkg-manager.md);
+  README §Documentation lists both pointers. (#771)
+  - **Manifest + lockfile formats + CLI scaffold**: three net-new
+    crates ship the reovim package manager's data layer and
+    user-facing binary. `lib/pkg-manifest/` parses and writes
+    `pkg.toml` (package name, reovim-version constraint,
+    `[dependencies]` with bare-string and inline-table forms,
+    `[lazy]` triggers for `on-domain` / `on-event` /
+    `on-capability` / `eager = true`; `Dependency::into_detailed()`
+    normalizes both dependency forms for downstream consumers).
+    `lib/pkg-lockfile/` parses and writes `pkg.lock` cargo-style
+    (top-level `version` + array of `[[package]]` entries with
+    rustc target triple and optional 64-hex-char SHA-256 digest;
+    writer sorts packages by `(name, version)` for deterministic
+    output). `tools/pkg/` provides the `pkg` CLI with `--version`,
+    `--help`, and stubs for `install`, `remove`, `list`, `lock`,
+    `resolve`, `doctor` that exit code 2 with a phase-specific
+    hint until later phases implement them. Round-trip and
+    determinism tests verify byte-stable re-serialization; 14
+    manifest tests, 17 lockfile tests, and 10 CLI tests cover
+    every enum variant and error surface.
+  - **Resolver + `pkg lock` / `pkg resolve`**: new
+    `lib/pkg-resolver/` crate provides semver graph resolution
+    over a `pkg.toml` manifest and its local-path dependency tree.
+    The DFS walker validates every constraint, detects cycles,
+    rejects duplicate packages reached via different paths,
+    enforces root `reovim-version` compatibility against the
+    runtime, and rejects bare-version (registry) deps until a
+    later epic. `tools/pkg` gains two real subcommands: `pkg lock`
+    writes a deterministic `pkg.lock`, and `pkg resolve` prints
+    the sorted resolved package list without touching disk. Ten
+    fixture projects (five green, five error cases) plus a
+    determinism test pin the contract; 37 resolver tests and six
+    CLI integration tests cover every `ResolveError` variant. An
+    additive `Package.version: Option<String>` field was added to
+    `lib/pkg-manifest/` so path-dep manifests can declare their
+    own pinnable version (Phase 0 was a user-config schema; the
+    field is required only on path-dep manifests).
+  - **Install / remove / list**: new `lib/pkg-install/` crate
+    materializes resolved cdylibs into `$REOVIM_LIBRARY_ROOT` per
+    the driver/modules layout shared with `reovim-dylib-loader`.
+    The installer runs a `dlopen` smoke test and streams a
+    SHA-256 digest over each cdylib; subsequent installs detect
+    byte-level tampering against the recorded digest. The
+    lockfile inventory is kept in sync: `pkg install`,
+    `pkg remove`, and `pkg list` share the `pkg.lock` as their
+    source of truth. CLI: `pkg install --library-root
+    $REOVIM_LIBRARY_ROOT` resolves and installs,
+    `pkg remove <name>` removes, `pkg list` prints a sorted
+    inventory. Adds `Package.kind: Option<PackageKind>`
+    (`driver | module`) to `lib/pkg-manifest/` — optional on
+    root user-config manifests, required on path-dep manifests
+    before install — and `PackageLock.kind: Option<String>` to
+    `lib/pkg-lockfile/` so the installer can round-trip the
+    classification through the lockfile without pulling in the
+    manifest crate.
+  - **Lazy load**: new `lib/pkg-lazyload/` crate carries the
+    runtime-side trigger machinery. `LazyRegistry` is built from
+    a lockfile and answers `trigger_for(name)` /
+    `is_lazy(name)`. `scan_eager(library_root, kind, registry)`
+    wraps `reovim_dylib_loader::scan_paths` and drops every
+    cdylib whose package is gated on a non-eager trigger.
+    `names_to_load(registry, &TriggerEvent)` and
+    `load_triggered(library_root, kind, registry, &TriggerEvent)`
+    open the cdylibs whose trigger fires for a given runtime
+    event (`Domain` / `Event` / `Capability`). The lockfile
+    schema gains an optional `trigger` string per package
+    (`on-domain:<name>` / `on-event:<name>` /
+    `on-capability:<name>` / `eager`); a missing trigger
+    defaults to `eager`, so earlier lockfiles parse unchanged.
+    `pkg install` propagates each package's trigger from the
+    root manifest's `[lazy]` table into the lockfile, and the
+    new `pkg trigger <kind> <name>` subcommand opens every
+    cdylib whose trigger fires for the supplied event. The
+    `cdylib_filename` helper moved to `reovim-dylib-loader` next
+    to `library_filename`, consolidating the platform-naming
+    convention; `trigger_str` and `parse_trigger` were added to
+    `reovim-pkg-manifest` so the three consumers (resolver,
+    install, lazyload) share one encode/decode pair without
+    duplication.
+  - **Doctor**: new `pkg doctor` subcommand audits a
+    `$REOVIM_LIBRARY_ROOT` against its `pkg.lock` inventory and
+    reports four fault classes per package: **unloadable**
+    (cdylib fails to `dlopen`), **orphan** (file in the library
+    root with no inventory entry), **missing** (inventory entry
+    whose cdylib is gone from disk), and **drift** (on-disk
+    SHA-256 disagrees with the recorded digest). Exit code is 0
+    when there are no findings, 1 when any class fires.
+    `pkg doctor --fix` auto-remediates orphans (delete the
+    unowned file) and missing entries (drop the stale inventory
+    record); unloadable + drift are left for the user.
+    Implementation lives at `lib/pkg-install/src/doctor/` and
+    re-uses the install pipeline's helpers (`probe`, `hash`,
+    scan, and inventory) plus the lifted
+    `pkg_name_from_cdylib_filename` / `Kind: FromStr` helpers
+    from `reovim-dylib-loader` so doctor speaks the same
+    filename + kind conventions as install.
 
 - **#769 ABI Foundation — `reovim` dual-mode composition** (Phase 2b):
   The top-level `reovim` launcher now boots the server + selected client
