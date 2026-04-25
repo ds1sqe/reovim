@@ -185,8 +185,8 @@ modules must be built separately and placed on one of the search paths
 above.
 
 A packaging workflow that produces a complete install tree (bins + modules
-in a versioned directory) is tracked under #769 Phase 6 as separate
-deployment tooling. For now, after `cargo install reovim`, running the
+in a versioned directory) is future deployment tooling outside the current
+release scope. For now, after `cargo install reovim`, running the
 server binary with no `.so` files on any search path will succeed at
 startup but produce a minimal shell with no keybindings, syntax
 highlighting, or other module-supplied features.
@@ -203,7 +203,9 @@ cp target/debug/libreovim_*.so ~/.local/share/reovim/modules/
 After #769 Phase 4 and Phase 5, the library root also hosts **driver**
 shared libraries for both server-side and client-side drivers. Drivers are
 runtime-loaded cdylibs that implement subsys trait contracts (e.g. the
-per-trait vtable exported as `REOVIM_<KIND>_DRIVER_VTABLE`).
+per-trait vtable exported as `REOVIM_<KIND>_DRIVER_VTABLE`). The binary
+contract for driver cdylibs is documented in
+[docs/architecture/driver-abi-v1.md](../architecture/driver-abi-v1.md).
 
 `scripts/build-driver.sh` is the canonical build path for both tiers
 (sibling to `scripts/build-module.sh`):

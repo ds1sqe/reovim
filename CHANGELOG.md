@@ -4,6 +4,49 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.15.0-dev] - Unreleased
 
+### Breaking
+
+- **`static-modules` Cargo feature removed** workspace-wide (#769 Phase 3).
+  Modules are now exclusively runtime-loaded cdylibs via the `discover()`
+  path. Operators upgrading must install module `.so` files to one of the
+  search paths (env override `$REOVIM_MODULE_PATH`, XDG user dir, or system
+  install). See `docs/deployment/library-root.md`.
+
+- **Binary names changed** (#769 Phase 2a/2b). The single `reovim` binary is
+  replaced by per-role bins: `reovim-server`, `reovim-tui`, `reovim-cli`,
+  `reovim-web`, plus a thin `reovim` launcher. The launcher defaults to
+  embedded composition (server + TUI in one process, `inproc` transport) so
+  `cargo install reovim` produces a working editor out of the box. Subprocess
+  composition via `--subprocess` / `--external-grpc` is opt-in. Packagers
+  shipping the bins separately should ensure all five are on `$PATH`.
+
+- **Driver ABI v1 published** (#769 Phase 0-5). C-stable vtable contract
+  documented at `docs/architecture/driver-abi-v1.md`. Per-trait
+  `declare_*_driver!` macros under `uapi/driver-macros/`. Library root:
+  `$ROOT/driver/{server,client}/`.
+
+- **Driver-loader infrastructure scaffolded** (#769 Phase 4-5).
+  `lib/dylib-loader/`, `clients/lib/subsys/driver-loader/`,
+  `uapi/driver-macros/`, `scripts/build-driver.sh`, the
+  `no_static_drivers_feature` ratchet probe, and
+  `docs/deployment/library-root.md` Drivers section are all in place. The
+  migrated driver set is empty for v0.16.0; trait-redesign for the existing
+  server and client drivers is tracked at follow-up #774.
+  Bootstrap-display decoupling at `apps/server` is tracked at follow-up #775.
+
+- **Cdylib coverage scope** (#769 mission complete). The chain-level
+  acceptance criterion "every driver and every module is a runtime-loaded
+  cdylib" is scoped to the FFI-routable set per master-plan amendment L11.
+  The modules clause is fully met today (55 server modules, all cdylib).
+  Driver migrations are tracked at:
+  - **#774** — server + client driver trait redesigns for FFI-routability
+    (`net-grpc`, `command`, `text-session`, `text-syntax`, `text-input`,
+    `text-buffer`, `chrome-surface` family, `display`).
+  - **#775** — `apps/server` bootstrap-site decoupling from
+    `reovim-driver-display`.
+  - **#753** — client-foundation resumption (lands the first concrete
+    `ClientRender` implementor on top of #769's foundation).
+
 ### Changed
 
 - **#769 ABI Foundation Phase 5 — client-side driver-loader infrastructure scaffolded.**

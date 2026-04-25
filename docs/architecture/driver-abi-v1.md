@@ -1,8 +1,13 @@
 # Reovim Driver ABI — v1
 
-Status: Phase 0 landed (2026-04-23). Applies to the client-render
-driver trait; extends to server-side drivers in Phase 4 and additional
-client-side driver kinds in Phase 5.
+Status: #769 Phases 0–6 landed (2026-04-25). The v1 spec covers the
+`client_render` driver kind in full (Phase 0 PoC validated; macro +
+vtable infrastructure operational). Server-side driver kinds and
+additional client-side driver kinds are described in this document but
+their cdylib migrations are deferred: trait redesigns for FFI-routability
+are tracked at #774; the concrete `ClientRender` implementor is tracked
+at #753 client-foundation resumption. The spec is reimplementer-ready
+independent of which driver kinds have shipped cdylib implementations.
 
 This document is the portable contract. The `uapi/driver-macros/` crate
 is one Rust producer of conforming cdylibs; any implementation (Rust,
@@ -21,6 +26,27 @@ calls through it to construct and drive the concrete implementation.
 
 The runtime-loaded model replaces compile-time linkage of driver
 crates. See epic #769 for motivation.
+
+## 1b. Driver kinds covered by v1
+
+This section records which driver kinds the v1 spec describes the binary
+contract for, and which have shipped cdylib implementations.
+
+| Kind | Spec coverage | cdylib shipped? | Tracker |
+|---|---|---|---|
+| `client_render` | Full — vtable shape, version constants, PoC macro at `uapi/driver-macros/src/client_render.rs`, ABI types at `clients/lib/subsys/render/src/abi.rs` | No (concrete implementor deferred) | #753 |
+| `net_grpc` (server) | Vtable shape described in §4; trait redesign for FFI-routability pending | No | #774 |
+| `command` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `text_session` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `text_syntax` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `text_input` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `text_buffer` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `chrome_surface` family (client) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `display` (client) | Vtable shape described in §4; trait redesign pending | No | #774 |
+
+The empty cdylib-migration column for v0.16.0 is by design: #769 delivers
+the binary contract, the macro framework, the loader infrastructure, and the
+build pipeline. #774 fills the migrated set against this foundation.
 
 ## 2. Exported symbol
 
