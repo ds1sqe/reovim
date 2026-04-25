@@ -63,6 +63,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
+  `:codecs` lists available codec factories (from
+  `ContentCodecFactoryStore::available()`) and active mounts on the
+  active buffer (from `CodecSessionState::list_mounts()`). Output is
+  emitted via `tracing::info!` on the stable target `codecs` —
+  user-visible TUI display is deferred to a follow-on flight that
+  adds a `RuntimeSignal::Message` (or equivalent) command-output
+  API. The `reovim cli log-tail --target codecs` path picks up the
+  listing today. (#737)
 - **#737 Codec Hot-Attach — Phase 6: `:umount` ex-command.** Users
   can remove a codec mount from the active buffer with `:umount`
   (most-recent mount, by max `MountId`) or `:umount <mount_id>`

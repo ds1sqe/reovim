@@ -14,6 +14,7 @@
 //! - `:kill-server` - Kill the server
 
 mod buffer;
+mod codecs;
 mod colorscheme;
 mod edit;
 mod mount;
@@ -24,6 +25,8 @@ mod substitute;
 mod umount;
 mod write;
 
+#[cfg(test)]
+mod codecs_tests;
 #[cfg(test)]
 mod mount_tests;
 #[cfg(test)]
@@ -36,6 +39,7 @@ use {
 
 pub use {
     buffer::{BdeleteCommand, BnextCommand, BpreviousCommand, QuitAllCommand},
+    codecs::CodecsCommand,
     colorscheme::ColorschemeCommand,
     edit::EditCommand,
     mount::MountCommand,
@@ -54,6 +58,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(EditCommand),
         Box::new(MountCommand),
         Box::new(UmountCommand),
+        Box::new(CodecsCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
