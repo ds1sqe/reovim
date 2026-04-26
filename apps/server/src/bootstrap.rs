@@ -324,6 +324,14 @@ pub fn bootstrap_runtime() -> BootstrapResult {
     // Register BufferReadAccess so bridges can read buffer content in tick() (#664).
     services.register(Arc::new(reovim_driver_text_session::BufferReadAccess::new(text_registry)));
 
+    // SP03: load the buffer cdylib if a staged copy is present and
+    // register `Arc<dyn BufferDriver>` in services. Non-fatal — dev
+    // builds without a staged cdylib fall back to the legacy in-process
+    // path. The TestBufferManager dep is retained until SP04 retires
+    // the kernel BufferManager (see
+    // tmp/deferral-draft-sp03-bufmgr-dep-drop.md).
+    register_buffer_driver_if_available(&services);
+
     // Create module context for initialization
     let module_ctx = Arc::new(create_module_context(kernel.clone(), Arc::clone(&services)));
 
@@ -724,6 +732,58 @@ fn trigger_empty_session_handlers(state: &SessionState, services: &Arc<ServiceRe
             tracing::debug!("Empty session handler returned None");
         }
     }
+}
+
+/// Service-registry wrapper around the cdylib-loaded buffer driver.
+///
+/// SP03 introduces this thin wrapper because `Service` is a marker
+/// trait for `'static + Send + Sync` items in the kernel registry, and
+/// `Arc<dyn BufferDriver>` cannot impl Service directly across the
+/// kernel ↔ subsys-buffer crate boundary (orphan rule). Consumers
+/// look it up via `services.get::<BufferDriverService>()` and access
+/// the underlying driver through the public `0` field.
+pub struct BufferDriverService(pub Arc<dyn reovim_subsys_buffer::BufferDriver>);
+
+impl reovim_kernel::api::Service for BufferDriverService {}
+
+/// SP03: Probe for the buffer cdylib in the workspace target dir and
+/// register `Arc<dyn BufferDriver>` in services. Non-fatal — logs and
+/// returns when no cdylib is present (legacy in-process path remains
+/// authoritative until SP04).
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_buffer_driver_if_available(services: &ServiceRegistry) {
+    use reovim_subsys_driver_loader::LoadedBuffer;
+
+    let Some(workspace_target) = workspace_target_dir() else {
+        tracing::debug!("buffer cdylib probe: workspace target dir not resolved; skipping");
+        return;
+    };
+
+    let entries = LoadedBuffer::from_path_scan(&workspace_target);
+    for entry in entries {
+        match entry {
+            Ok(loaded) => {
+                let arc: Arc<dyn reovim_subsys_buffer::BufferDriver> = Arc::new(loaded);
+                services.register(Arc::new(BufferDriverService(arc)));
+                tracing::info!("registered cdylib-loaded BufferDriver from workspace target dir");
+                return;
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "buffer cdylib probe: candidate failed to load");
+            }
+        }
+    }
+    tracing::debug!("buffer cdylib probe: no usable buffer cdylib found");
+}
+
+/// Resolve the workspace target dir for cdylib staging. Returns the
+/// `target/<profile>/` directory containing the running binary, or
+/// `None` if it cannot be determined.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn workspace_target_dir() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    // .../target/<profile>/<binary>  →  .../target/<profile>/
+    Some(exe.parent()?.to_path_buf())
 }
 
 /// Create a kernel context with the given service registry.

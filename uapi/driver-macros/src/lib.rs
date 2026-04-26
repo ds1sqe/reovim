@@ -10,6 +10,7 @@
 //! (e.g. `::reovim_client_subsys_render::abi::ClientRenderVTable`); the
 //! macro crate carries no compile-time dependency on any subsys crate.
 
+mod buffer;
 mod client_debug;
 mod client_render;
 mod net_grpc;
@@ -63,4 +64,24 @@ pub fn declare_client_debug_driver(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_net_grpc_driver(input: TokenStream) -> TokenStream {
     net_grpc::expand(input)
+}
+
+/// Generates FFI entry points for a buffer server driver cdylib.
+///
+/// The user driver type must implement
+/// `::reovim_subsys_buffer::BufferDriver` (the factory trait) plus
+/// two inherent methods documented in
+/// `uapi/driver-macros/src/buffer.rs`: `probe()` and `construct()`.
+/// The macro emits the canonical vtable under
+/// `REOVIM_BUFFER_DRIVER_VTABLE` (27 fn-pointer slots covering
+/// driver lifecycle, the `BufferDriver` factory surface, the
+/// `Buffer` per-instance surface, the multi-attachment codec slot
+/// table, the async subscription bridge, and allocator-hygiene
+/// destructors) with `catch_unwind` panic isolation on every
+/// trampoline.
+///
+/// See `docs/architecture/driver-abi-v1.md` for the binary contract.
+#[proc_macro]
+pub fn declare_buffer_driver(input: TokenStream) -> TokenStream {
+    buffer::expand(input)
 }

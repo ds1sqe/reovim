@@ -6,6 +6,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
+- **Buffer subsys + cdylib driver** (#774, sub-plan 03 of ABI Deferrals).
+  New closed-tier crate `server/lib/subsys/buffer/` defines the byte-
+  oriented `Buffer` trait surface (`apply_edit`/`read_bytes`/multi-codec
+  `attach_codec`/async `BufferSubscribable`) plus a generic FFI-
+  routable `BufferDriver` factory trait. The closed contract carries
+  no "text"-specific terminology: the vtable type is `BufferVTable`,
+  the symbol is `REOVIM_BUFFER_DRIVER_VTABLE`, the kind discriminant
+  is `"buffer"`, and the codegen macro is
+  `reovim_driver_macros::declare_buffer_driver!`. `text-buffer` is one
+  ext-side impl of this contract.
+  `reovim-driver-text-buffer` ships as a `cdylib + rlib` (rope-backed
+  `TextBufferImpl` over the existing provider-text storage with
+  `BTreeMap<CodecAttachmentId, Box<dyn ByteNotifiable>>` slot table,
+  `tokio::sync::broadcast` edit fan-out, panic-isolated synchronous
+  per-slot notify). Server-side loader subsys gains `LoadedBuffer`
+  (driver wrapper) and `LoadedBufferInstance` (per-buffer wrapper); a
+  shared `Arc<BufferLibraryGuard>` keeps the cdylib mapped until the
+  last per-instance handle drops. `apps/server` adds
+  `reovim-subsys-buffer` and `reovim-subsys-driver-loader` deps and
+  registers the cdylib-loaded `Arc<dyn BufferDriver>` in the service
+  registry under a `BufferDriverService` wrapper. The
+  `reovim-driver-text-buffer` rlib dep is retained on `apps/server`
+  until SP04 retires the kernel `BufferManager` slot (deferral
+  documented in `tmp/deferral-draft-sp03-bufmgr-dep-drop.md`).
 - **`GrpcServerDriver` redesigned for FFI-routability + cdylib
   migration** (#774, sub-plan 02 of ABI Deferrals). Trait no longer
   takes a `tonic::transport::server::Router`; host produces

@@ -40,7 +40,7 @@ contract for, and which have shipped cdylib implementations.
 | `text_session` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
 | `text_syntax` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
 | `text_input` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
-| `text_buffer` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
+| `buffer` (server) | Full — vtable layout in §13.6, ABI types at `server/lib/subsys/buffer/src/abi.rs`, host loader at `server/lib/subsys/driver-loader/src/buffer.rs`, codegen macro at `uapi/driver-macros/src/buffer.rs` | Yes | landed in #774 sub-plan 03 |
 | `chrome_surface` family (client) | Vtable shape described in §4; trait redesign pending | No | #774 |
 | `display` (client) | Vtable shape described in §4; trait redesign pending | No | #774 |
 
@@ -451,6 +451,106 @@ port-reporter polls the AtomicU16 once `bind_ready_fd` is readable.
 program-lifetime leak) and passes the raw pointer through the
 trampoline; the driver casts it back to `&'static AtomicU16` and stores
 the bound port with `Ordering::Release`.
+
+## 13.6. Reference — buffer vtable layout
+
+The buffer server driver factories `Arc<dyn Buffer>` instances over
+runtime-loaded byte storage. The contract surface is the closed
+`subsys-buffer::Buffer` trait (per-instance) plus the
+`subsys-buffer::BufferDriver` trait (factory + registry). The cdylib
+exports a 27-slot vtable covering the lifecycle, factory, per-buffer
+methods, multi-codec attachment slots, async edit subscription, and
+allocator-hygiene destructors.
+
+```rust
+#[repr(C)]
+pub struct BufferVTable {
+    pub abi_version:               u32,
+    pub api_version:               Version,
+    pub size_of_self:              usize,
+    pub probe:                     unsafe extern "C" fn() -> BufferDriverProbe,
+    pub construct:                 unsafe extern "C" fn(
+                                       out_instance: *mut *mut c_void,
+                                       out_err:      *mut *mut c_char,
+                                   ) -> c_int,
+    // BufferDriver factory surface.
+    pub create_buffer:             unsafe extern "C" fn(/* … */) -> c_int,
+    pub open_buffer:               unsafe extern "C" fn(/* … */) -> c_int,
+    pub list_buffers:              unsafe extern "C" fn(/* … */) -> c_int,
+    pub get_buffer:                unsafe extern "C" fn(/* … */) -> c_int,
+    pub close_buffer:              unsafe extern "C" fn(/* … */) -> c_int,
+    pub destroy_id_list:           unsafe extern "C" fn(*mut u64, usize),
+    // Per-Buffer surface (handle = *mut c_void from create/open/get).
+    pub buffer_id:                 unsafe extern "C" fn(*mut c_void) -> u64,
+    pub buffer_size:               unsafe extern "C" fn(*mut c_void) -> usize,
+    pub buffer_is_modified:        unsafe extern "C" fn(*mut c_void) -> c_int,
+    pub buffer_file_path:          unsafe extern "C" fn(/* … */),
+    pub buffer_set_file_path:      unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_read_bytes:         unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_apply_edit:         unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_write_to:           unsafe extern "C" fn(/* … */) -> c_int,
+    // Multi-codec attachment slots.
+    pub buffer_attach_codec:       unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_detach_codec:       unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_list_codecs:        unsafe extern "C" fn(/* … */) -> c_int,
+    // Async edit subscription (forward-compat slots).
+    pub buffer_subscribe_edits:    unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_unsubscribe_edits:  unsafe extern "C" fn(/* … */) -> c_int,
+    pub buffer_destroy:            unsafe extern "C" fn(*mut c_void),
+    // Driver lifecycle close-out.
+    pub destroy:                   unsafe extern "C" fn(*mut c_void),
+    pub destroy_error_string:      unsafe extern "C" fn(*mut c_char),
+    pub destroy_byte_buffer:       unsafe extern "C" fn(*mut u8, usize),
+    pub destroy_file_path:         unsafe extern "C" fn(*mut c_char, usize),
+    pub destroy_codec_name_array:  unsafe extern "C" fn(*mut FfiCodecName, usize),
+}
+
+#[repr(C)]
+pub struct BufferDriverProbe {
+    pub kind: [u8; 64],   // b"buffer\0..."  (must equal "buffer")
+    pub name: [u8; 128],  // human-readable (e.g. b"reovim-driver-text-buffer\0...")
+}
+```
+
+See `server/lib/subsys/buffer/src/abi.rs` for the full slot signatures
+and ABI types (`FfiByteEdit`, `FfiCodecAttachment`, `FfiCodecName`).
+
+**Buffer handle representation**: each `*mut c_void` returned by
+`create_buffer` / `open_buffer` / `get_buffer` is a thin pointer to a
+boxed `Arc<dyn Buffer>` allocated by the cdylib. The host releases the
+handle by calling `buffer_destroy(handle)`; the cdylib reboxes and
+drops, releasing one Arc refcount.
+
+**Codec attachment side table**: `buffer_attach_codec` accepts a
+host-allocated `FfiCodecAttachment` and the cdylib stores its fields in
+a process-global side table keyed by `(buffer_addr, slot_id)`.
+`buffer_detach_codec` looks up the slot, `mem::forget`s the
+cdylib-side adapter (suppressing the cdylib's `destroy_handle` call),
+and writes the original attachment back to the host so the host owns
+the destruction. `buffer_destroy` sweeps the side table for any
+still-live entries belonging to the dying buffer.
+
+**Synchronous fan-out**: `buffer_apply_edit` mutates canonical bytes
+then iterates every attached codec slot in `CodecAttachmentId` order,
+calling each codec's `notify` synchronously inside the buffer's lock.
+Each per-slot call is wrapped in `catch_unwind`; a panicked slot is
+left in-place (subsys contract: panicked slots are not detached
+mid-iteration). The host's `notify` callback may be invoked from any
+thread the driver chooses.
+
+**Allocator hygiene**: every host-facing heap array (`u8[]` from
+`buffer_read_bytes`, `u64[]` from `list_buffers`, `FfiCodecName[]` from
+`buffer_list_codecs`, file-path `c_char[]` from `buffer_file_path`,
+err `c_char` from any slot) MUST be freed via the matching `destroy_*`
+slot in this same vtable. Do not call `free()` directly from the host;
+the cdylib's allocator and the host's may differ.
+
+**Async edit subscription**: `buffer_subscribe_edits` and
+`buffer_unsubscribe_edits` are forward-compat ABI slots reserved for
+the `BufferSubscribable` trait. The current cdylib stub returns
+`out_subscription_id = 0` and immediately calls the host's
+`subscriber_destroy`. Wiring will land when async consumers (LSP,
+file-watcher, debug surfaces) are introduced.
 
 ## Library-root discovery (Phase 1)
 

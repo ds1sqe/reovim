@@ -14,12 +14,15 @@
 //! vtable's header fields via pure memory reads, and exposes the
 //! driver's lifecycle as safe async methods.
 
+pub mod buffer;
+pub mod buffer_instance;
 pub mod error;
 pub mod net_grpc;
 pub(crate) mod rc;
 pub(crate) mod validation;
 
 pub use {
+    buffer::LoadedBuffer,
     error::{LoadError, ScanEntryError, ValidationError},
     net_grpc::LoadedNetGrpc,
 };

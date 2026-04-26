@@ -2316,6 +2316,8 @@ dependencies = [
  "reovim-protocol",
  "reovim-provider-text",
  "reovim-server",
+ "reovim-subsys-buffer",
+ "reovim-subsys-driver-loader",
  "reovim-subsys-input",
  "reovim-subsys-layout",
  "reovim-subsys-module-config",
@@ -3021,6 +3023,9 @@ dependencies = [
  "quote",
  "reovim-client-subsys-debug",
  "reovim-client-subsys-render",
+ "reovim-content-codec",
+ "reovim-kernel",
+ "reovim-subsys-buffer",
  "reovim-subsys-net",
  "syn",
  "tokio",
@@ -3077,9 +3082,15 @@ dependencies = [
 name = "reovim-driver-text-buffer"
 version = "0.15.0-dev"
 dependencies = [
+ "parking_lot",
  "reovim-arch",
+ "reovim-content-codec",
+ "reovim-driver-macros",
  "reovim-kernel",
  "reovim-provider-text",
+ "reovim-subsys-buffer",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -4332,6 +4343,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-subsys-buffer"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-content-codec",
+ "reovim-kernel",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "reovim-subsys-clipboard"
 version = "0.15.0-dev"
 dependencies = [
@@ -4379,9 +4400,12 @@ dependencies = [
  "http",
  "http-body-util",
  "libc",
+ "reovim-content-codec",
  "reovim-driver-net-grpc",
+ "reovim-driver-text-buffer",
  "reovim-dylib-loader",
  "reovim-kernel",
+ "reovim-subsys-buffer",
  "reovim-subsys-net",
  "tempfile",
  "thiserror 2.0.18",

@@ -25,8 +25,13 @@ const FEATURE: &str = "static-drivers";
 /// Sub-plan provenance:
 ///
 /// - `reovim-driver-net-grpc` — #774 SP02
-/// - (future entries: command, text-buffer, text-input, text-syntax,
-///   text-session per their respective sub-plans)
+/// - `reovim-driver-text-buffer` — #774 SP03 (cdylib lands; rlib dep
+///   retained on apps/server for `TestBufferManager`. The dep drop and
+///   the entry below land in SP04 once `KernelContext::new` retires the
+///   `BufferManager` slot. See
+///   `tmp/deferral-draft-sp03-bufmgr-dep-drop.md`.)
+/// - (future entries: command, text-input, text-syntax, text-session
+///   per their respective sub-plans)
 const MIGRATED_DRIVERS: &[&str] = &["reovim-driver-net-grpc"];
 
 #[test]

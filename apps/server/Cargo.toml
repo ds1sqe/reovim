@@ -26,14 +26,20 @@ reovim-protocol = { workspace = true }
 reovim-subsys-net = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-input = { workspace = true }
+reovim-subsys-buffer = { workspace = true }
+reovim-subsys-driver-loader = { workspace = true }
 # reovim-driver-net-grpc dropped #774 SP02: ships as cdylib loaded via
 # reovim-subsys-driver-loader at runtime (Phase 5 follow-on); no
 # compile-time dep on apps/server.
+# reovim-driver-text-buffer SP03: ships as cdylib loaded via
+# reovim-subsys-driver-loader; the rlib dep is retained until SP04
+# retires the kernel BufferManager (see
+# tmp/deferral-draft-sp03-bufmgr-dep-drop.md).
 
 # Kernel and drivers for module loading
 reovim-kernel = { workspace = true }
 reovim-domain-text = { workspace = true }
-reovim-driver-text-buffer = { workspace = true }    # trait-redesign deferred to #774
+reovim-driver-text-buffer = { workspace = true }    # rlib only; cdylib loaded via subsys-driver-loader (SP03)
 reovim-subsys-layout = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-driver-text-input = { workspace = true }     # trait-redesign deferred to #774

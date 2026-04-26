@@ -14,6 +14,8 @@ workspace = true
 
 [dependencies]
 reovim-subsys-net = { workspace = true }
+reovim-subsys-buffer = { workspace = true }
+reovim-content-codec = { workspace = true }
 reovim-dylib-loader = { workspace = true }
 reovim-kernel = { workspace = true }
 thiserror = "2"
@@ -25,6 +27,7 @@ thiserror = "2"
 tokio = { workspace = true }
 libc = { workspace = true }
 reovim-driver-net-grpc = { workspace = true }
+reovim-driver-text-buffer = { workspace = true }
 # Dev-only tonic/tower/http stack so the unit tests can construct a
 # `ServiceDescriptor` to exercise the non-empty-descriptor guard in
 # `LoadedNetGrpc::serve`. Mirrors `server/lib/subsys/net`'s dev-deps.

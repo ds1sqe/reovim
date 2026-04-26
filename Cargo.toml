@@ -49,6 +49,7 @@ members = [
     "ext/server/drivers/text-lsp",
     "server/lib/subsys/vfs",
     "server/lib/subsys/net",
+    "server/lib/subsys/buffer",
     "server/lib/subsys/driver-loader",
     "ext/server/drivers/net-grpc",
     "ext/server/drivers/text-session",
@@ -318,6 +319,7 @@ reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
 reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }
 reovim-content-codec = { path = "./uapi/content-codec", version = "0.15.0-dev" }
 reovim-content-codec-text = { path = "./ext/content-codec/text", version = "0.15.0-dev" }
+reovim-subsys-buffer = { path = "./server/lib/subsys/buffer", version = "0.15.0-dev" }
 reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
 reovim-subsys-driver-loader = { path = "./server/lib/subsys/driver-loader", version = "0.15.0-dev" }
 reovim-driver-net-grpc = { path = "./ext/server/drivers/net-grpc", version = "0.15.0-dev" }
