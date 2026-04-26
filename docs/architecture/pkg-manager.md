@@ -114,6 +114,132 @@ programmatically) at any time to audit the library-root state. The
 `pkg trigger` CLI subcommand drives `load_triggered` directly,
 useful for testing a `[lazy]` table or pre-warming a known trigger.
 
+## Wave-3a: runtime loader integration (#771 Wave 3a)
+
+Wave 3a wires the lockfile-driven lazy-load contract into the live
+loaders on both sides of the kernel boundary.
+
+### `pkg-runtime-loader` (lib/pkg-runtime-loader)
+
+A small subsys-tier crate that the server and client driver-loader
+share at runtime:
+
+- `resolve_library_root()` — reads `$REOVIM_LIBRARY_ROOT` (the
+  install-time variable set by `pkg install`).
+- `lockfile_path(root)` — resolves the inventory `pkg.lock` location
+  beside the cdylibs.
+- `load_registry(root)` — reads `<root>/pkg.lock`, builds an
+  `Arc<LazyRegistry>`, and returns the empty registry on a missing
+  lockfile so a host that has not run `pkg install` keeps the
+  pre-3a "load everything eagerly" behaviour.
+- `package_name_for_path(path)` — recovers the package name from a
+  `libreovim_pkg_<snake_name>.<ext>` filename, used by both the
+  eager filter and the ABI-mismatch enrichment.
+- `enrich_validation_error(path, err, wrap)` — generic helper that
+  lifts a validation error into a side-specific
+  `AbiMismatchAtPackage` variant when the cdylib filename matches
+  the convention.
+
+### Server: eager filter + on-event/on-domain dispatch
+
+`server/lib/subsys/module-loader/` gained:
+
+- `ModuleLoader::from_path_scan_filtered` — scan + dlopen path
+  that consults `LazyRegistry::is_lazy(name)` and skips lazy
+  entries before they are opened.
+- `ModuleLoader::from_path_scan_filtered_diag` — same scan path
+  but per-entry `IncompatibleVersion` errors are lifted into
+  `LoadDiagnostic::AbiMismatchAtPackage` carrying the recovered
+  package name. Bootstrap calls this variant so user-facing logs
+  carry the package context.
+- `LoaderHandle` — `Arc<Mutex<ModuleLoader>>` shared with the lazy
+  dispatchers so they can dlopen one cdylib at a time after the
+  bootstrap-owned `&mut ModuleLoader` is no longer reachable.
+
+`apps/server/src/` gained two `LoaderHandle` consumers:
+
+- `lazy_command_dispatch::LazyCommandDispatcher` — implements
+  `CommandResolutionListener`; observes `CommandNameIndex::resolve`
+  and dlopens any package whose lockfile `on-event = "<name>"`
+  trigger matches the resolved command name.
+- `lazy_domain_dispatch::LazyDomainDispatcher` — implements
+  `DomainRegisterListener`; observes
+  `SessionState::set_domain_driver` and dlopens any package whose
+  `on-domain = "<name>"` trigger matches the registered domain.
+
+Both dispatchers pre-populate a pending-set from the registry so
+each lazy entry fires at most once per process lifetime; failed
+loads are logged and dropped (fire-and-forget).
+
+### Client: eager filter + on-capability dispatch
+
+`clients/lib/subsys/driver-loader/` gained:
+
+- `LoadedClientRender::from_path_scan_filtered` /
+  `LoadedClientDebug::from_path_scan_filtered` — scan helpers that
+  apply the same `LazyRegistry::is_lazy` filter before construction.
+- `probe_from_path` — header-only ABI probe that distinguishes
+  render-vs-debug vtables without constructing the driver.
+- `lazy_capability::CapabilityLazyHook` — boot-time on-capability
+  trigger. The platform runtime calls `dispatch_capability(name)`
+  once per provided capability; each call probes any matching
+  lazy cdylib and parks the loaded driver in an internal
+  `DriverStore`.
+
+`ext/client/platforms/tui/src/run.rs` calls
+`load_packaged_drivers()` at startup and fans out
+`dispatch_capability` over a static
+`PROVIDED_CAPABILITY_NAMES = &["cell"]` list.
+
+### ABI-mismatch diagnostics carry the package name
+
+When a cdylib's filename matches the package-naming convention,
+both sides surface the offending package name on ABI mismatch:
+
+- Server: `LoadDiagnostic::AbiMismatchAtPackage { package, source }`
+  wraps the inner `ModuleError::IncompatibleVersion`.
+- Client: `LoadError::AbiMismatchAtPackage { package, source }`
+  (single-load API) and
+  `ScanEntryError::AbiMismatchAtPackage { package, source }`
+  (scan API) wrap the inner
+  `ValidationError::AbiVersionMismatch` /
+  `ApiVersionIncompatible` / `SizeOfSelfMismatch`.
+
+### Chain-acceptance proof
+
+Two integration tests prove the chain end-to-end on each side
+against real cdylibs and a synthetic lockfile (no `pkg install`
+needed at test time):
+
+- `apps/server/tests/wave_3a_chain_proof.rs` —
+  `wave_3a_chain_proof_server_side`.
+- `clients/lib/subsys/driver-loader/tests/wave_3a_chain_proof.rs`
+  — `wave_3a_chain_proof_client_side`.
+
+Each test exercises (a) lockfile read, (b) eager-only filter at
+startup, (c-α) dispatcher composition fires the matching lazy
+load, (d) ABI-mismatch enrichment carries the package name. The
+client test also confirms `CapabilityLazyHook::dispatch_capability`
+parks the loaded driver in `DriverStore`.
+
+### Deferred to a follow-up flight
+
+Wave 3a's chain proof is library-level, not bootstrap-level. The
+server-side dispatchers ship as composable units and are unit-
+and integration-tested directly, but bootstrap
+(`apps/server/src/bootstrap.rs`) does not yet register
+`LazyCommandDispatcher` on the `CommandNameIndex` or
+`LazyDomainDispatcher` on the `Server`'s domain-listener path.
+Similarly, the TUI's `PackagedDrivers` bundle is held alive on a
+local binding but not yet threaded into the live render path.
+
+The bootstrap-level hookup is staged for a follow-up flight
+tracked at `tmp/deferral-draft-wave-3a-bootstrap-dispatcher-hookup.md`.
+That flight will rework `apps/server/src/bootstrap.rs`'s
+`ModuleLoader` ownership and the TUI render-path threading and
+ship a bootstrap-level integration test on top of the chain proofs
+landed by Wave 3a.
+
 ## Related documentation
 
 - [docs/user-guide/pkg.md](../user-guide/pkg.md) — end-user workflow.

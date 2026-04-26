@@ -168,8 +168,24 @@ findings remain or I/O error.
 
 `[lazy]` in `pkg.toml` declares trigger events for dependencies;
 matching cdylibs are NOT opened at startup. They open when the
-event fires (a domain opens, an event topic publishes, a capability
-is requested).
+event fires (a command name resolves, a domain registers, or a
+capability is requested at platform startup).
+
+Wave 3a wired the lockfile-driven lazy contract into the live
+loaders. Authoring a `[lazy]` entry with one of three triggers
+gates the cdylib open:
+
+| Trigger | Fires when … | Side |
+|---------|--------------|------|
+| `on-event = "<name>"` | a server command resolves to that name (`:save`, `:write`, …) | server module |
+| `on-domain = "<name>"` | a server session opens a domain with that name | server module |
+| `on-capability = "<name>"` | the client platform's startup fan-out reaches that capability | client driver |
+
+`eager = true` is the explicit opt-out; a package without `[lazy]`
+defaults to eager. Drivers load on the client side; modules load
+on the server side. The lockfile records the resolved trigger as
+a flat string so the runtime tier can read it without depending
+on the manifest crate.
 
 ```toml
 [package]
@@ -207,6 +223,49 @@ startup. The runtime calls `pkg trigger domain text` (programmatic
 equivalent: `reovim_pkg_lazyload::load_triggered`) when a text
 domain opens; `text-helper`'s cdylib is `dlopen`ed at that point,
 not before.
+
+### Trigger semantics today vs the deferred bootstrap hookup
+
+The runtime composition shipped in Wave 3a is library-level. The
+dispatchers (`LazyCommandDispatcher`, `LazyDomainDispatcher`,
+`CapabilityLazyHook`) are constructed and unit/integration tested
+end-to-end against real cdylibs, but the *registration* of those
+dispatchers on the live server's `CommandNameIndex` and
+`Session`'s domain-listener path is staged for a follow-up flight
+that reworks `apps/server/src/bootstrap.rs`'s `ModuleLoader`
+ownership. On the client, the TUI platform runtime calls
+`load_packaged_drivers()` at startup and fans out
+`dispatch_capability` over `PROVIDED_CAPABILITY_NAMES = &["cell"]`,
+but the resulting `DriverStore` is held on a local binding and not
+yet threaded into the live render path.
+
+In other words: today, a host that has run `pkg install` and
+declared a `[lazy]` table will get the eager filter at startup
+(the cdylib is correctly skipped) and the diagnostic surface on
+ABI mismatch (the offending package name is logged). The lazy
+*dispatch* fires from the manual `pkg trigger` CLI today; live
+runtime fan-out lands with the deferred bootstrap-hookup flight.
+
+### ABI-mismatch diagnostics
+
+When a cdylib's `pkg.toml` was built against a different reovim
+version than the host, the loader rejects it before any driver
+function is dispatched. If the cdylib filename follows the
+`libreovim_pkg_<name>.<ext>` convention, the diagnostic carries the
+recovered package name so the user knows which entry needs a
+re-install:
+
+```
+WARN packaged-module load failure
+  error=ABI mismatch in package `wrong-api-module`: \
+        module requires API 4294967295.0, kernel provides 1.0
+```
+
+The rendered text always contains the package name; depending on
+which side surfaced the mismatch (server module vs. client driver)
+the inner cause varies (`IncompatibleVersion` vs.
+`AbiVersionMismatch` / `ApiVersionIncompatible` /
+`SizeOfSelfMismatch`).
 
 ## Library-root layout
 

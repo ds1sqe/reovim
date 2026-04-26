@@ -154,72 +154,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- **#771 Wave 3a (foundation)**: `reovim-pkg-runtime-loader` core crate
-  that resolves `$REOVIM_LIBRARY_ROOT/pkg.lock` and builds the runtime
-  `LazyRegistry`. Consumed by server- and client-side loader wiring in
-  subsequent flights. Also adds a one-line `LazyRegistry::empty()`
-  constructor on `pkg-lazyload` so a missing lockfile yields an empty
-  registry (every package falls through as eager, preserving Wave-2
-  dlopen-everything behavior). New depgraph probe pins the bridge's
-  production deps to the locked set
-  (`pkg-lazyload`, `pkg-lockfile`, `dylib-loader`, `thiserror`,
-  `tracing`) and forbids any `reovim-server*` / `reovim-client-*` /
-  `reovim-subsys-*` / `reovim-ext-*` edge. (#771)
-- **#771 Wave 3a (server)**: server-side runtime loader plumbing for
-  lockfile-aware module loading. New `CommandResolutionListener` trait
-  in `subsys/command` fired by `CommandNameIndex::resolve*` (the
-  `on-event = "<name>"` trigger surface — kernel `EventBus` is left
-  untouched per the kernel-purity policy). New `DomainRegisterListener`
-  trait in `subsys/session` fired by `SessionState::set_domain_driver`
-  (the `on-domain = "<name>"` trigger surface). New
-  `LoaderHandle` (parking_lot::Mutex-wrapped `ModuleLoader`),
-  `LazyCommandDispatcher`, and `LazyDomainDispatcher` concrete
-  listeners in `apps/server`. New
-  `ModuleLoader::from_path_scan_filtered` single-pass eager filter on
-  the existing scan walk. Bootstrap now resolves `$REOVIM_LIBRARY_ROOT`
-  (with `$XDG_DATA_HOME/reovim/` and `$HOME/.local/share/reovim/`
-  fallbacks), runs the eager-filtered scan first, and registers the
-  shared `LazyRegistry` into `ServiceRegistry` via the new
-  `RuntimeLazyRegistry` wrapper. `Server::with_domain_listener` builder
-  threads the domain dispatcher into every newly-created session.
-  **Deferred to a follow-up flight**: the bootstrap-time runtime
-  dispatcher *registration* (attaching the dispatchers to the live
-  `CommandNameIndex` / `Server`). The dispatchers themselves are unit-
-  tested end-to-end against fixture cdylibs; the live wiring requires a
-  refactor of `apps/server/src/bootstrap.rs`'s existing `external`
-  ModuleLoader ownership chain (the `external.take()`-into-tracked-
-  modules path consumes the loader before runtime dispatchers could
-  share it). (#771)
-- **#771 Wave 3a (client)**: client driver loader consults `pkg.lock`
-  at TUI platform startup; only eager driver entries dlopen on
-  bootstrap. Drivers with `on-capability = "<name>"` triggers dlopen
-  via `CapabilityLazyHook::dispatch_capability` in a boot-time
-  fan-out over the platform's static `PROVIDED_CAPABILITY_NAMES`
-  list (TUI declares `&["cell"]`). New
-  `LoadedClientRender::probe_from_path` (header-only check, cdylib
-  unmapped before return) lets the hook disambiguate render-vs-debug
-  cdylibs without committing to a heavy `load_from_path`. New
-  `LoadedClientRender::from_path_scan_filtered` and
-  `LoadedClientDebug::from_path_scan_filtered` are single-pass
-  eager filters sharing the existing scan walk. Web and CLI are
-  intentionally out of scope: Web is a WASM cdylib root with no host
-  filesystem, and the CLI is a pure gRPC client with no local driver
-  layer. The TUI's loaded driver vectors and the lazy hook are held
-  alive at the platform-startup site to keep cdylibs mapped; threading
-  them through into the live render path is a follow-up flight. (#771)
-- **#771 Wave 3a (diagnostics)**: ABI mismatch errors now surface
-  the package name recovered from the cdylib filename.
+- **#771 Wave 3a — runtime loader integration**: server module loader
+  and client driver loader now consult `pkg.lock` at startup. Eager
+  entries dlopen as before; entries with `on-domain` / `on-event`
+  (server) or `on-capability` (client) triggers dlopen on first
+  matching runtime event via `LazyCommandDispatcher` /
+  `LazyDomainDispatcher` (server) and `CapabilityLazyHook` (client).
+  ABI mismatch diagnostics surface the offending package name on
+  both sides via `LoadDiagnostic::AbiMismatchAtPackage` (server) and
   `LoadError::AbiMismatchAtPackage` /
-  `ScanEntryError::AbiMismatchAtPackage` (client) and a new
-  subsys-tier `LoadDiagnostic::AbiMismatchAtPackage`
-  (server, in `reovim-subsys-module-loader`) wrap the original
-  validation failure with the offending package name. The kernel
-  `ModuleError` is unchanged. New
-  `ModuleLoader::from_path_scan_filtered_diag` returns
-  `Vec<Result<ModuleId, LoadDiagnostic>>` for callers that want the
-  enriched output; bootstrap uses it for user-facing logs. The
-  generic helper `enrich_validation_error` in `pkg-runtime-loader`
-  is reused on both sides. (#771)
+  `ScanEntryError::AbiMismatchAtPackage` (client). New
+  `lib/pkg-runtime-loader/` crate plumbs the lockfile read and
+  package-name recovery between both sides; the kernel
+  `ModuleError` is unchanged. Two chain-acceptance integration tests
+  (`apps/server/tests/wave_3a_chain_proof.rs` and
+  `clients/lib/subsys/driver-loader/tests/wave_3a_chain_proof.rs`)
+  prove (a) lockfile read, (b) eager-only filter at startup, (c)
+  dispatcher-composition lazy load, and (d) enriched ABI diagnostic
+  end-to-end against real cdylibs. **Deferred**: bootstrap-level
+  registration of the server-side dispatchers on the live
+  `CommandNameIndex` / `Session` and TUI threading of the loaded
+  `DriverStore` into the render path are staged for a follow-up
+  flight that reworks `apps/server/src/bootstrap.rs`'s `ModuleLoader`
+  ownership. (#771)
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
   `:codecs` lists available codec factories (from
   `ContentCodecFactoryStore::available()`) and active mounts on the
