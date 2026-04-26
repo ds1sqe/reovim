@@ -16,6 +16,7 @@
 //! Policy decisions (which modules to load, what to trust) live in the
 //! bootstrap (app layer). This driver only provides mechanism.
 
+pub mod diagnostic;
 pub mod discovery;
 pub mod handle;
 pub mod loader;

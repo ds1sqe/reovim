@@ -72,7 +72,14 @@ impl LoadedClientDebug {
     /// - `LoadError::DriverPanicked` if `construct` caught a panic.
     pub fn load_from_path(path: &Path) -> Result<Self, LoadError> {
         let lib = Library::open(path).map_err(|e| LoadError::LibraryOpen(e.to_string()))?;
-        Self::validate_and_construct(lib)
+        Self::validate_and_construct(lib).map_err(|err| match err {
+            LoadError::Validation(v) => {
+                reovim_pkg_runtime_loader::enrich_validation_error(path, v, |package, source| {
+                    LoadError::AbiMismatchAtPackage { package, source }
+                })
+            }
+            other => other,
+        })
     }
 
     /// Read the driver's static probe WITHOUT constructing an instance.
@@ -150,7 +157,14 @@ impl LoadedClientDebug {
             .into_iter()
             .filter(|entry| keep(&entry.path))
             .map(|entry| match entry.outcome {
-                Ok(lib) => Self::validate_and_construct(lib).map_err(load_to_scan_error),
+                Ok(lib) => Self::validate_and_construct(lib).map_err(|err| match err {
+                    LoadError::Validation(v) => reovim_pkg_runtime_loader::enrich_validation_error(
+                        &entry.path,
+                        v,
+                        |package, source| ScanEntryError::AbiMismatchAtPackage { package, source },
+                    ),
+                    other => load_to_scan_error(other),
+                }),
                 Err(e) => Err(ScanEntryError::Loader(e)),
             })
             .collect()

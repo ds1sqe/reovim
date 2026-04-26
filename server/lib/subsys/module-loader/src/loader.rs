@@ -312,6 +312,9 @@ impl ModuleLoader {
         // SAFETY: caller's contract on `from_path_scan` is forwarded
         // unchanged to `load_dynamic`.
         unsafe { self.scan_and_load(root, |_| true) }
+            .into_iter()
+            .map(|(_path, result)| result)
+            .collect()
     }
 
     /// Eager-filtered variant of [`Self::from_path_scan`].
@@ -340,6 +343,59 @@ impl ModuleLoader {
                     .is_none_or(|name| !registry.is_lazy(&name))
             })
         }
+        .into_iter()
+        .map(|(_path, result)| result)
+        .collect()
+    }
+
+    /// Diagnostic-enriched variant of [`Self::from_path_scan_filtered`].
+    ///
+    /// Same scan + lazy-filter behaviour, but per-entry
+    /// [`ModuleError::IncompatibleVersion`] failures whose cdylib
+    /// filename matches the reovim package-naming convention are
+    /// re-emitted as
+    /// [`LoadDiagnostic::AbiMismatchAtPackage`](crate::diagnostic::LoadDiagnostic::AbiMismatchAtPackage)
+    /// carrying the recovered package name. Other `ModuleError`
+    /// variants pass through as
+    /// [`LoadDiagnostic::Bare`](crate::diagnostic::LoadDiagnostic::Bare).
+    /// Successes are unchanged.
+    ///
+    /// Bootstrap calls this method so user-facing logs render the
+    /// enriched diagnostic; tests and dev tooling that don't need
+    /// package context keep using [`Self::from_path_scan_filtered`].
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`Self::from_path_scan`].
+    #[allow(unsafe_code)]
+    pub unsafe fn from_path_scan_filtered_diag(
+        &mut self,
+        root: &Path,
+        registry: &reovim_pkg_lazyload::LazyRegistry,
+    ) -> Vec<Result<ModuleId, crate::diagnostic::LoadDiagnostic>> {
+        // SAFETY: same forwarding contract as `from_path_scan_filtered`.
+        unsafe {
+            self.scan_and_load(root, |path| {
+                reovim_pkg_runtime_loader::package_name_for_path(path)
+                    .is_none_or(|name| !registry.is_lazy(&name))
+            })
+        }
+        .into_iter()
+        .map(|(path, result)| match result {
+            Ok(id) => Ok(id),
+            Err(err @ ModuleError::IncompatibleVersion { .. }) => {
+                Err(reovim_pkg_runtime_loader::enrich_validation_error(
+                    &path,
+                    err,
+                    |package, source| crate::diagnostic::LoadDiagnostic::AbiMismatchAtPackage {
+                        package,
+                        source,
+                    },
+                ))
+            }
+            Err(other) => Err(crate::diagnostic::LoadDiagnostic::Bare(other)),
+        })
+        .collect()
     }
 
     /// Single-pass scan + load helper shared by `from_path_scan` and
@@ -357,7 +413,7 @@ impl ModuleLoader {
         &mut self,
         root: &Path,
         keep: impl Fn(&Path) -> bool,
-    ) -> Vec<Result<ModuleId, ModuleError>> {
+    ) -> Vec<(PathBuf, Result<ModuleId, ModuleError>)> {
         use reovim_dylib_loader::{Kind, PathResolverBuilder, scan_paths};
 
         let resolver = PathResolverBuilder::for_kind(Kind::Module)
@@ -369,10 +425,14 @@ impl ModuleLoader {
             .into_entries()
             .into_iter()
             .filter(|entry| keep(&entry.path))
-            .map(|entry| match entry.outcome {
-                // SAFETY: forwarded from the caller of `scan_and_load`.
-                Ok(_lib) => unsafe { self.load_dynamic(&entry.path) },
-                Err(e) => Err(ModuleError::LoadFailed(e.to_string())),
+            .map(|entry| {
+                let path = entry.path.clone();
+                let result = match entry.outcome {
+                    // SAFETY: forwarded from the caller of `scan_and_load`.
+                    Ok(_lib) => unsafe { self.load_dynamic(&entry.path) },
+                    Err(e) => Err(ModuleError::LoadFailed(e.to_string())),
+                };
+                (path, result)
             })
             .collect()
     }

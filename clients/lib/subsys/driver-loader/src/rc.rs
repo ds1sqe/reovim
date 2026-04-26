@@ -112,6 +112,9 @@ pub fn load_to_scan_error(err: LoadError) -> ScanEntryError {
             ScanEntryError::AbiMismatch(ValidationError::VtablePointerNull)
         }
         LoadError::Validation(v) => ScanEntryError::AbiMismatch(v),
+        LoadError::AbiMismatchAtPackage { package, source } => {
+            ScanEntryError::AbiMismatchAtPackage { package, source }
+        }
         LoadError::DriverError(msg) => ScanEntryError::DriverError(msg),
         LoadError::DriverPanicked => ScanEntryError::DriverPanicked,
     }

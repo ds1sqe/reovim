@@ -207,6 +207,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   layer. The TUI's loaded driver vectors and the lazy hook are held
   alive at the platform-startup site to keep cdylibs mapped; threading
   them through into the live render path is a follow-up flight. (#771)
+- **#771 Wave 3a (diagnostics)**: ABI mismatch errors now surface
+  the package name recovered from the cdylib filename.
+  `LoadError::AbiMismatchAtPackage` /
+  `ScanEntryError::AbiMismatchAtPackage` (client) and a new
+  subsys-tier `LoadDiagnostic::AbiMismatchAtPackage`
+  (server, in `reovim-subsys-module-loader`) wrap the original
+  validation failure with the offending package name. The kernel
+  `ModuleError` is unchanged. New
+  `ModuleLoader::from_path_scan_filtered_diag` returns
+  `Vec<Result<ModuleId, LoadDiagnostic>>` for callers that want the
+  enriched output; bootstrap uses it for user-facing logs. The
+  generic helper `enrich_validation_error` in `pkg-runtime-loader`
+  is reused on both sides. (#771)
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
   `:codecs` lists available codec factories (from
   `ContentCodecFactoryStore::available()`) and active mounts on the

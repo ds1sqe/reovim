@@ -230,6 +230,7 @@ members = [
     "tools/driver-abi-poc-construct-err",
     "tools/driver-abi-poc-empty",
     "tools/driver-abi-poc-panic",
+    "tools/driver-abi-poc-wrong-abi",
     "tools/driver-debug-poc",
     "tools/driver-debug-poc-observer-panic",
     "tools/perf-report",
@@ -238,6 +239,7 @@ members = [
     # Test fixtures (cdylib modules for integration testing)
     "server/lib/subsys/module-loader/tests/fixtures/test_module",
     "server/lib/subsys/module-loader/tests/fixtures/sample_module",
+    "server/lib/subsys/module-loader/tests/fixtures/wrong_api_module",
     "clients/tui/tests/fixtures/sample_client_module",
     "clients/lib/driver/tests/fixtures/minimal_client_module",
     "clients/lib/driver/tests/fixtures/incompatible_api_client_module",

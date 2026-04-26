@@ -10,8 +10,9 @@
 //!
 //! Wave 3a's hook is fire-and-forget: a failed probe or construct is
 //! logged at the call site (the platform runtime); the pending-set
-//! still drains so subsequent dispatches don't retry. Sub-plan 04
-//! enriches the `LoadError` with the package name on ABI mismatch.
+//! still drains so subsequent dispatches don't retry. ABI-mismatch
+//! errors surfaced from the underlying `load_from_path` calls carry
+//! the package name via [`LoadError::AbiMismatchAtPackage`].
 
 use std::{
     collections::{HashMap, HashSet},
@@ -91,9 +92,11 @@ impl CapabilityLazyHook {
     /// # Errors
     ///
     /// Returns the LAST `LoadError` encountered while dispatching the
-    /// triggered set. Earlier errors in the same dispatch are dropped
-    /// (sub-plan 04's diagnostic enrichment will surface package
-    /// names so the caller can tell which package failed).
+    /// triggered set. Earlier errors in the same dispatch are dropped;
+    /// the per-package name is preserved in the
+    /// [`LoadError::AbiMismatchAtPackage`] variant via
+    /// [`reovim_pkg_runtime_loader::enrich_validation_error`] so the
+    /// caller can tell which package failed.
     pub fn dispatch_capability(&self, name: &str) -> Result<(), LoadError> {
         let triggered: Vec<String> = names_to_load(&self.registry, &TriggerEvent::Capability(name))
             .into_iter()

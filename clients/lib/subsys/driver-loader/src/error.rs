@@ -14,6 +14,19 @@ pub enum LoadError {
     #[error(transparent)]
     Validation(#[from] ValidationError),
 
+    /// ABI validation failed for a cdylib whose filename matched the
+    /// reovim package-naming convention. The recovered package name is
+    /// surfaced in `Display` so user-facing diagnostics name the
+    /// offending package; the original [`ValidationError`] is retained
+    /// in `#[source]` for callers that want to match on the specific
+    /// mismatch kind.
+    #[error("ABI mismatch in package `{package}`: {source}")]
+    AbiMismatchAtPackage {
+        package: String,
+        #[source]
+        source: ValidationError,
+    },
+
     /// The driver's `construct` slot returned an error; payload is the
     /// driver-allocated message copied into an owned `String` before the
     /// driver's `destroy_error_string` slot freed the source buffer.
@@ -72,6 +85,17 @@ pub enum ScanEntryError {
     /// The cdylib opened but its vtable header failed ABI validation.
     #[error(transparent)]
     AbiMismatch(#[from] ValidationError),
+
+    /// ABI validation failed for a scanned cdylib whose filename
+    /// matched the reovim package-naming convention. The recovered
+    /// package name is surfaced in `Display` so the per-entry
+    /// scan result names the offending package.
+    #[error("ABI mismatch in package `{package}`: {source}")]
+    AbiMismatchAtPackage {
+        package: String,
+        #[source]
+        source: ValidationError,
+    },
 
     /// The driver's `construct` slot returned a non-zero error code.
     #[error("driver returned error: {0}")]

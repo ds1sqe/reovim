@@ -30,6 +30,7 @@ reovim-driver-abi-poc = { path = "../../../../tools/driver-abi-poc", version = "
 reovim-driver-abi-poc-construct-err = { path = "../../../../tools/driver-abi-poc-construct-err", version = "0.15.0-dev" }
 reovim-driver-abi-poc-empty = { path = "../../../../tools/driver-abi-poc-empty", version = "0.15.0-dev" }
 reovim-driver-abi-poc-panic = { path = "../../../../tools/driver-abi-poc-panic", version = "0.15.0-dev" }
+reovim-pkg-wrong-abi-poc = { path = "../../../../tools/driver-abi-poc-wrong-abi", version = "0.15.0-dev" }
 reovim-driver-debug-poc = { path = "../../../../tools/driver-debug-poc", version = "0.15.0-dev" }
 reovim-driver-debug-poc-observer-panic = { path = "../../../../tools/driver-debug-poc-observer-panic", version = "0.15.0-dev" }
 tempfile = "3"

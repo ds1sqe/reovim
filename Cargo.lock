@@ -2553,6 +2553,7 @@ dependencies = [
  "reovim-pkg-lockfile",
  "reovim-pkg-manifest",
  "reovim-pkg-runtime-loader",
+ "reovim-pkg-wrong-abi-poc",
  "tempfile",
  "thiserror 2.0.18",
 ]
@@ -4301,6 +4302,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-pkg-wrong-abi-poc"
+version = "0.15.0-dev"
+dependencies = [
+ "reovim-client-subsys-render",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-pkg-wrong-api-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-protocol"
 version = "0.15.0-dev"
 dependencies = [
@@ -4495,9 +4511,11 @@ dependencies = [
  "reovim-pkg-lazyload",
  "reovim-pkg-lockfile",
  "reovim-pkg-runtime-loader",
+ "reovim-pkg-wrong-api-module",
  "serde",
  "sha2",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "toml 0.8.23",
  "tracing",

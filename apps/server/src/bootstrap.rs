@@ -1204,9 +1204,12 @@ fn load_packaged_modules(loader: &mut ModuleLoader) {
 
     // SAFETY: every cdylib under `<library_root>/modules/` was placed
     // by `pkg install` and is treated as ABI-compatible.
-    let results = unsafe { loader.from_path_scan_filtered(&library_root, &registry) };
+    let results = unsafe { loader.from_path_scan_filtered_diag(&library_root, &registry) };
     let ok_count = results.iter().filter(|r| r.is_ok()).count();
     let failed = results.len() - ok_count;
+    for diag in results.iter().filter_map(|r| r.as_ref().err()) {
+        tracing::warn!(error = %diag, "packaged-module load failure");
+    }
     tracing::info!(
         library_root = %library_root.display(),
         eager_loaded = ok_count,

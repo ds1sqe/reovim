@@ -18,6 +18,7 @@
 #![forbid(missing_docs)]
 
 mod config;
+mod diagnostic;
 mod error;
 mod package_lookup;
 mod registry_load;
@@ -25,6 +26,7 @@ mod registry_load;
 pub use {
     crate::{
         config::{RuntimeLoaderConfig, resolve_library_root},
+        diagnostic::enrich_validation_error,
         error::RuntimeLoaderError,
         package_lookup::package_name_for_path,
         registry_load::{load_registry, lockfile_path},

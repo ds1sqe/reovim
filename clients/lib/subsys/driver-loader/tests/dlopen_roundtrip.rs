@@ -197,6 +197,7 @@ fn from_path_scan_stages_all_four_poc_cdylibs_and_surfaces_per_entry_results() {
         .map(|e| match e {
             ScanEntryError::Loader(_) => "Loader",
             ScanEntryError::AbiMismatch(_) => "AbiMismatch",
+            ScanEntryError::AbiMismatchAtPackage { .. } => "AbiMismatchAtPackage",
             ScanEntryError::DriverError(_) => "DriverError",
             ScanEntryError::DriverPanicked => "DriverPanicked",
         })
