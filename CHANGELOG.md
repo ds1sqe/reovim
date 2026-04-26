@@ -69,8 +69,95 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     `reovim-driver-display`.
   - **#753** — client-foundation resumption (lands the first concrete
     `ClientRender` implementor on top of #769's foundation).
+
+### Changed
+
+- **#737 Codec Hot-Attach — Phase 4: `:e` routed through shared
+  helper.** `EditCommand::execute()`'s small-file path now delegates
+  classify+decode+fallback to `decode_file_bytes()` from
+  `reovim-subsys-content-codec` instead of an in-module copy of the
+  same logic. The `mount_decoded` round-trip metadata step stays in
+  `edit.rs` because `CodecSessionState` is session-side, not
+  subsys-side. Behavioural drift: UTF-8-classified files no longer
+  mount UTF-8 metadata (mount was a no-op for plain UTF-8 anyway
+  since `inode.bytes` round-trips directly). Files exceeding the
+  64 MiB cap now return `Err("File too large; ...")` instead of
+  loading silently. (#737)
+
+### Tests
+
+- **#737 Codec Hot-Attach — Phase 8: real-codec integration coverage
+  for the codec hot-attach chain.** Adds
+  `ext/server/modules/commands/src/codec_chain_tests.rs` with four
+  tests that exercise the chain through the production
+  `BinaryStructCodecFactory` / `ElfClassifier` / `HexCodecFactory`
+  rather than stub factories: the `:e` ELF path emits the real
+  `ELF Binary Summary` header, `:mount hex` → `:umount` round-trips
+  cleanly, `decode_file_bytes` itself routes through the real
+  classifier+factory, and the UTF-8 fallback returns literal bytes
+  when no codec applies. Wires the codec impl crates as
+  `[dev-dependencies]` only — production code in
+  `reovim-module-commands` gains no codec-impl coupling. (#737)
+
 ### Added
 
+- **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**
+  `:codecs` lists available codec factories (from
+  `ContentCodecFactoryStore::available()`) and active mounts on the
+  active buffer (from `CodecSessionState::list_mounts()`). Output is
+  emitted via `tracing::info!` on the stable target `codecs` —
+  user-visible TUI display is deferred to a follow-on flight that
+  adds a `RuntimeSignal::Message` (or equivalent) command-output
+  API. The `reovim cli log-tail --target codecs` path picks up the
+  listing today. (#737)
+- **#737 Codec Hot-Attach — Phase 6: `:umount` ex-command.** Users
+  can remove a codec mount from the active buffer with `:umount`
+  (most-recent mount, by max `MountId`) or `:umount <mount_id>`
+  (specific mount). The command bridges
+  `CodecSessionState::unmount_codec`. Zero-valued mount ids surface
+  an explicit error to guard against the `NonZeroU64` panic. The
+  `:mount` command was also updated to call `set_active_view`
+  after registration so mounts created via `:mount` are findable
+  by `:umount` (the prior implementation set up the inode but not
+  the active-view binding `unmount_codec` scans). (#737)
+- **#737 Codec Hot-Attach — Phase 5: `:mount` ex-command.** Users can
+  manually mount a content codec on the active buffer with `:mount
+  <content_type>` (or shorthand `:mount hex|elf|rlib|zip|pdf`). The
+  command resolves the shorthand against a small constant table,
+  loads canonical bytes from VFS if the buffer's inode is empty, and
+  registers the mount via `CodecSessionState::mount_codec`. The
+  decoded view becomes active on the next render frame. Always
+  mounts in `Summary` mode; structural-edit mode lands in a
+  follow-on phase. (#737)
+- **#737 Codec Hot-Attach — Phase 3: picker-files routed through codec
+  pipeline.** File picker's `open_file()` now decodes via
+  `decode_file_bytes()` instead of `read_to_string()`. Binary files
+  open via the codec when classifier+factory stores are registered;
+  missing stores fall through to a direct UTF-8 conversion. Oversized
+  files (over the 64 MiB cap) and non-UTF-8 fallback failures log a
+  `tracing::warn!` and skip the buffer-create instead of silently
+  loading an empty buffer (the prior behaviour). The buffer-reuse
+  short-circuit is preserved so re-opened files don't re-run the
+  codec pipeline. (#737)
+- **#737 Codec Hot-Attach — Phase 2: explorer routed through codec
+  pipeline.** Explorer's `Open` command now decodes via
+  `decode_file_bytes()` instead of `String::from_utf8_lossy()`. Binary
+  files open via the codec when classifier+factory stores are
+  registered; missing stores or unmatched bytes fall through to a
+  UTF-8 conversion that preserves the legacy explorer behaviour. Files
+  over the 64 MiB cap surface a `File too large; use :e` message;
+  non-UTF-8 fallback surfaces a `Cannot decode … not valid UTF-8`
+  message. Both error paths leave the explorer open and do not create
+  a buffer. (#737)
+- **#737 Codec Hot-Attach — Phase 1: shared file-open helper.** New
+  `decode_file_bytes()` pure function in `reovim-subsys-content-codec`
+  drives raw bytes through the classifier and factory stores to a
+  decoded `String` plus an optional `ContentType` tag. The helper
+  forwards a `filename` argument to extension-aware classifiers and
+  falls back to UTF-8 on any classifier/factory/codec miss. Two error
+  variants: `TooLarge` (over the 64 MiB cap) and `NotUtf8` (fallback
+  failed). Phases 2-7 will route the explorer, picker-files, and `:e`
+  through this helper. (#737)
 - **#770 Debug Surface — Phase 4: Docs**: User guide
   `docs/user-guide/debug-surface.md` and architecture doc
   `docs/architecture/debug-surface.md` covering CLI verbs, ABI, registry,

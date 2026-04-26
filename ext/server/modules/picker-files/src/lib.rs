@@ -19,6 +19,9 @@ use {
     },
     reovim_driver_text_session::{BufferApi, WindowApi},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_subsys_content_codec::{
+        ContentClassifierStore, ContentCodecFactoryStore, FileOpenError, decode_file_bytes,
+    },
     reovim_subsys_vfs::VfsInstance,
 };
 
@@ -163,7 +166,9 @@ pub fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let path_str = canonical.to_string_lossy();
 
-    // Find existing buffer with this file path.
+    // Buffer-reuse short-circuit: an existing buffer for this path is
+    // re-activated without re-running the codec pipeline. Codec-driven
+    // reopening is the `:mount` command's concern, not the picker's.
     let existing = runtime.kernel().buffers.list().into_iter().find(|&id| {
         runtime
             .buffer_file_path(id)
@@ -171,17 +176,58 @@ pub fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
     });
 
     let is_new = existing.is_none();
-    let buf_id = existing.unwrap_or_else(|| {
-        let content = runtime
-            .kernel()
-            .services
-            .get::<VfsInstance>()
-            .and_then(|vfs| vfs.driver().read_to_string(&canonical).ok())
-            .unwrap_or_default();
-        let id = runtime.create_buffer(Some(&path_str), &content);
+    let buf_id = if let Some(id) = existing {
+        id
+    } else {
+        let Some(vfs) = runtime.kernel().services.get::<VfsInstance>() else {
+            tracing::warn!(
+                "picker-files: VFS not available; skipping open of {}",
+                canonical.display()
+            );
+            return;
+        };
+        let bytes = match vfs.driver().read(&canonical) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("picker-files: VFS read failed for {}: {e}", canonical.display());
+                return;
+            }
+        };
+        let decode_result = {
+            let services = &runtime.kernel().services;
+            let class = services.get::<ContentClassifierStore>();
+            let fact = services.get::<ContentCodecFactoryStore>();
+            if let (Some(class), Some(fact)) = (&class, &fact) {
+                decode_file_bytes(&bytes, &path_str, class, fact)
+            } else {
+                String::from_utf8(bytes)
+                    .map(|s| (s, None))
+                    .map_err(|err| FileOpenError::NotUtf8 {
+                        offset: err.utf8_error().valid_up_to(),
+                    })
+            }
+        };
+        let text = match decode_result {
+            Ok((text, _content_type)) => text,
+            Err(FileOpenError::TooLarge { len, .. }) => {
+                tracing::warn!(
+                    "picker-files: file too large ({len} bytes); use :e to open via the streaming path: {}",
+                    canonical.display()
+                );
+                return;
+            }
+            Err(FileOpenError::NotUtf8 { offset }) => {
+                tracing::warn!(
+                    "picker-files: cannot decode {} (not valid UTF-8 at offset {offset})",
+                    canonical.display()
+                );
+                return;
+            }
+        };
+        let id = runtime.create_buffer(Some(&path_str), &text);
         runtime.set_buffer_modified(id, false);
         id
-    });
+    };
 
     if let Some(win) = runtime.active_window() {
         let _ = runtime.set_window_buffer(win, buf_id);

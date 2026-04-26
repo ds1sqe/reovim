@@ -14,13 +14,25 @@
 //! - `:kill-server` - Kill the server
 
 mod buffer;
+mod codecs;
 mod colorscheme;
 mod edit;
+mod mount;
 mod quit;
 mod session;
 mod set;
 mod substitute;
+mod umount;
 mod write;
+
+#[cfg(test)]
+mod codec_chain_tests;
+#[cfg(test)]
+mod codecs_tests;
+#[cfg(test)]
+mod mount_tests;
+#[cfg(test)]
+mod umount_tests;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore},
@@ -29,12 +41,15 @@ use {
 
 pub use {
     buffer::{BdeleteCommand, BnextCommand, BpreviousCommand, QuitAllCommand},
+    codecs::CodecsCommand,
     colorscheme::ColorschemeCommand,
     edit::EditCommand,
+    mount::MountCommand,
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
     set::SetCommand,
     substitute::SubstituteCommand,
+    umount::UmountCommand,
     write::{WriteCommand, WriteQuitCommand},
 };
 
@@ -43,6 +58,9 @@ pub use {
 pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
     let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
         Box::new(EditCommand),
+        Box::new(MountCommand),
+        Box::new(UmountCommand),
+        Box::new(CodecsCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),

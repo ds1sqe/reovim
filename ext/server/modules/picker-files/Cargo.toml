@@ -17,9 +17,11 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 reovim-kernel = { workspace = true }
 reovim-driver-picker = { workspace = true }
 reovim-driver-text-session = { workspace = true }
+reovim-subsys-content-codec = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-module-macros = { workspace = true }
 ignore = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

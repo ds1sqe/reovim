@@ -20,6 +20,7 @@ reovim-kernel = { workspace = true }
 reovim-driver-text-session = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-subsys-command-types = { workspace = true }
+reovim-subsys-content-codec = { workspace = true }
 reovim-driver-text-input = { workspace = true }
 reovim-subsys-vfs = { workspace = true }
 reovim-module-macros = { workspace = true }

@@ -5,7 +5,7 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_content_codec::{ContentClassifierStore, ContentCodecFactoryStore, ContentType},
+    reovim_content_codec::{ContentClassifierStore, ContentCodecFactoryStore},
     reovim_content_codec_text::CodecSessionState,
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
@@ -13,6 +13,7 @@ use {
     reovim_driver_text_session::{BufferApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::FileOpened},
     reovim_provider_text::VirtualBuffer,
+    reovim_subsys_content_codec::{FileOpenError, MAX_FILE_SIZE, decode_file_bytes},
     reovim_subsys_vfs::{FileMapping, VfsDriver},
 };
 
@@ -359,60 +360,69 @@ fn decode_file_content(
         .active_buffer()
         .ok_or_else(|| "no active buffer".to_string())?;
 
-    // Try to use the codec pipeline
+    // Defense-in-depth: production callers route >64 MiB through
+    // `open_large_file` / `open_large_binary`, but the wrapper enforces
+    // the same cap so the bypass path (no codec stores registered) cannot
+    // load arbitrarily large files into memory.
+    if bytes.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File too large ({} bytes, limit {MAX_FILE_SIZE}); use the streaming path",
+            bytes.len()
+        ));
+    }
+
     let services = &runtime.kernel().services;
     let classifier_store = services.get::<ContentClassifierStore>();
     let factory_store = services.get::<ContentCodecFactoryStore>();
 
-    if let (Some(classifiers), Some(factories)) = (classifier_store, factory_store) {
-        // Classify the content type (None = treat as UTF-8 fallback)
-        let content_type = classifiers
-            .classify(bytes, filename)
-            .unwrap_or_else(|| ContentType::new(ContentType::UTF8));
+    let Some(factories) = factory_store else {
+        // No factory store: nothing to mount; direct UTF-8 fallback.
+        return utf8_fallback(bytes);
+    };
+    let Some(classifiers) = classifier_store else {
+        return utf8_fallback(bytes);
+    };
 
-        // Find and create the codec
-        if let Some(codec) = factories.find(&content_type) {
-            match codec.decode(bytes) {
-                Ok(result) => {
-                    if result.truncated {
-                        tracing::warn!(
-                            filename,
-                            "File content was truncated by codec (see buffer for details)"
-                        );
-                    }
-
-                    let content = result.content;
-
-                    // Store metadata + canonical inode bytes in shared extensions
-                    // (per-buffer, not per-client) for round-trip save and view switching.
-                    // Use `.map()` instead of `if let Some` to avoid an untestable
-                    // MC/DC branch on the pattern match.
-                    let metadata = result.metadata;
-                    let source_bytes = bytes.to_vec();
-                    let _ = runtime
-                        .shared_ext_mut::<CodecSessionState>()
-                        .map(|codec_state| {
-                            codec_state.mount_decoded(
-                                buffer_id,
-                                metadata,
-                                "default".to_string(),
-                                source_bytes,
-                                codec,
-                            );
-                        });
-
-                    return Ok(content);
-                }
-                Err(e) => {
+    match decode_file_bytes(bytes, filename, &classifiers, &factories) {
+        Ok((content, Some(content_type))) => {
+            // Second decode to obtain DecodeResult.metadata for mount_decoded;
+            // the shared helper returns text+content_type only.
+            if let Some(codec) = factories.find(&content_type)
+                && let Ok(result) = codec.decode(bytes)
+            {
+                if result.truncated {
                     tracing::warn!(
-                        "Codec decode failed for {filename}: {e}, falling back to UTF-8"
+                        filename,
+                        "File content was truncated by codec (see buffer for details)"
                     );
                 }
+                let metadata = result.metadata;
+                let source_bytes = bytes.to_vec();
+                let _ = runtime
+                    .shared_ext_mut::<CodecSessionState>()
+                    .map(|codec_state| {
+                        codec_state.mount_decoded(
+                            buffer_id,
+                            metadata,
+                            "default".to_string(),
+                            source_bytes,
+                            codec,
+                        );
+                    });
             }
+            Ok(content)
+        }
+        Ok((content, None)) => Ok(content),
+        Err(FileOpenError::NotUtf8 { offset }) => {
+            Err(format!("File is not valid UTF-8 (invalid byte at offset {offset})"))
+        }
+        Err(FileOpenError::TooLarge { len, limit }) => {
+            Err(format!("File too large ({len} bytes, limit {limit}); use the streaming path"))
         }
     }
+}
 
-    // Graceful fallback: no codec module loaded or codec not found
+fn utf8_fallback(bytes: &[u8]) -> Result<String, String> {
     String::from_utf8(bytes.to_vec()).map_err(|e| {
         let offset = e.utf8_error().valid_up_to();
         format!("File is not valid UTF-8 (invalid byte at offset {offset})")

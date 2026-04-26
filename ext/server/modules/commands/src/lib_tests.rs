@@ -7,7 +7,7 @@ use {super::*, reovim_driver_command::Command};
 #[test]
 fn test_command_handlers_count() {
     let cmds = command_handlers();
-    assert_eq!(cmds.len(), 14); // 7 base + 3 session + 4 buffer commands
+    assert_eq!(cmds.len(), 17); // 10 base (incl. mount + umount + codecs) + 3 session + 4 buffer
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn test_module_init_registers_commands() {
 
     // Verify commands were registered in the CommandHandlerStore
     let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-    assert_eq!(store.len(), 14);
+    assert_eq!(store.len(), 17);
 }
 
 #[test]
@@ -148,5 +148,5 @@ fn test_module_init_idempotent_stores_accumulate() {
     module.init(&ctx);
 
     let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-    assert_eq!(store.len(), 28); // 14 + 14
+    assert_eq!(store.len(), 34); // 17 + 17
 }

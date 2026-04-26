@@ -3325,6 +3325,8 @@ dependencies = [
  "regex",
  "reovim-arch",
  "reovim-content-codec",
+ "reovim-content-codec-binary-struct",
+ "reovim-content-codec-hex",
  "reovim-content-codec-text",
  "reovim-domain-text",
  "reovim-driver-command",
@@ -3335,6 +3337,7 @@ dependencies = [
  "reovim-provider-text",
  "reovim-subsys-command",
  "reovim-subsys-command-types",
+ "reovim-subsys-content-codec",
  "reovim-subsys-layout",
  "reovim-subsys-vfs",
  "tempfile",
@@ -3438,6 +3441,7 @@ dependencies = [
  "reovim-module-vim",
  "reovim-protocol",
  "reovim-subsys-command-types",
+ "reovim-subsys-content-codec",
  "reovim-subsys-vfs",
  "reovim-testing",
  "serde_json",
@@ -4105,8 +4109,10 @@ dependencies = [
  "reovim-driver-text-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-subsys-content-codec",
  "reovim-subsys-vfs",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
