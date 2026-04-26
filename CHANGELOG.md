@@ -61,6 +61,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   64 MiB cap now return `Err("File too large; ...")` instead of
   loading silently. (#737)
 
+### Tests
+
+- **#737 Codec Hot-Attach — Phase 8: real-codec integration coverage
+  for the codec hot-attach chain.** Adds
+  `ext/server/modules/commands/src/codec_chain_tests.rs` with four
+  tests that exercise the chain through the production
+  `BinaryStructCodecFactory` / `ElfClassifier` / `HexCodecFactory`
+  rather than stub factories: the `:e` ELF path emits the real
+  `ELF Binary Summary` header, `:mount hex` → `:umount` round-trips
+  cleanly, `decode_file_bytes` itself routes through the real
+  classifier+factory, and the UTF-8 fallback returns literal bytes
+  when no codec applies. Wires the codec impl crates as
+  `[dev-dependencies]` only — production code in
+  `reovim-module-commands` gains no codec-impl coupling. (#737)
+
 ### Added
 
 - **#737 Codec Hot-Attach — Phase 7: `:codecs` list command.**

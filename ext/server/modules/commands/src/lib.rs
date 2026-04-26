@@ -26,6 +26,8 @@ mod umount;
 mod write;
 
 #[cfg(test)]
+mod codec_chain_tests;
+#[cfg(test)]
 mod codecs_tests;
 #[cfg(test)]
 mod mount_tests;

@@ -34,6 +34,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-subsys-layout = { workspace = true }
+reovim-content-codec-binary-struct = { workspace = true }
+reovim-content-codec-hex = { workspace = true }
 tempfile = "3"
 
 [lints]

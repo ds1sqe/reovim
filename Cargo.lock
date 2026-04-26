@@ -3314,6 +3314,8 @@ dependencies = [
  "regex",
  "reovim-arch",
  "reovim-content-codec",
+ "reovim-content-codec-binary-struct",
+ "reovim-content-codec-hex",
  "reovim-content-codec-text",
  "reovim-domain-text",
  "reovim-driver-command",
