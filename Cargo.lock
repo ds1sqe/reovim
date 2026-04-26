@@ -2308,7 +2308,6 @@ dependencies = [
  "reovim-domain-text",
  "reovim-driver-command",
  "reovim-driver-display-registry",
- "reovim-driver-net-grpc",
  "reovim-driver-text-buffer",
  "reovim-driver-text-input",
  "reovim-driver-text-session",
@@ -3017,24 +3016,31 @@ dependencies = [
 name = "reovim-driver-macros"
 version = "0.15.0-dev"
 dependencies = [
+ "async-trait",
  "proc-macro2",
  "quote",
  "reovim-client-subsys-debug",
  "reovim-client-subsys-render",
+ "reovim-subsys-net",
  "syn",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
 name = "reovim-driver-net-grpc"
 version = "0.15.0-dev"
 dependencies = [
- "arc-swap",
  "async-trait",
+ "http",
+ "libc",
+ "reovim-driver-macros",
  "reovim-subsys-net",
  "tokio",
  "tokio-stream",
  "tonic",
  "tonic-web",
+ "tower 0.5.3",
  "tower-http 0.5.2",
 ]
 
@@ -4319,6 +4325,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-web",
+ "tower 0.5.3",
  "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",
@@ -4362,6 +4369,25 @@ name = "reovim-subsys-coordination"
 version = "0.15.0-dev"
 dependencies = [
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-subsys-driver-loader"
+version = "0.15.0-dev"
+dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "libc",
+ "reovim-driver-net-grpc",
+ "reovim-dylib-loader",
+ "reovim-kernel",
+ "reovim-subsys-net",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic",
+ "tower 0.5.3",
 ]
 
 [[package]]
@@ -4435,10 +4461,14 @@ dependencies = [
 name = "reovim-subsys-net"
 version = "0.15.0-dev"
 dependencies = [
- "arc-swap",
  "async-trait",
+ "bytes",
+ "http",
+ "http-body-util",
+ "reovim-kernel",
  "tokio",
  "tonic",
+ "tower 0.5.3",
 ]
 
 [[package]]

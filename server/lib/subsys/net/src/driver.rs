@@ -2,51 +2,70 @@
 //!
 //! Subsys-net exposes a single async lifecycle trait for the gRPC
 //! transport. Drivers (under `ext/server/drivers/net-grpc/`) implement
-//! `serve` by consuming a prepared `tonic::transport::server::Router`
-//! and driving it against a listener derived from the `TransportConfig`.
+//! `serve`; the host (`server/lib/server/`) hands them a list of
+//! pre-built [`ServiceDescriptor`]s plus file-descriptor-shaped
+//! shutdown / bind-ready signals plus a host-owned `AtomicU16` slot
+//! for the bound port.
 //!
-//! The shape is deliberately minimal: construction + serve + a
-//! shared bind-address handle for the composition root to read the
-//! OS-assigned port back.
+//! The trait is FFI-routable: every cross-process type is `#[repr(C)]`
+//! or a stable opaque pointer (see [`crate::abi`]). Cdylib drivers
+//! export the canonical `REOVIM_NET_GRPC_DRIVER_VTABLE` symbol via
+//! the `declare_net_grpc_driver!` macro.
 
 use {
-    crate::{NetError, TransportConfig},
-    arc_swap::ArcSwapOption,
-    std::{future::Future, net::SocketAddr, pin::Pin, sync::Arc},
+    crate::{ServiceDescriptor, TransportConfig, abi::ShutdownFd, error::NetError},
+    std::sync::atomic::AtomicU16,
 };
-
-/// Shutdown future type alias used by `GrpcServerDriver::serve`.
-///
-/// Pinned + boxed + `Send` so the trait is object-safe when the
-/// shutdown source is heterogeneous (Ctrl-C, oneshot channel, etc.).
-pub type ShutdownSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Async server-driver lifecycle for the gRPC transport.
 ///
+/// The composition root constructs `descriptors` from its 12
+/// `<X>ServiceImpl` instances, allocates a host-owned `AtomicU16` for
+/// the bound port (`Box::leak(Box::new(AtomicU16::new(0)))`), and
+/// creates two file descriptors via `eventfd(2)` (Linux) or
+/// `pipe2(2)` (other Unix): one for shutdown, one for bind-ready
+/// signalling.
+///
 /// ```text
-///           bind_handle() -> clone Arc<ArcSwapOption<SocketAddr>>
-///               │
-///               ▼
-/// driver = Box::new(GrpcServerDriverImpl::new())
-///               │
-///               ▼
-/// driver.serve(config, router, shutdown) ────► listener.bind / router.serve_with_incoming
-///               ▲                                      │
-///               │                                      ▼
-/// bind_handle filled after bind                  Ok(()) / Err(NetError)
+/// host:                            driver:
+///   build_service_descriptors()      |
+///       │                            |
+///       ▼                            |
+///   Box::leak(AtomicU16)             |
+///       │                            |
+///       ▼                            |
+///   driver.serve(config, descs,      |
+///                shutdown_fd,        |
+///                bind_ready_fd,      |
+///                port_writeback)  ─► bind listener
+///                                 ─► port_writeback.store(port)
+///                                 ─► write 1u8 to bind_ready_fd
+///                                 ─► serve until shutdown_fd readable
+///                                    │
+///       ◄──────────────────────────  Ok(()) / Err(NetError)
 /// ```
 ///
-/// Callers obtain the bind-handle BEFORE calling `serve` (serve
-/// consumes the box). The driver internally writes the bound
-/// `SocketAddr` into the handle once the listener is live and
-/// before the first request is accepted.
+/// Cdylib lifecycle (cdylib loader path):
+/// the host's `LoadedNetGrpc` wrapper translates each
+/// `ServiceDescriptor` into an `FfiServiceDescriptor` (handle +
+/// dispatch trampoline + destroy callback) and calls into the
+/// driver's vtable `serve` slot. The driver builds the tonic Router
+/// from typed wrapper types (one per stable `reovim.v3.<X>Service`
+/// name; see SP02 Phase 1 §C) and serves it.
 #[async_trait::async_trait]
 pub trait GrpcServerDriver: Send + Sync + 'static {
-    /// Start serving `router` on a listener derived from `config`.
+    /// Start serving the configured transport with the supplied
+    /// service descriptors.
     ///
-    /// Consumes the driver box — the serve future owns the driver
-    /// for its lifetime. Returns when the shutdown future resolves
-    /// (if provided) or when a fatal transport error occurs.
+    /// Borrows the driver — the host owns the `Box<dyn
+    /// GrpcServerDriver>` and is responsible for dropping it after
+    /// `serve` returns. (Borrow rather than consume because the FFI
+    /// trampoline path needs to call `destroy` on the driver instance
+    /// after `serve` completes; consuming `Box<Self>` here would
+    /// risk double-free.)
+    ///
+    /// Returns when `shutdown_fd` becomes readable or when a fatal
+    /// transport error occurs.
     ///
     /// # Errors
     /// - [`NetError::UnsupportedTransport`] when `config` asks for a
@@ -54,20 +73,13 @@ pub trait GrpcServerDriver: Send + Sync + 'static {
     /// - [`NetError::BindFailed`] on listener bind failure.
     /// - [`NetError::ServeFailed`] on tonic serve failure.
     async fn serve(
-        self: Box<Self>,
+        &self,
         config: TransportConfig,
-        router: tonic::transport::server::Router,
-        shutdown: Option<ShutdownSignal>,
+        descriptors: Vec<ServiceDescriptor>,
+        shutdown_fd: ShutdownFd,
+        bind_ready_fd: ShutdownFd,
+        port_writeback: &'static AtomicU16,
     ) -> Result<(), NetError>;
-
-    /// Clone of the shared bind-address handle.
-    ///
-    /// The composition root calls this BEFORE `serve` to retain a
-    /// handle; after serve begins, the driver writes the bound
-    /// `SocketAddr` into the inner `ArcSwap`. `None` means the
-    /// listener has not yet bound (pre-bind) or the driver does not
-    /// publish an address (e.g. Unix socket path already known).
-    fn bind_handle(&self) -> Arc<ArcSwapOption<SocketAddr>>;
 }
 
 #[cfg(test)]

@@ -13,18 +13,28 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Contract-only deps. The subsys expresses the gRPC server-driver
-# lifecycle; it does NOT implement it.
-#
-# `tonic` is kept on purpose — `GrpcServerDriver::serve` takes a
-# `tonic::transport::server::Router` parameter. The subsys is
-# intentionally tonic-shaped; driver implementations under
-# `ext/server/drivers/net-*/` pair with it. Do not strip this dep
-# thinking it is accidental coupling.
+# `tonic` is kept on purpose post-#774-SP02 — the trait no longer
+# exposes a tonic Router, but `ServiceDescriptor` wraps a
+# `tower::util::BoxCloneService` whose body type comes from
+# `tonic::body::BoxBody`. Drivers under `ext/server/drivers/net-*/`
+# pair with this crate.
 tonic = { workspace = true }
 
+# Tower for `BoxCloneService`. The `util` feature exposes the
+# type-erased combinator used by `ServiceDescriptor`.
+tower = { version = "0.5.3", features = ["util"] }
+
+# `http` for `Request` / `Response` envelope types in
+# `ServiceDescriptor`.
+http = "1.4.0"
+
+# Kernel for `Version` (`#[repr(C)]` semver). Subsys depends on
+# kernel per the architecture DAG (kernel ← subsys ← drivers).
+reovim-kernel = { workspace = true }
+
 async-trait = { workspace = true }
-arc-swap = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+http-body-util = "0.1.3"
+bytes = "1.11.1"

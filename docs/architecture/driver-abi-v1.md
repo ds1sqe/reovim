@@ -35,7 +35,7 @@ contract for, and which have shipped cdylib implementations.
 | Kind | Spec coverage | cdylib shipped? | Tracker |
 |---|---|---|---|
 | `client_render` | Full — vtable shape, version constants, PoC macro at `uapi/driver-macros/src/client_render.rs`, ABI types at `clients/lib/subsys/render/src/abi.rs` | No (concrete implementor deferred) | #753 |
-| `net_grpc` (server) | Vtable shape described in §4; trait redesign for FFI-routability pending | No | #774 |
+| `net_grpc` (server) | Full — vtable layout in §13.5, ABI types at `server/lib/subsys/net/src/abi.rs`, host loader at `server/lib/subsys/driver-loader/`, codegen macro at `uapi/driver-macros/src/net_grpc.rs` | Yes | landed in #774 sub-plan 02 |
 | `command` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
 | `text_session` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
 | `text_syntax` (server) | Vtable shape described in §4; trait redesign pending | No | #774 |
@@ -111,6 +111,10 @@ Every driver kind exposes at least:
 - `construct(platform, out_instance, out_err) -> c_int` — create an
   instance.
 - `shutdown(instance, out_err) -> c_int` — drain outstanding work.
+  **Must be idempotent.** Host safe-wrappers call `shutdown` from `Drop`
+  unconditionally regardless of prior shutdown state; a driver whose
+  serve loop already shut down internally must treat repeat invocations
+  as a no-op success (return 0).
 - `destroy(instance)` — free the instance. Infallible.
 - `destroy_error_string(ptr)` — free a driver-allocated error string.
   See §6.
@@ -338,6 +342,115 @@ pub struct RenderTargetVTable {
                       ) -> c_int,
 }
 ```
+
+## 13.5. Reference — net-grpc vtable layout
+
+The net-grpc server driver inverts tonic's Router construction. The
+host builds a `Vec<ServiceDescriptor>` (one per gRPC service) and
+hands it to the driver; the driver builds the tonic Router inside its
+own runtime and serves until the host signals shutdown via a
+file-descriptor.
+
+```rust
+#[repr(C)]
+pub struct NetGrpcVTable {
+    pub abi_version:         u32,
+    pub api_version:         Version,
+    pub size_of_self:        usize,
+    pub probe:               unsafe extern "C" fn() -> NetGrpcDriverProbe,
+    pub construct:           unsafe extern "C" fn(
+                                 out_instance: *mut *mut c_void,
+                                 out_err:      *mut *mut c_char,
+                             ) -> c_int,
+    pub serve:               unsafe extern "C" fn(
+                                 instance:        *mut c_void,
+                                 config:          *const FfiTransportConfig,
+                                 descriptors_ptr: *const FfiServiceDescriptor,
+                                 descriptors_len: usize,
+                                 shutdown_fd:     ShutdownFd,
+                                 bind_ready_fd:   ShutdownFd,
+                                 port_writeback:  *const AtomicU16,
+                                 out_err:         *mut *mut c_char,
+                             ) -> c_int,
+    pub shutdown:            unsafe extern "C" fn(
+                                 instance: *mut c_void,
+                                 out_err:  *mut *mut c_char,
+                             ) -> c_int,
+    pub destroy:             unsafe extern "C" fn(instance: *mut c_void),
+    pub destroy_error_string: unsafe extern "C" fn(ptr: *mut c_char),
+}
+
+#[repr(C)]
+pub struct NetGrpcDriverProbe {
+    pub kind: [u8; 64],   // b"net_grpc\0..."
+    pub name: [u8; 128],  // human-readable (e.g. b"reovim-driver-net-grpc\0...")
+}
+
+#[repr(C)]
+pub struct FfiTransportConfig {
+    pub kind:            u8,            // 0=Tcp, 1=UnixSocket, 2=Stdio (rejected)
+    pub host_ptr:        *const c_char, // populated when kind == 0
+    pub host_len:        usize,
+    pub port:            u16,
+    pub path_ptr:        *const c_char, // populated when kind == 1
+    pub path_len:        usize,
+    pub enable_grpc_web: u8,            // 0|1
+}
+
+#[repr(C)]
+pub struct FfiServiceDescriptor {
+    pub service_name_ptr: *const c_char, // diagnostic only
+    pub service_name_len: usize,
+    pub handle:           *mut c_void,   // host-owned BoxCloneService
+    pub dispatch_call:    unsafe extern "C" fn(
+                              handle:      *mut c_void,
+                              req_bytes:   *const u8,
+                              req_len:     usize,
+                              ctx:         *mut c_void,
+                              complete_cb: unsafe extern "C" fn(
+                                               ctx:        *mut c_void,
+                                               status:     c_int,
+                                               resp_bytes: *const u8,
+                                               resp_len:   usize,
+                                           ),
+                          ) -> c_int,
+    pub destroy_handle:   unsafe extern "C" fn(handle: *mut c_void),
+}
+
+#[repr(transparent)]
+pub struct ShutdownFd(pub RawFd);
+```
+
+**Driver-side typed wrappers**: `tonic::transport::Server::add_service`
+requires a type-level `NamedService` bound (`const NAME: &'static str`).
+Per-instance runtime names cannot satisfy this; the driver therefore
+generates one typed proxy wrapper per stable `reovim.v3.<X>Service`
+proto identifier (12 today). See `uapi/driver-macros/src/net_grpc.rs`
+for the codegen and `server/lib/subsys/net/src/service_descriptor.rs`
+for the host-side shape.
+
+**Runtime ownership**: the driver creates and owns its own
+`tokio::runtime::Runtime` (multi-thread). This sidesteps cross-cdylib
+TLS coupling on `Handle::current()`. The host invokes `serve` from a
+worker thread (via `spawn_blocking` from the host runtime) and the
+driver `block_on`s its own runtime internally.
+
+**Shutdown**: the host writes one byte to the writable end of the
+shutdown pipe; the driver wraps the readable end in
+`tokio::io::unix::AsyncFd` and triggers graceful shutdown when the fd
+becomes readable. Ownership stays with the host — the driver does not
+close the fd on drop.
+
+**Bind-ready signal**: symmetric to shutdown. The driver writes one
+byte to the host-owned `bind_ready_fd` after the listener is bound and
+the bound port has been written to `port_writeback`. The host-side
+port-reporter polls the AtomicU16 once `bind_ready_fd` is readable.
+
+**Port writeback**: the host allocates an `AtomicU16` via
+`Box::leak(Box::new(AtomicU16::new(0)))` (single 2-byte
+program-lifetime leak) and passes the raw pointer through the
+trampoline; the driver casts it back to `&'static AtomicU16` and stores
+the bound port with `Ordering::Release`.
 
 ## Library-root discovery (Phase 1)
 

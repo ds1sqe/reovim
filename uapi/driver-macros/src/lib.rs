@@ -12,6 +12,7 @@
 
 mod client_debug;
 mod client_render;
+mod net_grpc;
 
 use proc_macro::TokenStream;
 
@@ -43,4 +44,23 @@ pub fn declare_client_render_driver(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_client_debug_driver(input: TokenStream) -> TokenStream {
     client_debug::expand(input)
+}
+
+/// Generates FFI entry points for a net-grpc server driver cdylib.
+///
+/// The user driver type must implement
+/// `::reovim_subsys_net::GrpcServerDriver` (the async serve trait)
+/// plus three inherent methods documented in
+/// `uapi/driver-macros/src/net_grpc.rs`: `probe()`, `construct()`,
+/// and `runtime_handle()`. The macro emits the canonical vtable
+/// under `REOVIM_NET_GRPC_DRIVER_VTABLE` plus 12 typed
+/// `tonic::server::NamedService` proxy wrappers (one per stable
+/// `reovim.v3.<X>Service`) with `catch_unwind` panic isolation on
+/// every trampoline.
+///
+/// See `docs/architecture/driver-abi-v1.md` §13.5 for the binary
+/// contract.
+#[proc_macro]
+pub fn declare_net_grpc_driver(input: TokenStream) -> TokenStream {
+    net_grpc::expand(input)
 }

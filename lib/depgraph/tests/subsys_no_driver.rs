@@ -1,8 +1,13 @@
-//! Enforces that subsys crates have zero driver dependencies.
+//! Enforces that subsys crates have zero **production** driver dependencies.
 //! Subsys contracts sit below the driver layer — drivers implement
 //! subsys traits, never the other way around.
+//!
+//! Dev-dependencies are allowed: a host-side loader subsys (e.g.
+//! `reovim-subsys-driver-loader`) needs to dlopen a real cdylib in its
+//! integration tests, which requires the driver crate as a dev-dep.
+//! Only normal (= production) deps trigger this probe.
 
-use cargo_metadata::MetadataCommand;
+use cargo_metadata::{DependencyKind, MetadataCommand};
 
 #[test]
 fn subsys_crates_have_no_driver_deps() {
@@ -27,6 +32,14 @@ fn subsys_crates_have_no_driver_deps() {
             .expect("package in resolve graph");
 
         for dep in &node.deps {
+            let is_normal = dep
+                .dep_kinds
+                .iter()
+                .any(|k| k.kind == DependencyKind::Normal);
+            if !is_normal {
+                continue;
+            }
+
             let dep_name = metadata
                 .packages
                 .iter()

@@ -20,6 +20,10 @@ proc-macro2 = "1.0"
 [dev-dependencies]
 reovim-client-subsys-debug = { workspace = true }
 reovim-client-subsys-render = { workspace = true }
+reovim-subsys-net = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
 
 [lints]
 workspace = true

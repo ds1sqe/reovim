@@ -11,7 +11,7 @@ homepage.workspace = true
 
 [features]
 default = ["grpc-web"]
-grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream", "dep:futures", "dep:async-stream"]
+grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream", "dep:futures", "dep:async-stream", "dep:tower"]
 grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
 
 [dependencies]
@@ -61,6 +61,7 @@ rand = { workspace = true }
 # gRPC (optional)
 tonic = { version = "0.12", optional = true }
 tokio-stream = { version = "0.1", features = ["sync", "net"], optional = true }
+tower = { version = "0.5.3", features = ["util"], optional = true }
 futures = { workspace = true, optional = true }
 async-stream = { version = "0.3", optional = true }
 

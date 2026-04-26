@@ -857,12 +857,12 @@ impl<M: Send + Sync> Server<M> {
     /// is not gRPC.
     #[cfg(feature = "grpc")]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
     pub async fn serve_with_driver(
         &self,
         driver: Box<dyn reovim_subsys_net::GrpcServerDriver>,
-        shutdown: Option<reovim_subsys_net::ShutdownSignal>,
-        port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
+        shutdown_fd: reovim_subsys_net::abi::ShutdownFd,
+        bind_ready_fd: reovim_subsys_net::abi::ShutdownFd,
+        port_writeback: &'static std::sync::atomic::AtomicU16,
     ) -> Result<(), reovim_subsys_net::NetError>
     where
         M: ModuleService + Clone + Send + Sync + 'static,
@@ -880,31 +880,70 @@ impl<M: Send + Sync> Server<M> {
             }
         };
 
-        // Port-reporter task: polls the driver's bind-handle and
-        // forwards the bound port to the composition root's oneshot.
-        if let Some(tx) = port_tx {
-            let handle = driver.bind_handle();
-            tokio::spawn(async move {
-                use std::time::Duration;
-                let poll = Duration::from_millis(5);
-                let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-                loop {
-                    if let Some(addr) = handle.load().as_deref().copied() {
-                        let _ = tx.send(addr.port());
-                        return;
-                    }
-                    if tokio::time::Instant::now() >= deadline {
-                        tracing::warn!("port-reporter timed out waiting for bind");
-                        return;
-                    }
-                    tokio::time::sleep(poll).await;
-                }
-            });
+        let descriptors = self.build_service_descriptors(&default_session_id);
+        let config = TransportConfig::tcp("0.0.0.0", port);
+        driver
+            .serve(config, descriptors, shutdown_fd, bind_ready_fd, port_writeback)
+            .await
+    }
+
+    /// Build the typed service-descriptor list handed to a
+    /// [`reovim_subsys_net::GrpcServerDriver`] implementation.
+    ///
+    /// Each descriptor pairs the canonical proto service name with a
+    /// type-erased `tower::util::BoxCloneService` produced by
+    /// `tonic::service::interceptor::InterceptedService::new(<X>ServiceServer::new(...), interceptor)`.
+    /// SP02 Phase 6 redesign — replaces the prior `assemble_grpc_router`
+    /// path for the driver-routed flow. `assemble_grpc_router` stays
+    /// for the in-process `run_grpc` / `run_inproc` paths which never
+    /// go through a driver.
+    #[cfg(feature = "grpc")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(clippy::too_many_lines)]
+    fn build_service_descriptors(
+        &self,
+        default_session_id: &SessionId,
+    ) -> Vec<reovim_subsys_net::ServiceDescriptor>
+    where
+        M: ModuleService + Clone + Send + Sync + 'static,
+    {
+        use {reovim_subsys_net::ServiceDescriptor, tower::util::BoxCloneService};
+
+        let interceptor = AuthInterceptor::new(Arc::clone(&self.tokens));
+        let bridges = Arc::clone(&self.bridge_registry);
+        self.wire_tick_scheduler(default_session_id, &bridges);
+        let services = self.build_grpc_services(default_session_id, &bridges);
+
+        macro_rules! desc {
+            ($server:ident, $impl:expr, $name:literal) => {{
+                let svc = tonic::service::interceptor::InterceptedService::new(
+                    $server::new($impl)
+                        .max_decoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE)
+                        .max_encoding_message_size(Self::GRPC_MAX_MESSAGE_SIZE),
+                    interceptor.clone(),
+                );
+                ServiceDescriptor::new($name, BoxCloneService::new(svc))
+            }};
         }
 
-        let router = self.assemble_grpc_router(&default_session_id);
-        let config = TransportConfig::tcp("0.0.0.0", port);
-        driver.serve(config, router, shutdown).await
+        vec![
+            desc!(BufferServiceServer, services.buffer, "reovim.v3.BufferService"),
+            desc!(EditorServiceServer, services.editor, "reovim.v3.EditorService"),
+            desc!(InputServiceServer, services.input, "reovim.v3.InputService"),
+            desc!(ModuleServiceServer, services.module, "reovim.v3.ModuleService"),
+            desc!(StateServiceServer, services.state, "reovim.v3.StateService"),
+            desc!(ServerServiceServer, services.server, "reovim.v3.ServerService"),
+            desc!(
+                NotificationServiceServer,
+                services.notification,
+                "reovim.v3.NotificationService"
+            ),
+            desc!(PresenceServiceServer, services.presence, "reovim.v3.PresenceService"),
+            desc!(ExtensionServiceServer, services.extension, "reovim.v3.ExtensionService"),
+            desc!(CommandServiceServer, services.command, "reovim.v3.CommandService"),
+            desc!(DebugServiceServer, services.debug, "reovim.v3.DebugService"),
+            desc!(ClientDebugServiceServer, services.client_debug, "reovim.v3.ClientDebugService"),
+        ]
     }
 
     /// Get a reference to the session registry.

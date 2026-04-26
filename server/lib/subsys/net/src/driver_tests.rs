@@ -1,71 +1,50 @@
 //! Shape-only tests for `GrpcServerDriver`.
 //!
-//! The trait is object-safe and async; behavioral tests (bind, serve,
-//! shutdown) live in the driver crate (`reovim-driver-net-grpc`,
-//! Plan 15 N.2) where a real tonic server can be spun up.
+//! The trait is object-safe and async; behavioural tests (bind, serve,
+//! shutdown) live in the driver crate (`reovim-driver-net-grpc`)
+//! where a real tonic server can be spun up.
 
 use {
-    super::{GrpcServerDriver, ShutdownSignal},
-    crate::{NetError, TransportConfig},
-    arc_swap::ArcSwapOption,
-    std::{net::SocketAddr, sync::Arc},
+    super::GrpcServerDriver,
+    crate::{NetError, ServiceDescriptor, TransportConfig, abi::ShutdownFd},
+    std::sync::atomic::AtomicU16,
 };
 
-// A minimal GrpcServerDriver impl that never actually serves.
-// Purely for trait-object-safety + signature smoke coverage.
-struct NoopDriver {
-    bind: Arc<ArcSwapOption<SocketAddr>>,
-}
+/// Minimal `GrpcServerDriver` impl that returns immediately. Purely
+/// for trait-object-safety + signature smoke coverage.
+struct NoopDriver;
 
 #[async_trait::async_trait]
 impl GrpcServerDriver for NoopDriver {
     async fn serve(
-        self: Box<Self>,
+        &self,
         _config: TransportConfig,
-        _router: tonic::transport::server::Router,
-        _shutdown: Option<ShutdownSignal>,
+        _descriptors: Vec<ServiceDescriptor>,
+        _shutdown_fd: ShutdownFd,
+        _bind_ready_fd: ShutdownFd,
+        _port_writeback: &'static AtomicU16,
     ) -> Result<(), NetError> {
         Ok(())
-    }
-
-    fn bind_handle(&self) -> Arc<ArcSwapOption<SocketAddr>> {
-        Arc::clone(&self.bind)
     }
 }
 
 #[test]
 fn trait_is_object_safe() {
-    let _: Box<dyn GrpcServerDriver> = Box::new(NoopDriver {
-        bind: Arc::new(ArcSwapOption::const_empty()),
-    });
+    let _: Box<dyn GrpcServerDriver> = Box::new(NoopDriver);
 }
 
-#[test]
-fn bind_handle_starts_empty() {
-    let d = NoopDriver {
-        bind: Arc::new(ArcSwapOption::const_empty()),
-    };
-    assert!(d.bind_handle().load().is_none());
-}
-
-#[test]
-fn bind_handle_clones_share_state() {
-    let d = NoopDriver {
-        bind: Arc::new(ArcSwapOption::const_empty()),
-    };
-    let h1 = d.bind_handle();
-    let h2 = d.bind_handle();
-    let addr: SocketAddr = "127.0.0.1:12521".parse().unwrap();
-    h1.store(Some(Arc::new(addr)));
-    assert_eq!(h2.load().as_deref().copied(), Some(addr));
-}
-
-#[test]
-fn shutdown_signal_is_pin_box_dyn_future() {
-    // Construction check: a tokio oneshot wrapped in a Box<Future>
-    // satisfies the ShutdownSignal type alias.
-    let (_tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let _signal: ShutdownSignal = Box::pin(async move {
-        let _ = rx.await;
-    });
+#[tokio::test]
+async fn noop_driver_serve_returns_ok() {
+    let driver: Box<dyn GrpcServerDriver> = Box::new(NoopDriver);
+    let writeback: &'static AtomicU16 = Box::leak(Box::new(AtomicU16::new(0)));
+    let result = driver
+        .serve(
+            TransportConfig::tcp_localhost(0),
+            Vec::new(),
+            ShutdownFd(-1),
+            ShutdownFd(-1),
+            writeback,
+        )
+        .await;
+    assert!(result.is_ok());
 }

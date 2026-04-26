@@ -7,17 +7,20 @@
 //! # Architecture
 //!
 //! Subsys-net defines the gRPC server-driver lifecycle contract and
-//! its supporting types (`TransportConfig`, `NetError`, `PortAllocator`).
-//! Concrete drivers live under `ext/server/drivers/net-*/` and
-//! implement [`GrpcServerDriver`]; the server crate consumes this
-//! trait through `Box<dyn GrpcServerDriver>`.
+//! its supporting types ([`TransportConfig`], [`NetError`],
+//! [`PortAllocator`], [`ServiceDescriptor`]). Concrete drivers live
+//! under `ext/server/drivers/net-*/` and implement [`GrpcServerDriver`];
+//! the server crate consumes this trait through
+//! `Box<dyn GrpcServerDriver>`. Cdylib drivers export the canonical
+//! `REOVIM_NET_GRPC_DRIVER_VTABLE` symbol via the
+//! `declare_net_grpc_driver!` macro under `uapi/driver-macros/`.
 //!
 //! ```text
 //! server/lib/subsys/net/        <-- Contracts (this crate)
 //!        ^
 //!        |  implemented by
 //!        |
-//! ext/server/drivers/net-grpc/  <-- Driver implementation (Plan 15 N.2)
+//! ext/server/drivers/net-grpc/  <-- cdylib driver (#774 SP02)
 //! ```
 //!
 //! # Components
@@ -27,8 +30,9 @@
 //! - [`TransportKind`] — tag used by error variants
 //! - [`NetError`] — unified error type
 //! - [`PortAllocator`] — transport-neutral port picker
-//! - [`ShutdownSignal`] — boxed future type alias for `serve`'s
-//!   shutdown parameter
+//! - [`ServiceDescriptor`] — host-built tonic service handed to the
+//!   driver
+//! - [`abi`] — `#[repr(C)]` FFI types for cdylib loading
 //!
 //! # Example
 //!
@@ -40,14 +44,17 @@
 //! # let _: Result<(), NetError> = Ok(());
 //! ```
 
+pub mod abi;
 mod driver;
 mod error;
+mod service_descriptor;
 mod traits;
 pub mod transport;
 
 pub use {
-    driver::{GrpcServerDriver, ShutdownSignal},
+    driver::GrpcServerDriver,
     error::NetError,
+    service_descriptor::ServiceDescriptor,
     traits::PortAllocator,
     transport::{TransportConfig, TransportKind},
 };

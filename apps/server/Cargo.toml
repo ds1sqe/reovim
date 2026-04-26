@@ -26,7 +26,9 @@ reovim-protocol = { workspace = true }
 reovim-subsys-net = { workspace = true }
 reovim-subsys-session = { workspace = true }
 reovim-subsys-input = { workspace = true }
-reovim-driver-net-grpc = { workspace = true }       # trait-redesign deferred to #774
+# reovim-driver-net-grpc dropped #774 SP02: ships as cdylib loaded via
+# reovim-subsys-driver-loader at runtime (Phase 5 follow-on); no
+# compile-time dep on apps/server.
 
 # Kernel and drivers for module loading
 reovim-kernel = { workspace = true }

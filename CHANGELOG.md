@@ -6,6 +6,35 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactored
 
+- **`GrpcServerDriver` redesigned for FFI-routability + cdylib
+  migration** (#774, sub-plan 02 of ABI Deferrals). Trait no longer
+  takes a `tonic::transport::server::Router`; host produces
+  `Vec<reovim_subsys_net::ServiceDescriptor>` (each carrying a
+  type-erased `tower::util::BoxCloneService`) and the driver builds
+  its own `Router` from 12 typed `NamedService` proxy wrappers (one
+  per `reovim.v3.<X>Service`). Shutdown signalling is a host-owned
+  fd (`eventfd(2)` / `pipe2(2)`); the bound port is reported via a
+  `Box::leak`-allocated `&'static AtomicU16`.
+  `reovim-subsys-net::abi` adds `#[repr(C)]` types (`NetGrpcVTable`,
+  `NetGrpcDriverProbe`, `FfiTransportConfig`, `FfiServiceDescriptor`,
+  `ShutdownFd`); `ShutdownSignal` and `bind_handle` are removed; the
+  `arc-swap` dep is dropped.
+- **`reovim-driver-net-grpc` ships as a cdylib.** `[lib]
+  crate-type = ["cdylib", "rlib"]`; the canonical export
+  `REOVIM_NET_GRPC_DRIVER_VTABLE` is emitted by the new
+  `reovim_driver_macros::declare_net_grpc_driver!` macro. The driver
+  value owns its own multi-thread `tokio::runtime::Runtime` (`Drop`
+  uses `shutdown_background` to avoid blocking when held inside
+  another tokio runtime). `apps/server/Cargo.toml` no longer
+  compile-time-deps on `reovim-driver-net-grpc`. The depgraph probe
+  `lib/depgraph/tests/no_static_drivers_feature.rs` adds a per-dep
+  assertion gating the dep-drop ratchet.
+- **gRPC-Web becomes a runtime config flag.**
+  `TransportConfig::Tcp::enable_grpc_web` and
+  `TransportConfig::UnixSocket::enable_grpc_web` (`bool` Rust-side;
+  `u8` in the FFI image for cross-language ABI portability).
+  `TransportConfig::with_grpc_web(bool)` + `enable_grpc_web()`
+  + `into_ffi(&self) -> FfiTransportConfig`.
 - **`apps/server` decoupled from `reovim-driver-display`** (#775). The
   three call sites in `apps/server/src/bootstrap.rs` (theme manager,
   gutter renderer construction, statusline component adapter) and the
