@@ -1,0 +1,583 @@
+[workspace]
+resolver = "2"
+members = [
+    # Phase 2a apps/ bin split — `apps/bin/` was deleted in 2a.G
+    # and the per-kind bins below are the composition roots.
+    # `apps/reovim/` produces the top-level `reovim` launcher bin.
+    "apps/server",
+    "apps/tui",
+    "apps/cli",
+    "apps/web",
+    "apps/reovim",
+
+    # Platform abstraction layer (Linux-style arch/)
+    "arch",
+
+    # Core libraries (Linux-style lib/) — no reovim-* deps allowed
+    "lib/bench",
+    "lib/depgraph",
+    "lib/dylib-loader",
+    "lib/pkg-manifest",
+    "lib/pkg-lockfile",
+    "lib/pkg-resolver",
+    "lib/pkg-install",
+    "lib/pkg-lazyload",
+    "lib/pkg-runtime-loader",
+
+    # Contributor dev-loop tool (composition root — exempt from core/ext rules)
+    "tools/reovim-dev",
+    "tools/pkg",
+
+    # Userspace API (Linux-style uapi/) — stable contracts (wire + module ABI)
+    "uapi/content-codec",
+    "uapi/driver-macros",
+    "uapi/module-macros",
+    "uapi/protocol",
+
+    # Server layer
+    "server/lib/kernel",
+    "server/lib/server",
+
+    # Server drivers
+    "server/lib/subsys/command-types",
+    "server/lib/subsys/command",
+    "server/lib/subsys/content-codec",
+    "ext/server/drivers/command",
+    "server/lib/subsys/input",
+    "ext/server/drivers/text-input",
+    "ext/server/drivers/text-syntax",
+    "ext/server/drivers/syntax-treesitter",
+    "ext/server/drivers/text-lsp",
+    "server/lib/subsys/vfs",
+    "server/lib/subsys/net",
+    "server/lib/subsys/buffer",
+    "server/lib/subsys/driver-loader",
+    "ext/server/drivers/net-grpc",
+    "ext/server/drivers/text-session",
+    "ext/server/drivers/text-undo",
+    "ext/server/drivers/text-buffer",
+    "ext/server/drivers/text-search",
+    "server/lib/subsys/clipboard",
+    "ext/server/drivers/formatter",
+    "ext/server/drivers/text-ffi",
+    "ext/server/drivers/text-ffi-python",
+    "ext/server/drivers/picker",
+    "ext/server/drivers/completion",
+    "server/lib/subsys/manifest",
+    "server/lib/subsys/module-config",
+    "server/lib/subsys/module-loader",
+    "ext/server/drivers/git",
+    "server/lib/subsys/module-registry",
+    "server/lib/subsys/layout",
+    "server/lib/subsys/session",
+    "ext/server/drivers/annotation",
+    "ext/server/drivers/statusline",
+    "ext/server/drivers/display-registry",
+    "server/lib/subsys/coordination",
+    "ext/content-codec/text",
+
+    # Content codecs
+    "ext/content-codec/xxd",
+    "ext/content-codec/utf8",
+    "ext/content-codec/cjk",
+    "ext/content-codec/csv",
+    "ext/content-codec/hex",
+    "ext/content-codec/pdf",
+    "ext/content-codec/rlib",
+    "ext/content-codec/tar-gz",
+    "ext/content-codec/binary-struct",
+    "ext/content-codec/legacy",
+
+    # Providers (domain logic, above drivers)
+    "ext/server/providers/text",
+    "ext/server/providers/mesh",
+
+    # Server modules
+    "ext/server/modules/vim",
+    "ext/server/modules/editor",
+    "ext/server/modules/motions",
+    "ext/server/modules/textobjects",
+    "ext/server/modules/commands",
+    "ext/server/modules/keymap",
+    "ext/server/modules/layout",
+    "ext/server/modules/mode-manager",
+    "ext/server/modules/buffer-ops",
+    "ext/server/modules/buffer-simple",
+    "ext/server/modules/scratch-buffer",
+    "ext/server/modules/clipboard",
+    "ext/server/modules/search",
+    "ext/server/modules/undo",
+    "ext/server/modules/vfs-local",
+    "ext/server/modules/window-ops",
+    "ext/server/modules/treesitter-rust",
+    "ext/server/modules/treesitter-python",
+    "ext/server/modules/treesitter-c",
+    "ext/server/modules/treesitter-javascript",
+    "ext/server/modules/treesitter-typescript",
+    "ext/server/modules/treesitter-json",
+    "ext/server/modules/treesitter-toml",
+    "ext/server/modules/treesitter-bash",
+    "ext/server/modules/treesitter-go",
+    "ext/server/modules/cmdline",
+    "ext/server/modules/whichkey",
+    "ext/server/modules/notification",
+    "ext/server/modules/microscope",
+    "ext/server/modules/explorer",
+    "ext/server/modules/picker-files",
+    "ext/server/modules/picker-buffers",
+    "ext/server/modules/picker-commands",
+    "ext/server/modules/picker-grep",
+    "ext/server/modules/picker-options",
+    "ext/server/modules/treesitter-markdown",
+    "ext/server/modules/lsp",
+    "ext/server/modules/snippet",
+    "ext/server/modules/range-finder",
+    "ext/server/modules/completion",
+    "ext/server/modules/lsp-navigation",
+    "ext/server/modules/profiles",
+    "ext/server/modules/tetromino",
+    "ext/server/modules/health-check",
+    "ext/server/modules/git",
+    "ext/server/modules/picker-git-branches",
+    "ext/server/modules/picker-git-log",
+    "ext/server/modules/picker-git-status",
+    "ext/server/modules/picker-git-stash",
+    "ext/server/modules/git-signs",
+    "ext/server/modules/git-statusline",
+    "ext/server/modules/illuminate",
+    "ext/server/modules/format",
+    "ext/server/modules/diagnostics-panel",
+    "ext/server/modules/bufferline",
+    "ext/server/modules/git-blame",
+    "ext/server/modules/module-manager",
+    "ext/server/modules/emacs",
+    "ext/server/modules/pair",
+    "ext/server/modules/context",
+    "ext/server/modules/sticky-context",
+    "ext/server/modules/indent-guide",
+    "ext/server/modules/settings",
+    # Client layer - TUI
+    "clients/tui",
+    "ext/client/tui/drivers/tui",
+    "ext/client/tui/drivers/display",
+    # Client modules - TUI (native ClientModule implementations)
+    "ext/client/tui/modules/statusline",
+    "ext/client/tui/modules/hover",
+    "ext/client/tui/modules/signature-help",
+    "ext/client/tui/modules/landing",
+    "ext/client/tui/modules/completion",
+    "ext/client/tui/modules/notification",
+    "ext/client/tui/modules/which-key",
+    "ext/client/tui/modules/cmdline",
+    "ext/client/tui/modules/microscope",
+    "ext/client/tui/modules/explorer",
+    "ext/client/tui/modules/tetromino",
+    "ext/client/tui/modules/line-numbers",
+    "ext/client/tui/modules/fold",
+    "ext/client/tui/modules/jump",
+    "ext/client/tui/modules/pair",
+    "ext/client/tui/modules/yank-flash",
+    "ext/client/tui/modules/illuminate",
+    "ext/client/tui/modules/diagnostics",
+    "ext/client/tui/modules/markdown",
+    "ext/client/tui/modules/bufferline",
+
+    # Client layer - CLI
+    "clients/cli",
+
+    # uapi — wire contracts (input codec relocated here pending Plan 15 redesign)
+    "uapi/input-codec",
+
+    # TUI input codec (ext module, registers with InputCodecRegistry on load)
+    "ext/input-codec/tui",
+
+    # Client-core shared libs (platform-agnostic model + client module ABI)
+    "clients/lib/model",
+    "clients/lib/driver",
+    "clients/lib/subsys/codec",
+    "clients/lib/subsys/module",
+    "clients/lib/subsys/chrome",
+    "clients/lib/subsys/render",
+    "clients/lib/subsys/capability",
+    "clients/lib/subsys/platform",
+    "clients/lib/subsys/protocol",
+    "clients/lib/subsys/driver-loader",
+    "clients/lib/subsys/debug",
+
+    # Client-side ext platforms
+    "ext/client/platforms/tui",
+    "ext/client/platforms/web",
+
+    # Client-side ext capabilities (TUI)
+    "ext/client/tui/capabilities/cell",
+    "ext/client/tui/capabilities/cell-view",
+
+    # Client-side ext handler modules (TUI)
+    "ext/client/tui/modules/surface-descriptor-cell-grid",
+
+    # Core: generic Domain trait (zero deps; enables Buffer<D>, Decode<D>, ...)
+    "lib/domain",
+
+    # Extension layer — concrete domain implementations
+    "ext/server/domain/text",
+    "ext/server/domain/text/capabilities",
+    "ext/server/domain/text/events",
+    "ext/server/domain/mesh",
+
+    # Tools (Rust) — python-test-sdk is Python, excluded below
+    "tools/bench",
+    "tools/driver-abi-poc",
+    "tools/driver-abi-poc-construct-err",
+    "tools/driver-abi-poc-empty",
+    "tools/driver-abi-poc-panic",
+    "tools/driver-abi-poc-wrong-abi",
+    "tools/driver-debug-poc",
+    "tools/driver-debug-poc-observer-panic",
+    "tools/perf-report",
+    "tools/testing",
+
+    # Test fixtures (cdylib modules for integration testing)
+    "server/lib/subsys/module-loader/tests/fixtures/test_module",
+    "server/lib/subsys/module-loader/tests/fixtures/sample_module",
+    "server/lib/subsys/module-loader/tests/fixtures/wrong_api_module",
+    "clients/tui/tests/fixtures/sample_client_module",
+    "clients/lib/driver/tests/fixtures/minimal_client_module",
+    "clients/lib/driver/tests/fixtures/incompatible_api_client_module",
+    "clients/lib/driver/tests/fixtures/no_init_client_module",
+    "clients/lib/driver/tests/fixtures/bare_client_module",
+    "clients/lib/driver/tests/fixtures/panicking_client_module",
+]
+exclude = [
+    # Python projects (not Rust)
+    "tools/python-test-sdk",
+]
+default-members = ["apps/reovim"]
+
+[workspace.package]
+rust-version = "1.92"
+version = "0.15.0-dev"
+edition = "2024"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "AGPL-3.0-only"
+description = "A Rust-powered neovim-like text editor"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+readme = "README.md"
+keywords = ["vim", "vi", "neovim", "editor", "terminal"]
+categories = ["text-editors", "command-line-utilities"]
+
+[workspace.metadata.workspaces]
+allow_branch = "develop"
+
+[workspace.metadata.docs.rs]
+rustdoc-args = ["--document-private-items"]
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+
+[workspace.dependencies]
+bitflags = "2.6.0"
+parking_lot = "0.12.3"
+futures = "0.3"
+futures-timer = "3.0"
+rand = "0.8"
+regex = "1"
+
+tokio = { version = "1.25", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+notify = "6.1"
+tonic = "0.12"
+async-trait = "0.1"
+arc-swap = "1.7"
+libc = "0.2"
+rustix = { version="0.38.42", features = ["std", "stdio", "termios"]}
+crossterm = {version="0.29", features = ["event-stream","filedescriptor"]}
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+tracing-appender = "0.2"
+chrono = "0.4"
+
+# Shared crates
+reovim-arch = { path = "./arch", version = "0.15.0-dev" }
+reovim-protocol = { path = "./uapi/protocol", version = "0.15.0-dev" }
+reovim-module-macros = { path = "./uapi/module-macros", version = "0.15.0-dev" }
+reovim-driver-macros = { path = "./uapi/driver-macros", version = "0.15.0-dev" }
+reovim-testing = { path = "./tools/testing", version = "0.15.0-dev" }
+reovim-bench-utils = { path = "./lib/bench", version = "0.15.0-dev" }
+reovim-domain = { path = "./lib/domain", version = "0.15.0-dev" }
+reovim-domain-text = { path = "./ext/server/domain/text", version = "0.15.0-dev" }
+reovim-domain-text-capabilities = { path = "./ext/server/domain/text/capabilities", version = "0.15.0-dev" }
+reovim-domain-text-events = { path = "./ext/server/domain/text/events", version = "0.15.0-dev" }
+reovim-domain-mesh = { path = "./ext/server/domain/mesh", version = "0.15.0-dev" }
+reovim-input-codec = { path = "./uapi/input-codec", version = "0.15.0-dev" }
+reovim-codec-tui-input = { path = "./ext/input-codec/tui", version = "0.15.0-dev" }
+reovim-content-codec = { path = "./uapi/content-codec", version = "0.15.0-dev" }
+reovim-content-codec-text = { path = "./ext/content-codec/text", version = "0.15.0-dev" }
+reovim-subsys-buffer = { path = "./server/lib/subsys/buffer", version = "0.15.0-dev" }
+reovim-subsys-net = { path = "./server/lib/subsys/net", version = "0.15.0-dev" }
+reovim-subsys-driver-loader = { path = "./server/lib/subsys/driver-loader", version = "0.15.0-dev" }
+reovim-driver-net-grpc = { path = "./ext/server/drivers/net-grpc", version = "0.15.0-dev" }
+reovim-subsys-content-codec = { path = "./server/lib/subsys/content-codec", version = "0.15.0-dev" }
+
+# Server crates
+reovim-kernel = { path = "./server/lib/kernel", version = "0.15.0-dev" }
+reovim-server = { path = "./server/lib/server", version = "0.15.0-dev" }
+
+# Per-role standalone app crates (#769 Phase 2a).
+reovim-app-server = { path = "./apps/server", version = "0.15.0-dev" }
+reovim-app-tui = { path = "./apps/tui", version = "0.15.0-dev" }
+reovim-app-cli = { path = "./apps/cli", version = "0.15.0-dev" }
+reovim-app-web = { path = "./apps/web", version = "0.15.0-dev" }
+reovim-app-launcher = { path = "./apps/reovim", version = "0.15.0-dev" }
+
+# Server drivers
+reovim-subsys-command-types = { path = "./server/lib/subsys/command-types", version = "0.15.0-dev" }
+reovim-subsys-command = { path = "./server/lib/subsys/command", version = "0.15.0-dev" }
+reovim-driver-command = { path = "./ext/server/drivers/command", version = "0.15.0-dev" }
+reovim-subsys-input = { path = "./server/lib/subsys/input", version = "0.15.0-dev" }
+reovim-driver-text-input = { path = "./ext/server/drivers/text-input", version = "0.15.0-dev" }
+reovim-driver-text-syntax = { path = "./ext/server/drivers/text-syntax", version = "0.15.0-dev" }
+reovim-driver-syntax-treesitter = { path = "./ext/server/drivers/syntax-treesitter", version = "0.15.0-dev" }
+reovim-driver-text-lsp = { path = "./ext/server/drivers/text-lsp", version = "0.15.0-dev" }
+reovim-subsys-vfs = { path = "./server/lib/subsys/vfs", version = "0.15.0-dev" }
+reovim-driver-text-session = { path = "./ext/server/drivers/text-session", version = "0.15.0-dev" }
+reovim-driver-text-undo = { path = "./ext/server/drivers/text-undo", version = "0.15.0-dev" }
+reovim-driver-text-buffer = { path = "./ext/server/drivers/text-buffer", version = "0.15.0-dev" }
+reovim-driver-text-search = { path = "./ext/server/drivers/text-search", version = "0.15.0-dev" }
+reovim-subsys-clipboard = { path = "./server/lib/subsys/clipboard", version = "0.15.0-dev" }
+reovim-driver-formatter = { path = "./ext/server/drivers/formatter", version = "0.15.0-dev" }
+reovim-driver-text-ffi = { path = "./ext/server/drivers/text-ffi", version = "0.15.0-dev" }
+reovim-driver-text-ffi-python = { path = "./ext/server/drivers/text-ffi-python", version = "0.15.0-dev" }
+reovim-driver-picker = { path = "./ext/server/drivers/picker", version = "0.15.0-dev" }
+reovim-driver-completion = { path = "./ext/server/drivers/completion", version = "0.15.0-dev" }
+reovim-depgraph = { path = "./lib/depgraph", version = "0.15.0-dev" }
+reovim-dylib-loader = { path = "./lib/dylib-loader", version = "0.15.0-dev" }
+reovim-subsys-manifest = { path = "./server/lib/subsys/manifest", version = "0.15.0-dev" }
+reovim-subsys-module-config = { path = "./server/lib/subsys/module-config", version = "0.15.0-dev" }
+reovim-provider-text = { path = "./ext/server/providers/text", version = "0.15.0-dev" }
+reovim-provider-mesh = { path = "./ext/server/providers/mesh", version = "0.15.0-dev" }
+reovim-subsys-module-loader = { path = "./server/lib/subsys/module-loader", version = "0.15.0-dev" }
+reovim-driver-git = { path = "./ext/server/drivers/git", version = "0.15.0-dev" }
+reovim-subsys-module-registry = { path = "./server/lib/subsys/module-registry", version = "0.15.0-dev" }
+reovim-subsys-layout = { path = "./server/lib/subsys/layout", version = "0.15.0-dev" }
+reovim-subsys-session = { path = "./server/lib/subsys/session", version = "0.15.0-dev" }
+reovim-driver-annotation = { path = "./ext/server/drivers/annotation", version = "0.15.0-dev" }
+reovim-driver-statusline = { path = "./ext/server/drivers/statusline", version = "0.15.0-dev" }
+reovim-driver-display-registry = { path = "./ext/server/drivers/display-registry", version = "0.15.0-dev" }
+reovim-subsys-coordination = { path = "./server/lib/subsys/coordination", version = "0.15.0-dev" }
+reovim-content-codec-xxd = { path = "./ext/content-codec/xxd", version = "0.15.0-dev" }
+
+# Client drivers (TUI-specific)
+reovim-driver-tui = { path = "./ext/client/tui/drivers/tui", version = "0.15.0-dev" }
+reovim-driver-display = { path = "./ext/client/tui/drivers/display", version = "0.15.0-dev" }
+
+# Client crates
+reovim-client-tui = { path = "./clients/tui", version = "0.15.0-dev" }
+reovim-client-cli = { path = "./clients/cli", version = "0.15.0-dev" }
+
+# Common client model (platform-agnostic abstractions)
+reovim-client-model = { path = "./clients/lib/model", version = "0.15.0-dev" }
+
+# Client driver contracts (CLM traits and types)
+reovim-client-driver = { path = "./clients/lib/driver", version = "0.15.0-dev" }
+
+# Client-side codec subsystem (FrameTarget + RenderHandler/SurfaceEncoder registries)
+reovim-client-subsys-codec = { path = "./clients/lib/subsys/codec", version = "0.15.0-dev" }
+
+# Client module ABI contract crate (ClientModule traits, FFI types, loader)
+reovim-client-subsys-module = { path = "./clients/lib/subsys/module", version = "0.15.0-dev" }
+
+# Client chrome subsystem (chrome_utils, ScopedSurface, ProjectionDisplayCache, viewport)
+reovim-client-subsys-chrome = { path = "./clients/lib/subsys/chrome", version = "0.15.0-dev" }
+
+# Client render subsystem (RenderTarget trait and render pipeline contracts)
+reovim-client-subsys-render = { path = "./clients/lib/subsys/render", version = "0.15.0-dev" }
+
+# Client capability subsystem (Capability trait, ChromeSurface, PlatformCapabilities, drawing primitives)
+reovim-client-subsys-capability = { path = "./clients/lib/subsys/capability", version = "0.15.0-dev" }
+
+# Client platform subsystem (Requirements const + Platform trait)
+reovim-client-subsys-platform = { path = "./clients/lib/subsys/platform", version = "0.15.0-dev" }
+
+# Client protocol subsystem (NotificationDispatcher, DispatchOutcome, parse helpers)
+reovim-client-subsys-protocol = { path = "./clients/lib/subsys/protocol", version = "0.15.0-dev" }
+
+# Client driver-loader subsystem (safe wrappers over driver cdylibs; libloading)
+reovim-client-subsys-driver-loader = { path = "./clients/lib/subsys/driver-loader", version = "0.15.0-dev" }
+
+# Client debug-surface subsystem (ClientDebugSurface trait + observer contract)
+reovim-client-subsys-debug = { path = "./clients/lib/subsys/debug", version = "0.15.0-dev" }
+
+# Client-side ext platforms (TUI runtime entry point)
+reovim-client-ext-platform-tui = { path = "./ext/client/platforms/tui", version = "0.15.0-dev" }
+reovim-client-ext-platform-web = { path = "./ext/client/platforms/web", version = "0.15.0-dev" }
+
+# Client-side ext capabilities (TUI)
+reovim-ext-client-tui-cap-cell = { path = "./ext/client/tui/capabilities/cell", version = "0.15.0-dev" }
+reovim-ext-client-tui-cap-cell-view = { path = "./ext/client/tui/capabilities/cell-view", version = "0.15.0-dev" }
+
+# Python FFI
+pyo3 = { version = "0.27", features = ["auto-initialize"] }
+
+# Server modules
+reovim-module-vim = { path = "./ext/server/modules/vim", version = "0.15.0-dev" }
+reovim-module-editor = { path = "./ext/server/modules/editor", version = "0.15.0-dev" }
+reovim-module-motions = { path = "./ext/server/modules/motions", version = "0.15.0-dev" }
+reovim-module-textobjects = { path = "./ext/server/modules/textobjects", version = "0.15.0-dev" }
+reovim-module-commands = { path = "./ext/server/modules/commands", version = "0.15.0-dev" }
+reovim-module-keymap = { path = "./ext/server/modules/keymap", version = "0.15.0-dev" }
+reovim-module-layout = { path = "./ext/server/modules/layout", version = "0.15.0-dev" }
+reovim-module-mode-manager = { path = "./ext/server/modules/mode-manager", version = "0.15.0-dev" }
+reovim-module-buffer-ops = { path = "./ext/server/modules/buffer-ops", version = "0.15.0-dev" }
+reovim-module-buffer-simple = { path = "./ext/server/modules/buffer-simple", version = "0.15.0-dev" }
+reovim-module-scratch-buffer = { path = "./ext/server/modules/scratch-buffer", version = "0.15.0-dev" }
+reovim-module-clipboard = { path = "./ext/server/modules/clipboard", version = "0.15.0-dev" }
+reovim-module-search = { path = "./ext/server/modules/search", version = "0.15.0-dev" }
+reovim-module-undo = { path = "./ext/server/modules/undo", version = "0.15.0-dev" }
+reovim-module-vfs-local = { path = "./ext/server/modules/vfs-local", version = "0.15.0-dev" }
+reovim-module-window-ops = { path = "./ext/server/modules/window-ops", version = "0.15.0-dev" }
+reovim-module-treesitter-rust = { path = "./ext/server/modules/treesitter-rust", version = "0.15.0-dev" }
+reovim-module-treesitter-python = { path = "./ext/server/modules/treesitter-python", version = "0.15.0-dev" }
+reovim-module-treesitter-c = { path = "./ext/server/modules/treesitter-c", version = "0.15.0-dev" }
+reovim-module-treesitter-javascript = { path = "./ext/server/modules/treesitter-javascript", version = "0.15.0-dev" }
+reovim-module-treesitter-typescript = { path = "./ext/server/modules/treesitter-typescript", version = "0.15.0-dev" }
+reovim-module-treesitter-json = { path = "./ext/server/modules/treesitter-json", version = "0.15.0-dev" }
+reovim-module-treesitter-toml = { path = "./ext/server/modules/treesitter-toml", version = "0.15.0-dev" }
+reovim-module-treesitter-bash = { path = "./ext/server/modules/treesitter-bash", version = "0.15.0-dev" }
+reovim-module-treesitter-go = { path = "./ext/server/modules/treesitter-go", version = "0.15.0-dev" }
+reovim-module-cmdline = { path = "./ext/server/modules/cmdline", version = "0.15.0-dev" }
+reovim-module-whichkey = { path = "./ext/server/modules/whichkey", version = "0.15.0-dev" }
+reovim-module-notification = { path = "./ext/server/modules/notification", version = "0.15.0-dev" }
+reovim-module-microscope = { path = "./ext/server/modules/microscope", version = "0.15.0-dev" }
+reovim-module-explorer = { path = "./ext/server/modules/explorer", version = "0.15.0-dev" }
+reovim-picker-files = { path = "./ext/server/modules/picker-files", version = "0.15.0-dev" }
+reovim-picker-buffers = { path = "./ext/server/modules/picker-buffers", version = "0.15.0-dev" }
+reovim-picker-commands = { path = "./ext/server/modules/picker-commands", version = "0.15.0-dev" }
+reovim-picker-grep = { path = "./ext/server/modules/picker-grep", version = "0.15.0-dev" }
+reovim-picker-options = { path = "./ext/server/modules/picker-options", version = "0.15.0-dev" }
+reovim-module-treesitter-markdown = { path = "./ext/server/modules/treesitter-markdown", version = "0.15.0-dev" }
+reovim-module-lsp = { path = "./ext/server/modules/lsp", version = "0.15.0-dev" }
+reovim-module-snippet = { path = "./ext/server/modules/snippet", version = "0.15.0-dev" }
+reovim-module-range-finder = { path = "./ext/server/modules/range-finder", version = "0.15.0-dev" }
+reovim-module-completion = { path = "./ext/server/modules/completion", version = "0.15.0-dev" }
+reovim-module-lsp-navigation = { path = "./ext/server/modules/lsp-navigation", version = "0.15.0-dev" }
+reovim-module-profiles = { path = "./ext/server/modules/profiles", version = "0.15.0-dev" }
+reovim-module-tetromino = { path = "./ext/server/modules/tetromino", version = "0.15.0-dev" }
+reovim-module-health-check = { path = "./ext/server/modules/health-check", version = "0.15.0-dev" }
+reovim-module-git = { path = "./ext/server/modules/git", version = "0.15.0-dev" }
+reovim-picker-git-branches = { path = "./ext/server/modules/picker-git-branches", version = "0.15.0-dev" }
+reovim-picker-git-log = { path = "./ext/server/modules/picker-git-log", version = "0.15.0-dev" }
+reovim-picker-git-status = { path = "./ext/server/modules/picker-git-status", version = "0.15.0-dev" }
+reovim-picker-git-stash = { path = "./ext/server/modules/picker-git-stash", version = "0.15.0-dev" }
+reovim-module-git-signs = { path = "./ext/server/modules/git-signs", version = "0.15.0-dev" }
+reovim-module-git-statusline = { path = "./ext/server/modules/git-statusline", version = "0.15.0-dev" }
+reovim-module-illuminate = { path = "./ext/server/modules/illuminate", version = "0.15.0-dev" }
+reovim-module-format = { path = "./ext/server/modules/format", version = "0.15.0-dev" }
+reovim-module-diagnostics-panel = { path = "./ext/server/modules/diagnostics-panel", version = "0.15.0-dev" }
+reovim-module-bufferline = { path = "./ext/server/modules/bufferline", version = "0.15.0-dev" }
+reovim-module-git-blame = { path = "./ext/server/modules/git-blame", version = "0.15.0-dev" }
+reovim-module-module-manager = { path = "./ext/server/modules/module-manager", version = "0.15.0-dev" }
+reovim-module-emacs = { path = "./ext/server/modules/emacs", version = "0.15.0-dev" }
+reovim-module-pair = { path = "./ext/server/modules/pair", version = "0.15.0-dev" }
+reovim-module-context = { path = "./ext/server/modules/context", version = "0.15.0-dev" }
+reovim-module-sticky-context = { path = "./ext/server/modules/sticky-context", version = "0.15.0-dev" }
+reovim-module-indent-guide = { path = "./ext/server/modules/indent-guide", version = "0.15.0-dev" }
+reovim-module-settings = { path = "./ext/server/modules/settings", version = "0.15.0-dev" }
+reovim-content-codec-utf8 = { path = "./ext/content-codec/utf8", version = "0.15.0-dev" }
+reovim-content-codec-hex = { path = "./ext/content-codec/hex", version = "0.15.0-dev" }
+reovim-content-codec-cjk = { path = "./ext/content-codec/cjk", version = "0.15.0-dev" }
+reovim-content-codec-legacy = { path = "./ext/content-codec/legacy", version = "0.15.0-dev" }
+reovim-content-codec-pdf = { path = "./ext/content-codec/pdf", version = "0.15.0-dev" }
+reovim-content-codec-binary-struct = { path = "./ext/content-codec/binary-struct", version = "0.15.0-dev" }
+reovim-content-codec-rlib = { path = "./ext/content-codec/rlib", version = "0.15.0-dev" }
+reovim-content-codec-tar-gz = { path = "./ext/content-codec/tar-gz", version = "0.15.0-dev" }
+reovim-content-codec-csv = { path = "./ext/content-codec/csv", version = "0.15.0-dev" }
+
+# Client modules - TUI (native ClientModule implementations)
+reovim-tui-mod-statusline = { path = "./ext/client/tui/modules/statusline", version = "0.15.0-dev" }
+reovim-tui-mod-hover = { path = "./ext/client/tui/modules/hover", version = "0.15.0-dev" }
+reovim-tui-mod-signature-help = { path = "./ext/client/tui/modules/signature-help", version = "0.15.0-dev" }
+reovim-tui-mod-landing = { path = "./ext/client/tui/modules/landing", version = "0.15.0-dev" }
+reovim-tui-mod-completion = { path = "./ext/client/tui/modules/completion", version = "0.15.0-dev" }
+reovim-tui-mod-notification = { path = "./ext/client/tui/modules/notification", version = "0.15.0-dev" }
+reovim-tui-mod-whichkey = { path = "./ext/client/tui/modules/which-key", version = "0.15.0-dev" }
+reovim-tui-mod-cmdline = { path = "./ext/client/tui/modules/cmdline", version = "0.15.0-dev" }
+reovim-tui-mod-microscope = { path = "./ext/client/tui/modules/microscope", version = "0.15.0-dev" }
+reovim-tui-mod-explorer = { path = "./ext/client/tui/modules/explorer", version = "0.15.0-dev" }
+reovim-tui-mod-tetromino = { path = "./ext/client/tui/modules/tetromino", version = "0.15.0-dev" }
+reovim-tui-mod-line-numbers = { path = "./ext/client/tui/modules/line-numbers", version = "0.15.0-dev" }
+reovim-tui-mod-fold = { path = "./ext/client/tui/modules/fold", version = "0.15.0-dev" }
+reovim-tui-mod-jump = { path = "./ext/client/tui/modules/jump", version = "0.15.0-dev" }
+reovim-tui-mod-pair = { path = "./ext/client/tui/modules/pair", version = "0.15.0-dev" }
+reovim-tui-mod-yank-flash = { path = "./ext/client/tui/modules/yank-flash", version = "0.15.0-dev" }
+reovim-tui-mod-illuminate = { path = "./ext/client/tui/modules/illuminate", version = "0.15.0-dev" }
+reovim-tui-mod-diagnostics = { path = "./ext/client/tui/modules/diagnostics", version = "0.15.0-dev" }
+reovim-tui-mod-markdown = { path = "./ext/client/tui/modules/markdown", version = "0.15.0-dev" }
+reovim-tui-mod-bufferline = { path = "./ext/client/tui/modules/bufferline", version = "0.15.0-dev" }
+reovim-tui-mod-surface-descriptor-cell-grid = { path = "./ext/client/tui/modules/surface-descriptor-cell-grid", version = "0.15.0-dev" }
+
+# Package manager
+reovim-pkg-resolver = { path = "./lib/pkg-resolver", version = "0.15.0-dev" }
+reovim-pkg-install = { path = "./lib/pkg-install", version = "0.15.0-dev" }
+reovim-pkg-lazyload = { path = "./lib/pkg-lazyload", version = "0.15.0-dev" }
+reovim-pkg-runtime-loader = { path = "./lib/pkg-runtime-loader", version = "0.15.0-dev" }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Configuration
+semver = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Clipboard
+arboard = "3"
+
+# Dynamic module loading
+libloading = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+
+# Unicode
+unicode-width = "0.2"
+
+# Fuzzy matching
+nucleo = "0.5"
+ignore = "0.4"
+
+# Encoding support
+encoding_rs = "0.8"
+
+# Document format support
+pdf-extract = "0.7"
+lopdf = "0.34"
+
+# Binary format parsing
+goblin = "0.9"
+zip = { version = "8", default-features = false }
+tar = "0.4"
+flate2 = "1"
+csv = "1.3"
+
+# FFI-boundary panic isolation requires `panic = "unwind"`. `panic = "abort"`
+# + FFI is undefined behaviour: a panicking `extern "C"` function unwinding
+# across the C ABI is UB with `abort`; Rust is only allowed to convert the
+# panic into an aborting trap. Every driver and module cdylib catches panics
+# at the trampoline boundary via `catch_unwind`, which requires unwind.
+# A CI grep over `**/Cargo.toml` forbids `panic = "abort"` anywhere in the
+# workspace.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"

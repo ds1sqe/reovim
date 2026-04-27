@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/ds1sqe/reovim/branch/develop/graph/badge.svg)](https://codecov.io/gh/ds1sqe/reovim)
 [![Crates.io](https://img.shields.io/crates/v/reovim.svg)](https://crates.io/crates/reovim)
 
-A Rust-powered neovim-like text editor.
+A Rust-powered editing system.
 
 ## Project Goals
 
