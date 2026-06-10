@@ -7,7 +7,7 @@ drift detection.
 **Heritage.** v4 README §3; v3 `CLAUDE.md` Architecture; reviews from
 `tmp/review/apps-layout-project-layout-depgraph-review.md`.
 
-**Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5`.
+**Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5`, `DAG6`.
 
 ---
 
@@ -40,7 +40,7 @@ categories".
 
 | From | May depend on |
 |---|---|
-| `arch/` | nothing (`std` only — `arch/` is the FFI floor, §9); selected `lib/*` only if explicitly listed in §6 sub-DAG |
+| `arch/` | nothing (`core` only — `arch/` is the platform floor, §9/§10); selected `lib/*` only if explicitly listed in §6 sub-DAG |
 | `lib/*` | `arch/`, peer/lower `lib/*` (per §6 sub-DAG) |
 | `uapi/*` | `lib/*` only when the dep is target-neutral and ABI-safe; no server/client/ext/apps |
 | `server/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed peer subsys edges |
@@ -109,6 +109,17 @@ no row grants a third-party crate (`DAG5`, §9).
 > `extern "C"` FFI bindings owned by `arch/`.
 > *Class*: CI/depgraph.
 
+> **DAG6 — Every product crate is no_std + no_alloc; the platform
+> floor lives in `arch/`.** Every shipped crate carries `#![no_std]`
+> at its crate root, **including `arch/`**. The toolchain `std` AND
+> `alloc` crates are both forbidden in product code. Binaries are
+> `#![no_main]`; process entry is an `arch/`-owned `_start`. The
+> workspace profile is `panic = "abort"`; unwinding is not part of
+> the product ABI. `arch/` owns the platform floor (§10). The two
+> transitional bootstrap states in §10 are tracked and ratchet to
+> zero.
+> *Class*: CI/depgraph + build constraint.
+
 ## 5. Depgraph probe model
 
 The probe at `lib/depgraph/tests/` runs once per `cargo test` and:
@@ -126,7 +137,14 @@ The probe at `lib/depgraph/tests/` runs once per `cargo test` and:
    gate verifies the lockfile/`cargo metadata` package set contains
    only workspace-local packages → any registry or git source
    **fails**.
-6. Reports a summary: per-category crate count, ambiguous-classification
+6. **Zero-std walk (`DAG6`)**: verifies every product crate root
+   declares `#![no_std]`; sweeps product sources for
+   `extern crate std`, `use std::`, `extern crate alloc`, and
+   `use alloc::` → any hit **fails**. Test targets and the §10
+   bootstrap-state crates are the only exclusions, and each
+   exclusion is enumerated in the probe, not pattern-matched.
+   A profile gate verifies workspace `panic = "abort"`.
+7. Reports a summary: per-category crate count, ambiguous-classification
    count (must be zero), violation list.
 
 Probes that already enforce subsets of these rules:
@@ -220,10 +238,87 @@ resolved-graph gate (lockfile/metadata-level), both fail-closed, both
 run in CI on every PR. There is no allowlist for `DAG5` (§8).
 
 > Note (non-normative): the rule's consequences elsewhere in the
-> spec — the in-house framed wire protocol (7.3), `std`-realized
-> concurrency contracts (2.1, 2.3), the raw-terminal layer (8.2),
-> and hand-rolled dynamic loading (2.2) — each carry a heritage note
-> at the owning chapter.
+> spec — the in-house framed wire protocol (7.3), `arch/`-realized
+> concurrency contracts (2.1, 2.3, under `DAG6` §10), the
+> raw-terminal layer (8.2), and hand-rolled dynamic loading (2.2) —
+> each carry a heritage note at the owning chapter.
+
+## 10. Zero-std sovereignty
+
+Motivated by the North Star (README): the reliability grade is a
+Mission to Mars, and the operating maxim is "test what you fly, fly
+what you test". A product whose every layer above the syscall surface
+is in-repo, `core`-only code has exactly two foundations to certify —
+the Rust `core` language and the OS — and no third, ambient runtime
+whose behaviour the spec does not own.
+
+**The law (`DAG6`).**
+
+- Every shipped/product crate carries `#![no_std]` at its crate
+  root, **including `arch/`**.
+- The toolchain `std` AND `alloc` crates are both forbidden in
+  product code: `extern crate std`, `use std::`, `extern crate
+  alloc`, and `use alloc::` are all violations.
+- Binaries are `#![no_main]`; process entry is an `arch/`-owned
+  `_start`.
+- The workspace profile is `panic = "abort"`; unwinding is not part
+  of the product ABI (6.2 `AB12` realizes panic containment without
+  unwinding).
+
+**The platform floor (`arch/`).** `arch/` is the single crate that
+owns, in-repo:
+
+- raw syscall FFI (no libc),
+- process entry (`_start`) and process exit,
+- the panic handler,
+- the allocator,
+- threads and sync primitives (mutex, rwlock, condvar equivalents),
+- **ALL heap data structures** — the growable sequence, hash map,
+  owned byte string, and shared-reference equivalents.
+
+The project rule, stated plainly: *if we want a data structure or an
+ABI-level facility, we create the DS and implement it at the `arch/`
+level.* Crates above `arch/` consume `arch/`-provided data structures
+only; no crate other than `arch/` declares foreign OS bindings (§9)
+or heap primitives.
+
+**`uapi/protocol` is zero-allocation.** The wire-protocol crate
+(7.3 `SP15`) performs no allocation at all — callers provide every
+buffer (`encode(&self, &mut [u8])`). It therefore needs NO `arch/`
+data-structure edge; its only dependencies are `core` and `uapi`
+siblings. This keeps the frozen ABI surface free of any platform
+coupling.
+
+**Illustrative-collection clause.** Where any chapter writes
+`Vec<T>`, `HashMap<K, V>`, `String`, `VecDeque<T>`, or `Arc<T>` in an
+illustrative struct listing, it denotes the `arch/`-provided heap DS
+of the same contract (growable sequence / hash map / owned byte
+string / ring-capable sequence / shared reference). The `std`/`alloc`
+types themselves are forbidden in realization (`DAG6`); the familiar
+names are kept in spec prose because their *contracts* are what the
+chapters bind.
+
+**Transitional bootstrap states** (tracked; target = zero; these are
+sequencing necessities — `arch/` does not exist yet — NOT
+convenience exemptions; per the North Star, developer convenience is
+never a valid justification):
+
+| Bootstrap state | Why it exists | Migration target | Migration phase |
+|---|---|---|---|
+| cargo's libtest harness links `std` in test builds (the crate under test stays `#![no_std]`) | `arch/` test entry/IO/exit and coverage-instrumentation hooks do not exist yet | in-repo `no_std` test runner over `arch/`, so verification runs in the flight environment | the arch-foundation phase (ships the test runner) |
+| `lib/depgraph` + `scripts/` (ground-support tooling) use `std` | `arch/` fs/process APIs do not exist yet | migrate onto `arch/` fs/process APIs, so the tooling dogfoods the platform floor | the process-lifecycle phase (lands `arch/` fs/process) |
+
+**Verification doctrine.** The in-repo `no_std` test runner over
+`arch/` is the `DAG6` realization of "test what you fly": test
+binaries and flight binaries share one platform floor — same entry,
+same allocator, same panic path. The libtest bootstrap exists only
+until it lands, and the bootstrap table above is the only place such
+states may be recorded.
+
+**Enforcement.** The §5 zero-std walk (`#![no_std]` presence;
+`std`/`alloc` usage sweep; `panic = "abort"` profile gate),
+fail-closed, no allowlist except the two tracked bootstrap states
+above — which are enumerated in the probe and ratchet to zero.
 
 ## Open items
 
@@ -249,3 +344,4 @@ run in CI on every PR. There is no allowlist for `DAG5` (§8).
 | DAG3 | Fixture adds `apps/cli → reovim-driver-display`; expect **fail**. |
 | DAG4 | Inspect runtime install paths; verify no probe edge created. |
 | DAG5 | Fixture crate adds a registry dependency in each of the three dep tables in turn; expect **fail** for all three. Resolved-graph gate: lockfile/metadata package set is exactly the workspace-local set; a registry or git source → **fail**. |
+| DAG6 | Three negative fixtures: a product crate missing `#![no_std]` at its root; a `use std::` in product code; a `use alloc::` in product code — each expects **fail**. Profile gate: workspace `panic` setting other than `"abort"` → **fail**. (Probe lands with the L10 enforcement flight; spec-first until then, like DAG5 pre-scaffold.) |

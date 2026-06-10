@@ -133,20 +133,63 @@ No pointer crosses without one of the three.
 
 ## 5. Panic isolation
 
-> **AB12 — Single panic isolation rule.** Every host-to-cdylib and
-> cdylib-to-host entrypoint wraps its body in `catch_unwind` and
-> converts panic to `ErrorCode::Panic` plus a DS12 event
-> (`dispatch.handler.panic`). No Rust unwind crosses an `extern "C"`
-> boundary. Crates that host or call FFI thunks build with
-> `panic = "unwind"`.
+> **AB12 — Single panic isolation rule (panic disposition).** No
+> Rust unwind ever crosses an `extern "C"` boundary. Under `DAG6`
+> (1.2 §10) there is no unwinder: the workspace builds
+> `panic = "abort"` and any panic — host or cdylib side — reaches
+> the `arch/`-owned panic handler. The handler, in order:
 >
-> *Class*: compile-time (panic profile) + runtime
-> (`catch_unwind` coverage).
+> 1. renders the panic into the **kernel log ring** — the single
+>    log mechanism (9.5 LOG1) — as a LOG2 line carrying the panic
+>    message and location plus the owning-cdylib attribution when
+>    the panic occurred inside a RefGuard-tracked slot invocation
+>    (CC12), and emits the DS12 `dispatch.handler.panic` event to
+>    any subscriber still reachable;
+> 2. synchronously flushes the ring tail to the LOG7 file sink
+>    target via raw `arch/` syscalls — same file, same line format
+>    as normal operation; there is no second log (the ring is
+>    volatile; this final flush is what survives the crash);
+> 3. records the target lifecycle state (2.2 §2) and the quarantine
+>    marker through the persisted state (2.4), so the restart reads
+>    state, never parses logs;
+> 4. terminates the process per the boot-only config
+>    `kernel.host.[panic].disposition`:
+>    - `recover` (default) — exit with the restart-requested
+>      status; the supervising launcher (1.3) restarts the server,
+>      which restores from persistence (PS1/PS2) and
+>      **quarantines** the attributed cdylib: it is not loaded
+>      again until explicitly cleared (7.1 `pkg`). The first panic
+>      quarantines — there is no strike count.
+>    - `halt` — stop where the fault stands; nothing restarts; the
+>      flushed log and process state are preserved for analysis
+>      (development and test posture).
+>
+> `ErrorCode::Panic` remains the reported code wherever a panic
+> outcome is surfaced to a caller or client.
+>
+> *Class*: compile-time (panic profile) + runtime (panic handler) +
+> spec-asserted (supervision).
 
-> **AB13 — Cleanup callbacks panic-contained.** Shutdown, destroy,
-> drop, unregister callbacks all wrap. Panic during cleanup converts
-> the owner to `TombstonedFailedUnload` and emits
-> `cdylib.unload.fail rollback=failed`.
+> Heritage (non-normative). The pre-`DAG6` AB12 wrapped every FFI
+> boundary in `catch_unwind` (crates built `panic = "unwind"`) and
+> the process survived a plugin panic. `catch_unwind` is a
+> `std`-only API and no_std has no unwinder, so that mechanism is
+> unavailable under `DAG6` — and in-process containment was the
+> weaker guarantee anyway: a panicked native cdylib has already
+> violated its contract, and continuing with torn state trades
+> integrity for availability. The disposition model mirrors Linux:
+> oops→taint ≈ panic→quarantine, pstore ≈ the panic-time final ring
+> flush, production
+> `panic=N` auto-reboot vs a dev box left hung for analysis ≈
+> `recover` vs `halt`.
+
+> **AB13 — Cleanup panics are recorded, then disposed.** Panic
+> during shutdown, destroy, drop, or unregister callbacks follows
+> the AB12 path; the flushed log line carries `rollback = failed`
+> and the persisted state records `TombstonedFailedUnload`, so a
+> `recover` restart quarantines the owner and a `halt` stop
+> preserves the evidence. Non-panic cleanup failures keep their in-process
+> handling (`cdylib.unload.fail` event, LF12 failure policy).
 > *Class*: runtime.
 
 ### 5.1 Deprecated
@@ -276,8 +319,8 @@ normative. Intent unchanged; the guard is now structural.
 | Rule | Fixture |
 |---|---|
 | AB3 | Append a slot to a sample vtable; older kernel reads through `size_of_self`. |
-| AB12 | Panicking handler returns `ErrorCode::Panic`; process survives. |
-| AB13 | Panicking shutdown → tombstoned-failed-unload event. |
+| AB12 | Panicking handler under `halt`: the panic line (with cdylib attribution) is present in the flushed log file; DS12 event recorded; process stops. Under `recover` (supervision fixture): restart restores persisted state and the attributed cdylib is quarantined. |
+| AB13 | Panicking shutdown → flushed log line carries `rollback = failed`; persisted state records `TombstonedFailedUnload`; `recover` restart shows the owner quarantined. |
 | AB14 | CI grep: no `-> c_int` fallible slot in `uapi/` vtables. Runtime: out-of-range `i32` from a slot maps to `Generic` + DS12 note. |
 | (ManifestKind) | Enum-discriminant golden test; `Unknown = 0` header rejected with `IllegalKind`. |
 | (header layout) | Golden offset/size tests for `VtableHeader`, `AbiVersion`, `Version`, `ErrorBuf`. |

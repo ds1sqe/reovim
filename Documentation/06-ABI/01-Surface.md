@@ -42,9 +42,10 @@ Two contracts live at the ABI boundary:
 - **Rust trait objects** (`Box<dyn T>`, `&dyn T`, `dyn T`) never
   cross the boundary.
 - **Rust generics** never appear in `extern "C"` signatures.
-- **`std::sync::Arc`** as such never crosses; opaque
+- **Shared-reference types** (the `arch/`-provided `Arc`
+  equivalent, 1.2 §10) as such never cross; opaque
   reference-counted handles use HostApi-managed counts.
-- **`std::any::TypeId`** never crosses.
+- **`core::any::TypeId`** never crosses.
 - **`enum` without `#[repr(...)]`** never crosses; tagged unions
   use `#[repr(C, u8)]` or a sibling discriminator.
 

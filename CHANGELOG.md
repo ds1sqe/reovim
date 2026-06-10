@@ -13,6 +13,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (`cargo test -p reovim-depgraph --test sovereignty_gate`). (#783)
 
 ### Changed
+- Spec: Zero-Std Sovereignty is law (`DAG6`, 1.2 §10) — every product
+  crate is `#![no_std]` and `alloc`-free including `arch/`, which owns
+  the platform floor (syscall FFI, `_start`, panic handler, allocator,
+  sync, all heap data structures); workspace `panic = "abort"`; the
+  North Star gains the Mission-to-Mars reliability doctrine. Protocol
+  purity + carrier seam (`SP15`/`SP16`, 7.3 §1a): the wire protocol is
+  sans-IO pure over caller-provided buffers (`SP13` re-signed,
+  `encoded_size` sizing contract, `ErrorCode::BufferTooSmall`); the
+  carrier (UDS/TCP default; HTTP/WebSocket/gRPC/file possible) is a
+  replaceable byte-mover. AB12 panic isolation re-specified for
+  no-unwinder reality: panic disposition (`recover`/`halt`), the
+  panic-time final ring flush (one kernel log buffer, no second
+  log), first-panic quarantine via persisted state.
+  `std::` realization claims scrubbed to `arch/` contracts. (#784)
 - Spec: Dependency Sovereignty is law (`DAG5`, 1.2 §9) — the workspace
   dependency graph is closed to std + in-repo crates across all three
   dependency tables; OS access via `arch/`-owned FFI; North Star

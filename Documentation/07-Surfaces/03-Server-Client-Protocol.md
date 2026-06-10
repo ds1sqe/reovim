@@ -13,7 +13,8 @@ reimplement a conforming client from this chapter alone (plus the
 **Locked rules.** `SP1..SP8` carried (restated §11, semantics
 unchanged, wire-mechanism vocabulary reshaped); `SP9..SP14` new
 (framing, handshake, codec, reject model, unknown-tag policy,
-backpressure).
+backpressure); `SP15..SP16` new (sans-IO protocol purity, carrier
+replaceability — §1a).
 
 > Heritage (non-normative). v3 and v4 specified this surface as a gRPC
 > service: `service Reovim { rpc … }` over HTTP/2, with `.proto`
@@ -51,6 +52,62 @@ choices serve latency directly:
 > Heritage (non-normative). The gRPC form paid for HTTP/2 framing,
 > protobuf field-tag varints, and base64 cursor expansion on every
 > frame. The framed protocol removes all three indirections.
+
+## 1a. Protocol purity and the carrier seam
+
+This chapter specifies **two layers** with a hard seam between them:
+
+- The **message protocol** — the deterministic byte codec (§6), the
+  message inventory (§7), the handshake/versioning rules (§10), the
+  correlation rules (§4), and the reject model (§9). This layer is
+  pure computation over byte slices. It is the protocol SSOT.
+- The **carrier** — whatever moves the bytes. §§2–3 specify the
+  **default carrier**: length-prefixed frames over a UDS/TCP stream
+  socket. The default carrier is normative for interoperability, but
+  it is *one* carrier, not the protocol itself.
+
+> **SP15 — `uapi/protocol` is sans-IO pure.** The codec, message
+> structs, and handshake/correlation state machine perform ZERO IO:
+> no syscalls, no `arch/` IO APIs, no IO traits, no transport
+> assumptions, no timers, and no allocation (callers provide every
+> buffer; 1.2 §10). The encode/decode surface is pure over byte
+> slices: `encode(&self, &mut [u8]) -> Result<usize, ErrorCode>` /
+> `decode(&[u8]) -> Result<Self, ErrorCode>`. Purity is
+> probe-enforced: `uapi/protocol` imports nothing but `core` and
+> `uapi` siblings. *Class*: CI/depgraph (purity probe) + spec.
+
+> **SP16 — The carrier is a replaceable byte-mover; framed UDS/TCP
+> is the default.** Any mechanism that satisfies the carrier
+> contract below is a valid carrier: the §2 stream socket, HTTP,
+> WebSocket, gRPC, named pipes, even plain file IO. The message
+> protocol cannot tell the difference, and a conforming
+> implementation keeps it that way. Every carrier implementation
+> honors `DAG5`/`DAG6` (in-house code, no third-party crates,
+> `no_std` over `arch/` APIs). *Class*: spec-asserted + structural.
+
+**Carrier contract.** A carrier MUST provide, per connection:
+
+- ordered, reliable, complete delivery of frame bytes in each
+  direction (no loss, no duplication, no reordering within the
+  connection);
+- a connection identity — the connection IS the client identity
+  (SP9 semantics hold on every carrier);
+- framing: the default carrier uses the §3 length-prefixed frame
+  format on a raw byte stream. A carrier with native message
+  framing (e.g. WebSocket messages, HTTP request/response bodies)
+  MAY map one transport unit to one protocol frame instead of
+  re-wrapping the §3 length prefix; the frame header fields
+  (`msg_type`, `flags`, `correlation_id`) always travel with the
+  frame.
+
+A carrier MUST NOT inspect, transform, reorder, or act on message
+bodies — the body is opaque bytes to the carrier.
+
+> Note (non-normative). gRPC appears in this chapter's heritage
+> notes as the protocol reovim moved away from; under SP16 it
+> re-enters only as a *possible carrier* — an in-house transport
+> that happens to speak gRPC framing could move protocol frames —
+> never as the message protocol itself.
 
 ## 2. Transport
 
@@ -171,13 +228,22 @@ codec primitive is named so every field in §7 maps to exactly one:
 | `carrier` | `header: [u8; 8]` raw, then a `bytes` (the `(header, content)` pair of 6.3 §5) |
 
 > **SP13 — Every message is a hand-written struct with a byte-identical
-> round-trip.** Each message type has an `encode(&self, out: &mut
-> Vec<u8>)` and a `decode(buf: &[u8]) -> Result<Self, ErrorCode>` pair
-> in `uapi/protocol`. Encoding is deterministic: the same value always
-> produces the same bytes, and `decode(encode(x)) == x` for every legal
-> value, byte-for-byte (CF4 golden fixtures, successor to the proto
-> golden bytes). Fields are encoded in the order listed in the §7 body
-> table, with no padding between them. *Class*: CI (golden) + runtime.
+> round-trip.** Each message type has an
+> `encode(&self, out: &mut [u8]) -> Result<usize, ErrorCode>`
+> (returns the byte count written) and a
+> `decode(buf: &[u8]) -> Result<Self, ErrorCode>` pair in
+> `uapi/protocol`, plus an exact sizing fn
+> `encoded_size(&self) -> usize`. The caller provides the output
+> buffer (SP15: the protocol never allocates); `out.len() <
+> encoded_size()` fails `BufferTooSmall` with nothing written. A
+> caller sizes the buffer by `encoded_size()` exactly, or by the
+> SP10 `wire-max-frame-bytes` bound, which `encoded_size()` of any
+> legal frame body never exceeds. Encoding is deterministic: the
+> same value always produces the same bytes, and
+> `decode(encode(x)) == x` for every legal value, byte-for-byte
+> (CF4 golden fixtures, successor to the proto golden bytes). Fields
+> are encoded in the order listed in the §7 body table, with no
+> padding between them. *Class*: CI (golden) + runtime.
 
 ### 6.1 Tagged unions (sibling-discriminated)
 

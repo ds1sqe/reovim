@@ -18,9 +18,9 @@ Every `Session` owns:
 
 - **`turn_gate: Arc<TurnGate>`** — serialises user-visible
   dispatch order for the session (FIFO fair-queue; in-repo
-  primitive over `std::sync`).
+  primitive over `arch/` sync primitives).
 - **`state: Mutex<SessionState>`** — protects field mutation in
-  `Session` (`std::sync::Mutex`).
+  `Session` (the `arch/`-provided Mutex).
 
 The kernel never holds `state` across a cdylib slot invocation.
 
@@ -95,7 +95,7 @@ itself is the reshape of v3 rules CC1..CC13; reshape note in §9.)
 | T9 | `projectors` | dispatch lookup |
 | T10 | `streams` | stream substrate |
 | T11 | `event_bus.subscriber_set` | DS12 fanout |
-| T12 | `sessions` (sharded `std::sync::RwLock` map shard) | per-session map |
+| T12 | `sessions` (sharded `arch/`-provided RwLock map shard) | per-session map |
 | T13 | `Session.state` | innermost session state |
 
 `turn_gate` is an async mutex orthogonal to this tier list; it does
@@ -124,24 +124,36 @@ Acquire steps (CC15 body):
 3. atomically increment refcount IFF state still Active and
    generation unchanged.
 4. on success, return `RefGuard`.
-5. invoke wraps the callable in `catch_unwind` (AB12).
+5. invoke records the invocation context (owner `CdylibId`, slot)
+   in the thread's panic-attribution slot before calling, and
+   clears it after — this is what the AB12 panic handler reads to
+   attribute a panic to its owning cdylib. There is no
+   `catch_unwind` under `DAG6` (AB12, 6.2 §5).
 
 Release: decrement refcount; if state == Draining and refcount
 reaches 0, signal the unload waiter.
 
 ## 6. Panic isolation
 
-> **AB12 — Single panic isolation rule.** Every host-to-cdylib and
-> cdylib-to-host entrypoint wraps its body in `catch_unwind` and
-> converts panic to `ErrorCode::Panic` plus a DS12 event. No Rust
-> unwind crosses an `extern "C"` boundary. Crates that host or call
-> FFI thunks build with `panic = "unwind"`. *Class*: compile-time
-> (panic profile) + runtime (catch_unwind coverage).
+> **AB12 — Single panic isolation rule (panic disposition).** Owner
+> body in 6.2 §5. Under `DAG6` (1.2 §10) there is no unwinder and
+> no `catch_unwind`: a panic in any slot invocation reaches the
+> `arch/`-owned panic handler, which renders the panic into the one
+> kernel log ring (with owning-cdylib attribution from the active
+> RefGuard context, §5) and synchronously flushes the ring tail to
+> the LOG7 file (9.5 §9.1), records the lifecycle consequence in
+> the persisted state (2.4), emits the DS12
+> `dispatch.handler.panic` event, and terminates the process per
+> the configured disposition — `recover` (supervised restart +
+> persistence restore + first-panic quarantine of the attributed
+> cdylib) or `halt` (stop for analysis). No Rust unwind crosses an
+> `extern "C"` boundary. *Class*: compile-time (panic profile) +
+> runtime (panic handler).
 
-> **AB13 — Cleanup callbacks are panic-contained.** Shutdown,
-> destroy, drop, unregister callbacks all wrap. Panic during
-> cleanup converts the owner to `TombstonedFailedUnload` and emits
-> a `cdylib.unload.fail` event with `rollback = failed`.
+> **AB13 — Cleanup panics are recorded, then disposed.** Owner body
+> in 6.2 §5: the AB12 path with `rollback = failed` in the flushed
+> log line and target state `TombstonedFailedUnload` in the
+> persisted state; a `recover` restart quarantines the owner.
 > *Class*: runtime.
 
 `AB5` and `AB6` from v3 are deprecated in favour of `AB12`.
@@ -155,21 +167,25 @@ kernel:
 2. records a DS12 `dispatch.handler.panic` event with reason
    `slot_timeout` (even though no panic occurred — the event family
    covers slot misbehaviour).
-3. counts toward the per-cdylib panic-threshold gate, with
-   namespaced limit `panic-threshold-count` /
-   `panic-threshold-window-ms` from `kernel.host.[limits]`.
+3. counts toward the per-cdylib slot-timeout threshold gate, with
+   namespaced limit `slot-timeout-threshold-count` /
+   `slot-timeout-threshold-window-ms` from `kernel.host.[limits]`.
 
-(Threshold gate retained from v3 — its rule body lives in
-`02-Process/02-Lifecycle.md`. The v3 AB6 wording that introduced
-it is deprecated; AB12 carries the panic convention, the
-lifecycle chapter carries the gate.)
+(Threshold gate retained from v3, re-scoped under `DAG6`: it
+counts slot timeouts only — repeated in-process panics cannot
+occur under the AB12 disposition model (the first panic terminates
+the process and, under `recover`, quarantines the owner), so the
+panic half of the old gate is subsumed by first-panic quarantine.
+The v3 AB6 wording that introduced the gate is deprecated; AB12
+carries the panic convention, the lifecycle chapter carries the
+gate.)
 
 ## 8. Send / Sync invariants
 
 Every cdylib-callable function pointer must satisfy:
 
-- callable from any worker thread of the std thread-per-connection
-  runtime (Send-safe by construction);
+- callable from any worker thread of the `arch/`-threaded
+  thread-per-connection runtime (Send-safe by construction);
 - re-entrant safe with respect to its own owner (per `flags` in
   vtable header);
 - `hostapi_reentrant` flag declares whether the slot may call
@@ -190,9 +206,9 @@ The v3 rule bodies, restated in v4 vocabulary. These are the
 normative texts; the v3 chapter is heritage.
 
 > **CC1 — `Kernel` is `Send + Sync`, shared as `Arc<Kernel>`** across
-> the multi-thread async runtime's workers. There is no central
-> actor task and no Kernel mailbox. *Class*: kernel-enforced
-> (compile).
+> the server runtime's worker threads (`arch/`-threaded,
+> thread-per-connection). There is no central actor task and no
+> Kernel mailbox. *Class*: kernel-enforced (compile).
 
 > **CC2 — Per-field locks on Kernel; no global kernel lock.** Each
 > lockable Kernel field is its own tier in the §4 table (T1..T12);
@@ -310,5 +326,5 @@ the order is total and violations are bugs.
 | CC14 | Lock instrumentation: invoke handler that calls long HostApi op; verify `Session.state` is not held during the slot. |
 | CC15 | Race: unload begins between RefGuard generation capture and invoke; verify `AcquireError::NotActive`. |
 | CC16 | Handler issues HostApi acquiring `domains`; verify ordering against §4 tiers. |
-| AB12 | Panicking handler returns `ErrorCode::Panic`; DS12 event recorded; process survives. |
-| AB13 | Panicking shutdown → `TombstonedFailedUnload`; DS12 event with `rollback = failed`. |
+| AB12 | Panicking handler under `halt`: the panic line (with cdylib attribution) is present in the flushed log file; DS12 event recorded; process stops. Under `recover` (supervision fixture): restart restores persisted state and the attributed cdylib is quarantined. |
+| AB13 | Panicking shutdown → flushed log line carries `rollback = failed`; persisted state records `TombstonedFailedUnload`; `recover` restart shows the owner quarantined. |

@@ -104,8 +104,9 @@ embedded launcher (1.3) hosts a kernel instance and a client
 runtime in the same process.
 
 > Note (non-normative): `ShardedMap<K, V>` is an in-repo sharded
-> concurrent map realized as a fixed array of `std::sync::RwLock`-guarded
-> `HashMap` shards; `K` hashes to select the shard.
+> concurrent map realized as a fixed array of `arch/`-provided
+> RwLock-guarded hash-map shards (1.2 §10 platform floor); `K`
+> hashes to select the shard.
 
 ## 4. Registries
 
@@ -145,9 +146,9 @@ The two-lock model (`turn_gate` + `state`) is the v4 fix to v3's
 single-`Mutex<Session>`. See `02-Process/03-Concurrency.md`.
 
 > Note (non-normative): `TurnGate` is an in-repo FIFO fair-queue
-> primitive built over `std::sync` primitives (condvar + ticket
-> counter); it provides the same acquire/release contract as a FIFO
-> async mutex without a third-party runtime dependency.
+> primitive built over `arch/`-provided sync primitives (condvar +
+> ticket counter); it provides the same acquire/release contract as
+> a FIFO async mutex without a third-party runtime dependency.
 
 ## 6. Buffer shape
 
@@ -186,13 +187,15 @@ pub struct Window {
    instance.
 2. `EffectiveConfig` lifetime — currently bound to the kernel
    instance's lifetime; if reload paths arrive
-   (lifecycle="reloadable"), this becomes
-   `ArcSwap<EffectiveConfig>`. Out of v4 target.
+   (lifecycle="reloadable"), this becomes an atomically-swappable
+   shared reference (`arch/`-provided; no third-party `ArcSwap`).
+   Out of v4 target.
 3. ~~Whether `Session.state` is an async or a non-async mutex (the
    pre-sovereignty draft weighed third-party primitives)~~ —
-   resolved #782: `Session.state` is `std::sync::Mutex`; FIFO
-   turn-ordering is provided by the in-repo `TurnGate` built over
-   `std::sync`.
+   resolved #782 as `std::sync::Mutex`; re-resolved #784 under
+   `DAG6` (1.2 §10): `Session.state` is the `arch/`-provided Mutex;
+   FIFO turn-ordering is provided by the in-repo `TurnGate` built
+   over `arch/` sync primitives.
 
 ## Conformance
 

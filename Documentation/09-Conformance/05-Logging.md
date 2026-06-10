@@ -225,6 +225,22 @@ fields (open item 1).
 > stream itself stays volatile (9.4 open item 2, resolved).
 > *Class*: runtime.
 
+### 9.1 Panic-time final flush
+
+On a panic the `arch/` panic handler performs the **final flush**
+(AB12, 6.2 §5 owns when and what): the panic renders as a LOG2
+line into the one kernel log ring (§1 — there is only one log
+mechanism and one buffer; a panic does not get a second log), and
+the handler then synchronously flushes the ring tail to this
+sink's target file via raw `arch/` syscalls — the normal LOG7
+machinery is not trusted at panic time, but the file and the line
+format are the same. This is the pstore analog: the ring is
+volatile; the final flush is what survives the restart. Lifecycle
+consequences (target state, quarantine) travel through the
+persisted state (2.4), never by parsing log lines. The flush path
+lands with the `arch/` panic handler (the arch-foundation phase),
+gated by the AB12 conformance fixtures (2.3 §Conformance).
+
 ## 10. Early boot and stderr
 
 > **LOG8 — Early-boot output.** Before the config layer stack is

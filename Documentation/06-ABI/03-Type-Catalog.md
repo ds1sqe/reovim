@@ -151,6 +151,7 @@ pub enum ErrorCode {
     CodecGone                   = 23,
     NotActive                   = 24,
     RollbackFailed              = 25,
+    BufferTooSmall              = 26,   // caller-provided buffer under encoded_size() (7.3 SP13)
     // future codes appended; values >= 240 reserved
 }
 ```

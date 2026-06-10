@@ -51,13 +51,27 @@ Loaded ─────▶ Active ─────▶ Draining ─────▶ 
    │            │              │               │
    │            │              │               └── on cleanup panic ──▶ TombstonedFailedUnload
    │            │              └── on drain timeout ──▶ Active (unload aborted) or TombstonedBusy
-   │            └── on shutdown panic ──▶ Panicked (still mapped)
+   │            └── on shutdown panic ──▶ Panicked (recorded; AB12 note below)
    └── on init failure ──▶ FailedInit (unmapped after rollback)
 ```
 
 Each cdylib carries a monotonic **generation** counter that
 increments on every state transition. `RefGuard` acquisition includes
 a generation re-check (§4).
+
+> **Panic disposition note (AB12, 6.2 §5).** Under `DAG6` (1.2 §10)
+> there is no unwinder: any panic terminates the process per the
+> configured disposition (`recover` | `halt`). The "on … panic"
+> transitions in this chapter therefore name the **recorded**
+> outcome, not a live in-process transition: the `arch/` panic
+> handler records the target state in the persisted state (2.4)
+> and flushes the panic line through the one kernel log ring (9.5
+> §9.1), and a `recover` restart materialises it — the restored
+> inventory
+> shows the owner as `TombstonedFailedUnload` / `Panicked` /
+> `FailedInit` and quarantines it. Non-panic failures (error
+> returns, drain timeouts) keep their live in-process transitions
+> unchanged.
 
 ## 3. Load: `dlopen` → `Loaded` → init → `Active`
 
@@ -69,12 +83,16 @@ a generation re-check (§4).
 5. on init OK:
      publish/reconcile registrations (handler/projector/service/codec/...)
      CAS Loaded -> Active; generation++
-6. on init error or panic:
+6. on init error (ErrorCode return):
      unregister partial rows owned by this cdylib (LF11)
      destroy any view/service/config resources created during init
      dlclose
-     record FailedInit / Panicked in inventory
+     record FailedInit in inventory
      state never becomes Active
+7. on init panic: AB12 disposition (6.2 §5) — the persisted state
+   records target state Panicked; a recover restart quarantines
+   the cdylib; rollback of partial rows happens structurally (the
+   restarted process never sees them)
 ```
 
 > **LF7 — Init runs only in `Loaded`; `Active` only after success.**
@@ -216,8 +234,13 @@ post-timeout state).
 > Failures are recorded, not propagated:
 > - step 1/2 failure or timeout → DS12
 >   `detach.handler.fail` / `persistence.save.fail`, continue;
-> - step 4 panic → AB13 (owner tombstoned-failed-unload), continue
->   with remaining slots.
+> - step 4 error return → AB13's non-panic path (owner recorded,
+>   `cdylib.unload.fail`), continue with remaining slots;
+> - any step's panic → AB12 disposition (6.2 §5): the process
+>   terminates with the owner and target state recorded in the
+>   persisted state and the panic line flushed through the log
+>   ring; a `recover` restart quarantines the owner.
+>   Continue-after-panic does not exist under `DAG6`.
 >
 > **Chain order**: with multiple resolved Domains in the focus
 > chain, the sequence runs **leaf-first** (deepest Domain
@@ -324,8 +347,9 @@ normative texts; the v3 chapter is heritage.
 > **LF3 — Unload protocol.** Acquire the per-cdylib unload-mutex;
 > CAS `Active → Draining`; wait bounded
 > (`unload-drain-timeout-ms`, §7) for the refcount to reach 0;
-> CAS `Draining → Shutting`; call `vtable.shutdown` under
-> `catch_unwind` (AB12/AB13); unregister owned rows (LF8/LF9);
+> CAS `Draining → Shutting`; call `vtable.shutdown` under the AB12
+> panic-attribution context (a shutdown panic follows the
+> disposition path, AB13); unregister owned rows (LF8/LF9);
 > physical `dlclose` only per LF10; CAS `Shutting → Unloaded`.
 > *Class*: kernel-enforced (runtime).
 
@@ -393,7 +417,7 @@ superseded, not contradicted.
 | LF9 | Trace test verifies §5 step order. |
 | LF10 | Cdylib without `dlclose_safe`: unload runs steps 1-6, library stays mapped. |
 | LF11 | Init fails after partial registrations; verify all rolled back before tombstone. |
-| LF12 | Detach-trace fixture: two-Domain chain, window close → steps 1..5 leaf-first; panicking `OnPersistSave` → `persistence.save.fail` emitted, detach completes; buffer-close with two windows → window sequences before buffer handlers. |
+| LF12 | Detach-trace fixture: two-Domain chain, window close → steps 1..5 leaf-first; `OnPersistSave` returning an error → `persistence.save.fail` emitted, detach completes; buffer-close with two windows → window sequences before buffer handlers. (Panic-path coverage lives in the AB12 disposition fixtures, 2.3 §Conformance.) |
 | LF13 | Compile probe: `Kernel` has no public constructor other than `Init::boot`; compile-fail fixture: using `Init` after `boot()` is rejected (moved value). Boot-failure fixture: `boot()` error → no serving socket, no kernel observable, boot-stage `fail` event in the ring. |
 | LF14 | Per-trigger fixtures: `SIGTERM`, embedded `Kernel::shutdown()`, drive op → `shutdown.start` with matching `source`; drive op without `debug.mutate` → `PermissionDenied`. |
 | LF15 | Shutdown-trace fixture: phase order holds; every persist handler runs while its owner is `Active` (inventory state in trace); `Attach` after phase 0 → `UNAVAILABLE`; unload order is reverse-lockfile. |

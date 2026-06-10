@@ -104,8 +104,10 @@ Unregister:
 
 ## 6. Drop callback
 
-> **SVC4 — Service drop callbacks panic-contained.** `drop_fn` runs
-> under `catch_unwind` (AB13); panic → `TombstonedFailedUnload`.
+> **SVC4 — Service drop callbacks panic-recorded.** `drop_fn` runs
+> under the AB12 panic-attribution context; a panic follows the
+> disposition path (AB13) with target state
+> `TombstonedFailedUnload` recorded in the persisted state.
 > *Class*: runtime.
 
 ## 7. Service vtable shape

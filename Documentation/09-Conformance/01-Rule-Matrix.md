@@ -103,6 +103,16 @@ extract.
 | `FrameHeader` (6.3) | wire-bytes fixture: the 16-byte little-endian prefix round-trips through encode/decode |
 | DS12 event schema | JSON Schema golden file per event family |
 
+New rows under `DAG6`/`SP15`/`SP16` (spec-first — the probes land
+with the L10 enforcement flight, exactly as `DAG5` was spec-first
+before the workspace scaffold built it):
+
+| Rule | Class | Fixture |
+|---|---|---|
+| `DAG6` (1.2 §10) | CI-depgraph (spec-first) | Positive: every product crate root declares `#![no_std]`; product sources contain no `std`/`alloc` use; workspace profile is `panic = "abort"`. Negative (three fixtures): a product crate missing `#![no_std]`; a `use std::` in product code; a `use alloc::` in product code — each expects **fail**. Bootstrap-state crates are enumerated in the probe, not pattern-matched. |
+| `SP15` (7.3 §1a) | CI-depgraph (spec-first) | Purity probe: `uapi/protocol` imports nothing but `core` and `uapi` siblings. Negative: an `arch/` (or any IO-capable) dependency or import in `uapi/protocol` expects **fail**. |
+| `SP16` (7.3 §1a) | spec-asserted + structural | The §3 frame format and §6 codec contain no carrier-specific reference; the carrier contract is satisfiable by a file-IO fixture carrier (frames written to and re-read from a file decode identically — exercised once the codec lands). |
+
 Per-target triples: `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 `x86_64-pc-windows-msvc`. Other triples are best-effort.

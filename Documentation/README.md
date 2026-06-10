@@ -25,7 +25,18 @@ the config and log formats — is specified completely enough that a
 stranger, decades from now, can reimplement either side of any
 boundary from these chapters alone.
 
-Two structural consequences:
+The reliability grade is normative: reovim targets adoption on a
+**Mission to Mars** — a system where a fault is unrecoverable and no
+patch can be shipped mid-flight. Therefore **developer convenience
+("dev-conv") is never a valid justification anywhere in this repo**;
+any argument that reduces to convenience is rejected on sight. The
+operating maxim is **"test what you fly, fly what you test"**:
+verification runs in the same environment the product flies in. This
+is the reason the zero-std bootstrap states ratchet to zero — the
+in-repo `no_std` test runner over `arch/` (1.2 §10) exists so that
+test binaries and flight binaries share one platform floor.
+
+Three structural consequences:
 
 - **Dependency sovereignty (`DAG5`, 1.2 §9).** The workspace
   dependency graph is closed: `std`/`core`/`alloc` and in-repo crates
@@ -34,6 +45,13 @@ Two structural consequences:
   interfaces are reached through hand-written `extern "C"` bindings
   owned by `arch/`. Reovim owns both ends of every wire it speaks, so
   ecosystem interop buys nothing; durability buys everything.
+- **Zero-std sovereignty (`DAG6`, 1.2 §10).** Every shipped crate is
+  `#![no_std]` and `alloc`-free — including `arch/`. The platform
+  floor (`arch/`) owns syscalls, process entry, panic handling,
+  allocation, sync primitives, and all heap data structures; every
+  crate above it consumes `arch/`-provided equivalents. The product
+  runs on exactly two foundations: the Rust `core` language and the
+  OS syscall surface.
 - **Latency is a design driver, not an optimization pass.** Owning
   the wire, the runtime, and the terminal layer means no foreign
   scheduler, codec, or abstraction sits between a keystroke and the

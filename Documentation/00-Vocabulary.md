@@ -16,6 +16,9 @@ in the chapter that owns them.
 | **CdylibState** | One of `Loaded`, `Active`, `Draining`, `Shutting`, `Unloaded`, `FailedInit`, `Panicked`. See `02-Process/02-Lifecycle.md`. |
 | **RefGuard** | A counted reference held by the kernel for the duration of a cdylib slot invocation. Blocks unload while held. |
 | **Generation** | A monotonic counter on each `CdylibId` that increments on every state transition. Used to detect stale registry references. |
+| **Panic disposition** | Boot-only policy `kernel.host.[panic].disposition` selecting what the `arch/` panic handler does after the final ring flush (9.5 §9.1) and the persisted-state record: `recover` (supervised restart + persistence restore + quarantine; default) or `halt` (stop for analysis; dev/test posture). See 6.2 §5 (AB12). |
+| **Final flush** | The panic-time act of the `arch/` panic handler: the panic renders into the one kernel log ring as a normal LOG2 line (with owning-cdylib attribution), and the ring tail is synchronously flushed to the LOG7 file via raw syscalls. The pstore analog — same file, same format, no second log. See 9.5 §9.1. |
+| **Quarantine** | The recorded-at-restart consequence of a panic under `recover`, read from the persisted state (2.4): the attributed cdylib is not loaded again until explicitly cleared (7.1 `pkg`). First panic quarantines; there is no strike count. The Linux taint/blacklist analog. |
 
 ## Domain & coordination
 
@@ -25,7 +28,7 @@ in the chapter that owns them.
 | **DomainAttachment** | A live attachment of a Domain to a Buffer at a Scope. Carries `struct_refs` (structural lifetime) and `focus_refs` (focus-chain lifetime). |
 | **PendingAttachment** | A focus-chain entry whose Domain is registered but whose cdylib is not yet `Active`. Carries enough context to resolve later. |
 | **Scope** | Position-stable identity of a sub-region within a Buffer that a Domain has attached to. |
-| **PositionCarrier** | Header (8 bytes: domain_id, inner_id, flags) + opaque content bytes. Domain-neutral position. |
+| **PositionCarrier** | Header (8 bytes: domain_id, inner_id, flags) + opaque content bytes. Domain-neutral position. (Distinct sense from the protocol **carrier** — see Surfaces.) |
 | **CursorCarrier** | Same shape as `PositionCarrier`, used for cursors and selections. |
 | **Codec** | Registered behaviour for `(domain_id, inner_id)`: validate, equal, display, persist. |
 
@@ -60,7 +63,9 @@ in the chapter that owns them.
 | **Manifest** | Per-artefact TOML at `manifest/<kind>/<name>.toml`. Names the symbol(s), kind, platforms, vtables. |
 | **DS12** | The kernel's structured-event channel. Required event families listed in `09-Conformance/04-Observability.md`. |
 | **Correlation ID** | Per-request identifier propagated through DS12 events for one external operation. |
-| **Log ring** | Bounded in-memory ring of rendered log lines, retained from boot stage 0; the `dmesg` analog. See `09-Conformance/05-Logging.md`. |
+| **Carrier (protocol)** | The replaceable byte-mover the framed message protocol rides on: the default framed UDS/TCP stream, or HTTP, WebSocket, gRPC, pipes, file IO. Satisfies the 7.3 §1a carrier contract; never inspects message bodies (SP16). Distinct from the coordination `PositionCarrier`/`CursorCarrier` (4.5). |
+| **Sans-IO** | The purity discipline of `uapi/protocol` (SP15): the codec and protocol state machine are pure computation over byte slices — no syscalls, no IO traits, no timers, no allocation. |
+| **Log ring** | Bounded in-memory ring of rendered log lines, retained from boot stage 0; the `dmesg` analog. The ONE log buffer at kernel level — every log path, including the panic-time final flush (9.5 §9.1), goes through it. See `09-Conformance/05-Logging.md`. |
 | **Emitter address** | `kind/CdylibId.vtable` token identifying where in the loaded topology a log line originated; kernel subsystems use a bare name. See `09-Conformance/05-Logging.md` §3. |
 
 ## Architectural categories
@@ -68,6 +73,8 @@ in the chapter that owns them.
 | Term | Definition |
 |---|---|
 | **Foundation** | `arch/`, `lib/*`, `uapi/*`. No upward deps. |
+| **Platform floor** | `arch/` in its `DAG6` role: the single crate owning raw syscall FFI, process entry/exit, the panic handler, the allocator, sync primitives, and all heap data structures (1.2 §10). |
+| **Bootstrap state** | A tracked, transitional zero-std exemption recorded in the 1.2 §10 table (libtest in test builds; depgraph/scripts ground tooling). Sequencing necessity, never convenience; ratchets to zero. |
 | **Server contracts** | `server/lib/subsys/*`. Closed; zero ext deps. |
 | **Server kernel** | `server/lib/kernel/*`. Mechanism; no ext or client deps. |
 | **Server runtime** | `server/lib/server/*`. Framed-protocol + dispatch glue. |

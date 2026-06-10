@@ -28,12 +28,14 @@ Both gates apply. Neither substitutes for the other.
 > **DEV1 — Tests land in the same change; coverage never
 > regresses.** Every change ships its tests in the same change —
 > not before (strict TDD is not required), not after (retroactive
-> tests are forbidden). CI enforces 100% line coverage
-> workspace-wide; MC/DC (condition) coverage additionally where the
-> toolchain supports it. A change that regresses coverage does not
-> merge. `coverage(off)` annotations are an escape hatch for
-> genuinely untestable code only (spawned-task bodies, OnceLock
-> globals) and carry a justification.
+> tests are forbidden). CI enforces **100% MC/DC coverage (line +
+> condition) workspace-wide. There is no escape hatch and no
+> "OK to 99.999%"**: no crate-level exemption, no `coverage(off)`
+> annotation. Code whose branches cannot be exercised is
+> restructured until they can be (the North Star: dev-conv is
+> never a valid justification). If a toolchain defect misattributes
+> coverage on a code shape, the code shape changes — the gate does
+> not. A change that regresses coverage does not merge.
 > *Class*: CI.
 
 If the test cannot be written in the same change, the change is not
@@ -151,7 +153,7 @@ platforms.
 
 | Rule | Fixture |
 |---|---|
-| DEV1 | CI gate: coverage report below 100% line → merge blocked; `coverage(off)` without justification comment → CI fails. |
+| DEV1 | CI gate: coverage report below 100% MC/DC (line or condition) → merge blocked, any crate; any `coverage(off)` annotation present → CI fails. |
 | DEV2 | CI presence check: a change tagged `feat` without an E2E smoke test referencing the real launcher boot → merge blocked. |
 | DEV3 | Fixture feature altering rendered output without a frame golden → CI fails; with a stale golden → byte-diff failure names the golden path. |
 | DEV4 | Fixture edit altering buffer bytes asserted only via frame golden → CI fails (snapshot golden required); snapshot mismatch names offset and expected/actual bytes. |

@@ -253,9 +253,11 @@ normative texts; the v3 chapter is heritage.
 
 > **S7 — Push delivery; the kernel does not poll.** Schemes call
 > `hostapi_stream_emit` from their own runtime/thread. The
-> kernel-side emit thunk wraps fan-out in `catch_unwind` (AB12);
-> on panic it returns `ErrorCode::Panic` and does NOT poison
-> buffer locks. *Class*: kernel-enforced (runtime).
+> kernel-side emit thunk runs under the AB12 panic-attribution
+> context; a panic in fan-out follows the disposition path (6.2
+> §5) with the subscriber's owner attributed. Non-panic subscriber
+> failures return `ErrorCode` without poisoning buffer locks.
+> *Class*: kernel-enforced (runtime).
 
 > **S8 — `close` drains; `Stale` is the after-close answer.**
 > `vtable.close` drains in-flight emits before returning. After
@@ -311,7 +313,7 @@ rules + AB15. No rule in the block is dropped.
 | S4 | `write` to a not-ready source returns `Busy` without blocking; to a hung-up peer returns `Stale`. |
 | S5 | `control(op=0)` → `InvalidArgument`; kernel never emits an op in `101..=255` (trace probe). |
 | S6 | Two cdylibs register scheme `pty` → second fails init with `Conflict`. |
-| S7 | Panicking fan-out → emit returns `Panic`; subsequent buffer ops succeed (no poisoned lock). |
+| S7 | Non-panic subscriber failure during fan-out → emit returns the subscriber's `ErrorCode`; subsequent buffer ops succeed (no poisoned lock). Panicking fan-out → AB12 disposition (panic line flushed with the subscriber's owner attributed; process terminates per disposition; `recover` restart quarantines the owner — covered by the AB12 fixtures, 2.3 §Conformance). |
 | S8 | Emit after close → `Stale`; double unsubscribe → second call is a no-op success. |
 | S9 | One of three subscription applies fails → other two buffers updated; DS12 warn emitted. |
 | S10 | Stream manifest without `scheme_opts_schema` while `scheme_opts` non-empty → `pkg sync` rejects. |
