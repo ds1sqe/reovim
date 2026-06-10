@@ -1,6 +1,6 @@
 # Plugin and Module Architecture Design (Superseded)
 
-> **Superseded by**: [Client Layer Model](../architecture/client/overview.md) (v6.3).
+> **Superseded by**: [Client Layer Model](../../archive/docs/architecture/client/overview.md) (v6.3).
 > This document is preserved as historical reference. The `ClientExtension` trait described
 > here has been replaced by `ClientModule` in the Client Layer Model.
 

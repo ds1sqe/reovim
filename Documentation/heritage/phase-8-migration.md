@@ -186,6 +186,6 @@ When updating code or documentation:
 
 ## Related Documents
 
-- [Architecture Overview](../architecture/overview.md) - Current architecture
-- [Module System](../architecture/modules/overview.md) - Module loading and registry
-- [Driver Layer](../architecture/drivers/overview.md) - Driver architecture
+- [Architecture Overview](../../archive/docs/architecture/overview.md) - Current architecture
+- [Module System](../../archive/docs/architecture/modules/overview.md) - Module loading and registry
+- [Driver Layer](../../archive/docs/architecture/drivers/overview.md) - Driver architecture

@@ -1,7 +1,7 @@
 # Runner Architecture (Superseded)
 
-> **Superseded by**: [Server Architecture](../architecture/server/overview.md) and
-> [Client Architecture](../architecture/client/overview.md).
+> **Superseded by**: [Server Architecture](../../archive/docs/architecture/server/overview.md) and
+> [Client Architecture](../../archive/docs/architecture/client/overview.md).
 > The runner was dissolved in Phase 8. Server and client docs now live separately.
 
 > **Note:** This documentation describes the pre-Phase 8 architecture. The runner has been
@@ -99,10 +99,10 @@ reovim cli keys 'iHello<Esc>'
 reovim tui
 ```
 
-See [Server Mode Reference](../user-guide/server-mode.md) for complete usage.
+See [Server Mode Reference](../../archive/docs/user-guide/server-mode.md) for complete usage.
 
 ## Related Documents
 
-- [Server Architecture](../architecture/server/overview.md) - RPC server details
-- [Client Architecture](../architecture/client/overview.md) - CLI/TUI clients
-- [Server Mode Reference](../user-guide/server-mode.md) - Usage guide
+- [Server Architecture](../../archive/docs/architecture/server/overview.md) - RPC server details
+- [Client Architecture](../../archive/docs/architecture/client/overview.md) - CLI/TUI clients
+- [Server Mode Reference](../../archive/docs/user-guide/server-mode.md) - Usage guide

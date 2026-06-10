@@ -1,0 +1,97 @@
+# 6.1 — ABI Surface
+
+**Scope.** What constitutes the ABI surface: the boundary every
+runtime-loaded cdylib crosses, what kinds of types are allowed at
+that boundary, what the kernel pins and what it lets the cdylib
+choose.
+
+**Heritage.** v3 `06-ABI/01-Surface.md`; v4 README §2 (rules 6, 5).
+
+**Locked rules.** Carried from v3; references `AB*`.
+
+---
+
+## 1. The boundary
+
+Two contracts live at the ABI boundary:
+
+- **Loader contract** — the symbols a cdylib must export to be
+  loaded: vtable symbol(s), config symbols (CFG1), manifest path.
+  See 6.2.
+- **Call contract** — the rules every function pointer obeys:
+  parameter types, ownership, error convention, panic isolation.
+  See AB12.
+
+## 2. Allowed types at the boundary
+
+| Allowed | Forbidden |
+|---|---|
+| `#[repr(C)]` structs | `#[repr(Rust)]` structs |
+| `#[repr(C)]` unions with sibling discriminator | bare unions |
+| `#[repr(transparent)]` newtypes over allowed primitives | |
+| Primitive scalars (`u8`..=`u64`, `i8`..=`i64`, `f32`, `f64`, `bool`); `usize`/`isize` for lengths and sizes (= `size_t`/`ptrdiff_t`) | wider than 64-bit primitives; C aliases (`c_int`, `c_long`, `c_char`) — use explicitly sized types (AB14 retired the last `c_int` surface) |
+| `*const c_void` / `*mut c_void` opaque handles | Rust reference types (`&T`, `&mut T`) |
+| `*const u8` / `*mut u8` byte slices with explicit length | `&[T]`, `&str` |
+| Function pointers `extern "C" fn(...)` | `fn(...)` (Rust ABI) |
+| Stable interned identifiers (`DomainId(NonZeroU32)`, `CdylibId`, …) over `#[repr(transparent)]` | bare integers without a typed wrapper |
+| Bytes for serialised payloads (UTF-8, canonical TOML, base64) | language-specific encodings |
+| Standard fixed-size byte arrays (`[u8; N]`) | dynamic-size arrays |
+
+## 3. Forbidden categories
+
+- **Rust trait objects** (`Box<dyn T>`, `&dyn T`, `dyn T`) never
+  cross the boundary.
+- **Rust generics** never appear in `extern "C"` signatures.
+- **`std::sync::Arc`** as such never crosses; opaque
+  reference-counted handles use HostApi-managed counts.
+- **`std::any::TypeId`** never crosses.
+- **`enum` without `#[repr(...)]`** never crosses; tagged unions
+  use `#[repr(C, u8)]` or a sibling discriminator.
+
+## 4. Kernel-pinned vs cdylib-chosen
+
+| Pinned by kernel | Chosen by cdylib |
+|---|---|
+| `VtableHeader` shape (AB3) | vtable body (after header) |
+| `AbiVersion` major rejection rule | declared `AbiVersion` value |
+| `ConfigSlice` layout (CFG6) | config field set |
+| Carrier header layout (CR2) | content bytes |
+| Error convention (`ErrorCode`) | error semantics |
+| Panic isolation (AB12) | what gets panic-contained |
+
+## 5. ABI generation strategy
+
+The single source of `#[repr(C)]` layouts is
+`06-ABI/03-Type-Catalog.md`. Generated artefacts:
+
+- `uapi/<crate>/src/*.rs` — Rust mirror.
+- Generated C header (TBD generator).
+- Golden offset/size tests — bind both (CF4).
+
+## 6. Cdylib-to-cdylib direct calls
+
+Forbidden. All cross-cdylib communication goes through:
+- ServiceRegistry (3.3) for typed services,
+- DomainRouter (4.1) for handler/projector dispatch,
+- StreamRuntime (4.4) for stream substrate.
+
+This keeps every dynamic call routed through the kernel's
+ownership and lifecycle machinery.
+
+## Open items
+
+1. Whether `f32` is allowed at the boundary (currently in §2 row);
+   IEEE 754 cross-platform invariants are fine, but future ABI may
+   reduce to `f64` only for simplicity.
+2. C header generator choice — `cbindgen`? hand-rolled? Decision
+   gates the golden-test apparatus.
+3. Whether the boundary supports caller-owned-mutable buffers
+   (e.g. an `ErrorBuf*` filled by the cdylib). Default: yes
+   (mentioned in 6.2).
+
+## Conformance
+
+| Behaviour | Fixture |
+|---|---|
+| Forbidden types | CI grep for `Box<dyn` / `Arc<` / `&str` / `&[` in `extern "C"` signatures across `uapi/` crates. |
+| Allowed types | Sample vtable per category; golden offset/size test. |

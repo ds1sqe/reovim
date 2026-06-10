@@ -10,9 +10,10 @@ Foundational documents that shaped Reovim's architecture. These are **historical
 | [legacy-memorial.md](./legacy-memorial.md) | Memorial for archived legacy code | What we studied and learned from v0.8.x |
 | [clean-architecture-proposal.md](./clean-architecture-proposal.md) | Original v0.9.0 architecture proposal (119KB) | The blueprint for kernel/drivers/modules |
 | [phase5-extraction.md](./phase5-extraction.md) | Phase 5 concept-extraction strategy | How we transitioned from v0.8.x to v0.9.0 |
+| [phase-8-migration.md](./phase-8-migration.md) | Phase 8 workspace-split migration | How the flat crate tree became apps/server/clients/ext |
 | [buffer-provider-proposal.md](./buffer-provider-proposal.md) | Buffer provider design proposal | Deferred for future consideration |
-| [client-extensions.md](./client-extensions.md) | Pre-CLM client extension taxonomy | Superseded by [Client Layer Model](../architecture/client/overview.md) |
-| [runner-overview.md](./runner-overview.md) | Pre-Phase 8 runner architecture | Superseded by [Server](../architecture/server/overview.md) + [Client](../architecture/client/overview.md) |
+| [client-extensions.md](./client-extensions.md) | Pre-CLM client extension taxonomy | Superseded by [Client Layer Model](../../archive/docs/architecture/client/overview.md) |
+| [runner-overview.md](./runner-overview.md) | Pre-Phase 8 runner architecture | Superseded by [Server](../../archive/docs/architecture/server/overview.md) + [Client](../../archive/docs/architecture/client/overview.md) |
 
 ## Why Heritage?
 
@@ -25,8 +26,8 @@ These documents represent the intellectual foundation of Reovim's design:
 
 ## Current Documentation
 
-For up-to-date documentation, see:
-
-- [Architecture](../architecture/overview.md) - Current system design
-- [Contributing](../contributing/overview.md) - Contributor guides
-- [User Guide](../user-guide/) - End-user documentation
+For the normative, up-to-date documentation, see the
+[spec README](../README.md) — `Documentation/` is the single source
+of truth. The v0.15.0 implementation these documents led to is
+preserved under [`archive/`](../../archive/), with its documentation
+at [`archive/docs/`](../../archive/docs/).

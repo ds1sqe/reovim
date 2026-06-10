@@ -18,7 +18,9 @@ No warnings are acceptable. This is non-negotiable.
 - Keep functions focused and small
 - Prefer clarity over cleverness
 
-For detailed development setup, see [Getting Started](./docs/contributing/getting-started.md).
+All architecture, ABI, and conformance rules live in the normative
+specification at [`Documentation/`](./Documentation/README.md) — read
+it before changing any boundary-crossing surface.
 
 ## Testing
 
@@ -31,7 +33,8 @@ cargo test
 When adding new functionality:
 - Add tests for new code paths
 - Ensure existing tests pass
-- See the [Testing Guide](./docs/contributing/guides/testing.md) for testing guidelines
+- Spec-governed surfaces additionally require the conformance fixtures
+  listed in [`Documentation/09-Conformance/01-Rule-Matrix.md`](./Documentation/09-Conformance/01-Rule-Matrix.md)
 
 ## Development Workflow
 
