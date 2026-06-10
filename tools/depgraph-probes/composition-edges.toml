@@ -1,0 +1,11 @@
+# Composition-root catalog (1.2 §7). TODO(#778): populate when apps/* crates land.
+#
+# Format:
+#   [[edge]]
+#   from   = "reovim"          # apps/* or tools/* package name
+#   to     = "reovim-tui"      # dependency package name (in-repo only)
+#   gate   = "embedded-tui"    # optional feature gate
+#   reason = "..."             # mandatory justification (non-blank)
+#
+# Every apps/* or tools/* dep not listed here fails DAG3. Entries may only
+# name in-repo crates — the catalog cannot grant a third-party edge (DAG5).

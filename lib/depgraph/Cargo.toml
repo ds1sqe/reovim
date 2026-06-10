@@ -1,0 +1,18 @@
+[package]
+name = "reovim-depgraph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Dependency-graph probe engine enforcing the reovim layer DAG"
+publish = false
+
+[lints]
+workspace = true
+
+# No [dependencies], [dev-dependencies], or [build-dependencies].
+# This is the L9 self-application canary (1.2 §9): the probe that enforces
+# zero third-party dependencies must itself carry zero third-party dependencies.

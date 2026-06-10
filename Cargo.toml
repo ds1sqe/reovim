@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+members = ["lib/depgraph"]
+exclude = ["archive"]
 
 [workspace.package]
 rust-version = "1.92"
@@ -7,7 +9,7 @@ version = "0.16.0-dev"
 edition = "2024"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "AGPL-3.0-only"
-description = "A Rust-powered ?? editor"
+description = "A Rust-powered modal editor"
 repository = "https://github.com/ds1sqe/reovim"
 homepage = "https://github.com/ds1sqe/reovim"
 readme = "README.md"
@@ -30,67 +32,9 @@ all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 
-[workspace.dependencies]
-bitflags = "2.6.0"
-parking_lot = "0.12.3"
-futures = "0.3"
-futures-timer = "3.0"
-rand = "0.8"
-regex = "1"
-
-tokio = { version = "1.25", features = ["full"] }
-tokio-stream = { version = "0.1", features = ["net"] }
-notify = "6.1"
-tonic = "0.12"
-async-trait = "0.1"
-arc-swap = "1.7"
-libc = "0.2"
-rustix = { version="0.38.42", features = ["std", "stdio", "termios"]}
-crossterm = {version="0.29", features = ["event-stream","filedescriptor"]}
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
-tracing-appender = "0.2"
-chrono = "0.4"
-
-# CLI
-clap = { version = "4", features = ["derive", "env"] }
-
-# Configuration
-semver = "1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-
-# Clipboard
-arboard = "3"
-
-# Dynamic module loading
-libloading = "0.8"
-sha2 = "0.10"
-hex = "0.4"
-
-# Unicode
-unicode-width = "0.2"
-
-# Fuzzy matching
-nucleo = "0.5"
-ignore = "0.4"
-
-# Encoding support
-encoding_rs = "0.8"
-
-# Document format support
-pdf-extract = "0.7"
-lopdf = "0.34"
-
-# Binary format parsing
-goblin = "0.9"
-zip = { version = "8", default-features = false }
-tar = "0.4"
-flate2 = "1"
-csv = "1.3"
+# [workspace.dependencies] is intentionally absent — this is the visible L9
+# marker (1.2 §9 Dependency Sovereignty). No third-party crate version is
+# catalogued here; the workspace graph is closed to std + in-repo path deps.
 
 # FFI-boundary panic isolation requires `panic = "unwind"`. `panic = "abort"`
 # + FFI is undefined behaviour: a panicking `extern "C"` function unwinding

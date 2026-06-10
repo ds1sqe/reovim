@@ -1,0 +1,12 @@
+# Drift allowlist (1.2 §8). Starts empty for v0.16 greenfield (resolved #782).
+#
+# Format:
+#   [[entry]]
+#   from    = "apps/server/src/bootstrap.rs"  # depending crate/file
+#   to      = "reovim-driver-display"          # depended-on package
+#   reason  = "..."                            # mandatory justification
+#   issue   = "#NNN"                           # mandatory tracking issue
+#   expires = "vX.Y-rc1"                       # mandatory expiry criterion
+#
+# This file governs category-edge drift only; it cannot admit a third-party
+# dependency (DAG5 has no allowlist, 1.2 §9).

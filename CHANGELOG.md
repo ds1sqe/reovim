@@ -4,6 +4,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.16.0-dev] - Unreleased
 
+### Added
+- v0.16 workspace scaffold: sovereign depgraph probe engine (`lib/depgraph`,
+  zero third-party dependencies in all three dependency tables) enforcing
+  DAG1..DAG5 including the three-dep-table sovereignty walk and the
+  `Cargo.lock` resolved-graph gate (`sovereignty_gate.rs`); `scripts/check.sh`
+  and `scripts/coverage.sh`; per-PR CI with a dedicated `sovereignty` job
+  (`cargo test -p reovim-depgraph --test sovereignty_gate`). (#783)
+
 ### Changed
 - Spec: Dependency Sovereignty is law (`DAG5`, 1.2 §9) — the workspace
   dependency graph is closed to std + in-repo crates across all three
