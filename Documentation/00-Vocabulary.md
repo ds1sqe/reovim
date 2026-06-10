@@ -70,7 +70,7 @@ in the chapter that owns them.
 | **Foundation** | `arch/`, `lib/*`, `uapi/*`. No upward deps. |
 | **Server contracts** | `server/lib/subsys/*`. Closed; zero ext deps. |
 | **Server kernel** | `server/lib/kernel/*`. Mechanism; no ext or client deps. |
-| **Server runtime** | `server/lib/server/*`. gRPC + dispatch glue. |
+| **Server runtime** | `server/lib/server/*`. Framed-protocol + dispatch glue. |
 | **Client contracts** | `clients/lib/subsys/*`. Closed; zero ext deps. |
 | **Server extensions** | `ext/server/{modules,drivers,providers,domain}`. Runtime-loaded. |
 | **Client extensions** | `ext/client/{platforms,driver,module,capabilities}`. Flat-category tree. |

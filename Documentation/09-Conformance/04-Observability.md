@@ -104,7 +104,7 @@ diagnostics, LOG4 — voluntary, not operation-bound) and
 ## 3. Correlation IDs
 
 > **OBS2 — External operations carry correlation IDs.** Every
-> operation initiated externally (CLI, gRPC RPC, package sync,
+> operation initiated externally (CLI, framed-protocol request, package sync,
 > debug-drive, session attach) carries a correlation ID propagated
 > through every DS12 event in that operation.
 >
@@ -176,5 +176,5 @@ Subscriber capacity per kernel instance: `kernel.host.[limits].observe-subscribe
 | Rule | Fixture |
 |---|---|
 | OBS1 | Each operation in §2 fires its named event when invoked. |
-| OBS2 | gRPC RPC trace: every event in the trace carries the same correlation ID. |
+| OBS2 | Framed-protocol request trace: every event in the trace carries the same correlation ID. |
 | OBS3 | JSON schema fixture: emit + parse round-trip per family. Field-add → minor; field-remove → major. |

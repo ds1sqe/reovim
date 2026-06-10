@@ -63,8 +63,8 @@ extract.
 > explicitly degrades on draft absence.
 > *Class*: CI/spec.
 
-> **CF4 — Golden tests required for ABI layouts, proto fields,
-> vtable offsets, ConfigSlice, DS12.** The golden artefacts are
+> **CF4 — Golden tests required for ABI layouts, wire message
+> fields, vtable offsets, ConfigSlice, DS12.** The golden artefacts are
 > versioned, per-target-triple where layout depends on platform,
 > and regenerated only by spec edit. Post-v1.0, golden artefacts
 > for shipped stable surfaces are **permanent**: they may be added
@@ -72,13 +72,21 @@ extract.
 > userspace covenant's enforcement mechanism).
 > *Class*: CI.
 
-> **CF5 — Proto and spec chapter stay aligned.** The `.proto`
-> files own wire form; chapter 7.3 owns semantics. CI
-> verifies: every message and RPC named in 7.3 exists in a
-> `.proto`; field numbers in chapter examples match the proto
-> source; proto-side message/field removals are flagged as breaks;
-> regeneration of in-repo bindings is byte-identical.
+> **CF5 — Wire message structs and spec chapter stay aligned.** The
+> hand-written message structs in `uapi/protocol` own the wire form;
+> chapter 7.3 owns semantics. The **canonical statement** of the wire
+> surface is the 7.3 §7 message-inventory table. CI verifies, against
+> that table as the source of truth: every message type named in 7.3
+> §7 exists as a `uapi/protocol` struct with the matching numeric
+> tag, direction, and body-field set; a struct present without a §7
+> row, or a §7 row without a struct, fails CI; tags are never reused
+> or repurposed (AB15); the codec round-trip golden (CF4) for every
+> struct is byte-identical to its fixture.
 > *Class*: CI.
+>
+> > Heritage (non-normative): pre-sovereignty drafts split wire-form
+> > ownership to generated `.proto` files; `DAG5` (1.2 §9) replaced
+> > that with hand-written structs `(resolved #782)`.
 
 ## 4. Required golden tests
 
@@ -91,7 +99,8 @@ extract.
 | `ServiceDescriptor` | offsets, size |
 | `RawInput` and per-kind payloads | offsets per kind |
 | Generated C header | round-trips through a C-side test that calls back into Rust |
-| `.proto` field numbers | wire-format golden bytes per representative message |
+| `uapi/protocol` wire message fields | wire-format golden bytes per message type; the 7.3 worked `Hello` frame bytes are a permanent fixture |
+| `FrameHeader` (6.3) | wire-bytes fixture: the 16-byte little-endian prefix round-trips through encode/decode |
 | DS12 event schema | JSON Schema golden file per event family |
 
 Per-target triples: `x86_64-unknown-linux-gnu`,

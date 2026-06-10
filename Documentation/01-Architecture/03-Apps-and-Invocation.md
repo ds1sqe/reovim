@@ -33,8 +33,8 @@ plugin/package implementation logic into the launcher hot path.
 
 `reovim` (no flags) launches a single-process composition: the
 server library and the selected client platform runtime are linked
-into the same process. gRPC encode/decode is replaced by an
-in-memory transport adapter.
+into the same process. Framed-protocol encode/decode is replaced by
+an in-memory transport adapter.
 
 Cargo wiring:
 - `apps/reovim` library-target deps on sibling app library targets.
@@ -58,8 +58,8 @@ client and transport logic.
 > **AL-INPROC — Embedded mode preserves protocol semantics.**
 > Embedded server/client mode uses the same session, attach-stream,
 > capability-negotiation, backpressure, auth-decision, and
-> debug-routing semantics as subprocess mode. It MAY replace gRPC
-> encode/decode with an in-memory transport adapter only.
+> debug-routing semantics as subprocess mode. It MAY replace
+> framed-protocol encode/decode with an in-memory transport adapter only.
 >
 > *Class*: spec-asserted, runtime tests on the in-memory adapter.
 

@@ -36,8 +36,8 @@ state/
 ├── sessions/<session-id>/
 │   ├── buffers/<buffer-name>.bytes      # canonical bytes
 │   ├── domains.toml                      # DomainAttachment summary by stable name
-│   ├── cursors.toml                      # per (client, buffer, window) base64 carriers
-│   ├── viewports.toml                    # per window base64 carriers
+│   ├── cursors.toml                      # per (client, buffer, window) byte-encoded carriers
+│   ├── viewports.toml                    # per window byte-encoded carriers
 │   ├── modules/<module-name>.bin         # per-module persistence opaque blob
 │   └── commit.toml                       # PS1 commit marker, written last
 └── mru.toml                              # MRU file list

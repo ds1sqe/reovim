@@ -79,9 +79,9 @@ pub struct Kernel {
     pub lockfile:           Arc<Lockfile>,
     pub inventory:          Arc<RwLock<Inventory>>,
 
-    pub sessions:           DashMap<SessionId, Arc<RwLock<Session>>>,
-    pub buffers:            DashMap<BufferId, Arc<RwLock<Buffer>>>,
-    pub windows:            DashMap<WindowId, Arc<RwLock<Window>>>,
+    pub sessions:           ShardedMap<SessionId, Arc<RwLock<Session>>>,
+    pub buffers:            ShardedMap<BufferId, Arc<RwLock<Buffer>>>,
+    pub windows:            ShardedMap<WindowId, Arc<RwLock<Window>>>,
 
     pub domain_router:      Arc<RwLock<DomainRouter>>,
     pub manifest_registry:  Arc<RwLock<ManifestRegistry>>,
@@ -102,6 +102,10 @@ concurrency. There is no central `Mutex<Kernel>`. One `Init::boot`
 run produces one kernel instance, regardless of OS process — the
 embedded launcher (1.3) hosts a kernel instance and a client
 runtime in the same process.
+
+> Note (non-normative): `ShardedMap<K, V>` is an in-repo sharded
+> concurrent map realized as a fixed array of `std::sync::RwLock`-guarded
+> `HashMap` shards; `K` hashes to select the shard.
 
 ## 4. Registries
 
@@ -132,13 +136,18 @@ pub struct Session {
     pub buffers:      Vec<BufferId>,
     pub clients:      HashMap<ClientId, ClientView>,
     pub focus:        HashMap<(ClientId, BufferId, WindowId), Vec<FocusEntry>>,
-    pub turn_gate:    Arc<TokioMutex<()>>,   // serialises dispatch order
-    pub state:        Mutex<SessionState>,    // protects field set
+    pub turn_gate:    Arc<TurnGate>,         // serialises dispatch order (FIFO)
+    pub state:        Mutex<SessionState>,   // protects field set
 }
 ```
 
 The two-lock model (`turn_gate` + `state`) is the v4 fix to v3's
 single-`Mutex<Session>`. See `02-Process/03-Concurrency.md`.
+
+> Note (non-normative): `TurnGate` is an in-repo FIFO fair-queue
+> primitive built over `std::sync` primitives (condvar + ticket
+> counter); it provides the same acquire/release contract as a FIFO
+> async mutex without a third-party runtime dependency.
 
 ## 6. Buffer shape
 
@@ -179,9 +188,11 @@ pub struct Window {
    instance's lifetime; if reload paths arrive
    (lifecycle="reloadable"), this becomes
    `ArcSwap<EffectiveConfig>`. Out of v4 target.
-3. Whether `Session.state` is a `parking_lot::Mutex` or
-   `tokio::sync::Mutex`. Implementation detail; spec only requires
-   "non-async" lock for state and "async" gate for turn-ordering.
+3. ~~Whether `Session.state` is an async or a non-async mutex (the
+   pre-sovereignty draft weighed third-party primitives)~~ —
+   resolved #782: `Session.state` is `std::sync::Mutex`; FIFO
+   turn-ordering is provided by the in-repo `TurnGate` built over
+   `std::sync`.
 
 ## Conformance
 

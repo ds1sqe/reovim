@@ -24,9 +24,10 @@ The runtime owns:
 - the `ClientRuntime` (per-platform registry of drivers, modules,
   capabilities discovered from the library root),
 - input acquisition (TUI: terminal events; web: DOM events; ...),
-- output emission (TUI: termion/crossterm; web: DOM/SVG; ...),
-- transport client (gRPC client or in-memory adapter from
-  embedded mode),
+- output emission (TUI: raw `termios` + ANSI escape sequences via
+  `arch/`-owned FFI; web: DOM/SVG; ...),
+- transport client (framed-protocol client or in-memory adapter
+  from embedded mode),
 - platform-specific debug surface (8.4).
 
 ## 2. v4 platforms
@@ -56,7 +57,7 @@ Per 1.3 §2:
 - **Embedded.** Launcher process holds the Kernel and the platform
   runtime side-by-side; transport is in-memory adapter.
 - **Subprocess.** Launcher forks `reovim-server` and the platform
-  binary. Transport is the configured gRPC profile.
+  binary. Transport is the configured framed-protocol profile.
 - **External.** Launcher only calls into the platform runtime;
   server is a long-running external process.
 

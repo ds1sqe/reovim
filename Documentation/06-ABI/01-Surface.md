@@ -34,7 +34,7 @@ Two contracts live at the ABI boundary:
 | `*const u8` / `*mut u8` byte slices with explicit length | `&[T]`, `&str` |
 | Function pointers `extern "C" fn(...)` | `fn(...)` (Rust ABI) |
 | Stable interned identifiers (`DomainId(NonZeroU32)`, `CdylibId`, …) over `#[repr(transparent)]` | bare integers without a typed wrapper |
-| Bytes for serialised payloads (UTF-8, canonical TOML, base64) | language-specific encodings |
+| Bytes for serialised payloads (UTF-8, canonical TOML, in-repo byte codec) | language-specific encodings |
 | Standard fixed-size byte arrays (`[u8; N]`) | dynamic-size arrays |
 
 ## 3. Forbidden categories
@@ -83,8 +83,9 @@ ownership and lifecycle machinery.
 1. Whether `f32` is allowed at the boundary (currently in §2 row);
    IEEE 754 cross-platform invariants are fine, but future ABI may
    reduce to `f64` only for simplicity.
-2. C header generator choice — `cbindgen`? hand-rolled? Decision
-   gates the golden-test apparatus.
+2. ~~C header generator choice~~ — resolved #782: hand-rolled
+   header generator in in-repo `tools/`; no third-party generator
+   (`DAG5`).
 3. Whether the boundary supports caller-owned-mutable buffers
    (e.g. an `ErrorBuf*` filled by the cdylib). Default: yes
    (mentioned in 6.2).

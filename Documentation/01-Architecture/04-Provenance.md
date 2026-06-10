@@ -1,8 +1,8 @@
 # 1.4 — Provenance
 
 **Scope.** Which artefacts are spec-owned, which are generated,
-which are heritage. Ownership of `.proto` files, generated bindings,
-ABI golden files.
+which are heritage. Ownership of wire message structs, generated
+artefacts, ABI golden files.
 
 **Heritage.** v3 `01-Foundation/03-Provenance.md`; v4 README §0.4.
 
@@ -15,8 +15,7 @@ ABI golden files.
 | Artefact | Source of truth | Generated form | Notes |
 |---|---|---|---|
 | Type Catalog | `06-ABI/03-Type-Catalog.md` | `uapi/<crate>/src/*.rs`, generated C header | Catalog is normative; code mirrors it. |
-| `.proto` files | wire form (field numbers, message shapes, service signatures): the `.proto` files themselves; semantics (capability rules, error mapping, audit events): `07-Surfaces/03-Server-Client-Protocol.md` | `uapi/protocol/src/gen/*.rs` | Split ownership. CI cross-checks chapter ↔ proto alignment (CF5). |
-| Generated proto bindings | `*.proto` | `uapi/protocol/src/gen/*.rs` | Implementation-generated; not spec-owned. |
+| Protocol message structs | wire form (field tags, message shapes, service signatures) and semantics (capability rules, error mapping, audit events): `07-Surfaces/03-Server-Client-Protocol.md`; layout authority: `06-ABI/03-Type-Catalog.md` | `uapi/protocol/src/*.rs` | Single ownership: the spec chapter is the wire truth. CI cross-checks chapter ↔ struct alignment (CF5). No schema-compiler inputs; no generated bindings (resolved #782 — wire form is owned by the message-struct definitions in `uapi/protocol` and the codec/inventory spec in 7.3). |
 | Vtable layouts | `06-ABI/02-Versioning-and-Vtables.md` | `uapi/{module,driver}-macros/` expansions | Macros encode the spec-defined header + slot rules. |
 | ConfigSlice layout | `06-ABI/04-Config-Slice.md` | implementation `#[repr(C)]` | Layout golden tests bind both. |
 | Carrier headers | `04-Domain-Substrate/05-Coordination.md` | `uapi/coordination/src/*.rs` (TODO) | Spec defines wire bytes; impl mirrors. |
@@ -59,17 +58,15 @@ ABI golden files.
 | `06-ABI/03-Type-Catalog.md` | folded into 6.3 |
 | `07-Surfaces/01-Package-Manager.md` | folded into 7.1 |
 | `07-Surfaces/02-Debug-Surface.md` | folded into 7.2 |
-| `07-Surfaces/03-Server-Client-Protocol.md` | folded into 7.3 |
+| `07-Surfaces/03-Server-Client-Protocol.md` | folded into 7.3 (rewritten for framed protocol; no proto files) |
 
 ## Open items
 
-1. ~~`.proto` provenance~~ — resolved (CF5): proto files
-   own the wire form and are hand-edited as source; the spec
-   chapter owns semantics; CI cross-checks the two (every message
-   and RPC named in 7.3 exists in a `.proto`; field numbers in
-   chapter examples match; removals flag as breaks). Generated
-   bindings (`uapi/protocol/src/gen/*.rs`) are in-repo; CI
-   verifies regeneration is byte-identical.
+1. ~~Schema-file provenance (the pre-sovereignty wire-schema
+   split)~~ — resolved #782: wire form is owned by the
+   message-struct definitions in `uapi/protocol` and the
+   codec/inventory spec in 7.3; no schema-compiler files, no
+   generated bindings; CF5 cross-check is chapter ↔ message-struct.
 2. Golden-file ownership: who regenerates ABI offsets when a
    `#[repr(C)]` struct grows a field? Spec edit must precede code
    edit; conformance row in 9.1 must pass.

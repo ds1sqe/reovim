@@ -106,7 +106,7 @@ unequal because no codec is registered.
 > **CR6 — Ingress validation runs at every boundary.** Carriers are
 > validated when they enter kernel state from:
 > - handler output,
-> - gRPC / client input,
+> - framed-protocol / client input,
 > - persistence restore,
 > - module/service APIs,
 > - test/fuzz fixtures.
@@ -140,11 +140,16 @@ pub enum CarrierStatus {
 
 > **CR9 — Persistence stores stable Domain names, not numeric
 > `DomainId`.** Persisted carrier rows include `(domain_name,
-> inner_id, flags, content_b64)` plus codec-version metadata.
-> Restore remaps name → fresh `DomainId` via `DomainRouter.intern_named`.
+> inner_id, flags, content_bytes)` plus codec-version metadata;
+> binary content is encoded with the in-repo base64 helper
+> (`lib/`). Restore remaps name → fresh `DomainId` via
+> `DomainRouter.intern_named`.
 > *Class*: spec-asserted.
 
-Cursor and viewport persistence stores base64 carrier blobs, not
+> Note (non-normative): the in-repo base64 helper is a hand-written
+> encoder/decoder in `lib/`; no third-party crate is used.
+
+Cursor and viewport persistence stores byte-encoded carrier blobs, not
 `cursor_byte` / `viewport_top` integers.
 
 ## 9. Client unknown-codec fallback
@@ -209,10 +214,10 @@ returns to `ValidKnown`.
 | Rule | Fixture |
 |---|---|
 | CR1, CR2 | Header byte-layout golden test. |
-| CR3 | Empty cursor list emits zero-length proto field, never a sentinel blob. |
+| CR3 | Empty cursor list encodes as zero-length framed-protocol field, never a sentinel blob. |
 | CR4 | `domain_id == 0` carrier rejected at every ingress. |
 | CR5 | `PartialEq` returns true for byte-equal carriers without any codec registered. |
-| CR6 | Fuzz fixture sends invalid carriers via gRPC; kernel rejects + DS12 emits. |
+| CR6 | Fuzz fixture sends invalid carriers via the framed protocol; kernel rejects + DS12 emits. |
 | CR7 | Codec docs include all required fields; CI gate. |
 | CR8 | Codec unloads → carriers go ValidOpaque; codec re-loads → revalidate path. |
 | CR9 | Persist with `DomainId` differing across runs; cursors restore. |

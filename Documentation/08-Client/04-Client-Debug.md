@@ -54,12 +54,12 @@ Symbol: `REOVIM_CAPABILITY_DEBUG_VTABLE`.
 ## 2. Routing
 
 The server-side debug surface (7.2) routes opaque payloads through
-the gRPC protocol (7.3). The client capability decodes; the server
+the framed protocol (7.3). The client capability decodes; the server
 does not (CL5). For example:
 
 ```
-client gRPC stub
-  → server.DebugDrive(stream)
+client wire stub
+  → server DebugDrive message
     → server forwards opaque payload to client capability vtable
       → capability decodes the op kind, runs drive_input
 ```
@@ -72,7 +72,7 @@ specific capability calls; the mapping lives in the capability.
 A client declares the debug capabilities at attach (per 7.3 §7;
 vocabulary fixed in 7.2 §5.1):
 
-```proto
+```
 caps = ["render.cells", "debug.read", "debug.mutate"]
 ```
 

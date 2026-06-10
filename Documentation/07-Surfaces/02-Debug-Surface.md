@@ -19,7 +19,7 @@ Debug exposes:
 - **drive** — controlled state mutation: send `RawInput`, force
   re-projection, allocate/release view-slots, etc.
 
-Both flow through gRPC v3 protocol streams (7.3) on a separate
+Both flow through the framed protocol (7.3) on a separate
 namespace from the user session protocol.
 
 ## 2. Carried rules (DS1..DS12)
@@ -37,11 +37,13 @@ normative texts; the v3 chapter is heritage.
 > packaging conflicts at `pkg sync`, not in the kernel. *Class*:
 > tooling.
 
-> **DS3 — JSON at the CLI boundary; protobuf on the gRPC wire.**
-> The CLI translates at the edge, validating against the channel's
-> JSON Schema before encoding. Channel **payload** schemas are
-> JSON-Schema-defined; the proto **envelope** (§6, 7.3, CF5)
-> carries them as opaque bytes. *Class*: tooling + runtime.
+> **DS3 — JSON at the CLI boundary; the framed-protocol envelope
+> carries channel payloads as opaque bytes.** The CLI translates at
+> the edge using a hand-written JSON reader/writer in-repo,
+> validating against the channel's JSON Schema before encoding.
+> Channel **payload** schemas are JSON-Schema-defined; the
+> framed-protocol **envelope** (§6, 7.3) carries them as opaque
+> bytes. *Class*: tooling + runtime.
 
 > **DS4 — The kernel multiplexes observe subscribers** (default
 > capacity 64); producers see one subscription per channel.
@@ -53,7 +55,7 @@ normative texts; the v3 chapter is heritage.
 
 > **DS5 (reshaped) — Transport auth + the coarse capability
 > pair; nothing finer.** Authentication is transport-layer only
-> (Unix-socket perms locally; mTLS/token on gRPC remotely, SEC2).
+> (Unix-socket perms locally; mTLS/token on TCP remotely, SEC2).
 > Authorization is the two-capability vocabulary of §5.1
 > (`debug.read`, `debug.mutate` per DS13). There is no per-channel
 > ACL and no per-channel capability token. *Class*: runtime.
@@ -109,9 +111,8 @@ DS5 is the one reshape: v3's "no app-level ACL, no capability
 tokens" is superseded by the §5.1 capability pair — DS13 layers
 `debug.mutate` on top of transport auth, and the rule now reads
 "nothing finer than the pair". DS3's "JSON Schema is the source of
-truth; protobuf is generated" is refined by CF5: proto files
-own the envelope wire form, JSON Schema owns the channel payloads
-carried as opaque bytes. DS8's v3 `NotSupported` answer maps to
+framed-protocol carries channel payloads as opaque bytes" is the v4
+model; CF5 cross-checks chapter ↔ message-struct alignment. DS8's v3 `NotSupported` answer maps to
 `ErrorCode::NotFound` (AB14: one error vocabulary). DS9/DS10 field
 sets are updated to the v4 lifecycle states and the DT11 dual
 refcounts. DS12's event families moved to 9.4 (OBS1/OBS3); the
@@ -128,7 +129,7 @@ channel mechanics stay here.
 >
 > *Class*: runtime.
 
-The capability comes from the user-session gRPC negotiation; the
+The capability comes from the user-session attach negotiation; the
 launcher refuses to start `drive` mode unless it has been granted.
 
 ## 4. Drive surface
@@ -180,11 +181,11 @@ The client-side debug capability is a **sibling vtable** in the
 client cdylib (per CL4). The server-side debug surface routes
 opaque payloads but does not decode capability semantics (CL5).
 
-Wire shape:
+Wire shape (framed-protocol message structs; see 7.3 and 6.3):
 
-```proto
-message DebugDriveOp { bytes payload = 1; uint32 op_kind = 2; }
-message DebugReadOp  { bytes payload = 1; uint32 op_kind = 2; }
+```rust
+struct DebugDriveOp { payload: ByteSlice, op_kind: u32 }
+struct DebugReadOp  { payload: ByteSlice, op_kind: u32 }
 ```
 
 Decoding happens at the client capability boundary, not the server.
@@ -193,7 +194,7 @@ Decoding happens at the client capability boundary, not the server.
 
 `auth = "none"` is local-only (SEC2). Remote debug:
 
-- `tcp` transport with `auth = "mtls"` or `auth = "token"`,
+- `tcp` framed-protocol transport with `auth = "mtls"` or `auth = "token"`,
 - `debug.mutate` capability required for drive,
 - audit events `debug.drive.*` per operation.
 
@@ -214,7 +215,7 @@ Decoding happens at the client capability boundary, not the server.
 |---|---|
 | DS2 | Two packages declare `x-acme-trace` → conflict surfaced at `pkg sync`. |
 | DS4 | Slow subscriber on an `input` channel → drop-newest with `dropped: N` marker; `state` channel coalesces. |
-| DS5 | Remote gRPC without token → rejected at transport; no channel-level grant can substitute. |
+| DS5 | Remote TCP connection without token → rejected at transport; no channel-level grant can substitute. |
 | DS8 | CLI offline-cache stale; kernel returns `NotFound` for a removed channel; CLI surfaces it canonically. |
 | DS9 | Snapshot during a load shows the loading cdylib's status; tombstoned entry visible after failed unload. |
 | DS10 | Snapshot contains both refcounts and no view-state bytes. |

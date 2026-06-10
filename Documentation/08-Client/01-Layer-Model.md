@@ -28,10 +28,10 @@ clients/lib/subsys/
 ├── module          ClientModule trait, ModuleContext, lifecycle
 ├── chrome          ChromeSurface trait, projection cache
 ├── render          RenderTarget trait, render-pipeline contracts
-├── codec           codec registries, DomainProjection, from_proto()
+├── codec           codec registries, DomainProjection, from_wire()
 ├── capability      generic Capability trait, slot system
 ├── platform        module-side platform-requirement contract
-├── protocol        notification-stream contracts; gRPC-facing traits
+├── protocol        notification-stream contracts; framed-protocol-facing traits
 ├── debug           client-side debug capability vtable
 └── driver-loader   safe wrapper for runtime-loaded drivers
 ```
@@ -148,6 +148,6 @@ apps/reovim         → ext/client/{driver,module,capabilities}/*
 | CL2 | Crate at `ext/client/<unknown-category>/x` → fail. |
 | CL3 | Embedded launch shows separate `ClientRuntime` and `Kernel` ownership. |
 | CL4 | Render driver cdylib without `debug` vtable → debug surface not provided by it. |
-| CL5 | Server logs show debug payloads passed through opaque (no proto field decoding of capability bodies). |
+| CL5 | Server logs show debug payloads passed through opaque (no framed-protocol field decoding of capability bodies). |
 | CL8 | Inventory listing in embedded mode tags each cdylib server/client. |
 | CL9 | Probe fixtures per forbidden edge (§5). |

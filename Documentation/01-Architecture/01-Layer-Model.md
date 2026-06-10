@@ -22,7 +22,7 @@ and `08-Client/01-Layer-Model.md` (`CL*`).
 │ EXT (client)  ext/client/{platforms, driver, module,            │
 │                          capabilities}    (flat-category tree)  │
 ├─────────────────────────────────────────────────────────────────┤
-│ RUNTIME       server/lib/server/* (gRPC, dispatch glue)         │
+│ RUNTIME       server/lib/server/* (framed protocol, dispatch glue) │
 ├─────────────────────────────────────────────────────────────────┤
 │ KERNEL        server/lib/kernel/* (Kernel, registries, scheduler) │
 ├─────────────────────────────────────────────────────────────────┤

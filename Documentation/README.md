@@ -12,6 +12,33 @@ versioning, validation, resource-limit, and observability rules.
 This README is a thin navigation map. Substantive content lives in the
 chapter files. The chapter file is the authority; this README links.
 
+## North Star
+
+Reovim is built to two ends: the **fastest-reaction editor**, and an
+editor that **survives 50 years**.
+
+Frameworks and RPC stacks die as a category; what survives on that
+horizon is the OS syscall surface, terminal escape codes, and protocol
+*documents*. This spec is therefore written to be the **wire truth**:
+every surface of reovim — the framed wire protocol, the cdylib ABI,
+the config and log formats — is specified completely enough that a
+stranger, decades from now, can reimplement either side of any
+boundary from these chapters alone.
+
+Two structural consequences:
+
+- **Dependency sovereignty (`DAG5`, 1.2 §9).** The workspace
+  dependency graph is closed: `std`/`core`/`alloc` and in-repo crates
+  only — no third-party crates in any dependency table, tests
+  included. The Rust toolchain is the only trusted external. OS
+  interfaces are reached through hand-written `extern "C"` bindings
+  owned by `arch/`. Reovim owns both ends of every wire it speaks, so
+  ecosystem interop buys nothing; durability buys everything.
+- **Latency is a design driver, not an optimization pass.** Owning
+  the wire, the runtime, and the terminal layer means no foreign
+  scheduler, codec, or abstraction sits between a keystroke and the
+  screen.
+
 ## Posture
 
 - **v4 is a quality gate, not a feature pass.** Hardening contracts
@@ -61,7 +88,7 @@ chapter files. The chapter file is the authority; this README links.
 | 6.4 | [`06-ABI/04-Config-Slice.md`](06-ABI/04-Config-Slice.md) | `ConfigSlice` / `ConfigKvp` exact layout |
 | 7.1 | [`07-Surfaces/01-Package-Manager.md`](07-Surfaces/01-Package-Manager.md) | `pkg sync`, lockfile, supply chain (`PM`, `SEC`) |
 | 7.2 | [`07-Surfaces/02-Debug-Surface.md`](07-Surfaces/02-Debug-Surface.md) | Debug events, drive (`DS`) |
-| 7.3 | [`07-Surfaces/03-Server-Client-Protocol.md`](07-Surfaces/03-Server-Client-Protocol.md) | gRPC v3 (`SP`) |
+| 7.3 | [`07-Surfaces/03-Server-Client-Protocol.md`](07-Surfaces/03-Server-Client-Protocol.md) | Framed wire protocol (`SP`) |
 | 7.4 | [`07-Surfaces/04-Config-CLI.md`](07-Surfaces/04-Config-CLI.md) | `reovim config dump|help|validate|set|force-set` |
 | 7.5 | [`07-Surfaces/05-Log-CLI.md`](07-Surfaces/05-Log-CLI.md) | `reovim log` — the `dmesg` analog (`LOG9..LOG11`) |
 | 8.1 | [`08-Client/01-Layer-Model.md`](08-Client/01-Layer-Model.md) | Client subsys / ext flat-category tree (`CL`) |
@@ -124,7 +151,7 @@ summary per decision:
 | Handler/projector tie-break | 4.1, 4.2 | Canonically-sorted lockfile order + manifest-decl order (DT17) |
 | Detach lifecycle ordering | 2.2, 2.4, 4.2 | detach → persist → subs → drops → release; leaf-first; non-blocking (LF12) |
 | Manifest-kind enumeration | 6.2, 8.5, 4.4 | Nine-variant enum final; `StreamScheme` own kind; sub-kinds via vtable strings |
-| `.proto` provenance | 1.4, 7.3 | Proto owns wire; chapter owns semantics; CI cross-check (CF5) |
+| Wire-form provenance | 1.4, 7.3 | 7.3's message inventory owns the wire form; `uapi/protocol` structs realize it; CI cross-check (CF5). Superseded the 2026-06 proto split under `DAG5` sovereignty. |
 | Rule-index reshape pass | all chapters | Hybrid renumber; carried bodies restated in owner chapters; lock tiers renamed T1..T13 |
 | v3 draft disposition | all chapters | Superseded; every carried rule restated here — the v3 draft tree is not retained (latest spec is the SSOT) |
 

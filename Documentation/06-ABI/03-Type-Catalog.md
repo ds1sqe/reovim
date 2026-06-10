@@ -19,6 +19,11 @@ CFG6 / CR1..CR2 / SVC2 layouts.
 - `uapi/<crate>/src/*.rs` mirrors this catalog; mismatch fails CI
   (golden offset/size tests).
 - Generated C header is built from this catalog (generator TBD).
+- **Enum repr convention** `(resolved #782)`: fieldless enums use a
+  primitive-only repr (`#[repr(i32)]`, `#[repr(u8)]`) — rustc rejects
+  `#[repr(C, int)]` on fieldless enums (E0566), and the primitive
+  repr fixes the identical discriminant layout. Payload-carrying
+  enums use `#[repr(C, u8)]` (tagged-union layout).
 
 If a layout is sketched in another chapter, a note `(catalog: §N)`
 points back here.
@@ -118,7 +123,7 @@ pub struct ErrorBuf {
 ### 2.3 Result type
 
 ```rust
-#[repr(C, i32)]
+#[repr(i32)]
 pub enum ErrorCode {
     Ok                          = 0,
     Generic                     = 1,
@@ -155,7 +160,7 @@ pub enum ErrorCode {
 Used by `hostapi_log_emit` (9.5 §7) and the DS12 event shape.
 
 ```rust
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum LogLevel {
     Unknown = 0,   // reserved-invalid; rejected at emission
     Trace   = 1,
@@ -178,7 +183,7 @@ pub struct VtableHeader {
     pub flags:        u32,
 }
 
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ManifestKind {
     Unknown          = 0,   // reserved-invalid; rejected at load (6.2 §7)
     ModuleServer     = 1,
@@ -220,7 +225,7 @@ pub struct ConfigKvp {
     pub flags:      u32,
 }
 
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ConfigValueKind {
     Unknown       = 0,
     Bool          = 1,
@@ -235,7 +240,7 @@ pub enum ConfigValueKind {
     CanonicalToml = 10,
 }
 
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ConfigSource {
     Default = 0,
     System  = 1,
@@ -352,7 +357,7 @@ an industry vocabulary stable since 1996 and platform-portable.
 Values `0x0001_0000..` are the Reovim extension range for
 software-only keys (`Compose = 0x0001_0001`, `ImeToggle =
 0x0001_0002`; range grows additively on api-minor). Input drivers
-translate platform events (crossterm, DOM `code`, etc.) to this
+translate platform events (raw terminal escape decoding, DOM `code`, etc.) to this
 vocabulary.
 
 **7.1.2 Modifier bitfield.** `bit 0` Shift, `1` Ctrl, `2` Alt,
@@ -459,7 +464,7 @@ pub struct StreamHandleInfo {
     pub bytes_buffered:  u64,
 }
 
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum StreamState {
     Init                 = 0,
     Running              = 1,
@@ -528,7 +533,8 @@ Listed here for traceability only; bodies are in:
 - Adding a field to a `#[repr(C)]` struct is forbidden mid-major.
   Append-only behaviour belongs in vtables (AB3), not data
   structs.
-- Adding a variant to a `#[repr(C, u8)]` enum is allowed across
+- Adding a variant to a catalog enum — fieldless primitive-repr or
+  payload-carrying `#[repr(C, u8)]` alike (§1) — is allowed across
   minor as long as old code receiving it returns
   `ErrorCode::IncompatibleApi`. Future-reserved values are at the
   high end (e.g. `ErrorCode` codes ≥ 240).
@@ -539,6 +545,43 @@ Listed here for traceability only; bodies are in:
   this catalog that ever shipped stable remains supported by the
   loader forever. Golden-test artefacts for shipped majors are
   permanent.
+- The wire frame header (§12) is governed by the protocol versioning
+  rule (7.3 §10.2), not by this section's ABI-major rule.
+
+## 12. Wire frame header
+
+**Scope note — this layout crosses the *wire* boundary, not the
+*cdylib* boundary.** Unlike every other type in this catalog, the
+frame header is never passed across an `extern "C"` cdylib call; it
+is the fixed prefix of every frame on the server-client stream
+socket (7.3 §3). It is registered here so the catalog remains the
+single layout authority — but its golden test is a wire-bytes
+fixture, not a per-target-triple offset test, because it is
+serialized field-by-field little-endian (it is never `transmute`d
+from this struct). The struct exists so encoder/decoder code shares
+one definition.
+
+```rust
+#[repr(C)]
+pub struct FrameHeader {
+    pub body_len:       u32,   // little-endian on the wire
+    pub msg_type:       u16,   // little-endian on the wire
+    pub flags:          u16,   // little-endian on the wire
+    pub correlation_id: u64,   // little-endian on the wire
+}
+```
+
+| offset | size | field | type | wire encoding |
+|---|---|---|---|---|
+| 0 | 4 | `body_len` | u32 | little-endian |
+| 4 | 2 | `msg_type` | u16 | little-endian |
+| 6 | 2 | `flags` | u16 | little-endian |
+| 8 | 8 | `correlation_id` | u64 | little-endian |
+
+Size 16, align 8 (natural). The on-wire form is the four fields in
+declared order, each little-endian; total 16 bytes. 7.3 §3 defines
+the field semantics and the `flags` bitfield; this catalog owns only
+the layout.
 
 ## Open items
 
@@ -556,5 +599,6 @@ Listed here for traceability only; bodies are in:
 | Behaviour | Fixture |
 |---|---|
 | Layout stability | Golden offset/size + alignment tests, per-target-triple, for every type in §§2..9. |
+| `FrameHeader` wire bytes (§12) | Wire-bytes fixture: the 16-byte little-endian prefix round-trips through encode/decode; the 7.3 worked `Hello` frame is the permanent golden. |
 | Generator parity | Generated C header round-trips through the catalog without divergence. |
 | ABI bump discipline | CI gate that flags any `#[repr(C)]` field add/remove without an `AbiVersion.major` bump. |

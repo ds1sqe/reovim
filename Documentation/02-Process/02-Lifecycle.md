@@ -25,7 +25,7 @@ stage 2: kernel.shell config materialised; runtime caps loaded
 stage 3: lockfile + library-root resolution; PM verify
 stage 4: module discovery; per-module load (§3..§5)
 stage 5: driver discovery; per-driver load (same)
-stage 6: gRPC runtime / in-memory adapter started
+stage 6: framed-protocol runtime / in-memory adapter started
 stage 7: handoff — Init::boot returns Arc<Kernel>; serving
 ```
 

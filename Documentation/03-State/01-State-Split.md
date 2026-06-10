@@ -30,7 +30,7 @@ The Kernel owns:
 - correlation allocator,
 - DS12 event bus,
 - force-override map,
-- the session DashMap.
+- the session map (sharded `std::sync::RwLock`).
 
 Kernel state survives session deletes and client disconnects.
 

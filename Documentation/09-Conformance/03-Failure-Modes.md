@@ -21,7 +21,7 @@ named errors; rollback failure is first-class; drains are bounded.
 > *Class*: spec / runtime.
 
 A "fallible boundary" is any function the kernel exposes through
-HostApi, gRPC RPC, or cdylib vtable.
+HostApi, framed-protocol request, or cdylib vtable.
 
 ## 2. Rollback as first-class
 

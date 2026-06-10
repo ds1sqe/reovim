@@ -16,10 +16,11 @@ review item "Mutex<Session> across cdylib calls".
 
 Every `Session` owns:
 
-- **`turn_gate: Arc<TokioMutex<()>>`** — serialises user-visible
-  dispatch order for the session.
+- **`turn_gate: Arc<TurnGate>`** — serialises user-visible
+  dispatch order for the session (FIFO fair-queue; in-repo
+  primitive over `std::sync`).
 - **`state: Mutex<SessionState>`** — protects field mutation in
-  `Session`.
+  `Session` (`std::sync::Mutex`).
 
 The kernel never holds `state` across a cdylib slot invocation.
 
@@ -94,7 +95,7 @@ itself is the reshape of v3 rules CC1..CC13; reshape note in §9.)
 | T9 | `projectors` | dispatch lookup |
 | T10 | `streams` | stream substrate |
 | T11 | `event_bus.subscriber_set` | DS12 fanout |
-| T12 | `sessions` (DashMap shard) | per-session map |
+| T12 | `sessions` (sharded `std::sync::RwLock` map shard) | per-session map |
 | T13 | `Session.state` | innermost session state |
 
 `turn_gate` is an async mutex orthogonal to this tier list; it does
@@ -167,7 +168,8 @@ lifecycle chapter carries the gate.)
 
 Every cdylib-callable function pointer must satisfy:
 
-- callable from any tokio worker thread (Send-safe by construction);
+- callable from any worker thread of the std thread-per-connection
+  runtime (Send-safe by construction);
 - re-entrant safe with respect to its own owner (per `flags` in
   vtable header);
 - `hostapi_reentrant` flag declares whether the slot may call
@@ -206,8 +208,8 @@ normative texts; the v3 chapter is heritage.
 > (compile).
 
 > **CC4 — Every cdylib vtable slot is `Send + Sync`-callable from
-> any worker** (§8). This is the default contract; CC13 is the
-> per-cdylib opt-out. *Class*: spec-asserted.
+> any worker thread of the server runtime** (§8). This is the default
+> contract; CC13 is the per-cdylib opt-out. *Class*: spec-asserted.
 
 > **CC5 — Handler dispatch is clone-then-invoke.** DomainRouter
 > dispatch reads under a read lock, clones the resolved handler
@@ -286,8 +288,10 @@ the order is total and violations are bugs.
 1. Async vs sync slot dispatch — current model assumes sync slots
    that may enqueue async work via HostApi. Streaming slots
    (debug-drive, stream substrate) need explicit async contract.
-2. Whether `turn_gate` is fair (FIFO) or LIFO. Default: tokio
-   `Mutex` is FIFO; spec-pin this.
+2. ~~Whether `turn_gate` is fair (FIFO) or LIFO~~ — resolved
+   (resolved #782 — FIFO fairness is provided by the in-repo
+   `TurnGate`'s explicit ticket queue; no third-party runtime
+   dependency).
 3. Cancellation token propagation into slots — currently no
    contract.
 
