@@ -358,6 +358,8 @@ arch_test!(panic_pre_exit_hook_unset_returns_none, {
     reset_registry();
 });
 
+// Filesystem-dependent (file capture round-trip): hosted targets only.
+#[cfg(target_os = "linux")]
 arch_test!(panic_pre_exit_hook_runs_before_panic_output, {
     // Verify that the pre-exit hook is invoked during `handle`, and that its
     // execution is reflected before the panic line is written. Strategy: the

@@ -20,10 +20,12 @@
 
 pub mod alloc;
 pub mod ds;
+#[cfg(target_os = "linux")]
 pub mod net;
 pub mod panic;
 pub mod sync;
 pub mod sys;
+#[cfg(target_os = "linux")]
 pub mod term;
 pub mod thread;
 pub mod time;

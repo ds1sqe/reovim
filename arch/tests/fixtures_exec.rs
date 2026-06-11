@@ -377,6 +377,9 @@ fn net_smoke_uds_roundtrip_exits_zero() {
     // thread, connect from the main thread, echo a 16-byte frame-sized buffer
     // round-trip, exit 0 — proving the blocking thread-per-connection carrier
     // primitive composes end-to-end on the real arch floor.
+    if skip_in_system_image_mode("net_smoke_uds_roundtrip_exits_zero") {
+        return; // UDS is kernel-ABI surface; no freestanding realization.
+    }
     let exe = build_fixture("arch-fixture-net-smoke");
     assert_eq!(run(&exe, &[]), 0, "net-smoke round-trip exits 0");
 }
