@@ -4,9 +4,7 @@
 and the contract that lets the kernel destroy slot bytes safely on
 unload.
 
-**Heritage.** v3 `03-State/02-Module-State.md`; v4 README §5.3.
-
-**Locked rules.** Carried from v3 (view-slot rules); references
+**Locked rules.** Carried forward (view-slot rules); references
 `LF8`, `LF9` for cleanup ordering.
 
 ---

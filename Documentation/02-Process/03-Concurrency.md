@@ -4,8 +4,7 @@
 HostApi reverse-flow lock discipline, panic isolation across the FFI
 boundary.
 
-**Heritage.** v3 `02-Process/03-Concurrency.md`; v4 README §7;
-review item "Mutex<Session> across cdylib calls".
+**Heritage.** review item "Mutex<Session> across cdylib calls".
 
 **Locked rules.** `CC1..CC13` carried (restated §10; CC3 reshaped),
 `CC14..CC17` new, `AB12..AB13` referenced.
@@ -101,7 +100,7 @@ Lock acquisition order is total. A higher tier may not acquire a
 lower tier already held. Tier labels are `T1..T13` — deliberately
 distinct from the `CC*` rule IDs so a tier reference is never
 mistaken for a rule citation. (The tier *ordering discipline*
-itself is the reshape of v3 rules CC1..CC13; reshape note in §9.)
+itself is the reshape of rules CC1..CC13; reshape note in §9.)
 
 | Tier | Lock | Notes |
 |---|---|---|
@@ -111,7 +110,7 @@ itself is the reshape of v3 rules CC1..CC13; reshape note in §9.)
 | T4 | `manifest_registry.read` | |
 | T5 | `domains` (router) | codec maps |
 | T6 | `services` | service descriptors |
-| T7 | (reserved — was CoordinationRegistry; v4 removed) | |
+| T7 | (reserved — was CoordinationRegistry; removed) | |
 | T8 | `handlers` | dispatch lookup |
 | T9 | `projectors` | dispatch lookup |
 | T10 | `streams` | stream substrate |
@@ -177,7 +176,7 @@ reaches 0, signal the unload waiter.
 > persisted state; a `recover` restart quarantines the owner.
 > *Class*: runtime.
 
-`AB5` and `AB6` from v3 are deprecated in favour of `AB12`.
+`AB5` and `AB6` are deprecated in favour of `AB12`.
 
 ## 7. RefGuard timeout
 
@@ -192,12 +191,12 @@ kernel:
    namespaced limit `slot-timeout-threshold-count` /
    `slot-timeout-threshold-window-ms` from `kernel.host.[limits]`.
 
-(Threshold gate retained from v3, re-scoped under `DAG6`: it
+(Threshold gate retained, re-scoped under `DAG6`: it
 counts slot timeouts only — repeated in-process panics cannot
 occur under the AB12 disposition model (the first panic terminates
 the process and, under `recover`, quarantines the owner), so the
 panic half of the old gate is subsumed by first-panic quarantine.
-The v3 AB6 wording that introduced the gate is deprecated; AB12
+The old AB6 wording that introduced the gate is deprecated; AB12
 carries the panic convention, the lifecycle chapter carries the
 gate.)
 
@@ -223,8 +222,7 @@ restated bodies.)
 
 ## 10. Carried rules (CC1..CC13)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **CC1 — `Kernel` is `Send + Sync`, shared as `Arc<Kernel>`** across
 > the server runtime's worker threads (`arch/`-threaded,
@@ -237,8 +235,8 @@ normative texts; the v3 chapter is heritage.
 > innermost (T13); shutdown is signalled by a cancellation token,
 > not a lock. *Class*: kernel-enforced (compile).
 
-> **CC3 (reshaped) — Per-session dispatch is serialized.** v3's
-> single `Mutex<Session>` is superseded by the two-lock model
+> **CC3 (reshaped) — Per-session dispatch is serialized.** The
+> prior single `Mutex<Session>` is superseded by the two-lock model
 > (§1): `turn_gate` serialises user-visible dispatch order;
 > `state` protects field mutation and is never held across a
 > cdylib slot invocation (CC14). *Class*: kernel-enforced
@@ -308,10 +306,10 @@ normative texts; the v3 chapter is heritage.
 > concurrent slot calls. Stream schemes MUST NOT opt in (S1).
 > *Class*: kernel-enforced (runtime).
 
-**Reshape note (CC1..CC13).** Carried from v3 with v4 vocabulary.
+**Reshape note (CC1..CC13).** Carried forward with this spec's vocabulary.
 CC3 is the one body reshape: the single `Mutex<Session>` became
 the two-lock model (§1), which is what makes CC14 satisfiable.
-CC2's v3 list of concrete lock types generalised to the §4 tier
+CC2's original list of concrete lock types generalised to the §4 tier
 table (the CoordinationRegistry tier is retired — T7 reserved);
 CC7's prose ladder became T1..T13 plus the named below-T13 order;
 CC11 is now explicitly gated by LF10's logical-vs-physical

@@ -5,8 +5,7 @@
 convention, panic isolation, the userspace covenant (AB15), and
 the retirement of driver-ABI-v1's `c_int` returns (AB14).
 
-**Heritage.** v3 `06-ABI/02-Versioning.md`; v4 README §8;
-`archive/docs/architecture/driver-abi-v1.md`.
+**Heritage.** `archive/docs/architecture/driver-abi-v1.md`.
 
 **Locked rules.** `AB1..AB4` carried, `AB3` reshaped, `AB12..AB13`
 new. `AB5`, `AB6` deprecated.
@@ -230,21 +229,21 @@ the state-record hook, and the disposition value. Contract:
 
 ### 5.3 Deprecated
 
-`AB5` and `AB6` from v3 are deprecated; their bodies are subsumed by
+`AB5` and `AB6` are deprecated; their bodies are subsumed by
 `AB12`; the IDs are never recycled.
 
 ## 6. `ErrorCode` is the sole fallible-return convention
 
 driver-ABI-v1 used `c_int` for fallible vtable slot returns. The
 v0.15 implementation that shipped it is archived (non-normative);
-no live cdylib consumes the `c_int` surface. v4 therefore makes the
+no live cdylib consumes the `c_int` surface. This spec therefore makes the
 clean break **before** an ecosystem exists, rather than carrying a
 compatibility loader for zero external consumers.
 
 > **AB14 — `ErrorCode` is the only fallible-return type at the ABI
 > boundary.** Every fallible vtable slot and HostApi function
 > returns `ErrorCode` (`#[repr(i32)]`). Bare `c_int` returns are
-> forbidden in v4 vtables. There is no `c_int → ErrorCode`
+> forbidden in vtables. There is no `c_int → ErrorCode`
 > compatibility loader; driver-ABI-v1 is retired with the archived
 > v0.15 implementation, and `archive/docs/architecture/driver-abi-v1.md`
 > is heritage.
@@ -337,8 +336,8 @@ field; mismatch → `IllegalKind` at load (AB-conformance fixture).
 
 ## 8. Reshape notes
 
-**Reshape note (AB3).** v3 AB3 required append-only vtables. v4
-sharpens the mechanism: the common `VtableHeader` with
+**Reshape note (AB3).** AB3 originally required append-only vtables.
+This spec sharpens the mechanism: the common `VtableHeader` with
 `size_of_self` is mandatory, and the loader's read rule (§2.1) is
 normative. Intent unchanged; the guard is now structural.
 

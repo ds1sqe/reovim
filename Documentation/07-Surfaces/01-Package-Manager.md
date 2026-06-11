@@ -3,8 +3,7 @@
 **Scope.** `pkg sync`, lockfile, manifest schema, supply-chain
 hardening, library-root path identity, project package overlays.
 
-**Heritage.** v3 `07-Surfaces/01-Package-Manager.md`; v4 README §14;
-`archive/docs/deployment/library-root.md`.
+**Heritage.** `archive/docs/deployment/library-root.md`.
 
 **Locked rules.** `PM1..PM9` carried (restated §2); `PM10..PM11`
 new; references `SEC3..SEC4`.
@@ -25,8 +24,7 @@ new; references `SEC3..SEC4`.
 
 ## 2. Carried rules (PM1..PM9)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **PM1 — Lockfile integrity is SHA-256 in the first cut.**
 > ed25519 sign-on-publish is added on top when a registry exists;
@@ -96,16 +94,16 @@ normative texts; the v3 chapter is heritage.
 > serializes. Stream schemes MUST NOT opt in (S1, 4.4 §12).
 > *Class*: LF + runtime.
 
-**Reshape note (PM1..PM9).** Carried from v3 with v4 vocabulary:
-the replay bound's config home moved from v3's
+**Reshape note (PM1..PM9).** Carried forward with this spec's vocabulary:
+the replay bound's config home moved from the old
 `[ui] replay_max_wait_ms` to `kernel.host.[limits].replay-max-wait-ms`
-(host-class, kebab per CFG10); v3's `LoadError::ReplayMaxWaitOutOfRange`
+(host-class, kebab per CFG10); the old `LoadError::ReplayMaxWaitOutOfRange`
 named error is now a tooling diagnostic + DS12 event (`pkg sync` is
-tooling, not an ABI surface; AB14 governs the ABI side); PM6's v3
+tooling, not an ABI surface; AB14 governs the ABI side); PM6's old
 "AB11 kind field" reference became the manifest `kind` +
-`[[vtable]]` mechanism (CL6, 6.2 §7). v3 PM9
-(`requires_serialization`) was briefly shadowed by a new v4 rule
-ID — the v4 additions are renumbered PM10/PM11 and the v3 PM9 is
+`[[vtable]]` mechanism (CL6, 6.2 §7). PM9
+(`requires_serialization`) was briefly shadowed by a new rule
+ID — the additions are renumbered PM10/PM11 and the original PM9 is
 restored; CC13's per-cdylib serialization mutex is the kernel half
 of PM9. Manifest field names stay snake_case (manifest schema);
 config keys are kebab (CFG10).

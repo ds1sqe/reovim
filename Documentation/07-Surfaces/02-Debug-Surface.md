@@ -3,8 +3,6 @@
 **Scope.** The debug channel: events, drive (state mutation), the
 auth boundary, what's privileged and what's read-only.
 
-**Heritage.** v3 `07-Surfaces/02-Debug-Surface.md`; v4 README §15.
-
 **Locked rules.** `DS1..DS12` carried (restated §2; DS5 reshaped),
 `DS13` new.
 
@@ -24,8 +22,7 @@ namespace from the user session protocol.
 
 ## 2. Carried rules (DS1..DS12)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **DS1 — Each input modality is its own channel.** Key, mouse,
 > IME, trigger, … (the 6.3 §7 `RawInputKind` catalog) are separate
@@ -87,7 +84,7 @@ normative texts; the v3 chapter is heritage.
 > **DS10 — Buffer description returns a `DomainTreeSnapshot`.**
 > One node per `DomainAttachment`:
 > `{id, domain_id, scope, parent_id, struct_refs, focus_refs}`
-> (DT11 adds `struct_refs` to the v3 set). View-state contents are
+> (DT11 adds `struct_refs` to the prior set). View-state contents are
 > NOT included (opaque per DT3); a separate handler-query op
 > inspects slots. Buffer references carry `buffer_id` only.
 > *Class*: kernel-enforced (runtime).
@@ -106,15 +103,16 @@ normative texts; the v3 chapter is heritage.
 > drop-newest with a `dropped: N` marker. *Class*:
 > kernel-enforced (runtime).
 
-**Reshape note (DS1..DS12).** Carried from v3 with v4 vocabulary.
-DS5 is the one reshape: v3's "no app-level ACL, no capability
+**Reshape note (DS1..DS12).** Carried forward with this spec's vocabulary.
+DS5 is the one reshape: the old "no app-level ACL, no capability
 tokens" is superseded by the §5.1 capability pair — DS13 layers
 `debug.mutate` on top of transport auth, and the rule now reads
 "nothing finer than the pair". DS3's "JSON Schema is the source of
-framed-protocol carries channel payloads as opaque bytes" is the v4
-model; CF5 cross-checks chapter ↔ message-struct alignment. DS8's v3 `NotSupported` answer maps to
+framed-protocol carries channel payloads as opaque bytes" is the
+current model; CF5 cross-checks chapter ↔ message-struct alignment.
+DS8's old `NotSupported` answer maps to
 `ErrorCode::NotFound` (AB14: one error vocabulary). DS9/DS10 field
-sets are updated to the v4 lifecycle states and the DT11 dual
+sets are updated to the current lifecycle states and the DT11 dual
 refcounts. DS12's event families moved to 9.4 (OBS1/OBS3); the
 channel mechanics stay here.
 
@@ -206,7 +204,7 @@ Decoding happens at the client capability boundary, not the server.
    belongs to 7.3.
 2. Whether drive operations are rate-limited at the transport level.
    Default: yes, configurable in `kernel.host.[limits]`.
-3. Replay of recorded debug streams — out of v4 target as a feature,
+3. Replay of recorded debug streams — out of target as a feature,
    but the schema must not foreclose it.
 
 ## Conformance

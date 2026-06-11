@@ -4,11 +4,10 @@
 schemes, stream lifecycle, backpressure, drain, cdylib-owned scheme
 implementations.
 
-**Heritage.** v3 `04-Substrate/04-Stream.md` (S1..S10 + L26 retained);
-v4 README §0.4 mentions `driver-stream` cleanup.
+**Heritage.** S1..S10 + L26 retained; `driver-stream` cleanup noted.
 
 **Locked rules.** `S1..S10` carried (restated §12); `L26` reshaped
-(Stream replaces the v3 single-purpose terminal carve-out).
+(Stream replaces the prior single-purpose terminal carve-out).
 
 ---
 
@@ -203,8 +202,7 @@ unstructured text.
 
 ## 12. Carried rules (S1..S10)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **S1 — Stream schemes are their own cdylib kind.** One vtable
 > contract (`StreamSchemeVtable`, symbol
@@ -277,17 +275,17 @@ normative texts; the v3 chapter is heritage.
 > **S10 — Scheme options are typed.** `scheme_opts` schema rules
 > per §11. *Class*: spec-asserted.
 
-**Reshape note (S1..S10).** Carried from v3 with the
+**Reshape note (S1..S10).** Carried forward with the
 StreamDriver→StreamScheme rename throughout: schemes are their own
 `ManifestKind` (§7), no longer a driver sub-kind; the symbol is
 `REOVIM_STREAM_SCHEME_VTABLE`; `driver_opts` became `scheme_opts`.
-v3's opaque `NonZeroU64` handle became the kernel-side
-`StreamHandle` with an explicit `StreamState` machine (§1) — v3's
+The prior opaque `NonZeroU64` handle became the kernel-side
+`StreamHandle` with an explicit `StreamState` machine (§1) — the old
 generation-mismatch semantics surface as the `Stale` variant.
 S1's serialization reference is now the PM9
 `requires_serialization` manifest flag (7.1). S4's
 `WouldBlock`/`Closed` returns map to `ErrorCode::Busy`/`Stale`
-(AB14: one error vocabulary). v3's AB10 append-only-enum rule for
+(AB14: one error vocabulary). The old AB10 append-only-enum rule for
 the control-op space is subsumed by the type-catalog stability
 rules + AB15. No rule in the block is dropped.
 

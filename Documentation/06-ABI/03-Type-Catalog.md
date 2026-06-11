@@ -4,9 +4,6 @@
 that crosses the ABI boundary. Other chapters cite this catalog;
 this chapter defines.
 
-**Heritage.** v3 `06-ABI/03-Type-Catalog.md`; v4 README §0.4 (Type
-Catalog drift).
-
 **Locked rules.** None directly; this chapter binds AB3 / AB12 /
 CFG6 / CR1..CR2 / SVC2 layouts.
 
@@ -327,7 +324,7 @@ pub enum RawInputKind {
     Mouse   = 2,
     Text    = 3,
     Paste   = 4,
-    Web     = 5,    // reserved; payload locked with the WASM-peer decision (out of v4 target)
+    Web     = 5,    // reserved; payload locked with the WASM-peer decision (out of target)
     Trigger = 6,
     Ime     = 7,
     // 128..=255 reserved for module-defined custom kinds (per-cdylib; see 8.3 CL10)
@@ -390,7 +387,7 @@ pub struct MouseEvent {
 Size 32, align 8. Grid cells are the primary coordinate frame —
 every platform can produce them; pixel fields are the optional
 sub-cell refinement for platforms that have them (web, GUI).
-Multi-touch is out of v4 target; it arrives as a new kind, not
+Multi-touch is out of target; it arrives as a new kind, not
 as `Mouse` growth.
 
 ### 7.3 `Text` / `Paste` payloads

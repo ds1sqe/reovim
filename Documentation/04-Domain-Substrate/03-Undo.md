@@ -3,9 +3,8 @@
 **Scope.** Buffer-level undo/redo, byte-edit origin, undo group
 boundaries.
 
-**Heritage.** v3 `04-Substrate/03-Undo.md`. Flagged in v4 README §0.4
-as "not yet chapter-consolidated" — this is a minimum-viable shape;
-details TBD before lock.
+**Heritage.** Flagged as "not yet chapter-consolidated" — this is a
+minimum-viable shape; details TBD before lock.
 
 **Locked rules.** None new in this revision.
 
@@ -67,8 +66,8 @@ Auto-close conditions:
 
 ## 4. Cross-buffer undo
 
-v4 keeps undo per-buffer. Multi-buffer "session-wide undo" is
-**out of v4 target**.
+Undo is per-buffer. Multi-buffer "session-wide undo" is
+**out of target**.
 
 ## 5. Bounded resources
 
@@ -90,7 +89,7 @@ Eldest groups dropped on cap; DS12 event at drop.
    (e.g. macro replay merging into one group).
 3. Carrier-based undo — currently undo records byte ranges. A
    future model might record edits as `(PositionCarrier, payload)`
-   so non-text Domains undo cleanly. Out of v4 target.
+   so non-text Domains undo cleanly. Out of target.
 
 ## Conformance
 

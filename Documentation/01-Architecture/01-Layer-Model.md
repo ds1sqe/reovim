@@ -3,8 +3,6 @@
 **Scope.** The horizontal tier diagram of the system: where mechanism
 ends, where policy begins, what crosses each boundary.
 
-**Heritage.** v3 § layered diagram in `CLAUDE.md`; v4 README §2.
-
 **Locked rules.** None directly; this chapter constrains rule
 placement in `01-Architecture/02-Project-Layout-and-DAG.md` (`DAG*`)
 and `08-Client/01-Layer-Model.md` (`CL*`).

@@ -3,8 +3,7 @@
 **Scope.** The user-facing surface of the config service:
 `reovim config dump | help | validate | set | force-set`.
 
-**Heritage.** the q3-config-system RFC v2 §21 (folded); v4
-README §12.7 (env-var encoding).
+**Heritage.** the q3-config-system RFC v2 §21 (folded).
 
 **Locked rules.** None new; this chapter exposes CFG1..CFG9.
 

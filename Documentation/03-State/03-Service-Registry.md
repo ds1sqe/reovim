@@ -3,8 +3,7 @@
 **Scope.** ABI-safe service registration and lookup; borrow-only vs
 leased lookup; ownership and panic-containment of service rows.
 
-**Heritage.** v3 `03-State/03-Services.md` (replaced); v4 README §9;
-review item "ServiceRegistry is not ABI-safe".
+**Heritage.** review item "ServiceRegistry is not ABI-safe".
 
 **Locked rules.** `SVC1..SVC6`.
 
@@ -129,8 +128,8 @@ descriptor.
 
 ## 8. Forbidden surface
 
-- No `Box<dyn Any>`. The v3 model used `Box<dyn Any>` for service
-  handles; v4 explicitly removes it from the cdylib-facing surface.
+- No `Box<dyn Any>`. The prior model used `Box<dyn Any>` for service
+  handles; it is removed from the cdylib-facing surface.
 - No `TypeId`. Service identity is the `ServiceKey` string + the
   vtable's `kind` field.
 - No raw `Arc`/`Rc` across the boundary; service ownership is

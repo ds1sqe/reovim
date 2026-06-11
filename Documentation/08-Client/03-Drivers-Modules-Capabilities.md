@@ -4,7 +4,7 @@
 manifest support, lifecycle for sibling vtables, and the
 RawInputKind enumeration as part of the type catalog.
 
-**Heritage.** the client-layer-model RFC (folded); v4 README §13.3.
+**Heritage.** the client-layer-model RFC (folded).
 
 **Locked rules.** `CL6`, `CL7`, `CL10`.
 

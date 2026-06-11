@@ -6,7 +6,7 @@ env-var encoding. The ABI surface (`ConfigSlice`) lives in
 `06-ABI/04-Config-Slice.md`; the user CLI lives in
 `07-Surfaces/04-Config-CLI.md`.
 
-**Heritage.** the q3-config-system RFC v2 (folded); v4 README §12.
+**Heritage.** the q3-config-system RFC v2 (folded).
 
 **Locked rules.** `CFG1..CFG10`.
 
@@ -390,7 +390,7 @@ Storage in `ConfigSlice` is unredacted — participant sees real value.
 > *Class*: kernel-enforced.
 
 > **CFG2 — Schema defaults are authoritative.** The schema's
-> per-field `default` is the single source of truth. v4 has no
+> per-field `default` is the single source of truth. There is no
 > separate defaults blob symbol.
 > *Class*: kernel-enforced.
 
@@ -441,7 +441,7 @@ Storage in `ConfigSlice` is unredacted — participant sees real value.
 3. Whether `pkgs` namespace fully participates in the layer stack
    or remains gated solely by PM4. Current §2 says it participates;
    confirm against `07-Surfaces/01-Package-Manager.md` rules.
-4. `[default].client` placement (host vs shell). v4 placed in host
+4. `[default].client` placement (host vs shell). Currently placed in host
    (§6); confirm against AL2 reshape note in 1.3 §6.
 
 ## Conformance

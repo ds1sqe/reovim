@@ -3,11 +3,10 @@
 **Scope.** Window tree, layout nodes, viewport, window-level
 attached state.
 
-**Heritage.** v3 `05-View/01-Windows.md`. Flagged in v4 README §0.4
-as "not yet chapter-consolidated"; this chapter is a minimum-viable
-shape.
+**Heritage.** Flagged as "not yet chapter-consolidated"; this
+chapter is a minimum-viable shape.
 
-**Locked rules.** Carried from v3.
+**Locked rules.** Carried forward.
 
 ---
 
@@ -68,7 +67,7 @@ hostapi_window_focus   (ClientId, WindowId);
 
 1. Layout operation set — split/close/resize/balance/focus is a
    minimum. Floats / tabs / popovers TBD.
-2. Multi-buffer windows (zellij-style layout) vs strict 1:1 — v4
+2. Multi-buffer windows (zellij-style layout) vs strict 1:1 — the
    default is 1:1; revisit at v1.1.
 3. Whether window resize triggers a re-layout event observable by
    modules. Default: yes, via DS12 `window.resize`.

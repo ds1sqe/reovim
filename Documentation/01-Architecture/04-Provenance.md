@@ -4,8 +4,6 @@
 which are heritage. Ownership of wire message structs, generated
 artefacts, ABI golden files.
 
-**Heritage.** v3 `01-Foundation/03-Provenance.md`; v4 README §0.4.
-
 **Locked rules.** None at this revision; resolution items below.
 
 ---
@@ -29,9 +27,9 @@ artefacts, ABI golden files.
   records, memorials). Non-normative.
 - `archive/docs/architecture/client/` (v6.3 CLM) — heritage. Banner pending.
 
-## 3. v3 → v4 carry status
+## 3. Prior-draft carry status
 
-| v3 chapter | v4 disposition |
+| prior-draft chapter | disposition |
 |---|---|
 | `01-Foundation/01-Model.md` | folded into 1.1 + 4.1 |
 | `01-Foundation/02-Linux-Mappings.md` | retained reference; not re-folded |
@@ -70,9 +68,10 @@ artefacts, ABI golden files.
 2. Golden-file ownership: who regenerates ABI offsets when a
    `#[repr(C)]` struct grows a field? Spec edit must precede code
    edit; conformance row in 9.1 must pass.
-3. ~~v3 Open Question files~~ — resolved (option D): v3
-   `Open/` stays as heritage with one-line v4-disposition banners;
-   v4 `Open/` is the operational lock-blocker tracker.
+3. ~~Prior-draft Open Question files~~ — resolved (option D): the
+   prior draft's `Open/` stays as heritage with one-line disposition
+   banners; this spec's `Open/` is the operational lock-blocker
+   tracker.
 
 ## Conformance
 

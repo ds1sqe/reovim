@@ -4,8 +4,7 @@
 allowed and forbidden dependency edges, the depgraph probe model, and
 drift detection.
 
-**Heritage.** v4 README §3; v3 `CLAUDE.md` Architecture; reviews from
-`tmp/review/apps-layout-project-layout-depgraph-review.md`; #789 target classes (DAG6).
+**Heritage.** #789 target classes (DAG6).
 
 **Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5`, `DAG6`.
 
@@ -195,7 +194,7 @@ from    = "apps/server/src/bootstrap.rs"
 to      = "reovim-driver-display"
 reason  = "Theme/gutter/statusline imports pending #775."
 issue   = "#775"
-expires = "v4.0-rc1"
+expires = "v0.16.0"
 ```
 
 Entries cannot grow silently; the probe fails on any edge not in

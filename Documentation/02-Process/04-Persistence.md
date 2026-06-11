@@ -4,7 +4,7 @@
 restarts, what is reconstructed, the restore order, and how
 runtime-allocated identifiers are remapped.
 
-**Heritage.** v3 `02-Process/04-Persistence.md`; #763 cursor restore; #789 storage-neutral atomicity.
+**Heritage.** #763 cursor restore; #789 storage-neutral atomicity.
 
 **Locked rules.** `PS1..PS2` new; references `CR9` (carrier
 persistence with stable Domain names) and `LF15` (shutdown
@@ -179,7 +179,7 @@ state_version = "1.0"
 ```
 
 Major version changes require a one-shot migration tool. v1 has
-state version `1.0`; future migrations are out of v4 target.
+state version `1.0`; future migrations are out of target.
 
 ## Open items
 

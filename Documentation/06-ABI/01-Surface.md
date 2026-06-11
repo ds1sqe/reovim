@@ -5,9 +5,9 @@ runtime-loaded cdylib crosses, what kinds of types are allowed at
 that boundary, what the kernel pins and what it lets the cdylib
 choose.
 
-**Heritage.** v3 `06-ABI/01-Surface.md`; v4 README §2 (rules 6, 5); #789 static registry loader.
+**Heritage.** #789 static registry loader.
 
-**Locked rules.** Carried from v3; references `AB*`.
+**Locked rules.** Carried forward; references `AB*`.
 
 ---
 

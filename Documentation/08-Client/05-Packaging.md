@@ -4,8 +4,8 @@
 installed under the library root. Manifest kinds for client
 artefacts.
 
-**Heritage.** v4 README §0.4 (manifest-kind cleanup);
-`07-Surfaces/01-Package-Manager.md`.
+**Heritage.** `07-Surfaces/01-Package-Manager.md` (manifest-kind
+cleanup).
 
 **Locked rules.** None new; references PM* and CL6/CL7.
 

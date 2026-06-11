@@ -4,8 +4,8 @@
 ordering, the rollback rule for partial init, and the
 logical-vs-physical unload distinction.
 
-**Heritage.** v3 `02-Process/02-Lifecycle.md`; v4 README §6;
-review item "LF7 init state contradicts lifecycle stage 4"; #789 static registry loader (LF17).
+**Heritage.** review item "LF7 init state contradicts lifecycle
+stage 4"; #789 static registry loader (LF17).
 
 **Locked rules.** `LF1..LF6` carried (restated §10); `LF7..LF16` new; `LF17` new (#789).
 
@@ -28,6 +28,15 @@ stage 5: driver discovery; per-driver load (same)
 stage 6: framed-protocol runtime / in-memory adapter started
 stage 7: handoff — Init::boot returns Arc<Kernel>; serving
 ```
+
+**Structural-stub realization.** A boot stage's realized invariant is
+its `boot.stage.{start,ok}` event contract and its ordering position —
+not the completeness of its policy work. A stage whose policy work is
+not yet realized (the master ladder defers stages 2..6 across later
+phases) emits its events at its fixed position and performs no policy
+work; such a no-op stage is conformant for `boot.stage.*`. Stage
+numbers are therefore stable across the rebuild, which the LOG/OBS
+goldens depend on.
 
 > **LF13 — Boot is exclusive-ownership; steady state begins at the
 > Init→Kernel handoff.** Stages 0..6 run inside `Init` under
@@ -188,7 +197,7 @@ Step ordering for unload:
 If shutdown cannot prove its tasks are drained within the bounded
 wait (FAIL3), unload **fails** and the cdylib returns to `Active`
 with `ErrorCode::Busy` (the DS12 `cdylib.unload.fail` event names
-the kind). v4 does not silently unmap code while foreign threads
+the kind). The kernel does not silently unmap code while foreign threads
 may still call back.
 
 ## 6. Row owner index
@@ -351,8 +360,7 @@ handoff — because there is nothing left to move ownership to.
 
 ## 10. Carried rules (LF1..LF6)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **LF1 — Every cdylib has an atomic refcount.** Guard acquisition
 > (`RefGuard::acquire`, 2.3 §5) fails with
@@ -392,35 +400,35 @@ normative texts; the v3 chapter is heritage.
 > whole LF3 protocol; it is NOT part of the T1..T13 acquisition
 > ladder (2.3 §4). *Class*: kernel-enforced (runtime).
 
-**Reshape note (LF1..LF6).** Carried from v3 with the §2 state
+**Reshape note (LF1..LF6).** Carried forward with the §2 state
 vocabulary and the generation counter added. Two sharpenings, no
-intent change: v3 LF2's "never returns to a prior state" and v3
+intent change: LF2's "never returns to a prior state" and
 LF4's `Draining → Active` revert were latently contradictory —
 LF2 now names the revert as the single sanctioned backward edge.
-v3 LF4's `ErrorCode::ModuleBusy` maps to `ErrorCode::Busy` (AB14:
-one error vocabulary; the DS12 event names the kind). v3 LF1's
-`try_get → Option<RefGuard>` is the v4
+The old LF4 `ErrorCode::ModuleBusy` maps to `ErrorCode::Busy` (AB14:
+one error vocabulary; the DS12 event names the kind). The old LF1
+`try_get → Option<RefGuard>` is now the
 `RefGuard::acquire → Result<_, AcquireError>` shape.
 
 ## 11. Reshape notes
 
-**Reshape note (LF7).** v3 LF7 said "init runs after `Loaded`".
-v4 keeps the number and sharpens the body: init runs only while
+**Reshape note (LF7).** LF7 originally said "init runs after
+`Loaded`". The number is kept and the body sharpened: init runs only while
 `state == Loaded` with no prior RefGuard, and `Active` is the CAS
 target on success. Intent unchanged; concurrency precision
-tightened to match the RefGuard model (2.3). The v3 wording is
-superseded, not contradicted.
+tightened to match the RefGuard model (2.3). The original wording
+is superseded, not contradicted.
 
 ## Open items
 
 1. ~~Detach lifecycle ordering and rollback policy~~ — resolved
    (§8, LF12).
-2. ~~v3 LF7 vs v4 LF7 numbering~~ — resolved (hybrid renumbering
+2. ~~LF7 numbering across drafts~~ — resolved (hybrid renumbering
    policy): number retained, reshape note in §11.
 3. Per-row-kind list completeness (§6).
 4. Whether `dlclose_safe = true` ever holds for typical Rust
    cdylibs given TLS destructors. If not, all unload is logical
-   for v4; physical close becomes process-exit-only.
+   for now; physical close becomes process-exit-only.
 5. ~~kernel shutdown ordering~~ — resolved (§9, LF14..LF16): full
    phase sequence with persist-before-unload; CC10 (2.3) keeps the
    lock and Drop discipline. Streams drain inside LF unload per

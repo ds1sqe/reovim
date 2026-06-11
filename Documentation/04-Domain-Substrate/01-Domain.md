@@ -1,10 +1,8 @@
 # 4.1 — Domain
 
-**Scope.** What a Domain is in v4: an identifier plus routing
-entries. Removal of `trait Domain` from v3 prior art. The intern
+**Scope.** What a Domain is: an identifier plus routing
+entries. Removal of `trait Domain` from prior art. The intern
 contract for stable Domain names.
-
-**Heritage.** v3 `04-Substrate/01-Domain.md`; v4 README §2 (rule 3).
 
 **Locked rules.** `DT10` (priority bands, carried — restated §6),
 `DT17` (dispatch tie-break); references `DT*`, `CR*`.
@@ -25,7 +23,7 @@ on a trait. The kernel knows three things about a `DomainId`:
 - routing table entries: handlers, projectors, codecs (position,
   cursor), persistence handlers, positional-arg dispatch handlers.
 
-There is no `trait Domain` in v4. The v3 `trait Domain` is
+There is no `trait Domain`. The prior draft's `trait Domain` is
 removed.
 
 ## 2. DomainRouter
@@ -45,7 +43,8 @@ pub struct DomainRouter {
 ```
 
 Codec maps are part of `DomainRouter`, not a separate
-`CoordinationRegistry` (v3 had this; v4 removed it per README §5.1).
+`CoordinationRegistry` (existed in the prior draft; removed per
+README §5.1).
 
 ## 3. Intern contract
 

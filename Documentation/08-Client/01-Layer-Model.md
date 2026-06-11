@@ -5,8 +5,7 @@ open `ext/client/{platforms,driver,module,capabilities}/*`
 implementation tier. Allowed cross-category edges and the role of
 the launcher.
 
-**Heritage.** the client-layer-model RFC (folded); v3
-`.claude/rules/architecture.md` Client Layer Model v7; v4 README §13.
+**Heritage.** the client-layer-model RFC (folded).
 
 **Locked rules.** `CL1..CL5` here; `CL6..CL10` in 8.3.
 
@@ -53,7 +52,7 @@ ext/client/
 > **CL2 — Implementation tier is the open extension surface.**
 > *Class*: spec.
 
-Naming rules (per `.claude/rules/architecture.md` §Naming):
+Naming rules:
 
 - "driver" on the client side means **open extension implementing
   a subsys contract** (same meaning as server).
@@ -134,7 +133,7 @@ apps/reovim         → ext/client/{driver,module,capabilities}/*
 ## Open items
 
 1. Whether the WASM browser runtime is a client platform peer or a
-   separate web SSR runner. **Out of v4 target** per README.
+   separate web SSR runner. **Out of target** per README.
 2. Whether modules can register capabilities they consume from
    sibling modules — current spec disallows; clarify in 8.3.
 3. Heritage banner for `archive/docs/architecture/client/` v6.3 docs

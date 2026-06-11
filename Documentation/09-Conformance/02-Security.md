@@ -3,15 +3,13 @@
 **Scope.** Threat model, transport auth, library-root path identity,
 sandbox boundary statement.
 
-**Heritage.** v4 README §15.0, §15.1.
-
 **Locked rules.** `SEC1..SEC5`.
 
 ---
 
 ## 1. Threat model
 
-v4 explicitly models these threats:
+The spec explicitly models these threats:
 
 | Threat | Mitigation owner |
 |---|---|
@@ -30,15 +28,15 @@ v4 explicitly models these threats:
 ## 2. Sandbox boundary
 
 > **SEC1 — Runtime-loaded cdylibs are trusted native code; no
-> memory sandbox in v4.** v4 hardens loading, lifecycle, ABI, and
+> memory sandbox.** The spec hardens loading, lifecycle, ABI, and
 > observability. Once a cdylib is `Active`, the kernel cannot
 > contain its memory access or syscalls.
 >
 > Implications:
 > - A signed cdylib in the lockfile is treated as trusted code
 >   running in-process.
-> - Untrusted user-supplied native code is not a v4 use case.
-> - Future sandbox work (WASM, RPC isolation) is out of v4 target.
+> - Untrusted user-supplied native code is not a target use case.
+> - Future sandbox work (WASM, RPC isolation) is out of target.
 >
 > *Class*: spec.
 
@@ -89,7 +87,7 @@ Required DS12 audit events (cross-reference 9.4):
 - `debug.drive.start|ok|fail` (DS13)
 - `force-override` warning lines (CFG5)
 
-## 6. Out of v4 target
+## 6. Out of target
 
 - Memory-sandboxed cdylibs (WASM, sub-process isolation).
 - Per-cdylib syscall filtering.

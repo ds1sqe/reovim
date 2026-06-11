@@ -2,9 +2,8 @@
 
 **Scope.** Register storage shape, scope rules, and access pattern.
 
-**Heritage.** v3 `03-State/04-Registers.md`. v4 README §0.4 flagged
-this as "not yet chapter-consolidated" — this chapter is a
-minimum-viable shape; details TBD before lock.
+**Heritage.** Flagged as "not yet chapter-consolidated" — this
+chapter is a minimum-viable shape; details TBD before lock.
 
 **Locked rules.** None at this revision; reshape candidates below.
 

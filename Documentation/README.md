@@ -1,9 +1,10 @@
-# Reovim Spec v4
+# Reovim Spec
 
 **Status:** Draft v0 — chapters in flight.
 **Date:** 2026-04-28.
 
-v4 preserves v3's architecture and normalises the boundaries. Kernel
+This spec preserves the prior architecture and normalises the
+boundaries. Kernel
 remains mechanism; Domains, modules, drivers, and client modules own
 policy. Every byte, pointer, service, config slice, and cdylib
 registry row that crosses a stable boundary gets explicit ownership,
@@ -59,19 +60,19 @@ Three structural consequences:
 
 ## Posture
 
-- **v4 is a quality gate, not a feature pass.** Hardening contracts
+- **This spec is a quality gate, not a feature pass.** Hardening contracts
   beats expanding scope.
 - **Do not break userspace. The released ABI is eternal (AB15).**
   Post-v1.0, every shipped stable surface is supported forever;
   deprecation is allowed, removal is not. Pre-1.0 is the only
-  window for clean breaks — v4 spends it deliberately (AB14).
+  window for clean breaks — this spec spends it deliberately (AB14).
 - **Kernel ABI is `#[repr(C)]`, opaque handles, primitives, byte
   slices.** No Rust trait objects cross cdylib boundaries.
 - **Domain is an ID, not a trait.** `DomainId(NonZeroU32)`; behaviour
   routes through tables.
 - **Kernel input is key-free.** Keymaps, modes, motions, registers,
   leaders are Domain/client policy.
-- **Runtime-loaded cdylibs are trusted native code.** v4 hardens
+- **Runtime-loaded cdylibs are trusted native code.** This spec hardens
   loading, lifecycle, ABI, and observability — not memory sandboxing.
 
 ## Chapter index
@@ -128,7 +129,7 @@ shaped this architecture — lives in [`heritage/`](heritage/README.md).
 
 | Prefix | Topic | Owner chapter |
 |---|---|---|
-| `L` | Legacy core; compatibility only | (carried from v3) |
+| `L` | Legacy core; compatibility only | (carried forward) |
 | `LF` | cdylib lifecycle | 2.2 |
 | `CC` | concurrency | 2.3 |
 | `AB` | ABI / vtable / panic | 6.2 |
@@ -171,17 +172,17 @@ summary per decision:
 | Manifest-kind enumeration | 6.2, 8.5, 4.4 | Nine-variant enum final; `StreamScheme` own kind; sub-kinds via vtable strings |
 | Wire-form provenance | 1.4, 7.3 | 7.3's message inventory owns the wire form; `uapi/protocol` structs realize it; CI cross-check (CF5). Superseded the 2026-06 proto split under `DAG5` sovereignty. |
 | Rule-index reshape pass | all chapters | Hybrid renumber; carried bodies restated in owner chapters; lock tiers renamed T1..T13 |
-| v3 draft disposition | all chapters | Superseded; every carried rule restated here — the v3 draft tree is not retained (latest spec is the SSOT) |
+| Prior-draft disposition | all chapters | Superseded; every carried rule restated here — the prior draft tree is not retained (latest spec is the SSOT) |
 
 Chapter lock is gated only by per-chapter promotion work
 (conformance rows, CF1..CF5).
 
-## Out of v4 target
+## Out of target
 
 - WASM browser runtime peer vs separate web SSR runner.
 - Project package overlay trust prompt beyond `pkg sync` / `pkg verify`.
 - Q-4 (cross-observer focus pairing) unless DomainTree requires it.
-- Runtime config reload (boot-only in v4).
+- Runtime config reload (boot-only).
 
 ## How to read this spec
 

@@ -3,9 +3,8 @@
 **Scope.** Buffer-attached Domain tree, focus chains, pending
 attachments, and the resolution transaction.
 
-**Heritage.** v3 `04-Substrate/02-Domain-Tree.md`; v4 README §10;
-review items "DomainTree focus_refs vs cold children" and
-"Pending(DomainId) lacks resolution context".
+**Heritage.** review items "DomainTree focus_refs vs cold children"
+and "Pending(DomainId) lacks resolution context".
 
 **Locked rules.** `DT1..DT9` carried (restated §10; DT8 reshaped),
 `DT11..DT16` new. `DT10` lives in 4.1 with the dispatch rules.
@@ -208,8 +207,7 @@ Breach returns `ErrorCode::ResourceExhausted` and emits DS12.
 
 ## 10. Carried rules (DT1..DT9)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapter is heritage.
+The rule bodies below are the normative texts.
 
 > **DT1 — Buffer = bytes; Domain = policy over substrate.** A
 > Buffer is bytes + identity + byte-edit subscription — no
@@ -287,7 +285,7 @@ normative texts; the v3 chapter is heritage.
 > For any `(parent, scope, domain_id)` tuple, at most one
 > `DomainAttachment` exists in the tree. Focus chains referencing
 > it bump `focus_refs`; structural owners hold `struct_refs`.
-> Removal requires both to reach zero per DT11 — v3's
+> Removal requires both to reach zero per DT11 — the prior
 > single-counter eager removal is superseded. Sharing benefit
 > unchanged: an ELF section table is parsed once; clients share
 > the structural record while each holds its own DT3 view slot.
@@ -299,21 +297,21 @@ normative texts; the v3 chapter is heritage.
 > acquisition (2.3). Multi-step transitions ("switch root" =
 > pop-all then push-new) hold the lock from first pop to last
 > push; observers see the pre-state or the post-state, never an
-> intermediate empty chain. Cross-observer pairing — deferred in
-> v3 — is resolved by DT14..DT16 + CC17: the mutation publishes
+> intermediate empty chain. Cross-observer pairing — previously
+> deferred — is resolved by DT14..DT16 + CC17: the mutation publishes
 > one `FocusTransition` record in the apply phase. *Class*:
 > kernel-enforced (compile + runtime) — the session state lock is
 > the only write path to `Session.focus`.
 
-**Reshape note (DT1..DT9).** Carried from v3 with v4 vocabulary:
+**Reshape note (DT1..DT9).** Carried forward with this spec's vocabulary:
 `trait Domain` is removed, so DT1 reads "policy registered on a
-`DomainId`"; v3's `DomainScope::Derived(parent)` became the
+`DomainId`"; the old `DomainScope::Derived(parent)` became the
 `parent` field plus scope-in-parent-vocabulary shape (§1, §2);
 DT7's `Pending(DomainId)` became `Pending(PendingAttachmentId)`
 with owned resolution context (DT12). DT8 is the one semantic
 change in the block: the single `focus_refs` counter is superseded
 by the DT11 `struct_refs`/`focus_refs` split. DT9's deferred
-cross-observer pairing is now resolved by DT14..DT16/CC17; the v3
+cross-observer pairing is now resolved by DT14..DT16/CC17; the old
 "future transactional API" sketch is dropped in favour of the
 `FocusTransition` record. DT10 (priority bands) is restated in 4.1
 §6 beside the dispatch rules it governs.

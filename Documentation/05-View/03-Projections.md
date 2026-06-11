@@ -3,10 +3,9 @@
 **Scope.** What modules write to be rendered: the projection
 contract, projector dispatch, projection slots.
 
-**Heritage.** v3 implicit (split across `04-Substrate` and
-`05-View`); v4 README does not detail. Minimum-viable shape here.
+**Heritage.** Minimum-viable shape here.
 
-**Locked rules.** Carried-from-v3 implicit; reshape pending.
+**Locked rules.** Carried-forward implicit; reshape pending.
 
 ---
 
@@ -64,7 +63,7 @@ compose:
   DT17 tie-break (4.1 §6), so composition is deterministic across
   boots and installs.
 
-## 5. Out of v4 target
+## 5. Out of target
 
 - Composable projection trees beyond per-Domain banded order.
 - Live re-projection during input dispatch (project on apply,
@@ -73,7 +72,7 @@ compose:
 ## Open items (must resolve before lock)
 
 1. Whether projection is push (kernel signals client) or pull
-   (client requests). v3 was push; default for v4 same.
+   (client requests). Push is the prior art and the default.
 2. Style/glyph vocabulary — currently `StyleRef` is opaque; concrete
    set in 8.3.
 3. Projection diff vs full projection — bandwidth concern. Default:

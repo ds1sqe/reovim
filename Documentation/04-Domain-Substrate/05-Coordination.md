@@ -4,8 +4,7 @@
 validation, persistence, client unknown-codec fallback, and resource
 ceilings.
 
-**Heritage.** the coordination RFC (folded with review
-amendments); v4 README §11.
+**Heritage.** the coordination RFC (folded with review amendments).
 
 **Locked rules.** `CR1..CR19`.
 

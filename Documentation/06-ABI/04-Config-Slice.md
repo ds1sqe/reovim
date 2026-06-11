@@ -5,8 +5,7 @@ that the kernel hands to each participant. Lifetime, ownership,
 encoding rules, version surface, compound-value strategy.
 
 **Heritage.** the q3-config-system RFC v2 §9 (folded with
-amendments); v4 README §12.5; review item "Specify the exact
-ConfigSlice ABI".
+amendments); review item "Specify the exact ConfigSlice ABI".
 
 **Locked rules.** `CFG6` body lives here; CFG1..CFG5 / CFG7..CFG9
 referenced.
@@ -217,7 +216,7 @@ fn init(slice: &ConfigSlice) -> Result<Init, ErrorCode> {
 After init returns, the kernel may free `entries` and the bytes.
 A participant that reads stale slice memory reads UB.
 
-## 12. Reload (out of v4 target)
+## 12. Reload (out of target)
 
 If a future spec gains lifecycle="reloadable" honour, a new HostApi
 function will deliver a fresh `ConfigSlice` to the participant.

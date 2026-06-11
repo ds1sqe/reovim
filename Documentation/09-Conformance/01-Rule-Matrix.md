@@ -1,10 +1,8 @@
 # 9.1 — Conformance Rule Matrix
 
-**Scope.** The cross-cutting promotion gate for v4: every locked
+**Scope.** The cross-cutting promotion gate: every locked
 rule has a fixture, every normative MUST/MUST NOT/SHALL maps to a
 rule, every ABI shape has a golden test.
-
-**Heritage.** v4 README §16, §17, §18.
 
 **Locked rules.** `CF1..CF5`.
 
@@ -127,7 +125,7 @@ Per-target triples: `x86_64-unknown-linux-gnu`,
 
 ## 6. Reshape notes
 
-For every `R`-state rule (reshaped from v3), the owner chapter must
+For every `R`-state rule (reshaped), the owner chapter must
 include a "Reshape note" naming what changed and why. CI checks the
 presence; humans check the substance.
 

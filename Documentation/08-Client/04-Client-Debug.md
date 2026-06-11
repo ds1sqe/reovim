@@ -3,7 +3,7 @@
 **Scope.** Client-side debug capability: how a client cdylib
 exposes a sibling debug vtable that the server routes to.
 
-**Heritage.** v4 README §13.2 / §15; CL4 / CL5.
+**Heritage.** CL4 / CL5.
 
 **Locked rules.** Carried per CL4 / CL5 in 8.1.
 
@@ -98,7 +98,7 @@ debug subscriptions are revoked on unload.
    one capability with op-kind discriminator.
 2. Whether debug capability can be packaged separately from render
    driver (yes; 8.3 supports multi-vtable).
-3. Replay capability (record + replay debug streams) — out of v4
+3. Replay capability (record + replay debug streams) — out of
    target.
 
 ## Conformance

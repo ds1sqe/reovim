@@ -3,8 +3,6 @@
 **Scope.** Cross-cutting failure rules: every fallible boundary has
 named errors; rollback failure is first-class; drains are bounded.
 
-**Heritage.** v4 README §15.3.
-
 **Locked rules.** `FAIL1..FAIL3`.
 
 ---
@@ -84,7 +82,7 @@ Post-timeout states:
   (return code, event, or both).
 - **Half-rolled-back state.** A failure that leaves resources in
   a named-elsewhere state must be FAIL2-tombstoned.
-- **Unbounded waits.** Any wait without a timeout is a v4 lock
+- **Unbounded waits.** Any wait without a timeout is a lock
   blocker.
 
 ## 5. Required DS12 fields for failure events

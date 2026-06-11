@@ -6,10 +6,9 @@ model. Concrete `#[repr(C)]` layouts that cross the ABI boundary
 live in `06-ABI/03-Type-Catalog.md`; this chapter describes the
 in-process Rust shapes.
 
-**Heritage.** v3 `02-Process/01-Types.md`; v4 README §5. The single
-struct was named `Pid1` until 2026-06; the rename split it into
-the `Init`/`Kernel` pair because the state root has no process
-lifetime or action of its own — the boot actor does.
+**Heritage.** The single struct was named `Pid1` until 2026-06; the
+rename split it into the `Init`/`Kernel` pair because the state root
+has no process lifetime or action of its own — the boot actor does.
 
 **Locked rules.** None directly; references `CC*`, `LF*` (handoff:
 LF13), `SVC*`.
@@ -70,6 +69,14 @@ early-boot stderr (LOG8) are live from stage 0; it transfers into
 across the handoff.
 
 ## 3. `Kernel` shape
+
+> **Boot-core subset note.** The struct below is the spec target. The
+> boot-core realization (#778 Phase 2) carries a documented subset —
+> `abi`, the boot anchor, the event bus, the log ring — and grows
+> monotonically toward this shape as later phases land their fields'
+> consumers (registries, session/buffer/window maps, correlation
+> allocator). Placeholder fields are not fabricated ahead of their
+> consumers.
 
 ```rust
 pub struct Kernel {
@@ -142,7 +149,7 @@ pub struct Session {
 }
 ```
 
-The two-lock model (`turn_gate` + `state`) is the v4 fix to v3's
+The two-lock model (`turn_gate` + `state`) replaces the prior
 single-`Mutex<Session>`. See `02-Process/03-Concurrency.md`.
 
 > Note (non-normative): `TurnGate` is an in-repo FIFO fair-queue
@@ -189,7 +196,7 @@ pub struct Window {
    instance's lifetime; if reload paths arrive
    (lifecycle="reloadable"), this becomes an atomically-swappable
    shared reference (`arch/`-provided; no third-party `ArcSwap`).
-   Out of v4 target.
+   Out of target.
 3. ~~Whether `Session.state` is an async or a non-async mutex (the
    pre-sovereignty draft weighed third-party primitives)~~ —
    resolved #782 as `std::sync::Mutex`; re-resolved #784 under

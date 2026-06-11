@@ -4,8 +4,6 @@
 What a platform runtime owns, the launcher's `run()` entry point,
 and the platform-specific config surface.
 
-**Heritage.** v3 implicit; v4 README §13.
-
 **Locked rules.** None new; references CL3.
 
 ---
@@ -30,13 +28,13 @@ The runtime owns:
   from embedded mode),
 - platform-specific debug surface (8.4).
 
-## 2. v4 platforms
+## 2. Platforms
 
 | Platform | Crate | Status |
 |---|---|---|
 | TUI | `ext/client/platforms/tui/` | Active (#753) |
 | Web | `ext/client/platforms/web/` | Active (#753 Phase E.1) |
-| Native | `ext/client/platforms/native/` | Out of v4 target |
+| Native | `ext/client/platforms/native/` | Out of target |
 
 ## 3. Module/driver/capability discovery
 
@@ -75,16 +73,15 @@ Each platform may ship its own per-platform config schema (1.5):
 - `[platform.web]` — bundle preferences, DOM target IDs.
 
 The cleanest model: each platform is its own config participant
-under `platform.<p>`. v4 README §0.4 leaves the exact placement
+under `platform.<p>`. The README leaves the exact placement
 open.
 
 ## Open items
 
 1. Platform-as-config-participant decision (§5).
 2. Whether the platform runtime can be hot-swapped during a session
-   (e.g. attach via TUI then switch to web). v3 says no; v4
-   default no.
-3. Native platform runner — out of v4 target.
+   (e.g. attach via TUI then switch to web). Default no.
+3. Native platform runner — out of target.
 
 ## Conformance
 

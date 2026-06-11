@@ -5,9 +5,6 @@ payload }`. What kinds exist, what their payloads look like,
 keyboard/mouse/text/paste/web typed records, why no kernel
 keyparsing, and the JSON-Schema boundary for CLI/debug.
 
-**Heritage.** v3 `05-View/02-Input-Codec.md` (replaced); v4 README
-§2 (rule 4) and §19 #5.
-
 **Locked rules.** Carried key-free invariant; concrete payload
 records resolved and locked in the type catalog (6.3 §7).
 
@@ -108,7 +105,7 @@ Excess returns `ErrorCode::ResourceExhausted` and DS12 emits.
    grid cells primary, optional pixel refinement.
 3. ~~IME / composition~~ — resolved: own `Ime` kind, not
    `KeyEvent` state.
-4. Web adapter contract (out of v4 target; kind value 5 reserved).
+4. Web adapter contract (out of target; kind value 5 reserved).
 5. ~~Custom-kind allocation~~ — resolved: per-cdylib,
    emitter-is-consumer, manifest-declared schema.
 

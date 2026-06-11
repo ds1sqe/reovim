@@ -8,15 +8,13 @@ semantics. This chapter is the wire truth: a stranger MUST be able to
 reimplement a conforming client from this chapter alone (plus the
 `#[repr(C)]` layouts it cites in 6.3).
 
-**Heritage.** v3/v4 `07-Surfaces/03-Server-Client-Protocol.md`.
-
 **Locked rules.** `SP1..SP8` carried (restated §11, semantics
 unchanged, wire-mechanism vocabulary reshaped); `SP9..SP14` new
 (framing, handshake, codec, reject model, unknown-tag policy,
 backpressure); `SP15..SP16` new (sans-IO protocol purity, carrier
 replaceability — §1a).
 
-> Heritage (non-normative). v3 and v4 specified this surface as a gRPC
+> Heritage (non-normative). Earlier drafts specified this surface as a gRPC
 > service: `service Reovim { rpc … }` over HTTP/2, with `.proto`
 > message definitions owning the wire form and prost-generated
 > bindings on each side. Cursor and position blobs travelled as
@@ -434,7 +432,7 @@ Failure-condition mapping to the one 6.3 `ErrorCode` vocabulary (AB14):
 | Clean stream end | no frame; connection closes cleanly |
 | Frame/codec protocol error | `ProtocolViolation` (terminal) |
 
-> Heritage (non-normative). v3/v4 used per-RPC gRPC status codes for
+> Heritage (non-normative). Earlier drafts used per-RPC gRPC status codes for
 > these conditions (`FAILED_PRECONDITION`, `UNAVAILABLE`,
 > `INVALID_ARGUMENT`, `NOT_FOUND`, `PERMISSION_DENIED`, `OK`-close).
 > The framed protocol collapses them onto the one 6.3 `ErrorCode`

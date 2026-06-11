@@ -4,8 +4,7 @@
 composition, the runtime library-root layout, and the invariants the
 launcher imposes on transport semantics.
 
-**Heritage.** v3 `01-Foundation/04-Apps-Layout.md`, `05-Editor-Invocation.md`,
-`archive/docs/deployment/library-root.md`; v4 README §4.
+**Heritage.** `archive/docs/deployment/library-root.md`.
 
 **Locked rules.** `AL1..AL10` carried (restated §6), `AL-INPROC` and
 `AL11` (§8) new.
@@ -121,8 +120,7 @@ valid `lockfile.toml`.
 
 ## 6. Carried rules (AL1..AL10)
 
-The v3 rule bodies, restated in v4 vocabulary. These are the
-normative texts; the v3 chapters are heritage.
+The rule bodies below are the normative texts.
 
 > **AL1 — Five separate bins.** `reovim-server`, `reovim-tui`,
 > `reovim-cli`, `reovim-web`, and the `reovim` launcher are
@@ -163,7 +161,7 @@ normative texts; the v3 chapters are heritage.
 > different UID (the sudoedit shape). *Class*: spec-asserted.
 
 > **AL9 (reshaped) — The kernel's own configuration is two config
-> participations.** v3's flat `config.toml` tables (`[ui]`,
+> participations.** The prior flat `config.toml` tables (`[ui]`,
 > `[limits]`, …) are superseded by the `kernel.host` (privileged)
 > and `kernel.shell` (user-class) participations in the 1.5 config
 > service, schema'd and layered per CFG1..CFG10. Out-of-range host
@@ -180,7 +178,7 @@ normative texts; the v3 chapters are heritage.
 > The launcher MUST NOT parse `path:LINE:COL` or any
 > Domain-specific suffix. *Class*: spec-asserted.
 
-**Reshape note (AL1..AL10).** Carried from v3 with v4 vocabulary.
+**Reshape note (AL1..AL10).** Carried forward with this spec's vocabulary.
 Config homes moved into the 1.5 layer stack: AL2's
 `[default].client` is `kernel.host` (transport-selecting), AL4's
 system-vs-user split became layers 2/3, and AL9 is the one body

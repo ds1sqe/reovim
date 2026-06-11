@@ -4,9 +4,7 @@
 module-owned opaque state, and the rules for moving state across
 those boundaries.
 
-**Heritage.** v3 `03-State/01-State-Split.md`.
-
-**Locked rules.** Carried from v3.
+**Locked rules.** Carried forward.
 
 ---
 
@@ -94,7 +92,7 @@ allocated lazily by handler dispatch.
 ## Open items
 
 1. Whether Kernel-level state can be quiesced (snapshot for restart
-   without process kill). Out of v4 target.
+   without process kill). Out of target.
 2. Per-session resource caps (max buffers, max windows, max
    clients). Currently global; per-session caps may be added.
 
