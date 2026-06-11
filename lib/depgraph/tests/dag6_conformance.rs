@@ -5,6 +5,13 @@
 //! `Violation` variant appears.  A positive control asserts that a clean
 //! `no_std` workspace produces no violations.  A cfg(test)-exemption control
 //! asserts that `use std::` inside a `#[cfg(test)] mod` does NOT flag.
+//!
+//! Also contains: `arch_asm_confinement` — a source-grep probe that enforces
+//! the per-target backend convention from spec 1.2 §10: every `asm!` /
+//! `naked_asm!` token in `arch/src/**/*.rs` must appear in a file under
+//! `arch/src/sys/<target>/` or in `arch/src/start.rs` (the cfg-gated `_start`
+//! entry arms).  Any other location is an architectural boundary violation
+//! (#790).
 
 mod common;
 
@@ -258,6 +265,138 @@ fn dag6_cfg_test_exemption_use_std_in_test_mod_does_not_flag() {
         !has_missing,
         "DAG6 cfg(test) exemption: root had #![no_std]; unexpected MissingNoStd;\n\
          violations: {violations:?}"
+    );
+}
+
+// ── Asm-confinement probe: arch/src asm must stay in sys/<target>/ or start.rs ─
+
+/// Spec 1.2 §10 per-target backend convention: `asm!` and `naked_asm!` may
+/// only appear in files under `arch/src/sys/<target>/` (the raw syscall
+/// primitives and fused clone trampoline) or in `arch/src/start.rs` (the
+/// cfg-gated `_start` entry arms).  Any other location violates the
+/// asm-confinement boundary.
+///
+/// The probe walks every `.rs` file under `arch/src/`, reads it line by
+/// line, and strips single-line comments (`//` to end-of-line) before
+/// matching against `asm!` / `naked_asm!`.  A match on a non-exempt file
+/// is a hard failure.
+///
+/// Exempt paths (workspace-relative):
+/// - `arch/src/sys/<anything>/` — any depth inside a per-target backend dir
+/// - `arch/src/start.rs`        — the entry-point module
+#[test]
+fn arch_asm_confinement() {
+    use std::path::Path;
+
+    /// Returns `true` when a workspace-relative `/`-separated path is exempt
+    /// from the asm-confinement rule.
+    fn is_exempt(rel: &str) -> bool {
+        // arch/src/sys/<target>/ — any file inside a per-target backend dir.
+        // rel looks like "arch/src/sys/linux_x86_64/raw.rs".
+        let sys_backend_prefix = "arch/src/sys/";
+        if let Some(after_sys) = rel.strip_prefix(sys_backend_prefix) {
+            // Must have at least one more path component after sys/ — i.e.
+            // "linux_x86_64/raw.rs"; bare "arch/src/sys/errno.rs" is NOT exempt.
+            if after_sys.contains('/') {
+                return true;
+            }
+        }
+        // arch/src/start.rs — the cfg-gated _start entry arms.
+        rel == "arch/src/start.rs"
+    }
+
+    /// Strips a single-line `//`-style comment from a source line, returning
+    /// the non-comment prefix.  Does not handle block comments (`/* */`);
+    /// those are uncommon in the target files and no existing asm usage in
+    /// the codebase uses them.
+    fn strip_line_comment(line: &str) -> &str {
+        // Find `//` that is not inside a string literal (heuristic: scan for
+        // the first `//` token; this is sufficient for the narrow purpose of
+        // suppressing `// asm!` comment references).
+        line.find("//").map_or(line, |idx| &line[..idx])
+    }
+
+    /// Returns `true` when `text` contains an `asm!` or `naked_asm!` token.
+    fn contains_asm_token(text: &str) -> bool {
+        // Match `asm!` but not as a substring of an identifier.  We look for
+        // `asm!` preceded by a non-alphanumeric/underscore char (or start) and
+        // for `naked_asm!` similarly.  A simple `contains` suffices here
+        // because neither token appears as a substring of any other macro in
+        // the codebase, and the comment-stripping above already excludes
+        // comment-only occurrences.
+        text.contains("asm!") || text.contains("naked_asm!")
+    }
+
+    /// Walks `dir` recursively; pushes `.rs` file paths into `out`.
+    fn collect_rs(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("arch_asm_confinement: read_dir `{}`: {e}", dir.display()));
+        for entry in entries {
+            let entry =
+                entry.unwrap_or_else(|e| panic!("arch_asm_confinement: dir entry error: {e}"));
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs(&path, out);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    let workspace = common::workspace_root();
+    let arch_src = workspace.join("arch").join("src");
+
+    let mut rs_files: Vec<std::path::PathBuf> = Vec::new();
+    collect_rs(&arch_src, &mut rs_files);
+
+    assert!(
+        !rs_files.is_empty(),
+        "arch_asm_confinement: no .rs files found under arch/src — check workspace_root()"
+    );
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for abs_path in &rs_files {
+        // Compute workspace-relative path with `/` separators.
+        let rel = abs_path
+            .strip_prefix(&workspace)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "arch_asm_confinement: `{}` is not under workspace root `{}`",
+                    abs_path.display(),
+                    workspace.display()
+                )
+            })
+            .to_str()
+            .expect("arch_asm_confinement: path is not UTF-8")
+            // Normalise OS path separators to `/`.
+            .replace(std::path::MAIN_SEPARATOR, "/");
+
+        if is_exempt(&rel) {
+            continue;
+        }
+
+        let source = std::fs::read_to_string(abs_path)
+            .unwrap_or_else(|e| panic!("arch_asm_confinement: read `{}`: {e}", abs_path.display()));
+
+        for (line_no, raw_line) in source.lines().enumerate() {
+            let effective = strip_line_comment(raw_line);
+            if contains_asm_token(effective) {
+                violations.push(format!(
+                    "  {rel}:{} — `asm!`/`naked_asm!` outside permitted zone",
+                    line_no + 1,
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "arch_asm_confinement: asm boundary violated — \
+         `asm!`/`naked_asm!` must be confined to `arch/src/sys/<target>/` \
+         or `arch/src/start.rs`.\n\
+         Violations:\n{}",
+        violations.join("\n")
     );
 }
 

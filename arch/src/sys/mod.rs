@@ -1,18 +1,35 @@
-//! x86_64-linux raw syscall layer — the only platform-specific module.
+//! Platform seam: `sys/` is the single boundary between target-neutral Rust
+//! and per-target asm.
 //!
-//! This module hardcodes the x86_64-linux syscall ABI behind a single
-//! boundary (rule of three: no multi-platform abstraction is built until a
-//! second target is a real consumer; `arch/src/sys/` is the seam). It
-//! exposes raw `syscall0..syscall6` primitives over the `syscall`
-//! instruction, an [`Errno`] newtype with the kernel's negative-return
-//! mapping, and thin typed wrappers returning `Result<usize, Errno>`.
-//!
-//! The syscall set is the minimal floor (1.2 §10 charter smoke): boot a
-//! process, allocate, thread, time, log, and exit. New syscalls are added
-//! when a concrete consumer needs them, never speculatively.
+//! Backends are cfg-selected per target with identical floor signatures; all
+//! target asm lives in `sys/<target>/`. `errno.rs` and `wrap.rs` are
+//! Linux-kernel-ABI family code shared by Linux backends only — freestanding
+//! backends bring their own wrap-level implementations behind the same floor
+//! signatures.
+
+// ---- backend selection -------------------------------------------------------
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+mod linux_x86_64;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use linux_x86_64 as target;
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+mod linux_aarch64;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use linux_aarch64 as target;
+
+#[cfg(not(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    all(target_os = "linux", target_arch = "aarch64"),
+)))]
+compile_error!(
+    "no arch sys backend for this target; see arch/src/sys/ for the per-target backend convention"
+);
+
+// ---- shared Linux-family modules ---------------------------------------------
 
 mod errno;
-mod raw;
 mod wrap;
 
 #[cfg(feature = "selftest")]
@@ -20,14 +37,16 @@ mod errno_tests;
 #[cfg(feature = "selftest")]
 mod wrap_tests;
 
-/// The raw syscall-number table, crate-internal: the typed wrappers are the
-/// public seam, but fused-asm consumers (the thread module's `clone`) need
-/// the number itself from the single inventory.
-pub(crate) use raw::nr;
+// ---- floor surface re-exports ------------------------------------------------
+
+/// The fused clone asm primitive: issues `clone` and in the child branches
+/// straight to `entry` on the new stack. Target-internal; only `thread`
+/// consumes it.
+pub(crate) use target::clone_into;
 
 pub use {
     errno::{EAGAIN, EBADF, EFAULT, EINVAL, ENOENT, ENOMEM, EWOULDBLOCK, Errno, from_ret},
-    raw::{syscall0, syscall1, syscall2, syscall3, syscall4, syscall6},
+    target::raw::{syscall0, syscall1, syscall2, syscall3, syscall4, syscall6},
     wrap::{
         AT_FDCWD, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS,
         CLONE_PARENT_SETTID, CLONE_SIGHAND, CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM,

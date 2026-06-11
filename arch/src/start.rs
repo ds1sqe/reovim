@@ -36,7 +36,7 @@
 /// // _start requires a no_main binary context — not callable from the doctest harness.
 /// // It is entered only via the kernel's initial control transfer after exec.
 /// ```
-#[cfg(feature = "runtime")]
+#[cfg(all(feature = "runtime", target_arch = "x86_64"))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -60,6 +60,60 @@ pub extern "C" fn _start() -> ! {
         "and rsp, -16",        // 16-byte align the stack before the call
         "call {entry}",        // rust_entry(argc, argv, envp) -> ! (never returns)
         "ud2",                // unreachable: rust_entry exits the process
+        entry = sym rust_entry,
+    )
+}
+
+/// The aarch64 process entry point the kernel transfers control to (`_start`).
+///
+/// At entry the stack top holds the aarch64 Linux ELF process-startup layout,
+/// the same shape as the SysV `x86_64` layout:
+///
+/// ```text
+/// [sp]       argc           (a word)
+/// [sp+8]     argv[0]        ... argv[argc-1]
+/// [sp+...]   NULL           (argv terminator)
+/// [sp+...]   envp[0]        ... (NULL-terminated)
+/// ```
+///
+/// `sp` is 16-byte aligned at entry per the ABI, and there is no return
+/// address (the kernel jumps here; `_start` never returns to a caller). The
+/// naked body loads `argc`/`argv`/`envp` into the AAPCS64 argument registers
+/// (`x0`/`x1`/`x2`) and tail-calls [`rust_entry`], which never returns (it
+/// exits the process).
+///
+/// This is the raw process entry: it is reached only via the kernel's initial
+/// control transfer with the documented stack layout, never as a callable Rust
+/// function. The `#[unsafe(naked)]` body upholds the aarch64 startup contract.
+///
+/// ```ignore
+/// // _start requires a no_main binary context — not callable from the doctest harness.
+/// // It is entered only via the kernel's initial control transfer after exec.
+/// ```
+#[cfg(all(feature = "runtime", target_arch = "aarch64"))]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> ! {
+    // SAFETY: `naked_asm` is the whole function body (a naked fn has no
+    // prologue/epilogue). The instructions read the aarch64 startup stack the
+    // kernel set up: argc at [sp], argv at sp+8, envp after the argv NULL
+    // terminator. They are loaded into x0/x1/x2 (the first three AAPCS64
+    // argument registers) and control tail-jumps to `rust_entry`, which never
+    // returns. No stack re-alignment is needed: the kernel guarantees `sp`
+    // 16-byte aligned at entry, and `bl` (unlike `x86_64`'s `call`) pushes
+    // nothing — it writes the return address to the link register `x30` — so
+    // the alignment is preserved through the call site. `mov x29, xzr` marks
+    // the outermost frame for unwinders/debuggers (the ABI's outermost-frame
+    // convention), even though DAG6 has no unwinder.
+    core::arch::naked_asm!(
+        "mov x29, xzr",        // outermost stack frame marker (frame pointer)
+        "ldr x0, [sp]",        // x0 = argc
+        "add x1, sp, #8",      // x1 = &argv[0]
+        // envp = argv + (argc+1)*8: skip argc words plus the NULL terminator.
+        "add x2, x0, #1",      // x2 = argc + 1
+        "add x2, x1, x2, lsl #3", // x2 = &argv[0] + (argc+1)*8 = &envp[0]
+        "bl {entry}",          // rust_entry(argc, argv, envp) -> ! (never returns)
+        "brk #1",              // unreachable: rust_entry exits the process
         entry = sym rust_entry,
     )
 }

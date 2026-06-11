@@ -1,0 +1,17 @@
+# Cross-target linking for the arch platform floor: no cross-GCC on dev
+# boxes, and the floor is no_std + crt-free, so rustc's bundled lld
+# suffices. (The fixtures' build scripts skip the cc-driver-only
+# `-nostartfiles` flag when they see this linker.)
+#
+# `relocation-model=static`: rustc's default (pic) + rust-lld + no libc
+# yields a static-PIE with an empty interpreter — and nobody to apply its
+# `R_AARCH64_RELATIVE` relocations (glibc's `rcrt1.o` self-relocates;
+# the arch `_start` deliberately does not). Absolute pointers in static
+# data (e.g. the `arch_test!` distributed-slice entries) would be
+# garbage at runtime. A non-PIE static link bakes absolute addresses at
+# link time, which is the honest model for a crt-free floor binary; the
+# x86_64 host link is unaffected (cc driver, dynamic PIE, `ld.so`
+# relocates).
+[target.aarch64-unknown-linux-gnu]
+linker = "rust-lld"
+rustflags = ["-C", "relocation-model=static"]

@@ -163,7 +163,7 @@ arch_test!(spin_lock_serializes_nested_paths, {
     let l2 = Layout::from_size_align(256, 8).unwrap();
     let a = alloc(l1).unwrap();
     let b = alloc(l2).unwrap();
-    testrt::check(a.as_ptr() as usize != b.as_ptr() as usize, "ptrs distinct");
+    testrt::check(!core::ptr::eq(a.as_ptr(), b.as_ptr()), "ptrs distinct");
     // SAFETY: live (a, l1) / (b, l2).
     unsafe {
         dealloc(a, l1);

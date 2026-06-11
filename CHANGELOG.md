@@ -5,6 +5,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ## [0.16.0-dev] - Unreleased
 
 ### Added
+- `arch/` aarch64-linux platform floor (#790): per-target backend
+  structure under `arch/src/sys/` (`linux_x86_64/` and `linux_aarch64/`,
+  each with `raw.rs` asm + syscall-number table + fused `clone_into`
+  trampoline; the aarch64 backend also carries a `getauxval` stub);
+  `errno.rs`/`wrap.rs` stay at the `sys/` level as shared Linux-kernel-ABI
+  family code; `arch/src/sys/mod.rs` cfg-selects the active backend and
+  emits a `compile_error!` fallback for unsupported targets; per-target
+  `_start` entry arms in `arch/src/start.rs`; cross-target fixture
+  harness env contract (`ARCH_FIXTURE_TARGET` + `ARCH_FIXTURE_RUNNER` on
+  `arch/tests/fixtures_exec.rs`, native default unchanged); asm-confinement
+  source-grep probe added to `lib/depgraph/tests/dag6_conformance.rs`
+  enforcing that every `asm!`/`naked_asm!` token in `arch/src/` is confined
+  to `arch/src/sys/<target>/` or `arch/src/start.rs`.
 - `uapi/abi` frozen `#[repr(C)]` type catalog (#786 Phase 1): the 6.3/6.2/6.4
   ABI type catalog as a `#![no_std]` core-only crate (`reovim-uapi-abi`);
   zero dependencies (L9/DAG5); every type mirrors its spec section with a

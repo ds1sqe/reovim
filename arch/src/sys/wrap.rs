@@ -7,7 +7,7 @@
 
 use super::{
     errno::{Errno, from_ret},
-    raw::{nr, syscall1, syscall1_noreturn, syscall2, syscall3, syscall4, syscall6},
+    target::raw::{nr, syscall1, syscall1_noreturn, syscall2, syscall3, syscall4, syscall6},
 };
 
 /// Reinterprets a signed scalar (fd, dirfd, exit code) as the syscall
@@ -475,7 +475,7 @@ pub fn exit(code: i32) -> ! {
 pub fn gettid() -> i32 {
     // SAFETY: `gettid` takes no arguments, dereferences no memory, and
     // always succeeds; the result is the caller's tid.
-    let ret = unsafe { super::raw::syscall0(nr::GETTID) };
+    let ret = unsafe { super::target::raw::syscall0(nr::GETTID) };
     ret_as_i32(ret)
 }
 

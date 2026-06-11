@@ -10,11 +10,90 @@
 //! timestamp is the live monotonic clock), so the assertions PARSE the line
 //! against the LOG2 grammar (9.5 §2) and match the level/emitter/address and
 //! message fields — never exact bytes.
+//!
+//! # Cross-target env contract
+//!
+//! Two optional environment variables control cross-target builds and execution.
+//! Both are unset by default; native host behavior is byte-for-byte unchanged.
+//!
+//! - **`ARCH_FIXTURE_TARGET`** (e.g. `aarch64-unknown-linux-gnu`): when set,
+//!   every `cargo build --package <pkg>` call gains `--target $ARCH_FIXTURE_TARGET`.
+//!   The artifact path is read from cargo's JSON `"executable"` field, which
+//!   cargo sets to the target-subdir path automatically — the parser here
+//!   is path-agnostic and requires no adjustment.
+//!
+//! - **`ARCH_FIXTURE_RUNNER`** (e.g. `qemu-aarch64` or
+//!   `qemu-aarch64 -cpu cortex-a72`): when set, fixture binaries are executed
+//!   as `$ARCH_FIXTURE_RUNNER <exe> <args...>` rather than `<exe> <args...>`.
+//!   The value is whitespace-split so multi-word runners with flags work.
+//!   `qemu-user` forwards the guest exit code as its own exit code, so no
+//!   assertion changes are needed.
+//!
+//! `ARCH_FIXTURE_TARGET` without `ARCH_FIXTURE_RUNNER` is valid only when the
+//! host can execute the target binaries natively (e.g. same ISA, different
+//! vendor tuple). `ARCH_FIXTURE_RUNNER` without `ARCH_FIXTURE_TARGET` is
+//! harmless but pointless.
+//!
+//! Example cross-target invocation:
+//! ```text
+//! ARCH_FIXTURE_TARGET=aarch64-unknown-linux-gnu \
+//! ARCH_FIXTURE_RUNNER=qemu-aarch64 \
+//!     cargo test -p reovim-arch --test fixtures_exec
+//! ```
 
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{Mutex, OnceLock},
 };
+
+// ---------------------------------------------------------------------------
+// Serialization guard for the arch-selftest tests
+//
+// `testrt_pilot_all_pass_exits_zero` and `testrt_pilot_one_failure_exits_nonzero`
+// both build package `arch-selftest` with DIFFERENT feature sets (`[]` vs
+// `["inject-failure"]`), and cargo writes both variants to the same artifact
+// path. The guard must therefore span build AND exec: serializing only the
+// builds would still let one test relink the binary between the other test's
+// build and exec, swapping in the wrong feature variant. A per-test scratch
+// copy (copy-under-lock, exec the private copy) would also work but adds
+// filesystem churn for the same effect.
+//
+// A poisoned lock is recovered deliberately: the guard protects a cargo
+// artifact that the next build regenerates, not in-memory state, so a panic
+// in one test (a failed assertion) leaves nothing corrupt behind.
+// ---------------------------------------------------------------------------
+fn selftest_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+// ---------------------------------------------------------------------------
+// Env var helpers
+// ---------------------------------------------------------------------------
+
+/// Returns `$ARCH_FIXTURE_TARGET` if set and non-empty, otherwise `None`.
+fn fixture_target() -> Option<String> {
+    std::env::var("ARCH_FIXTURE_TARGET")
+        .ok()
+        .filter(|v| !v.is_empty())
+}
+
+/// Returns `$ARCH_FIXTURE_RUNNER` split on whitespace into tokens, or an empty
+/// `Vec` when the variable is unset or empty (meaning: direct exec).
+fn fixture_runner() -> Vec<String> {
+    std::env::var("ARCH_FIXTURE_RUNNER")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.split_whitespace().map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// Build helpers
+// ---------------------------------------------------------------------------
 
 /// Builds the fixture crate `pkg` (with its `runtime` feature) and returns the
 /// path to the built executable, parsed from cargo's JSON build messages so no
@@ -24,6 +103,11 @@ use std::{
 /// from the parent, so the build is scoped by that manifest path — keeping the
 /// `runtime` feature off the parent's `cargo test --workspace` graph (see the
 /// nested workspace's `Cargo.toml` for the lang-item rationale).
+///
+/// When `ARCH_FIXTURE_TARGET` is set the build gains `--target <value>` and
+/// cargo places the artifact under `target/<triple>/debug/`; the JSON
+/// `"executable"` field already reflects the correct path so no extra handling
+/// is needed.
 fn build_fixture(pkg: &str) -> PathBuf {
     build_fixture_features(pkg, &[])
 }
@@ -31,6 +115,8 @@ fn build_fixture(pkg: &str) -> PathBuf {
 /// Builds the fixture crate `pkg` with the given cargo `features` enabled and
 /// returns the built executable path. The features select bin variants (e.g.
 /// the test-runner pilot's deliberately-failing test) without a second crate.
+///
+/// See [`build_fixture`] for the `ARCH_FIXTURE_TARGET` contract.
 fn build_fixture_features(pkg: &str, features: &[&str]) -> PathBuf {
     // `CARGO_MANIFEST_DIR` is `arch/` (the crate under test); the nested
     // fixture workspace lives at `arch/tests/fixtures/`. Run the build with
@@ -47,6 +133,10 @@ fn build_fixture_features(pkg: &str, features: &[&str]) -> PathBuf {
         pkg.to_owned(),
         "--message-format=json-render-diagnostics".to_owned(),
     ];
+    if let Some(target) = fixture_target() {
+        args.push("--target".to_owned());
+        args.push(target);
+    }
     if !features.is_empty() {
         args.push("--features".to_owned());
         args.push(features.join(","));
@@ -84,15 +174,38 @@ fn extract_executable(line: &str) -> Option<String> {
     Some(rest[..end].to_owned())
 }
 
+// ---------------------------------------------------------------------------
+// Exec helpers
+// ---------------------------------------------------------------------------
+
 /// Runs `exe` with `args`, returns its exit code (the value the process exited
 /// with; the test asserts the disposition codes).
+///
+/// When `ARCH_FIXTURE_RUNNER` is set the invocation becomes
+/// `<runner_tokens...> <exe> <args...>`, allowing `qemu-aarch64` (or any other
+/// user-mode emulator) to execute cross-compiled fixture binaries.  The runner
+/// forwards the guest exit code as its own, so the caller's assertion logic is
+/// identical in both paths.
 fn run(exe: &Path, args: &[&str]) -> i32 {
-    let status = Command::new(exe)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("fixture execs");
+    let runner = fixture_runner();
+    let status = if runner.is_empty() {
+        Command::new(exe)
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("fixture execs")
+    } else {
+        // Prepend the runner: `runner[0] runner[1..] exe args...`
+        Command::new(&runner[0])
+            .args(&runner[1..])
+            .arg(exe)
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("fixture execs via runner")
+    };
     status
         .code()
         .expect("fixture exited with a code, not a signal")
@@ -104,6 +217,10 @@ fn scratch_path(tag: &str) -> PathBuf {
     p.push(format!("reovim-arch-fixture-{tag}-{}.log", std::process::id()));
     p
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[test]
 fn smoke_fixture_boots_allocates_threads_exits_zero() {
@@ -117,6 +234,11 @@ fn smoke_fixture_boots_allocates_threads_exits_zero() {
 fn testrt_pilot_all_pass_exits_zero() {
     // The no_std runner charter smoke (pass side): the full arch test suite
     // runs on the in-repo runner and exits 0 when every test passes.
+    //
+    // Serialized against `testrt_pilot_one_failure_exits_nonzero` via
+    // `selftest_lock()` — see the guard's comment for the shared-artifact
+    // hazard. The guard spans build AND exec.
+    let _guard = selftest_lock();
     let exe = build_fixture("arch-selftest");
     assert_eq!(run(&exe, &[]), 0, "all-pass test run exits 0");
 }
@@ -145,6 +267,11 @@ fn testrt_pilot_one_failure_exits_nonzero() {
     // The no_std runner charter smoke (fail side): a deliberately-failing test
     // (the `inject-failure` variant) panics, so the arch panic handler exits
     // the halt disposition code (70) — the runner's fail-fast contract.
+    //
+    // Serialized against `testrt_pilot_all_pass_exits_zero` via
+    // `selftest_lock()` — see the guard's comment for the shared-artifact
+    // hazard. The guard spans build AND exec.
+    let _guard = selftest_lock();
     let exe = build_fixture_features("arch-selftest", &["inject-failure"]);
     assert_eq!(run(&exe, &[]), 70, "a failing test exits the halt code");
 }

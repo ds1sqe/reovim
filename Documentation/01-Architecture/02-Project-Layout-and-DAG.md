@@ -320,6 +320,29 @@ states may be recorded.
 fail-closed, no allowlist except the two tracked bootstrap states
 above — which are enumerated in the probe and ratchet to zero.
 
+**Per-target backend convention (`arch/src/sys/`).** The platform
+floor is decomposed into per-target backend modules, cfg-selected from
+`arch/src/sys/mod.rs`:
+
+- Each target backend lives at `arch/src/sys/<target>/` (e.g.
+  `linux_x86_64`, `linux_aarch64`), selected by
+  `#[cfg(all(target_os = "...", target_arch = "..."))]`; all backends
+  expose identical floor function signatures — no traits, no vtables.
+- All target-specific `asm!`/`naked_asm!` is confined to
+  `arch/src/sys/<target>/` (raw syscall primitives and the fused clone
+  trampoline) and to the cfg-gated `_start` entry arms in
+  `arch/src/start.rs`. No inline asm may appear elsewhere in `arch/`.
+- `errno.rs` and `wrap.rs` at the `sys/` level are Linux-kernel-ABI
+  family code shared by Linux backends only. Non-Linux and freestanding
+  backends provide their own wrap-level implementations behind the same
+  floor signatures; nothing in the per-target structure assumes every
+  backend routes through the shared Linux wrap layer.
+- Targets with no registered backend fail at compile time with an
+  explicit `compile_error!` fallback arm in `sys/mod.rs`.
+
+The asm-confinement rule is enforced by a source-grep probe in
+`lib/depgraph/tests/` (added #790).
+
 ## Open items
 
 1. Foundation sub-DAG enumeration (§6) — deferred to the workspace

@@ -53,8 +53,7 @@ use crate::{
     sys::{
         CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS, CLONE_PARENT_SETTID, CLONE_SIGHAND,
         CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM, Errno, FUTEX_WAIT, MAP_ANONYMOUS, MAP_PRIVATE,
-        PROT_NONE, PROT_READ, PROT_WRITE, exit as sys_exit, from_ret, futex, mmap, mprotect,
-        munmap,
+        PROT_NONE, PROT_READ, PROT_WRITE, exit as sys_exit, futex, mmap, mprotect, munmap,
     },
 };
 
@@ -281,10 +280,14 @@ where
         );
     }
 
-    // Compute the child's initial stack pointer. The trampoline does
-    // `pop rdi; call entry`, so for the SysV ABI to hold (`rsp % 16 == 8` at
-    // `entry`) the child's initial `rsp` must be `8 mod 16`: after `pop` it is
-    // `0 mod 16`, and `call`'s pushed return address restores `8 mod 16`.
+    // Compute the child's initial stack pointer. The contract with the
+    // per-target `sys` `clone_into` child branch is: the one argument word
+    // sits at `[sp]` and the initial `sp` is `8 mod 16`. Each backend
+    // consumes that word into its first C-ABI argument register and enters
+    // `entry` with its ABI's required alignment — `x86_64`: `pop rdi; call`
+    // (`rsp % 16 == 8` at entry, `SysV`); `aarch64`: `ldr x0, [sp], #8; blr`
+    // (`sp % 16 == 0` at entry, AAPCS64; `blr` pushes nothing). Both hold
+    // from the same `8 mod 16` start.
     let stack_top = stack_base + map_size;
     // Largest 16-aligned address at/below the top, minus 8 → `8 mod 16`.
     let arg_slot = ((stack_top & !0xF) - 8) - 16;
@@ -310,8 +313,9 @@ where
     // child begins in `trampoline::<F, T>`, never returning to Rust. A selftest
     // caller may pass an invalid `flags` set; `clone` then returns `Err`
     // without starting a child, and the teardown arm below frees everything.
-    let ret =
-        unsafe { clone_into(flags, arg_slot, ctid_ptr, (trampoline::<F, T> as *const ()).addr()) };
+    let ret = unsafe {
+        crate::sys::clone_into(flags, arg_slot, ctid_ptr, (trampoline::<F, T> as *const ()).addr())
+    };
     match ret {
         Ok(_tid) => Ok(JoinHandle { shared }),
         Err(e) => {
@@ -328,77 +332,13 @@ where
     }
 }
 
-/// Issues `clone` and, in the child, branches straight to `entry` on the new
-/// stack — all in one `asm!` block so the child never executes a Rust
-/// function epilogue on its fresh stack (the classic clone-from-Rust hazard).
-///
-/// On `x86_64` a `clone`-created child resumes after the `syscall` instruction
-/// with `rax == 0` and `rsp == stack`. The asm checks `rax`: in the parent it
-/// returns the child tid as a normal value; in the child it pops the argument
-/// from the stack top into `rdi` (`SysV` first argument) and `call`s `entry`,
-/// which never returns (it issues the `exit` syscall). Because the child's
-/// control transfer happens entirely inside this asm block, no Rust caller
-/// frame is ever unwound on the wrong stack.
-///
-/// # Safety
-///
-/// `flags` must form a coherent thread set; `stack` must be the top of a
-/// valid stack region the child owns, with the trampoline argument stored at
-/// `[stack]`; `join_word` must be a valid live word used for both
-/// `CLONE_PARENT_SETTID` and `CLONE_CHILD_CLEARTID`; `entry` must be the
-/// trampoline matching the argument's type.
-unsafe fn clone_into(
-    flags: usize,
-    stack: usize,
-    join_word: usize,
-    entry: usize,
-) -> Result<usize, Errno> {
-    let ret: isize;
-    // SAFETY: the `clone` syscall (nr 56) takes flags in rdi, stack in rsi,
-    // ptid in rdx, ctid in r10, tls in r8 (0, TLS-free). `ptid` and `ctid`
-    // both point at `join_word`: the kernel writes the child tid there before
-    // returning in the parent (PARENT_SETTID), and clears+wakes it on child
-    // exit (CHILD_CLEARTID). After `syscall`, the parent path falls through
-    // with the tid in rax; the child path (rax == 0) pops its stack-top
-    // argument into rdi and calls `entry`, which never returns. `rcx`/`r11`
-    // are clobbered by `syscall` per the ABI — `entry` is therefore PINNED to
-    // r9 (the sixth syscall-arg register, unused by 5-arg clone): a generic
-    // `in(reg)` may legally be allocated to a `lateout` register such as rcx,
-    // which `syscall` overwrites with the return RIP, turning the child's
-    // `call` into a self-loop.
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            "test rax, rax",      // rax == 0 ? child : parent
-            "jnz 2f",             // parent: skip the child branch
-            // --- child: rsp == new stack, arg at [rsp] ---
-            "pop rdi",            // arg -> rdi (SysV first argument)
-            "call r9",            // run trampoline (never returns)
-            "ud2",               // unreachable: trampoline exits the thread
-            "2:",                 // --- parent continues here ---
-            // `rdi` carries the flags arg in but is overwritten by the child
-            // branch (`pop rdi`), so it is `inout ... => _`.
-            inout("rdi") flags => _,
-            in("rax") crate::sys::nr::CLONE,
-            in("rsi") stack,
-            in("rdx") join_word,
-            in("r10") join_word,
-            in("r8") 0_usize,
-            in("r9") entry,
-            lateout("rax") ret,
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-    }
-    from_ret(ret)
-}
-
 /// The child entry point: re-types the argument, runs the closure, stores the
 /// result, drops the child's hold on the shared block, and exits the thread.
 ///
 /// `extern "C"` so its calling convention matches the hand-written child
-/// branch in [`clone_into`] (`arg` arrives in `rdi`, the `SysV` first
-/// argument).
+/// branch in the per-target `sys` `clone_into` (`arg` arrives in the
+/// target's first C-ABI argument register — `rdi` on `x86_64`, `x0` on
+/// `aarch64`).
 extern "C" fn trampoline<F, T>(arg: usize) -> !
 where
     F: FnOnce() -> T,
