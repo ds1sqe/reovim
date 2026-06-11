@@ -1,0 +1,36 @@
+[package]
+name = "kernel-selftest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "no_std kernel self-test runner: all server/lib/kernel *_tests.rs L12 tests on the in-repo runner (#796)"
+publish = false
+
+[[bin]]
+name = "kernel-selftest"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` test-runner bin has no libtest harness; disable
+# the test/bench/doc builds so a parent `cargo test` does not link a std
+# harness against it.
+test = false
+bench = false
+doctest = false
+
+[features]
+default = []
+# Adds one deliberately-failing test to verify the runner exits non-zero
+# (mirrors the arch-selftest inject-failure pattern).
+inject-failure = []
+
+[dependencies]
+# `runtime`: provides `_start`, panic handler, testrt runner (via arch).
+# `selftest`: compiles the kernel sibling test modules into the lib.
+reovim-kernel = { path = "../../..", features = ["runtime", "selftest"] }
+reovim-arch = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
+
+[lints]
+workspace = true

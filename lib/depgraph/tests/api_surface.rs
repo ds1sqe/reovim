@@ -219,11 +219,13 @@ fn violation_display_all_variants() {
 
 #[test]
 fn classify_ambiguous_path_via_custom_table() {
-    // Two overlapping patterns both match "lib/foo": the candidates-mapping
-    // closure inside `classify` collects both into the `AmbiguousPath`.
+    // Two overlapping patterns matching "lib/foo" with DIFFERENT categories:
+    // a genuine classification conflict. (Same-category overlap — an exact
+    // entry plus its own wildcard — is agreement, not ambiguity, and
+    // classifies cleanly; see `classify`.)
     let table = vec![
         ("lib/*".to_owned(), Category::Foundation),
-        ("lib/foo".to_owned(), Category::Foundation),
+        ("lib/foo".to_owned(), Category::Tools),
     ];
     let result = classify("lib/foo", &table);
     match result {

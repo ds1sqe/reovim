@@ -4,7 +4,125 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [0.16.0-dev] - Unreleased
 
+### Changed
+- `Documentation/` spec made self-contained: draft-version references
+  (the prior v3/v4 spec-draft vocabulary) and workflow-local file
+  citations removed from every normative chapter; heritage one-liners
+  now cite only durable artifacts (folded RFCs, archive paths, issue
+  refs). Coverage ledgers live under `Documentation/debt/`
+  (`coverage-<issue>-<subject>.md`), named by the DEV1
+  physical-measurement-limits clause in
+  `Documentation/10-Development/01-Testing.md`.
+
 ### Added
+- `server/lib/kernel` selftest runner wiring + fixture exec harness + L12 doc-tests — Phase 5 of #796:
+  `server/lib/kernel/tests/fixtures/` gains two panic-path fixture bins (`kernel-panic-halt`,
+  `kernel-panic-recover`) that boot the kernel via `Init::new(LauncherArgs{disposition:Halt/Recover,..)}.boot()`,
+  open a LOG7 sink file from argv[1] via raw arch syscalls, call `set_flush_fd`, emit a few DS12 events
+  through `kernel.event_bus` to populate the ring/flush buffer, then panic. The arch panic handler
+  flushes the ring's LOG2 lines + the panic line to the sink file and exits 70 (Halt) or 75 (Recover).
+  `server/lib/kernel/tests/fixtures_exec.rs` (std libtest integration harness, mirrors
+  `arch/tests/fixtures_exec.rs`) builds each fixture via the nested workspace manifest, execs it,
+  and asserts: exit code matches the configured disposition; flushed file contains at least one LOG2
+  line (ring had content); the panic line parses against the LOG2 §2 grammar (emitter=kernel,
+  address=panic, message substring match — not exact bytes, the timestamp varies per run); a grep-assert
+  confirms no `catch_unwind` in `server/lib/kernel/src/` (DAG6/AB12). State-record AC (c) is covered
+  in-process by `init_tests.rs` via `last_panic_record()`; that hook stores to an `AtomicU32` that
+  exits with the process and cannot be observed out-of-process. Selftest round-trip: `kernel_selftest_all_pass_exits_zero`
+  and `kernel_selftest_inject_failure_exits_nonzero` guard the shared-artifact hazard with a
+  `selftest_lock()` spanning build + exec. `scripts/coverage-fixtures.sh` extended to build and run
+  the kernel fixture fleet (`kernel-selftest`, `kernel-panic-halt`, `kernel-panic-recover`, and the
+  `kernel-selftest inject-failure` variant) under coverage instrumentation so their profraws land in
+  the merge. Doc-test additions: `SUBSCRIBER_CAPACITY` (runnable one-liner); `sink::reset_for_test`
+  and `sink::inject_fd_for_test` (no_run with selftest-gated reason). `check-test-layout.sh` path-
+  agnostic scan already covers `server/lib/kernel/` (the `server/` tree is in SEARCH_DIRS).
+
+  Coverage closure (DEV1, 10.1 §2): 100% functions, 99.20% lines, 99.04%
+  regions on the kernel fixture fleet; zero compound-condition sites so
+  MC/DC condition coverage is vacuously complete. Closure mechanisms: the
+  arch alloc-fault seam widened to `pub` (`reovim_arch::alloc::fault`,
+  kernel is its second consumer), capacity-boundary brute-force sweeps for
+  `Bytes` write-site error arms, a per-stage failure-injection sweep, and
+  a selftest-gated small-capacity entry for the flush mirror's overflow
+  branches. The 7 remaining regions (selftest-unreachable seam-registration
+  production arms; fd > `i32::MAX` kernel-contract guard) are individually
+  classified in `Documentation/debt/coverage-796-kernel-boot-core.md`.
+- `server/lib/kernel` arch panic-seam registration + panic-mirror region — Phase 4 of #796:
+  `log/flush.rs`: a 1 MiB `static mut` BSS byte region (demand-paged, no allocator) kept
+  current at every ring append (`update_after_push` called from `LogRing::push_event` after
+  the ring lock releases); atomic length cursor written with `Release` after bytes are placed
+  so the `ring_tail` provider loads with `Acquire` and returns the valid prefix — no
+  allocation, no lock in the panic handler (§9.1 Release/Acquire discipline). Overflow
+  compaction calls `compact_into_buf` to restart from live ring contents; whole LOG2 lines
+  only (no partial lines at boundaries). `Init::boot` registers three arch panic-seam hooks
+  in boot stage 0: `set_ring_tail_provider(flush::ring_tail)`, `set_state_record_hook`
+  (boot-core stub storing `PanicRecord` into an `AtomicU32` slot readable under `selftest`),
+  and `set_disposition` from `LauncherArgs` (gap-4: spec default `Recover` when absent).
+  `set_flush_fd` is registered by `FileSink::open_and_subscribe` at sink-open time (the fd
+  does not exist at boot; the write-once contract prevents a second registration). A second
+  boot in the same process returns `BootError::SeamRegistration` in production; under
+  `selftest` `AlreadySet` is accepted silently (process-global arch statics shared across
+  the single-process no_std runner). `unsafe` surface: one `static mut` byte array +
+  `&raw mut` writes per arch convention; one `#![allow(unsafe_code)]` on `flush.rs`; zero
+  new `unsafe` elsewhere in the kernel crate. Sibling `flush_tests.rs` covers initial
+  empty state, append discipline, cursor monotonicity, byte-compare against ring, direct
+  compaction with a small capacity bound, all four `PanicRecord` combinations, and the
+  second-boot-ok selftest rule.
+
+- `server/lib/kernel` log ring, LOG2 renderer, LOG7 file sink — Phase 3 of #796:
+  `LogRing` over `arch::ds::Ring<LogEntry>` allocated in boot stage 0 before any
+  event (LOG6 pre-sink capture); the bus holds the ring directly as its
+  always-present built-in subscriber (`Shared<LogRing>`, written once during
+  single-threaded boot — LOG1: one rendering, no second pipeline, no `unsafe`
+  in the kernel crate). `render_line` produces byte-deterministic LOG2
+  canonical lines per 9.5 §2 grammar with right-aligned-5 seconds and zero-padded-6
+  micros, all 6 instance-address variants, and embedded-`\n` escaping. `FileSink`
+  (process-global const-initialized state; one sink per kernel this flight)
+  opens `<state-dir>/reovim.log` with `O_APPEND | O_CREAT`, replays the ring head on
+  open so the file contains the full boot sequence (LOG8), then writes every subsequent
+  DS12 event as a LOG2 line; a write failure closes the sink first and then emits one
+  `log.sink.fail` (LOG7 non-blocking contract — re-entrant emit is CC6-safe and the
+  closed sink ignores it). Early-boot stderr echo gated on sink-open + headless
+  posture (LOG8). `arch::ds::Ring<T>` gains explicit `Send + Sync`
+  impls (following `Seq<T>` pattern) so `Mutex<Ring<LogEntry>>` compiles. `Kernel`
+  gains `log_ring: Shared<LogRing>`; `Init::boot` wires ring → bus built-in before
+  stages 1..7. Sibling `*_tests.rs` (LOG2 golden byte-comparison, LOG6 oldest-first
+  eviction, LOG1 1:1 invariant, `log.sink.fail` on forced write failure, LOG8 gate,
+  full `Init::boot` + sink integration smoke byte-matching file vs ring).
+
+- `server/lib/kernel` DS12 event bus + boot-stage events — Phase 2 of #796:
+  `DS12Event` realizing the 9.4 §1 schema view in `no_std` types (9.4 §1
+  schema-view note; `BootClock`-derived timestamps, fixed structured field
+  set), `DS12EventBus` with CC6 clone-then-invoke fan-out (subscriber list
+  copied under the arch `RwLock` read lock, callbacks invoked lock-free —
+  re-subscribe during a callback cannot deadlock), registration-order
+  delivery, spec-default capacity 64 (9.4 §7) enforced at `subscribe` with
+  a typed `SubscribeError`, and a built-in LOG1 slot for the Phase 3 log
+  ring. Boot-stage driver emits `boot.stage.{start,ok,fail}` (OBS1) for
+  stages 1..7 through `Init::boot`; a failing stage emits `fail` and aborts
+  boot (no later stage runs, no `Kernel` is constructed); correlation IDs
+  omitted per the OBS2 early-bootstrap exemption. `kernel-selftest` fixture
+  bin (nested workspace mirroring `arch/tests/fixtures/`) runs the kernel
+  `*_tests.rs` suite on the arch no_std runner: 200 tests green, inject-
+  failure variant exits 70.
+- `server/lib/kernel` boot-core scaffold — Phase 1 of #796 (#778 Phase 2):
+  `reovim-kernel` crate at `server/lib/kernel`, `#![no_std]` over `arch/` +
+  `uapi/abi` (L9/DAG5 + L10/DAG6). `Init`/`Kernel` typestate (LF13): `Init`
+  is the sole boot actor; `Init::boot` is the only `Kernel` constructor; using
+  `Init` after `boot()` is a compile error (moved value). `BootClock` captures
+  the `CLOCK_MONOTONIC` zero and `CLOCK_REALTIME` wall-clock anchor at stage 0
+  (7.5 §4). Boot stages 0..7 scaffolded as structural stubs (2.2 §1 stub rule:
+  stages 1..6 hold their ordering position and emit no events yet; DS12 bus
+  lands in Phase 2). `Kernel` boot-core subset (2.1 §3 note): `abi`
+  (`Shared<KernelAbi>`) and `boot_anchor` realized; all deferred fields carry
+  `()` placeholders per the rule-of-three (no registry type before its
+  walking-skeleton consumer). `reovim-kernel` registered in the depgraph
+  category table (`ServerKernel`, exact path `server/lib/kernel`) with
+  `ServerKernel → Foundation` allowed edges (DAG5/DAG6 green). Sibling test
+  files (`*_tests.rs`) and crate-level doc-tests on every `pub` item follow the
+  L12 convention.
+
+
 - `arch/` aarch64-linux platform floor (#790): per-target backend
   structure under `arch/src/sys/` (`linux_x86_64/` and `linux_aarch64/`,
   each with `raw.rs` asm + syscall-number table + fused `clone_into`

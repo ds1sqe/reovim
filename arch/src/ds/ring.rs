@@ -276,6 +276,21 @@ impl<T> Drop for Ring<T> {
     }
 }
 
+// `Ring<T>` owns a `NonNull<T>` raw pointer; `NonNull` is `!Send + !Sync`
+// by default (conservative opt-out for raw pointer wrappers). The safety
+// arguments are identical to `Seq<T>` and `std::vec::Vec<T>`:
+//
+// - `Send`: `Ring<T>` is the sole owner of its allocation (unique, no aliases
+//   outside the type). Moving it to another thread is sound when `T: Send`,
+//   because the receiving thread becomes the sole owner of the `T`s.
+// - `Sync`: `&Ring<T>` gives shared read access to the `T` values; concurrent
+//   shared reads are safe when `T: Sync`, matching `&Vec<T>`.
+//
+// SAFETY: see justification above; matches the pattern used by `Seq<T>`.
+unsafe impl<T: Send> Send for Ring<T> {}
+// SAFETY: see above.
+unsafe impl<T: Sync> Sync for Ring<T> {}
+
 // L12 layout (#785 Phase 5): tests live in the sibling file `ring_tests.rs`.
 #[cfg(feature = "selftest")]
 #[path = "ring_tests.rs"]

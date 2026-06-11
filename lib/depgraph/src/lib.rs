@@ -115,6 +115,9 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         ("lib/*", Category::Foundation),
         ("uapi/*", Category::Foundation),
         ("server/lib/subsys/*", Category::ServerContracts),
+        // The kernel crate lives directly at server/lib/kernel (exact match);
+        // future sub-crates would match the wildcard form below.
+        ("server/lib/kernel", Category::ServerKernel),
         ("server/lib/kernel/*", Category::ServerKernel),
         ("server/lib/server/*", Category::ServerRuntime),
         ("clients/lib/subsys/*", Category::ClientContracts),
@@ -1006,6 +1009,14 @@ pub fn classify(path: &str, table: &[(String, Category)]) -> Result<Category, Vi
         }),
         [(_, category)] => Ok(*category),
         many => {
+            // Ambiguity is a CATEGORY conflict, not pattern overlap: an exact
+            // entry and its own wildcard (e.g. `server/lib/kernel` and
+            // `server/lib/kernel/*`, both server-kernel) agree, and agreement
+            // is a classification, not a violation.
+            let first = many[0].1;
+            if many.iter().all(|(_, c)| *c == first) {
+                return Ok(first);
+            }
             let mut candidates: Vec<String> =
                 many.iter().map(|(p, c)| format!("`{p}` ({c})")).collect();
             candidates.sort();

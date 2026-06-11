@@ -3,8 +3,6 @@
 **Scope.** DS12 event taxonomy, required event families, correlation
 IDs, schema rules.
 
-**Heritage.** v4 README §15.2.
-
 **Locked rules.** `OBS1..OBS4`.
 
 ---
@@ -22,6 +20,12 @@ pub struct DS12Event {
 
 `event` is a stable string from a fixed family/subject vocabulary.
 `fields` carries event-specific structured data.
+
+The block above is the schema view; OBS3 governs the per-family
+schemas. A kernel-internal realization carries the same information
+in its host environment's types — a `no_std` kernel renders `ts`
+from its boot clock (7.5 §4) and `fields` as a fixed structured
+set — provided every emitted event satisfies its family schema.
 
 ## 2. Required event families
 

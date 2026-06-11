@@ -1,0 +1,30 @@
+[package]
+name = "kernel-panic-recover"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "AB12 kernel recover-path fixture: boots via Init, opens a FileSink, panics, exits the recover code (75)"
+publish = false
+
+[[bin]]
+name = "kernel-panic-recover"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` fixture bin has no libtest harness; disable
+# test/bench/doc builds so a parent `cargo test` does not link a std harness.
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# `runtime`: provides `_start`, panic handler lang items.
+# `selftest` is intentionally absent: this is a production-path fixture, not
+# a test-runner.
+reovim-kernel = { path = "../../..", features = ["runtime"] }
+reovim-arch = { path = "../../../../../../arch", features = ["runtime"] }
+
+[lints]
+workspace = true

@@ -240,7 +240,27 @@ consequences (target state, quarantine) travel through the
 persisted state (2.4), never by parsing log lines. At the `arch/`
 seam, the registered ring-tail provider returns one contiguous
 `&[u8]` already rendered in LOG2 line format; `arch/` writes it
-verbatim ahead of the panic line and never parses ring entries. The flush path
+verbatim ahead of the panic line and never parses ring entries.
+
+The "ring tail" the provider returns is the **whole retained
+region**: at least the live ring's rendered bytes, possibly preceded
+by recently evicted lines the region still holds, bounded by
+`log-ring-bytes`. There is no partial-tail policy (that would need a
+second limit this chapter does not define); the bound is the region
+size, and more forensic context is never wrong at panic time.
+
+The provider must hold under the panic-context constraint — the
+panic handler never allocates and never takes a lock the panicking
+thread may already hold. The region behind the provider is therefore
+maintained **at append time**: every ring append also writes the
+rendered line into a process-global `'static` region, with an
+atomic-length cursor written with `Release` after the rendered bytes
+are in place; the panic handler's provider reads the cursor with
+`Acquire` and returns exactly that prefix. At panic time the bytes
+are already there; the flush performs only reads of that region and
+raw writes to the sink target.
+
+The flush path
 lands with the `arch/` panic handler (the arch-foundation phase),
 gated by the AB12 conformance fixtures (2.3 §Conformance).
 

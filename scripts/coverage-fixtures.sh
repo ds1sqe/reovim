@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Builds and runs the arch no_std fixture bins under coverage instrumentation,
-# emitting profraw via the ARCH-OWNED profiler runtime (#785 Phase 5).
+# Builds and runs the arch and kernel no_std fixture bins under coverage
+# instrumentation, emitting profraw via the ARCH-OWNED profiler runtime
+# (#785 Phase 5, extended for #796 Phase 5).
 #
-# This is the pre-Phase-5 spike harness AND the per-flight fixture-coverage
-# step that scripts/coverage.sh merges. The fixtures are #![no_std] #![no_main]
-# bins that cannot link compiler-rt's profiler runtime (38 libc symbols; the
-# Phase 4 spike failed), so they link arch/src/profiler.rs instead:
+# This is the per-flight fixture-coverage step that scripts/coverage.sh merges.
+# The fixtures are #![no_std] #![no_main] bins that cannot link compiler-rt's
+# profiler runtime (38 libc symbols; the Phase 4 spike failed), so they link
+# arch/src/profiler.rs instead:
 #
 #   * -C instrument-coverage          : emit the __llvm_prf_* sections + the
 #                                       __llvm_profile_runtime reference.
@@ -25,6 +26,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURES_DIR="$ROOT/arch/tests/fixtures"
+KERNEL_FIXTURES_DIR="$ROOT/server/lib/kernel/tests/fixtures"
 OUT_DIR="${OUT_DIR:-$ROOT/target/arch-fixture-coverage}"
 mkdir -p "$OUT_DIR"
 
@@ -112,6 +114,72 @@ exe="$(grep '"uapi-selftest"' "$OUT_DIR/build-uapi-fail.json" \
     | grep -o '"executable":"[^"]*"' | tail -1 \
     | sed 's/"executable":"//; s/"$//')"
 LLVM_PROFILE_FILE="$OUT_DIR/uapi-selftest-fail.profraw" "$exe"
+echo "      exit=$? (fail-fast variant: 70 by design)"
+
+# ── Kernel fixture fleet (#796 Phase 5) ──────────────────────────────────────
+#
+# kernel-selftest: the full kernel test suite on the no_std runner.
+# kernel-panic-halt/recover: AB12 kernel panic-path fixtures, exit 70/75 by
+#   design (panic handler exits after flush, same as arch panic fixtures).
+# kernel-selftest inject-failure: the runner's fail-fast path (exit 70).
+KERNEL_FIXTURES=(kernel-selftest kernel-panic-halt kernel-panic-recover)
+
+echo "==> building instrumented kernel fixtures"
+echo "    RUSTFLAGS=\"$COV_RUSTFLAGS\""
+RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
+    --manifest-path "$KERNEL_FIXTURES_DIR/Cargo.toml" \
+    "${KERNEL_FIXTURES[@]/#/--package=}" \
+    --message-format=json-render-diagnostics > "$OUT_DIR/kernel-build.json" 2> "$OUT_DIR/kernel-build.err"
+if [ $? -ne 0 ]; then
+    echo "kernel fixture build FAILED; see $OUT_DIR/kernel-build.err" >&2
+    exit 1
+fi
+
+# Locate a built kernel executable in the cargo JSON.
+kernel_exe_for() {
+    grep "\"$1\"" "$OUT_DIR/kernel-build.json" \
+        | grep -o '"executable":"[^"]*"' | tail -1 \
+        | sed 's/"executable":"//; s/"$//'
+}
+
+echo "==> running instrumented kernel fixtures, one profraw per exec"
+ki=0
+for pkg in "${KERNEL_FIXTURES[@]}"; do
+    exe="$(kernel_exe_for "$pkg")"
+    if [ -z "$exe" ]; then
+        echo "no executable for $pkg" >&2
+        exit 1
+    fi
+    prof="$OUT_DIR/${pkg}-${ki}.profraw"
+    echo "    $pkg -> $prof"
+    case "$pkg" in
+        *panic*)
+            # Panic fixtures flush their LOG2 line to a sink file (argv[1])
+            # and exit 70/75 by design; the exit code is not a failure here.
+            LLVM_PROFILE_FILE="$prof" "$exe" "$OUT_DIR/${pkg}.sink"
+            echo "      exit=$? (panic fixture: non-zero by design)"
+            ;;
+        *)
+            LLVM_PROFILE_FILE="$prof" "$exe"
+            echo "      exit=$?"
+            ;;
+    esac
+    ki=$((ki + 1))
+done
+
+echo "==> building + running the inject-failure kernel-selftest variant (#796 Phase 5)"
+RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
+    --manifest-path "$KERNEL_FIXTURES_DIR/Cargo.toml" \
+    --package=kernel-selftest --features inject-failure \
+    --message-format=json-render-diagnostics > "$OUT_DIR/kernel-build-fail.json" 2> "$OUT_DIR/kernel-build-fail.err"
+if [ $? -ne 0 ]; then
+    echo "kernel inject-failure build FAILED; see $OUT_DIR/kernel-build-fail.err" >&2
+    exit 1
+fi
+exe="$(grep '"kernel-selftest"' "$OUT_DIR/kernel-build-fail.json" \
+    | grep -o '"executable":"[^"]*"' | tail -1 \
+    | sed 's/"executable":"//; s/"$//')"
+LLVM_PROFILE_FILE="$OUT_DIR/kernel-selftest-fail.profraw" "$exe"
 echo "      exit=$? (fail-fast variant: 70 by design)"
 
 echo "==> profraw files in $OUT_DIR:"

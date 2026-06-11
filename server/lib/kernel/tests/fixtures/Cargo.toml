@@ -1,0 +1,40 @@
+# Nested workspace for the kernel fixture bins (#796 Phase 5; the selftest
+# bin is pulled forward so each phase's tests execute as they land).
+#
+# Mirrors `arch/tests/fixtures/`: `#![no_std] #![no_main]` bins that enable
+# `reovim-kernel/runtime` (arch `_start` + `#[panic_handler]` lang items) in
+# their OWN workspace so the parent's `cargo test --workspace` never
+# feature-unifies `runtime` onto the rlib used by libtest builds (the
+# bootstrap-state-1 lang-item conflict).
+[workspace]
+resolver = "2"
+members = ["kernel-selftest", "kernel-panic-halt", "kernel-panic-recover"]
+
+[workspace.package]
+version = "0.16.0-dev"
+edition = "2024"
+rust-version = "1.92"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+
+# `panic = "abort"` mirrors the parent workspace (L10/DAG6, AB12).
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage_nightly)',
+    'cfg(arch_coverage)',
+] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }

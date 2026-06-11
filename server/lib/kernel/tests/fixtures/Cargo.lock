@@ -3,11 +3,31 @@
 version = 4
 
 [[package]]
-name = "reovim-arch"
+name = "kernel-panic-halt"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kernel",
+]
 
 [[package]]
-name = "reovim-depgraph"
+name = "kernel-panic-recover"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "kernel-selftest"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-arch"
 version = "0.16.0-dev"
 
 [[package]]
@@ -21,24 +41,3 @@ dependencies = [
 [[package]]
 name = "reovim-uapi-abi"
 version = "0.16.0-dev"
-
-[[package]]
-name = "reovim-uapi-driver-macros"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-uapi-abi",
-]
-
-[[package]]
-name = "reovim-uapi-module-macros"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-uapi-abi",
-]
-
-[[package]]
-name = "reovim-uapi-protocol"
-version = "0.16.0-dev"
-dependencies = [
- "reovim-uapi-abi",
-]

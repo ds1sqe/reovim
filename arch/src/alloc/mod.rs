@@ -51,8 +51,14 @@ use crate::sys::{
     munmap as sys_munmap,
 };
 
+/// Selftest-only allocator fault injection.
+///
+/// Widens to `pub` so the kernel crate (a second consumer of the seam alongside
+/// the arch tests themselves) can arm and reset the hooks for coverage-closure
+/// testing. Only compiled under the `selftest` feature; zero impact on
+/// production builds.
 #[cfg(feature = "selftest")]
-pub(crate) mod fault;
+pub mod fault;
 
 /// The host page size. x86_64-linux uses 4 KiB base pages; the arch floor
 /// hardcodes its single target (rule of three).

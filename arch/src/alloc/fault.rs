@@ -45,18 +45,43 @@ static FAIL_REFILL: AtomicIsize = AtomicIsize::new(0);
 
 /// Arms the alloc-entry hook so the allocation reached after `n` further
 /// attempts fails. `n == 0` fails the next attempt.
-pub(crate) fn fail_after(n: isize) {
+///
+/// Available to the kernel crate (a second consumer of the seam alongside the
+/// arch tests themselves) for coverage-closure testing. Only compiled under the
+/// `selftest` feature.
+///
+/// ```ignore
+/// // selftest-gated. Run via the arch-selftest bin (Phase 5).
+/// reovim_arch::alloc::fault::fail_after(0);
+/// ```
+pub fn fail_after(n: isize) {
     FAIL_AFTER.store(n, Ordering::SeqCst);
 }
 
 /// Arms a single refill-path failure (the next size-class refill `mmap`).
-pub(crate) fn fail_next_refill() {
+///
+/// Available to the kernel crate for coverage-closure testing. Only compiled
+/// under the `selftest` feature.
+///
+/// ```ignore
+/// // selftest-gated. Run via the arch-selftest bin (Phase 5).
+/// reovim_arch::alloc::fault::fail_next_refill();
+/// ```
+pub fn fail_next_refill() {
     FAIL_REFILL.store(1, Ordering::SeqCst);
 }
 
 /// Disarms both hooks. Tests call this at the end of the body to leave the
 /// shared process clean for the next test.
-pub(crate) fn reset() {
+///
+/// Available to the kernel crate for coverage-closure testing. Only compiled
+/// under the `selftest` feature.
+///
+/// ```ignore
+/// // selftest-gated. Run via the arch-selftest bin (Phase 5).
+/// reovim_arch::alloc::fault::reset();
+/// ```
+pub fn reset() {
     FAIL_AFTER.store(DISABLED, Ordering::SeqCst);
     FAIL_REFILL.store(0, Ordering::SeqCst);
 }

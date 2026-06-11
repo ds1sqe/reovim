@@ -7,6 +7,7 @@ members = [
     "uapi/protocol",
     "uapi/module-macros",
     "uapi/driver-macros",
+    "server/lib/kernel",
 ]
 # `arch/tests/fixtures/` is its OWN nested workspace (#785 Phase 4): its
 # `#![no_std] #![no_main]` bins depend on `reovim-arch` with the `runtime`
@@ -15,7 +16,7 @@ members = [
 # lib's own test harness uses (which would define `#[panic_handler]` in the
 # libtest build and collide with std's lang item). The DAG6 probe still scans
 # them via tree walk; the arch integration test builds them by manifest path.
-exclude = ["archive", "arch/tests/fixtures"]
+exclude = ["archive", "arch/tests/fixtures", "server/lib/kernel/tests/fixtures"]
 
 [workspace.package]
 rust-version = "1.92"
