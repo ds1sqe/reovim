@@ -9,8 +9,11 @@
 //! - `std::thread::sleep(Duration::from_millis(N))` → bounded spin on `crate::time::Instant`
 //! - `std::thread::yield_now()` → `core::hint::spin_loop()`
 
+use crate::{arch_test, sync::testhooks, testrt};
+// Only the spawn-dependent (Linux-gated) cases consume these.
+#[cfg(target_os = "linux")]
 use {
-    crate::{arch_test, ds::Shared, sync::testhooks, testrt, thread, time::Instant},
+    crate::{ds::Shared, thread, time::Instant},
     core::sync::atomic::{AtomicBool, Ordering as O},
 };
 
@@ -19,6 +22,7 @@ use super::Mutex;
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
 /// This replaces `std::thread::sleep` in the selftest context where the
 /// time-based delay only needs to be a lower bound.
+#[cfg(target_os = "linux")]
 fn spin_ms(millis: u64) {
     let start = Instant::now();
     let limit_ns = millis * 1_000_000;
@@ -48,6 +52,9 @@ arch_test!(mutex_try_lock_succeeds_when_free_fails_when_held, {
     testrt::check(m.try_lock().is_some(), "freed lock acquires again");
 });
 
+// Spawn-dependent cases: they need a thread floor, which freestanding
+// targets do not realize. They stay in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(mutex_eight_threads_ten_thousand_increments_exact_total, {
     // 8 arch threads, each incrementing a Mutex<u64> 10 000 times.
     // Uses `Shared` (arch Arc analog) instead of `std::sync::Arc`.
@@ -85,6 +92,7 @@ arch_test!(mutex_eight_threads_ten_thousand_increments_exact_total, {
     testrt::check_eq(*m.lock(), 80_000u64);
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(mutex_forced_futex_slow_path_executes_contended_branch, {
     let before = testhooks::contended_transitions();
     let waits_before = testhooks::waits_entered();

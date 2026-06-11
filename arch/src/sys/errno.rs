@@ -1,9 +1,14 @@
 //! Errno newtype and the kernel's negative-return mapping.
 //!
-//! The Linux syscall convention encodes errors as a small negative return
-//! value: a raw result in `-4095..=-1` is `-errno`; anything else is a
-//! successful result. [`from_ret`] is the single branch that translates a
-//! raw `isize` into `Result<usize, Errno>`.
+//! This is target-neutral floor vocabulary: every backend's wrappers return
+//! `Result<_, Errno>`, and freestanding backends report the same constants
+//! directly. The values are drawn from the Linux errno space so error
+//! meaning is identical across targets.
+//!
+//! [`from_ret`] is the Linux-family translation branch: the Linux syscall
+//! convention encodes errors as a small negative return value — a raw
+//! result in `-4095..=-1` is `-errno`; anything else is a successful
+//! result.
 
 /// A Linux errno value (always positive).
 ///

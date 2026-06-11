@@ -12,14 +12,18 @@
 //! `#[cfg(feature = "selftest")]` in `rwlock.rs`, making them
 //! accessible here.
 
+use crate::{arch_test, testrt};
+// Only the spawn-dependent (Linux-gated) cases consume these.
+#[cfg(target_os = "linux")]
 use {
-    crate::{arch_test, ds::Shared, sync::testhooks, testrt, thread, time::Instant},
+    crate::{ds::Shared, sync::testhooks, thread, time::Instant},
     core::sync::atomic::{AtomicBool, AtomicU32 as TU32, Ordering as O},
 };
 
 use super::RwLock;
 
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
+#[cfg(target_os = "linux")]
 fn spin_ms(millis: u64) {
     let start = Instant::now();
     let limit_ns = millis * 1_000_000;
@@ -41,6 +45,9 @@ arch_test!(rwlock_read_and_write_single_thread, {
     testrt::check_eq(*l.read(), 15);
 });
 
+// Spawn-dependent cases: they need a thread floor, which freestanding
+// targets do not realize. They stay in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_concurrent_readers_overlap, {
     // Two readers must hold simultaneously: each bumps an overlap counter
     // on entry, asserts the peak reached 2, decrements on exit.
@@ -75,6 +82,7 @@ arch_test!(rwlock_concurrent_readers_overlap, {
     testrt::check_eq(l.reader_count(), 0u32);
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_writer_excludes_readers, {
     let l = Shared::try_new(RwLock::new(0u32)).expect("alloc shared rwlock");
     let reader_saw = Shared::try_new(TU32::new(0)).expect("alloc reader_saw");
@@ -104,6 +112,7 @@ arch_test!(rwlock_writer_excludes_readers, {
     testrt::check_eq(reader_saw.load(O::SeqCst), 99u32);
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_readers_exclude_writer, {
     let l = Shared::try_new(RwLock::new(0u32)).expect("alloc shared rwlock");
     let writer_ran = Shared::try_new(AtomicBool::new(false)).expect("alloc writer_ran");
@@ -128,6 +137,7 @@ arch_test!(rwlock_readers_exclude_writer, {
     testrt::check_eq(*l.read(), 1u32);
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_writer_blocks_reader_past_spin_limit_exercises_futex_wait, {
     // Forces the `FUTEX_WAIT` path in `read()` deterministically: the writer
     // holds the lock until it OBSERVES the reader's wait counter increment
@@ -172,6 +182,7 @@ arch_test!(rwlock_writer_blocks_reader_past_spin_limit_exercises_futex_wait, {
     );
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_concurrent_readers_cas_retry_exercises_nowriter_retry_path, {
     // Forces the "CAS lost a race; retry without sleeping" arm of `read()`
     // (rwlock.rs lines 117-120): fires when `WRITER == 0` (no writer holds)
@@ -226,6 +237,7 @@ arch_test!(rwlock_concurrent_readers_cas_retry_exercises_nowriter_retry_path, {
     );
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(rwlock_multiple_writers_contend_exercises_lost_cas_spin, {
     // Forces the `s == 0` lost-CAS-race spin arm of `write()`: that arm fires
     // when a writer's `compare_exchange_weak(0, WRITER, ..)` fails while the

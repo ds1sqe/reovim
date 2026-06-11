@@ -188,6 +188,9 @@ arch_test!(class_for_fallback_takes_last_class, {
     testrt::check_eq(class_for(MAX_SMALL + 1, 1), None);
 });
 
+// Spawn-dependent: needs a thread floor, which freestanding targets do not
+// realize. Stays in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(spin_lock_contended_path_is_hit_under_threads, {
     // Two threads competing on the same size class force the spin path inside
     // SpinLock::lock(). We allocate from one thread while another holds the

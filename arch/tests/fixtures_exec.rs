@@ -40,6 +40,27 @@
 //! ARCH_FIXTURE_RUNNER=qemu-aarch64 \
 //!     cargo test -p reovim-arch --test fixtures_exec
 //! ```
+//!
+//! # System-image mode (bare metal)
+//!
+//! A freestanding `ARCH_FIXTURE_TARGET` (suffix `-none`) selects the third
+//! execution mode: the built ELF is objcopy'd to a raw `kernel8.img` and
+//! booted under a system emulator instead of exec'd as a process. The
+//! runner value stays a bare program name — the machine flags are owned
+//! here (`-M raspi4b -display none -serial stdio -semihosting -kernel
+//! <img>`), not threaded through the environment:
+//!
+//! ```text
+//! ARCH_FIXTURE_TARGET=aarch64-unknown-none \
+//! ARCH_FIXTURE_RUNNER=qemu-system-aarch64 \
+//!     cargo test -p reovim-arch --test fixtures_exec
+//! ```
+//!
+//! Bare metal has no process ABI: no argv (so no file-sink fixtures), no
+//! filesystem, no threads. Only the arch-selftest pilots run in this mode —
+//! the image's exit code arrives through QEMU's semihosting exit and the
+//! LOG2 panic line through the PL011 serial on stdout. Every other test
+//! skips itself, loudly, when the target is freestanding.
 
 use std::{
     path::{Path, PathBuf},
@@ -48,7 +69,7 @@ use std::{
 };
 
 // ---------------------------------------------------------------------------
-// Serialization guard for the arch-selftest tests
+// Serialization guards for the selftest-runner tests
 //
 // `testrt_pilot_all_pass_exits_zero` and `testrt_pilot_one_failure_exits_nonzero`
 // both build package `arch-selftest` with DIFFERENT feature sets (`[]` vs
@@ -59,11 +80,25 @@ use std::{
 // copy (copy-under-lock, exec the private copy) would also work but adds
 // filesystem churn for the same effect.
 //
-// A poisoned lock is recovered deliberately: the guard protects a cargo
+// The two `uapi-selftest` tests share the identical hazard over their own
+// artifact path, so they take their own guard (separate lock: the two
+// packages' artifacts do not collide with each other, only with their own
+// feature variants).
+//
+// A poisoned lock is recovered deliberately: each guard protects a cargo
 // artifact that the next build regenerates, not in-memory state, so a panic
 // in one test (a failed assertion) leaves nothing corrupt behind.
 // ---------------------------------------------------------------------------
 fn selftest_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The `uapi-selftest` artifact guard — same shape and rationale as
+/// [`selftest_lock`], over the uapi runner's artifact path.
+fn uapi_selftest_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
@@ -89,6 +124,24 @@ fn fixture_runner() -> Vec<String> {
         .filter(|v| !v.is_empty())
         .map(|v| v.split_whitespace().map(str::to_owned).collect())
         .unwrap_or_default()
+}
+
+/// True when the cross-target is freestanding (system-image mode): the
+/// fixture is a bootable machine image, not an executable process.
+fn target_is_none() -> bool {
+    fixture_target().is_some_and(|t| t.ends_with("-none"))
+}
+
+/// Skips a test that has no realization in system-image mode (needs a
+/// process ABI: argv file sinks, a filesystem, or a thread floor), with a
+/// loud marker so a green run cannot be mistaken for bare-metal coverage.
+/// Returns `true` when the caller should return immediately.
+fn skip_in_system_image_mode(test: &str) -> bool {
+    if target_is_none() {
+        eprintln!("{test}: SKIPPED in system-image mode (needs a process ABI)");
+        return true;
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +272,91 @@ fn scratch_path(tag: &str) -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
+// System-image mode (bare metal)
+// ---------------------------------------------------------------------------
+
+/// Locates the rustup-bundled `llvm-objcopy` (the `llvm-tools` component):
+/// `<sysroot>/lib/rustlib/<host>/bin/llvm-objcopy`. The toolchain's own
+/// objcopy keeps the harness L9-clean — no system binutils dependency.
+fn llvm_objcopy() -> PathBuf {
+    let out = Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .output()
+        .expect("rustc --print sysroot runs");
+    let sysroot = String::from_utf8(out.stdout).expect("sysroot is utf8");
+    let out = Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .expect("rustc -vV runs");
+    let verbose = String::from_utf8(out.stdout).expect("rustc -vV is utf8");
+    let host = verbose
+        .lines()
+        .find_map(|l| l.strip_prefix("host: "))
+        .expect("rustc -vV reports a host triple");
+    let mut p = PathBuf::from(sysroot.trim());
+    p.extend(["lib", "rustlib", host, "bin", "llvm-objcopy"]);
+    p
+}
+
+/// Converts the linked ELF into the raw image the machine boots (the
+/// firmware-style load: raw bytes at the link address, entered at the first
+/// byte) and returns the image path, `<elf>.kernel8.img`.
+fn objcopy_kernel_image(elf: &Path) -> PathBuf {
+    let mut img = elf.as_os_str().to_owned();
+    img.push(".kernel8.img");
+    let img = PathBuf::from(img);
+    let status = Command::new(llvm_objcopy())
+        .arg("-O")
+        .arg("binary")
+        .arg(elf)
+        .arg(&img)
+        .status()
+        .expect("llvm-objcopy runs");
+    assert!(status.success(), "objcopy {} -> kernel8.img", elf.display());
+    img
+}
+
+/// Boots the fixture ELF as a machine image and returns the guest exit code
+/// plus the captured serial output.
+///
+/// The harness owns the machine flags (no flag soup in the environment):
+/// `-M raspi4b` is the deliverable machine, `-serial stdio` binds the PL011
+/// the floor writes to, `-semihosting` arms the `SYS_EXIT` channel that
+/// carries the runner's exit code out as the emulator's own, and
+/// `-display none` keeps the run headless. `ARCH_FIXTURE_RUNNER` supplies
+/// the emulator program itself (e.g. `qemu-system-aarch64`).
+fn run_system_image(exe: &Path) -> (i32, String) {
+    let runner = fixture_runner();
+    assert!(
+        !runner.is_empty(),
+        "system-image mode needs ARCH_FIXTURE_RUNNER (a system emulator)",
+    );
+    let img = objcopy_kernel_image(exe);
+    let output = Command::new(&runner[0])
+        .args(&runner[1..])
+        .args([
+            "-M",
+            "raspi4b",
+            "-display",
+            "none",
+            "-serial",
+            "stdio",
+            "-semihosting",
+        ])
+        .arg("-kernel")
+        .arg(&img)
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("system emulator boots the image");
+    let code = output
+        .status
+        .code()
+        .expect("emulator exited with a code, not a signal");
+    let serial = String::from_utf8_lossy(&output.stdout).into_owned();
+    (code, serial)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -226,6 +364,9 @@ fn scratch_path(tag: &str) -> PathBuf {
 fn smoke_fixture_boots_allocates_threads_exits_zero() {
     // The charter smoke: boot via `_start`, allocate a DS, spawn + join a
     // thread, exit 0. This is the phase's end-to-end proof.
+    if skip_in_system_image_mode("smoke_fixture_boots_allocates_threads_exits_zero") {
+        return;
+    }
     let exe = build_fixture("arch-fixture-smoke");
     assert_eq!(run(&exe, &[]), 0, "smoke fixture boots and exits 0");
 }
@@ -250,6 +391,11 @@ fn testrt_pilot_all_pass_exits_zero() {
     // hazard. The guard spans build AND exec.
     let _guard = selftest_lock();
     let exe = build_fixture("arch-selftest");
+    if target_is_none() {
+        let (code, serial) = run_system_image(&exe);
+        assert_eq!(code, 0, "all-pass bare-metal image exits 0; serial: {serial:?}");
+        return;
+    }
     assert_eq!(run(&exe, &[]), 0, "all-pass test run exits 0");
 }
 
@@ -259,6 +405,12 @@ fn uapi_selftest_all_pass_exits_zero() {
     // test suite — layout goldens, codec round-trips + 57-byte Hello frame
     // golden, CF5 cross-check, macro vtable smoke — all run on the no_std
     // runner and exit 0 when every test passes.
+    if skip_in_system_image_mode("uapi_selftest_all_pass_exits_zero") {
+        return;
+    }
+    // Serialized against the inject-failure variant via `uapi_selftest_lock()`
+    // — the guard spans build AND exec (see the guards' comment).
+    let _guard = uapi_selftest_lock();
     let exe = build_fixture("uapi-selftest");
     assert_eq!(run(&exe, &[]), 0, "uapi all-pass test run exits 0");
 }
@@ -268,6 +420,12 @@ fn uapi_selftest_one_failure_exits_nonzero() {
     // uapi selftest charter smoke (fail side): the inject-failure variant
     // adds a deliberately-failing test; the arch panic handler exits the
     // halt disposition code (70) — the runner's fail-fast contract.
+    if skip_in_system_image_mode("uapi_selftest_one_failure_exits_nonzero") {
+        return;
+    }
+    // Serialized against the all-pass variant via `uapi_selftest_lock()` —
+    // the guard spans build AND exec (see the guards' comment).
+    let _guard = uapi_selftest_lock();
     let exe = build_fixture_features("uapi-selftest", &["inject-failure"]);
     assert_eq!(run(&exe, &[]), 70, "uapi inject-failure exits the halt code");
 }
@@ -283,11 +441,22 @@ fn testrt_pilot_one_failure_exits_nonzero() {
     // hazard. The guard spans build AND exec.
     let _guard = selftest_lock();
     let exe = build_fixture_features("arch-selftest", &["inject-failure"]);
+    if target_is_none() {
+        // Bare metal has no file sink, so the LOG2 panic line arrives on the
+        // serial console instead — the disposition smoke for this mode.
+        let (code, serial) = run_system_image(&exe);
+        assert_eq!(code, 70, "failing bare-metal image exits the halt code; serial: {serial:?}");
+        assert_log2_kernel_panic(&serial, "deliberately_fails");
+        return;
+    }
     assert_eq!(run(&exe, &[]), 70, "a failing test exits the halt code");
 }
 
 #[test]
 fn panic_halt_fixture_flushes_log2_and_exits_70() {
+    if skip_in_system_image_mode("panic_halt_fixture_flushes_log2_and_exits_70") {
+        return;
+    }
     let exe = build_fixture("arch-fixture-panic-halt");
     let sink = scratch_path("halt");
     let code = run(&exe, &[sink.to_str().unwrap()]);
@@ -299,6 +468,9 @@ fn panic_halt_fixture_flushes_log2_and_exits_70() {
 
 #[test]
 fn panic_recover_fixture_fires_hook_and_exits_75() {
+    if skip_in_system_image_mode("panic_recover_fixture_fires_hook_and_exits_75") {
+        return;
+    }
     let exe = build_fixture("arch-fixture-panic-recover");
     let sink = scratch_path("recover");
     let code = run(&exe, &[sink.to_str().unwrap()]);
@@ -313,6 +485,9 @@ fn panic_recover_fixture_fires_hook_and_exits_75() {
 
 #[test]
 fn panic_ab13_fixture_marks_rollback_failed() {
+    if skip_in_system_image_mode("panic_ab13_fixture_marks_rollback_failed") {
+        return;
+    }
     let exe = build_fixture("arch-fixture-panic-ab13");
     let sink = scratch_path("ab13");
     let code = run(&exe, &[sink.to_str().unwrap()]);
@@ -340,7 +515,16 @@ fn assert_log2_kernel_panic(out: &str, msg_substr: &str) {
         .lines()
         .find(|l| l.contains("kernel panic:"))
         .unwrap_or_else(|| panic!("a panic line in {out:?}"));
-    assert!(line.starts_with('['), "ts opens with '['");
+    // Hosted suites split runner progress (stdout) from the panic line
+    // (stderr), so the line starts at the timestamp. On a shared serial
+    // console (system-image mode) both multiplex onto one stream and the
+    // LOG2 line lands mid-line after `test <name> ... `. Parse from the
+    // timestamp bracket that opens the LOG2 grammar, wherever it sits.
+    let panic_idx = line
+        .find("kernel panic:")
+        .expect("present by the find above");
+    let open = line[..panic_idx].rfind('[').expect("ts opens with '['");
+    let line = &line[open..];
     let close = line.find(']').expect("ts closes with ']'");
     let ts = &line[1..close];
     let (secs, micros) = ts.split_once('.').expect("ts is seconds.micros");

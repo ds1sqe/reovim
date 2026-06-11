@@ -98,22 +98,28 @@ mod testhooks {
         CONTENDED_TRANSITIONS.load(Ordering::Relaxed)
     }
 
-    /// The current waits-entered count (test observation point).
+    /// The current waits-entered count (test observation point; consumed
+    /// only by the Linux-gated, spawn-dependent cases, as are the rwlock
+    /// observation points below).
+    #[cfg(target_os = "linux")]
     pub fn waits_entered() -> usize {
         WAITS_ENTERED.load(Ordering::Relaxed)
     }
 
     /// The current `RwLock` reader-wait count (test observation point).
+    #[cfg(target_os = "linux")]
     pub fn rwlock_reader_waits() -> usize {
         RWLOCK_READER_WAITS.load(Ordering::Relaxed)
     }
 
     /// The current `RwLock` writer lost-CAS count (test observation point).
+    #[cfg(target_os = "linux")]
     pub fn rwlock_writer_lost_cas() -> usize {
         RWLOCK_WRITER_LOST_CAS.load(Ordering::Relaxed)
     }
 
     /// The current `RwLock` reader CAS-retry count (test observation point).
+    #[cfg(target_os = "linux")]
     pub fn rwlock_reader_cas_retry() -> usize {
         RWLOCK_READER_CAS_RETRY.load(Ordering::Relaxed)
     }

@@ -340,18 +340,27 @@ floor is decomposed into per-target backend modules, cfg-selected from
 `arch/src/sys/mod.rs`:
 
 - Each target backend lives at `arch/src/sys/<target>/` (e.g.
-  `linux_x86_64`, `linux_aarch64`), selected by
-  `#[cfg(all(target_os = "...", target_arch = "..."))]`; all backends
-  expose identical floor function signatures — no traits, no vtables.
+  `linux_x86_64`, `linux_aarch64`, the freestanding `none_aarch64`),
+  selected by `#[cfg(all(target_os = "...", target_arch = "..."))]`; all
+  backends expose identical floor function signatures — no traits, no
+  vtables. The wrapper-level floor surface is re-exported through the
+  selected backend (one `pub use target::{…}` list in `sys/mod.rs`), so
+  a backend that fails to provide an item is a compile error, not a
+  runtime gap.
 - All target-specific `asm!`/`naked_asm!` is confined to
   `arch/src/sys/<target>/` (raw syscall primitives and the fused clone
   trampoline) and to the cfg-gated `_start` entry arms in
   `arch/src/start.rs`. No inline asm may appear elsewhere in `arch/`.
-- `errno.rs` and `wrap.rs` at the `sys/` level are Linux-kernel-ABI
-  family code shared by Linux backends only. Non-Linux and freestanding
-  backends provide their own wrap-level implementations behind the same
-  floor signatures; nothing in the per-target structure assumes every
-  backend routes through the shared Linux wrap layer.
+- `wrap.rs` at the `sys/` level is Linux-kernel-ABI family code shared
+  by Linux backends only (cfg-gated to `target_os = "linux"`).
+  Non-Linux and freestanding backends provide their own wrap-level
+  implementations behind the same floor signatures — `none_aarch64`
+  realizes them over PL011 MMIO, the generic timer, and a static page
+  arena — and nothing in the per-target structure assumes every backend
+  routes through the shared Linux wrap layer. `errno.rs` is
+  target-neutral floor vocabulary (every backend's wrappers return the
+  same `Errno` values); the raw-syscall re-export (`syscall0..6`) is
+  kernel-ABI-class surface, exposed for Linux targets only.
 - Targets with no registered backend fail at compile time with an
   explicit `compile_error!` fallback arm in `sys/mod.rs`.
 

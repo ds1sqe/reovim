@@ -21,12 +21,15 @@
 //! statics are clean for the next test. The selftest runner is single-threaded
 //! sequential; no serialization guard is needed.
 
+use crate::{arch_test, ds::Bytes, testrt};
+
+// Only the hosted (filesystem-backed) capture tests need the file syscalls
+// and the recover-hook's seen-flag atomics.
+#[cfg(target_os = "linux")]
 use {
     crate::{
-        arch_test,
-        ds::{Bytes, Str},
+        ds::Str,
         sys::{self, AT_FDCWD, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY},
-        testrt,
     },
     core::sync::atomic::{AtomicU8, Ordering::Relaxed},
 };
@@ -44,6 +47,7 @@ use super::{
 ///
 /// The path must be a nul-terminated byte slice. The returned fd is the
 /// write end; the test passes it to `set_flush_fd`.
+#[cfg(target_os = "linux")]
 fn open_write(path: &[u8]) -> i32 {
     let raw =
         sys::openat(AT_FDCWD, path, O_CREAT | O_TRUNC | O_WRONLY, 0o600).expect("open tmp write");
@@ -51,12 +55,14 @@ fn open_write(path: &[u8]) -> i32 {
 }
 
 /// Opens the same temp file for reading. Returns the fd.
+#[cfg(target_os = "linux")]
 fn open_read(path: &[u8]) -> i32 {
     let raw = sys::openat(AT_FDCWD, path, O_RDONLY, 0).expect("open tmp read");
     i32::try_from(raw).expect("fd fits i32")
 }
 
 /// Reads `fd` to EOF, accumulating into a `Bytes`. Closes the fd.
+#[cfg(target_os = "linux")]
 fn read_to_bytes(fd: i32) -> Bytes {
     let mut buf = [0u8; 512];
     let mut out = Bytes::new();
@@ -73,6 +79,7 @@ fn read_to_bytes(fd: i32) -> Bytes {
 }
 
 /// Reads `fd` to EOF into a `Str` (assumes the content is valid UTF-8).
+#[cfg(target_os = "linux")]
 fn read_to_str(fd: i32) -> Str {
     let raw = read_to_bytes(fd);
     let s = core::str::from_utf8(raw.as_slice()).expect("utf-8 content");
@@ -94,6 +101,7 @@ fn synth_message(msg: &str) -> impl FnOnce(&mut BytesWriter) -> core::fmt::Resul
 /// Parses a kernel-emitter LOG2 line and asserts its fields. Grammar:
 /// `[ts] kernel panic: <message>`. Asserts the kernel-emitter form and that
 /// `msg_substr` appears in the message.
+#[cfg(target_os = "linux")]
 fn assert_log2_kernel_panic(content: &str, msg_substr: &str) {
     let line = content
         .lines()
@@ -192,6 +200,12 @@ arch_test!(panic_cleanup_context_marks_record, {
     reset_registry();
 });
 
+// Filesystem-dependent: the capture pattern round-trips the flushed line
+// through a real temp file (openat O_CREAT + read-back), which freestanding
+// targets do not realize (openat is ENOENT there). The bare-metal panic
+// path is exercised end-to-end by the inject-failure pilot's serial
+// assertion. Stays in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(panic_handle_renders_log2_line_and_returns_halt_by_default, {
     let path: &[u8] = b"/tmp/reovim-panic-test-default\0";
     reset_registry();
@@ -207,6 +221,8 @@ arch_test!(panic_handle_renders_log2_line_and_returns_halt_by_default, {
     reset_registry();
 });
 
+// Filesystem-dependent (file capture round-trip): see above.
+#[cfg(target_os = "linux")]
 arch_test!(panic_handle_recover_fires_hook_and_returns_75, {
     static SEEN: AtomicU8 = AtomicU8::new(0);
     fn record_hook(r: PanicRecord) {
@@ -231,6 +247,8 @@ arch_test!(panic_handle_recover_fires_hook_and_returns_75, {
     reset_registry();
 });
 
+// Filesystem-dependent (file capture round-trip): see above.
+#[cfg(target_os = "linux")]
 arch_test!(panic_handle_flushes_ring_tail_then_line, {
     fn tail() -> &'static [u8] {
         b"[    0.000001] kernel init: boot.stage.ok\n"
@@ -251,6 +269,8 @@ arch_test!(panic_handle_flushes_ring_tail_then_line, {
     reset_registry();
 });
 
+// Filesystem-dependent (file capture round-trip): see above.
+#[cfg(target_os = "linux")]
 arch_test!(panic_handle_ab13_marks_rollback_failed, {
     let path: &[u8] = b"/tmp/reovim-panic-test-ab13\0";
     reset_registry();
@@ -277,6 +297,9 @@ arch_test!(panic_handle_default_no_fd_writes_stderr, {
     reset_registry();
 });
 
+// Filesystem-dependent: needs an fd that was genuinely open and is then
+// closed, which requires a successful openat first. See above.
+#[cfg(target_os = "linux")]
 arch_test!(panic_write_all_error_arm_on_bad_fd, {
     // Drive the `Ok(0) | Err(_) => break` arm in panic.rs's private `write_all`
     // (panic.rs L368) by registering a bad fd (-1) as the flush fd and calling

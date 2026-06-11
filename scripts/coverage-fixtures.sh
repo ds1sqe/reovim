@@ -19,6 +19,15 @@
 # captured envp (start::env_block); set it per-exec so each fixture writes a
 # distinct profraw the merge step consumes.
 #
+# Scope: host (x86_64-linux) only. The cross-target lanes are exercised
+# functionally (qemu-user for aarch64-linux, qemu-system for the bare-metal
+# image) but not instrumented. A freestanding target cannot run this
+# profiler runtime at all — it writes profraw through fd/file syscalls that
+# do not exist there — and per-target sys/ backends are cfg-excluded from
+# host builds, so the host MC/DC denominator never counts code the host
+# cannot execute: the scope stays honest by construction, with no
+# coverage(off) markers anywhere.
+#
 # NOTE: the MAIN SESSION runs this; subagents do not run build/coverage
 # commands. This script is the executable spec of the exact build command.
 

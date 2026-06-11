@@ -13,14 +13,20 @@
 //! Each round spawns a thread and joins it. This stresses the missed-wake
 //! sequence-counter mechanism without timing dependencies.
 
+use crate::arch_test;
+// Only the spawn-dependent (Linux-gated) cases consume these.
+#[cfg(target_os = "linux")]
 use {
-    crate::{arch_test, ds::Shared, testrt, thread, time::Instant},
+    crate::{ds::Shared, testrt, thread, time::Instant},
     core::sync::atomic::{AtomicBool, AtomicU32 as TU32, Ordering as O},
 };
 
-use super::{Condvar, Mutex};
+use super::Condvar;
+#[cfg(target_os = "linux")]
+use super::Mutex;
 
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
+#[cfg(target_os = "linux")]
 fn spin_ms(millis: u64) {
     let start = Instant::now();
     let limit_ns = millis * 1_000_000;
@@ -36,6 +42,9 @@ arch_test!(condvar_default_constructs, {
     let _c = Condvar::default();
 });
 
+// Spawn-dependent cases: they need a thread floor, which freestanding
+// targets do not realize. They stay in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(condvar_notify_one_wakes_a_waiter, {
     // A waiter blocks on the condvar guarding a bool predicate; the main
     // thread sets the predicate and notifies. The waiter must return.
@@ -61,6 +70,7 @@ arch_test!(condvar_notify_one_wakes_a_waiter, {
     let () = waiter.join();
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(condvar_notify_all_wakes_several, {
     let pair = Shared::try_new((Mutex::new(false), Condvar::new())).expect("alloc pair");
     let woken = Shared::try_new(TU32::new(0)).expect("alloc woken counter");
@@ -99,6 +109,7 @@ arch_test!(condvar_notify_all_wakes_several, {
     testrt::check_eq(woken.load(O::SeqCst), 4u32);
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(condvar_missed_wake_window_does_not_deadlock, {
     // Force the race: the notifier sets the predicate and notifies in the
     // window where the waiter has decided to wait but may not have slept.
@@ -148,6 +159,7 @@ arch_test!(condvar_missed_wake_window_does_not_deadlock, {
     testrt::check(true, "missed-wake window test completed all 20 rounds");
 });
 
+#[cfg(target_os = "linux")]
 arch_test!(condvar_wait_loops_when_predicate_spuriously_false, {
     // Forces the while-loop body (L113-114 of condvar_tests.rs) to iterate
     // at least twice: the waiter calls `c.wait(g)` even though the condition

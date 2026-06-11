@@ -8,6 +8,16 @@
 
 pub mod raw;
 
+// The wrapper-level floor this backend owes `sys/mod.rs` — satisfied by the
+// shared Linux-family `wrap.rs` (freestanding backends define their own).
+pub use super::wrap::{
+    AT_FDCWD, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS,
+    CLONE_PARENT_SETTID, CLONE_SIGHAND, CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM, FUTEX_PRIVATE_FLAG,
+    FUTEX_WAIT, FUTEX_WAKE, MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE, O_CLOEXEC, O_CREAT, O_RDONLY,
+    O_TRUNC, O_WRONLY, PROT_NONE, PROT_READ, PROT_WRITE, Timespec, clock_gettime, close, exit,
+    exit_group, futex, gettid, mmap, mprotect, munmap, openat, read, write,
+};
+
 use core::arch::asm;
 
 use super::errno::{Errno, from_ret};

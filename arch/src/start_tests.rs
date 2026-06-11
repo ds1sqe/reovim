@@ -42,10 +42,14 @@ arch_test!(start_env_block_null_envp_returns_empty, {
     crate::testrt::check(result.is_empty(), "env_block returns empty slice when ENVP is null");
 });
 
+// Process-ABI-dependent: a hosted kernel hands `rust_entry` a real envp;
+// the freestanding entry receives nulls by contract, so env_block() is
+// correctly empty there. Stays in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(start_env_block_normal_envp_returns_nonempty, {
-    // With ENVP set (which it always is in the selftest binary since rust_entry
-    // stored it at startup), env_block() returns a non-empty slice. This
-    // exercises the normal path past the null check.
+    // With ENVP set (which it always is in the hosted selftest binary since
+    // rust_entry stored it at startup), env_block() returns a non-empty
+    // slice. This exercises the normal path past the null check.
     let block = env_block();
     crate::testrt::check(!block.is_empty(), "env_block returns non-empty slice with real envp");
     // Every entry should be NUL-terminated (the last byte is 0).

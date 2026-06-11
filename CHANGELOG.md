@@ -15,6 +15,36 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `Documentation/10-Development/01-Testing.md`.
 
 ### Added
+- `arch/` bare-metal aarch64 backend and bootable selftest image (#791):
+  freestanding `arch/src/sys/none_aarch64/` backend for
+  `aarch64-unknown-none` (Pi 4 / QEMU `raspi4b`) realizing the wrapper
+  floor over hardware — PL011 UART byte I/O, generic-timer clock
+  (`REALTIME` boot-relative, no RTC), static 1 MiB page arena behind
+  `mmap` (`munmap` no-op by design), WFE/SEV futex, `clone_into` →
+  `EAGAIN`, semihosting `SYS_EXIT` exit channel. `sys/mod.rs`
+  restructured: `wrap.rs`/`wrap_tests` cfg-gated to `target_os = "linux"`,
+  `errno.rs` reclassified target-neutral, the floor `pub use` routed
+  through the selected backend (`target::`), and the raw `syscall0..6`
+  re-export class-gated to Linux. Bare-metal `_start` boot arm in
+  `start.rs` (secondary-core park, EL2→EL1 drop, `CPACR_EL1.FPEN`
+  FP/SIMD enable — the target ABI compiles with NEON and the reset value
+  traps it, BSS clear, identity-map MMU + caches for LL/SC, zeroed
+  argc/argv/envp); `kernel8.img` layout via a fixture-owned linker
+  script (load `0x80000`, `.text.boot` first, testrt section brackets) +
+  TARGET-conditional `build.rs`; `llvm-objcopy -O binary` packaging and
+  a third fixture-harness execution mode
+  (`ARCH_FIXTURE_TARGET=aarch64-unknown-none` +
+  `ARCH_FIXTURE_RUNNER=qemu-system-aarch64`: objcopy + `-M raspi4b`
+  boot, semihosting exit code, serial capture; the LOG2 panic assertion
+  parses from the timestamp bracket because a shared serial console
+  multiplexes runner progress and panic output onto one line).
+  Spawn-dependent and process-ABI-dependent selftest cases cfg-gated to
+  hosted targets (thread floor, real envp, filesystem-backed panic-line
+  capture; they all remain in the hosted suites); host coverage scope
+  unchanged and honest by construction (bare-metal code is cfg-excluded
+  from host builds; no `coverage(off)`). Fixes the `uapi-selftest` fixture `build.rs` to skip
+  the cc-driver-only `-nostartfiles` under `rust-lld` (#786 regression
+  surfaced by the aarch64 cross lane).
 - DEV2 E2E harness + DEV3/DEV4/DEV5 goldens — Phase 5 of #797:
   New crate `reovim-testing` at `tools/testing/` (std, new workspace member). Integration
   test `tests/e2e_exec.rs` builds the `apps/reovim` composition-root binary and drives it
@@ -237,7 +267,6 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `ServerKernel → Foundation` allowed edges (DAG5/DAG6 green). Sibling test
   files (`*_tests.rs`) and crate-level doc-tests on every `pub` item follow the
   L12 convention.
-
 
 - `arch/` aarch64-linux platform floor (#790): per-target backend
   structure under `arch/src/sys/` (`linux_x86_64/` and `linux_aarch64/`,

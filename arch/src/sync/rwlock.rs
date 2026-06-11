@@ -54,7 +54,7 @@ use crate::sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex};
 /// High bit of the state word: a writer holds the lock.
 const WRITER: u32 = 1 << 31;
 /// Mask for the reader-count bits.
-#[cfg(feature = "selftest")]
+#[cfg(all(feature = "selftest", target_os = "linux"))]
 const READERS: u32 = WRITER - 1;
 /// Spin attempts before falling back to `FUTEX_WAIT`.
 const SPIN_LIMIT: u32 = 100;
@@ -220,8 +220,9 @@ impl<T> RwLock<T> {
     }
 
     /// The current number of live read guards (selftest observation hook;
-    /// `pub(super)` so the sibling `rwlock_tests` module can assert it).
-    #[cfg(feature = "selftest")]
+    /// `pub(super)` so the sibling `rwlock_tests` module can assert it —
+    /// only its Linux-gated, spawn-dependent cases do).
+    #[cfg(all(feature = "selftest", target_os = "linux"))]
     pub(super) fn reader_count(&self) -> u32 {
         self.state.load(Relaxed) & READERS
     }

@@ -81,6 +81,9 @@ arch_test!(shared_try_new_alloc_oom_propagates, {
     testrt::check_eq(*s, 7u32);
 });
 
+// Spawn-dependent: needs a thread floor, which freestanding targets do not
+// realize. Stays in every hosted suite.
+#[cfg(target_os = "linux")]
 arch_test!(shared_threaded_clones_and_drops_balance, {
     // Atomic refcount stress: 8 arch threads each clone-and-drop 10 000 times;
     // count must return to 1 with no double-free.

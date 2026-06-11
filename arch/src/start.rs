@@ -90,7 +90,7 @@ pub extern "C" fn _start() -> ! {
 /// // _start requires a no_main binary context — not callable from the doctest harness.
 /// // It is entered only via the kernel's initial control transfer after exec.
 /// ```
-#[cfg(all(feature = "runtime", target_arch = "aarch64"))]
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "linux"))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -114,6 +114,184 @@ pub extern "C" fn _start() -> ! {
         "add x2, x1, x2, lsl #3", // x2 = &argv[0] + (argc+1)*8 = &envp[0]
         "bl {entry}",          // rust_entry(argc, argv, envp) -> ! (never returns)
         "brk #1",              // unreachable: rust_entry exits the process
+        entry = sym rust_entry,
+    )
+}
+
+/// The level-1 translation table for the bare-metal identity map, filled by
+/// the `_start` asm before the MMU is enabled (Rust never touches it).
+///
+/// Four 1 GiB block entries cover the 4 GiB physical window the image uses
+/// (T0SZ = 32): blocks 0-2 are normal write-back memory (RAM: code, data,
+/// arena, stack), block 3 — which contains the BCM2711 peripheral window at
+/// `0xFC00_0000+` — is Device-nGnRE. One table, no level-2/3: the floor
+/// needs caches on (LL/SC exclusives require cacheable memory on real
+/// cores), not fine-grained protection.
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
+#[repr(C, align(4096))]
+struct L1Table(core::cell::UnsafeCell<[u64; 512]>);
+
+// SAFETY: written only by the `_start` asm before any Rust code runs and
+// before the MMU consumes it; afterwards only the hardware walker reads it.
+// No two accessors ever race.
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
+unsafe impl Sync for L1Table {}
+
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
+static L1_TABLE: L1Table = L1Table(core::cell::UnsafeCell::new([0; 512]));
+
+/// The bare-metal boot entry (`_start`) for the Pi 4 machine (BCM2711,
+/// QEMU `-M raspi4b`).
+///
+/// Firmware loads `kernel8.img` at `0x80000` and jumps to its first byte at
+/// EL2 (the image's linker script places this function's `.text.boot`
+/// section first), with the MMU and caches off and no startup stack. There
+/// is no kernel and no process ABI: no argc/argv/envp exist, so
+/// [`rust_entry`] receives zeros — `env_block` correctly reports an empty
+/// environment.
+///
+/// The naked body owns the whole machine bring-up, in order:
+///
+/// 1. **Park secondary cores.** Firmware normally parks them already
+///    (spin-table); the `MPIDR_EL1` check makes the image self-sufficient
+///    if one ever arrives here.
+/// 2. **Drop EL2 → EL1.** `HCR_EL2.RW` selects `AArch64` EL1;
+///    `CNTHCTL_EL2.{EL1PCTEN,EL1PCEN}` lets EL1 read the generic timer
+///    untrapped (the floor's clock); `SCTLR_EL1` starts as its RES1
+///    pattern with MMU/caches off; `eret` lands on the EL1 continuation
+///    with DAIF masked. Entered at EL1 directly, the drop is skipped (the
+///    handoff contract is EL2-or-EL1; EL3 entry is out of contract).
+/// 3. **FP/SIMD enable + stack + BSS.** `CPACR_EL1.FPEN = 0b11` makes EL1
+///    FP/SIMD accesses untrapped — the `aarch64-unknown-none` ABI compiles
+///    with NEON enabled, so compiler-vectorized code (memcpy and friends)
+///    traps fatally without it (the reset value traps and there is no
+///    vector table; the MMU-enable `isb` below synchronizes the write
+///    before any Rust code runs). The boot stack and BSS bounds come from
+///    the linker script (`__stack_top`, `__bss_start`/`__bss_end`); BSS
+///    clear is what zero-initializes the page arena, upholding `mmap`'s
+///    zero-fill contract.
+/// 4. **Identity-map MMU + caches.** Cortex-A72 LL/SC exclusives
+///    (`ldxr`/`stxr` — every atomic in the image) are only architecturally
+///    guaranteed on cacheable memory, so the MMU must be on before any
+///    Rust code runs. [`L1_TABLE`] gets four 1 GiB blocks (RAM normal,
+///    peripheral window device); `MAIR_EL1` defines Attr0 = normal
+///    write-back write-allocate (`0xFF`), Attr1 = Device-nGnRE (`0x04`);
+///    `TCR_EL1` selects 4 KiB granule, 32-bit VA (`T0SZ = 32`, level-1
+///    start), inner-shareable write-back walks, 36-bit IPA, TTBR1 walks
+///    disabled. QEMU ignores cache state; on real silicon the firmware
+///    hands over with caches off/invalid, and set/way invalidation is the
+///    hardware-bring-up hardening, deliberately not modeled here.
+/// 5. **Call [`rust_entry`] with `(0, null, null)`.** Never returns; exit
+///    is the semihosting channel in `sys`.
+///
+/// No vector table is installed: the payload's failure channel is the Rust
+/// panic path (UART + exit code), which raises no exceptions. An unexpected
+/// synchronous exception is fatal by hang — the honest behavior for a floor
+/// with no handler policy.
+///
+/// ```ignore
+/// // _start is entered only by the firmware's initial control transfer at
+/// // 0x80000 — not callable from any Rust context.
+/// ```
+#[cfg(all(feature = "runtime", target_arch = "aarch64", target_os = "none"))]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.boot")]
+pub extern "C" fn _start() -> ! {
+    // SAFETY: `naked_asm` is the whole function body, reached only by the
+    // firmware jump described above. Register use is free (no caller, no
+    // ABI); every system-register write is documented at its step. The
+    // `eret` continuation label and the table/stack/BSS symbols are all
+    // link-time-resolved addresses inside this image.
+    core::arch::naked_asm!(
+        // -- 1: park anything that is not core 0 ------------------------------
+        "mrs x0, mpidr_el1",
+        "and x0, x0, #0xFF",   // Aff0 = core id within the cluster
+        "cbz x0, 2f",
+        "1:",
+        "wfe",
+        "b 1b",
+        // -- 2: EL2 -> EL1 ----------------------------------------------------
+        "2:",
+        "mrs x0, currentel",
+        "lsr x0, x0, #2",
+        "cmp x0, #2",
+        "b.ne 3f",             // already EL1: skip the drop
+        "mov x0, #0x80000000", // HCR_EL2.RW: EL1 executes AArch64
+        "msr hcr_el2, x0",
+        "mov x0, #3",          // CNTHCTL_EL2.EL1PCTEN|EL1PCEN: untrapped timer
+        "msr cnthctl_el2, x0",
+        "msr cntvoff_el2, xzr", // virtual counter == physical counter
+        "movz x0, #0x0800",    // SCTLR_EL1 RES1 pattern (ARMv8.0), MMU/caches off
+        "movk x0, #0x30D0, lsl #16",
+        "msr sctlr_el1, x0",
+        "movz x0, #0x3C5",     // SPSR: DAIF masked, EL1h (SP_EL1)
+        "msr spsr_el2, x0",
+        "adr x0, 3f",
+        "msr elr_el2, x0",
+        "eret",
+        // -- 3: EL1 from here: FP/SIMD enable, stack, then BSS ----------------
+        "3:",
+        "mov x0, #0x300000",   // CPACR_EL1.FPEN = 0b11: EL1 FP/SIMD untrapped
+        "msr cpacr_el1, x0",
+        "adrp x0, __stack_top",
+        "add x0, x0, :lo12:__stack_top",
+        "mov sp, x0",
+        "adrp x0, __bss_start",
+        "add x0, x0, :lo12:__bss_start",
+        "adrp x1, __bss_end",
+        "add x1, x1, :lo12:__bss_end",
+        "4:",
+        "cmp x0, x1",
+        "b.hs 5f",
+        "str xzr, [x0], #8",   // bounds are 8-aligned by the linker script
+        "b 4b",
+        // -- 4: identity map + caches -----------------------------------------
+        // Block descriptors: valid (bit 0), block (bit 1 clear), AttrIndx
+        // (bits 4:2), SH (bits 9:8), AF (bit 10); the device block adds
+        // PXN|UXN (bits 53:54) — nothing executes from peripherals.
+        "5:",
+        "adrp x0, {l1table}",
+        "add x0, x0, :lo12:{l1table}",
+        "movz x1, #0x0701",    // 0x0000_0000: normal (Attr0, inner-sh, AF)
+        "str x1, [x0]",
+        "movz x1, #0x0701",
+        "movk x1, #0x4000, lsl #16", // 0x4000_0000: normal
+        "str x1, [x0, #8]",
+        "movz x1, #0x0701",
+        "movk x1, #0x8000, lsl #16", // 0x8000_0000: normal
+        "str x1, [x0, #16]",
+        "movz x1, #0x0405",    // 0xC000_0000: device (Attr1, AF)
+        "movk x1, #0xC000, lsl #16",
+        "movk x1, #0x0060, lsl #48", // PXN|UXN
+        "str x1, [x0, #24]",
+        "msr ttbr0_el1, x0",
+        "movz x1, #0x04FF",    // MAIR: Attr0 normal WBWA 0xFF, Attr1 device 0x04
+        "msr mair_el1, x1",
+        "movz x1, #0x3520",    // TCR: T0SZ=32, IRGN0/ORGN0=WB, SH0=inner
+        "movk x1, #0x0080, lsl #16", // EPD1: no TTBR1 walks
+        "movk x1, #0x1, lsl #32",    // IPS: 36-bit
+        "msr tcr_el1, x1",
+        "dsb ish",             // table stores complete before the walker looks
+        "tlbi vmalle1",        // no stale translations from earlier stages
+        "dsb ish",
+        "ic iallu",            // no stale instruction fetches across enable
+        "dsb ish",
+        "isb",
+        "mrs x1, sctlr_el1",
+        "orr x1, x1, #1",      // M: MMU on
+        "orr x1, x1, #4",      // C: data cache on
+        "orr x1, x1, #0x1000", // I: instruction cache on
+        "msr sctlr_el1, x1",
+        "isb",
+        // -- 5: into Rust -------------------------------------------------------
+        "mov x29, xzr",        // outermost frame marker
+        "mov x0, xzr",         // argc = 0: no process ABI exists here
+        "mov x1, xzr",         // argv = null
+        "mov x2, xzr",         // envp = null
+        "bl {entry}",
+        "brk #1",              // unreachable: rust_entry exits via semihosting
+        l1table = sym L1_TABLE,
         entry = sym rust_entry,
     )
 }

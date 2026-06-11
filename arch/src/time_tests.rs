@@ -7,8 +7,11 @@
 use crate::{
     arch_test,
     sys::Timespec,
-    time::{Instant, monotonic, realtime},
+    time::{Instant, monotonic},
 };
+// Only the wall-clock (Linux-gated) case consumes this.
+#[cfg(target_os = "linux")]
+use crate::time::realtime;
 
 arch_test!(time_monotonic_is_non_decreasing, {
     let a = Instant::now();
@@ -45,6 +48,9 @@ arch_test!(time_monotonic_raw_matches_instant, {
     crate::testrt::check(ts.tv_sec > 0 || ts.tv_nsec > 0, "monotonic raw is nonzero");
 });
 
+// Wall-clock-dependent: freestanding targets have no RTC, so their
+// REALTIME is boot-relative and legitimately starts at second zero.
+#[cfg(target_os = "linux")]
 arch_test!(time_realtime_is_plausibly_nonzero, {
     let ts = realtime();
     // Wall clock is well past the epoch in any realistic environment.

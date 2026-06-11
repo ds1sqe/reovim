@@ -69,7 +69,9 @@ mod testhooks {
     /// failed, so the unmap-and-`Err` teardown after the guard install runs.
     static FORCE_GUARD_FAIL: AtomicBool = AtomicBool::new(false);
 
-    /// Arms a single forced guard-`mprotect` failure.
+    /// Arms a single forced guard-`mprotect` failure. Consumed only by the
+    /// Linux-gated `thread_tests` module.
+    #[cfg(target_os = "linux")]
     pub(super) fn fail_next_guard() {
         FORCE_GUARD_FAIL.store(true, Ordering::SeqCst);
     }
@@ -204,8 +206,9 @@ where
 
 /// [`spawn`] with an explicit total stack-mapping size, so a test can drive the
 /// `mmap`-refusal failure branch with an absurd size. `map_size` must exceed
-/// one page (the guard) for a usable stack. Selftest-only.
-#[cfg(feature = "selftest")]
+/// one page (the guard) for a usable stack. Selftest-only, and Linux-gated
+/// with the `thread_tests` module that consumes it.
+#[cfg(all(feature = "selftest", target_os = "linux"))]
 fn spawn_with_map_size<F, T>(f: F, map_size: usize) -> Result<JoinHandle<F, T>, SpawnError>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -216,8 +219,9 @@ where
 
 /// [`spawn`] with explicit `clone` flags instead of [`CLONE_FLAGS`], so a test
 /// can drive the `clone`-`Err` teardown branch with an invalid flag set
-/// (`CLONE_THREAD` without `CLONE_SIGHAND` → `EINVAL`). Selftest-only.
-#[cfg(feature = "selftest")]
+/// (`CLONE_THREAD` without `CLONE_SIGHAND` → `EINVAL`). Selftest-only, and
+/// Linux-gated with the `thread_tests` module that consumes it.
+#[cfg(all(feature = "selftest", target_os = "linux"))]
 fn spawn_with_clone_flags<F, T>(f: F, flags: usize) -> Result<JoinHandle<F, T>, SpawnError>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -481,6 +485,9 @@ impl<F, T> JoinHandle<F, T> {
 // L12 layout (#785 Phase 5): tests live in the sibling file `thread_tests.rs`,
 // declared as a `#[path]` child so `super::` reaches the private
 // `spawn_with_map_size`, `PAGE_SIZE`, `SpawnError`, and related items.
-#[cfg(feature = "selftest")]
+// Linux-gated: every case (including the teardown failure-path ones) needs a
+// working spawn, which freestanding targets do not realize — `clone_into`
+// fails before any of the module's assertions become meaningful.
+#[cfg(all(feature = "selftest", target_os = "linux"))]
 #[path = "thread_tests.rs"]
 mod tests;
