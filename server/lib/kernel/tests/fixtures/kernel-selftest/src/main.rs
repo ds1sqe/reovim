@@ -1,10 +1,11 @@
-//! The `no_std` kernel self-test runner (#796).
+//! The `no_std` kernel self-test runner (#796, extended in #797).
 //!
 //! Boots through the arch `_start` and runs the kernel test suite via
 //! [`reovim_arch::testrt`]. Test bodies live in the kernel's sibling
 //! `*_tests.rs` modules (L12.1), compiled in by `reovim-kernel/selftest`
-//! and registered via `arch_test!`; this bin owns no tests of its own
-//! beyond the inject-failure variant.
+//! and registered via `arch_test!`; this bin owns the Phase 2 integration
+//! smoke tests that require the text Domain (ext crate, cannot live in the
+//! kernel rlib — core/ext boundary).
 //!
 //! The `inject-failure` feature adds one deliberately-failing test so the
 //! integration harness can assert a non-zero exit.
@@ -18,6 +19,19 @@ use reovim_arch::testrt;
 
 // Force the kernel rlib (and its `arch_test!` registrations) to link.
 use reovim_kernel as _;
+
+// Force the Domain contract tier rlib (and its `arch_test!` registrations) to
+// link. Its sibling test modules compile in under `selftest`.
+use reovim_subsys_domain as _;
+
+// Force the text Domain rlib (and its `arch_test!` registrations) to link.
+// The domain's selftest modules are compiled in when the `selftest` feature is
+// enabled (see `reovim-domain-text/Cargo.toml`).
+use reovim_domain_text as _;
+
+// Phase 2 integration smoke: kernel + text Domain dispatch end-to-end.
+// Lives here (not in the kernel rlib) because the kernel has no dep on ext.
+mod domain_smoke;
 
 // One deliberately-failing test, present only under `inject-failure`.
 #[cfg(feature = "inject-failure")]

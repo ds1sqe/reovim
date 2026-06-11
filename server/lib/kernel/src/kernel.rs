@@ -19,17 +19,22 @@
 //! | `boot_anchor` | yes | — |
 //! | `event_bus` | yes | — |
 //! | `log_ring` | yes | — |
+//! | `session` | yes (#797) | multi-session map (Phase 4) |
+//! | `domain_router` | yes (#797, subset) | full router (Phase 4) |
 //! | `config` | placeholder `()` | config service |
 //! | `lockfile` | placeholder `()` | lockfile / library-root feature |
 //! | `inventory` | placeholder `()` | module/driver discovery |
-//! | sessions/buffers/windows | placeholder `()` | session + buffer features |
-//! | all registries | placeholder `()` | session + buffer features |
 //! | `correlation_alloc` | placeholder `()` | correlation-ID allocator |
 //! | `force_overrides` | placeholder `()` | config service |
 
-use {reovim_arch::ds::Shared, reovim_uapi_abi::AbiVersion};
+use {
+    reovim_arch::{ds::Shared, sync::RwLock},
+    reovim_uapi_abi::AbiVersion,
+};
 
-use crate::{BootClock, event_bus::DS12EventBus, log::ring::LogRing};
+use crate::{
+    BootClock, event_bus::DS12EventBus, log::ring::LogRing, router::DomainRouter, session::Session,
+};
 
 // ── Current ABI version ──────────────────────────────────────────────────────
 
@@ -160,6 +165,22 @@ pub struct Kernel {
     /// on-demand via `FileSink::open_and_subscribe`.
     pub log_ring: Shared<LogRing>,
 
+    /// The single session for the walking skeleton (#797).
+    ///
+    /// Full multi-session map (`HashMap<SessionId, Session>`) is the spec
+    /// target (§2.1 §3); it is grown when the second session consumer arrives
+    /// (Phase 4). The `Shared<Session>` allows the server runtime to hold a
+    /// reference without borrowing `Kernel`.
+    pub session: Shared<Session>,
+
+    /// `DomainRouter` SUBSET — `intern_named`/`name_of` + one handler row +
+    /// one projector row (§4.1 subset note, #797).
+    ///
+    /// Wrapped in `RwLock` so the runtime can dispatch under read and the
+    /// composition root can register under write. No interior mut inside
+    /// `DomainRouter` itself.
+    pub domain_router: Shared<RwLock<DomainRouter>>,
+
     // ── Deferred placeholders (filled by their respective features) ──────────
     // Named as `()` rather than fabricated registry types: rule of three —
     // no type is extracted before its walking-skeleton consumer demands it.
@@ -198,12 +219,16 @@ impl Kernel {
         boot_anchor: BootClock,
         event_bus: Shared<DS12EventBus>,
         log_ring: Shared<LogRing>,
+        session: Shared<Session>,
+        domain_router: Shared<RwLock<DomainRouter>>,
     ) -> Self {
         Self {
             abi,
             boot_anchor,
             event_bus,
             log_ring,
+            session,
+            domain_router,
             config: (),
             lockfile: (),
             inventory: (),
@@ -213,18 +238,91 @@ impl Kernel {
     }
 }
 
-// `Kernel` boot-core fields:
-// - `Shared<KernelAbi>`: `KernelAbi` is plain-integer data → auto Send+Sync.
+impl Kernel {
+    /// Registers the `OnRawInput` handler and `Render` projector for the named
+    /// text Domain, returning the interned `DomainId`.
+    ///
+    /// Called by the composition root (or by kernel-selftest tests) AFTER
+    /// `Init::boot` to wire the text Domain into the kernel. The kernel does not
+    /// depend on `ext/server/domain/text` (core/ext boundary); the caller
+    /// provides the `'static` trait objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if `DomainRouter::intern_named` fails.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime + a concrete handler/projector.
+    /// ```
+    pub fn register_domain(
+        &self,
+        name: &str,
+        handler: &'static dyn crate::router::OnRawInputHandler,
+        projector: &'static dyn crate::router::RenderProjector,
+    ) -> Result<crate::router::DomainId, &'static str> {
+        let mut router = self.domain_router.write();
+        let id = router.intern_named(name)?;
+        router.register_handler(id, handler);
+        router.register_projector(id, projector);
+        Ok(id)
+    }
+
+    /// Replaces the session state with a real `SessionState` tied to the
+    /// registered Domain.
+    ///
+    /// Called by the composition root (or tests) after `register_domain` to
+    /// wire the session to the correct `DomainId`. Overwrites the placeholder
+    /// installed by `Init::boot`.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime + registered domain.
+    /// ```
+    pub fn setup_session(&self, state: crate::session::SessionState) {
+        let mut guard = self.session.state.lock();
+        *guard = state;
+    }
+
+    /// Dispatches a raw-input byte sequence through the session's focus chain,
+    /// returning the resulting `Projection`.
+    ///
+    /// Follows the CC14 shape: snapshot under state lock, drop lock, invoke
+    /// handler, re-lock to apply, snapshot for projector, invoke projector.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(&'static str)` if the router has no handler/projector for
+    /// the session's domain, or if an allocation fails.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime + registered domain + session.
+    /// ```
+    pub fn dispatch_input(
+        &self,
+        input: &[u8],
+    ) -> Result<crate::projection::Projection, &'static str> {
+        let router = self.domain_router.read();
+        self.session.dispatch_input(input, &router)
+    }
+}
+
+// `Kernel` field Send+Sync analysis:
+// - `Shared<KernelAbi>`: plain-integer data → auto Send+Sync.
 // - `BootClock`: `Copy` integer-only data → auto Send+Sync.
-// - `Shared<DS12EventBus>`: `DS12EventBus` holds `RwLock<Seq<fn>>` and
-//   `Option<Shared<LogRing>>`; all auto Send+Sync.
-// - `Shared<LogRing>`: `LogRing` has `Mutex<Ring<LogEntry>>` + `usize`
-//   capacity. `Ring<LogEntry>` is Send+Sync because `LogEntry` is Send+Sync
-//   (LogLevel is Copy; Bytes is Send+Sync). `Shared<T: Send+Sync>` is
-//   Send+Sync.
+// - `Shared<DS12EventBus>`: holds `RwLock<Seq<fn>>` + `Option<Shared<LogRing>>` →
+//   auto Send+Sync.
+// - `Shared<LogRing>`: `Mutex<Ring<LogEntry>>` + `usize` → auto Send+Sync.
+// - `Shared<Session>`: `Session` holds `Mutex<SessionState>` + `SessionId` (Copy).
+//   `SessionState` contains `Bytes` (owns raw allocation; `Bytes: Send` because
+//   it is single-owner) + primitive fields. `Mutex<T>` requires `T: Send`
+//   (not `T: Sync`). `Bytes` is `Send`. So `Mutex<SessionState>: Send + Sync`.
+//   `Session: Send + Sync`. `Shared<Session>: Send + Sync`.
+// - `Shared<RwLock<DomainRouter>>`: `DomainRouter` holds `Map<K, V>` where
+//   values are `DomainId`/`Bytes` (both `Send`). `handler`/`projector` are
+//   `&'static dyn … + Send + Sync`. `RwLock<DomainRouter>: Send + Sync` (same
+//   analysis as `Mutex` — `DomainRouter: Send`). `Shared<RwLock<DomainRouter>>:
+//   Send + Sync`.
 // - `()` placeholders: trivially Send+Sync.
 //
-// The compiler derives Send+Sync automatically from the field types above;
-// no manual `unsafe impl` is needed or written here.
+// The compiler derives Send+Sync automatically; no manual `unsafe impl` needed.
 
 // L12 layout: tests in sibling kernel_tests.rs, declared in lib.rs.

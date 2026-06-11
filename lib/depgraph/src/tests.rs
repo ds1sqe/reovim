@@ -942,7 +942,7 @@ fn enumerate_crates_bool_dep_value_is_parse_error() {
     let err = enumerate_crates(root).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("some-dep"), "{msg}");
-    assert!(msg.contains("unexpected bool"), "{msg}");
+    assert!(msg.contains("unexpected scalar"), "{msg}");
 }
 
 /// A dependency declared as a bare array (`dep = ["x"]`) must yield
@@ -1776,4 +1776,45 @@ fn dag6_unreadable_crate_root_fails_closed() {
         .iter()
         .any(|v| matches!(v, Violation::MissingNoStd { .. }));
     assert!(has_missing, "unreadable root must fail closed as MissingNoStd; got {v:?}");
+}
+
+/// A synthetic workspace where a `ServerContracts` crate depends on the kernel
+/// must surface a DAG2 `ForbiddenEdge` through the full probe — the
+/// contract tier is downstream of nothing but Foundation (1.2 §2). This is
+/// the probe-level negative for the tier the walking skeleton added; the
+/// matrix-cell unit negatives above cover the remaining new-tier cells.
+#[test]
+fn synthetic_contracts_to_kernel_dep_is_forbidden_edge() {
+    let td = TempDir::new();
+    let root = td.path();
+    let kernel_dir = root.join("server/lib/kernel");
+    std::fs::create_dir_all(&kernel_dir).unwrap();
+    std::fs::write(
+        kernel_dir.join("Cargo.toml"),
+        "[package]\nname = \"reovim-kernel\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    let contracts_dir = root.join("server/lib/subsys/bad");
+    std::fs::create_dir_all(&contracts_dir).unwrap();
+    std::fs::write(
+        contracts_dir.join("Cargo.toml"),
+        "[package]\nname = \"reovim-subsys-bad\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nreovim-kernel = { path = \"../../kernel\" }\n",
+    )
+    .unwrap();
+    let probes_dir = root.join("tools/depgraph-probes");
+    std::fs::create_dir_all(&probes_dir).unwrap();
+    std::fs::write(probes_dir.join("composition-edges.toml"), "").unwrap();
+    std::fs::write(probes_dir.join("transitional-allowlist.toml"), "").unwrap();
+
+    let config = ProbeConfig::default_for(root).expect("config loads");
+    let report = run_probe(root, &config).expect("probe runs");
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|v| matches!(v, Violation::ForbiddenEdge { from, to, .. }
+                if from == "reovim-subsys-bad" && to == "reovim-kernel")),
+        "contracts → kernel must be a ForbiddenEdge; got: {}",
+        report.summary()
+    );
 }

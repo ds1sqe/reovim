@@ -20,9 +20,11 @@
 
 pub mod alloc;
 pub mod ds;
+pub mod net;
 pub mod panic;
 pub mod sync;
 pub mod sys;
+pub mod term;
 pub mod thread;
 pub mod time;
 
@@ -66,6 +68,11 @@ pub mod testrt;
 // crate-private items).
 #[cfg(feature = "selftest")]
 pub mod time_tests;
+
+// arch::net and arch::term have their test modules declared via `#[path]`
+// children inside `net/mod.rs` and `term/mod.rs` respectively (the standard
+// L12 pattern for modules that need `super::` access). No additional
+// parent-level declaration is needed here.
 
 // The mem intrinsic tests: runtime-gated (the functions are `#[no_mangle]`
 // symbols that clash with libc in libtest builds; only the arch-selftest

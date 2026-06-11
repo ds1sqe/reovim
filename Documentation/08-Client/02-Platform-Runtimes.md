@@ -36,6 +36,19 @@ The runtime owns:
 | Web | `ext/client/platforms/web/` | Active (#753 Phase E.1) |
 | Native | `ext/client/platforms/native/` | Out of target |
 
+The first realization (#797) ships the TUI as a single thin crate at
+`ext/client/platforms/tui/`: the UDS carrier, the framed handshake,
+and the raw-`termios`/ANSI paint live together until the second
+platform or driver consumer arrives; the 8.1 `clients/lib/subsys/*`
+split and the 8.3 cdylib tiers grow out of that crate, not beside it.
+The thin crate is the documented predecessor, not a competing design.
+
+The TUI runtime registers a terminal-restore callback in the `arch/`
+pre-exit seam before entering raw mode: the panic path (6.2 §5)
+invokes registered pre-exit callbacks before rendering its final
+output, so an aborting client never leaves the controlling terminal
+in raw mode and the panic line prints in cooked mode.
+
 ## 3. Module/driver/capability discovery
 
 The platform runtime calls `ClientRuntime::discover()` over the

@@ -70,6 +70,54 @@ pub mod nr {
     ///
     /// See [`crate::sys::openat`] for the typed wrapper.
     pub const OPENAT: usize = 257;
+
+    // ---- networking syscalls -----------------------------------------------
+
+    /// `socket(domain, type, protocol)`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 41.
+    /// See [`crate::sys::socket`] for the typed wrapper.
+    pub const SOCKET: usize = 41;
+    /// `connect(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 42.
+    /// See [`crate::sys::connect`] for the typed wrapper.
+    pub const CONNECT: usize = 42;
+    /// `accept(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 43.
+    /// See [`crate::sys::accept`] for the typed wrapper.
+    pub const ACCEPT: usize = 43;
+    /// `sendto(2)` — socket send; with a NULL address it is `send(2)`.
+    /// Used for stream writes so `MSG_NOSIGNAL` can suppress `SIGPIPE`.
+    pub const SENDTO: usize = 44;
+    /// `bind(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 49.
+    /// See [`crate::sys::bind`] for the typed wrapper.
+    pub const BIND: usize = 49;
+    /// `listen(sockfd, backlog)`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 50.
+    /// See [`crate::sys::listen`] for the typed wrapper.
+    pub const LISTEN: usize = 50;
+
+    // ---- device-control syscall --------------------------------------------
+
+    /// `ioctl(fd, request, ...)` — used for termios `TCGETS`/`TCSETS`.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 16.
+    /// See [`crate::sys::ioctl`] for the typed wrapper.
+    pub const IOCTL: usize = 16;
+
+    // ---- UDS path unlink --------------------------------------------------
+
+    /// `unlinkat(dirfd, path, flags)` — used to remove the UDS socket path on
+    /// listener teardown.
+    ///
+    /// Source: Linux `arch/x86/include/generated/uapi/asm/unistd_64.h` line 263.
+    /// See [`crate::sys::unlinkat`] for the typed wrapper.
+    pub const UNLINKAT: usize = 263;
 }
 
 /// Issues a syscall with no arguments.

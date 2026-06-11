@@ -30,10 +30,16 @@ compile_error!(
 // ---- shared Linux-family modules ---------------------------------------------
 
 mod errno;
+pub mod net;
+pub mod term;
 mod wrap;
 
 #[cfg(feature = "selftest")]
 mod errno_tests;
+#[cfg(feature = "selftest")]
+mod net_tests;
+#[cfg(feature = "selftest")]
+mod term_tests;
 #[cfg(feature = "selftest")]
 mod wrap_tests;
 
@@ -48,11 +54,16 @@ pub use {
     errno::{EAGAIN, EBADF, EFAULT, EINVAL, ENOENT, ENOMEM, EWOULDBLOCK, Errno, from_ret},
     target::raw::{syscall0, syscall1, syscall2, syscall3, syscall4, syscall6},
     wrap::{
-        AT_FDCWD, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS,
-        CLONE_PARENT_SETTID, CLONE_SIGHAND, CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM,
+        AT_FDCWD, AT_REMOVEDIR, CLOCK_MONOTONIC, CLOCK_REALTIME, CLONE_CHILD_CLEARTID, CLONE_FILES,
+        CLONE_FS, CLONE_PARENT_SETTID, CLONE_SIGHAND, CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM,
         FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE,
-        O_CLOEXEC, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY, PROT_NONE, PROT_READ, PROT_WRITE,
-        Timespec, clock_gettime, close, exit, exit_group, futex, gettid, mmap, mprotect, munmap,
-        openat, read, write,
+        MSG_NOSIGNAL, O_CLOEXEC, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY, PROT_NONE, PROT_READ,
+        PROT_WRITE, Timespec, accept, bind, clock_gettime, close, connect, exit, exit_group, futex,
+        gettid, ioctl, listen, mmap, mprotect, munmap, openat, read, send_nosignal, socket,
+        unix_stream_socket, unlinkat, write,
     },
 };
+
+// Errno constants used by the net/term wrappers — keep them in the same
+// re-export tier as the existing errno constants.
+pub use errno::{EADDRINUSE, ECONNREFUSED, ENOTTY, EOPNOTSUPP, EPIPE};

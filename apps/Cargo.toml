@@ -1,0 +1,41 @@
+# Nested workspace for the `apps/` composition-root bins (#797 Phase 4).
+#
+# These bins are `#![no_std] #![no_main]` and depend on `reovim-arch` with the
+# `runtime` feature (which provides `_start` and `#[panic_handler]` lang items).
+# They live in their own nested workspace — identical to the `arch/tests/fixtures/`
+# and `server/lib/server/tests/fixtures/` pattern — so that `cargo test
+# --workspace` from the parent never feature-unifies `runtime` onto the `arch`
+# rlib used by libtest builds (which would define `#[panic_handler]` twice and
+# collide with std's lang item).
+#
+# The parent workspace's `exclude` list must include `"apps"` (see top-level
+# Cargo.toml).
+[workspace]
+resolver = "2"
+members = ["server", "reovim"]
+
+[workspace.package]
+version = "0.16.0-dev"
+edition = "2024"
+rust-version = "1.92"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+
+# Mirror the parent workspace's profile so panic = "abort" is consistent.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)", "cfg(arch_coverage)"] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }

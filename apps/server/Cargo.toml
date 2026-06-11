@@ -1,0 +1,32 @@
+[package]
+name = "reovim-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "reovim standalone server binary — composition root (AL1, #797 Phase 4)"
+publish = false
+
+[[bin]]
+name = "reovim-server"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# `runtime` provides _start, panic_handler, allocator lang items.
+# All other crates propagate `runtime` via `reovim-arch/runtime`; enabling it
+# here once unifies them all at the composition root.
+reovim-arch      = { path = "../../arch", features = ["runtime"] }
+reovim-kernel    = { path = "../../server/lib/kernel" }
+reovim-server-rt = { path = "../../server/lib/server" }
+# Text Domain (ext crate; only composition roots link it — core/ext boundary).
+reovim-domain-text = { path = "../../ext/server/domain/text" }
+reovim-uapi-abi    = { path = "../../uapi/abi" }
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+[package]
+name = "reovim-subsys-domain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Domain contract tier — DomainId, OnRawInput/Render traits, Projection (DAG2 contract surface, §4.1/§5.3)"
+publish = false
+
+[features]
+# Compiles per-module sibling test files INTO the lib (L12.1 layout).
+# Tests register via reovim_arch::arch_test! and run on the arch no_std
+# selftest runner. Off in flight builds; the kernel-selftest bin enables it.
+# Enables arch/selftest so reovim_arch::testrt and arch_test! are available.
+selftest = ["reovim-arch/selftest"]
+
+[dependencies]
+reovim-arch = { path = "../../../../arch" }
+
+[lints]
+workspace = true

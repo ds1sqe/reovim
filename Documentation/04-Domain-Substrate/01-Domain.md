@@ -182,6 +182,17 @@ priorities are still deterministic, not as an ordering API.
    register, or whether late registration during init is allowed.
    Default: allowed; manifest is informational.
 
+## Walking-skeleton subset note (#797)
+
+A single-Domain realization may carry a **`DomainRouter` SUBSET**:
+`intern_named`/`name_of` over an `arch::ds::Map`, one handler row
+`(DomainId, HandlerId::OnRawInput)`, and one projector row
+`(DomainId, ProjectorId::Render)` — without bands, tie-break,
+manifest, codec maps, or positional-arg dispatch. The §2 full struct
+is the spec target; it is grown when the second Domain (a second
+concrete consumer) arrives. This mirrors the #796 monotonic-subset
+pattern for `Kernel` (rule of three).
+
 ## Conformance
 
 | Behaviour | Fixture |

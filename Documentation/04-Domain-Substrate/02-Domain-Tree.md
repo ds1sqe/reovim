@@ -327,6 +327,19 @@ cross-observer pairing is now resolved by DT14..DT16/CC17; the old
    separate lost/gained, observer ordering, transaction shape,
    pending visibility, legacy event derivation.
 
+## Walking-skeleton subset note (#797)
+
+A root-only single-entry focus chain `[Resolved(root_attachment)]`
+with `struct_refs = focus_refs = 1` is the **minimal conformant tree**.
+The following are deferred to their first multi-attachment consumer
+(master Phase 4):
+
+- `PendingAttachment` (DT12), multi-children (DT2), DT11 cold-child
+  refcounts, and the DT14..DT16 focus-transition record.
+
+The §1 struct is the spec target; the walking skeleton grows a
+`FocusChain` as a single-element `[Resolved(root)]` array.
+
 ## Conformance
 
 | Rule | Fixture |

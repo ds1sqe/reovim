@@ -1,0 +1,24 @@
+[package]
+name = "reovim-platform-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "TUI platform runtime: thin UDS client + raw-termios ANSI paint (#797 Phase 4)"
+publish = false
+
+[features]
+default = []
+# Compile the `*_tests.rs` sibling test modules into this lib (L12.1).
+selftest = ["reovim-arch/selftest"]
+
+[dependencies]
+reovim-arch         = { path = "../../../../arch" }
+reovim-uapi-abi     = { path = "../../../../uapi/abi" }
+reovim-uapi-protocol = { path = "../../../../uapi/protocol" }
+
+[lints]
+workspace = true

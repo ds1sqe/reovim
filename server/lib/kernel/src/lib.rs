@@ -34,6 +34,9 @@
 //! | [`event_bus`] | `DS12EventBus`, `DS12Event`, OBS1 boot families |
 //! | [`boot`] | Boot-stage driver, stages 1..7, OBS1 event emission |
 //! | [`log`] | LOG1 one mechanism: LOG2 renderer, LOG6 ring, LOG7 sink |
+//! | [`router`] | `DomainRouter` SUBSET — intern + one handler + one projector row (contract types re-exported from `reovim-subsys-domain`) |
+//! | [`session`] | `Session` + `SessionState` — one session, single-entry focus chain |
+//! | [`projection`] | re-export of `Projection`/`ProjectionSpan` from `reovim-subsys-domain` (DAG2 contract tier) |
 #![no_std]
 
 pub mod boot;
@@ -42,6 +45,9 @@ pub mod event_bus;
 pub mod init;
 pub mod kernel;
 pub mod log;
+pub mod projection;
+pub mod router;
+pub mod session;
 
 // Re-export the primary entry-point types at the crate root for callers.
 pub use {
@@ -75,6 +81,17 @@ mod event_bus_tests;
 #[cfg(feature = "selftest")]
 #[path = "boot_tests.rs"]
 mod boot_tests;
+
+#[cfg(feature = "selftest")]
+#[path = "router_tests.rs"]
+mod router_tests;
+
+#[cfg(feature = "selftest")]
+#[path = "session_tests.rs"]
+mod session_tests;
+
+// `projection.rs` is a re-export of `reovim-subsys-domain` types; its tests and
+// doc-tests live with the types in that crate. No sibling test module here.
 
 // The log sub-module test files are declared inside log/mod.rs (the sibling
 // `*_tests.rs` pattern used within a sub-module). No additional declarations

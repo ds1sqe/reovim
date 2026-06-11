@@ -133,6 +133,8 @@ pub enum TomlValue {
     String(String),
     /// A boolean literal.
     Bool(bool),
+    /// An integer literal (e.g. a lint table's `priority = -1`).
+    Integer(i64),
     /// An inline table (one level deep; all values are strings or booleans).
     InlineTable(BTreeMap<String, Self>),
     /// A single-line array of quoted strings (e.g. workspace `members`).
@@ -239,8 +241,8 @@ pub fn parse_file(path: &Path) -> Result<TomlDoc, ProbeError> {
 /// assert_eq!(doc.get_str("package", "name"), Some("my-crate"));
 /// assert_eq!(doc.get_str("package", "edition"), Some("2021"));
 ///
-/// // Unsupported construct (bare integer value) → Parse error.
-/// let bad = "[section]\ncount = 42\n";
+/// // Unsupported construct (float value) → Parse error.
+/// let bad = "[section]\nratio = 1.5\n";
 /// assert!(parse_text(bad, Path::new("bad.toml")).is_err());
 /// ```
 pub fn parse_text(text: &str, file_path: &Path) -> Result<TomlDoc, ProbeError> {
@@ -283,11 +285,28 @@ pub fn parse_text(text: &str, file_path: &Path) -> Result<TomlDoc, ProbeError> {
                     ));
                 }
                 Scope::Array(_, record) => {
-                    // Inside an [[array]] record: only string values are allowed.
-                    let s = value.as_str().ok_or_else(|| {
-                        err(file_path, line_no, "array-of-tables field must be a string value")
-                    })?;
-                    record.insert(key, s.to_owned());
+                    // Inside an [[array]] record the probe consumes string
+                    // fields; scalar booleans (e.g. a bin target's
+                    // `test = false`) are stored by their literal text so the
+                    // record stays complete without a dedicated value type.
+                    match value {
+                        TomlValue::String(s) => {
+                            record.insert(key, s);
+                        }
+                        TomlValue::Bool(b) => {
+                            record.insert(key, if b { "true" } else { "false" }.to_owned());
+                        }
+                        TomlValue::Integer(n) => {
+                            record.insert(key, n.to_string());
+                        }
+                        TomlValue::InlineTable(_) | TomlValue::Array(_) => {
+                            return Err(err(
+                                file_path,
+                                line_no,
+                                "array-of-tables field must be a scalar value",
+                            ));
+                        }
+                    }
                 }
                 Scope::Table(name) => {
                     doc.sections
@@ -366,11 +385,13 @@ fn parse_section_header(line: &str, path: &Path, line_no: usize) -> Result<Strin
         .ok_or_else(|| err(path, line_no, "unclosed `[` in section header"))?
         .trim();
     let parts: Vec<&str> = inner.split('.').map(str::trim).collect();
-    if parts.len() > 2 {
+    // Depth 3 covers `[workspace.lints.rust]`-class headers (nested
+    // workspace manifests); anything deeper is outside Cargo's own usage.
+    if parts.len() > 3 {
         return Err(err(
             path,
             line_no,
-            "table header depth > 2 dotted components is not supported",
+            "table header depth > 3 dotted components is not supported",
         ));
     }
     Ok(parts.join("."))
@@ -429,6 +450,8 @@ fn parse_value(s: &str, path: &Path, line_no: usize) -> Result<TomlValue, ProbeE
         Ok(TomlValue::Bool(true))
     } else if s == "false" {
         Ok(TomlValue::Bool(false))
+    } else if let Ok(n) = s.parse::<i64>() {
+        Ok(TomlValue::Integer(n))
     } else if s.starts_with('[') {
         parse_array(s, path, line_no).map(TomlValue::Array)
     } else {
@@ -769,8 +792,9 @@ k = { a = { b = "c" } }
     }
 
     #[test]
-    fn table_depth_beyond_two_is_parse_error() {
-        let err = parse_text("[a.b.c]\nk = \"v\"\n", fake_path()).unwrap_err();
+    fn table_depth_beyond_three_is_parse_error() {
+        // Depth 3 is valid (`workspace.lints.rust`); depth 4 is not.
+        let err = parse_text("[a.b.c.d]\nk = \"v\"\n", fake_path()).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("line 1"), "{msg}");
         assert!(msg.contains("depth"), "{msg}");
@@ -778,11 +802,12 @@ k = { a = { b = "c" } }
 
     #[test]
     fn non_string_value_where_string_required_is_parse_error() {
-        // An integer literal (non-string, non-bool, non-inline-table) is unsupported.
+        // A float literal stays outside the supported scalar set
+        // (strings, booleans, integers).
         let err = parse_text(
             r"
 [s]
-k = 42
+k = 1.5
 ",
             fake_path(),
         )
@@ -790,6 +815,16 @@ k = 42
         let msg = err.to_string();
         assert!(msg.contains("line 3"), "{msg}");
         assert!(msg.contains("not supported"), "{msg}");
+    }
+
+    #[test]
+    fn integer_value_parses_in_table() {
+        // Lint tables carry `priority = -1`; integers are first-class.
+        let doc = parse_text("[s]\nk = -1\n", fake_path()).unwrap();
+        assert!(matches!(
+            doc.sections.get("s").and_then(|t| t.get("k")),
+            Some(TomlValue::Integer(-1))
+        ));
     }
 
     #[test]
@@ -802,13 +837,14 @@ k = 42
     }
 
     #[test]
-    fn array_table_field_non_string_is_parse_error() {
-        // Inside [[array]], all field values must be strings.
+    fn array_table_field_non_scalar_is_parse_error() {
+        // Inside [[array]], field values must be scalars (strings, bools,
+        // integers); inline tables are rejected.
         let err = parse_text("[[edge]]\nfrom = \"a\"\nreason = { x = \"y\" }\n", fake_path())
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("line 3"), "{msg}");
-        assert!(msg.contains("string"), "{msg}");
+        assert!(msg.contains("scalar"), "{msg}");
     }
 
     // ── as_bool / as_table None arms (lines 106, 116) ────────────────────────

@@ -138,9 +138,12 @@ static SINK: Mutex<SinkState> = Mutex::new(SinkState::initial());
 /// sink.open_and_subscribe(&ring, &bus).expect("sink open");
 /// ```
 pub struct FileSink {
-    /// NUL-terminated log path. Stored so `new` → `open_and_subscribe` can
-    /// reference it; the path is never accessed by the subscriber callback.
-    path: &'static [u8],
+    /// NUL-terminated log path, owned by value so callers may build the path
+    /// in a stack buffer (e.g. a per-process unique test path). Sized for
+    /// `sockaddr_un`-class paths; the log path shares that scale.
+    path: [u8; 128],
+    /// Filled length of `path` (including the NUL).
+    path_len: usize,
 }
 
 impl FileSink {
@@ -149,6 +152,11 @@ impl FileSink {
     /// `path` MUST be a NUL-terminated byte slice (the `openat` contract).
     /// The sink is not opened yet; call [`open_and_subscribe`] to open and
     /// register.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `path` exceeds the 128-byte internal buffer — a path that
+    /// long would be refused by `openat` on a Unix socket-class limit anyway.
     ///
     /// # Example
     ///
@@ -160,8 +168,18 @@ impl FileSink {
     ///
     /// [`open_and_subscribe`]: FileSink::open_and_subscribe
     #[must_use]
-    pub const fn new(path: &'static [u8]) -> Self {
-        Self { path }
+    pub const fn new(path: &[u8]) -> Self {
+        assert!(path.len() <= 128, "FileSink path exceeds the internal buffer");
+        let mut buf = [0u8; 128];
+        let mut i = 0;
+        while i < path.len() {
+            buf[i] = path[i];
+            i += 1;
+        }
+        Self {
+            path: buf,
+            path_len: path.len(),
+        }
     }
 
     /// Opens the log file, replays the ring head (LOG8), and registers the
@@ -205,7 +223,7 @@ impl FileSink {
         // head after open so the file contains the full boot history.
         // Mode 0o644: owner read/write, group/other read.
         let flags = O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC;
-        let open_result = openat(AT_FDCWD, self.path, flags, 0o644);
+        let open_result = openat(AT_FDCWD, &self.path[..self.path_len], flags, 0o644);
         let fd = match open_result {
             // Kernel-ABI fds fit in i32; a larger value is a kernel-contract
             // violation we surface as EBADF rather than truncate.

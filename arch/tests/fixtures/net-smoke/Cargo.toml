@@ -1,0 +1,29 @@
+[package]
+name = "arch-fixture-net-smoke"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Integration smoke: UDS loopback round-trip proving blocking thread-per-connection carrier composes end-to-end (#797 Phase 1)"
+publish = false
+
+[[bin]]
+name = "arch-fixture-net-smoke"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` bin has no libtest harness; disable to prevent
+# cargo from linking a std test harness against it.
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# In-repo path dep on the platform floor with `runtime` (for `_start` and
+# `#[panic_handler]`) and `selftest` (to register arch_test! cases from the
+# net/term modules into the link section).
+reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
+
+[lints]
+workspace = true

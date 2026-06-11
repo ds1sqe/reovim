@@ -534,11 +534,11 @@ fn toml_malformed_array_of_tables_header_is_error() {
     assert!(err.to_string().contains("line 1"), "malformed [[: {err}");
 }
 
-// 10d. Section-header error: 3-dotted depth.
+// 10d. Section-header error: 4-dotted depth (3 is valid — workspace.lints.rust).
 #[test]
-fn toml_section_header_three_dots_is_error() {
-    let err = parse_text("[a.b.c]\nk = \"v\"\n", Path::new("t.toml")).unwrap_err();
-    assert!(err.to_string().contains("depth"), "3-dot header: {err}");
+fn toml_section_header_four_dots_is_error() {
+    let err = parse_text("[a.b.c.d]\nk = \"v\"\n", Path::new("t.toml")).unwrap_err();
+    assert!(err.to_string().contains("depth"), "4-dot header: {err}");
 }
 
 // 10e. parse_kv error: line with = but empty key.
@@ -569,10 +569,11 @@ fn toml_inline_table_nested_brace_is_error() {
 }
 
 #[test]
-fn toml_inline_table_non_string_non_bool_value_is_error() {
-    // An integer inside an inline table is not string or bool.
-    let err = parse_text("[s]\nk = { a = 42 }\n", Path::new("t.toml")).unwrap_err();
-    assert!(err.to_string().contains("not supported"), "int in inline table: {err}");
+fn toml_inline_table_non_scalar_value_is_error() {
+    // A float inside an inline table is outside the scalar set
+    // (strings, booleans, integers).
+    let err = parse_text("[s]\nk = { a = 1.5 }\n", Path::new("t.toml")).unwrap_err();
+    assert!(err.to_string().contains("not supported"), "float in inline table: {err}");
 }
 
 // 10h. parse_inline_table missing `=` inside entry (exercises the
@@ -973,4 +974,26 @@ fn run_l11_purity_probe_api_surface() {
         has_forbidden,
         "dirty src with `use arch::` must produce ForbiddenExternalImport; got {dirty:?}"
     );
+}
+
+// ── TOML header depth (nested workspace manifests) ────────────────────────────
+
+#[test]
+fn toml_parser_accepts_depth_three_headers() {
+    // `[workspace.lints.rust]` appears in nested workspace manifests
+    // (apps/, fixture workspaces); the parser must accept depth 3.
+    let text = "[workspace.lints.rust]\nwarnings = \"deny\"\n";
+    let doc = parse_text(text, Path::new("virtual.toml")).expect("depth-3 header parses");
+    assert!(doc.sections.contains_key("workspace.lints.rust"));
+}
+
+#[test]
+fn toml_parser_accepts_bool_in_array_of_tables() {
+    // A bin target's `test = false` inside `[[bin]]` is stored by its
+    // literal text; the probe consumes string fields only.
+    let text = "[[bin]]\nname = \"x\"\ntest = false\n";
+    let doc = parse_text(text, Path::new("virtual.toml")).expect("bool scalar parses");
+    let bins = doc.array("bin");
+    assert_eq!(bins.len(), 1);
+    assert_eq!(bins[0].get("test").map(String::as_str), Some("false"));
 }

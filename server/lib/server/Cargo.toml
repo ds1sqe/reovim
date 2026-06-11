@@ -1,0 +1,31 @@
+[package]
+name = "reovim-server-rt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Framed-protocol server runtime — UDS carrier loop, handshake, notify push, boot-stage 6 (#797 Phase 3)"
+publish = false
+
+[features]
+# Compiles per-module sibling test files INTO the lib (L12.1 layout).
+# Tests register via reovim_arch::arch_test! and run on the arch no_std
+# selftest runner. Off in flight builds; the selftest fixture bin enables it.
+selftest = ["reovim-arch/selftest", "reovim-kernel/selftest", "reovim-subsys-domain/selftest"]
+
+# Runtime lang items (panic_handler, _start, allocator). Needed by the
+# server-selftest fixture bin. Must NOT be enabled in the workspace rlib build.
+runtime = ["reovim-arch/runtime"]
+
+[dependencies]
+reovim-arch          = { path = "../../../arch" }
+reovim-uapi-abi      = { path = "../../../uapi/abi" }
+reovim-uapi-protocol = { path = "../../../uapi/protocol" }
+reovim-subsys-domain = { path = "../subsys/domain" }
+reovim-kernel        = { path = "../kernel" }
+
+[lints]
+workspace = true

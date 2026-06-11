@@ -1,0 +1,34 @@
+[package]
+name = "tui-selftest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "no_std TUI platform self-test runner: all ext/client/platforms/tui *_tests.rs L12 tests on the in-repo runner (#797 Phase 5)"
+publish = false
+
+[[bin]]
+name = "tui-selftest"
+path = "src/main.rs"
+# `#![no_std] #![no_main]` test-runner bin: disable std harness hooks.
+test = false
+bench = false
+doctest = false
+
+[features]
+default = []
+# Adds one deliberately-failing test to verify the runner exits non-zero.
+inject-failure = []
+
+[dependencies]
+# `runtime`: provides `_start`, panic handler, allocator lang items.
+# Enabled directly on `reovim-arch` (the TUI crate does not re-export runtime).
+# `selftest`: compiles the TUI platform sibling test modules into the lib.
+reovim-platform-tui = { path = "../../..", features = ["selftest"] }
+reovim-arch         = { path = "../../../../../../../arch", features = ["runtime", "selftest"] }
+
+[lints]
+workspace = true

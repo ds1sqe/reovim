@@ -57,6 +57,26 @@ pub const ENOMEM: Errno = Errno(12);
 ///
 /// See [`from_ret`] for usage.
 pub const EFAULT: Errno = Errno(14);
+/// Address already in use (e.g. `bind` on an existing socket path).
+///
+/// See [`from_ret`] for usage.
+pub const EADDRINUSE: Errno = Errno(98);
+/// Connection refused (e.g. `connect` when no listener is present).
+///
+/// See [`from_ret`] for usage.
+pub const ECONNREFUSED: Errno = Errno(111);
+/// Operation not supported on socket (e.g. `listen` on a datagram socket).
+///
+/// See [`from_ret`] for usage.
+pub const EOPNOTSUPP: Errno = Errno(95);
+
+/// `EPIPE` — write/send on a stream whose peer has closed
+/// (`MSG_NOSIGNAL` turns the default `SIGPIPE` into this errno).
+pub const EPIPE: Errno = Errno(32);
+/// Inappropriate ioctl for device (e.g. `TCGETS` on a non-tty fd).
+///
+/// See [`from_ret`] for usage.
+pub const ENOTTY: Errno = Errno(25);
 
 /// Highest (most negative) raw value still interpreted as an error.
 /// Linux reserves `-4095..=-1` for `-errno`.

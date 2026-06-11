@@ -80,6 +80,58 @@ pub mod nr {
     ///
     /// See [`crate::sys::openat`] for the typed wrapper.
     pub const OPENAT: usize = 56;
+
+    // ---- networking syscalls -----------------------------------------------
+    //
+    // aarch64 inherits `asm-generic/unistd.h` directly — no socketcall
+    // multiplexer.  Verified against
+    // `include/uapi/asm-generic/unistd.h` in the Linux kernel source tree.
+
+    /// `socket(domain, type, protocol)`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_socket` = 198.
+    /// See [`crate::sys::socket`] for the typed wrapper.
+    pub const SOCKET: usize = 198;
+    /// `bind(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_bind` = 200.
+    /// See [`crate::sys::bind`] for the typed wrapper.
+    pub const BIND: usize = 200;
+    /// `listen(sockfd, backlog)`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_listen` = 201.
+    /// See [`crate::sys::listen`] for the typed wrapper.
+    pub const LISTEN: usize = 201;
+    /// `accept(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_accept` = 202.
+    /// See [`crate::sys::accept`] for the typed wrapper.
+    pub const ACCEPT: usize = 202;
+    /// `connect(sockfd, addr, addrlen)`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_connect` = 203.
+    /// See [`crate::sys::connect`] for the typed wrapper.
+    pub const CONNECT: usize = 203;
+    /// `sendto(2)` — socket send; with a NULL address it is `send(2)`.
+    /// Used for stream writes so `MSG_NOSIGNAL` can suppress `SIGPIPE`.
+    pub const SENDTO: usize = 206;
+
+    // ---- device-control syscall --------------------------------------------
+
+    /// `ioctl(fd, request, ...)` — used for termios `TCGETS`/`TCSETS`.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_ioctl` = 29.
+    /// See [`crate::sys::ioctl`] for the typed wrapper.
+    pub const IOCTL: usize = 29;
+
+    // ---- UDS path unlink --------------------------------------------------
+
+    /// `unlinkat(dirfd, path, flags)` — used to remove the UDS socket path on
+    /// listener teardown.
+    ///
+    /// Source: Linux `include/uapi/asm-generic/unistd.h` `__NR_unlinkat` = 35.
+    /// See [`crate::sys::unlinkat`] for the typed wrapper.
+    pub const UNLINKAT: usize = 35;
 }
 
 /// Issues a syscall with no arguments.

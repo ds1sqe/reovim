@@ -1,0 +1,23 @@
+[package]
+name = "reovim-domain-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Text Domain — OnRawInput handler + Render projector (walking-skeleton subset, §4.1)"
+publish = false
+
+[features]
+# Compiles per-module sibling test files INTO the lib (L12.1 layout).
+# Enabled by the kernel-selftest fixture bin when it wires the text Domain.
+selftest = ["reovim-subsys-domain/selftest"]
+
+[dependencies]
+reovim-subsys-domain = { path = "../../../../server/lib/subsys/domain" }
+reovim-arch          = { path = "../../../../arch" }
+
+[lints]
+workspace = true

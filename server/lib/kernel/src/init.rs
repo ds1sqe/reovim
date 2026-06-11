@@ -29,6 +29,7 @@
 use reovim_arch::{
     ds::Shared,
     panic::{PanicRecord, SetError},
+    sync::RwLock,
 };
 
 use crate::{
@@ -37,6 +38,8 @@ use crate::{
     event_bus::DS12EventBus,
     kernel::{KERNEL_ABI_VERSION, Kernel, KernelAbi},
     log::{flush, ring::LogRing},
+    router::DomainRouter,
+    session::{BufferId, DomainAttachmentId, Session, SessionId, SessionState, WindowId},
 };
 
 // ── LauncherArgs ─────────────────────────────────────────────────────────────
@@ -465,7 +468,42 @@ impl Init {
 
         let bus_shared = Shared::try_new(bus).map_err(|_| BootError::Alloc)?;
 
-        let kernel = Kernel::new(abi_shared, boot_anchor, bus_shared, ring_shared);
+        // ── Walking-skeleton: empty DomainRouter + placeholder Session ────────
+        //
+        // The composition root (and kernel-selftest tests) register the text
+        // Domain and attach a session AFTER boot by calling `Kernel::setup_domain`
+        // and `Kernel::setup_session`. The kernel cannot depend on ext crates
+        // (core/ext boundary), so `Init::boot` provides empty containers.
+        //
+        // Placeholder `SessionState` uses `DomainId` value 0's NonZeroU32 — but
+        // since `DomainId` is `NonZeroU32` there is no zero value. The session
+        // here is a stub; `Kernel::setup_session` replaces it with a real one.
+        // We use a sentinel domain_id (1) here; it is replaced immediately by
+        // `Kernel::setup_session` before any dispatch happens.
+        let router = DomainRouter::new();
+        let router_shared = Shared::try_new(RwLock::new(router)).map_err(|_| BootError::Alloc)?;
+
+        // Placeholder session: single-entry focus chain with sentinel ids.
+        // The composition root replaces the session contents via `setup_session`
+        // before any dispatch call; these are never dispatched without registration.
+        let sentinel_domain = crate::router::DomainId::new(core::num::NonZeroU32::MIN);
+        let session_state = SessionState::new(
+            sentinel_domain,
+            DomainAttachmentId::new(1),
+            BufferId::new(1),
+            WindowId::new(1),
+        );
+        let session = Session::new(SessionId::new(1), session_state);
+        let session_shared = Shared::try_new(session).map_err(|_| BootError::Alloc)?;
+
+        let kernel = Kernel::new(
+            abi_shared,
+            boot_anchor,
+            bus_shared,
+            ring_shared,
+            session_shared,
+            router_shared,
+        );
         Shared::try_new(kernel).map_err(|_| BootError::Alloc)
     }
 }

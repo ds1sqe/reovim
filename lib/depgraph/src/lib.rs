@@ -119,6 +119,9 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // future sub-crates would match the wildcard form below.
         ("server/lib/kernel", Category::ServerKernel),
         ("server/lib/kernel/*", Category::ServerKernel),
+        // The runtime crate lives directly at server/lib/server (exact
+        // match), same shape as the kernel entry above.
+        ("server/lib/server", Category::ServerRuntime),
         ("server/lib/server/*", Category::ServerRuntime),
         ("clients/lib/subsys/*", Category::ClientContracts),
         ("ext/server/modules/*", Category::ServerExt),
@@ -969,9 +972,9 @@ fn dep_entry_from_toml_value(
                 is_workspace_true,
             })
         }
-        toml::TomlValue::Bool(_) => Err(ProbeError::Parse {
+        toml::TomlValue::Bool(_) | toml::TomlValue::Integer(_) => Err(ProbeError::Parse {
             path: manifest.to_path_buf(),
-            message: format!("unexpected bool value for dependency `{key}`"),
+            message: format!("unexpected scalar value for dependency `{key}`"),
         }),
         toml::TomlValue::Array(_) => Err(ProbeError::Parse {
             path: manifest.to_path_buf(),

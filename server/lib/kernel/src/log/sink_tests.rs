@@ -72,7 +72,8 @@ arch_test!(file_sink_new_does_not_open, {
 
 arch_test!(file_sink_set_headless, {
     reset_for_test();
-    let sink = FileSink::new(b"/tmp/reovim-headless-test.log\0");
+    let mut hbuf = [0u8; 64];
+    let sink = FileSink::new(reovim_arch::testrt::unique_path(b"/tmp/reovim-headless-", &mut hbuf));
     // Default is headless = true; setting false should not panic.
     sink.set_headless(false);
     sink.set_headless(true);
@@ -158,10 +159,18 @@ arch_test!(log1_one_to_one_ring_vs_subscriber, {
 /// Static path for the integration smoke test. Unique per test binary run via
 /// the compile-time `line!()` macro embedded in the name — no two test builds
 /// in the same workspace should collide on this path.
-static SMOKE_LOG_PATH: &[u8] = b"/tmp/reovim-integration-smoke.log\0";
+// TID-unique: several selftest binaries register this test and may run
+// concurrently under one `cargo test`; a fixed path would interleave the
+// byte-matched file across processes.
+fn smoke_log_path(buf: &mut [u8; 64]) -> &[u8] {
+    reovim_arch::testrt::unique_path(b"/tmp/reovim-integration-smoke-", buf)
+}
 
 arch_test!(integration_smoke_boot_with_sink, {
     reset_for_test();
+
+    let mut smoke_buf = [0u8; 64];
+    let smoke_path: &[u8] = smoke_log_path(&mut smoke_buf);
 
     // Pre-truncate the smoke file so prior runs do not accumulate and the
     // byte-match below is exact.
@@ -170,7 +179,7 @@ arch_test!(integration_smoke_boot_with_sink, {
             | reovim_arch::sys::O_CREAT
             | reovim_arch::sys::O_TRUNC
             | O_CLOEXEC;
-        let fd = openat(AT_FDCWD, SMOKE_LOG_PATH, flags, 0o644)
+        let fd = openat(AT_FDCWD, smoke_path, flags, 0o644)
             .expect("smoke file truncate-open must succeed");
         close(fd as i32).ok();
     }
@@ -183,7 +192,7 @@ arch_test!(integration_smoke_boot_with_sink, {
     assert_eq!(ring_len_before_sink, 14);
 
     // Attach the file sink.
-    let sink = FileSink::new(SMOKE_LOG_PATH);
+    let sink = FileSink::new(smoke_path);
     sink.open_and_subscribe(&kernel.log_ring, &kernel.event_bus)
         .expect("sink open must succeed");
 
@@ -202,7 +211,7 @@ arch_test!(integration_smoke_boot_with_sink, {
     assert_eq!(kernel.log_ring.len(), 15);
 
     // Read the log file and verify it is non-empty and contains LOG2 lines.
-    let fd = openat(AT_FDCWD, SMOKE_LOG_PATH, O_RDONLY | O_CLOEXEC, 0)
+    let fd = openat(AT_FDCWD, smoke_path, O_RDONLY | O_CLOEXEC, 0)
         .expect("log file must exist after sink open");
     let mut buf = [0u8; 8192];
     let n = read(fd as i32, &mut buf).unwrap_or(0);
@@ -261,7 +270,8 @@ arch_test!(write_failure_closes_sink_and_emits_fail_event, {
 
     // Open a tmp file and get a valid fd.
     // O_WRONLY | O_CREAT | O_CLOEXEC (no O_APPEND needed here).
-    let tmp_path = b"/tmp/reovim-writefail-test.log\0";
+    let mut wbuf = [0u8; 64];
+    let tmp_path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-writefail-", &mut wbuf);
     let open_flags =
         reovim_arch::sys::O_WRONLY | reovim_arch::sys::O_CREAT | reovim_arch::sys::O_CLOEXEC;
     let fd = openat(AT_FDCWD, tmp_path, open_flags, 0o644).expect("tmp file must open") as i32;
@@ -362,7 +372,8 @@ arch_test!(sink_callback_render_oom_silent_drop, {
     SINK_OOM_FAIL_COUNT.store(0, core::sync::atomic::Ordering::Relaxed);
 
     // Open a real tmp file to back the sink.
-    let tmp_path = b"/tmp/reovim-sink-oom-test.log\0";
+    let mut obuf = [0u8; 64];
+    let tmp_path: &[u8] = reovim_arch::testrt::unique_path(b"/tmp/reovim-sink-oom-", &mut obuf);
     let open_flags =
         reovim_arch::sys::O_WRONLY | reovim_arch::sys::O_CREAT | reovim_arch::sys::O_CLOEXEC;
     let fd = openat(AT_FDCWD, tmp_path, open_flags, 0o644).expect("tmp file must open") as i32;

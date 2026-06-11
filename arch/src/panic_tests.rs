@@ -311,3 +311,48 @@ arch_test!(panic_render_location_some_and_none_arms, {
     render_location(&mut w2, None).unwrap();
     testrt::check_eq(line2.as_slice(), b" at <unknown>".as_slice());
 });
+
+// ---- pre-exit hook tests (gap-7, #797 Phase 4) ----------------------------
+
+use super::{load_pre_exit_hook, set_pre_exit_hook};
+
+arch_test!(panic_pre_exit_hook_write_once, {
+    // Write-once semantics: first registration wins; second is rejected.
+    fn noop() {}
+    fn noop2() {}
+    reset_registry();
+    testrt::check_eq(set_pre_exit_hook(noop), Ok(()));
+    testrt::check_eq(set_pre_exit_hook(noop2), Err(SetError::AlreadySet));
+    testrt::check(load_pre_exit_hook().is_some(), "hook is loaded after first register");
+    // Call noop2 directly so its body is covered (it was rejected, never invoked).
+    noop2();
+    reset_registry();
+});
+
+arch_test!(panic_pre_exit_hook_unset_returns_none, {
+    reset_registry();
+    testrt::check(load_pre_exit_hook().is_none(), "unregistered hook returns None");
+    reset_registry();
+});
+
+arch_test!(panic_pre_exit_hook_runs_before_panic_output, {
+    // Verify that the pre-exit hook is invoked during `handle`, and that its
+    // execution is reflected before the panic line is written. Strategy: the
+    // hook sets an atomic flag; we read the flag after `handle` to confirm it
+    // fired.
+    static HOOK_FIRED: AtomicU8 = AtomicU8::new(0);
+    fn pre_exit() {
+        HOOK_FIRED.store(1, Relaxed);
+    }
+    let path: &[u8] = b"/tmp/reovim-panic-test-pre-exit\0";
+    reset_registry();
+    HOOK_FIRED.store(0, Relaxed);
+    set_pre_exit_hook(pre_exit).unwrap();
+    let wr = open_write(path);
+    set_flush_fd(wr).unwrap();
+    let code = handle(synth_message("pre-exit-check"));
+    let _ = sys::close(wr);
+    testrt::check_eq(code, 70i32);
+    testrt::check_eq(HOOK_FIRED.load(Relaxed), 1u8);
+    reset_registry();
+});

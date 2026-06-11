@@ -31,6 +31,16 @@ inject-failure = []
 # `selftest`: compiles the kernel sibling test modules into the lib.
 reovim-kernel = { path = "../../..", features = ["runtime", "selftest"] }
 reovim-arch = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
+# The Domain contract tier (DAG2). Its `*_tests.rs` modules register on the
+# arch testrt slice under `selftest`; linked explicitly here so those tests run
+# in this fixture (the kernel re-exports its types but the test registrations
+# need the crate object linked).
+reovim-subsys-domain = { path = "../../../../subsys/domain", features = ["selftest"] }
+# The text Domain is registered directly in the kernel-selftest integration smoke
+# (Phase 2, #797). The kernel crate has NO dep on this crate (core/ext boundary);
+# the bin links it here to provide the `&'static dyn` trait objects used in
+# `session_tests.rs` under `cfg(feature = "selftest")`.
+reovim-domain-text = { path = "../../../../../../ext/server/domain/text", features = ["selftest"] }
 
 [lints]
 workspace = true

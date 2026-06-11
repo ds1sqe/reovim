@@ -23,7 +23,9 @@ name = "kernel-selftest"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-domain-text",
  "reovim-kernel",
+ "reovim-subsys-domain",
 ]
 
 [[package]]
@@ -31,11 +33,27 @@ name = "reovim-arch"
 version = "0.16.0-dev"
 
 [[package]]
+name = "reovim-domain-text"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-subsys-domain",
+]
+
+[[package]]
 name = "reovim-kernel"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-subsys-domain",
  "reovim-uapi-abi",
+]
+
+[[package]]
+name = "reovim-subsys-domain"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-arch",
 ]
 
 [[package]]

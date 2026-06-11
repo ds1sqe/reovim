@@ -7,6 +7,7 @@
 
 use super::{
     errno::{Errno, from_ret},
+    net::{AF_UNIX, SOCK_CLOEXEC, SOCK_STREAM, SockaddrUn},
     target::raw::{nr, syscall1, syscall1_noreturn, syscall2, syscall3, syscall4, syscall6},
 };
 
@@ -193,6 +194,38 @@ pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     // for the duration of the call; `fd` is passed by value. The kernel only
     // reads from the buffer.
     let ret = unsafe { syscall3(nr::WRITE, as_reg(fd), buf.as_ptr().addr(), buf.len()) };
+    from_ret(ret)
+}
+
+/// `MSG_NOSIGNAL` — suppress `SIGPIPE` on a closed-peer socket send; the
+/// error surfaces as `EPIPE` instead (a server thread must never die to a
+/// disconnecting client).
+pub const MSG_NOSIGNAL: usize = 0x4000;
+
+/// Sends up to `buf.len()` bytes on the socket `fd` (`send(2)` — `sendto`
+/// with a NULL address), passing `MSG_NOSIGNAL` so a closed peer yields
+/// `EPIPE` rather than a process-killing `SIGPIPE`.
+///
+/// Returns the number of bytes sent.
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (`EPIPE` for a closed peer, `EBADF` for a
+/// bad descriptor, `ENOTSOCK` for a non-socket fd).
+///
+/// ```rust
+/// use reovim_arch::sys::send_nosignal;
+///
+/// // A plain fd is not a socket: ENOTSOCK (or EBADF for -1).
+/// assert!(send_nosignal(-1, b"x").is_err());
+/// ```
+pub fn send_nosignal(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
+    // SAFETY: `buf.as_ptr()`/`buf.len()` describe a valid readable region for
+    // the duration of the call; the address/addrlen pair is NULL/0 (plain
+    // send); the kernel only reads from the buffer.
+    let ret = unsafe {
+        syscall6(nr::SENDTO, as_reg(fd), buf.as_ptr().addr(), buf.len(), MSG_NOSIGNAL, 0, 0)
+    };
     from_ret(ret)
 }
 
@@ -386,7 +419,7 @@ pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno> 
 /// Raw `futex` wrapper.
 ///
 /// Thin pass-through: `uaddr`/`timeout`/`uaddr2` are raw addresses and the
-/// caller owns their validity contract. Used by the Phase 3 sync
+/// caller owns their validity contract. Used by the sync primitives
 /// primitives; the `val3` argument is opaque per the futex op.
 ///
 /// # Errors
@@ -477,6 +510,253 @@ pub fn gettid() -> i32 {
     // always succeeds; the result is the caller's tid.
     let ret = unsafe { super::target::raw::syscall0(nr::GETTID) };
     ret_as_i32(ret)
+}
+
+// ---- AT_REMOVEDIR flag (used by unlinkat) ------------------------------------
+
+/// `AT_REMOVEDIR` — passed to `unlinkat` to remove a directory; omitting it
+/// removes a file or socket.
+///
+/// Source: Linux `include/uapi/linux/fcntl.h` `AT_REMOVEDIR = 0x200`.
+///
+/// See [`unlinkat`] for usage.
+pub const AT_REMOVEDIR: usize = 0x200;
+
+// ---- socket wrappers ---------------------------------------------------------
+
+/// Creates a socket of the given `domain`, `type`, and `protocol`.
+///
+/// Returns the new file descriptor on success. The `SOCK_CLOEXEC` flag is
+/// logically OR-able into `socket_type` (see [`crate::sys::net::SOCK_CLOEXEC`]).
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::EINVAL`] for an
+/// unsupported domain, [`super::errno::ENOMEM`] when the kernel cannot
+/// allocate the socket).
+///
+/// ```rust
+/// use reovim_arch::sys::{socket, close};
+/// use reovim_arch::sys::net::{AF_UNIX, SOCK_STREAM, SOCK_CLOEXEC};
+///
+/// // Creating an AF_UNIX SOCK_STREAM socket always succeeds on Linux.
+/// let fd = socket(AF_UNIX as usize, SOCK_STREAM | SOCK_CLOEXEC, 0)
+///     .expect("AF_UNIX stream socket created");
+/// close(fd as i32).unwrap();
+/// ```
+pub fn socket(domain: usize, socket_type: usize, protocol: usize) -> Result<usize, Errno> {
+    // SAFETY: `socket` takes three scalars; no memory is dereferenced.
+    let ret = unsafe { syscall3(nr::SOCKET, domain, socket_type, protocol) };
+    from_ret(ret)
+}
+
+/// Binds a socket to a Unix-domain address.
+///
+/// `addrlen` must be `2 + strlen(sun_path) + 1` for pathname sockets
+/// (see [`SockaddrUn::addrlen`]). The `addr` pointer is valid for the duration
+/// of the call; the kernel copies the data.
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::EADDRINUSE`] when the
+/// path already exists).
+///
+/// ```rust
+/// use reovim_arch::sys::{socket, bind, close, unlinkat, AT_FDCWD, AT_REMOVEDIR};
+/// use reovim_arch::sys::net::{AF_UNIX, SOCK_STREAM, SOCK_CLOEXEC, SockaddrUn};
+///
+/// let fd = socket(AF_UNIX as usize, SOCK_STREAM | SOCK_CLOEXEC, 0).unwrap();
+/// let path = b"/tmp/reovim-sys-bind-doctest\0";
+/// let mut sa = SockaddrUn::zeroed();
+/// sa.sun_family = AF_UNIX;
+/// let n = path.len().min(sa.sun_path.len());
+/// sa.sun_path[..n].copy_from_slice(&path[..n]);
+/// let addrlen = sa.addrlen();
+/// let result = bind(fd as i32, &sa, addrlen);
+/// // Clean up regardless of outcome.
+/// close(fd as i32).unwrap();
+/// let _ = unlinkat(AT_FDCWD, path, 0);
+/// result.expect("bind succeeds on a fresh path");
+/// ```
+pub fn bind(fd: i32, addr: &SockaddrUn, addrlen: usize) -> Result<usize, Errno> {
+    // SAFETY: `addr` is a valid `SockaddrUn` reference live for the call;
+    // `addrlen` must be accurate (the caller's contract via `SockaddrUn::addrlen`).
+    // The kernel reads at most `addrlen` bytes from `addr`.
+    let ret = unsafe { syscall3(nr::BIND, as_reg(fd), core::ptr::from_ref(addr).addr(), addrlen) };
+    from_ret(ret)
+}
+
+/// Marks a socket as passive (willing to accept connections).
+///
+/// `backlog` is the maximum number of pending connections the kernel will queue.
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::EBADF`] for a bad fd,
+/// [`super::errno::EOPNOTSUPP`] if the socket type does not support listening).
+///
+/// ```rust
+/// use reovim_arch::sys::{socket, bind, listen, close, unlinkat, AT_FDCWD};
+/// use reovim_arch::sys::net::{AF_UNIX, SOCK_STREAM, SOCK_CLOEXEC, SockaddrUn};
+///
+/// let fd = socket(AF_UNIX as usize, SOCK_STREAM | SOCK_CLOEXEC, 0).unwrap();
+/// let path = b"/tmp/reovim-sys-listen-doctest\0";
+/// let mut sa = SockaddrUn::zeroed();
+/// sa.sun_family = AF_UNIX;
+/// let n = path.len().min(sa.sun_path.len());
+/// sa.sun_path[..n].copy_from_slice(&path[..n]);
+/// let addrlen = sa.addrlen();
+/// bind(fd as i32, &sa, addrlen).unwrap();
+/// let result = listen(fd as i32, 4);
+/// close(fd as i32).unwrap();
+/// let _ = unlinkat(AT_FDCWD, path, 0);
+/// result.expect("listen on a bound socket succeeds");
+/// ```
+pub fn listen(fd: i32, backlog: i32) -> Result<usize, Errno> {
+    // SAFETY: `listen` takes two scalars; no memory is dereferenced.
+    let ret = unsafe { syscall2(nr::LISTEN, as_reg(fd), as_reg(backlog)) };
+    from_ret(ret)
+}
+
+/// Accepts a pending connection on a listening socket.
+///
+/// Returns the new connected file descriptor. Blocks until a connection is
+/// available (blocking semantics — no poll/epoll; the skeleton uses
+/// thread-per-connection). The peer address is not captured (pass `None`
+/// equivalent: `addr = null, addrlen = null`); if the peer address is needed a
+/// richer wrapper should be added (rule of three).
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::EBADF`] for a bad fd,
+/// [`super::errno::EINVAL`] if the socket is not listening).
+///
+/// ```rust
+/// // Requires a listening socket — covered by the arch selftest round-trip.
+/// // EBADF arm: accept on -1 returns EBADF.
+/// use reovim_arch::sys::{accept, EBADF};
+/// assert_eq!(accept(-1), Err(EBADF));
+/// ```
+pub fn accept(fd: i32) -> Result<usize, Errno> {
+    // SAFETY: `accept` is called with null addr/addrlen pointers (the kernel
+    // permits this when the caller does not want the peer address); no memory
+    // is written through the null. The fd is a scalar.
+    let ret = unsafe { syscall3(nr::ACCEPT, as_reg(fd), 0, 0) };
+    from_ret(ret)
+}
+
+/// Connects a socket to a Unix-domain address.
+///
+/// Blocks until the connection is established (blocking semantics).
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::ENOENT`] when the path
+/// does not exist, [`super::errno::ECONNREFUSED`] when no listener is present).
+///
+/// ```rust
+/// // Connecting to a non-existent path returns ENOENT.
+/// use reovim_arch::sys::{socket, connect, ENOENT};
+/// use reovim_arch::sys::net::{AF_UNIX, SOCK_STREAM, SOCK_CLOEXEC, SockaddrUn};
+///
+/// let fd = socket(AF_UNIX as usize, SOCK_STREAM | SOCK_CLOEXEC, 0).unwrap();
+/// let mut sa = SockaddrUn::zeroed();
+/// sa.sun_family = AF_UNIX;
+/// let path = b"/tmp/reovim-no-such-socket-doctest\0";
+/// let n = path.len().min(sa.sun_path.len());
+/// sa.sun_path[..n].copy_from_slice(&path[..n]);
+/// let addrlen = sa.addrlen();
+/// let result = connect(fd as i32, &sa, addrlen);
+/// reovim_arch::sys::close(fd as i32).unwrap();
+/// assert_eq!(result, Err(ENOENT));
+/// ```
+pub fn connect(fd: i32, addr: &SockaddrUn, addrlen: usize) -> Result<usize, Errno> {
+    // SAFETY: `addr` is a valid `SockaddrUn` reference live for the call;
+    // `addrlen` must be accurate. The kernel reads at most `addrlen` bytes.
+    let ret =
+        unsafe { syscall3(nr::CONNECT, as_reg(fd), core::ptr::from_ref(addr).addr(), addrlen) };
+    from_ret(ret)
+}
+
+/// Issues `ioctl(fd, request, arg)` — used for terminal (`TCGETS`/`TCSETS`)
+/// and other device-control operations.
+///
+/// `arg` is an arbitrary pointer-or-scalar value; its meaning depends on
+/// `request`. The caller upholds the per-request ABI contract.
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::ENOTTY`] when `fd` is
+/// not a terminal and `request` is `TCGETS`/`TCSETS`).
+///
+/// ```rust
+/// // TCGETS on a non-tty fd returns ENOTTY — safe to doc-test.
+/// use reovim_arch::sys::{ioctl, AT_FDCWD, O_RDONLY, O_CLOEXEC, openat, close};
+/// use reovim_arch::sys::term::{TCGETS, Termios};
+///
+/// // /dev/null is not a tty.
+/// let fd = openat(AT_FDCWD, b"/dev/null\0", O_RDONLY | O_CLOEXEC, 0).unwrap();
+/// let mut t = Termios::zeroed();
+/// let result = ioctl(fd as i32, TCGETS, core::ptr::from_mut(&mut t).addr());
+/// close(fd as i32).unwrap();
+/// assert!(result.is_err(), "TCGETS on /dev/null is an error");
+/// ```
+pub fn ioctl(fd: i32, request: usize, arg: usize) -> Result<usize, Errno> {
+    // SAFETY: the caller upholds the per-request ABI contract (the pointer in
+    // `arg`, when present, is valid for the duration of the call and correctly
+    // typed for `request`).
+    let ret = unsafe { syscall3(nr::IOCTL, as_reg(fd), request, arg) };
+    from_ret(ret)
+}
+
+/// Removes the directory entry for `path` relative to `dirfd`.
+///
+/// Pass `flags = 0` to unlink a file or socket; pass
+/// [`AT_REMOVEDIR`] to remove a directory.
+///
+/// `path` MUST be NUL-terminated (same contract as [`openat`]).
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure (e.g. [`super::errno::ENOENT`] when the path
+/// does not exist).
+///
+/// ```rust
+/// use reovim_arch::sys::{unlinkat, AT_FDCWD, ENOENT};
+///
+/// // Unlinking a non-existent path returns ENOENT.
+/// assert_eq!(
+///     unlinkat(AT_FDCWD, b"/tmp/reovim-no-such-unlink-doctest\0", 0),
+///     Err(ENOENT),
+/// );
+/// ```
+pub fn unlinkat(dirfd: i32, path: &[u8], flags: usize) -> Result<usize, Errno> {
+    // SAFETY: `path.as_ptr()` is a valid readable pointer; the caller
+    // guarantees the slice contains a NUL terminator so the kernel's
+    // C-string read stays in bounds. The kernel only reads the path.
+    let ret = unsafe { syscall3(nr::UNLINKAT, as_reg(dirfd), path.as_ptr().addr(), flags) };
+    from_ret(ret)
+}
+
+// ---- convenience socket constructor -----------------------------------------
+
+/// Creates an `AF_UNIX / SOCK_STREAM` socket with `SOCK_CLOEXEC`.
+///
+/// Thin alias for the common UDS case so callers do not repeat the constant
+/// combination.
+///
+/// # Errors
+///
+/// Returns [`Errno`] on failure; see [`socket`].
+///
+/// ```rust
+/// use reovim_arch::sys::{unix_stream_socket, close};
+///
+/// let fd = unix_stream_socket().expect("AF_UNIX stream socket created");
+/// close(fd as i32).unwrap();
+/// ```
+pub fn unix_stream_socket() -> Result<usize, Errno> {
+    socket(AF_UNIX as usize, SOCK_STREAM | SOCK_CLOEXEC, 0)
 }
 
 // L12 layout (#785 Phase 5): tests live in the sibling file `wrap_tests.rs`,

@@ -138,7 +138,7 @@ pub enum SetError {
     AlreadySet,
 }
 
-// ---- the four write-once hook statics (6.2 §5.2) --------------------------
+// ---- the five write-once hook statics (6.2 §5.2, gap-7) -------------------
 //
 // Function-pointer hooks are stored as their address in an `AtomicUsize`
 // (0 = unregistered); the disposition as an `AtomicU8` (0 = unregistered).
@@ -152,6 +152,10 @@ static RING_TAIL_PROVIDER: AtomicUsize = AtomicUsize::new(0);
 static STATE_RECORD_HOOK: AtomicUsize = AtomicUsize::new(0);
 /// The disposition value (encoded `u8`). `DISPOSITION_UNSET` = unset.
 static DISPOSITION: AtomicU8 = AtomicU8::new(DISPOSITION_UNSET);
+/// `fn()` pre-exit callback run before the panic handler renders its output.
+/// Allows platform runtimes (e.g. the TUI) to restore terminal state so the
+/// panic line prints in cooked mode (gap-7, #797 Phase 4, 8.2 §2). 0 = unset.
+static PRE_EXIT_HOOK: AtomicUsize = AtomicUsize::new(0);
 
 /// Encoded `DISPOSITION` sentinel: nothing registered (handler defaults to
 /// `halt`, 6.2 §5.2).
@@ -165,6 +169,8 @@ const DISPOSITION_HALT: u8 = 2;
 type RingTailProvider = fn() -> &'static [u8];
 /// The signature of a registered state-record hook.
 type StateRecordHook = fn(PanicRecord);
+/// The signature of the pre-exit hook (gap-7, #797 Phase 4, 8.2 §2).
+type PreExitHook = fn();
 
 /// The AB13 cleanup-panic marker: a process-global, TLS-free flag the caller
 /// raises around a shutdown/drop/unregister so a panic there records
@@ -256,6 +262,32 @@ pub fn set_disposition(disposition: Disposition) -> Result<(), SetError> {
         .map_err(|_| SetError::AlreadySet)
 }
 
+/// Registers a pre-exit callback invoked by the panic handler BEFORE it renders
+/// its final output (gap-7, #797 Phase 4, 8.2 §2).
+///
+/// The TUI platform runtime registers a terminal-restore function here before
+/// entering raw mode. When the panic handler fires it calls this hook first, so
+/// the terminal is back in cooked mode when the panic line is written to stderr.
+///
+/// Write-once: the first `set_pre_exit_hook` wins; a second is rejected with
+/// [`SetError::AlreadySet`] and changes nothing (same contract as the other four
+/// seams in this module — a double-register is a boot-stage bug, surfaced).
+///
+/// # Errors
+///
+/// Returns [`SetError::AlreadySet`] if a hook is already registered.
+///
+/// ```no_run
+/// // Write-once process-global state — not safe to run in the doctest harness.
+/// use reovim_arch::panic::set_pre_exit_hook;
+/// fn restore_terminal() {}
+/// set_pre_exit_hook(restore_terminal).expect("first registration always succeeds");
+/// ```
+pub fn set_pre_exit_hook(hook: PreExitHook) -> Result<(), SetError> {
+    let addr = (hook as *const ()).addr();
+    set_fn_hook(&PRE_EXIT_HOOK, addr)
+}
+
 /// Shared write-once CAS for a function-pointer hook stored as a `usize`.
 fn set_fn_hook(slot: &AtomicUsize, value: usize) -> Result<(), SetError> {
     slot.compare_exchange(0, value, Release, Acquire)
@@ -332,7 +364,7 @@ fn current_record() -> PanicRecord {
 /// handler can feed the live [`core::panic::PanicInfo`] while unit tests feed
 /// a synthetic message: under `panic = "abort"` a real `PanicInfo` cannot be
 /// caught and synthesized in-process, so the message extraction is exercised
-/// by the Phase 4 fixture-exec tests and the scaffolding is unit-tested with
+/// by the #797 Phase 4 fixture-exec tests and the scaffolding is unit-tested with
 /// a stand-in message here.
 ///
 /// Rendering is best-effort: a refused growth surfaces as `fmt::Error` from
@@ -374,7 +406,7 @@ where
 /// tests render a synthetic message instead (a real `PanicInfo` cannot be
 /// synthesized under `panic = "abort"`).
 ///
-/// DEV1 restructure (Phase 5 coverage): `PanicInfo::location()` always returns
+/// DEV1 restructure (#797 Phase 5 coverage): `PanicInfo::location()` always returns
 /// `Some` for Rust panics today, but the API returns `Option` and the docs
 /// say "currently" — that is not a contract. `unwrap_unchecked` here would
 /// be latent UB the day the contract shifts, so the `None` arm is handled
@@ -451,6 +483,18 @@ fn load_state_record_hook() -> Option<StateRecordHook> {
     }
 }
 
+/// Loads the registered pre-exit hook, or `None` if unset.
+#[cfg(any(feature = "runtime", feature = "selftest"))]
+fn load_pre_exit_hook() -> Option<PreExitHook> {
+    match PRE_EXIT_HOOK.load(Acquire) {
+        0 => None,
+        // SAFETY: the address was written once by `set_pre_exit_hook` from
+        // exactly this fn type (`PreExitHook = fn()`); reconstructing the same
+        // fn pointer is sound.
+        addr => Some(unsafe { core::mem::transmute::<usize, PreExitHook>(addr) }),
+    }
+}
+
 /// Writes the whole of `buf` to `fd`, looping over short writes; gives up on
 /// the first error (panic-time best effort, no retry budget).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
@@ -466,7 +510,8 @@ fn write_all(fd: i32, buf: &[u8]) {
 
 /// The AB12 panic sequence (6.2 §5), parameterized over the message renderer
 /// so it is unit-testable without an actual `PanicInfo` (which `panic =
-/// "abort"` forbids synthesizing in-process): read the registry, render the
+/// "abort"` forbids synthesizing in-process): read the registry, invoke the
+/// pre-exit hook (so terminal state is restored before output), render the
 /// line, fire the state hook, perform the final flush, and return the
 /// disposition's exit code. The caller terminates with that code.
 #[cfg(any(feature = "runtime", feature = "selftest"))]
@@ -475,6 +520,12 @@ where
     F: FnOnce(&mut BytesWriter) -> core::fmt::Result,
 {
     let record = current_record();
+    // Invoke the pre-exit hook FIRST (gap-7, 8.2 §2): the TUI runtime registers
+    // a terminal-restore function here; calling it before rendering ensures the
+    // panic line is written in cooked mode rather than raw mode.
+    if let Some(hook) = load_pre_exit_hook() {
+        hook();
+    }
     let line = render_line(record, render_msg);
     // Fire the state-record hook (6.2 §5 step 3) before flushing, so a hook
     // that wants to influence the tail has run; the flush is the last step.
@@ -534,6 +585,7 @@ pub(crate) fn reset_registry() {
     STATE_RECORD_HOOK.store(0, Relaxed);
     DISPOSITION.store(DISPOSITION_UNSET, Relaxed);
     CLEANUP_CONTEXT.store(0, Relaxed);
+    PRE_EXIT_HOOK.store(0, Relaxed);
 }
 
 // L12 layout (#785 Phase 5): tests live in the sibling file `panic_tests.rs`,

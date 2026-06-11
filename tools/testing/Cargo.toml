@@ -1,0 +1,18 @@
+[package]
+name = "reovim-testing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "DEV2 E2E exec harness — bootstraps the composed reovim launcher and asserts DEV3/DEV4/DEV5 goldens (#797 Phase 5)"
+publish = false
+
+[lib]
+# Minimal stub to anchor the integration tests/ directory.
+path = "src/lib.rs"
+
+[lints]
+workspace = true

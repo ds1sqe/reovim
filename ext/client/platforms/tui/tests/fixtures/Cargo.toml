@@ -1,0 +1,38 @@
+# Nested workspace for the TUI platform fixture bins (#797 Phase 5).
+#
+# Mirrors `server/lib/server/tests/fixtures/`: `#![no_std] #![no_main]` bins
+# that enable `reovim-platform-tui/selftest` (arch testrt runner) in their OWN
+# workspace so the parent's `cargo test --workspace` never feature-unifies
+# `runtime` onto the rlib used by libtest builds.
+[workspace]
+resolver = "2"
+members = ["tui-selftest"]
+
+[workspace.package]
+version = "0.16.0-dev"
+edition = "2024"
+rust-version = "1.92"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+
+# `panic = "abort"` mirrors the parent workspace (L10/DAG6, AB12).
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage_nightly)',
+    'cfg(arch_coverage)',
+] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }

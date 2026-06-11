@@ -231,6 +231,16 @@ fn smoke_fixture_boots_allocates_threads_exits_zero() {
 }
 
 #[test]
+fn net_smoke_uds_roundtrip_exits_zero() {
+    // Integration smoke (#797 Phase 1 AC): bind a UDS listener, spawn an accept
+    // thread, connect from the main thread, echo a 16-byte frame-sized buffer
+    // round-trip, exit 0 — proving the blocking thread-per-connection carrier
+    // primitive composes end-to-end on the real arch floor.
+    let exe = build_fixture("arch-fixture-net-smoke");
+    assert_eq!(run(&exe, &[]), 0, "net-smoke round-trip exits 0");
+}
+
+#[test]
 fn testrt_pilot_all_pass_exits_zero() {
     // The no_std runner charter smoke (pass side): the full arch test suite
     // runs on the in-repo runner and exits 0 when every test passes.

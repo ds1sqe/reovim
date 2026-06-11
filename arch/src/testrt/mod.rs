@@ -228,6 +228,46 @@ pub fn run() -> i32 {
 /// check(2 + 2 == 4, "arithmetic invariant");
 /// ```
 #[track_caller]
+/// Fills `buf` with `prefix`, the calling thread's TID in decimal, and a
+/// terminating NUL, returning the filled slice (NUL included).
+///
+/// Several selftest binaries register the same test set and may run
+/// concurrently under one `cargo test` invocation; a fixed `/tmp` path in a
+/// test races across those processes (`EADDRINUSE`, interleaved file
+/// content). A TID-suffixed path is unique per running test process.
+///
+/// # Panics
+///
+/// Panics when `buf` is too small for `prefix` + digits + NUL.
+///
+/// ```rust,ignore
+/// // ignore: requires the selftest feature — run via a selftest bin.
+/// ```
+pub fn unique_path<'a>(prefix: &[u8], buf: &'a mut [u8; 64]) -> &'a [u8] {
+    assert!(prefix.len() + 12 <= buf.len(), "unique_path: prefix too long");
+    buf[..prefix.len()].copy_from_slice(prefix);
+    let mut n = crate::sys::gettid().unsigned_abs();
+    // Render decimal digits in reverse into a small scratch, then append.
+    let mut digits = [0u8; 10];
+    let mut len = 0usize;
+    loop {
+        digits[len] = b'0' + (n % 10) as u8;
+        len += 1;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    let mut at = prefix.len();
+    while len > 0 {
+        len -= 1;
+        buf[at] = digits[len];
+        at += 1;
+    }
+    buf[at] = 0;
+    &buf[..=at]
+}
+
 pub fn check(cond: bool, msg: &str) {
     let test_name = current_test().unwrap_or("<unknown test>");
     assert!(cond, "{test_name}: {msg}");

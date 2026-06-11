@@ -15,6 +15,122 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `Documentation/10-Development/01-Testing.md`.
 
 ### Added
+- DEV2 E2E harness + DEV3/DEV4/DEV5 goldens — Phase 5 of #797:
+  New crate `reovim-testing` at `tools/testing/` (std, new workspace member). Integration
+  test `tests/e2e_exec.rs` builds the `apps/reovim` composition-root binary and drives it
+  headlessly via a pipe-fed stdin (no PTY — DEV5 determinism). Three test functions:
+  `dev2_dev3_dev4_e2e_smoke_exits_zero_and_frames_match_goldens` boots the composed
+  launcher (kernel + text Domain + UDS listener + TUI client), drives `x` via pipe,
+  captures stdout (the composed ANSI frame stream), and byte-asserts the initial frame and
+  post-`x` frame against committed goldens (`tools/testing/tests/goldens/initial-frame.ansi`
+  and `after-x-frame.ansi`; DEV3); extracts content bytes from the post-`x` frame and
+  asserts against `after-x-buffer.bin` (DEV4 buffer-byte golden).
+  `dev5_two_runs_are_byte_identical` runs the same scenario twice and asserts byte-identical
+  captures (DEV5 reproducibility pin). `dev5_frame_contains_no_absolute_path_leak` verifies
+  no `/`-path sequence leaks into the rendered frames (DEV5 environment-isolation pin).
+  `scripts/coverage-fixtures.sh` extended: server-selftest fleet (server-selftest +
+  inject-failure variant, #797 Phase 3); apps/reovim DEV2 E2E scenario under coverage
+  instrumentation (`printf 'x' | LLVM_PROFILE_FILE=... reovim <sock>`). L12 doc-test sweep:
+  `WIRE_MAX_FRAME_BYTES` const gains a doc-test in `notify.rs`; `Projection` struct gains
+  `no_run` marker in `projection.rs`. Coverage ledger scaffold at
+  `Documentation/debt/coverage-797-walking-skeleton.md` (results to be filled by the main
+  session after the coverage run).
+
+  Scope intent: the single client crate, blocking thread-per-connection
+  transport, UDS-only carrier, and one-handler router are deliberate
+  rule-of-three minima — each grows when its second consumer arrives
+  (#778 Phases 4 and 7), not retrofits awaiting cleanup.
+- Composition roots + TUI platform runtime + arch pre-exit seam — Phase 4 of #797:
+  New crate `reovim-platform-tui` at `ext/client/platforms/tui/` (`#![no_std]`,
+  `Category::ClientExt`, new workspace member). Modules: `carrier` (UDS client connect
+  + framed handshake `Hello→HelloAck→Attach→AttachAck`, `recv_notify_frame`, `send_input`),
+  `frame` (`compose_ansi_frame` — `ESC[2J ESC[H <content> ESC[1;<col>H` from projection
+  wire bytes), `input` (`encode_raw_input_list`, `is_forwardable`), `paint` (`run(RunArgs)`
+  entry: register terminal-restore pre-exit hook, enter raw mode, connect to server,
+  drive the paint loop). DEV2-compatible: `RawMode::enter(0)` returns `ENOTTY` on a pipe
+  and `run` continues without raw mode (headless smoke path). L12 sibling tests in
+  `carrier_tests.rs` and `frame_tests.rs`.
+  Composition roots under a nested `apps/` workspace (mirrors `arch/tests/fixtures/`
+  isolation pattern to prevent `runtime` feature unification into parent workspace libtest
+  builds): `apps/server/` (`reovim-server` bin: `Init::boot` + register text Domain +
+  `setup_session` + `start_listener` + `park_forever` via FUTEX_WAIT) and `apps/reovim/`
+  (`reovim` launcher bin: in-process UDS composition — server runtime on background thread,
+  TUI client on main thread over the real UDS socket; fork/exec deferred until `execve`
+  enters the arch floor). `apps/` added to main workspace `exclude`; `apps/Cargo.toml`
+  mirrors the fixture workspace pattern. Composition catalog
+  (`tools/depgraph-probes/composition-edges.toml`) populated with all required `[[edge]]`
+  entries for `reovim-server` (5 edges) and `reovim` (6 edges), resolving the
+  `TODO(#778)` in the catalog header (DAG3 / 1.2 §7).
+  Fifth arch pre-exit seam (gap-7): `set_pre_exit_hook(fn())` write-once `AtomicUsize`
+  in `arch/src/panic.rs`, invoked by the panic handler BEFORE rendering the LOG2 line so
+  the terminal is in cooked mode when the panic line is written. The TUI `run()` registers
+  `restore_terminal_on_panic` as the pre-exit hook before entering raw mode (RAII
+  equivalent for the panic path). Three new sibling tests in `panic_tests.rs`:
+  write-once enforcement, unset-returns-None, fires-before-output ordering.
+
+- `server/lib/server` framed-protocol server runtime — Phase 3 of #797:
+  New crate `reovim-server-rt` at `server/lib/server/` (`#![no_std]`, new workspace member).
+  Modules: `listener` (UDS bind + thread-per-connection accept loop, pin-1), `carrier`
+  (framed read→decode→dispatch→encode→write loop), `conn` (`ConnState` + `ConnPhase`
+  lifecycle machine), `notify` (`push_projection` — encodes a `Projection` and sends it as
+  `AttachEvent::Projection` tag 0x0304), `error` (`RuntimeError` typed enum — six variants).
+  SP9.1 handshake: first frame MUST be `Hello`; replies `HelloAck` (protocol major 1 only)
+  or `Reject{IncompatibleApi}`. SP1 enforced: second `Attach` on one connection returns
+  `Reject{Conflict}`. SP12 notify stream: after `AttachAck` and after each `SendInput`
+  dispatch the server pushes `AttachEvent::Projection` with `correlation_id == 0`.
+  Boot stage 6 wiring (gap-2): stage 6 in `kernel/src/boot.rs` stays a structural stub;
+  the composition root calls `start_listener` AFTER `Init::boot` returns, keeping the
+  `ServerKernel → ServerRuntime` dep direction illegal (kernel crate has no dep on this
+  crate). The protocol-state machine (`ProtocolState`) and all message codecs come from
+  `uapi/protocol`; that crate gains zero changes (L11 purity). L12 unit tests in sibling
+  `*_tests.rs` files (`error_tests`, `conn_tests`, `carrier_tests`, `notify_tests`,
+  `listener_tests`).
+
+- `server/lib/kernel` + `ext/server/domain/text` walking-skeleton kernel growth — Phase 2 of #797:
+  `DomainRouter` SUBSET: `DomainId(NonZeroU32)` (niche-optimized), `OnRawInputHandler` and
+  `RenderProjector` trait objects, `intern_named` / `register_handler` / `register_projector`
+  methods (one handler + one projector slot; multi-Domain bands deferred to the third concrete
+  consumer per rule-of-three). `Session` + `SessionState`: per-session `Bytes` buffer, `usize`
+  cursor, single-entry focus chain `[FocusEntry::Resolved(root)]` (walking-skeleton subset;
+  `Pending` variant deferred to Phase 4). `Projection` + `ProjectionSpan`: one-span cursor
+  marker, `encode` / `decode` for the wire format (4×`u32 LE` header + content bytes); no
+  overlays or multi-span in this subset. `Kernel` gains `session: Shared<Session>` and
+  `domain_router: Shared<RwLock<DomainRouter>>` fields; new methods `register_domain`,
+  `setup_session`, `dispatch_input` implement the CC14 snapshot-under-lock dispatch shape
+  (snapshot state, drop lock, invoke handler, re-lock apply, invoke projector). New workspace
+  member `ext/server/domain/text`: `TextHandler` (printable ASCII insert, backspace/DEL,
+  Ctrl-B/F and `\x1b[D/C` cursor movement) and `TextProjector` (emits full-buffer one-span
+  `Projection`); crate has no reverse dep on `reovim-kernel` at runtime (core/ext boundary
+  maintained). Spec amendments: `Documentation/04-Domain-Substrate/01-Domain.md` and
+  `02-Domain-Tree.md` gain walking-skeleton subset notes permitting single-Domain realizations;
+  `Documentation/05-View/03-Projections.md` resolves push-vs-pull open item (push) and adds
+  minimal-Projection subset note. L12 unit tests in sibling `router_tests.rs`,
+  `session_tests.rs`, `projection_tests.rs`, `handler_tests.rs`, `projector_tests.rs`.
+  Phase 2 integration smoke in `kernel-selftest/src/domain_smoke.rs` (lives in the fixture
+  bin, not the kernel rlib, to respect the core/ext boundary): boots kernel, registers text
+  Domain, attaches session, drives `dispatch_input` with `"hi"` and backspace, asserts
+  `Projection` bytes match fixture. The Domain contract surface — `DomainId`, `BufferId`,
+  `WindowId`, `OnRawInputHandler`, `RenderProjector`, `Projection`, `ProjectionSpan`,
+  `ProjectionDecodeError` — lives in a new contract-tier crate `reovim-subsys-domain` at
+  `server/lib/subsys/domain` (per DAG2): both the kernel and `reovim-domain-text` depend on
+  it, so `reovim-domain-text` no longer depends on `reovim-kernel`; the kernel re-exports the
+  moved types at their historical `router`/`projection`/`session` paths and retains the
+  `DomainRouter` registration mechanics.
+- `arch` UDS + raw-termios floor (#797 Phase 1): per-target socket and ioctl
+  syscall numbers added to `sys/linux_x86_64/raw.rs` and
+  `sys/linux_aarch64/raw.rs` (verified against kernel UAPI headers, not libc).
+  Kernel-ABI structs `SockaddrUn` and `Termios` in `arch/src/sys/net.rs` and
+  `arch/src/sys/term.rs`. Wrap-level fallible wrappers `socket`, `bind`,
+  `listen`, `accept`, `connect`, `ioctl`, `unlinkat`, `unix_stream_socket`
+  added to `sys/wrap.rs`, all routing through the existing `syscallN`
+  primitives (no new asm). New errno constants `EADDRINUSE`, `ECONNREFUSED`,
+  `EOPNOTSUPP`, `ENOTTY`. Safe `arch::net::{UnixListener, UnixStream}` and
+  `arch::term::RawMode` RAII guard over `TCGETS`/`TCSETS`. Full L12 test
+  coverage in sibling `*_tests.rs` files plus an integration smoke fixture bin
+  (`arch-fixture-net-smoke`) that binds a UDS listener, spawns an accept
+  thread, connects and echo-tests a 16-byte frame-sized payload round-trip, and
+  exits 0 — proving the blocking thread-per-connection carrier primitive
+  composes end-to-end on the real floor.
 - `server/lib/kernel` selftest runner wiring + fixture exec harness + L12 doc-tests — Phase 5 of #796:
   `server/lib/kernel/tests/fixtures/` gains two panic-path fixture bins (`kernel-panic-halt`,
   `kernel-panic-recover`) that boot the kernel via `Init::new(LauncherArgs{disposition:Halt/Recover,..)}.boot()`,

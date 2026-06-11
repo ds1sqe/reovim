@@ -16,7 +16,7 @@ publish = false
 # selftest runner. Off in flight builds; the selftest bin enables it.
 # The selftest bin in tests/fixtures/ enables it.
 # Enables arch/selftest so reovim_arch::testrt and arch_test! are available.
-selftest = ["reovim-arch/selftest"]
+selftest = ["reovim-arch/selftest", "reovim-subsys-domain/selftest"]
 
 # Runtime lang items (panic_handler, _start, allocator). Needed by the
 # selftest bin and panic-path fixture bins in server/lib/kernel/tests/fixtures/.
@@ -26,6 +26,7 @@ runtime = ["reovim-arch/runtime"]
 [dependencies]
 reovim-arch = { path = "../../../arch" }
 reovim-uapi-abi = { path = "../../../uapi/abi" }
+reovim-subsys-domain = { path = "../subsys/domain" }
 
 [lints]
 workspace = true

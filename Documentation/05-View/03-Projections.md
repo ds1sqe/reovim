@@ -71,12 +71,21 @@ compose:
 
 ## Open items (must resolve before lock)
 
-1. Whether projection is push (kernel signals client) or pull
-   (client requests). Push is the prior art and the default.
+1. ~~Push vs pull~~ — resolved: **push** is the default (prior art;
+   the kernel signals the client after each input that mutates state).
 2. Style/glyph vocabulary — currently `StyleRef` is opaque; concrete
    set in 8.3.
 3. Projection diff vs full projection — bandwidth concern. Default:
    diff with full re-send on viewport jump.
+
+## Walking-skeleton subset note (#797)
+
+The walking skeleton realizes a **minimal `Projection` subset**:
+one `ProjectionSpan` over the full buffer byte range plus a cursor
+marker. Overlays (`Vec<OverlayBlob>`) are present but empty. The §1
+struct is the spec target; the skeleton encodes the projection into
+the `AttachEvent::Projection` body (`projection: bytes`) through a
+domain-neutral byte representation serialized by the runtime (Phase 3).
 
 ## Conformance
 

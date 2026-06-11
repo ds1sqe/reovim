@@ -128,6 +128,16 @@ pub struct Map<K, V> {
     cap: usize,
 }
 
+// SAFETY: `Map<K, V>` owns its bucket allocation exclusively (a `NonNull` it
+// alloc'd and frees on drop), so it behaves like a `Vec<(K, V)>`: sending it
+// to another thread moves sole ownership of the entries, sound when both
+// `K: Send` and `V: Send`. The `NonNull` only blocks the auto-impl out of
+// conservatism; the ownership is unique. Same argument as `Seq<T>`/`Ring<T>`.
+unsafe impl<K: Send, V: Send> Send for Map<K, V> {}
+// SAFETY: a shared `&Map<K, V>` hands out `&K`/`&V`, so concurrent readers
+// need `K: Sync + V: Sync`; matches the std collection bounds.
+unsafe impl<K: Sync, V: Sync> Sync for Map<K, V> {}
+
 impl<K, V> Map<K, V> {
     /// The `Layout` of `n` bucket slots. `n` is non-zero at the call sites.
     /// (Unbounded impl: `Drop` needs this without the `Eq + Hash` bounds.)

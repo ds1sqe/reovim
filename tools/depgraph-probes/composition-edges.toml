@@ -1,4 +1,4 @@
-# Composition-root catalog (1.2 §7). TODO(#778): populate when apps/* crates land.
+# Composition-root catalog (1.2 §7). Populated by #797 Phase 4.
 #
 # Format:
 #   [[edge]]
@@ -9,3 +9,66 @@
 #
 # Every apps/* or tools/* dep not listed here fails DAG3. Entries may only
 # name in-repo crates — the catalog cannot grant a third-party edge (DAG5).
+
+# ── reovim-server (apps/server/) ─────────────────────────────────────────────
+# Standalone server composition root: boots kernel, registers text Domain,
+# starts UDS listener, parks the process.
+
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-arch"
+reason = "runtime feature provides _start, panic_handler, allocator lang items; composition root is the single activation site"
+
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-kernel"
+reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
+
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-server-rt"
+reason = "composition root calls start_listener to bind the UDS socket and start the per-connection accept loop"
+
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-domain-text"
+reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core/ext boundary: only composition roots link ext crates"
+
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-uapi-abi"
+reason = "needed for socket-path type surface (Errno etc.) used in the argv NUL-scan"
+
+# ── reovim (apps/reovim/) ─────────────────────────────────────────────────────
+# Dual-mode launcher: in-process UDS composition root — boots server runtime
+# on background thread, runs TUI client on main thread over the real UDS socket.
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-arch"
+reason = "runtime feature provides _start, panic_handler, allocator lang items; composition root is the single activation site"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-platform-tui"
+reason = "composition root runs the TUI client via tui_run(RunArgs { socket_path }) — the platform runtime entry point"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-kernel"
+reason = "composition root boots the kernel via Init::new(LauncherArgs).boot() and calls register_domain + setup_session"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-server-rt"
+reason = "composition root calls start_listener to bind the in-process UDS socket and start the accept loop on a background thread"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-domain-text"
+reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core/ext boundary: only composition roots link ext crates"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-uapi-abi"
+reason = "needed for socket-path type surface used in argv NUL-scan and socket cleanup"
