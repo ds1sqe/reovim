@@ -176,6 +176,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (`cargo test -p reovim-depgraph --test sovereignty_gate`). (#783)
 
 ### Changed
+- Spec: three normative spec deltas (#789): PS1 (2.4 §8) restated
+  storage-neutrally — atomic-visibility / durability-point /
+  forward-recoverability contract; POSIX directory-swap retained as
+  reference realization; LF17 (2.2 §3) added for statically registered
+  modules — load via boot section-walk, LF3 drain/shutdown applies
+  unchanged, physical `dlclose` vacuous, re-load within one process
+  lifetime out of contract; DAG6 (1.2 §10) amended with three target
+  classes (kernel-ABI: Linux raw syscall, libc FORBIDDEN; system-library:
+  macOS/illumos/Windows vendor system library; freestanding: bare metal) —
+  Linux floor unchanged in effect.
 - Spec: Zero-Std Sovereignty is law (`DAG6`, 1.2 §10) — every product
   crate is `#![no_std]` and `alloc`-free including `arch/`, which owns
   the platform floor (syscall FFI, `_start`, panic handler, allocator,

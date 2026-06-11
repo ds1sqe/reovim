@@ -5,7 +5,7 @@ runtime-loaded cdylib crosses, what kinds of types are allowed at
 that boundary, what the kernel pins and what it lets the cdylib
 choose.
 
-**Heritage.** v3 `06-ABI/01-Surface.md`; v4 README §2 (rules 6, 5).
+**Heritage.** v3 `06-ABI/01-Surface.md`; v4 README §2 (rules 6, 5); #789 static registry loader.
 
 **Locked rules.** Carried from v3; references `AB*`.
 
@@ -15,9 +15,26 @@ choose.
 
 Two contracts live at the ABI boundary:
 
-- **Loader contract** — the symbols a cdylib must export to be
-  loaded: vtable symbol(s), config symbols (CFG1), manifest path.
-  See 6.2.
+- **Loader contract** — the vtable contract a module must satisfy to
+  be loaded: vtable symbol(s) or registry entry, config symbols
+  (CFG1), manifest path. The vtable contract (header read,
+  `size_of_self` guard, version gates — 6.2 §2) applies identically
+  to both conforming loader realizations:
+
+  1. **Dynamic loader** — `dlopen`-based. The kernel locates the
+     cdylib at the library-root path, calls `dlopen`, reads the
+     exported vtable symbol, and applies the 6.2 §2 load rules.
+     See 6.2 §2.1.
+
+  2. **Static registry** — vtables embedded in a known linker section
+     and walked at boot. The kernel iterates the section to discover
+     and register each module's vtable before any module reaches
+     `Active` state. The vtable contract is identical; no `dlopen`
+     call is made. The in-tree `arch_test!` distributed-slice pattern
+     (arch testrt) is prior art for this mechanism; it is not a
+     normative dependency. Load and unload semantics for statically
+     registered modules are defined in LF17 (2.2 §3).
+
 - **Call contract** — the rules every function pointer obeys:
   parameter types, ownership, error convention, panic isolation.
   See AB12.
@@ -97,3 +114,4 @@ ownership and lifecycle machinery.
 |---|---|
 | Forbidden types | CI grep for `Box<dyn` / `Arc<` / `&str` / `&[` in `extern "C"` signatures across `uapi/` crates. |
 | Allowed types | Sample vtable per category; golden offset/size test. |
+| Static registry (LF17) | Boot fixture: section-walk discovers a statically registered vtable; vtable contract checks (header, `size_of_self`, version gates) run identically to the dynamic-loader path. Review-class (no fixture until static-registry implementation lands). |

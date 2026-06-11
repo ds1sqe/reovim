@@ -4,7 +4,7 @@
 restarts, what is reconstructed, the restore order, and how
 runtime-allocated identifiers are remapped.
 
-**Heritage.** v3 `02-Process/04-Persistence.md`; #763 cursor restore.
+**Heritage.** v3 `02-Process/04-Persistence.md`; #763 cursor restore; #789 storage-neutral atomicity.
 
 **Locked rules.** `PS1..PS2` new; references `CR9` (carrier
 persistence with stable Domain names) and `LF15` (shutdown
@@ -120,11 +120,24 @@ module may be reconfigured / repackaged.
 
 ## 8. Save atomicity
 
-> **PS1 — Session saves commit by forward-recoverable directory
-> swap.** A session save never mutates `sessions/<id>/` in place.
-> It builds a complete replacement directory
-> `sessions/<id>.new-<gen>` (each file written temp → fsync →
-> rename; `commit.toml` written last, carrying `state_version` and
+> **PS1 — Session saves commit by forward-recoverable atomic
+> visibility.** A save produces a complete **state generation**: all
+> content belonging to one save is written as a unit before that
+> generation becomes visible. Visibility is **atomic**: a reader
+> observes either the previous complete generation or the new
+> complete generation, never a mix of the two. Visibility is ordered
+> after the **durability point**: the generation's content is durable
+> before it becomes the current generation. A commit that has not
+> reached the visibility point leaves the previous generation intact
+> and recoverable (**forward recoverability**): the in-progress
+> generation is either completed forward at next boot or discarded,
+> and the previous generation is restored intact if completion is
+> not possible.
+>
+> *Reference realization for POSIX filesystems.* A session save never
+> mutates `sessions/<id>/` in place. It builds a complete replacement
+> directory `sessions/<id>.new-<gen>` (each file written temp → fsync
+> → rename; `commit.toml` written last, carrying `state_version` and
 > the save generation), fsyncs the directory, then commits:
 >
 > ```
@@ -137,10 +150,8 @@ module may be reconfigured / repackaged.
 > Crash recovery at next boot is forward-preferring: if `<id>` is
 > absent and a committed `.new-<gen>` exists, complete step 2; if
 > only `.old` exists, rename it back. An uncommitted `.new-*`
-> (no valid marker) is removed with a
-> `persistence.restore.drop` event. Consequence: a crashed or
-> failed save always leaves exactly one complete state visible —
-> the old one or the new one, never a mix of the two.
+> (no valid marker) is removed with a `persistence.restore.drop`
+> event.
 >
 > Single-file state (`mru.toml`) uses plain temp → fsync → rename.
 > *Class*: runtime + kill-fixture.

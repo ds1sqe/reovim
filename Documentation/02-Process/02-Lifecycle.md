@@ -5,9 +5,9 @@ ordering, the rollback rule for partial init, and the
 logical-vs-physical unload distinction.
 
 **Heritage.** v3 `02-Process/02-Lifecycle.md`; v4 README §6;
-review item "LF7 init state contradicts lifecycle stage 4".
+review item "LF7 init state contradicts lifecycle stage 4"; #789 static registry loader (LF17).
 
-**Locked rules.** `LF1..LF6` carried (restated §10); `LF7..LF16` new.
+**Locked rules.** `LF1..LF6` carried (restated §10); `LF7..LF16` new; `LF17` new (#789).
 
 ---
 
@@ -103,6 +103,30 @@ a generation re-check (§4).
 > **LF11 — Partial init rolls back before tombstoning.** Any rows or
 > resources created during init are unregistered and destroyed before
 > `dlclose`. *Class*: runtime.
+
+> **LF17 — Statically registered modules: load, unload, and
+> lifetime contract.** For modules whose vtables are embedded in a
+> known linker section and walked at boot (the static registry
+> realization of the loader contract, 6.1 §1):
+>
+> - **Load** = registration during the boot section-walk (stage 4,
+>   §1) before any module reaches `Active`. The section-walk
+>   substitutes for `dlopen`; every subsequent lifecycle step
+>   (vtable contract checks, CAS `Loaded → Active`, init protocol)
+>   is identical to LF7.
+> - **Unload** = LF3's drain/shutdown protocol applies unchanged
+>   through the `vtable.shutdown` call; the physical unload step
+>   (LF10 `dlclose`) is vacuous for statically registered modules —
+>   the image is never unmapped, because no separate binary was
+>   loaded.
+> - **Re-load within one process lifetime is out of contract.**
+>   A statically registered module that completes unload reaches
+>   `Unloaded`; re-registering its vtable (walking the section
+>   again) is not permitted within the same process. LF5 tombstone
+>   semantics apply; a new process start is the only path to a
+>   fresh registration.
+>
+> *Class*: runtime.
 
 ## 4. RefGuard model
 
@@ -423,3 +447,4 @@ superseded, not contradicted.
 | LF15 | Shutdown-trace fixture: phase order holds; every persist handler runs while its owner is `Active` (inventory state in trace); `Attach` after phase 0 → `UNAVAILABLE`; unload order is reverse-lockfile. |
 | LF16 | Second signal mid-drain → `shutdown.forced`, exit 2, no cdylib call after escalation in trace; deadline expiry behaves identically; session torn by escalation restores its previous state at next boot (PS1). |
 | CC15 | Race fixture: unload begins between row lookup and pointer read; verify guard release without invocation. |
+| LF17 | Boot fixture: section-walk registers a static-registry module; LF7 init protocol completes; unload runs the full LF3 drain/shutdown sequence; `dlclose` step is confirmed vacuous (library remains mapped); re-registration attempt within the same process lifetime is rejected. Review-class until the static registry implementation lands. |

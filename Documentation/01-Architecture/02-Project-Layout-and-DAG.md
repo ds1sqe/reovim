@@ -5,7 +5,7 @@ allowed and forbidden dependency edges, the depgraph probe model, and
 drift detection.
 
 **Heritage.** v4 README §3; v3 `CLAUDE.md` Architecture; reviews from
-`tmp/review/apps-layout-project-layout-depgraph-review.md`.
+`tmp/review/apps-layout-project-layout-depgraph-review.md`; #789 target classes (DAG6).
 
 **Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5`, `DAG6`.
 
@@ -115,9 +115,10 @@ no row grants a third-party crate (`DAG5`, §9).
 > `alloc` crates are both forbidden in product code. Binaries are
 > `#![no_main]`; process entry is an `arch/`-owned `_start`. The
 > workspace profile is `panic = "abort"`; unwinding is not part of
-> the product ABI. `arch/` owns the platform floor (§10). The two
-> transitional bootstrap states in §10 are tracked and ratchet to
-> zero.
+> the product ABI. `arch/` owns the platform floor (§10); each
+> target binds to its lowest stable boundary per the target-class
+> table in §10. The two transitional bootstrap states in §10 are
+> tracked and ratchet to zero.
 > *Class*: CI/depgraph + build constraint.
 
 ## 5. Depgraph probe model
@@ -268,7 +269,22 @@ whose behaviour the spec does not own.
 **The platform floor (`arch/`).** `arch/` is the single crate that
 owns, in-repo:
 
-- raw syscall FFI (no libc),
+- platform FFI — each target binds to its **lowest stable boundary**,
+  defined by target class:
+
+  | Target class | Example targets | Stable boundary | `arch/` FFI form |
+  |---|---|---|---|
+  | **kernel-ABI** | Linux (x86_64, aarch64) | The kernel syscall ABI | Raw syscall FFI (`asm!`/`naked_asm!`); libc is **FORBIDDEN** — the syscall ABI is the stable layer, and interposing libc would add an unsovereign runtime dependency |
+  | **system-library** | macOS, illumos, Windows | The vendor system library (stable, versioned OS API) | Hand-written `extern "C"` bindings to the system library; remains `no_std` and dependency-sovereign under `DAG5` |
+  | **freestanding** | bare metal | Hardware and firmware interfaces | Hand-written `extern "C"` or `asm!` bindings to hardware/firmware; no OS ABI |
+
+  For kernel-ABI targets the rule's effect is the same as the
+  previous text: libc remains forbidden on Linux. The target-class
+  table generalises the floor rule to future OS ports without
+  weakening the Linux constraint. Backend module placement and
+  cfg-selection conventions follow the per-target backend structure
+  at the end of this section.
+
 - process entry (`_start`) and process exit,
 - the panic handler,
 - the allocator,

@@ -73,7 +73,7 @@ in the chapter that owns them.
 | Term | Definition |
 |---|---|
 | **Foundation** | `arch/`, `lib/*`, `uapi/*`. No upward deps. |
-| **Platform floor** | `arch/` in its `DAG6` role: the single crate owning raw syscall FFI, process entry/exit, the panic handler, the allocator, sync primitives, and all heap data structures (1.2 §10). |
+| **Platform floor** | `arch/` in its `DAG6` role: the single crate owning the platform FFI (each target's lowest stable boundary, per the 1.2 §10 target-class table), process entry/exit, the panic handler, the allocator, sync primitives, and all heap data structures (1.2 §10). |
 | **Bootstrap state** | A tracked, transitional zero-std exemption recorded in the 1.2 §10 table (libtest in test builds; depgraph/scripts ground tooling). Sequencing necessity, never convenience; ratchets to zero. |
 | **Server contracts** | `server/lib/subsys/*`. Closed; zero ext deps. |
 | **Server kernel** | `server/lib/kernel/*`. Mechanism; no ext or client deps. |
