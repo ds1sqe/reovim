@@ -1,0 +1,39 @@
+[package]
+name = "arch-selftest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "no_std arch self-test runner: all arch/* L12 tests on the in-repo runner (#785 Phase 5)"
+publish = false
+
+[[bin]]
+name = "arch-selftest"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` test-runner bin has no libtest harness; disable
+# the test/bench/doc builds so a parent `cargo test` does not link a std
+# harness against it.
+test = false
+bench = false
+doctest = false
+
+# Two variants of the same bin select a passing-only run vs. a run with a
+# deliberately failing test, demonstrating the runner's exit codes. The
+# failing case is gated behind a cfg the integration test sets, so the default
+# build is the all-pass charter smoke.
+[features]
+default = []
+# Adds one deliberately-failing test to demonstrate the FAILED exit path.
+inject-failure = []
+
+[dependencies]
+# Path dep on the platform floor with both `runtime` (for `_start`, panic
+# handler, test runner) and `selftest` (to compile the L12 sibling test
+# modules into the arch lib). Together they give this bin the full test suite.
+reovim-arch = { path = "../../..", features = ["runtime", "selftest"] }
+
+[lints]
+workspace = true

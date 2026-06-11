@@ -305,7 +305,7 @@ never a valid justification):
 
 | Bootstrap state | Why it exists | Migration target | Migration phase |
 |---|---|---|---|
-| cargo's libtest harness links `std` in test builds (the crate under test stays `#![no_std]`) | `arch/` test entry/IO/exit and coverage-instrumentation hooks do not exist yet | in-repo `no_std` test runner over `arch/`, so verification runs in the flight environment | the arch-foundation phase (ships the test runner) |
+| cargo's libtest harness links `std` in integration-test orchestration (`arch/tests/fixtures_exec.rs`) and ground-support tooling (`lib/depgraph`, `scripts/`); `arch/` crates themselves are `#![no_std]`; the arch unit-test suite runs on the in-repo no_std runner (`arch-selftest`, feature `selftest`+`runtime`) | arch unit tests are now on the in-repo runner (landed #785 Phase 5); remaining libtest: `lib/depgraph` (state 2), `arch/tests/fixtures_exec.rs` (exec orchestration only — a tiny std harness that execs no_std binaries) | migrate `arch/tests/fixtures_exec.rs` orchestration onto an arch-native exec harness; migrate `lib/depgraph` onto `arch/` fs/process when those land | the process-lifecycle phase (lands `arch/` fs/process) |
 | `lib/depgraph` + `scripts/` (ground-support tooling) use `std` | `arch/` fs/process APIs do not exist yet | migrate onto `arch/` fs/process APIs, so the tooling dogfoods the platform floor | the process-lifecycle phase (lands `arch/` fs/process) |
 
 **Verification doctrine.** The in-repo `no_std` test runner over

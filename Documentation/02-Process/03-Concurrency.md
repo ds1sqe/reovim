@@ -24,6 +24,27 @@ Every `Session` owns:
 
 The kernel never holds `state` across a cdylib slot invocation.
 
+### 1.1 arch sync-primitive ordering contract (normative)
+
+The `arch/`-provided futex-backed primitives (`Mutex`, `RwLock`,
+`Condvar`) pin this memory-ordering contract so their correctness is
+specced, not folklore:
+
+- Lock acquisition is an **`Acquire`** atomic operation on the lock
+  word; unlock is a **`Release`** store. Every write made under the
+  lock happens-before the next holder's first read.
+- A futex **wait** re-checks the lock word after every wake; spurious
+  and stolen wakes are absorbed by the retry loop (waiting is a
+  correctness-neutral hint, never a permission).
+- `FUTEX_WAKE` is issued **after** the `Release` store of the unlock,
+  so a woken thread that wins the word observes the holder's writes.
+- `Condvar::wait` atomically releases its `Mutex` before sleeping and
+  re-acquires under the same `Acquire`/`Release` contract before
+  returning; a missed-wake window between release and sleep is closed
+  by the futex word re-check.
+- `RwLock` readers take `Acquire` on entry and `Release` on exit;
+  the writer path provides the same edges as `Mutex`.
+
 ## 2. Dispatch shape
 
 ```

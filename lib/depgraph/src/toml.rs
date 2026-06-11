@@ -45,6 +45,17 @@ use crate::ProbeError;
 /// The parsed shape of a single `Cargo.toml` or probe catalog TOML file.
 ///
 /// All values are retained as strings; the caller interprets them.
+///
+/// ```rust
+/// use reovim_depgraph::toml::parse_text;
+/// use std::path::Path;
+///
+/// let src = "[package]\nname = \"my-crate\"\nversion = \"1.0.0\"\n";
+/// let doc = parse_text(src, Path::new("Cargo.toml")).unwrap();
+/// assert_eq!(doc.get_str("package", "name"), Some("my-crate"));
+/// assert_eq!(doc.get_str("package", "version"), Some("1.0.0"));
+/// assert_eq!(doc.get_str("package", "missing"), None);
+/// ```
 // `TomlDoc` repeats the module name `toml`; the prefix is intentional here
 // because callers import this as `toml::TomlDoc`, not `toml::Doc`.
 #[allow(clippy::module_name_repetitions)]
@@ -58,6 +69,17 @@ pub struct TomlDoc {
 
 impl TomlDoc {
     /// Returns the string value at `[section].key`, if present.
+    ///
+    /// ```rust
+    /// use reovim_depgraph::toml::parse_text;
+    /// use std::path::Path;
+    ///
+    /// let src = "[lib]\nname = \"my-lib\"\n";
+    /// let doc = parse_text(src, Path::new("Cargo.toml")).unwrap();
+    /// assert_eq!(doc.get_str("lib", "name"), Some("my-lib"));
+    /// assert_eq!(doc.get_str("lib", "absent"), None);
+    /// assert_eq!(doc.get_str("missing-section", "name"), None);
+    /// ```
     #[must_use]
     pub fn get_str(&self, section: &str, key: &str) -> Option<&str> {
         self.sections
@@ -67,6 +89,22 @@ impl TomlDoc {
     }
 
     /// Returns the entries of an array-of-tables `[[name]]`.
+    ///
+    /// Returns an empty slice when no `[[name]]` entries exist.
+    ///
+    /// ```rust
+    /// use reovim_depgraph::toml::parse_text;
+    /// use std::path::Path;
+    ///
+    /// let src = "[[dep]]\nname = \"serde\"\n[[dep]]\nname = \"tokio\"\n";
+    /// let doc = parse_text(src, Path::new("Cargo.toml")).unwrap();
+    /// let entries = doc.array("dep");
+    /// assert_eq!(entries.len(), 2);
+    /// assert_eq!(entries[0].get("name").map(String::as_str), Some("serde"));
+    /// assert_eq!(entries[1].get("name").map(String::as_str), Some("tokio"));
+    /// // Missing array → empty slice.
+    /// assert!(doc.array("absent").is_empty());
+    /// ```
     #[must_use]
     pub fn array(&self, name: &str) -> &[BTreeMap<String, String>] {
         self.arrays.get(name).map_or(&[], Vec::as_slice)
@@ -74,6 +112,18 @@ impl TomlDoc {
 }
 
 /// A TOML value in the supported subset.
+///
+/// ```rust
+/// use reovim_depgraph::toml::TomlValue;
+///
+/// let s = TomlValue::String("hello".to_owned());
+/// assert_eq!(s.as_str(), Some("hello"));
+/// assert_eq!(s.as_bool(), None);
+///
+/// let b = TomlValue::Bool(true);
+/// assert_eq!(b.as_bool(), Some(true));
+/// assert_eq!(b.as_str(), None);
+/// ```
 // `TomlValue` repeats the module name `toml`; the prefix is intentional
 // because callers import this as `toml::TomlValue`, not `toml::Value`.
 #[allow(clippy::module_name_repetitions)]
@@ -90,7 +140,14 @@ pub enum TomlValue {
 }
 
 impl TomlValue {
-    /// Returns the inner string if this is a `String` variant.
+    /// Returns the inner string if this is a [`TomlValue::String`] variant.
+    ///
+    /// ```rust
+    /// use reovim_depgraph::toml::TomlValue;
+    ///
+    /// assert_eq!(TomlValue::String("foo".to_owned()).as_str(), Some("foo"));
+    /// assert_eq!(TomlValue::Bool(false).as_str(), None);
+    /// ```
     #[must_use]
     pub const fn as_str(&self) -> Option<&str> {
         if let Self::String(s) = self {
@@ -100,7 +157,14 @@ impl TomlValue {
         }
     }
 
-    /// Returns the inner bool if this is a `Bool` variant.
+    /// Returns the inner bool if this is a [`TomlValue::Bool`] variant.
+    ///
+    /// ```rust
+    /// use reovim_depgraph::toml::TomlValue;
+    ///
+    /// assert_eq!(TomlValue::Bool(true).as_bool(), Some(true));
+    /// assert_eq!(TomlValue::String("yes".to_owned()).as_bool(), None);
+    /// ```
     #[must_use]
     pub const fn as_bool(&self) -> Option<bool> {
         if let Self::Bool(b) = self {
@@ -110,7 +174,20 @@ impl TomlValue {
         }
     }
 
-    /// Returns the inner inline-table if this is an `InlineTable` variant.
+    /// Returns the inner inline-table if this is a
+    /// [`TomlValue::InlineTable`] variant.
+    ///
+    /// ```rust
+    /// use std::collections::BTreeMap;
+    /// use reovim_depgraph::toml::TomlValue;
+    ///
+    /// let mut map = BTreeMap::new();
+    /// map.insert("key".to_owned(), TomlValue::String("val".to_owned()));
+    /// let tv = TomlValue::InlineTable(map.clone());
+    /// assert!(tv.as_table().is_some());
+    /// assert_eq!(tv.as_table().unwrap().get("key").unwrap().as_str(), Some("val"));
+    /// assert_eq!(TomlValue::Bool(false).as_table(), None);
+    /// ```
     #[must_use]
     pub const fn as_table(&self) -> Option<&BTreeMap<String, Self>> {
         if let Self::InlineTable(t) = self {
@@ -125,8 +202,17 @@ impl TomlValue {
 ///
 /// # Errors
 ///
-/// Returns `ProbeError::Io` when the file cannot be read, or
-/// `ProbeError::Parse` when the content uses an unsupported construct.
+/// Returns [`crate::ProbeError::Io`] when the file cannot be read, or
+/// [`crate::ProbeError::Parse`] when the content uses an unsupported construct.
+///
+/// ```rust
+/// use reovim_depgraph::toml::parse_file;
+/// use std::path::Path;
+///
+/// // Non-existent path → Io error.
+/// let result = parse_file(Path::new("/nonexistent/__no_such_file__.toml"));
+/// assert!(result.is_err());
+/// ```
 pub fn parse_file(path: &Path) -> Result<TomlDoc, ProbeError> {
     let text = std::fs::read_to_string(path).map_err(|source| ProbeError::Io {
         path: path.to_path_buf(),
@@ -141,7 +227,22 @@ pub fn parse_file(path: &Path) -> Result<TomlDoc, ProbeError> {
 ///
 /// # Errors
 ///
-/// Returns `ProbeError::Parse` when the content uses an unsupported construct.
+/// Returns [`crate::ProbeError::Parse`] when the content uses an unsupported
+/// construct.
+///
+/// ```rust
+/// use reovim_depgraph::toml::parse_text;
+/// use std::path::Path;
+///
+/// let src = "[package]\nname = \"my-crate\"\nedition = \"2021\"\n";
+/// let doc = parse_text(src, Path::new("Cargo.toml")).unwrap();
+/// assert_eq!(doc.get_str("package", "name"), Some("my-crate"));
+/// assert_eq!(doc.get_str("package", "edition"), Some("2021"));
+///
+/// // Unsupported construct (bare integer value) → Parse error.
+/// let bad = "[section]\ncount = 42\n";
+/// assert!(parse_text(bad, Path::new("bad.toml")).is_err());
+/// ```
 pub fn parse_text(text: &str, file_path: &Path) -> Result<TomlDoc, ProbeError> {
     let mut doc = TomlDoc::default();
     // Single parse scope: where a `key = value` line lands. Carrying the
@@ -217,7 +318,7 @@ enum Scope {
 
 /// Strips a trailing `# comment` from a line, respecting quoted strings
 /// (a `#` inside a quoted string is not a comment).
-fn strip_comment(line: &str) -> &str {
+pub(crate) fn strip_comment(line: &str) -> &str {
     // Walk the raw bytes; track whether we are inside a double-quoted string.
     let bytes = line.as_bytes();
     let mut in_string = false;

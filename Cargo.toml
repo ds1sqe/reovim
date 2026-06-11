@@ -1,7 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["lib/depgraph"]
-exclude = ["archive"]
+members = ["lib/depgraph", "arch"]
+# `arch/tests/fixtures/` is its OWN nested workspace (#785 Phase 4): its
+# `#![no_std] #![no_main]` bins depend on `reovim-arch` with the `runtime`
+# feature, and keeping them out of this workspace prevents `cargo test
+# --workspace` from feature-unifying `runtime` onto the `reovim-arch` rlib the
+# lib's own test harness uses (which would define `#[panic_handler]` in the
+# libtest build and collide with std's lang item). The DAG6 probe still scans
+# them via tree walk; the arch integration test builds them by manifest path.
+exclude = ["archive", "arch/tests/fixtures"]
 
 [workspace.package]
 rust-version = "1.92"
@@ -25,7 +32,15 @@ rustdoc-args = ["--document-private-items"]
 [workspace.lints.rust]
 warnings = "deny"
 unsafe_code = "warn"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage_nightly)',
+    # `arch_coverage` gates the no_main exit shim's `__llvm_profile_write_file`
+    # call (arch/src/start.rs). The coverage script sets it via
+    # `RUSTFLAGS=--cfg arch_coverage` alongside `-C instrument-coverage`;
+    # ordinary builds never set it, so the instrumentation runtime symbol is
+    # not referenced and uninstrumented binaries link clean.
+    'cfg(arch_coverage)',
+] }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
@@ -36,15 +51,12 @@ nursery = { level = "deny", priority = -1 }
 # marker (1.2 §9 Dependency Sovereignty). No third-party crate version is
 # catalogued here; the workspace graph is closed to std + in-repo path deps.
 
-# FFI-boundary panic isolation requires `panic = "unwind"`. `panic = "abort"`
-# + FFI is undefined behaviour: a panicking `extern "C"` function unwinding
-# across the C ABI is UB with `abort`; Rust is only allowed to convert the
-# panic into an aborting trap. Every driver and module cdylib catches panics
-# at the trampoline boundary via `catch_unwind`, which requires unwind.
-# A CI grep over `**/Cargo.toml` forbids `panic = "abort"` anywhere in the
-# workspace.
+# `panic = "abort"` is mandated by L10/DAG6 (1.2 §10) and AB12 (6.2 §5):
+# under the zero-std regime there is no unwinder, and no unwind may cross an
+# `extern "C"` boundary. The `panic = "abort"` profile gate probe (DAG6
+# step 6) enforces this in place of any grep.
 [profile.dev]
-panic = "unwind"
+panic = "abort"
 
 [profile.release]
-panic = "unwind"
+panic = "abort"

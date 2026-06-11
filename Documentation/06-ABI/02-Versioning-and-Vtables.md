@@ -192,7 +192,43 @@ No pointer crosses without one of the three.
 > handling (`cdylib.unload.fail` event, LF12 failure policy).
 > *Class*: runtime.
 
-### 5.1 Deprecated
+### 5.1 Disposition exit codes (normative)
+
+The two dispositions exit with fixed, normative status codes drawn
+from the BSD `sysexits` convention (a 40-year-old, durable
+vocabulary):
+
+| Disposition | Exit code | sysexits name | Meaning |
+|---|---|---|---|
+| `recover` | **75** | `EX_TEMPFAIL` | transient failure — restart requested |
+| `halt` | **70** | `EX_SOFTWARE` | internal software error — stop for analysis |
+
+The supervising launcher treats **exactly 75** as restart-requested;
+any other non-zero exit is a no-restart fault surfaced to the user.
+These codes are part of the supervision contract and never change
+(AB15 applies once shipped).
+
+### 5.2 The arch hook seam (normative)
+
+The panic handler's integration points are four write-once hooks the
+higher layers register at boot: the flush fd, the ring-tail provider,
+the state-record hook, and the disposition value. Contract:
+
+- **Storage**: each hook is an atomic static in `arch/` (function
+  pointers stored via atomic pointer-width slots; the disposition as
+  an atomic integer).
+- **Ordering**: registration writes use `Release`; the panic
+  handler's reads use `Acquire` — everything written before
+  registration is visible to a panic on any thread after it.
+- **Write-once**: the first registration wins; a second `set_*` call
+  is rejected (`Err(AlreadySet)`) and changes nothing. Registration
+  is a boot-stage activity; re-registration is a bug, surfaced as
+  the error, never silently honoured.
+- **Default**: with nothing registered the handler renders the panic
+  line to fd 2 (stderr) and exits with the `halt` code — the safe
+  posture for a process that never finished boot.
+
+### 5.3 Deprecated
 
 `AB5` and `AB6` from v3 are deprecated; their bodies are subsumed by
 `AB12`; the IDs are never recycled.

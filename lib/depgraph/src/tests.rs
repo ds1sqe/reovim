@@ -19,7 +19,9 @@ use std::{
 use super::{
     Allowlist, AllowlistEntry, Allowlisted, Catalog, CatalogEdge, Category, Crate, DepEntry,
     DepTable, ProbeConfig, ProbeError, Report, Violation, allowed_categories, allowlist_match,
-    check_edge, classify, default_category_table, pattern_matches, run_probe,
+    check_edge, check_panic_profiles, classify, default_category_table, has_no_std_attr,
+    line_has_alloc_usage, line_has_std_usage, pattern_matches, run_dag6_probe, run_probe,
+    strip_line_comment,
 };
 
 // ── TempDir helper ────────────────────────────────────────────────────────────
@@ -1223,4 +1225,539 @@ fn allowlist_validate_rejects_each_blank_field() {
         let msg = case.validate(p).unwrap_err().to_string();
         assert!(msg.contains(field), "{msg}");
     }
+}
+
+// ── DAG6 unit tests ───────────────────────────────────────────────────────────
+
+// strip_line_comment ──────────────────────────────────────────────────────────
+
+#[test]
+fn strip_line_comment_no_comment() {
+    assert_eq!(strip_line_comment("use std::fmt;"), "use std::fmt;");
+}
+
+#[test]
+fn strip_line_comment_with_comment() {
+    assert_eq!(strip_line_comment("use std::fmt; // comment"), "use std::fmt; ");
+}
+
+#[test]
+fn strip_line_comment_double_slash_inside_string_not_stripped() {
+    // A `//` inside a string literal is NOT a comment.
+    let line = r#"let s = "url://example"; // real comment"#;
+    let result = strip_line_comment(line);
+    assert!(result.contains("url://example"), "string content preserved: {result}");
+    assert!(!result.contains("real comment"), "trailing comment stripped: {result}");
+}
+
+#[test]
+fn strip_line_comment_escaped_char_in_string() {
+    // A `\"` inside a string; the `//` after the closing quote is the comment.
+    let line = r#"let s = "a\"b"; // note"#;
+    let result = strip_line_comment(line);
+    assert!(!result.contains("note"), "comment stripped: {result}");
+    assert!(result.contains("a\\\"b"), "string preserved: {result}");
+}
+
+#[test]
+fn strip_line_comment_single_slash_not_a_comment() {
+    // A single `/` is not a comment start.
+    assert_eq!(strip_line_comment("a/b"), "a/b");
+}
+
+// has_no_std_attr ─────────────────────────────────────────────────────────────
+
+#[test]
+fn has_no_std_attr_present() {
+    assert!(has_no_std_attr("#![no_std]\n\npub mod foo;\n"));
+}
+
+#[test]
+fn has_no_std_attr_absent() {
+    assert!(!has_no_std_attr("// no_std missing\npub mod foo;\n"));
+}
+
+#[test]
+fn has_no_std_attr_commented_out_is_absent() {
+    // `#![no_std]` inside a line comment must NOT count.
+    assert!(!has_no_std_attr("// #![no_std]\npub mod foo;\n"));
+}
+
+#[test]
+fn has_no_std_attr_not_at_top_still_found() {
+    // The scanner accepts `#![no_std]` anywhere in the file.
+    assert!(has_no_std_attr("// preamble\n\n#![no_std]\n"));
+}
+
+// line_has_std_usage / line_has_alloc_usage ───────────────────────────────────
+
+#[test]
+fn line_has_std_usage_extern_crate() {
+    assert!(line_has_std_usage("extern crate std;"));
+}
+
+#[test]
+fn line_has_std_usage_use_std() {
+    assert!(line_has_std_usage("use std::fmt::Write;"));
+}
+
+#[test]
+fn line_has_std_usage_negative() {
+    assert!(!line_has_std_usage("use core::fmt::Write;"));
+}
+
+#[test]
+fn line_has_alloc_usage_extern_crate() {
+    assert!(line_has_alloc_usage("extern crate alloc;"));
+}
+
+#[test]
+fn line_has_alloc_usage_use_alloc() {
+    assert!(line_has_alloc_usage("use alloc::vec::Vec;"));
+}
+
+#[test]
+fn line_has_alloc_usage_negative() {
+    assert!(!line_has_alloc_usage("use core::alloc::Layout;"));
+}
+
+// check_panic_profiles ────────────────────────────────────────────────────────
+
+/// Both profiles set `panic = "abort"` → no violations.
+#[test]
+fn check_panic_profiles_both_abort_is_clean() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n\n[profile.dev]\npanic = \"abort\"\n\n[profile.release]\npanic = \"abort\"\n",
+    )
+    .unwrap();
+    let v = check_panic_profiles(root).expect("check runs");
+    assert!(v.is_empty(), "both abort → clean; got {v:?}");
+}
+
+/// `[profile.dev]` absent → `PanicProfileNotAbort { profile: "dev" }`.
+#[test]
+fn check_panic_profiles_dev_absent_is_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n\n[profile.release]\npanic = \"abort\"\n",
+    )
+    .unwrap();
+    let v = check_panic_profiles(root).expect("check runs");
+    let has = v
+        .iter()
+        .any(|v| matches!(v, Violation::PanicProfileNotAbort { profile } if profile == "dev"));
+    assert!(has, "missing [profile.dev] → violation; got {v:?}");
+}
+
+/// `[profile.release]` absent → `PanicProfileNotAbort { profile: "release" }`.
+#[test]
+fn check_panic_profiles_release_absent_is_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n\n[profile.dev]\npanic = \"abort\"\n",
+    )
+    .unwrap();
+    let v = check_panic_profiles(root).expect("check runs");
+    let has = v
+        .iter()
+        .any(|v| matches!(v, Violation::PanicProfileNotAbort { profile } if profile == "release"));
+    assert!(has, "missing [profile.release] → violation; got {v:?}");
+}
+
+/// `panic = "unwind"` in both → two violations.
+#[test]
+fn check_panic_profiles_unwind_produces_violations() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n\n[profile.dev]\npanic = \"unwind\"\n\n[profile.release]\npanic = \"unwind\"\n",
+    )
+    .unwrap();
+    let v = check_panic_profiles(root).expect("check runs");
+    assert_eq!(v.len(), 2, "unwind in both → 2 violations; got {v:?}");
+}
+
+/// Missing root Cargo.toml → `ProbeError::Io`.
+#[test]
+fn check_panic_profiles_missing_file_returns_io_error() {
+    let td = TempDir::new();
+    let root = td.path();
+    // No Cargo.toml created.
+    let err = check_panic_profiles(root).unwrap_err();
+    assert!(matches!(err, ProbeError::Io { .. }), "missing file → Io; got {err:?}");
+}
+
+// run_dag6_probe ──────────────────────────────────────────────────────────────
+
+/// A product crate with `#![no_std]` and no std/alloc usage → clean.
+#[test]
+fn dag6_clean_no_std_crate_produces_no_violations() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/no-std-clean/src")).unwrap();
+    std::fs::write(
+        root.join("lib/no-std-clean/Cargo.toml"),
+        "[package]\nname = \"reovim-no-std-clean\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/no-std-clean/src/lib.rs"), "#![no_std]\n\npub fn hello() {}\n")
+        .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    assert!(v.is_empty(), "clean no_std crate → no violations; got {v:?}");
+}
+
+/// A product crate missing `#![no_std]` → `MissingNoStd`.
+#[test]
+fn dag6_missing_no_std_produces_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/std-crate/src")).unwrap();
+    std::fs::write(
+        root.join("lib/std-crate/Cargo.toml"),
+        "[package]\nname = \"reovim-std-crate\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/std-crate/src/lib.rs"), "pub fn hello() {}\n").unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has = v.iter().any(|v| {
+        matches!(v, Violation::MissingNoStd { crate_name, .. } if crate_name == "reovim-std-crate")
+    });
+    assert!(has, "missing #![no_std] → MissingNoStd; got {v:?}");
+}
+
+/// `use std::` in product source → `StdUsage`.
+#[test]
+fn dag6_use_std_produces_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/use-std/src")).unwrap();
+    std::fs::write(
+        root.join("lib/use-std/Cargo.toml"),
+        "[package]\nname = \"reovim-use-std\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/use-std/src/lib.rs"), "#![no_std]\nuse std::fmt::Write;\n")
+        .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
+    assert!(has, "use std:: → StdUsage; got {v:?}");
+}
+
+/// `use alloc::` in product source → `AllocUsage`.
+#[test]
+fn dag6_use_alloc_produces_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/use-alloc/src")).unwrap();
+    std::fs::write(
+        root.join("lib/use-alloc/Cargo.toml"),
+        "[package]\nname = \"reovim-use-alloc\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/use-alloc/src/lib.rs"), "#![no_std]\nuse alloc::vec::Vec;\n")
+        .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has = v.iter().any(|v| matches!(v, Violation::AllocUsage { .. }));
+    assert!(has, "use alloc:: → AllocUsage; got {v:?}");
+}
+
+/// `use std::` inside `#[cfg(test)] mod tests { ... }` → NOT a violation.
+#[test]
+fn dag6_std_inside_cfg_test_mod_is_exempt() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/cfg-test-exempt/src")).unwrap();
+    std::fs::write(
+        root.join("lib/cfg-test-exempt/Cargo.toml"),
+        "[package]\nname = \"reovim-cfg-test-exempt\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("lib/cfg-test-exempt/src/lib.rs"),
+        concat!(
+            "#![no_std]\n",
+            "\n",
+            "pub fn hello() {}\n",
+            "\n",
+            "#[cfg(test)]\n",
+            "mod tests {\n",
+            "    use std::fmt;\n",
+            "    fn it_works() { let _ = fmt::format(format_args!(\"\"));\n",
+            "    }\n",
+            "}\n",
+        ),
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has_std = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
+    assert!(!has_std, "std inside #[cfg(test)] mod → no StdUsage; got {v:?}");
+}
+
+/// `lib/depgraph` is excluded from the DAG6 walk (bootstrap-state-2).
+#[test]
+fn dag6_bootstrap_exclusion_skips_depgraph() {
+    let td = TempDir::new();
+    let root = td.path();
+    // Place a crate at lib/depgraph with no #![no_std].
+    std::fs::create_dir_all(root.join("lib/depgraph/src")).unwrap();
+    std::fs::write(
+        root.join("lib/depgraph/Cargo.toml"),
+        "[package]\nname = \"reovim-depgraph\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/depgraph/src/lib.rs"), "// no #![no_std] here\n").unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    assert!(v.is_empty(), "lib/depgraph excluded → no violations; got {v:?}");
+}
+
+/// `use std::` in a `tests/` subdirectory → NOT a violation (test target).
+#[test]
+fn dag6_std_in_tests_subdir_is_exempt() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/has-tests-dir/src/tests")).unwrap();
+    std::fs::write(
+        root.join("lib/has-tests-dir/Cargo.toml"),
+        "[package]\nname = \"reovim-has-tests-dir\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("lib/has-tests-dir/src/lib.rs"), "#![no_std]\npub fn ok() {}\n")
+        .unwrap();
+    std::fs::write(
+        root.join("lib/has-tests-dir/src/tests/mod.rs"),
+        "use std::collections::HashMap;\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has_std = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
+    assert!(!has_std, "std in tests/ subdir → no StdUsage; got {v:?}");
+}
+
+/// Violation Display impls cover DAG6 variants.
+#[test]
+fn dag6_violation_display_contains_dag6() {
+    use std::path::PathBuf;
+
+    let v1 = Violation::MissingNoStd {
+        crate_name: "reovim-foo".to_owned(),
+        crate_path: "lib/foo".to_owned(),
+    };
+    let s = v1.to_string();
+    assert!(s.contains("DAG6"), "MissingNoStd display: {s}");
+    assert!(s.contains("reovim-foo"), "MissingNoStd crate_name: {s}");
+    assert!(s.contains("lib/foo"), "MissingNoStd crate_path: {s}");
+
+    let v2 = Violation::StdUsage {
+        file: PathBuf::from("lib/foo/src/lib.rs"),
+    };
+    let s = v2.to_string();
+    assert!(s.contains("DAG6"), "StdUsage display: {s}");
+    assert!(s.contains("lib/foo/src/lib.rs"), "StdUsage file: {s}");
+
+    let v3 = Violation::AllocUsage {
+        file: PathBuf::from("lib/foo/src/bar.rs"),
+    };
+    let s = v3.to_string();
+    assert!(s.contains("DAG6"), "AllocUsage display: {s}");
+    assert!(s.contains("lib/foo/src/bar.rs"), "AllocUsage file: {s}");
+
+    let v4 = Violation::PanicProfileNotAbort {
+        profile: "dev".to_owned(),
+    };
+    let s = v4.to_string();
+    assert!(s.contains("DAG6"), "PanicProfileNotAbort display: {s}");
+    assert!(s.contains("dev"), "PanicProfileNotAbort profile: {s}");
+    assert!(s.contains("abort"), "PanicProfileNotAbort abort mention: {s}");
+}
+
+/// `allowlist_match` returns `None` for all new DAG6 variants.
+#[test]
+fn dag6_violations_are_never_allowlisted() {
+    use std::path::PathBuf;
+    let allowlist = Allowlist {
+        entry: vec![AllowlistEntry {
+            from: "a".to_owned(),
+            to: "b".to_owned(),
+            reason: "decoy".to_owned(),
+            issue: "#0".to_owned(),
+            expires: "never".to_owned(),
+        }],
+    };
+    for v in [
+        Violation::MissingNoStd {
+            crate_name: "x".to_owned(),
+            crate_path: "lib/x".to_owned(),
+        },
+        Violation::StdUsage {
+            file: PathBuf::from("lib/x/src/lib.rs"),
+        },
+        Violation::AllocUsage {
+            file: PathBuf::from("lib/x/src/lib.rs"),
+        },
+        Violation::PanicProfileNotAbort {
+            profile: "dev".to_owned(),
+        },
+    ] {
+        assert!(
+            allowlist_match(&v, &allowlist).is_none(),
+            "DAG6 violations must never be allowlisted: {v:?}"
+        );
+    }
+}
+
+/// Crate with no `src/` directory → `MissingNoStd`.
+#[test]
+fn dag6_crate_without_src_dir_produces_missing_no_std() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/nosrc")).unwrap();
+    std::fs::write(
+        root.join("lib/nosrc/Cargo.toml"),
+        "[package]\nname = \"reovim-nosrc\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has = v.iter().any(
+        |v| matches!(v, Violation::MissingNoStd { crate_name, .. } if crate_name == "reovim-nosrc"),
+    );
+    assert!(has, "crate with no src/ → MissingNoStd; got {v:?}");
+}
+
+/// `#![no_std]` commented out → treated as missing.
+#[test]
+fn dag6_commented_no_std_is_treated_as_missing() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/commented-no-std/src")).unwrap();
+    std::fs::write(
+        root.join("lib/commented-no-std/Cargo.toml"),
+        "[package]\nname = \"reovim-commented-no-std\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("lib/commented-no-std/src/lib.rs"),
+        "// #![no_std]\npub fn hello() {}\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has = v.iter().any(|v| {
+        matches!(v, Violation::MissingNoStd { crate_name, .. } if crate_name == "reovim-commented-no-std")
+    });
+    assert!(has, "commented-out #![no_std] → MissingNoStd; got {v:?}");
+}
+
+/// `use std::` in a line comment → NOT a violation.
+#[test]
+fn dag6_std_in_line_comment_is_not_a_violation() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/comment-std/src")).unwrap();
+    std::fs::write(
+        root.join("lib/comment-std/Cargo.toml"),
+        "[package]\nname = \"reovim-comment-std\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("lib/comment-std/src/lib.rs"),
+        "#![no_std]\n// use std::fmt; this is a comment\npub fn ok() {}\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has_std = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
+    assert!(!has_std, "std in line comment → no StdUsage; got {v:?}");
+}
+
+/// `src/main.rs` is accepted as the crate root for binary crates.
+#[test]
+fn dag6_main_rs_accepted_as_crate_root() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("apps/my-bin/src")).unwrap();
+    std::fs::write(
+        root.join("apps/my-bin/Cargo.toml"),
+        "[package]\nname = \"reovim-my-bin\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("apps/my-bin/src/main.rs"),
+        "#![no_std]\n#![no_main]\nfn my_main() -> ! { loop {} }\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has_missing = v
+        .iter()
+        .any(|v| matches!(v, Violation::MissingNoStd { .. }));
+    assert!(!has_missing, "main.rs with #![no_std] → no MissingNoStd; got {v:?}");
+}
+
+// ── DAG6 cfg(test)-skip and brace-match edge cases ───────────────────────────
+
+/// A `#[cfg(test)] mod t { … }` with the opening brace on the attribute
+/// line itself is skipped to its matching close.
+#[test]
+fn cfg_test_skip_same_line_brace() {
+    let lines = [
+        "#[cfg(test)] mod t {",
+        "    use std::fmt;",
+        "}",
+        "pub fn after() {}",
+    ];
+    assert_eq!(super::cfg_test_skip(&lines, 0), 3);
+}
+
+/// Blank lines between the attribute and its item are absorbed by the
+/// lookahead before the item is classified.
+#[test]
+fn cfg_test_skip_blank_lines_before_item() {
+    let lines = ["#[cfg(test)]", "", "", "mod t {", "    use std::fmt;", "}"];
+    assert_eq!(super::cfg_test_skip(&lines, 0), 6);
+}
+
+/// A single non-block item after the attribute skips exactly through that
+/// item line.
+#[test]
+fn cfg_test_skip_single_item() {
+    let lines = ["#[cfg(test)]", "use std::fmt;", "pub fn after() {}"];
+    assert_eq!(super::cfg_test_skip(&lines, 0), 2);
+}
+
+/// An attribute at end-of-file (nothing to decorate) advances one line.
+#[test]
+fn cfg_test_skip_attribute_at_eof() {
+    let lines = ["#[cfg(test)]"];
+    assert_eq!(super::cfg_test_skip(&lines, 0), 1);
+}
+
+/// An unclosed brace run falls back to the last line (fail-safe guard).
+#[test]
+fn brace_match_unclosed_returns_last_line() {
+    let lines = ["mod t {", "    use std::fmt;", "    // never closed"];
+    assert_eq!(super::brace_match_from_line(&lines, 0), 2);
+}
+
+/// An unreadable crate root (a directory where `lib.rs` should be) fails
+/// closed as `MissingNoStd`.
+#[test]
+fn dag6_unreadable_crate_root_fails_closed() {
+    let td = TempDir::new();
+    let root = td.path();
+    std::fs::create_dir_all(root.join("lib/dirroot/src/lib.rs")).unwrap();
+    std::fs::write(
+        root.join("lib/dirroot/Cargo.toml"),
+        "[package]\nname = \"reovim-dirroot\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    let v = run_dag6_probe(root).expect("probe runs");
+    let has_missing = v
+        .iter()
+        .any(|v| matches!(v, Violation::MissingNoStd { .. }));
+    assert!(has_missing, "unreadable root must fail closed as MissingNoStd; got {v:?}");
 }

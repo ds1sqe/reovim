@@ -1,0 +1,30 @@
+[package]
+name = "arch-fixture-smoke"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Charter smoke fixture: boots via arch _start, allocates a DS, spawns + joins a thread, exits 0"
+publish = false
+
+[[bin]]
+name = "arch-fixture-smoke"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` bin has no libtest harness (Phase 5 ships the
+# no_std runner); disable the test/bench/doc builds so `cargo test --workspace`
+# does not try to link a std test harness against it.
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+# In-repo path dep on the platform floor with the `runtime` feature so the
+# arch `_start` and `#[panic_handler]` lang items are linked (L9: path dep
+# only, zero third-party).
+reovim-arch = { path = "../../..", features = ["runtime"] }
+
+[lints]
+workspace = true

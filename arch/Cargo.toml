@@ -1,0 +1,31 @@
+[package]
+name = "reovim-arch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Platform floor: the one #![no_std] crate owning OS FFI, entry, panic, allocator, and heap data structures"
+publish = false
+
+[features]
+# Gates the lang items (`_start`, `#[panic_handler]`) landing in Phase 4.
+# Non-default so pre-migration libtest builds (bootstrap state 1) do not
+# clash with std-linked lang items; fixture and no_std test-runner bins
+# opt in. Features are in-repo plumbing, not dependency edges (L9-clean).
+runtime = []
+# Compiles per-module sibling test files INTO the lib (L12 layout, #785
+# Phase 5). Tests declare via arch_test! and reach crate-private items
+# through `super::`. The selftest runner bin (arch-selftest) enables both
+# `runtime` and `selftest`.
+selftest = []
+
+[lints]
+workspace = true
+
+# No [dependencies], [dev-dependencies], or [build-dependencies].
+# DAG5 (1.2 §9 Dependency Sovereignty): the platform floor reaches the OS
+# only through hand-written inline-asm/`extern "C"` FFI it owns. Only
+# `core` is consumed.

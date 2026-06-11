@@ -23,7 +23,9 @@ use std::{
 
 use reovim_depgraph::{
     Allowlist, AllowlistEntry, Catalog, CatalogEdge, Category, DepTable, ProbeConfig, ProbeError,
-    Report, Violation, classify, default_category_table, enumerate_crates, run_probe,
+    Report, Violation, check_panic_profiles, classify, default_category_table, enumerate_crates,
+    has_no_std_attr, line_has_alloc_usage, line_has_std_usage, run_dag6_probe, run_probe,
+    strip_line_comment,
     toml::{TomlValue, parse_file, parse_text},
 };
 
@@ -150,6 +152,42 @@ fn violation_display_all_variants() {
     assert!(s.contains("DAG5"), "NonSovereignDep: {s}");
     assert!(s.contains("serde"), "NonSovereignDep dep: {s}");
     assert!(s.contains("dependencies"), "NonSovereignDep table: {s}");
+
+    // MissingNoStd.
+    let missing = Violation::MissingNoStd {
+        crate_name: "reovim-foo".to_owned(),
+        crate_path: "lib/foo".to_owned(),
+    };
+    let s = missing.to_string();
+    assert!(s.contains("DAG6"), "MissingNoStd: {s}");
+    assert!(s.contains("reovim-foo"), "MissingNoStd crate_name: {s}");
+    assert!(s.contains("lib/foo"), "MissingNoStd crate_path: {s}");
+    assert!(s.contains("no_std"), "MissingNoStd no_std mention: {s}");
+
+    // StdUsage.
+    let std_usage = Violation::StdUsage {
+        file: root.join("lib/foo/src/lib.rs"),
+    };
+    let s = std_usage.to_string();
+    assert!(s.contains("DAG6"), "StdUsage: {s}");
+    assert!(s.contains("std"), "StdUsage std mention: {s}");
+
+    // AllocUsage.
+    let alloc_usage = Violation::AllocUsage {
+        file: root.join("lib/foo/src/bar.rs"),
+    };
+    let s = alloc_usage.to_string();
+    assert!(s.contains("DAG6"), "AllocUsage: {s}");
+    assert!(s.contains("alloc"), "AllocUsage alloc mention: {s}");
+
+    // PanicProfileNotAbort.
+    let panic_v = Violation::PanicProfileNotAbort {
+        profile: "dev".to_owned(),
+    };
+    let s = panic_v.to_string();
+    assert!(s.contains("DAG6"), "PanicProfileNotAbort: {s}");
+    assert!(s.contains("dev"), "PanicProfileNotAbort profile: {s}");
+    assert!(s.contains("abort"), "PanicProfileNotAbort abort mention: {s}");
 
     // ProbeError::Parse.
     let parse_err = ProbeError::Parse {
@@ -785,4 +823,91 @@ fn allowlist_validate_from_rlib() {
     };
     let msg = bad.validate(p).unwrap_err().to_string();
     assert!(msg.contains("empty expires"), "{msg}");
+}
+
+// ── DAG6 public-API parity (rlib build) ──────────────────────────────────────
+
+/// `strip_line_comment` from the rlib build: exercises the no-comment branch
+/// (full line returned) and the comment branch (truncated).
+#[test]
+fn dag6_strip_line_comment_rlib() {
+    assert_eq!(strip_line_comment("use core::fmt;"), "use core::fmt;");
+    assert_eq!(strip_line_comment("use core::fmt; // why"), "use core::fmt; ");
+}
+
+/// `has_no_std_attr` from the rlib build: present and absent branches.
+#[test]
+fn dag6_has_no_std_attr_rlib() {
+    assert!(has_no_std_attr("#![no_std]\n"), "present");
+    assert!(!has_no_std_attr("// #![no_std]\n"), "commented out");
+}
+
+/// `line_has_std_usage` from the rlib build: positive and negative.
+#[test]
+fn dag6_line_has_std_usage_rlib() {
+    assert!(line_has_std_usage("use std::fmt;"), "positive");
+    assert!(!line_has_std_usage("use core::fmt;"), "negative");
+}
+
+/// `line_has_alloc_usage` from the rlib build: positive and negative.
+#[test]
+fn dag6_line_has_alloc_usage_rlib() {
+    assert!(line_has_alloc_usage("use alloc::vec;"), "positive");
+    assert!(!line_has_alloc_usage("use core::alloc;"), "negative");
+}
+
+/// `check_panic_profiles` from the rlib build: clean and violation branches.
+#[test]
+fn dag6_check_panic_profiles_rlib() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    // Clean: both profiles abort.
+    common::write_file(
+        root,
+        "Cargo.toml",
+        "[workspace]\nmembers = []\n\n[profile.dev]\npanic = \"abort\"\n\n[profile.release]\npanic = \"abort\"\n",
+    );
+    let v = check_panic_profiles(root).expect("check runs");
+    assert!(v.is_empty(), "abort → clean; got {v:?}");
+
+    // Violation: unwind.
+    common::write_file(
+        root,
+        "Cargo.toml",
+        "[workspace]\nmembers = []\n\n[profile.dev]\npanic = \"unwind\"\n\n[profile.release]\npanic = \"unwind\"\n",
+    );
+    let v = check_panic_profiles(root).expect("check runs");
+    assert_eq!(v.len(), 2, "unwind in both → 2 violations; got {v:?}");
+}
+
+/// `run_dag6_probe` from the rlib build: a clean crate and a crate with
+/// `use std::` both exercise the main walk branches.
+#[test]
+fn dag6_run_dag6_probe_rlib() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    // Clean crate.
+    common::write_file(
+        root,
+        "lib/clean/Cargo.toml",
+        "[package]\nname = \"reovim-rlib-clean\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    common::write_file(root, "lib/clean/src/lib.rs", "#![no_std]\npub fn ok() {}\n");
+
+    let v = run_dag6_probe(root).expect("probe runs");
+    assert!(v.is_empty(), "clean crate → no violations; got {v:?}");
+
+    // Crate with std usage.
+    common::write_file(
+        root,
+        "lib/uses-std/Cargo.toml",
+        "[package]\nname = \"reovim-rlib-uses-std\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    common::write_file(root, "lib/uses-std/src/lib.rs", "#![no_std]\nuse std::fmt::Write;\n");
+
+    let v = run_dag6_probe(root).expect("probe runs with std crate");
+    let has_std = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
+    assert!(has_std, "std crate → StdUsage; got {v:?}");
 }

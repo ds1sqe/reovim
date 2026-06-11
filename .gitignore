@@ -1,4 +1,5 @@
 /target
+arch/tests/fixtures/target/
 tmp/
 COVERAGE.md
 COVERAGE-SERVER.md

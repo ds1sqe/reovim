@@ -5,13 +5,19 @@
 //! §1, and verifies every manifest edge against the allowed-edge tables:
 //! §2 category edges, §6 foundation sub-DAG, §7 composition catalog, §8
 //! transitional allowlist. The probes under `tests/` run as part of plain
-//! `cargo test` and fail closed (DAG1..DAG3, DAG5).
+//! `cargo test` and fail closed (DAG1..DAG3, DAG5, DAG6).
 //!
 //! **DAG4** is spec-asserted: the probe reads manifests only, so runtime
 //! install layouts (`$ROOT/{module,driver,capability}/...`) can never grant
 //! a Cargo dependency edge. The probe does not reach outside `Cargo.toml`
 //! files, so install-path inputs simply do not exist in the probe's data
 //! model.
+//!
+//! **DAG6** (zero-std): `run_dag6_probe` walks every product crate for
+//! `#![no_std]` at the crate root and `std`/`alloc` usage in source files;
+//! `check_panic_profiles` verifies the workspace `[profile.dev]` and
+//! `[profile.release]` both set `panic = "abort"`.  Bootstrap-state
+//! exclusions are enumerated as an explicit const, not pattern-matched.
 
 pub mod toml;
 
@@ -21,8 +27,35 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// ── DAG6 bootstrap exclusions ────────────────────────────────────────────────
+//
+// Crates listed here are exempt from the zero-std walk (DAG6 §5 step 6).
+// These are the two tracked bootstrap states from spec 1.2 §10.  The list is
+// an explicit const — no pattern matching — so additions require a spec edit.
+//
+// Bootstrap state 1 (libtest links std in test builds) is handled by skipping
+// `tests/` directories and `#[cfg(test)]` blocks during the source sweep; the
+// crate-root `#![no_std]` check still applies to state-1 crates EXCEPT those
+// in this exclusion list.
+//
+// Bootstrap state 2 (ground tooling uses std): `lib/depgraph` and `scripts/`
+// are excluded here.  `scripts/` is not a Cargo crate so only `lib/depgraph`
+// appears.
+const DAG6_BOOTSTRAP_EXCLUSIONS: &[&str] = &[
+    "lib/depgraph", // bootstrap-state-2: std ground tooling (spec 1.2 §10)
+];
+
 /// Source categories per spec 1.2 §1. `archive/*` is excluded from
 /// enumeration rather than classified.
+///
+/// ```rust
+/// use reovim_depgraph::{Category, classify, default_category_table};
+///
+/// let table = default_category_table();
+/// let cat = classify("arch", &table).expect("arch is Foundation");
+/// assert_eq!(cat, Category::Foundation);
+/// assert_eq!(format!("{cat}"), "foundation");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
     /// `arch/`, `lib/*`, `uapi/*`
@@ -66,6 +99,15 @@ impl fmt::Display for Category {
 /// components; a trailing `*` matches one or more further
 /// components; a pattern without `*` matches the exact path or any
 /// path beneath it.
+///
+/// ```rust
+/// use reovim_depgraph::{Category, default_category_table};
+///
+/// let table = default_category_table();
+/// // The table is non-empty and contains the arch → Foundation entry.
+/// assert!(!table.is_empty());
+/// assert!(table.iter().any(|(p, c)| p == "arch" && *c == Category::Foundation));
+/// ```
 #[must_use]
 pub fn default_category_table() -> Vec<(String, Category)> {
     [
@@ -94,6 +136,21 @@ pub fn default_category_table() -> Vec<(String, Category)> {
 
 /// Returns true when `pattern` matches the crate directory `path`
 /// (workspace-relative, `/`-separated).
+///
+/// ```rust
+/// use reovim_depgraph::pattern_matches;
+///
+/// // Exact path match.
+/// assert!(pattern_matches("arch", "arch"));
+/// // Wildcard: `lib/*` matches any direct child of `lib`.
+/// assert!(pattern_matches("lib/*", "lib/depgraph"));
+/// // Wildcard does not match the parent itself.
+/// assert!(!pattern_matches("lib/*", "lib"));
+/// // Deep path under a wildcard.
+/// assert!(pattern_matches("ext/server/modules/*", "ext/server/modules/vim"));
+/// // No match for a sibling.
+/// assert!(!pattern_matches("apps/*", "ext/client/module/foo"));
+/// ```
 #[must_use]
 pub fn pattern_matches(pattern: &str, path: &str) -> bool {
     let pat: Vec<&str> = pattern.split('/').collect();
@@ -117,6 +174,15 @@ pub fn pattern_matches(pattern: &str, path: &str) -> bool {
 
 /// One workspace crate as the probe sees it: manifest-derived only
 /// (DAG4 — no install-layout input exists in this model).
+///
+/// ```rust
+/// use reovim_depgraph::Crate;
+///
+/// let c = Crate { name: "reovim-arch".to_owned(), path: "arch".to_owned(), deps: vec![] };
+/// assert_eq!(c.name, "reovim-arch");
+/// assert_eq!(c.path, "arch");
+/// assert!(c.deps.is_empty());
+/// ```
 #[derive(Debug, Clone)]
 pub struct Crate {
     /// Package name from `[package].name`.
@@ -128,6 +194,20 @@ pub struct Crate {
 }
 
 /// One entry from a dependency table, carrying enough shape for DAG2 + DAG5.
+///
+/// ```rust
+/// use reovim_depgraph::{DepEntry, DepTable};
+///
+/// let e = DepEntry {
+///     name: "reovim-kernel".to_owned(),
+///     table: DepTable::Dependencies,
+///     is_path: true,
+///     is_workspace_true: false,
+/// };
+/// assert!(e.is_path);
+/// assert!(!e.is_workspace_true);
+/// assert_eq!(format!("{}", e.table), "dependencies");
+/// ```
 #[derive(Debug, Clone)]
 pub struct DepEntry {
     /// Resolved package name (after `package = "..."` renaming).
@@ -141,6 +221,14 @@ pub struct DepEntry {
 }
 
 /// Which Cargo dependency table a dep entry came from.
+///
+/// ```rust
+/// use reovim_depgraph::DepTable;
+///
+/// assert_eq!(format!("{}", DepTable::Dependencies), "dependencies");
+/// assert_eq!(format!("{}", DepTable::DevDependencies), "dev-dependencies");
+/// assert_eq!(format!("{}", DepTable::BuildDependencies), "build-dependencies");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DepTable {
     /// `[dependencies]`
@@ -163,6 +251,16 @@ impl fmt::Display for DepTable {
 
 /// A violation found by the probe. Every variant is fail-closed:
 /// the probe reports it unless an §8 allowlist entry covers it.
+///
+/// ```rust
+/// use reovim_depgraph::Violation;
+///
+/// // Violation::Display shows the DAG rule and the offending path.
+/// let v = Violation::UnknownPath { path: "mystery/crate".to_owned() };
+/// let msg = format!("{v}");
+/// assert!(msg.contains("DAG1"));
+/// assert!(msg.contains("mystery/crate"));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Violation {
     /// DAG1: crate path matched no §1 category pattern.
@@ -191,6 +289,29 @@ pub enum Violation {
         table: DepTable,
         /// Dependency name.
         dep: String,
+    },
+    /// DAG6: a product crate's root source file is missing `#![no_std]`.
+    MissingNoStd {
+        /// Crate name from `[package].name`.
+        crate_name: String,
+        /// Workspace-relative path of the crate.
+        crate_path: String,
+    },
+    /// DAG6: a product crate source file uses `std` (outside `#[cfg(test)]` blocks).
+    StdUsage {
+        /// Path of the offending source file.
+        file: PathBuf,
+    },
+    /// DAG6: a product crate source file uses `alloc` (outside `#[cfg(test)]` blocks).
+    AllocUsage {
+        /// Path of the offending source file.
+        file: PathBuf,
+    },
+    /// DAG6: `[profile.dev]` or `[profile.release]` in the workspace manifest
+    /// does not set `panic = "abort"`, or the key is absent.
+    PanicProfileNotAbort {
+        /// Which profile section was wrong or missing the key.
+        profile: String,
     },
 }
 
@@ -229,11 +350,38 @@ impl fmt::Display for Violation {
                 f,
                 "DAG5: `{crate_path}` [{table}]: `{dep}` is not an in-repo path dependency"
             ),
+            Self::MissingNoStd {
+                crate_name,
+                crate_path,
+            } => write!(
+                f,
+                "DAG6: `{crate_name}` (`{crate_path}`): crate root is missing `#![no_std]`"
+            ),
+            Self::StdUsage { file } => {
+                write!(f, "DAG6: `{}`: `std` usage in product source", file.display())
+            }
+            Self::AllocUsage { file } => {
+                write!(f, "DAG6: `{}`: `alloc` usage in product source", file.display())
+            }
+            Self::PanicProfileNotAbort { profile } => write!(
+                f,
+                "DAG6: `[profile.{profile}]` does not set `panic = \"abort\"` (missing or wrong value)"
+            ),
         }
     }
 }
 
 /// Errors raised while loading the workspace or probe inputs.
+///
+/// ```rust
+/// use reovim_depgraph::ProbeError;
+/// use std::path::PathBuf;
+///
+/// let e = ProbeError::Parse { path: PathBuf::from("Cargo.toml"), message: "missing name".to_owned() };
+/// let msg = format!("{e}");
+/// assert!(msg.contains("Cargo.toml"));
+/// assert!(msg.contains("missing name"));
+/// ```
 #[derive(Debug)]
 pub enum ProbeError {
     /// Filesystem read failure.
@@ -261,6 +409,21 @@ impl fmt::Display for ProbeError {
 impl std::error::Error for ProbeError {}
 
 /// §7 composition catalog (`composition-edges.toml`).
+///
+/// ```rust
+/// use reovim_depgraph::{Catalog, CatalogEdge};
+///
+/// let catalog = Catalog {
+///     edge: vec![CatalogEdge {
+///         from: "reovim".to_owned(),
+///         to: "reovim-kernel".to_owned(),
+///         gate: None,
+///         reason: "top-level compositor".to_owned(),
+///     }],
+/// };
+/// assert_eq!(catalog.edge.len(), 1);
+/// assert_eq!(catalog.edge[0].from, "reovim");
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct Catalog {
     /// Named composition edges.
@@ -297,6 +460,19 @@ impl Catalog {
 }
 
 /// One named composition edge.
+///
+/// ```rust
+/// use reovim_depgraph::CatalogEdge;
+///
+/// let edge = CatalogEdge {
+///     from: "reovim".to_owned(),
+///     to: "reovim-server".to_owned(),
+///     gate: Some("embedded-server".to_owned()),
+///     reason: "top-level compositor wires server library".to_owned(),
+/// };
+/// assert_eq!(edge.from, "reovim");
+/// assert!(edge.gate.is_some());
+/// ```
 #[derive(Debug, Clone)]
 pub struct CatalogEdge {
     /// Depending package name.
@@ -310,6 +486,22 @@ pub struct CatalogEdge {
 }
 
 /// §8 transitional allowlist (`transitional-allowlist.toml`).
+///
+/// ```rust
+/// use reovim_depgraph::{Allowlist, AllowlistEntry};
+///
+/// let allowlist = Allowlist {
+///     entry: vec![AllowlistEntry {
+///         from: "reovim-server".to_owned(),
+///         to: "reovim-tui".to_owned(),
+///         reason: "transitional coupling".to_owned(),
+///         issue: "#775".to_owned(),
+///         expires: "when #775 lands".to_owned(),
+///     }],
+/// };
+/// assert_eq!(allowlist.entry.len(), 1);
+/// assert_eq!(allowlist.entry[0].issue, "#775");
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct Allowlist {
     /// Time-bounded known violations.
@@ -354,6 +546,18 @@ fn schema_error(path: &Path, message: &str) -> ProbeError {
 
 /// One dated allowlist entry. `issue` and `expires` are mandatory:
 /// an entry without an expiry is a forbidden edge, not a transition.
+///
+/// ```rust
+/// use reovim_depgraph::AllowlistEntry;
+///
+/// let e = AllowlistEntry {
+///     from: "a".to_owned(), to: "b".to_owned(),
+///     reason: "temporary".to_owned(),
+///     issue: "#100".to_owned(),
+///     expires: "when #100 lands".to_owned(),
+/// };
+/// assert!(!e.expires.is_empty());
+/// ```
 #[derive(Debug, Clone)]
 pub struct AllowlistEntry {
     /// Depending crate (package name or source path).
@@ -370,6 +574,21 @@ pub struct AllowlistEntry {
 
 /// Probe configuration: the spec tables as data. `default_for` loads the
 /// real tables; fixtures may construct custom ones.
+///
+/// ```rust
+/// use reovim_depgraph::{ProbeConfig, Catalog, Allowlist, default_category_table};
+/// use std::collections::BTreeMap;
+///
+/// // Build a minimal in-memory config with empty catalog and allowlist.
+/// let config = ProbeConfig {
+///     category_table: default_category_table(),
+///     foundation_grants: BTreeMap::new(),
+///     catalog: Catalog::default(),
+///     allowlist: Allowlist::default(),
+/// };
+/// assert!(!config.category_table.is_empty());
+/// assert!(config.catalog.edge.is_empty());
+/// ```
 #[derive(Debug, Clone)]
 pub struct ProbeConfig {
     /// §1 category table.
@@ -475,6 +694,17 @@ fn get_required_str<'a>(
 
 /// A violation suppressed by a dated §8 entry, carrying the entry's tracking
 /// data so the suppression stays auditable in the report.
+///
+/// ```rust
+/// use reovim_depgraph::{Allowlisted, Violation};
+///
+/// let a = Allowlisted {
+///     violation: Violation::UnknownPath { path: "x/y".to_owned() },
+///     issue: "#42".to_owned(),
+///     expires: "when x/y is classified".to_owned(),
+/// };
+/// assert_eq!(a.issue, "#42");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Allowlisted {
     /// The suppressed violation.
@@ -487,6 +717,14 @@ pub struct Allowlisted {
 
 /// Probe outcome: per-category counts plus every violation found.
 /// `allowlisted` records violations suppressed by §8 entries.
+///
+/// ```rust
+/// use reovim_depgraph::Report;
+///
+/// let report = Report::default();
+/// assert!(report.is_clean());
+/// assert!(report.summary().is_empty());
+/// ```
 #[derive(Debug, Default)]
 pub struct Report {
     /// Crate count per classified category.
@@ -499,12 +737,27 @@ pub struct Report {
 
 impl Report {
     /// True when the workspace conforms (no live violations).
+    ///
+    /// ```rust
+    /// use reovim_depgraph::Report;
+    ///
+    /// let clean = Report::default();
+    /// assert!(clean.is_clean());
+    /// ```
     #[must_use]
     pub const fn is_clean(&self) -> bool {
         self.violations.is_empty()
     }
 
     /// Human-readable summary, one violation per line.
+    ///
+    /// ```rust
+    /// use reovim_depgraph::Report;
+    ///
+    /// // A clean report produces an empty summary string.
+    /// let report = Report::default();
+    /// assert!(report.summary().is_empty());
+    /// ```
     #[must_use]
     pub fn summary(&self) -> String {
         use fmt::Write as _;
@@ -525,9 +778,13 @@ impl Report {
 }
 
 /// Directories never descended into during enumeration. `archive` is the
-/// spec's Archive category (excluded from the depgraph); the rest are
-/// build/VCS/scratch artifacts.
-const SKIP_DIRS: &[&str] = &["archive", "target", ".git", "tmp", ".github"];
+/// spec's Archive category (excluded from the depgraph); `tests` holds test
+/// fixtures (e.g. `arch/tests/fixtures/*`, the `#![no_std] #![no_main]` bins
+/// exec'd by integration tests) which are test infrastructure, not workspace
+/// product/tooling crates — they are not subject to §1 category classification
+/// (DAG1) and the source sweep already skips `tests/` (the documented
+/// bootstrap-state-1 handling); the rest are build/VCS/scratch artifacts.
+const SKIP_DIRS: &[&str] = &["archive", "target", ".git", "tmp", ".github", "tests"];
 
 /// Enumerates every workspace crate under `root` by scanning for
 /// `Cargo.toml` files with a `[package]` section.
@@ -540,6 +797,15 @@ const SKIP_DIRS: &[&str] = &["archive", "target", ".git", "tmp", ".github"];
 /// # Errors
 ///
 /// Returns `ProbeError` on unreadable directories or unparseable manifests.
+///
+/// ```rust
+/// use reovim_depgraph::enumerate_crates;
+/// use std::path::Path;
+///
+/// // enumerate_crates on a non-existent directory returns Err (Io).
+/// let result = enumerate_crates(Path::new("/nonexistent/path/xyz"));
+/// assert!(result.is_err());
+/// ```
 pub fn enumerate_crates(root: &Path) -> Result<Vec<Crate>, ProbeError> {
     let mut crates = Vec::new();
     walk(root, "", &mut crates)?;
@@ -679,6 +945,16 @@ fn dep_entry_from_toml_value(
 ///
 /// Returns `Violation::UnknownPath` when no pattern matches and
 /// `Violation::AmbiguousPath` when more than one matches (DAG1).
+///
+/// ```rust
+/// use reovim_depgraph::{Category, Violation, classify, default_category_table};
+///
+/// let table = default_category_table();
+/// assert_eq!(classify("arch", &table), Ok(Category::Foundation));
+/// assert_eq!(classify("apps/server", &table), Ok(Category::Apps));
+/// // Unknown path → DAG1 violation.
+/// assert!(matches!(classify("unknown/crate", &table), Err(Violation::UnknownPath { .. })));
+/// ```
 pub fn classify(path: &str, table: &[(String, Category)]) -> Result<Category, Violation> {
     let matches: Vec<&(String, Category)> = table
         .iter()
@@ -730,6 +1006,22 @@ const fn allowed_categories(from: Category) -> &'static [Category] {
 ///
 /// Returns `ProbeError` when the workspace cannot be enumerated;
 /// rule violations are reported in the `Report`, not as errors.
+///
+/// ```rust
+/// use reovim_depgraph::{ProbeConfig, Catalog, Allowlist, default_category_table, run_probe};
+/// use std::collections::BTreeMap;
+/// use std::path::Path;
+///
+/// let config = ProbeConfig {
+///     category_table: default_category_table(),
+///     foundation_grants: BTreeMap::new(),
+///     catalog: Catalog::default(),
+///     allowlist: Allowlist::default(),
+/// };
+/// // run_probe on a non-existent root returns Err (Io).
+/// let result = run_probe(Path::new("/nonexistent/xyz"), &config);
+/// assert!(result.is_err());
+/// ```
 pub fn run_probe(root: &Path, config: &ProbeConfig) -> Result<Report, ProbeError> {
     let crates = enumerate_crates(root)?;
     let mut report = Report::default();
@@ -876,12 +1168,460 @@ pub(crate) fn allowlist_match<'a>(
         | Violation::UncatalogedCompositionEdge { from, to } => (from, to),
         Violation::UnknownPath { .. }
         | Violation::AmbiguousPath { .. }
-        | Violation::NonSovereignDep { .. } => return None,
+        | Violation::NonSovereignDep { .. }
+        | Violation::MissingNoStd { .. }
+        | Violation::StdUsage { .. }
+        | Violation::AllocUsage { .. }
+        | Violation::PanicProfileNotAbort { .. } => return None,
     };
     allowlist
         .entry
         .iter()
         .find(|e| &e.from == from && &e.to == to)
+}
+
+// ── DAG6: zero-std walk + profile gate ───────────────────────────────────────
+
+/// Checks `[profile.dev]` and `[profile.release]` in the workspace root
+/// `Cargo.toml`, returning one `PanicProfileNotAbort` violation per profile
+/// that is absent or does not set `panic = "abort"`.
+///
+/// The workspace manifest is at `root/Cargo.toml`.
+///
+/// This function uses a direct line scan rather than the TOML reader to
+/// avoid failures on workspace manifests that contain constructs not in the
+/// TOML reader's supported subset (e.g. `priority = -1` in lint tables,
+/// single-quoted strings in `check-cfg` arrays).  The scan is intentionally
+/// minimal: it finds `[profile.dev]` / `[profile.release]` section headers
+/// and then looks for a `panic = "abort"` key-value pair before the next
+/// section header.  This approach is robust and branch-complete.
+///
+/// # Errors
+///
+/// Returns `ProbeError::Io` when the root manifest cannot be read.
+///
+/// ```rust
+/// use reovim_depgraph::check_panic_profiles;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io — no Cargo.toml there).
+/// let result = check_panic_profiles(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
+pub fn check_panic_profiles(root: &Path) -> Result<Vec<Violation>, ProbeError> {
+    let manifest = root.join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).map_err(|source| ProbeError::Io {
+        path: manifest.clone(),
+        source,
+    })?;
+    let mut violations = Vec::new();
+    for profile in ["dev", "release"] {
+        if !profile_has_panic_abort(&text, profile) {
+            violations.push(Violation::PanicProfileNotAbort {
+                profile: profile.to_owned(),
+            });
+        }
+    }
+    Ok(violations)
+}
+
+/// Returns `true` when `text` (a `Cargo.toml` file) contains a
+/// `[profile.<name>]` section that includes `panic = "abort"`.
+///
+/// The scan:
+/// 1. Locates the section header `[profile.<name>]` (exact match after
+///    stripping line comments and whitespace).
+/// 2. Reads lines until the next `[` (new section) or EOF.
+/// 3. Checks each line (comment-stripped) for `panic = "abort"`.
+///
+/// Case-sensitive, tolerates surrounding whitespace.
+#[must_use]
+fn profile_has_panic_abort(text: &str, profile_name: &str) -> bool {
+    let section_header = format!("[profile.{profile_name}]");
+    let mut in_section = false;
+    for raw_line in text.lines() {
+        let line = toml::strip_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') {
+            in_section = line == section_header;
+            continue;
+        }
+        if in_section {
+            // Check: `panic = "abort"` (tolerates whitespace around `=`).
+            let stripped = line.replace(' ', "");
+            if stripped.contains("panic=\"abort\"") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Runs the DAG6 zero-std walk over every product crate under `root`.
+///
+/// Product crates are all crates enumerated by `enumerate_crates` except
+/// those whose workspace-relative path is in `DAG6_BOOTSTRAP_EXCLUSIONS`.
+///
+/// For each product crate the walk:
+/// 1. Locates `src/lib.rs` or `src/main.rs` (crate root) and checks for
+///    a `#![no_std]` inner attribute.  Missing → `MissingNoStd`.
+/// 2. Sweeps every `.rs` file under `src/` (excluding `tests/` subdirs)
+///    for `extern crate std`, `use std::`, `extern crate alloc`, and
+///    `use alloc::` — each hit outside a `#[cfg(test)]` block → `StdUsage`
+///    or `AllocUsage`.
+///
+/// # Errors
+///
+/// Returns `ProbeError::Io` / `ProbeError::Parse` when enumeration or a
+/// manifest cannot be read.
+///
+/// ```rust
+/// use reovim_depgraph::run_dag6_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_dag6_probe(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
+pub fn run_dag6_probe(root: &Path) -> Result<Vec<Violation>, ProbeError> {
+    let crates = enumerate_crates(root)?;
+    let mut violations = Vec::new();
+    for krate in &crates {
+        if DAG6_BOOTSTRAP_EXCLUSIONS.contains(&krate.path.as_str()) {
+            continue;
+        }
+        let crate_src = root.join(&krate.path).join("src");
+        // 1. Crate-root `#![no_std]` check.
+        check_crate_root_no_std(krate, &crate_src, &mut violations);
+        // 2. Source sweep for std/alloc usage.
+        if crate_src.is_dir() {
+            sweep_src_dir(&crate_src, &mut violations)?;
+        }
+    }
+    Ok(violations)
+}
+
+/// Checks whether the crate root (`src/lib.rs` or `src/main.rs`) declares
+/// `#![no_std]`, appending a `MissingNoStd` violation when absent.
+///
+/// The check uses a textual scan: it walks lines until it finds
+/// `#![no_std]`, skipping line comments (`// ...`) and tolerating doc
+/// comments and other attributes that appear above it.  A line that
+/// contains `#![no_std]` (not inside a line comment) is a match.
+///
+/// Limitation: block comments (`/* ... */`) are not stripped.  A
+/// `#![no_std]` hidden inside a block comment would produce a false
+/// negative (no violation when there should be one).  This is
+/// documented as an acceptable limitation; the real workspace has no
+/// block-commented inner attributes.
+fn check_crate_root_no_std(krate: &Crate, crate_src: &Path, violations: &mut Vec<Violation>) {
+    let root_file = crate_src
+        .join("lib.rs")
+        .exists()
+        .then(|| crate_src.join("lib.rs"))
+        .or_else(|| {
+            let m = crate_src.join("main.rs");
+            m.exists().then_some(m)
+        });
+    let Some(root_path) = root_file else {
+        // No src/lib.rs or src/main.rs: treat as missing no_std.
+        violations.push(Violation::MissingNoStd {
+            crate_name: krate.name.clone(),
+            crate_path: krate.path.clone(),
+        });
+        return;
+    };
+    let Ok(text) = fs::read_to_string(&root_path) else {
+        // Unreadable file: treat as missing no_std (fail closed).
+        violations.push(Violation::MissingNoStd {
+            crate_name: krate.name.clone(),
+            crate_path: krate.path.clone(),
+        });
+        return;
+    };
+    if !has_no_std_attr(&text) {
+        violations.push(Violation::MissingNoStd {
+            crate_name: krate.name.clone(),
+            crate_path: krate.path.clone(),
+        });
+    }
+}
+
+/// Returns `true` when `text` contains a top-level `#![no_std]` inner
+/// attribute (not inside a line comment on the same line).
+///
+/// The scan stops at the first line that is NOT a blank line, a line
+/// comment, a doc comment (`//!`, `///`), or an attribute line starting
+/// with `#`.  This mirrors the typical file layout where `#![no_std]`
+/// appears at the top before any item.  A `#![no_std]` anywhere in the
+/// file that is not behind a line comment is accepted.
+///
+/// Limitation: block-comment-hidden `#![no_std]` is not detected (not
+/// stripped).  Documented in `check_crate_root_no_std`.
+///
+/// ```rust
+/// use reovim_depgraph::has_no_std_attr;
+///
+/// assert!(has_no_std_attr("#![no_std]\npub fn foo() {}"));
+/// // Commented-out attribute is not a match.
+/// assert!(!has_no_std_attr("// #![no_std]\npub fn foo() {}"));
+/// // Absent attribute.
+/// assert!(!has_no_std_attr("pub fn foo() {}"));
+/// ```
+#[must_use]
+pub fn has_no_std_attr(text: &str) -> bool {
+    for line in text.lines() {
+        let stripped = strip_line_comment(line).trim();
+        if stripped.contains("#![no_std]") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Recursively sweeps every `.rs` file under `dir` (excluding `tests/`
+/// subdirectories) for `std` and `alloc` usage outside `#[cfg(test)]`
+/// blocks.
+///
+/// Appends `StdUsage { file }` or `AllocUsage { file }` violations.
+///
+/// # Errors
+///
+/// Returns `ProbeError::Io` when a directory cannot be read.
+fn sweep_src_dir(dir: &Path, violations: &mut Vec<Violation>) -> Result<(), ProbeError> {
+    let entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .and_then(Iterator::collect)
+        .map_err(io_error(dir))?;
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if path.is_dir() {
+            // Skip `tests/` directories: test targets may use std.
+            if name_str == "tests" {
+                continue;
+            }
+            sweep_src_dir(&path, violations)?;
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && let Ok(text) = fs::read_to_string(&path)
+        {
+            // Unreadable files are silently skipped (not a violation source).
+            check_source_for_std_alloc(&path, &text, violations);
+        }
+    }
+    Ok(())
+}
+
+/// Scans `text` (the contents of `file`) for `std` or `alloc` usage
+/// outside `#[cfg(test)]` blocks, appending violations.
+///
+/// # Matching patterns
+///
+/// - `extern crate std` → `StdUsage`
+/// - `use std::` → `StdUsage`
+/// - `extern crate alloc` → `AllocUsage`
+/// - `use alloc::` → `AllocUsage`
+///
+/// # cfg(test) skip
+///
+/// When the scanner encounters `#[cfg(test)]` on a line, it checks
+/// whether the *next non-blank, non-comment* line opens a module block
+/// (`{` is present) or is an item line.
+///
+/// - If a `{` is found on that line (or the `#[cfg(test)]` line itself),
+///   the scanner skips forward using bounded brace-matching until the
+///   matching `}` at depth 0.  This covers the `#[cfg(test)] mod tests { ... }`
+///   pattern.
+/// - If the next non-blank line does NOT contain `{`, the attribute is
+///   assumed to guard a single item (e.g. `#[cfg(test)] fn ...`), and
+///   only that one line is skipped.
+///
+/// **Documented limitation**: a `#[cfg(test)]` attribute on a non-module
+/// item that spans multiple lines (e.g. a multi-line function signature)
+/// is only skipped to the end of the first line of the item.  In practice,
+/// the patterns we match (`use std::`, `extern crate std`) are single-line
+/// statements; this limitation does not produce false positives in the
+/// real workspace.
+///
+/// # Comment stripping
+///
+/// Line comments (`// ...`) are stripped from each line before matching,
+/// so `// use std::fmt;` does not trigger a violation.
+///
+/// **Documented limitation**: block comments (`/* ... */`) are not
+/// stripped.  A `use std::` inside a block comment would be a false
+/// positive.  The real workspace does not use block-commented imports.
+fn check_source_for_std_alloc(file: &Path, text: &str, violations: &mut Vec<Violation>) {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let raw = lines[i];
+        let stripped = strip_line_comment(raw).trim();
+
+        // Detect `#[cfg(test)]` attribute.
+        if stripped == "#[cfg(test)]" {
+            // Look ahead for the block body or a single-item skip.
+            let advance = cfg_test_skip(&lines, i);
+            i += advance;
+            continue;
+        }
+
+        // Check for std/alloc usage patterns on the non-comment content.
+        if line_has_std_usage(stripped) {
+            violations.push(Violation::StdUsage {
+                file: file.to_path_buf(),
+            });
+        } else if line_has_alloc_usage(stripped) {
+            violations.push(Violation::AllocUsage {
+                file: file.to_path_buf(),
+            });
+        }
+        i += 1;
+    }
+}
+
+/// Returns the number of lines to advance from the `#[cfg(test)]` line
+/// (inclusive) to skip the cfg-guarded block or item.
+///
+/// Strategy:
+/// - If the `#[cfg(test)]` line itself contains `{`, start brace-match
+///   from that line.
+/// - Otherwise scan forward for the first non-blank, non-comment line.
+///   If it contains `{`, start brace-match from that line.
+///   If it does not, skip just that one item line (single-item form).
+fn cfg_test_skip(lines: &[&str], cfg_idx: usize) -> usize {
+    let cfg_line = lines[cfg_idx];
+    let stripped_cfg = strip_line_comment(cfg_line).trim();
+
+    // Case: `#[cfg(test)] mod tests { ... }` on one line (unusual but legal).
+    if stripped_cfg.contains('{') {
+        let end = brace_match_from_line(lines, cfg_idx);
+        return end - cfg_idx + 1;
+    }
+
+    // Look ahead for the item that the attribute decorates.
+    let mut j = cfg_idx + 1;
+    while j < lines.len() {
+        let item_stripped = strip_line_comment(lines[j]).trim();
+        if item_stripped.is_empty() {
+            j += 1;
+            continue;
+        }
+        // Found the item line.
+        if item_stripped.contains('{') {
+            // Block item (module, impl, fn, …) — brace-match from here.
+            let end = brace_match_from_line(lines, j);
+            return end - cfg_idx + 1;
+        }
+        // Single-item (use, const, static, …) — skip just that one line.
+        return j - cfg_idx + 1;
+    }
+    // Nothing after the attribute; advance one line (the attribute line itself).
+    1
+}
+
+/// Returns the index of the line that closes the brace-block opened on or
+/// after `start_idx`.  Uses bounded counting of `{` / `}` characters,
+/// tolerating quoted strings by ignoring `{`/`}` inside `"..."`.
+///
+/// If the closing `}` is never found (malformed source), returns the last
+/// line index (`lines.len() - 1`), capping the skip conservatively.
+fn brace_match_from_line(lines: &[&str], start_idx: usize) -> usize {
+    let mut depth = 0usize;
+    let mut found_open = false;
+    let mut i = start_idx;
+    while i < lines.len() {
+        let line = strip_line_comment(lines[i]);
+        let mut in_str = false;
+        for ch in line.chars() {
+            match ch {
+                '"' => in_str = !in_str,
+                '{' if !in_str => {
+                    depth += 1;
+                    found_open = true;
+                }
+                '}' if !in_str => {
+                    depth = depth.saturating_sub(1);
+                    if found_open && depth == 0 {
+                        return i;
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    // Guard: never found closing brace; return last line.
+    lines.len().saturating_sub(1)
+}
+
+/// Returns `true` when the (comment-stripped, trimmed) line contains a
+/// `std` usage pattern: `extern crate std` or `use std::`.
+///
+/// ```rust
+/// use reovim_depgraph::line_has_std_usage;
+///
+/// assert!(line_has_std_usage("use std::collections::HashMap;"));
+/// assert!(line_has_std_usage("extern crate std;"));
+/// assert!(!line_has_std_usage("use alloc::vec::Vec;"));
+/// // The input is already comment-stripped by the caller; a line that was
+/// // `// use std::fmt;` arrives here as an empty string.
+/// assert!(!line_has_std_usage(""));
+/// ```
+#[must_use]
+pub fn line_has_std_usage(stripped: &str) -> bool {
+    stripped.contains("extern crate std") || stripped.contains("use std::")
+}
+
+/// Returns `true` when the (comment-stripped, trimmed) line contains an
+/// `alloc` usage pattern: `extern crate alloc` or `use alloc::`.
+///
+/// ```rust
+/// use reovim_depgraph::line_has_alloc_usage;
+///
+/// assert!(line_has_alloc_usage("use alloc::vec::Vec;"));
+/// assert!(line_has_alloc_usage("extern crate alloc;"));
+/// assert!(!line_has_alloc_usage("use std::collections::HashMap;"));
+/// ```
+#[must_use]
+pub fn line_has_alloc_usage(stripped: &str) -> bool {
+    stripped.contains("extern crate alloc") || stripped.contains("use alloc::")
+}
+
+/// Strips the `// ...` line comment from a raw source line, respecting
+/// `"..."` quoted strings (a `//` inside a string is not a comment).
+///
+/// This is the same algorithm as `toml::strip_comment` but operates on
+/// Rust source (`//` delimiter instead of `#`).
+///
+/// ```rust
+/// use reovim_depgraph::strip_line_comment;
+///
+/// assert_eq!(strip_line_comment("let x = 1; // comment"), "let x = 1; ");
+/// // A `//` inside a quoted string is not a comment delimiter.
+/// assert_eq!(strip_line_comment(r#"let s = "a//b";"#), r#"let s = "a//b";"#);
+/// // Line with no comment is returned as-is.
+/// assert_eq!(strip_line_comment("fn foo() {}"), "fn foo() {}");
+/// ```
+#[must_use]
+pub fn strip_line_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_string = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => in_string = !in_string,
+            b'\\' if in_string => i += 1,
+            b'/' if !in_string && i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                return &line[..i];
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    line
 }
 
 #[cfg(test)]

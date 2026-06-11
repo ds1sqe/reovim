@@ -237,7 +237,10 @@ machinery is not trusted at panic time, but the file and the line
 format are the same. This is the pstore analog: the ring is
 volatile; the final flush is what survives the restart. Lifecycle
 consequences (target state, quarantine) travel through the
-persisted state (2.4), never by parsing log lines. The flush path
+persisted state (2.4), never by parsing log lines. At the `arch/`
+seam, the registered ring-tail provider returns one contiguous
+`&[u8]` already rendered in LOG2 line format; `arch/` writes it
+verbatim ahead of the panic line and never parses ring entries. The flush path
 lands with the `arch/` panic handler (the arch-foundation phase),
 gated by the AB12 conformance fixtures (2.3 §Conformance).
 

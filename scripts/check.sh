@@ -50,8 +50,15 @@ run_clippy() {
         cargo clippy --workspace --all-targets -- -D warnings
 }
 run_tests() { cargo test --workspace; }
+run_test_layout() { "$ROOT/scripts/check-test-layout.sh" --check; }
 
 cd "$ROOT"
+
+echo "==> test-layout (L12)"
+if ! run_test_layout; then
+    echo "check.sh: test-layout FAILED (inline #[cfg(test)] mod tests blocks found)" >&2
+    exit 1
+fi
 
 echo "==> fmt"
 if ! run_fmt; then

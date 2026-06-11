@@ -3,5 +3,9 @@
 version = 4
 
 [[package]]
+name = "reovim-arch"
+version = "0.16.0-dev"
+
+[[package]]
 name = "reovim-depgraph"
 version = "0.16.0-dev"

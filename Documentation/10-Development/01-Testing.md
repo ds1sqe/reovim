@@ -41,6 +41,24 @@ Both gates apply. Neither substitutes for the other.
 If the test cannot be written in the same change, the change is not
 understood well enough to merge yet.
 
+**Physical measurement limits (DEV1 clarification).** "100%" means
+100% of regions whose counters can physically persist. Two shapes are
+outside any instrumentation's reach, restructure or not:
+
+1. **Terminal syscalls** — the body of a never-returning exit syscall
+   (`exit_group`): the coverage profile is flushed *before* the final
+   exit, so that line's own counter increment can never reach disk.
+2. **The profiler's self-measurement horizon** — counter increments
+   that occur while the counter section is being serialized count
+   themselves after the snapshot.
+
+Such lines are not exempted: each one is individually classified and
+justified in the issue's coverage ledger under `Documentation/debt/`
+(`coverage-<issue>-<subject>.md`), reviewed before merge, and carries
+no annotation (`coverage(off)` remains forbidden). A line
+claimed under this clause that a reviewer can show is coverable — by a
+mid-run invocation, a fixture exec, or a restructure — fails the gate.
+
 ## 3. E2E smoke
 
 > **DEV2 — Every feature passes an E2E-level smoke test.** A

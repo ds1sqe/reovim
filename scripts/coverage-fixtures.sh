@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Builds and runs the arch no_std fixture bins under coverage instrumentation,
+# emitting profraw via the ARCH-OWNED profiler runtime (#785 Phase 5).
+#
+# This is the pre-Phase-5 spike harness AND the per-flight fixture-coverage
+# step that scripts/coverage.sh merges. The fixtures are #![no_std] #![no_main]
+# bins that cannot link compiler-rt's profiler runtime (38 libc symbols; the
+# Phase 4 spike failed), so they link arch/src/profiler.rs instead:
+#
+#   * -C instrument-coverage          : emit the __llvm_prf_* sections + the
+#                                       __llvm_profile_runtime reference.
+#   * -Z no-profiler-runtime          : do NOT auto-link profiler_builtins;
+#                                       arch's profiler.rs provides the runtime.
+#   * --cfg arch_coverage             : compile arch's profiler module + the
+#                                       exit-shim __llvm_profile_write_file call.
+#
+# LLVM_PROFILE_FILE is read at exit by arch's profiler runtime from the
+# captured envp (start::env_block); set it per-exec so each fixture writes a
+# distinct profraw the merge step consumes.
+#
+# NOTE: the MAIN SESSION runs this; subagents do not run build/coverage
+# commands. This script is the executable spec of the exact build command.
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FIXTURES_DIR="$ROOT/arch/tests/fixtures"
+OUT_DIR="${OUT_DIR:-$ROOT/target/arch-fixture-coverage}"
+mkdir -p "$OUT_DIR"
+
+# The instrumented-build RUSTFLAGS. `-Z no-profiler-runtime` requires nightly.
+# `-nostartfiles` is emitted by each fixture's build.rs, not here, because a
+# build-script link arg survives this RUSTFLAGS override.
+COV_RUSTFLAGS="-C instrument-coverage -Z no-profiler-runtime --cfg arch_coverage"
+
+# The fixture fleet: arch-selftest carries the full migrated arch test
+# suite; smoke is the charter boot fixture; the three panic fixtures cover
+# the AB12 handler paths (they exit non-zero BY DESIGN; the panic handler
+# flushes profraw before exit_group under arch_coverage). The
+# inject-failure selftest variant covers the runner's fail-fast path.
+FIXTURES=(arch-fixture-smoke arch-selftest arch-fixture-panic-halt arch-fixture-panic-recover arch-fixture-panic-ab13)
+
+echo "==> building instrumented fixtures"
+echo "    RUSTFLAGS=\"$COV_RUSTFLAGS\""
+RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
+    --manifest-path "$FIXTURES_DIR/Cargo.toml" \
+    "${FIXTURES[@]/#/--package=}" \
+    --message-format=json-render-diagnostics > "$OUT_DIR/build.json" 2> "$OUT_DIR/build.err"
+if [ $? -ne 0 ]; then
+    echo "fixture build FAILED; see $OUT_DIR/build.err" >&2
+    exit 1
+fi
+
+# Locate a built executable in the cargo JSON (no jq dependency).
+exe_for() {
+    grep "\"$1\"" "$OUT_DIR/build.json" \
+        | grep -o '"executable":"[^"]*"' | tail -1 \
+        | sed 's/"executable":"//; s/"$//'
+}
+
+echo "==> running instrumented fixtures, one profraw per exec"
+i=0
+for pkg in "${FIXTURES[@]}"; do
+    exe="$(exe_for "$pkg")"
+    if [ -z "$exe" ]; then
+        echo "no executable for $pkg" >&2
+        exit 1
+    fi
+    prof="$OUT_DIR/${pkg}-${i}.profraw"
+    echo "    $pkg -> $prof"
+    case "$pkg" in
+        *panic*)
+            # Panic fixtures flush their LOG2 line to a sink file (argv[1])
+            # and exit 70/75 by design; the exit code is not a failure here.
+            LLVM_PROFILE_FILE="$prof" "$exe" "$OUT_DIR/${pkg}.sink"
+            echo "      exit=$? (panic fixture: non-zero by design)"
+            ;;
+        *)
+            LLVM_PROFILE_FILE="$prof" "$exe"
+            echo "      exit=$?"
+            ;;
+    esac
+    i=$((i + 1))
+done
+
+echo "==> building + running the inject-failure selftest variant"
+RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
+    --manifest-path "$FIXTURES_DIR/Cargo.toml" \
+    --package=arch-selftest --features inject-failure \
+    --message-format=json-render-diagnostics > "$OUT_DIR/build-fail.json" 2> "$OUT_DIR/build-fail.err"
+if [ $? -ne 0 ]; then
+    echo "inject-failure build FAILED; see $OUT_DIR/build-fail.err" >&2
+    exit 1
+fi
+exe="$(grep '"arch-selftest"' "$OUT_DIR/build-fail.json" \
+    | grep -o '"executable":"[^"]*"' | tail -1 \
+    | sed 's/"executable":"//; s/"$//')"
+LLVM_PROFILE_FILE="$OUT_DIR/arch-selftest-fail.profraw" "$exe"
+echo "      exit=$? (fail-fast variant: 70 by design)"
+
+echo "==> profraw files in $OUT_DIR:"
+ls -la "$OUT_DIR"/*.profraw 2>/dev/null || echo "  (none — profiler runtime did not emit; investigate)"
+
+echo
+echo "Next (main session): merge + attribute, e.g."
+echo "  llvm-profdata merge -sparse $OUT_DIR/*.profraw -o $OUT_DIR/fixtures.profdata"
+echo "  llvm-cov export --instr-profile $OUT_DIR/fixtures.profdata <fixture-bin> ..."

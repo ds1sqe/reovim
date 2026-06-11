@@ -1,0 +1,24 @@
+[package]
+name = "arch-fixture-panic-recover"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "AB12 recover-path fixture: registers recover disposition + state hook, panics, exits 75"
+publish = false
+
+[[bin]]
+name = "arch-fixture-panic-recover"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+reovim-arch = { path = "../../..", features = ["runtime"] }
+
+[lints]
+workspace = true

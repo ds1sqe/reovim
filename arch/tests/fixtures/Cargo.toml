@@ -1,0 +1,46 @@
+# Nested workspace for the arch fixture bins (#785 Phase 4).
+#
+# These `#![no_std] #![no_main]` bins depend on `reovim-arch` with the
+# `runtime` feature (so the `_start` and `#[panic_handler]` lang items link).
+# They live in their OWN workspace, excluded from the parent, so the parent's
+# `cargo test --workspace` build does NOT feature-unify `runtime` onto the
+# `reovim-arch` rlib used by the lib's own test harness — that would define
+# `#[panic_handler]` in the libtest build and collide with std's lang item
+# (the bootstrap-state-1 lang-item conflict the plan calls out). The arch
+# integration test (`arch/tests/fixtures_exec.rs`) builds these via this
+# manifest path; the DAG6 probe still scans them by tree walk (membership is
+# not consulted by the probe).
+[workspace]
+resolver = "2"
+members = ["smoke", "panic-halt", "panic-recover", "panic-ab13", "selftest"]
+
+[workspace.package]
+version = "0.16.0-dev"
+edition = "2024"
+rust-version = "1.92"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+
+# `panic = "abort"` mirrors the parent workspace (L10/DAG6, AB12): no
+# unwinder, no unwind across `extern "C"`. The nested workspace needs its own
+# profile because profiles do not inherit across workspace boundaries.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage_nightly)',
+    'cfg(arch_coverage)',
+] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
