@@ -21,7 +21,7 @@ pub struct AbiVersion {
     pub major: u16,
     pub minor: u16,
     pub patch: u16,
-    pub _pad:  u16,
+    pub pad:  u16,
 }
 
 #[repr(C)]
@@ -29,7 +29,7 @@ pub struct Version {     // ApiVersion (kind-specific semantic contract)
     pub major: u16,
     pub minor: u16,
     pub patch: u16,
-    pub _pad:  u16,
+    pub pad:  u16,
 }
 ```
 
@@ -74,7 +74,7 @@ only the header before calling any function pointer.
 ## 3. Error convention
 
 ```rust
-#[repr(C, i32)]
+#[repr(i32)]
 pub enum ErrorCode {
     Ok                      = 0,
     Generic                 = 1,
@@ -243,7 +243,7 @@ compatibility loader for zero external consumers.
 
 > **AB14 — `ErrorCode` is the only fallible-return type at the ABI
 > boundary.** Every fallible vtable slot and HostApi function
-> returns `ErrorCode` (`#[repr(C, i32)]`). Bare `c_int` returns are
+> returns `ErrorCode` (`#[repr(i32)]`). Bare `c_int` returns are
 > forbidden in v4 vtables. There is no `c_int → ErrorCode`
 > compatibility loader; driver-ABI-v1 is retired with the archived
 > v0.15 implementation, and `archive/docs/architecture/driver-abi-v1.md`
@@ -303,7 +303,7 @@ machinery; AB15 is the covenant that machinery serves.
 ## 7. Manifest kinds
 
 ```rust
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ManifestKind {
     Unknown          = 0,   // reserved-invalid; loader rejects with IllegalKind
     ModuleServer     = 1,

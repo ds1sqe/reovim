@@ -134,6 +134,36 @@ pub fn default_category_table() -> Vec<(String, Category)> {
     .collect()
 }
 
+/// The §6 foundation sub-DAG grant table.
+///
+/// Records which intra-Foundation dep edges are granted.  Foundation crates
+/// (arch, lib/*, uapi/*) may only depend on other Foundation crates when an
+/// explicit grant exists here; absent entry → `UngrantedFoundationEdge`
+/// violation.
+///
+/// ```rust
+/// use reovim_depgraph::default_foundation_grants;
+///
+/// let grants = default_foundation_grants();
+/// // uapi/protocol is granted the uapi/abi dep.
+/// assert!(grants.get("reovim-uapi-protocol")
+///     .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-abi")));
+/// ```
+#[must_use]
+pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut m = std::collections::BTreeMap::new();
+    // uapi/protocol depends on uapi/abi for ErrorCode, FrameHeader, RawInput,
+    // and the carrier headers (Phase 1 of #786).
+    m.insert("reovim-uapi-protocol".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
+    // The declare-macro crates emit `::reovim_uapi_abi::*` paths textually,
+    // so their [dependencies] tables stay empty — but their doc-tests
+    // compile real expansions, making the dev-dependency edge to uapi/abi
+    // architecturally real and granted here (Phase 4 of #786).
+    m.insert("reovim-uapi-module-macros".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
+    m.insert("reovim-uapi-driver-macros".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
+    m
+}
+
 /// Returns true when `pattern` matches the crate directory `path`
 /// (workspace-relative, `/`-separated).
 ///
@@ -313,6 +343,14 @@ pub enum Violation {
         /// Which profile section was wrong or missing the key.
         profile: String,
     },
+    /// L11: a `uapi/protocol` source file imports a crate outside the purity
+    /// allowlist (`core`, `reovim_uapi_abi`, intra-crate paths).
+    ForbiddenExternalImport {
+        /// Path of the source file containing the forbidden import.
+        file: PathBuf,
+        /// The forbidden import token (e.g. `arch`, `std`, `alloc`).
+        import: String,
+    },
 }
 
 impl fmt::Display for Violation {
@@ -366,6 +404,11 @@ impl fmt::Display for Violation {
             Self::PanicProfileNotAbort { profile } => write!(
                 f,
                 "DAG6: `[profile.{profile}]` does not set `panic = \"abort\"` (missing or wrong value)"
+            ),
+            Self::ForbiddenExternalImport { file, import } => write!(
+                f,
+                "L11: `{}`: forbidden external import `{import}` (only `core` and `reovim_uapi_abi` allowed)",
+                file.display()
             ),
         }
     }
@@ -630,10 +673,7 @@ impl ProbeConfig {
         };
         Ok(Self {
             category_table: default_category_table(),
-            // §6: every current grant is empty; the table grows only by spec
-            // edit + a change here. TODO(#778): populate when the foundation
-            // sub-DAG is enumerated.
-            foundation_grants: BTreeMap::new(),
+            foundation_grants: default_foundation_grants(),
             catalog,
             allowlist,
         })
@@ -1172,7 +1212,8 @@ pub(crate) fn allowlist_match<'a>(
         | Violation::MissingNoStd { .. }
         | Violation::StdUsage { .. }
         | Violation::AllocUsage { .. }
-        | Violation::PanicProfileNotAbort { .. } => return None,
+        | Violation::PanicProfileNotAbort { .. }
+        | Violation::ForbiddenExternalImport { .. } => return None,
     };
     allowlist
         .entry
@@ -1622,6 +1663,114 @@ pub fn strip_line_comment(line: &str) -> &str {
         i += 1;
     }
     line
+}
+
+// ── L11 purity probe ─────────────────────────────────────────────────────────
+
+/// Crate-root tokens that are always permitted in any `use`/`extern crate`
+/// statement inside `uapi/protocol` source files (L11).
+///
+/// - `core` — the only standard library available under `#![no_std]`.
+/// - `reovim_uapi_abi` — the one allowed external sibling dep.
+/// - `crate` / `self` / `super` — intra-crate paths.
+const L11_PERMITTED_IMPORT_ROOTS: &[&str] = &["core", "reovim_uapi_abi", "crate", "self", "super"];
+
+/// Scans every `.rs` source file under `src_dir` (the `src/` directory of a
+/// `uapi`-tier crate) for `use` or `extern crate` statements that reference
+/// a crate root outside the L11 allowlist.
+///
+/// Returns a list of [`Violation::ForbiddenExternalImport`] entries.
+///
+/// `src_dir` is the physical `src/` path.  `tests/` sub-directories are
+/// skipped (test code may link `std` under bootstrap state 1).
+///
+/// ```rust
+/// use reovim_depgraph::run_l11_purity_probe;
+/// use std::path::Path;
+///
+/// // An empty directory produces no violations.
+/// let violations = run_l11_purity_probe(Path::new("/nonexistent")).unwrap_or_default();
+/// assert!(violations.is_empty());
+/// ```
+///
+/// # Errors
+///
+/// Returns [`ProbeError::Io`] when a directory entry cannot be listed.
+pub fn run_l11_purity_probe(src_dir: &Path) -> Result<Vec<Violation>, ProbeError> {
+    let mut violations = Vec::new();
+    if src_dir.is_dir() {
+        sweep_l11_src_dir(src_dir, &mut violations)?;
+    }
+    Ok(violations)
+}
+
+/// Recursively sweeps `.rs` files under `dir` (skipping `tests/` directories)
+/// for imports forbidden by L11.
+fn sweep_l11_src_dir(dir: &Path, violations: &mut Vec<Violation>) -> Result<(), ProbeError> {
+    let entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .and_then(Iterator::collect)
+        .map_err(io_error(dir))?;
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if path.is_dir() {
+            if name_str == "tests" {
+                continue; // skip test target directories
+            }
+            sweep_l11_src_dir(&path, violations)?;
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && let Ok(text) = fs::read_to_string(&path)
+        {
+            check_source_for_l11_violations(&path, &text, violations);
+        }
+    }
+    Ok(())
+}
+
+/// Scans `text` for `use X::` or `extern crate X` statements where `X` is not
+/// in [`L11_PERMITTED_IMPORT_ROOTS`].
+///
+/// Line comments are stripped before matching.  `#[cfg(test)]`-guarded blocks
+/// are skipped (test code may import `std`).
+fn check_source_for_l11_violations(file: &Path, text: &str, violations: &mut Vec<Violation>) {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let raw = lines[i];
+        let stripped = strip_line_comment(raw).trim();
+
+        // Skip cfg(test)-guarded blocks (same logic as DAG6).
+        if stripped == "#[cfg(test)]" {
+            let advance = cfg_test_skip(&lines, i);
+            i += advance;
+            continue;
+        }
+
+        // Match `use X::...` — extract the leading crate-root token `X`.
+        if let Some(rest) = stripped.strip_prefix("use ") {
+            // rest is e.g. "std::fmt::Write;" or "core::mem;" or "{…}"
+            // Take the token up to the first `:` or `{` or `;` or space.
+            let root = rest.split([':', '{', ';', ' ']).next().unwrap_or("");
+            if !root.is_empty() && !L11_PERMITTED_IMPORT_ROOTS.contains(&root) {
+                violations.push(Violation::ForbiddenExternalImport {
+                    file: file.to_path_buf(),
+                    import: root.to_owned(),
+                });
+            }
+        } else if let Some(rest) = stripped.strip_prefix("extern crate ") {
+            // rest is e.g. "std;" or "alloc;" or "arch as …;"
+            let root = rest.split([';', ' ']).next().unwrap_or("");
+            if !root.is_empty() && !L11_PERMITTED_IMPORT_ROOTS.contains(&root) {
+                violations.push(Violation::ForbiddenExternalImport {
+                    file: file.to_path_buf(),
+                    import: root.to_owned(),
+                });
+            }
+        }
+
+        i += 1;
+    }
 }
 
 #[cfg(test)]

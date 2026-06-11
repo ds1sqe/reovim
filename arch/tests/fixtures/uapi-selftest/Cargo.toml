@@ -1,0 +1,39 @@
+[package]
+name = "uapi-selftest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "no_std uapi self-test runner: all uapi/*_tests.rs L12 tests on the in-repo runner (#786 Phase 5)"
+publish = false
+
+[[bin]]
+name = "uapi-selftest"
+path = "src/main.rs"
+# A `#![no_std] #![no_main]` test-runner bin has no libtest harness; disable
+# the test/bench/doc builds so a parent `cargo test` does not link a std
+# harness against it.
+test = false
+bench = false
+doctest = false
+
+[features]
+default = []
+# Adds one deliberately-failing test to verify the runner exits non-zero
+# (mirrors the arch-selftest inject-failure pattern).
+inject-failure = []
+
+[dependencies]
+# `runtime`: provides `_start`, panic handler, testrt runner.
+# `selftest`: compiles the uapi sibling test modules into the crates.
+reovim-arch = { path = "../../../../arch", features = ["runtime", "selftest"] }
+reovim-uapi-abi = { path = "../../../../uapi/abi", features = ["selftest"] }
+reovim-uapi-protocol = { path = "../../../../uapi/protocol", features = ["selftest"] }
+reovim-uapi-module-macros = { path = "../../../../uapi/module-macros", features = ["selftest"] }
+reovim-uapi-driver-macros = { path = "../../../../uapi/driver-macros", features = ["selftest"] }
+
+[lints]
+workspace = true

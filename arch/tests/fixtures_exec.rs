@@ -122,6 +122,25 @@ fn testrt_pilot_all_pass_exits_zero() {
 }
 
 #[test]
+fn uapi_selftest_all_pass_exits_zero() {
+    // uapi selftest charter smoke (pass side, #786 Phase 5): the full uapi
+    // test suite — layout goldens, codec round-trips + 57-byte Hello frame
+    // golden, CF5 cross-check, macro vtable smoke — all run on the no_std
+    // runner and exit 0 when every test passes.
+    let exe = build_fixture("uapi-selftest");
+    assert_eq!(run(&exe, &[]), 0, "uapi all-pass test run exits 0");
+}
+
+#[test]
+fn uapi_selftest_one_failure_exits_nonzero() {
+    // uapi selftest charter smoke (fail side): the inject-failure variant
+    // adds a deliberately-failing test; the arch panic handler exits the
+    // halt disposition code (70) — the runner's fail-fast contract.
+    let exe = build_fixture_features("uapi-selftest", &["inject-failure"]);
+    assert_eq!(run(&exe, &[]), 70, "uapi inject-failure exits the halt code");
+}
+
+#[test]
 fn testrt_pilot_one_failure_exits_nonzero() {
     // The no_std runner charter smoke (fail side): a deliberately-failing test
     // (the `inject-failure` variant) panics, so the arch panic handler exits

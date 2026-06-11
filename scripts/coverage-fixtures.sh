@@ -38,7 +38,8 @@ COV_RUSTFLAGS="-C instrument-coverage -Z no-profiler-runtime --cfg arch_coverage
 # the AB12 handler paths (they exit non-zero BY DESIGN; the panic handler
 # flushes profraw before exit_group under arch_coverage). The
 # inject-failure selftest variant covers the runner's fail-fast path.
-FIXTURES=(arch-fixture-smoke arch-selftest arch-fixture-panic-halt arch-fixture-panic-recover arch-fixture-panic-ab13)
+# uapi-selftest covers the full uapi test suite (#786 Phase 5).
+FIXTURES=(arch-fixture-smoke arch-selftest arch-fixture-panic-halt arch-fixture-panic-recover arch-fixture-panic-ab13 uapi-selftest)
 
 echo "==> building instrumented fixtures"
 echo "    RUSTFLAGS=\"$COV_RUSTFLAGS\""
@@ -83,19 +84,34 @@ for pkg in "${FIXTURES[@]}"; do
     i=$((i + 1))
 done
 
-echo "==> building + running the inject-failure selftest variant"
+echo "==> building + running the inject-failure selftest variant (arch)"
 RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
     --manifest-path "$FIXTURES_DIR/Cargo.toml" \
     --package=arch-selftest --features inject-failure \
     --message-format=json-render-diagnostics > "$OUT_DIR/build-fail.json" 2> "$OUT_DIR/build-fail.err"
 if [ $? -ne 0 ]; then
-    echo "inject-failure build FAILED; see $OUT_DIR/build-fail.err" >&2
+    echo "arch inject-failure build FAILED; see $OUT_DIR/build-fail.err" >&2
     exit 1
 fi
 exe="$(grep '"arch-selftest"' "$OUT_DIR/build-fail.json" \
     | grep -o '"executable":"[^"]*"' | tail -1 \
     | sed 's/"executable":"//; s/"$//')"
 LLVM_PROFILE_FILE="$OUT_DIR/arch-selftest-fail.profraw" "$exe"
+echo "      exit=$? (fail-fast variant: 70 by design)"
+
+echo "==> building + running the inject-failure uapi-selftest variant (#786 Phase 5)"
+RUSTFLAGS="$COV_RUSTFLAGS" cargo build \
+    --manifest-path "$FIXTURES_DIR/Cargo.toml" \
+    --package=uapi-selftest --features inject-failure \
+    --message-format=json-render-diagnostics > "$OUT_DIR/build-uapi-fail.json" 2> "$OUT_DIR/build-uapi-fail.err"
+if [ $? -ne 0 ]; then
+    echo "uapi inject-failure build FAILED; see $OUT_DIR/build-uapi-fail.err" >&2
+    exit 1
+fi
+exe="$(grep '"uapi-selftest"' "$OUT_DIR/build-uapi-fail.json" \
+    | grep -o '"executable":"[^"]*"' | tail -1 \
+    | sed 's/"executable":"//; s/"$//')"
+LLVM_PROFILE_FILE="$OUT_DIR/uapi-selftest-fail.profraw" "$exe"
 echo "      exit=$? (fail-fast variant: 70 by design)"
 
 echo "==> profraw files in $OUT_DIR:"

@@ -19,9 +19,9 @@ use std::{
 use super::{
     Allowlist, AllowlistEntry, Allowlisted, Catalog, CatalogEdge, Category, Crate, DepEntry,
     DepTable, ProbeConfig, ProbeError, Report, Violation, allowed_categories, allowlist_match,
-    check_edge, check_panic_profiles, classify, default_category_table, has_no_std_attr,
-    line_has_alloc_usage, line_has_std_usage, pattern_matches, run_dag6_probe, run_probe,
-    strip_line_comment,
+    check_edge, check_panic_profiles, classify, default_category_table, default_foundation_grants,
+    has_no_std_attr, line_has_alloc_usage, line_has_std_usage, pattern_matches, run_dag6_probe,
+    run_probe, strip_line_comment,
 };
 
 // ── TempDir helper ────────────────────────────────────────────────────────────
@@ -192,6 +192,22 @@ fn category_table_mirrors_spec_1_2_section_1() {
     // Composition roots and tools.
     assert!(has("apps/*", Category::Apps));
     assert!(has("tools/*", Category::Tools));
+}
+
+// ── default_foundation_grants tests ──────────────────────────────────────────
+
+/// Asserts the foundation sub-DAG grants table is non-empty and contains the
+/// `uapi/protocol → uapi/abi` grant added by Phase 1 of #786.
+#[test]
+fn foundation_grants_contains_uapi_protocol_to_abi() {
+    let grants = default_foundation_grants();
+    let proto_grants = grants
+        .get("reovim-uapi-protocol")
+        .expect("reovim-uapi-protocol must have a grants entry");
+    assert!(
+        proto_grants.iter().any(|g| g == "reovim-uapi-abi"),
+        "reovim-uapi-protocol must be granted the reovim-uapi-abi dep"
+    );
 }
 
 // ── classify tests ────────────────────────────────────────────────────────────

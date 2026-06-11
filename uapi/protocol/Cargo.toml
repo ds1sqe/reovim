@@ -1,0 +1,22 @@
+[package]
+name = "reovim-uapi-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Sans-IO framed-protocol codec and 36-message inventory (7.3)"
+publish = false
+
+[features]
+# Gates sibling test files for the no_std selftest runner (L12.1).
+# Phase 5 wires the selftest bin; Phase 2 adds the codec implementation.
+selftest = []
+
+[dependencies]
+reovim-uapi-abi = { path = "../abi" }
+
+[lints]
+workspace = true

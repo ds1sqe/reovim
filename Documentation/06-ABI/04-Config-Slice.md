@@ -36,7 +36,7 @@ pub struct ConfigSlice {
     pub entries:        *const ConfigKvp,
     pub len:            usize,
     pub total_bytes:    usize,           // for CFG6 / §11 cap accounting
-    pub _reserved:      u32,
+    pub reserved:      u32,
 }
 ```
 
@@ -61,7 +61,7 @@ position.
 ## 4. Kinds
 
 ```rust
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ConfigValueKind {
     Unknown        = 0,
     Bool           = 1,
@@ -114,7 +114,7 @@ UTF-8 validation:
 ## 7. Source
 
 ```rust
-#[repr(C, u8)]
+#[repr(u8)]
 pub enum ConfigSource {
     Default = 0,
     System  = 1,

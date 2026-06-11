@@ -38,7 +38,7 @@ pub struct AbiVersion {
     pub major: u16,
     pub minor: u16,
     pub patch: u16,
-    pub _pad:  u16,
+    pub pad:  u16,
 }
 
 #[repr(C)]
@@ -46,7 +46,7 @@ pub struct Version {     // ApiVersion
     pub major: u16,
     pub minor: u16,
     pub patch: u16,
-    pub _pad:  u16,
+    pub pad:  u16,
 }
 
 #[repr(transparent)]
@@ -214,7 +214,7 @@ pub struct ConfigSlice {
     pub entries:        *const ConfigKvp,
     pub len:            usize,
     pub total_bytes:    usize,
-    pub _reserved:      u32,
+    pub reserved:      u32,
 }
 
 #[repr(C)]
@@ -342,7 +342,7 @@ pub struct KeyEvent {
     pub keycode:      u32,      // §7.1.1 vocabulary
     pub mods:         u8,       // §7.1.2 bitfield
     pub action:       u8,       // 0 = press, 1 = release, 2 = repeat
-    pub _pad:         [u8; 2],
+    pub pad:         [u8; 2],
     pub timestamp_ns: u64,      // monotonic
     pub utf8:         [u8; 8],  // utf8[0] = len (0..=7); utf8[1..=len] = bytes
 }
@@ -408,7 +408,7 @@ specially (e.g. no keymap interpretation).
 #[repr(C)]
 pub struct TriggerEvent {
     pub trigger_id:   u32,
-    pub _pad:         u32,
+    pub pad:         u32,
     pub timestamp_ns: u64,
 }
 ```
@@ -421,7 +421,7 @@ Size 16, align 8. Opaque to the kernel beyond routing (5.2 §6).
 #[repr(C)]
 pub struct ImeEvent {
     pub phase:        u8,       // 0 = begin, 1 = update, 2 = commit, 3 = cancel
-    pub _pad:         [u8; 3],
+    pub pad:         [u8; 3],
     pub caret_byte:   u32,      // caret position within the preedit text, bytes
     pub timestamp_ns: u64,
     // payload continues: UTF-8 preedit (begin/update) or committed text (commit)
@@ -509,7 +509,7 @@ pub struct DomainScopeWire {
     pub start: PositionCarrierWire,
     pub end:   PositionCarrierWire,
     pub flags: u8,
-    pub _pad:  [u8; 7],
+    pub pad:  [u8; 7],
 }
 ```
 

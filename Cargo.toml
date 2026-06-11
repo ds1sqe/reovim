@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["lib/depgraph", "arch"]
+members = [
+    "lib/depgraph",
+    "arch",
+    "uapi/abi",
+    "uapi/protocol",
+    "uapi/module-macros",
+    "uapi/driver-macros",
+]
 # `arch/tests/fixtures/` is its OWN nested workspace (#785 Phase 4): its
 # `#![no_std] #![no_main]` bins depend on `reovim-arch` with the `runtime`
 # feature, and keeping them out of this workspace prevents `cargo test

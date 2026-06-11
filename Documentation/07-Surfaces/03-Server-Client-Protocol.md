@@ -245,6 +245,24 @@ codec primitive is named so every field in §7 maps to exactly one:
 > are encoded in the order listed in the §7 body table, with no
 > padding between them. *Class*: CI (golden) + runtime.
 
+> **SP17 — Decoded form is a zero-copy borrowing view; encode refuses
+> over-cap values.** Under SP15's no-allocation rule, `decode` builds
+> no owned collections: a decoded message borrows the input buffer
+> (`Msg<'a>` bound to the `&'a [u8]`). Fixed-width fields decode by
+> value; every variable-length field (`bytes`, `str`, `list<T>`,
+> `carrier` content) is a validated view over the input — a borrowed
+> slice for `bytes`/`str`/carrier content, and a count-prefixed
+> accessor/iterator view for `list<T>`. ALL structural validation
+> (bounds, UTF-8, discriminants, counts) completes before `decode`
+> returns `Ok`, so view traversal afterwards cannot fail. The SP13
+> byte contract `decode(encode(x)) == x` is unchanged by the borrowed
+> shape. Symmetrically on the encode side: a value whose
+> `encoded_size()` would exceed the SP10 `wire-max-frame-bytes` bound
+> is not a legal frame — `encode` (and `encoded_size`-driven sizing)
+> fails it with `ErrorCode::ResourceExhausted` and writes nothing; an
+> illegal over-cap frame is never produced. *Class*: API shape
+> (compile-time) + runtime.
+
 ### 6.1 Tagged unions (sibling-discriminated)
 
 A field of an `enum` type encodes as its discriminant followed by the
@@ -391,7 +409,10 @@ There is one error frame: `Reject` (tag `0xFF00`), body
 `#[repr(i32)]` enum, encoded by the codec as its `i32` discriminant
 (little-endian); `detail` is a human-readable UTF-8 string. A `Reject`
 echoes the offending request's `correlation_id` when one exists,
-else 0.
+else 0. An out-of-range `code` discriminant on `Reject` decode maps
+to `ErrorCode::Generic` rather than rejecting the frame (a `Reject`
+is already the error path; mirroring AB14's out-of-range slot-return
+rule keeps one degraded-code convention).
 
 > **SP14 — Failures are a single reject frame carrying an ErrorCode.**
 > Every request failure, capability rejection, protocol violation, and
@@ -472,6 +493,10 @@ input side is
 capped per `wire-input-rate` (CR15-style). When the notify window is
 exhausted the server coalesces per the channel's drop policy (DS4
 classes apply: `state` newest-wins, `frame` drops intermediates).
+The `wire-max-frame-bytes` cap is enforced at the codec boundary in
+both directions: `encode` refuses an over-cap value with
+`ResourceExhausted` (SP17), and a received header whose `body_len`
+exceeds the cap is rejected before body decode.
 
 > Heritage (non-normative). The window keys were `grpc-*` under the
 > gRPC form; they are renamed `wire-*` (transport-neutral) with

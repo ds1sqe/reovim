@@ -1,0 +1,27 @@
+[package]
+name = "reovim-uapi-module-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "L9-clean macro_rules! declare_module! macro (NOT proc-macro)"
+publish = false
+
+[features]
+# Gates sibling test files for the no_std selftest runner (L12.1).
+selftest = []
+
+[lints]
+workspace = true
+
+# Zero deps: the macro emits `::reovim_uapi_abi::*` paths as tokens so the
+# caller's crate supplies the dep (textual-path trick, Phase 4).
+# NOT proc-macro = true (L9: syn/quote/proc-macro2 are forbidden by DAG5).
+
+[dev-dependencies]
+# Doc-tests reference ::reovim_uapi_abi::* types directly (L12.2).
+# This dep is TEST-ONLY; the shipped lib has zero deps (DAG5/L9 preserved).
+reovim-uapi-abi = { path = "../abi" }

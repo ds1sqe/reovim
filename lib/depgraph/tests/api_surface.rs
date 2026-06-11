@@ -23,9 +23,9 @@ use std::{
 
 use reovim_depgraph::{
     Allowlist, AllowlistEntry, Catalog, CatalogEdge, Category, DepTable, ProbeConfig, ProbeError,
-    Report, Violation, check_panic_profiles, classify, default_category_table, enumerate_crates,
-    has_no_std_attr, line_has_alloc_usage, line_has_std_usage, run_dag6_probe, run_probe,
-    strip_line_comment,
+    Report, Violation, check_panic_profiles, classify, default_category_table,
+    default_foundation_grants, enumerate_crates, has_no_std_attr, line_has_alloc_usage,
+    line_has_std_usage, run_dag6_probe, run_l11_purity_probe, run_probe, strip_line_comment,
     toml::{TomlValue, parse_file, parse_text},
 };
 
@@ -188,6 +188,16 @@ fn violation_display_all_variants() {
     assert!(s.contains("DAG6"), "PanicProfileNotAbort: {s}");
     assert!(s.contains("dev"), "PanicProfileNotAbort profile: {s}");
     assert!(s.contains("abort"), "PanicProfileNotAbort abort mention: {s}");
+
+    // ForbiddenExternalImport (L11 purity probe).
+    let forbidden_import = Violation::ForbiddenExternalImport {
+        file: root.join("uapi/protocol/src/lib.rs"),
+        import: "arch".to_owned(),
+    };
+    let s = forbidden_import.to_string();
+    assert!(s.contains("L11"), "ForbiddenExternalImport: {s}");
+    assert!(s.contains("arch"), "ForbiddenExternalImport import: {s}");
+    assert!(s.contains("core"), "ForbiddenExternalImport allowed mention: {s}");
 
     // ProbeError::Parse.
     let parse_err = ProbeError::Parse {
@@ -881,6 +891,23 @@ fn dag6_check_panic_profiles_rlib() {
     assert_eq!(v.len(), 2, "unwind in both → 2 violations; got {v:?}");
 }
 
+/// `default_foundation_grants` from the rlib build: the returned table must
+/// be non-empty and contain the `uapi/protocol → uapi/abi` grant (#786 Phase 1).
+#[test]
+fn default_foundation_grants_rlib() {
+    let grants = default_foundation_grants();
+    assert!(
+        !grants.is_empty(),
+        "foundation grants table must be non-empty after Phase 1 of #786"
+    );
+    assert!(
+        grants
+            .get("reovim-uapi-protocol")
+            .is_some_and(|v| v.iter().any(|g| g == "reovim-uapi-abi")),
+        "uapi/protocol must be granted the uapi/abi dep"
+    );
+}
+
 /// `run_dag6_probe` from the rlib build: a clean crate and a crate with
 /// `use std::` both exercise the main walk branches.
 #[test]
@@ -910,4 +937,38 @@ fn dag6_run_dag6_probe_rlib() {
     let v = run_dag6_probe(root).expect("probe runs with std crate");
     let has_std = v.iter().any(|v| matches!(v, Violation::StdUsage { .. }));
     assert!(has_std, "std crate → StdUsage; got {v:?}");
+}
+
+// ── L11 purity probe (run_l11_purity_probe) ──────────────────────────────────
+
+/// `run_l11_purity_probe` on a clean source tree returns no violations; a tree
+/// with `use arch::foo;` returns exactly one `ForbiddenExternalImport`.
+#[test]
+fn run_l11_purity_probe_api_surface() {
+    let td = common::TempDir::new();
+
+    // Clean: only core + reovim_uapi_abi + crate-local imports.
+    let clean_src = td.path().join("clean_src");
+    common::write_file(
+        td.path(),
+        "clean_src/lib.rs",
+        "#![no_std]\nuse core::mem::size_of;\nuse reovim_uapi_abi::ErrorCode;\n",
+    );
+    let clean = run_l11_purity_probe(&clean_src).expect("L11 probe must succeed on clean src");
+    assert!(clean.is_empty(), "clean src must produce zero L11 violations; got {clean:?}");
+
+    // Dirty: forbidden `use arch::foo;`.
+    let dirty_src = td.path().join("dirty_src");
+    common::write_file(td.path(), "dirty_src/lib.rs", "#![no_std]\nuse arch::syscall::write;\n");
+    let dirty = run_l11_purity_probe(&dirty_src).expect("L11 probe must succeed on dirty src");
+    let has_forbidden = dirty.iter().any(|v| {
+        matches!(
+            v,
+            Violation::ForbiddenExternalImport { import, .. } if import == "arch"
+        )
+    });
+    assert!(
+        has_forbidden,
+        "dirty src with `use arch::` must produce ForbiddenExternalImport; got {dirty:?}"
+    );
 }

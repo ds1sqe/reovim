@@ -1,0 +1,26 @@
+[package]
+name = "reovim-uapi-driver-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "L9-clean macro_rules! declare_*_driver! macros (NOT proc-macro)"
+publish = false
+
+[features]
+# Gates sibling test files for the no_std selftest runner (L12.1).
+selftest = []
+
+[lints]
+workspace = true
+
+# Zero deps (same textual-path trick as module-macros, Phase 4).
+# NOT proc-macro = true.
+
+[dev-dependencies]
+# Doc-tests reference ::reovim_uapi_abi::* types directly (L12.2).
+# This dep is TEST-ONLY; the shipped lib has zero deps (DAG5/L9 preserved).
+reovim-uapi-abi = { path = "../abi" }

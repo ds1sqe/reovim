@@ -9,3 +9,28 @@ version = "0.16.0-dev"
 [[package]]
 name = "reovim-depgraph"
 version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-abi"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-driver-macros"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-abi",
+]
+
+[[package]]
+name = "reovim-uapi-module-macros"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-abi",
+]
+
+[[package]]
+name = "reovim-uapi-protocol"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-abi",
+]

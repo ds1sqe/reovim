@@ -5,6 +5,69 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ## [0.16.0-dev] - Unreleased
 
 ### Added
+- `uapi/abi` frozen `#[repr(C)]` type catalog (#786 Phase 1): the 6.3/6.2/6.4
+  ABI type catalog as a `#![no_std]` core-only crate (`reovim-uapi-abi`);
+  zero dependencies (L9/DAG5); every type mirrors its spec section with a
+  doc comment and doc-test (L12.2).  Workspace members added for all four
+  uapi crates (`uapi/abi`, `uapi/protocol`, `uapi/module-macros`,
+  `uapi/driver-macros`).  Foundation sub-DAG grants table added to
+  `lib/depgraph` (`uapi/protocol → uapi/abi`).  `CHANGELOG.md` entry.
+- `uapi/protocol` sans-IO framed-protocol codec and message inventory
+  (#786 Phase 2): the deterministic byte codec (`Encoder`/`Decoder` over
+  caller buffers, §6), the 36 hand-written message structs (§7) with the
+  `encode`/`decode`/`encoded_size` triple (SP13) and borrowing decoded views
+  (SP17), zero-copy list views (`StrList`/`RawInputList`/`DomainEntryList`/
+  `CarrierList`), frame assembly with the SP10 `wire-max-frame-bytes` cap
+  check, and the pure `Send + 'static` handshake/correlation/unknown-tag state
+  machine (§10).  `#![no_std]`, no-alloc, no `arch/` edge; every `pub` item
+  carries a doc-test.
+- L9-clean declare macros for module and driver vtable exports (#786 Phase 4):
+  `reovim-uapi-module-macros` (`declare_module!`, `declare_module_client!`) and
+  `reovim-uapi-driver-macros` (`declare_driver_server!`, `declare_driver_client!`,
+  `declare_capability_client!`, `declare_domain_server!`, `declare_provider_server!`,
+  `declare_stream_scheme!`) implemented as `macro_rules!` in `#![no_std]`
+  ordinary lib crates (NOT `proc-macro = true`; `syn`/`quote`/`proc-macro2`
+  are absent per L9/DAG5). AB12 disposition shape: no `catch_unwind` anywhere;
+  panics in vtable slots reach the `arch/`-owned handler under `panic = "abort"`
+  directly. Textual-path discipline: macros emit `::reovim_uapi_abi::*` tokens;
+  the macro crates have zero shipped deps (DAG5). `[dev-dependencies]` on
+  `reovim-uapi-abi` added to both Cargo.toml files for doc-test compilation
+  (test-only; shipped dep graph unaffected). Each macro exports the 6.2 §2
+  canonical symbol (`REOVIM_MODULE_SERVER_VTABLE`, `REOVIM_DRIVER_SERVER_VTABLE`,
+  etc.) as a `#[unsafe(no_mangle)] pub static` with a scoped `#[allow(unsafe_code)]`
+  and a SAFETY comment citing the FFI export seam.
+- uapi no_std selftest runner migration (#786 Phase 5): all uapi test bodies
+  migrated to the arch `testrt` no_std selftest runner in a new
+  `uapi-selftest` bin added to the existing `arch/tests/fixtures` nested
+  workspace.  Test groups: `layout_goldens` (all ABI size/offset/align
+  assertions), `codec_goldens` (57-byte Hello golden + all 37 message
+  round-trips + full failure-mode suite), `cf5_crosscheck` (§7 inventory
+  parity, std-free linear uniqueness check), `macro_smoke` (vtable header
+  kind/size_of_self for all four macro variants).  Two exec tests added to
+  `arch/tests/fixtures_exec.rs` (all-pass exit-0, inject-failure exit-70).
+  `uapi-selftest` added to `scripts/coverage-fixtures.sh` fleet so its
+  profraw lands in the merge.  Ledger created at
+  `Documentation/debt/coverage-786-uapi-foundation.md` (no
+  physical-limit claims; genuine 100% MC/DC expected for pure
+  computation).  Existing libtest integration tests in `uapi/*/tests/`
+  remain as bootstrap-state-1 mirrors.
+- Golden-test apparatus for frozen uapi surfaces (#786 Phase 3): ABI layout
+  goldens (`uapi/abi/tests/layout_goldens.rs`) asserting `size_of`,
+  `align_of`, and `offset_of` for every 6.3/6.2/6.4 catalog type against the
+  spec values (mechanism: `core::mem::offset_of!`, stable since Rust 1.77,
+  gap-4 pin); codec round-trip goldens (`uapi/protocol/tests/codec_goldens.rs`)
+  including the permanent 57-byte Hello frame golden (§"worked frame", SP13)
+  and a round-trip + determinism check for all 37 §7 message types, plus a
+  full failure-mode suite (truncated frames, bad bool, non-UTF-8 str, over-cap
+  encode, body_len over cap, out-of-range Reject.code → Generic, unknown tag
+  state-machine transitions); CF5 inventory cross-check
+  (`uapi/protocol/tests/cf5_crosscheck.rs`) asserting count=37, every tag
+  value, and direction class against the §7 table encoded as a static golden;
+  L11 purity probe (`lib/depgraph/src/lib.rs` + `lib/depgraph/tests/uapi_purity.rs`)
+  asserting `uapi/protocol` source imports nothing outside `core` and
+  `reovim_uapi_abi`, with negative fixtures for `arch`, `std`, and `alloc`
+  imports, a cfg(test) exemption control, and a positive control over the
+  real source tree.
 - `arch/` + `lib/depgraph/` doc-test coverage (#785 Phase 6): every `pub`
   item in `arch/` and `lib/depgraph/` now carries a runnable doc-test
   exercising its primary contract; runtime-gated items (`_start`, `entry!`,
