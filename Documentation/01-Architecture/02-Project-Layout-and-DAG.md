@@ -17,7 +17,7 @@ category.
 
 | Category | Paths | Role |
 |---|---|---|
-| Foundation | `arch/`, `lib/*`, `uapi/*` | Platform abstraction, core libraries, stable ABI/protocol/macro contracts. No upward deps. |
+| Foundation | `arch/`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor (`arch/`), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device contracts (`kabi/*`). No upward deps. |
 | Server contracts | `server/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
 | Server kernel | `server/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
 | Server runtime | `server/lib/server/*` | Framed-protocol and dispatch glue. |
@@ -39,9 +39,11 @@ categories".
 
 | From | May depend on |
 |---|---|
-| `arch/` | nothing (`core` only — `arch/` is the platform floor, §9/§10); selected `lib/*` only if explicitly listed in §6 sub-DAG |
+| `arch/` | `kabi/*` (implements the platform handle, §11), `lib/ds` (uses DS algorithms internally); otherwise `core` only — `arch/` is the backend floor (§9/§10) |
 | `lib/*` | `arch/`, peer/lower `lib/*` (per §6 sub-DAG) |
+| `lib/ds` | `kabi/*` only — reaches its backend through the boot-installed handle; **never names `arch`** (the `lib/ds ⊄ arch` firewall). Overrides the generic `lib/*` row. |
 | `uapi/*` | `lib/*` only when the dep is target-neutral and ABI-safe; no server/client/ext/apps |
+| `kabi/*` | nothing impl-side — `core` + target-neutral `lib/*` only; declares the down-face contract and owns the platform-handle global static and `AllocError`; **no `kabi → arch`** |
 | `server/lib/subsys/*` | `uapi/*`, `lib/*`, `arch/`, allowed peer subsys edges |
 | `server/lib/kernel/*` | `server/lib/subsys/*`, `uapi/*`, `lib/*`, `arch/` |
 | `server/lib/server/*` | `server/lib/kernel/*`, `server/lib/subsys/*`, `uapi/protocol`, `lib/*` |
@@ -286,16 +288,29 @@ owns, in-repo:
 
 - process entry (`_start`) and process exit,
 - the panic handler,
-- the allocator,
-- threads and sync primitives (mutex, rwlock, condvar equivalents),
-- **ALL heap data structures** — the growable sequence, hash map,
-  owned byte string, and shared-reference equivalents.
+- the allocator **backend** (raw memory: a static arena +
+  `mmap`/`brk`-class syscalls),
+- the **backend primitives** of threads and sync — the
+  `park`/`unpark`/futex-class operations a mutex/rwlock/condvar blocks on.
 
-The project rule, stated plainly: *if we want a data structure or an
-ABI-level facility, we create the DS and implement it at the `arch/`
-level.* Crates above `arch/` consume `arch/`-provided data structures
-only; no crate other than `arch/` declares foreign OS bindings (§9)
-or heap primitives.
+`arch/` owns the **effectful backend primitives**, not the data
+structures built on them. The heap-DS **algorithms** — the growable
+sequence, hash map, owned byte string, shared-reference, and the
+mutex/rwlock/condvar state machines — are portable, target-neutral
+**Math** and live in `lib/ds`. They reach their backend through the
+boot-installed `kabi` platform handle (`06-ABI/05`), never by naming
+`arch`. This is the Math/World airlock applied to the type system: a
+value's *layout and algorithm* are identical on every provider (Math);
+the *allocator and park/unpark behind it* are provider-specific (World),
+injected at `Init::boot`. (Supersedes the prior "`arch/` owns ALL heap
+data structures" rule, which coupled the portable algorithm to the
+World backend.)
+
+The project rule, stated plainly: *the effectful primitive is created at
+`arch/`; the data structure that uses it is created at `lib/ds` against
+the `kabi` contract.* Crates above the floor name `lib/ds` + `kabi`,
+never `arch`; no crate other than `arch/` declares foreign OS bindings
+(§9) or backend primitives.
 
 **`uapi/protocol` is zero-allocation.** The wire-protocol crate
 (7.3 `SP15`) performs no allocation at all — callers provide every
@@ -306,7 +321,7 @@ coupling.
 
 **Illustrative-collection clause.** Where any chapter writes
 `Vec<T>`, `HashMap<K, V>`, `String`, `VecDeque<T>`, or `Arc<T>` in an
-illustrative struct listing, it denotes the `arch/`-provided heap DS
+illustrative struct listing, it denotes the `lib/ds`-provided heap DS
 of the same contract (growable sequence / hash map / owned byte
 string / ring-capable sequence / shared reference). The `std`/`alloc`
 types themselves are forbidden in realization (`DAG6`); the familiar
@@ -367,17 +382,61 @@ floor is decomposed into per-target backend modules, cfg-selected from
 The asm-confinement rule is enforced by a source-grep probe in
 `lib/depgraph/tests/` (added #790).
 
+## 11. Kernel / platform seam (candidate edges)
+
+The three-kernel model (`02-Process/01-Kernel-Types.md` §0) reaches its
+substrate through two **down-face contracts** in `kabi/` — `kabi/platform`
+(`06-ABI/05-Platform-Contract.md`) and `kabi/device`
+(`04-Domain-Substrate/06-Device-Domains.md` §8). `kabi/` *declares* the
+mechanism; `arch/` and the system kernel *implement* it — dependency flows
+`arch → kabi`, never `kabi → arch` (a contract never depends on its
+implementor; that would run backward through the airlock). The edges below
+are **candidate rules**: they become depgraph-enforced only when the crates
+exist (`kabi/platform`, `kabi/device`, and the system/client kernel crates).
+Until then this section is the target the scaffold builds toward, not a gate.
+
+| Target rule | Edge |
+|---|---|
+| kernels depend on the contract, not the floor | `editor-kernel → kabi/platform`; `client-kernel → kabi/platform`; data structures via `lib/ds`; **no** `*-kernel → arch` |
+| one owner of the floor, per mode | impl edges `arch(hosted) → kabi/platform` and `system-kernel → kabi/platform`; plus `system-kernel → arch` |
+| client two-substrate | `client-kernel → uapi/protocol` is the only cross-kernel edge; **no** direct `client-kernel → editor-kernel` |
+| device bridge is a closed contract | `ext/server/domain/* → kabi/device`; provider impls `arch(hosted) → kabi/device` and `system-kernel → kabi/device`; **no** `domain → driver` or `domain → arch` |
+| client I/O is capability-mediated | `client-kernel → render`/capability subsys; client I/O drivers bottom out on `kabi/device` (bare metal) or platform fd-I/O (hosted); **no** `client-kernel → arch`, **no** `client-kernel → driver` |
+
+Two of these are already locked under existing rules and need no new
+machinery: "drivers are loaded, not linked" is **DAG4** (§4) — each kernel
+binds drivers by vtable, never by Cargo edge; "no client platform IO except
+via capabilities" is the `ext/client/module/*` row of §2.
+
+**Supersession (the one real change to §2).** Row `server/lib/kernel/*` in
+§2 currently grants `→ arch`. When `kabi/platform` lands, that grant is
+**removed**: the editor kernel will name only `kabi/platform` (and `lib/ds`
+for data structures), and a `*-kernel → arch` edge becomes a depgraph
+violation. This is deferred, not applied now — flipping it before
+`kabi/platform` exists would forbid a real current edge. The candidate rule
+is recorded here so the supersession is not rediscovered during
+implementation.
+
 ## Open items
 
-1. Foundation sub-DAG enumeration (§6) — deferred to the workspace
+1. **Facade re-export vs the contract tier — RESOLVED (mechanism model).**
+   Superseded: the platform contract does **not** re-export `arch`'s value
+   types (that ran backward through the airlock — a `kabi → arch` edge, and a
+   cycle with `arch → kabi`). Instead `kabi/platform` *declares* the mechanism
+   and `arch` *implements* it (`arch → kabi`); the DS algorithms live in
+   `lib/ds` (§10), reaching the backend through the boot-installed handle, so
+   no `kabi → arch` edge exists. The platform-handle global static and
+   `AllocError` live in `kabi`. The "`kabi/platform` has zero impl-side deps"
+   goal is met by construction.
+2. Foundation sub-DAG enumeration (§6) — deferred to the workspace
    scaffold, `TODO(#778)`.
-2. Composition-root catalog format and probe wiring (§7) — deferred
+3. Composition-root catalog format and probe wiring (§7) — deferred
    to the workspace scaffold, `TODO(#778)`.
-3. Transitional allowlist current contents (§8) — resolved #782: the
+4. Transitional allowlist current contents (§8) — resolved #782: the
    v0.16 rebuild starts greenfield; the allowlist starts **empty**
    (the #775 driver-display entry belonged to the archived v0.15
    tree).
-4. `tools/*` forbidden-edge table — partially resolved #782: `DAG5`
+5. `tools/*` forbidden-edge table — partially resolved #782: `DAG5`
    already binds `tools/*` to in-repo crates only; the remaining
    per-category edge table is deferred to the workspace scaffold,
    `TODO(#778)`.

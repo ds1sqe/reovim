@@ -6,7 +6,9 @@ keyboard/mouse/text/paste/web typed records, why no kernel
 keyparsing, and the JSON-Schema boundary for CLI/debug.
 
 **Locked rules.** Carried key-free invariant; concrete payload
-records resolved and locked in the type catalog (6.3 §7).
+records resolved and locked in the type catalog (6.3 §7). For how
+the client side normalizes platform sources into this vocabulary see
+8.2 §6.2.
 
 ---
 

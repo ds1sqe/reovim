@@ -1,8 +1,9 @@
 # 2.1 — Kernel and Init Types
 
-**Scope.** The shapes of `Init` (the boot actor) and `Kernel` (the
-steady-state root), the registries, and the per-field locking
-model. Concrete `#[repr(C)]` layouts that cross the ABI boundary
+**Scope.** The three-kernel model (§0), then the shapes of `Init`
+(the boot actor) and `Kernel` (the steady-state root), the
+registries, and the per-field locking model **for the editor
+kernel**. Concrete `#[repr(C)]` layouts that cross the ABI boundary
 live in `06-ABI/03-Type-Catalog.md`; this chapter describes the
 in-process Rust shapes.
 
@@ -14,6 +15,79 @@ has no process lifetime or action of its own — the boot actor does.
 LF13), `SVC*`.
 
 ---
+
+## 0. The three kernels (system · editor · client)
+
+A *kernel* = a mechanism core that loads policy over a stable ABI and
+reaches its substrate through a single seam (`06-ABI/05-Platform-Contract.md`).
+Reovim has three, each the same mechanism/policy/ABI fractal at a different
+altitude:
+
+| Kernel | Mechanism (WHAT) | Policy (its modules) | Substrate below | Corruption layer |
+|---|---|---|---|---|
+| **System** (machine) | sched, IRQ, memory, device model, block, fs, console, power | device drivers, board profiles | `arch/` (hardware) | World |
+| **Editor** (server) | sessions, domains/buffer-algebra, undo-tree, streams, EventBus, state, services | server modules + drivers | platform contract | Math |
+| **Client** | raw-input normalization, frame/cell render, projection/codec, capability slots, module host | client modules + drivers | platform contract **+** wire protocol | Math |
+
+Each loads policy one-way (modules → api), exposes mechanism + api over a
+closed subsys of trait contracts, and is extended by drivers that implement
+those contracts — loaded, never linked (`02-Process/05-Machine-Boot.md`).
+
+Two asymmetries are real, not incidental:
+
+- **The system kernel is conditional.** RTOS-itself mode has all three;
+  Over-OS mode has two and the host OS plays the system-kernel role
+  (`01-Architecture/06-OS-Modes.md`). "Do we split the editor and the
+  system?" reduces to "is the system-kernel slot filled?"
+- **The client kernel has more substrates** — the platform contract, its
+  input/output capabilities (`05-View/02-Raw-Input.md`,
+  `05-View/03-Projections.md`), *and* the wire protocol. On bare metal the
+  client's I/O bottoms out on the system kernel's devices, so the system
+  kernel sits below **both** the editor and the client.
+
+### 0.1 Sovereignty (the naming axis)
+
+All three are kernels — each has the module/subsys/driver fractal and a
+Math-or-World core. The distinction is **sovereignty**, not kernel-hood:
+
+- **Sovereign kernels** own a *truth*: the **system kernel** (machine
+  state) and the **editor kernel** (edit state).
+- **Derived kernel:** the **client kernel** owns *no* truth — its
+  Math-layer core renders the editor kernel's truth and normalizes input
+  back. Same fractal, same Math layer, non-sovereign.
+
+Crate names: system → `lib/machine-kernel`; editor → `server/lib/kernel`
+(this chapter); client → `client-kernel`.
+
+### 0.2 Editor / system split — by contract, not by privilege
+
+The editor and system kernels are distinct **by contract**: the split *is*
+the platform seam (`06-ABI/05-Platform-Contract.md`). What forces it (any
+one suffices):
+
+- **Invariance.** The editor kernel must stay platform-invariant. The
+  moment it holds IRQ/board/device code it changes per target.
+- **Corruption layer.** Editor kernel = **Math** (the formal-verification
+  target); system kernel + `arch` = **World** (hardware-coupled,
+  replaceable). Opposite sides of the airlock.
+
+What the split is **not**, for 0.16:
+
+- **Not a runtime / privilege boundary.** Single-seat unikernel appliance:
+  one image, one cooperative tick loop, co-resident kernels, no MMU
+  privilege wall. The boundary is a source contract, not an address space.
+- **Not two schedulers.** The system kernel provides the *wake mechanism*
+  (`park_until` + timer IRQ); the editor's `tick()` *is* the machine idle
+  loop and consumes it. A separate preemptive machine scheduler appears
+  only with SMP / multiple payloads — out of 0.16.
+
+Discipline: **never let the editor kernel grow hardware or mode-varying
+code "temporarily."** Anything that varies by what is underneath goes below
+the contract — `arch`'s hosted role now, the system kernel later.
+
+The remainder of this chapter details the **editor** kernel's `Init` /
+`Kernel` shapes. The system and client kernels carry their own boot actors
+of the same form.
 
 ## 1. Two types, one handoff
 

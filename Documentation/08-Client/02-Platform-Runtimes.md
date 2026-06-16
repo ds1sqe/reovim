@@ -89,12 +89,98 @@ The cleanest model: each platform is its own config participant
 under `platform.<p>`. The README leaves the exact placement
 open.
 
+## 6. Client I/O — design direction (deferred)
+
+This section records the settled vocabulary and the deferred capability
+split. It is a **design direction, not an asserted contract**; the
+formal capability seam earns its formalization at the second concrete
+source/surface (bare-metal HID + framebuffer, or web DOM + canvas).
+
+### 6.1 Capability mediation
+
+The client reaches display, input, and output through
+**client-specific capability contracts** — not the platform handle
+(`06-ABI/05-Platform-Contract.md`) and not `kabi/device` directly.
+Same reasoning as the device bridge (§4.6 of the kernel model): I/O
+is a different axis, only the client needs it, and folding it into the
+platform handle would bloat the Math-layer core.
+
+### 6.2 Two mode-invariant vocabularies (settled)
+
+These two vocabularies are settled. Everything below them is
+mode-varying.
+
+- **Input = raw-input records.** `RawInput{kind, payload}` over USB
+  HID keycodes + extension range. HID is the canonical shape; every
+  source normalizes into it. See `05-View/02-Raw-Input.md`.
+- **Output = the frame/cell model.** A grid of cells (glyph + attrs
+  + cursor). The client states "cursor at (r,c), shape X"; the
+  surface driver translates to hardware cursor (terminal), drawn cell
+  (framebuffer), or DOM element. See `05-View/03-Projections.md`.
+
+Input and output are **independent axes with independent device
+lifecycles.** A keyboard unplug does not imply display mode-loss;
+the contracts stay distinct even when one platform driver
+co-implements both.
+
+### 6.3 Mode-varying layers
+
+```
+        client kernel  [Math, mode-invariant]
+        raw-input pipeline  +  frame/cell render  +  module host
+   ┌──────────────┴───────────────┐
+   ▼ INPUT capability             ▼ OUTPUT capability
+   yields raw-input records       accepts a frame/cell model
+   ┌──────────────┐               ┌──────────────┐
+   │ source driver │ (mode-vary)  │ surface driver│ (mode-vary)
+   └──────┬───────┘               └──────┬───────┘
+   bare metal: HID-decode          bare metal: cell→framebuffer blit
+   terminal:   termios-parse       terminal:   cell→ANSI compose
+   web:        DOM KeyboardEvent   web:        cell→DOM/canvas
+          │ bottoms out on…               │ bottoms out on…
+   bare metal → kabi/device (HID / fb) → SYSTEM KERNEL
+   hosted     → platform vtable fd-I/O  → host terminal/window
+```
+
+On bare metal the client is **machine-affected too**: its I/O
+capability drivers bottom out on the system kernel's devices (HID,
+framebuffer) via `kabi/device`, so the system kernel sits below
+both the editor and the client. On hosted targets, drivers bottom out
+on platform-handle fd-I/O.
+
+### 6.4 Rule-of-three status (honest)
+
+| Side | Shipped contract | Live implementors |
+|---|---|---|
+| Output | `RenderProjector` (`server/lib/subsys/domain/src/contract.rs`) | 1 — `TextProjector` (others are test mocks) |
+| Input (server-side) | `OnRawInputHandler` | 1 — terminal/termios source |
+| Input (client-side) | **none yet** | — |
+
+Count: output = 1, input = 1. The formal **client-side input-source
+capability** (the dual of output) is **deferred to its second concrete
+source** — bare-metal HID or web DOM. It is a design note, not a
+contract to assert now. The settled part is the *vocabularies*; the
+capability *split* is deferred per §7.4 of the kernel model.
+
+### 6.5 Honest cost: terminal as a lossy input source
+
+Terminal input is a lossy source — no key-release events, limited
+modifier chords. The terminal source driver reverse-maps byte
+sequences → HID keycodes approximately. Capabilities needing precise
+key-up or rich chords work fully only on bare-metal HID and rich
+GUI/web, and are degraded on a terminal. HID-as-canonical is the
+right call (the invariant vocabulary should be the richest source,
+with others degraded, not the poorest), but the degradation is
+permanent and worth stating.
+
 ## Open items
 
 1. Platform-as-config-participant decision (§5).
 2. Whether the platform runtime can be hot-swapped during a session
    (e.g. attach via TUI then switch to web). Default no.
 3. Native platform runner — out of target.
+4. Client-side input-source capability contract (§6.4): deferred to
+   second concrete source (bare-metal HID or web DOM).
 
 ## Conformance
 

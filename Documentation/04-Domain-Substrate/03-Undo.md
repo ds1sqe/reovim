@@ -4,7 +4,7 @@
 boundaries.
 
 **Heritage.** Flagged as "not yet chapter-consolidated" — this is a
-minimum-viable shape; details TBD before lock.
+minimum-viable shape with v0.16 defaults resolved in §Open items.
 
 **Locked rules.** None new in this revision.
 
@@ -26,6 +26,10 @@ pub enum Origin {
 
 Origin gates undo participation: `Restore` and `Replay` do not
 participate in undo by default.
+`External` edits are recorded as non-undoable marker groups: they
+preserve the timeline for diagnostics and redo invalidation, but an
+undo command skips them and never rewrites bytes sourced from outside
+the session.
 
 ## 2. UndoStack
 
@@ -64,6 +68,12 @@ Auto-close conditions:
 - group exceeds `max-undo-group-age-ms` since open,
 - buffer detach.
 
+There is no group-merge primitive in v0.16. A module that needs a
+macro, paste, or replay to undo as one unit must open one group before
+emitting the first edit and close it after the last edit. Numbered
+history or richer merge policy is module state, not kernel undo
+mechanism.
+
 ## 4. Cross-buffer undo
 
 Undo is per-buffer. Multi-buffer "session-wide undo" is
@@ -79,19 +89,20 @@ Undo is per-buffer. Multi-buffer "session-wide undo" is
 
 Eldest groups dropped on cap; DS12 event at drop.
 
-## Open items (must resolve before lock)
+## Open items (resolved for v0.16)
 
-1. Whether `External` edits participate in undo (e.g. autoreload).
-   Default: no — external edits are recorded as a marker in the
-   stack but are not undoable.
-2. Module-driven group merging — current spec gives modules
-   open/close control but no merge primitive. Use case may emerge
-   (e.g. macro replay merging into one group).
-3. Carrier-based undo — currently undo records byte ranges. A
-   future model might record edits as `(PositionCarrier, payload)`
-   so non-text Domains undo cleanly. Out of target.
+1. ~~External edit participation~~ — resolved (§1): external edits
+   are marker groups and are not undoable.
+2. ~~Module-driven group merging~~ — resolved (§3): no merge
+   primitive in v0.16; modules group explicitly.
+3. ~~Carrier-based undo~~ — out of v0.16 target. Phase 4 undo records
+   byte ranges; Domain-specific carrier undo requires a future spec.
 
 ## Conformance
 
-This chapter is a sketch. Conformance fixtures land when §Open #1
-is resolved.
+| Behaviour | Fixture |
+|---|---|
+| External marker | Apply user edit, external edit, user edit; undo skips the external marker and never rewrites its bytes. |
+| Group boundary | Module opens one group, emits three edits, closes; one undo reverses all three. |
+| Group cap | Exceed `max-edits-per-group` → group auto-closes and DS12 emits. |
+| Redo invalidation | Undo a group, then apply a new user edit → redo stack clears. |

@@ -91,6 +91,18 @@ Unregister:
   and waits per FAIL3 bound; on timeout returns `ErrorCode::Busy`
   but row remains hidden.
 
+Lease and unregister timeouts are kernel-wide in v0.16:
+`kernel.host.[limits].service-lease-timeout-ms`. Per-service timeout
+configuration would require service-specific schema parsing inside the
+registry and is out of target.
+
+The kernel enforces `SEND_SAFE` and `SYNC_SAFE` using row state it can
+observe: a `!SEND_SAFE` service records its registering thread as the
+owner thread, and calls from any other thread fail with
+`ErrorCode::InvalidState`; a `!SYNC_SAFE` service has a per-row call
+gate and concurrent entry returns `ErrorCode::Busy`. These checks are
+runtime behavior, not debug-only assertions.
+
 ## 5. Owner unload
 
 > **SVC3 — Owner unload removes service rows before `dlclose`.**
@@ -135,17 +147,19 @@ descriptor.
 - No raw `Arc`/`Rc` across the boundary; service ownership is
   expressed by `owner_cdylib_id` + `drop_fn`.
 
+Cross-cdylib service consumption is allowed only through
+`hostapi_service_borrow` or `hostapi_service_lease`. The consuming
+cdylib never retains raw pointers outside those contracts; unload
+waits on leases through the owner generation/refguard mechanism.
+
 ## Open items
 
-1. Whether lease timeouts can be per-service (configurable in the
-   service's own schema) or always come from `kernel.host.[limits]`.
-   Default: kernel-wide.
-2. Whether the kernel enforces `SEND_SAFE` / `SYNC_SAFE` at call
-   time (debug build) — runtime would need to capture call thread
-   identity.
-3. Cross-cdylib service consumption: a module consuming a driver's
-   service. Allowed; lease semantics handle it. Document the
-   pattern in the chapter body.
+1. ~~Lease timeout source~~ — resolved (§4): kernel-wide
+   `service-lease-timeout-ms` in v0.16.
+2. ~~`SEND_SAFE` / `SYNC_SAFE` enforcement~~ — resolved (§4):
+   enforced at runtime with owner-thread and per-row call-gate state.
+3. ~~Cross-cdylib service consumption~~ — resolved (§8): allowed only
+   through borrow/lease; retained raw pointers are forbidden.
 
 ## Conformance
 
@@ -155,5 +169,8 @@ descriptor.
 | SVC2 | Service descriptor with appended vtable slot loads on newer kernel; older kernel reads through `vtable_size`. |
 | SVC3 | Owner unload with two registered services → both `drop_fn`s run before `dlclose`. |
 | SVC4 | Panicking `drop_fn` → owner tombstoned, DS12 event. |
-| SVC5 | Service marked `!SEND_SAFE` invoked from non-owner thread → debug instrumentation flags. |
+| SVC5 | Service marked `!SEND_SAFE` invoked from non-owner thread → `InvalidState`. |
 | SVC6 | Lease held across owner unload → next use returns `Stale`. |
+| Lease timeout | Outstanding lease exceeds `service-lease-timeout-ms` during unregister → row stays hidden and unregister returns `Busy`. |
+| Sync flag | Service marked `!SYNC_SAFE` receives concurrent call → second call returns `Busy`. |
+| Cross-owner consumption | Module consumes driver service through lease, owner unload begins, next use after generation mismatch returns `Stale`. |

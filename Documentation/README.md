@@ -85,10 +85,12 @@ Three structural consequences:
 | 1.3 | [`01-Architecture/03-Apps-and-Invocation.md`](01-Architecture/03-Apps-and-Invocation.md) | Binaries, embedded vs subprocess, library root |
 | 1.4 | [`01-Architecture/04-Provenance.md`](01-Architecture/04-Provenance.md) | Spec ownership of generated artefacts |
 | 1.5 | [`01-Architecture/05-Configuration.md`](01-Architecture/05-Configuration.md) | Config service: participants, layers, trust, schemas (`CFG`) |
+| 1.6 | [`01-Architecture/06-OS-Modes.md`](01-Architecture/06-OS-Modes.md) | Over-OS vs RTOS-itself modes, platform floor, launch model |
 | 2.1 | [`02-Process/01-Kernel-Types.md`](02-Process/01-Kernel-Types.md) | `Kernel` and `Init` shapes, registries |
 | 2.2 | [`02-Process/02-Lifecycle.md`](02-Process/02-Lifecycle.md) | Boot, cdylib load/unload, drain ordering (`LF`) |
 | 2.3 | [`02-Process/03-Concurrency.md`](02-Process/03-Concurrency.md) | Turn gate + state lock, RefGuard (`CC`) |
 | 2.4 | [`02-Process/04-Persistence.md`](02-Process/04-Persistence.md) | State persistence and restore |
+| 2.5 | [`02-Process/05-Machine-Boot.md`](02-Process/05-Machine-Boot.md) | RTOS machine kernel: boot proof, device lifecycle, sched seam |
 | 3.1 | [`03-State/01-State-Split.md`](03-State/01-State-Split.md) | Kernel / Session / Module-state boundaries |
 | 3.2 | [`03-State/02-Module-State.md`](03-State/02-Module-State.md) | View slots, opaque module state |
 | 3.3 | [`03-State/03-Service-Registry.md`](03-State/03-Service-Registry.md) | Service descriptors, leases (`SVC`) |
@@ -98,6 +100,7 @@ Three structural consequences:
 | 4.3 | [`04-Domain-Substrate/03-Undo.md`](04-Domain-Substrate/03-Undo.md) | Undo/redo and byte-edit origin |
 | 4.4 | [`04-Domain-Substrate/04-Stream.md`](04-Domain-Substrate/04-Stream.md) | Stream substrate (`S`) |
 | 4.5 | [`04-Domain-Substrate/05-Coordination.md`](04-Domain-Substrate/05-Coordination.md) | Position/cursor carriers, codecs (`CR`) |
+| 4.6 | [`04-Domain-Substrate/06-Device-Domains.md`](04-Domain-Substrate/06-Device-Domains.md) | Effect-typed device editing, capability traits, commit barrier |
 | 5.1 | [`05-View/01-Windows.md`](05-View/01-Windows.md) | Window tree, layout |
 | 5.2 | [`05-View/02-Raw-Input.md`](05-View/02-Raw-Input.md) | `RawInput { kind, payload }` hot path |
 | 5.3 | [`05-View/03-Projections.md`](05-View/03-Projections.md) | Projection contract |
@@ -105,6 +108,7 @@ Three structural consequences:
 | 6.2 | [`06-ABI/02-Versioning-and-Vtables.md`](06-ABI/02-Versioning-and-Vtables.md) | `VtableHeader`, append-only, panic convention (`AB`) |
 | 6.3 | [`06-ABI/03-Type-Catalog.md`](06-ABI/03-Type-Catalog.md) | The single source of `#[repr(C)]` layouts |
 | 6.4 | [`06-ABI/04-Config-Slice.md`](06-ABI/04-Config-Slice.md) | `ConfigSlice` / `ConfigKvp` exact layout |
+| 6.5 | [`06-ABI/05-Platform-Contract.md`](06-ABI/05-Platform-Contract.md) | `kabi/platform` down-face contract: mechanism/impl split, platform vtable, `lib/ds` boundary |
 | 7.1 | [`07-Surfaces/01-Package-Manager.md`](07-Surfaces/01-Package-Manager.md) | `pkg sync`, lockfile, supply chain (`PM`, `SEC`) |
 | 7.2 | [`07-Surfaces/02-Debug-Surface.md`](07-Surfaces/02-Debug-Surface.md) | Debug events, drive (`DS`) |
 | 7.3 | [`07-Surfaces/03-Server-Client-Protocol.md`](07-Surfaces/03-Server-Client-Protocol.md) | Framed wire protocol (`SP`) |
@@ -122,8 +126,12 @@ Three structural consequences:
 | 9.5 | [`09-Conformance/05-Logging.md`](09-Conformance/05-Logging.md) | dmesg-style log rendering, ring, sink (`LOG`) |
 | 10.1 | [`10-Development/01-Testing.md`](10-Development/01-Testing.md) | Development process: coverage, E2E smoke, goldens (`DEV`) |
 
-Non-normative project history — the proposals and phase records that
-shaped this architecture — lives in [`heritage/`](heritage/README.md).
+Non-normative material lives in three sibling tiers, by time axis:
+[`heritage/`](heritage/README.md) (proposals and phase records that
+*shaped* this architecture — past), `debt/` (known gaps against the
+*current* tree — present), and [`future/`](future/README.md) (design
+direction past the 0.16 goal — future, including the device-editing
+vision and the radiation/Mars survival model).
 
 ## Locked-rule namespaces
 

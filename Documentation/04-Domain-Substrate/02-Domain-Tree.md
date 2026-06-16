@@ -21,6 +21,7 @@ pub struct DomainAttachment {
     pub scope:        DomainScope,
     pub parent:       Option<DomainAttachmentId>,
     pub children:     Vec<DomainAttachmentId>,
+    pub child_ordinal: u32,            // append order within parent/root list
     pub struct_refs:  u32,            // structural lifetime
     pub focus_refs:   u32,            // focus-chain lifetime
 }
@@ -120,10 +121,24 @@ hostapi_focus_pop (client, buffer, window);
 `detach` requires `struct_refs == 1` and `focus_refs == 0` to
 succeed. Otherwise returns `ErrorCode::Busy`.
 
+Children keep stable append order. The kernel assigns
+`child_ordinal` when an attachment is inserted under a parent (or in
+the root list when `parent == None`). Ordering is not derived from
+`scope.start`: scope carriers are Domain-specific bytes, and the
+kernel has no semantic comparator for them. Domains that need
+presentation order expose it through projectors, not through tree
+storage.
+
 A successful detach runs the LF12 teardown sequence (2.2 §8):
 `OnDetach` → `OnPersistSave` → subscription cancellation → slot
 drops → handle release, leaf-first across the focus chain, every
 step bounded and non-blocking.
+
+Detach requested during handler/projector dispatch is queued as a
+mutation command and applied at CC17 step 7 (2.3 §2). The currently
+invoked row is protected by its captured owner generation/refguard
+until the slot returns; the detach can affect subsequent dispatches
+but cannot invalidate the in-flight invocation.
 
 ## 7. Focus walks
 
@@ -318,14 +333,15 @@ cross-observer pairing is now resolved by DT14..DT16/CC17; the old
 
 ## Open items
 
-1. Children ordering — currently `Vec<DomainAttachmentId>` keeps
-   insertion order. Sort by `scope.start`? Domain-policy?
-2. Detach during dispatch — whether a handler can detach the
-   attachment that owns it. Default: enqueue, apply at step 7 of
-   2.3 §2.
-3. Q-4 D1..D5 sub-decisions (see RFC) — paired transition vs
-   separate lost/gained, observer ordering, transaction shape,
-   pending visibility, legacy event derivation.
+1. ~~Children ordering~~ — resolved (§6): stable append order via
+   `child_ordinal`; no kernel sort by Domain-specific carrier bytes.
+2. ~~Detach during dispatch~~ — resolved (§6): enqueue and apply at
+   CC17 step 7 after the in-flight slot returns.
+3. ~~Q-4 D1..D5 sub-decisions~~ — resolved (§8, DT14..DT16):
+   paired transition record, no cross-observer ordering guarantee,
+   mutation under `Session.state` with publication in the apply phase,
+   pending entries visible in snapshots but not called, legacy
+   lost/gained events are derivable from before/after snapshots.
 
 ## Walking-skeleton subset note (#797)
 
@@ -356,4 +372,7 @@ The §1 struct is the spec target; the walking skeleton grows a
 | DT11 | Cold structural child with `focus_refs == 0` is not collected; structural detach removes it. |
 | DT12 | Pending leaf carries enough context to reconstruct attachment without re-querying the focus push. |
 | DT13 | Resolution failure mid-step → all partial state destroyed; chain unchanged. |
+| Child order | Attach three children with unordered scope bytes → parent `children` remains append-ordinal order across repeated boots. |
+| Detach during dispatch | Handler queues detach of its own attachment → current invocation completes; detach applies in CC17 step 7; next dispatch does not invoke it. |
+| DT14..DT16 | Focus mutation publishes exactly one record with before/after snapshots and monotonic per-session seq; pending leaf appears in snapshots but receives no callback. |
 | (focus walk) | Pending leaf swallows input; resolved ancestors never see it. |

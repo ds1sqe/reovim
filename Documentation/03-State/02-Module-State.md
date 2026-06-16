@@ -88,12 +88,24 @@ scope = "buffer"             # default: window
 Buffer-scoped slots are keyed `(BufferId, SlotKindId)` and shared
 across clients/windows attached to that buffer.
 
+`window` and `buffer` are the complete v0.16 slot-scope vocabulary.
+`session` and `client` scopes are not reserved names; adding either
+requires a future manifest-schema minor and conformance rows. Until
+then, session/client-shaped state lives behind services (3.3) or
+registers (3.4), not view slots.
+
+The kernel may enumerate slots for diagnostics through DS12
+`inventory.snapshot`. Enumeration exposes IDs, owner, kind, scope,
+size, and flags only; it does not expose or interpret opaque slot
+bytes.
+
 ## Open items
 
-1. Slot scope vocabulary — current spec has `window` and `buffer`.
-   `session` and `client` may be added if a use case appears.
-2. Whether slots can be enumerated by the kernel for diagnostics.
-   Default: yes via DS12 `inventory.snapshot`.
+1. ~~Slot scope vocabulary~~ — resolved (§6): v0.16 supports only
+   `window` and `buffer`; future scopes require a manifest-schema
+   minor.
+2. ~~Diagnostics enumeration~~ — resolved (§6): allowed through DS12
+   `inventory.snapshot`, metadata only.
 
 ## Conformance
 
@@ -103,3 +115,5 @@ across clients/windows attached to that buffer.
 | Drop on module unload | Allocate slots, unload module — verify all drops fired before `dlclose`. |
 | Cross-window isolation | Module attempts to read slot owned by another (client, window) → `NotFound`. |
 | Limit | Allocate past `max-slots-per-window` → `ResourceExhausted`. |
+| Scope vocabulary | Manifest with `scope = "window"` or `"buffer"` loads; `scope = "session"` rejects in v0.16. |
+| Diagnostics | `inventory.snapshot` lists slot owner/kind/scope/size but never opaque slot bytes. |

@@ -64,6 +64,13 @@ ErrorCode hostapi_stream_scheme_register(const StreamScheme* scheme);
 Registration runs during `init`; scheme rows are tracked in
 `Inventory.rows_by_owner`.
 
+Stream-scheme registration is init-only in v0.16. A scheme cdylib
+must register every scheme row before it transitions to `Active`;
+post-init registration returns `ErrorCode::InvalidState`. This
+matches handler/projector/codec registration and keeps unload
+quiescence bounded: the kernel can enumerate all rows owned by a
+cdylib before any stream handle is opened.
+
 The scheme vtable (sketch; AB14 — every fallible slot returns
 `ErrorCode`):
 
@@ -293,9 +300,8 @@ rules + AB15. No rule in the block is dropped.
 
 1. ~~Manifest kind name~~ — resolved (§7):
    `ManifestKind::StreamScheme` / `stream-scheme`.
-2. Whether stream schemes can register dynamically post-init or
-   only during init. Default: only during init (consistency with
-   handler/projector registration).
+2. ~~Registration window~~ — resolved (§3): stream schemes register
+   during init only; post-init registration returns `InvalidState`.
 3. ~~Buffered-byte ownership~~ — resolved (§4, S3 restatement):
    per-subscription queues are kernel-owned (`bytes_buffered`);
    pre-emit source buffering is scheme-owned and not
@@ -311,6 +317,7 @@ rules + AB15. No rule in the block is dropped.
 | S4 | `write` to a not-ready source returns `Busy` without blocking; to a hung-up peer returns `Stale`. |
 | S5 | `control(op=0)` → `InvalidArgument`; kernel never emits an op in `101..=255` (trace probe). |
 | S6 | Two cdylibs register scheme `pty` → second fails init with `Conflict`. |
+| Registration window | Scheme registers during init → accepted; same registration attempted after `Active` → `InvalidState`. |
 | S7 | Non-panic subscriber failure during fan-out → emit returns the subscriber's `ErrorCode`; subsequent buffer ops succeed (no poisoned lock). Panicking fan-out → AB12 disposition (panic line flushed with the subscriber's owner attributed; process terminates per disposition; `recover` restart quarantines the owner — covered by the AB12 fixtures, 2.3 §Conformance). |
 | S8 | Emit after close → `Stale`; double unsubscribe → second call is a no-op success. |
 | S9 | One of three subscription applies fails → other two buffers updated; DS12 warn emitted. |

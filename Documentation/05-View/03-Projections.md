@@ -37,6 +37,13 @@ pub struct ProjectionSpan {
 }
 ```
 
+`StyleRef` is an opaque numeric style handle in Phase 4. The kernel
+does not know color names, terminal attributes, or theme policy. The
+client/render subsystem resolves a `StyleRef` to concrete paint
+attributes in Phase 7. `GlyphHint` is likewise an opaque hint carried
+through the projection; concrete glyph vocabulary is not interpreted by
+the kernel.
+
 ## 2. Projector dispatch
 
 `OnProjectorRender` runs after handler dispatch produces a fresh
@@ -69,14 +76,26 @@ compose:
 - Live re-projection during input dispatch (project on apply,
   not on input).
 
-## Open items (must resolve before lock)
+## 6. Delivery form
+
+Phase 4 supports full projection resend as the baseline. Projection
+diffs are optional and may be emitted only when the server can prove
+the client has the immediately preceding projection for the same
+`(client, buffer, window)` and no viewport, focus-chain, DomainTable,
+or codec-status change occurred between the two projections. Any such
+boundary change forces a full projection resend.
+
+## Open items (resolved for v0.16)
 
 1. ~~Push vs pull~~ — resolved: **push** is the default (prior art;
    the kernel signals the client after each input that mutates state).
-2. Style/glyph vocabulary — currently `StyleRef` is opaque; concrete
-   set in 8.3.
-3. Projection diff vs full projection — bandwidth concern. Default:
-   diff with full re-send on viewport jump.
+2. ~~Style/glyph vocabulary~~ — resolved (§1): `StyleRef` and
+   `GlyphHint` are opaque through Phase 4; concrete paint vocabulary
+   belongs to Phase 7.
+3. ~~Projection diff vs full projection~~ — resolved (§6): full
+   projection resend is the baseline; diff is optional and only valid
+   across adjacent projections with no viewport/focus/DomainTable/
+   codec-status boundary change.
 
 ## Walking-skeleton subset note (#797)
 
@@ -89,5 +108,9 @@ domain-neutral byte representation serialized by the runtime (Phase 3).
 
 ## Conformance
 
-This chapter is a sketch. Conformance arrives with the render
-driver chapter (8.3).
+| Behaviour | Fixture |
+|---|---|
+| Push default | Input that mutates buffer state emits a projection notification without a client poll. |
+| Opaque style | Kernel stores and transmits `StyleRef` byte-identically; no kernel branch interprets color/theme names. |
+| Composition | Inner Domain span overrides outer span over the same byte range; overlays append in DT17 order; cursor carriers dedup by CR5 byte equality. |
+| Full resend boundary | Viewport/focus/DomainTable/codec-status change forces a full projection resend, not a diff. |

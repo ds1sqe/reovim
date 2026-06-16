@@ -70,6 +70,36 @@ only the header before calling any function pointer.
 6. read appended slots only when size_of_self covers them
 ```
 
+## 2.2 The one-vtable doctrine
+
+The `VtableHeader` + `size_of_self` append-only discipline (AB3) is not
+specific to one seam. The same `#[repr(C)]`-versioned shape appears at
+every ABI boundary in the system:
+
+| Seam | Direction | Where specified |
+|---|---|---|
+| Driver vtable | kernel ↔ device driver | this chapter + §7 |
+| Module vtable | kernel ↔ policy module | this chapter + §7 |
+| Platform vtable | kernel ↔ machine floor | `06-ABI/05-Platform-Contract.md` |
+| Device-handle vtable | domain ↔ device (per-device) | `04-Domain-Substrate/06-Device-Domains.md §8` |
+
+One header, one guard, one set of load rules (§2.1) — across the whole
+system.
+
+**Same form, different lifecycle.** The shared shape is not the whole
+story:
+
+- The **platform vtable** is boot-installed, static, single-provider.
+  The machine floor cannot vanish under a running kernel, so there is no
+  hot-unload path and no generation fence on this seam.
+- The **driver and module vtables** are runtime-loaded, hot-unloadable,
+  generation-fenced (see `02-Process/05-Machine-Boot.md`). Handle
+  revocation and generation fencing are machinery carried only by seams
+  whose provider can disappear at runtime.
+
+The `#[repr(C)]`-versioned *shape* is shared. The revocation and fencing
+machinery is not — it follows lifecycle, not form.
+
 ## 3. Error convention
 
 ```rust

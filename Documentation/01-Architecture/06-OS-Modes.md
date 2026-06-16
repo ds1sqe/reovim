@@ -1,0 +1,270 @@
+# 1.6 — OS Modes
+
+**Scope.** The two execution modes reovim targets in 0.16 — **Over-OS**
+(hosted on an existing OS) and **RTOS-itself** (the single-purpose runtime
+on bare metal) — the mode-invariance invariant that keeps the editing
+mechanism byte-identical across modes, the platform-floor doctrine that
+keeps them one codebase, the three-kernel model as it instantiates per
+mode, and the unified launch model.
+
+**Heritage.** Design-stage. 0.16's thesis is "environment is not a host":
+the freestanding/bare-metal target is the 0.16 goal, and the bare-metal
+aarch64 selftest image under QEMU raspi4b already boots. Multi-OS hosted
+ports (Windows/macOS/Solaris) are a separate later track —
+`future/multi-os-ports.md`. Vision companion: `future/design-spine.md` §I.
+
+**Locked rules.** None new (design-stage). DAG6 governs the platform floor
+(`01-Architecture/02-Project-Layout-and-DAG.md`).
+
+**Related chapters.** Three-kernel model: `02-Process/01-Kernel-Types.md §0`.
+Platform contract seam: `06-ABI/05-Platform-Contract.md`. Device-domain
+bridge: `04-Domain-Substrate/06-Device-Domains.md §8`. Client input
+deferral: `08-Client/02-Platform-Runtimes.md`.
+
+---
+
+## 0. The mode-invariance invariant
+
+**The editing mechanism is byte-identical whether reovim runs over
+Linux/Windows or freestanding on bare metal.** This is the chapter's
+thesis; every design decision below is downstream of it.
+
+- **Above the contract (invariant — must not change a line by mode):**
+  the editor kernel — domains, undo-tree, streams, buffer algebra, and
+  the device-Domain effect/stage/commit semantics — plus the client's
+  editing-facing model — normalized raw-input → commands, the frame/cell
+  render model. Same code, same behavior, same UX on every target.
+- **Below the contract (varies — and only here):** host syscalls vs
+  hardware MMIO; terminal vs framebuffer; host events vs USB HID; host
+  `/dev` vs the system device service; `dlopen` vs in-kernel loader.
+
+`kabi/platform` (`06-ABI/05-Platform-Contract.md`) is that line. The
+seam exists to *guarantee* this invariant, not for cleanliness. Anything
+that would make editing behave differently by mode is, by definition, a
+leak across the line and a bug.
+
+**Two honest enforcement caveats:**
+
+1. **Device editing.** This invariant holds for device editing *only if*
+   the bridge contract (`04-Domain-Substrate/06-Device-Domains.md §8`)
+   presents one mode-uniform interface to the Domain. The bridge is
+   therefore the load-bearing guarantee of the invariant for device
+   Domains, not a convenience.
+2. **Client-input leg.** Today the invariant is mechanically guaranteed
+   only on the output side. The `RawInput` vocabulary is a real ABI type
+   and the frame/cell model is the render contract. Input decode is still
+   **inline in the tui platform**, not behind a contract, so nothing yet
+   *prevents* a future bare-metal HID path from diverging from the
+   terminal path. The invariant is asserted there but not enforced until
+   the input-source path is contract-bound — deferred to
+   `08-Client/02-Platform-Runtimes.md`.
+
+## 1. The two modes
+
+1. **Over-OS mode** — reovim runs as a hosted program on an existing OS.
+   Linux/macOS/Windows provide process isolation, files, sockets, terminal
+   or window system, clocks, threads, and dynamic loading. reovim keeps its
+   internal kernel model: domains, streams, state, scheduling, module and
+   service boundaries. The host OS is treated as a hardware/provider
+   substrate reached only through `arch/` and runtime-owned adapters.
+
+2. **RTOS-itself mode** — reovim is the single-purpose runtime on the
+   machine. On the Raspberry Pi 4 target this means booting the image
+   directly and owning timing, interrupts, framebuffer output, USB keyboard
+   input, storage, panic disposition, and static module discovery. There is
+   no process model to emulate unless a real need forces one; the first goal
+   is a reliable single-seat editor appliance.
+
+**Shared invariant — the editor and client kernels do not fork by mode.**
+Both modes feed the same protocol/state/domain machinery; the system kernel
+is conditional (present in RTOS-itself, absent in Over-OS where the host OS
+plays that role — see §6 and `02-Process/01-Kernel-Types.md §0`). The
+difference lives *below* the `kabi/platform` contract boundary:
+
+| Concern | Over-OS | RTOS-itself |
+|---|---|---|
+| Stable boundary | Host OS API via `arch/` | Pi hardware/firmware via `arch/` |
+| Scheduler park/wake | futex / WaitOnAddress / host wait | WFI + generic timer + interrupt wake |
+| Display | terminal, window system, or hosted runtime | framebuffer console/render driver |
+| Keyboard/input | host terminal/window events | xHCI + USB HID keyboard |
+| Persistence | host filesystem (POSIX/OS semantics) | SD/block store + explicit PS1 restatement |
+| Modules | dlopen / LoadLibrary loader | static linker-section registry first |
+
+## 2. The platform floor doctrine
+
+`arch/` is the single platform floor: `#![no_std]`, zero external deps,
+all platform-specific code concentrated in `arch/src/sys/` behind one
+boundary. Actual floor consumption across the workspace is ~14 functions
+(slab alloc over a page primitive; thread spawn; futex-backed sync;
+monotonic/realtime clock; read/write; `openat` as panic flush sink;
+exit/gettid). No sockets, no fork/exec, no general file I/O in product
+crates. The kernel's own scheduler is a synchronous tick loop over `arch`
+types with no OS calls.
+
+Because every OS dependency sits behind that ~14-function seam, and the
+scheduler is a synchronous coordinator, **reovim-as-OS is not a rewrite**:
+it is a fourth `sys/` backend plus a handful of device drivers, with the
+existing selftest runner as the natural first boot payload.
+
+**Not a HAL.** Do not add a public "HAL" layer above `arch/` — it would
+duplicate the `arch/` contract and blur the DAG. The `arch/src/sys/`
+target-backend convention already *is* the platform floor: Linux backends
+bind to the kernel syscall ABI, system-library targets to their
+vendor-stable API, freestanding targets to hardware/firmware. Reserve
+"HAL" for private freestanding-backend internals and "BSP" for
+board-specific code. Keep the public floor signatures fixed; split
+freestanding internals by hardware role (`boot`, `console`, `time`,
+`memory`, `power`, later `block`/`framebuffer`/`usb`/`irq`) only when
+pressure appears.
+
+### 2.1 Bare-metal floor mapping (target `aarch64-unknown-none`)
+
+| Floor service | Linux today | Bare-metal replacement | Difficulty |
+|---|---|---|---|
+| entry | `_start` reads stack args | EL2→EL1 drop, stack, BSS clear, MMU identity map, caches; boot-args blob instead of argv | small, asm-heavy |
+| alloc | mmap under slab | static physical-RAM arena under the SAME slab | tiny |
+| time | clock_gettime | ARM generic timer (CNTPCT/CNTFRQ) | tiny |
+| read/write fd 0/1 | syscalls | PL011 UART (polled first; GIC IRQ later) | small |
+| panic flush + exit | fd + exit_group | UART fd; PSCI SYSTEM_OFF / wfe halt | tiny |
+| thread + futex | clone + futex | deferrable; later per-core stacks + context switch, WFE/SEV wait queues, spinlocks on 4×A72 | the only hard one |
+| openat / fs | syscalls | ramfs from an initrd-style blob; SD (EMMC2) + FAT32 later | medium |
+
+**The scheduler insight.** The runtime's `tick()` is a single-threaded
+synchronous coordinator; modules run synchronously in the caller's
+context. On bare metal, **`tick()` IS the idle loop of the machine.** A
+first OS image needs no preemptive scheduler, no SMP, no futex: one core
+spinning tick, UART RX feeding the input ring. The thread/futex floor is
+only needed for the later thread-per-connection runtime tier — a
+single-seat appliance may never need it.
+
+## 3. Target classes
+
+| Class | Stable boundary | Examples |
+|---|---|---|
+| kernel-ABI | OS kernel syscall ABI (stable) | Linux x86_64, Linux aarch64 |
+| system-library | vendor libc/libSystem (syscalls unstable) | macOS, Solaris/illumos, Windows (`future/multi-os-ports.md`) |
+| freestanding | hardware/firmware | bare-metal aarch64 (Pi 4) |
+
+The spec does **not** enumerate every target and does **not** forbid new
+ones (DAG6); it mandates each target's floor be sovereign and in-repo.
+Bare metal has no libc tension. The system-library class forces the DAG6
+"lowest stable boundary" amendment — deferred to `future/multi-os-ports.md`
+until an OS port is scheduled.
+
+## 4. The three kernels by mode
+
+The reovim runtime has three kernels (`02-Process/01-Kernel-Types.md §0`):
+the **editor kernel** (sessions, domains, streams, state, scheduling —
+sovereign, Math layer), the **client kernel** (raw-input normalization,
+frame/cell render, projection/codec — derived, Math layer), and the
+**system kernel** (sched, IRQ, memory, device model, block, fs, console,
+power — sovereign, World layer).
+
+The editor and client kernels are **mode-invariant**: they never absorb
+device drivers, board mechanics, or IRQ handling. Device reality stays
+below `arch::sys`; editor and client policy stay above the
+`kabi/platform` seam (`06-ABI/05-Platform-Contract.md`).
+
+The **system kernel is conditional by mode** (§6): RTOS-itself mode
+carries all three kernels; Over-OS mode has only the editor and client
+kernels, with the host OS playing the system-kernel role. RTOS-itself
+additionally needs the system kernel for scheduler/IRQ routing/driver
+model/block cache/filesystem/console/power — too large to hide inside
+`arch::sys`. Its boot sequence, proof model, and device lifecycle are
+specified in `02-Process/05-Machine-Boot.md`. The system kernel does not
+live in the editor-kernel crate.
+
+## 5. Launch model
+
+Both modes converge on one semantic launch contract — a `LaunchPlan`:
+selected editor-kernel config, selected client platform, transport kind,
+module-registry kind, persistence root. Only the *physical* launch
+mechanism differs.
+
+**Over-OS** is a process command:
+
+```text
+reovim                          # default: embedded TUI
+reovim --client tui             # explicit hosted TUI
+reovim --client tui --external --connect <addr>
+reovim --server                 # headless server runtime
+reovim --subprocess --client tui
+```
+
+Embedded mode links server + selected platform runtime into one process
+over an in-memory transport (the target default); subprocess is for
+isolation/testing/ops, not the ordinary first-run path. (The current
+in-process UDS launcher is a temporary detail that exercises the real UDS
+carrier while `execve` is absent from `arch/`.)
+
+**RTOS-itself** has no process launcher. Firmware loads `kernel8.img`, then:
+
+```text
+Pi firmware -> arch::_start -> machine-kernel boot
+  -> boot-profile selection -> editor Init::boot -> console platform runtime
+```
+
+The RTOS launch unit is a **boot profile**, not a command:
+
+| Profile | Purpose |
+|---|---|
+| `selftest` | Run arch/machine/editor selftests; exit/halt with a diagnostic code. |
+| `appliance` | Normal editor: framebuffer console + USB keyboard + embedded editor kernel. |
+| `recovery` | Minimal framebuffer/UART diagnostic shell for storage/config repair. |
+| `headless-diag` | UART-only diagnostics when display or USB is untrustworthy. |
+
+**TUI naming.** Hosted terminal UI remains **TUI** (termios + ANSI +
+terminal input). RTOS local UI is **console** / **fb-console**, not a TUI
+clone: it shares the reovim frame/cell + normalized-raw-input model but
+replaces termios/ANSI/UDS with HID input, framebuffer drawing, and an
+in-memory transport. The reusable unit is "reovim renders a cell/frame
+model and consumes normalized raw input," not "TUI writes escape
+sequences." Hosted TUI and Pi console are two backends for that model.
+
+## 6. Mode instantiation
+
+The mode-invariance invariant (§0) collapses to one question: **"Do we split
+the editor and the system?"** = "Is the system-kernel slot filled?"
+
+```
+Over-OS:
+  editor + client → kabi/platform → arch (hosted) → arch sys (host syscalls)
+  device Domains reach hardware via arch-hosted /dev-/ioctl services
+  [system-kernel slot ABSENT — the host OS plays the role]
+
+RTOS-itself:
+  editor + client → kabi/platform → SYSTEM KERNEL → arch (bare-metal floor)
+  device Domains reach hardware via the system-kernel device service
+  (04-Domain-Substrate/06-Device-Domains.md §8)
+  [system kernel additionally loads device drivers, block, fs, console]
+```
+
+In Over-OS mode the editor and client kernels reach `kabi/platform`; the
+contract is implemented by `arch` hosted adapters (host syscalls, `/dev`,
+fd-I/O). In RTOS-itself mode the same two kernels reach the same contract;
+the implementor is now the system kernel, which in turn owns `arch` at the
+bare-metal floor and loads device drivers.
+
+The composition root (the `reovim` binary / boot image) is the only place
+that wires these: it selects the contract implementor and installs the
+platform vtable at `Init::boot`. Neither the editor kernel nor the client
+kernel sees a mode branch — their code is identical. The mode branch lives
+entirely at the composition root and below the contract.
+
+## 7. Spec deltas this mode forces
+
+| Delta | Owner | Needed for |
+|---|---|---|
+| PS1 persistence atomicity re-stated for non-POSIX block stores | `02-Process/04-Persistence.md` | RTOS persistence |
+| Static module registry blessed alongside dlopen | `02-Process/02-Lifecycle.md` / `06-ABI/` (LF3) | RTOS module loading |
+| Sched park/wake seam (`park_until`/`unpark`) + deadline-ordered timer | `02-Process/05-Machine-Boot.md` §sched | tickless loop, all targets |
+| DAG6 "lowest stable boundary per target" | DAG6 | macOS/Solaris ports only — `future/multi-os-ports.md` |
+
+## Conformance
+
+| Behaviour | Fixture |
+|---|---|
+| Mode-invariant editor + client kernels | The editor and client kernel crates compile unchanged for both Over-OS and freestanding targets; mode differences appear only below `arch::sys` and in the composition root's vtable selection (`06-ABI/05-Platform-Contract.md`). |
+| System-kernel conditionality | Over-OS mode has no system-kernel crate; `arch` hosted adapters implement `kabi/platform`. RTOS-itself mode has the system kernel implementing the same contract; the editor/client kernel binary is unchanged (`02-Process/01-Kernel-Types.md §0`). |
+| Freestanding floor | `aarch64-unknown-none` selftest image boots under QEMU raspi4b: UART write + generic timer + arena alloc + bare-metal entry, via the unchanged `arch_test!` runner. |
+| LaunchPlan parity | A hosted `reovim` invocation and an RTOS `appliance` boot profile resolve to the same `LaunchPlan` fields. |

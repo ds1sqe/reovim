@@ -48,6 +48,11 @@ offset  size  field
 > **CR2 — Header layout is little-endian `u32 / u16 / u16`;
 > `flags 0x8000` reserved for kernel annotation.** *Class*: ABI.
 
+Carrier content versions live inside codec-defined content bytes, not
+in `flags`. Bits 0..14 are wholly codec-defined after CR2 validation;
+the kernel reserves only bit `0x8000`. A codec that needs versioning
+must document its content-version field in the CR7 encoding docs.
+
 ## 3. No magic sentinel
 
 > **CR3 — No magic sentinel; absence is API-level.** Empty cursor
@@ -73,6 +78,11 @@ typedef struct {
                                   ByteBuf** out);
 } CoordCodecVtable;
 ```
+
+`persist_canonicalise` is optional. If the slot is absent, restore and
+save persist the original carrier bytes unchanged after CR6 validation.
+If present, the returned bytes replace the content bytes only after the
+kernel validates them again with the same codec.
 
 Each codec MUST document, in its module's docs:
 
@@ -167,6 +177,12 @@ Cursor and viewport persistence stores byte-encoded carrier blobs, not
 The server-client protocol carries a `DomainTable` after attach and
 on codec deltas (see 7.3).
 
+Server-rendered display text is an optional fallback request. The
+server calls the codec `display` slot on demand, returns UTF-8/ASCII
+bytes capped by CR18, and does not cache the result in Phase 4. The
+text is diagnostic/display-only; clients must not use it for editing
+semantics.
+
 ## 10. Bounded resources (CR11..CR19)
 
 | Rule | Limit | Field |
@@ -201,12 +217,12 @@ returns to `ValidKnown`.
 
 ## Open items
 
-1. Whether `flags` reserves bits for content-version (vs requiring
-   codec-internal versioning). Draft default: codec-internal.
-2. Whether `persist_canonicalise` is required or optional. Draft:
-   optional; absent → carrier bytes persisted as-is.
-3. Server-rendered display text policy — how often, what format,
-   cache strategy. Draft: ASCII-art per cursor, no caching.
+1. ~~Content-version bits~~ — resolved (§2): versioning is
+   codec-internal; the kernel reserves only `flags & 0x8000`.
+2. ~~`persist_canonicalise` requirement~~ — resolved (§4): optional;
+   absent means bytes persist as-is after validation.
+3. ~~Server-rendered display text policy~~ — resolved (§9): on-demand
+   UTF-8/ASCII bytes, capped by CR18, no Phase 4 cache, display-only.
 
 ## Conformance
 
@@ -218,7 +234,9 @@ returns to `ValidKnown`.
 | CR5 | `PartialEq` returns true for byte-equal carriers without any codec registered. |
 | CR6 | Fuzz fixture sends invalid carriers via the framed protocol; kernel rejects + DS12 emits. |
 | CR7 | Codec docs include all required fields; CI gate. |
+| CR7 versioning | Codec stores version in content byte 0 and documents it; kernel accepts. Codec expects version in `flags` → docs/validation gate fails. |
 | CR8 | Codec unloads → carriers go ValidOpaque; codec re-loads → revalidate path. |
 | CR9 | Persist with `DomainId` differing across runs; cursors restore. |
 | CR10 | Client without codec receives carriers; verifies fallback marker; verifies server-rendered display request. |
+| Canonicalise optional | Codec without `persist_canonicalise` persists byte-identical content; codec with it returns canonical bytes that are revalidated before save. |
 | CR11..CR19 | Per-cap fixtures. |

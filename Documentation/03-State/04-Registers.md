@@ -3,7 +3,8 @@
 **Scope.** Register storage shape, scope rules, and access pattern.
 
 **Heritage.** Flagged as "not yet chapter-consolidated" — this
-chapter is a minimum-viable shape; details TBD before lock.
+chapter is a minimum-viable shape with v0.16 defaults resolved in
+§Open items.
 
 **Locked rules.** None at this revision; reshape candidates below.
 
@@ -18,6 +19,11 @@ A register is identified by `(scope, name)`:
 
 Register storage is a `CursorCarrier` payload — registers are not
 text-only. The carrier's domain dictates content.
+
+The kernel does not name vim registers. Names such as `"a`, `"+`,
+`"_`, `"*`, numbered history, and yank rings are module policy. The
+kernel interns opaque register names into `RegisterId(u32)` and stores
+carrier bytes under that ID.
 
 ## 2. Storage layout
 
@@ -48,6 +54,12 @@ ErrorCode hostapi_register_set(RegisterScope scope, RegisterId id,
 ErrorCode hostapi_register_clear(RegisterScope scope, RegisterId id);
 ```
 
+Cross-Domain paste is a focused-Domain operation. `hostapi_register_get`
+returns the carrier bytes and status; the focused Domain's
+`OnRawInput`/paste handler decides whether it can consume the carrier,
+request a codec/service translation, or reject with a diagnostic. The
+kernel never translates register content between Domains.
+
 ## 4. Bounded resources
 
 | Cap | Field |
@@ -62,21 +74,23 @@ ErrorCode hostapi_register_clear(RegisterScope scope, RegisterId id);
 System and session registers persist (per 2.4 §1). Client registers
 are session-volatile.
 
-## Open items (must resolve before lock)
+## Open items (resolved for v0.16)
 
-1. Vim register vocabulary (e.g. `"a..z`, `"+`, `"_`, `"*`) — kept
-   as policy in the vim module, or kernel-named?
-   **Default**: vim module owns names; kernel knows only
-   `RegisterId(u32)` opaque keys.
-2. Yank-ring / numbered-register history — kept in module state
-   (3.2) or as a kernel-side ring with bounded depth?
-3. Cross-Domain register paste — when `register["x"]` holds a hex
-   carrier and the active Domain is text, what happens? Likely
-   Domain-specific handler decides; spec must document.
-4. Whether `RegisterScope::Buffer` is needed (no current use case;
-   omitted for now).
+1. ~~Vim register vocabulary~~ — resolved (§1): module policy;
+   kernel sees opaque `RegisterId`.
+2. ~~Yank-ring / numbered-register history~~ — resolved (§1): module
+   state, not kernel register mechanism.
+3. ~~Cross-Domain register paste~~ — resolved (§3): focused Domain
+   decides how or whether to consume the carrier.
+4. ~~`RegisterScope::Buffer`~~ — omitted from v0.16; no current use
+   case. Adding it requires a future spec change.
 
 ## Conformance
 
-This chapter is a sketch. Conformance fixtures land when §Open #1
-and #2 are resolved.
+| Behaviour | Fixture |
+|---|---|
+| Lookup order | Same `RegisterId` set at client/session/system scopes → get returns client value; clearing client falls back to session. |
+| Carrier storage | Store a hex carrier and retrieve byte-identical header/content; invalid carrier set is rejected by CR6. |
+| Module policy | Vim module maps `"a` to an opaque `RegisterId`; kernel never special-cases the name. |
+| Cross-Domain paste | Text Domain receives a hex carrier from a register and rejects or translates through its own handler; kernel performs no conversion. |
+| Scope vocabulary | `client`, `session`, `system` accepted; `buffer` rejected in v0.16. |

@@ -84,6 +84,21 @@ pub struct DomainManifest {
 Manifest is published at participant init; entries are torn down at
 unload.
 
+### 4.1 Manifest declaration vs init registration
+
+The manifest is the advertised upper bound for diagnostics and
+package validation. A cdylib may register handler/projector/codec
+rows during participant init that are not enumerated in the manifest,
+provided those rows are owned by the same `owner_cdylib_id` and pass
+the normal band/priority validation. Late init registration is allowed
+so a Domain can choose rows based on negotiated kernel capability
+without expanding the manifest schema into a conditional language.
+
+Rows registered after the participant leaves init are rejected unless
+the row kind explicitly documents a post-init registration path. In
+v0.16, handler, projector, position-codec, and cursor-codec rows are
+init-only.
+
 ## 5. HandlerId / ProjectorId
 
 ```rust
@@ -178,9 +193,9 @@ priorities are still deterministic, not as an ordering API.
 1. ~~Tie-break ordering~~ — resolved (§6, DT17): lockfile
    canonical order across cdylibs, manifest declaration order
    within a cdylib.
-2. Whether Domain manifests must declare every handler kind they
-   register, or whether late registration during init is allowed.
-   Default: allowed; manifest is informational.
+2. ~~Manifest declaration vs late registration~~ — resolved
+   (§4.1): manifests advertise the upper bound for diagnostics;
+   init-time late registration is allowed for same-owner rows.
 
 ## Walking-skeleton subset note (#797)
 
@@ -202,3 +217,4 @@ pattern for `Kernel` (rule of three).
 | Persistence remap | Persist with `DomainId(7)`, restart, reload → router maps name to fresh `DomainId(N)`; carriers restored. |
 | DT10 | Manifest declares `band = "decor", priority = 950` → manifest validation hard-errors (out of band range). Band-name-only declaration → mid-range default assigned. |
 | DT17 | Three modules register same `(band, priority)` handlers; dispatch order matches lockfile `(kind, name)` order; two handlers in one manifest dispatch in declaration order; order identical across repeated boots. |
+| Init registration | Cdylib registers an undeclared same-owner handler during init → accepted and visible in diagnostics as late-registered; same call after init → rejected. |

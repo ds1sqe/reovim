@@ -111,6 +111,15 @@ before the workspace scaffold built it):
 | `SP15` (7.3 §1a) | CI-depgraph (spec-first) | Purity probe: `uapi/protocol` imports nothing but `core` and `uapi` siblings. Negative: an `arch/` (or any IO-capable) dependency or import in `uapi/protocol` expects **fail**. |
 | `SP16` (7.3 §1a) | spec-asserted + structural | The §3 frame format and §6 codec contain no carrier-specific reference; the carrier contract is satisfiable by a file-IO fixture carrier (frames written to and re-read from a file decode identically — exercised once the codec lands). |
 
+Phase 4 substrate rows added for #798 remain in the owner chapters
+until §2 chooses the machine-readable source format. The rows are
+mandatory inputs to that eventual matrix and cover: DT10/DT17
+dispatch ordering, DT11..DT16 attachment/focus semantics, undo group
+boundaries and external markers, stream S1..S10 registration and
+backpressure, CR1..CR19 carrier validation/fallback, view-slot
+scope/diagnostics, service leases/flags, register scope lookup, and
+projection composition/full-resend boundaries.
+
 Per-target triples: `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu`, `aarch64-apple-darwin`,
 `x86_64-pc-windows-msvc`. Other triples are best-effort.
