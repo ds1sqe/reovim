@@ -2,8 +2,8 @@
 //!
 //! The fixed-capacity circular buffer the LOG6 kernel log ring (and any other
 //! bounded-history consumer) is built on. There is no `alloc` crate, so the
-//! backing storage is a single allocation from the arch
-//! [`allocator`](crate::alloc), made once at construction.
+//! backing storage is a single allocation from the platform allocator (reached
+//! through the boot-installed `kabi` handle), made once at construction.
 //!
 //! When the ring is full, [`push`](Ring::push) evicts the oldest element and
 //! returns it. The capacity is fixed at construction (a single allocation, no
@@ -20,15 +20,15 @@
 
 use core::{alloc::Layout, ptr::NonNull};
 
-use crate::alloc::{AllocError, alloc, dealloc};
+use reovim_kabi_platform::{AllocError, handle};
 
 /// A bounded ring buffer of `T` with oldest-first eviction.
 ///
 /// Owns a single fixed allocation of `cap` slots, of which `len` (from `head`,
 /// wrapping) are initialized. `cap` is always `>= 1`.
 ///
-/// ```rust
-/// use reovim_arch::ds::Ring;
+/// ```no_run
+/// use reovim_lib_ds::Ring;
 ///
 /// let mut r: Ring<u32> = Ring::try_with_capacity(3).unwrap();
 /// assert!(r.push(1).is_none());
@@ -53,7 +53,7 @@ impl<T> Ring<T> {
     /// Compile-time guard: `T` must not be zero-sized (as [`Seq`], the slot
     /// arithmetic assumes a non-zero stride).
     ///
-    /// [`Seq`]: crate::ds::Seq
+    /// [`Seq`]: crate::Seq
     const NON_ZST: () = assert!(core::mem::size_of::<T>() != 0, "Ring<T> requires a non-ZST T");
 
     /// Creates a ring with room for exactly `cap` elements.
@@ -63,9 +63,9 @@ impl<T> Ring<T> {
     /// Returns [`AllocError`] when `cap` is zero, the layout overflows, or the
     /// single backing allocation is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
-    /// use reovim_arch::alloc::AllocError;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
+    /// use reovim_kabi_platform::AllocError;
     /// assert!(Ring::<u32>::try_with_capacity(0).is_err());
     /// let r: Ring<u32> = Ring::try_with_capacity(4).unwrap();
     /// assert_eq!(r.capacity(), 4);
@@ -77,7 +77,7 @@ impl<T> Ring<T> {
             return Err(AllocError);
         }
         let layout = Layout::array::<T>(cap).map_err(|_| AllocError)?;
-        let ptr = alloc(layout)?.cast::<T>();
+        let ptr = handle().alloc(layout)?.cast::<T>();
         Ok(Self {
             ptr,
             head: 0,
@@ -88,8 +88,8 @@ impl<T> Ring<T> {
 
     /// The number of live elements.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u8> = Ring::try_with_capacity(2).unwrap();
     /// assert_eq!(r.len(), 0);
     /// r.push(1);
@@ -102,8 +102,8 @@ impl<T> Ring<T> {
 
     /// The fixed slot capacity.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let r: Ring<u8> = Ring::try_with_capacity(5).unwrap();
     /// assert_eq!(r.capacity(), 5);
     /// ```
@@ -114,8 +114,8 @@ impl<T> Ring<T> {
 
     /// Whether the ring holds no elements.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u8> = Ring::try_with_capacity(2).unwrap();
     /// assert!(r.is_empty());
     /// r.push(1);
@@ -128,8 +128,8 @@ impl<T> Ring<T> {
 
     /// Whether the ring is at capacity (the next push evicts).
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u8> = Ring::try_with_capacity(1).unwrap();
     /// assert!(!r.is_full());
     /// r.push(1);
@@ -149,8 +149,8 @@ impl<T> Ring<T> {
     /// Appends `value`. When full, evicts and returns the oldest element;
     /// otherwise returns `None`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u32> = Ring::try_with_capacity(2).unwrap();
     /// assert_eq!(r.push(10), None);
     /// assert_eq!(r.push(20), None);
@@ -185,8 +185,8 @@ impl<T> Ring<T> {
 
     /// Removes and returns the oldest element, or `None` when empty.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u32> = Ring::try_with_capacity(3).unwrap();
     /// assert_eq!(r.pop_oldest(), None);
     /// r.push(1); r.push(2); r.push(3);
@@ -208,8 +208,8 @@ impl<T> Ring<T> {
 
     /// Iterates the live elements oldest-first.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Ring;
+    /// ```no_run
+    /// use reovim_lib_ds::Ring;
     /// let mut r: Ring<u32> = Ring::try_with_capacity(3).unwrap();
     /// r.push(1); r.push(2); r.push(3);
     /// let v: Vec<u32> = r.iter().copied().collect();
@@ -268,11 +268,9 @@ impl<T> Drop for Ring<T> {
         // `cap >= 1`, so the allocation always exists; the layout that
         // succeeded at construction succeeds here.
         let layout = Layout::array::<T>(self.cap).expect("layout valid at alloc time");
-        // SAFETY: `self.ptr`/`layout` name the single live allocation; no
-        // element is referenced after the drops above.
-        unsafe {
-            dealloc(self.ptr.cast(), layout);
-        }
+        // `self.ptr`/`layout` name the single live allocation; no element is
+        // referenced after the drops above.
+        handle().dealloc(self.ptr.cast(), layout);
     }
 }
 
@@ -290,8 +288,3 @@ impl<T> Drop for Ring<T> {
 unsafe impl<T: Send> Send for Ring<T> {}
 // SAFETY: see above.
 unsafe impl<T: Sync> Sync for Ring<T> {}
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `ring_tests.rs`.
-#[cfg(feature = "selftest")]
-#[path = "ring_tests.rs"]
-mod tests;

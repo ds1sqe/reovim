@@ -7,10 +7,11 @@
 
 use {
     crate::{
-        alloc::{AllocError, alloc, dealloc, live_bytes, realloc},
+        alloc::{alloc, dealloc, live_bytes, realloc},
         arch_test, testrt,
     },
     core::{alloc::Layout, ptr::NonNull},
+    reovim_kabi_platform::AllocError,
 };
 
 // Private items reached via super:: through the #[path] child declaration:
@@ -197,8 +198,9 @@ arch_test!(spin_lock_contended_path_is_hit_under_threads, {
     // lock (implicitly, via GLOBAL) for a brief window. The contended inner
     // loop (L113-115) must execute at least once for coverage.
     use {
-        crate::{ds::Shared, thread},
+        crate::thread,
         core::sync::atomic::{AtomicBool, Ordering as O},
+        reovim_lib_ds::Shared,
     };
 
     // A gate that makes thread B spin for a moment while thread A holds the

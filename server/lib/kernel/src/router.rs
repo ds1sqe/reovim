@@ -9,7 +9,7 @@
 //! ## What is implemented
 //!
 //! - `intern_named` / `name_of` — name↔id bidirectional intern using
-//!   `arch::ds::Map` and `arch::ds::Bytes`.
+//!   `lib_ds::Map` and `lib_ds::Bytes`.
 //! - Handler rows keyed by `(DomainId, HandlerId)`.
 //! - Projector rows keyed by `(DomainId, ProjectorId)`.
 //! - DT10 priority validation and DT17 deterministic row order.
@@ -23,7 +23,7 @@
 //! The composition root wires concrete Domain trait objects into the router.
 //! The kernel routes opaque through contract traits.
 
-use reovim_arch::ds::{Bytes, Map, Seq};
+use reovim_lib_ds::{Bytes, Map, Seq};
 
 // Contract types live in the Domain contract tier; re-exported here so callers
 // that name `reovim_kernel::router::*` continue to compile.
@@ -69,7 +69,7 @@ impl StaticOwnerRecord {
 
 /// `DomainRouter` (§4.1 §2, Phase 4 row substrate).
 ///
-/// Provides `intern_named`/`name_of` over `arch::ds::Map`, plus ordered
+/// Provides `intern_named`/`name_of` over `lib_ds::Map`, plus ordered
 /// handler/projector vectors keyed by `(DomainId, HandlerId)` and
 /// `(DomainId, ProjectorId)`.
 pub struct DomainRouter {
@@ -247,7 +247,7 @@ impl DomainRouter {
     pub fn name_of(&self, id: DomainId) -> Option<&[u8]> {
         self.ids
             .get(&id.as_u32())
-            .map(reovim_arch::ds::Bytes::as_slice)
+            .map(reovim_lib_ds::Bytes::as_slice)
     }
 
     /// Returns the name for a raw id value (used by tests and diagnostics).
@@ -260,7 +260,7 @@ impl DomainRouter {
     /// ```
     #[must_use]
     pub fn name_of_id(&self, raw: u32) -> Option<&[u8]> {
-        self.ids.get(&raw).map(reovim_arch::ds::Bytes::as_slice)
+        self.ids.get(&raw).map(reovim_lib_ds::Bytes::as_slice)
     }
 
     /// Registers a manifest for `DomainId`.
@@ -543,7 +543,7 @@ impl DomainRouter {
     ) -> Option<&[RegisteredHandler]> {
         self.handlers
             .get(&(id, handler_id))
-            .map(reovim_arch::ds::Seq::as_slice)
+            .map(reovim_lib_ds::Seq::as_slice)
     }
 
     /// Returns the first registered `Render` projector for `id`, if any.
@@ -601,7 +601,7 @@ impl DomainRouter {
     ) -> Option<&[RegisteredProjector]> {
         self.projectors
             .get(&(id, projector_id))
-            .map(reovim_arch::ds::Seq::as_slice)
+            .map(reovim_lib_ds::Seq::as_slice)
     }
 
     fn handler_rows_mut(

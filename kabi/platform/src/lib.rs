@@ -55,9 +55,13 @@
 // workspace lint stays `warn` so crates above the floor still flag unsafe.
 #![allow(unsafe_code)]
 
-use core::sync::atomic::{
-    AtomicPtr,
-    Ordering::{Acquire, Release},
+use core::{
+    alloc::Layout,
+    ptr::NonNull,
+    sync::atomic::{
+        AtomicPtr, AtomicU32,
+        Ordering::{Acquire, Release},
+    },
 };
 
 /// Failure to allocate through the platform's allocator primitive.
@@ -147,6 +151,22 @@ pub type ParkFn = unsafe extern "C" fn(word: *const u32, expected: u32);
 /// parked on is a no-op (not an error).
 pub type UnparkFn = unsafe extern "C" fn(word: *const u32);
 
+/// The wake-all primitive: wakes **every** thread parked on `word` via
+/// [`ParkFn`], not just one.
+///
+/// [`UnparkFn`] wakes a single waiter — enough for a mutex hand-off, but a
+/// `Condvar::notify_all` and an `RwLock` writer-release-to-readers must wake
+/// the whole cohort. This is a distinct primitive (the futex wake count is
+/// `i32::MAX`, not `1`), appended as a trailing slot (AB3) rather than folded
+/// into [`UnparkFn`] so a provider compiled against the older slot set stays
+/// ABI-compatible.
+///
+/// # Safety
+///
+/// `word` must point to a live, aligned `u32`; waking a `word` no thread is
+/// parked on is a no-op (not an error).
+pub type UnparkAllFn = unsafe extern "C" fn(word: *const u32);
+
 /// The platform handle: a `#[repr(C)]` vtable of effectful primitive function
 /// pointers the provider builds and the boot path installs.
 ///
@@ -161,11 +181,12 @@ pub type UnparkFn = unsafe extern "C" fn(word: *const u32);
 /// ## Slot order is append-only (AB3) and frozen (AB15)
 ///
 /// `#[repr(C)]` freezes the field layout; the order — `clock`, `alloc`,
-/// `dealloc`, `park`, `unpark` — is append-only. A future primitive is a new
-/// trailing field, never a reorder or removal, so a binary built against an
-/// older slot set stays ABI-compatible. In SP02 only `clock` is wired
-/// end-to-end; `alloc`/`dealloc`/`park`/`unpark` are declared and pointed at
-/// real backends but consumed by no caller until SP03.
+/// `dealloc`, `park`, `unpark`, `unpark_all` — is append-only. A future
+/// primitive is a new trailing field, never a reorder or removal, so a binary
+/// built against an older slot set stays ABI-compatible. SP02 wired `clock`
+/// end-to-end; SP03 wires `alloc`/`dealloc`/`park`/`unpark`/`unpark_all`
+/// through the safe wrappers below (consumed by `lib/ds`). `unpark_all` is the
+/// AB3 trailing append SP03 adds for the wake-all sync paths.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PlatformVtable {
@@ -179,6 +200,8 @@ pub struct PlatformVtable {
     pub park: ParkFn,
     /// Wake one thread parked on `word` (SP03-consumed).
     pub unpark: UnparkFn,
+    /// Wake every thread parked on `word` (SP03-consumed; AB3 trailing append).
+    pub unpark_all: UnparkAllFn,
 }
 
 // `PlatformVtable` is `Sync` automatically: it holds only `unsafe extern "C"`
@@ -186,6 +209,80 @@ pub struct PlatformVtable {
 // across threads carries no interior state). No explicit `unsafe impl Sync` is
 // needed — the auto-derived bound suffices for the `'static HANDLE` static and
 // the `&'static` install path.
+
+impl PlatformVtable {
+    /// Allocates `layout.size()` bytes aligned to `layout.align()`, mapping the
+    /// raw C-ABI null return back to [`AllocError`].
+    ///
+    /// The safe Rust face of the [`alloc`](PlatformVtable::alloc) slot: it
+    /// builds the `(size, align)` pair from `layout`, calls the provider's
+    /// primitive, and converts the FFI-shaped `*mut u8` (null = failure) into a
+    /// `Result<NonNull<u8>, AllocError>`. Consumers (`lib/ds`) stay safe — the
+    /// `unsafe extern "C"` call is encapsulated here, in the floor-contract
+    /// tier.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when the provider returns null (a refused
+    /// allocation, or a layout the provider's backend cannot represent).
+    pub fn alloc(&self, layout: Layout) -> Result<NonNull<u8>, AllocError> {
+        // SAFETY: the `alloc` slot was installed from a provider's
+        // `unsafe extern "C"` allocator; `layout.align()` is a power of two and
+        // `layout.size()` is the requested size. A null return is the
+        // contract's "allocation refused" signal, mapped to `AllocError` below.
+        let ptr = unsafe { (self.alloc)(layout.size(), layout.align()) };
+        NonNull::new(ptr).ok_or(AllocError)
+    }
+
+    /// Frees a block previously returned by [`alloc`](PlatformVtable::alloc) for
+    /// the same `layout`.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic. `ptr`/`layout` must name a live allocation from a prior
+    /// [`alloc`](PlatformVtable::alloc) with the identical `layout`; the safe
+    /// wrapper takes a `NonNull<u8>` so a null can never reach the slot.
+    pub fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) {
+        // SAFETY: by the caller's contract `ptr`/`layout` are the exact pair a
+        // prior `alloc` returned and the block is still live; the provider's
+        // `dealloc` upholds the rest. `NonNull` guarantees a non-null pointer.
+        unsafe { (self.dealloc)(ptr.as_ptr(), layout.size(), layout.align()) }
+    }
+
+    /// Blocks the calling thread while `word` still holds `expected`, returning
+    /// when woken by [`unpark`](PlatformVtable::unpark)/
+    /// [`unpark_all`](PlatformVtable::unpark_all) or spuriously.
+    ///
+    /// Takes a shared `&AtomicU32` so the address handed to the futex primitive
+    /// is always a live, aligned `u32`. Spurious returns are permitted — the
+    /// caller re-checks its own condition in a loop.
+    pub fn park(&self, word: &AtomicU32, expected: u32) {
+        let addr = core::ptr::from_ref(word).cast::<u32>();
+        // SAFETY: `word` is a live, aligned `&AtomicU32` borrowed for the call,
+        // so `addr` points at a valid `u32` across the (possibly blocking)
+        // park. The provider only reads `*addr` and may block.
+        unsafe { (self.park)(addr, expected) }
+    }
+
+    /// Wakes one thread parked on `word` (the matched
+    /// [`park`](PlatformVtable::park) counterpart). A no-op when no thread is
+    /// parked.
+    pub fn unpark(&self, word: &AtomicU32) {
+        let addr = core::ptr::from_ref(word).cast::<u32>();
+        // SAFETY: `word` is a live, aligned `&AtomicU32`; the provider reads no
+        // value beyond the futex key and waking an empty key is a no-op.
+        unsafe { (self.unpark)(addr) }
+    }
+
+    /// Wakes every thread parked on `word`, for the wake-all sync paths
+    /// (`Condvar::notify_all`, `RwLock` release). A no-op when none are parked.
+    pub fn unpark_all(&self, word: &AtomicU32) {
+        let addr = core::ptr::from_ref(word).cast::<u32>();
+        // SAFETY: as `unpark`: `word` is a live, aligned `&AtomicU32`; the
+        // provider wakes the whole cohort and an empty key is a no-op.
+        unsafe { (self.unpark_all)(addr) }
+    }
+}
 
 /// The error a second [`install`] returns: the handle is already set.
 ///
@@ -242,13 +339,15 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     let _ = (word, expected);
 /// }
 /// unsafe extern "C" fn unpark_stub(word: *const u32) { let _ = word; }
+/// unsafe extern "C" fn unpark_all_stub(word: *const u32) { let _ = word; }
 ///
 /// static TABLE: PlatformVtable = PlatformVtable {
-///     clock:   clock_stub,
-///     alloc:   alloc_stub,
-///     dealloc: dealloc_stub,
-///     park:    park_stub,
-///     unpark:  unpark_stub,
+///     clock:      clock_stub,
+///     alloc:      alloc_stub,
+///     dealloc:    dealloc_stub,
+///     park:       park_stub,
+///     unpark:     unpark_stub,
+///     unpark_all: unpark_all_stub,
 /// };
 ///
 /// // Boot path: install the platform table once.

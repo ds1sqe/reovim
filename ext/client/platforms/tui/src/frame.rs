@@ -30,7 +30,7 @@
 //! This is a pure function: no arch runtime allocation pattern required beyond
 //! the output `Seq<u8>`.
 
-use reovim_arch::ds::Seq;
+use reovim_lib_ds::Seq;
 
 /// Why composing an ANSI frame was refused.
 ///

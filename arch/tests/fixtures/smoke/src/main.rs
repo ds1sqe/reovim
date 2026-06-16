@@ -12,14 +12,14 @@
 // declares the process entry symbol). The allow is scoped to this fixture bin.
 #![allow(unsafe_code)]
 
-use reovim_arch::{
-    ds::Seq,
-    sync::Mutex,
-    thread::spawn,
+use {
+    reovim_arch::thread::spawn,
+    reovim_lib_ds::{Mutex, Seq},
 };
 
 reovim_arch::entry!(|_argc, _argv, _envp| {
-    // Allocate an arch DS through the live allocator.
+    // Allocate a lib/ds DS through the live allocator (reached via the handle
+    // the entry path installed before this shim runs).
     let mut seq: Seq<u64> = Seq::new();
     for i in 0..8 {
         if seq.try_push(i).is_err() {
@@ -29,7 +29,7 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
 
     // Spawn a thread that pushes into a Mutex-guarded Seq, then join it —
     // threads + sync + DS + allocator composing under the entry path.
-    let shared = match reovim_arch::ds::Shared::try_new(Mutex::new(Seq::<u64>::new())) {
+    let shared = match reovim_lib_ds::Shared::try_new(Mutex::new(Seq::<u64>::new())) {
         Ok(s) => s,
         Err(_) => return 2,
     };

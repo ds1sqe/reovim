@@ -49,30 +49,23 @@ use core::{
     },
 };
 
-use crate::sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex};
+use reovim_kabi_platform::handle;
 
 /// High bit of the state word: a writer holds the lock.
 const WRITER: u32 = 1 << 31;
 /// Mask for the reader-count bits.
 #[cfg(all(feature = "selftest", target_os = "linux"))]
 const READERS: u32 = WRITER - 1;
-/// Spin attempts before falling back to `FUTEX_WAIT`.
+/// Spin attempts before falling back to a `park`.
 const SPIN_LIMIT: u32 = 100;
-/// `FUTEX_WAKE` count meaning "wake everyone".
-///
-/// The kernel reads the wake count as a signed `int`, so the broadcast
-/// value is `i32::MAX` (the glibc convention). `u32::MAX` would arrive as
-/// `-1` and the kernel's wake loop (`++woken >= nr_wake`) would stop after
-/// a single waiter — a lost broadcast that strands every other sleeper.
-const WAKE_ALL: u32 = 0x7FFF_FFFF; // i32::MAX, expressed unsigned
 
 /// A reader/writer lock guarding a `T`.
 ///
-/// No poisoning (see [`crate::sync`] module doc): under `panic = "abort"`
+/// No poisoning (see the [`crate`] module doc): under `panic = "abort"`
 /// a poisoned state can never be observed.
 ///
-/// ```rust
-/// use reovim_arch::sync::RwLock;
+/// ```no_run
+/// use reovim_lib_ds::RwLock;
 ///
 /// let rw = RwLock::new(0u32);
 /// // Multiple concurrent readers are fine in a single-threaded context.
@@ -107,8 +100,8 @@ unsafe impl<T: Send + Sync> Sync for RwLock<T> {}
 impl<T> RwLock<T> {
     /// Creates a new, unlocked reader/writer lock wrapping `value`.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::RwLock;
+    /// ```no_run
+    /// use reovim_lib_ds::RwLock;
     /// let rw = RwLock::new(3u32);
     /// assert_eq!(*rw.read(), 3);
     /// ```
@@ -120,15 +113,10 @@ impl<T> RwLock<T> {
         }
     }
 
-    /// Address of the state word, for the raw `futex` syscall.
-    fn state_addr(&self) -> usize {
-        core::ptr::from_ref(&self.state).addr()
-    }
-
     /// Acquires a shared read lock, blocking while a writer holds.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::RwLock;
+    /// ```no_run
+    /// use reovim_lib_ds::RwLock;
     /// let rw = RwLock::new(1u32);
     /// let g = rw.read();
     /// assert_eq!(*g, 1);
@@ -148,7 +136,7 @@ impl<T> RwLock<T> {
                 }
                 // CAS lost a race; retry without sleeping.
                 #[cfg(feature = "selftest")]
-                super::testhooks::note_rwlock_reader_cas_retry();
+                crate::testhooks::note_rwlock_reader_cas_retry();
                 core::hint::spin_loop();
                 continue;
             }
@@ -158,18 +146,19 @@ impl<T> RwLock<T> {
                 core::hint::spin_loop();
                 continue;
             }
-            // The expected value passed to FUTEX_WAIT is the writer-held word
-            // we just observed; if it changed, EAGAIN re-loops immediately.
+            // The expected value passed to `park` is the writer-held word we
+            // just observed; if it changed, `park` returns immediately and the
+            // loop re-checks.
             #[cfg(feature = "selftest")]
-            super::testhooks::note_rwlock_reader_wait();
-            let _ = futex(self.state_addr(), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, s, 0, 0, 0);
+            crate::testhooks::note_rwlock_reader_wait();
+            handle().park(&self.state, s);
         }
     }
 
     /// Acquires an exclusive write lock, blocking while any guard is held.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::RwLock;
+    /// ```no_run
+    /// use reovim_lib_ds::RwLock;
     /// let rw = RwLock::new(0u32);
     /// *rw.write() = 7;
     /// assert_eq!(*rw.read(), 7);
@@ -194,36 +183,38 @@ impl<T> RwLock<T> {
             if s == 0 {
                 // Lost a CAS race against another acquirer; retry at once.
                 #[cfg(feature = "selftest")]
-                super::testhooks::note_rwlock_writer_lost_cas();
+                crate::testhooks::note_rwlock_writer_lost_cas();
                 core::hint::spin_loop();
                 continue;
             }
-            let _ = futex(self.state_addr(), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, s, 0, 0, 0);
+            handle().park(&self.state, s);
         }
     }
 
     /// Releases a read guard.
     fn read_unlock(&self) {
         // Release so the next writer sees this reader's writes. If the count
-        // reached zero, a writer may be waiting — wake everyone.
+        // reached zero, a writer may be waiting — wake everyone (`unpark_all`).
         if self.state.fetch_sub(1, Release) == 1 {
-            let _ = futex(self.state_addr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
+            handle().unpark_all(&self.state);
         }
     }
 
     /// Releases a write guard.
     fn write_unlock(&self) {
-        // Release publishes the writer's mutations; wake all so a blocked
-        // writer or any blocked readers re-check the now-free word.
+        // Release publishes the writer's mutations; wake all (`unpark_all`) so a
+        // blocked writer or any blocked readers re-check the now-free word.
         self.state.store(0, Release);
-        let _ = futex(self.state_addr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
+        handle().unpark_all(&self.state);
     }
 
     /// The current number of live read guards (selftest observation hook;
-    /// `pub(super)` so the sibling `rwlock_tests` module can assert it —
-    /// only its Linux-gated, spawn-dependent cases do).
+    /// `pub` under `selftest` so the arch-hosted `rwlock` tests, which own the
+    /// `no_std` runner, can assert it — only their Linux-gated, spawn-dependent
+    /// cases do).
     #[cfg(all(feature = "selftest", target_os = "linux"))]
-    pub(super) fn reader_count(&self) -> u32 {
+    #[must_use]
+    pub fn reader_count(&self) -> u32 {
         self.state.load(Relaxed) & READERS
     }
 }
@@ -282,9 +273,3 @@ impl<T> Drop for RwLockWriteGuard<'_, T> {
         self.lock.write_unlock();
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `rwlock_tests.rs`,
-// declared in `sync/mod.rs` as
-// `#[cfg(feature = "selftest")] mod rwlock_tests;`.
-// `READERS` and `reader_count` are gated `#[cfg(feature = "selftest")]`
-// so both the old libtest runner and the new selftest runner can use them.

@@ -7,7 +7,7 @@
 //! traits, and ext Domains implement them, so neither tier owns the trait
 //! definition — the contract tier does.
 
-use reovim_arch::ds::Bytes;
+use reovim_lib_ds::Bytes;
 
 use crate::{
     id::{BufferId, WindowId},
@@ -17,7 +17,7 @@ use crate::{
 /// Explicit result of an `OnRawInput` handler invocation.
 ///
 /// ```rust
-/// use reovim_arch::ds::Bytes;
+/// use reovim_lib_ds::Bytes;
 /// use reovim_subsys_domain::contract::RawInputResult;
 ///
 /// let result = RawInputResult::ignored(Bytes::new(), 0);
@@ -36,7 +36,7 @@ impl RawInputResult {
     /// Builds a claimed handler result.
     ///
     /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// use reovim_lib_ds::Bytes;
     /// use reovim_subsys_domain::contract::RawInputResult;
     ///
     /// assert!(RawInputResult::claimed(Bytes::new(), 0).claimed);
@@ -53,7 +53,7 @@ impl RawInputResult {
     /// Builds an ignored handler result.
     ///
     /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// use reovim_lib_ds::Bytes;
     /// use reovim_subsys_domain::contract::RawInputResult;
     ///
     /// assert!(!RawInputResult::ignored(Bytes::new(), 0).claimed);
@@ -74,7 +74,7 @@ impl RawInputResult {
 /// Returns an explicit claim/ignore result plus any updated buffer/cursor.
 ///
 /// The implementation MAY allocate (the returned `Bytes` is heap-owned via
-/// `arch::ds::Bytes`). The kernel passes ownership of the snapshot buffer
+/// `lib_ds::Bytes`). The kernel passes ownership of the snapshot buffer
 /// in; the handler owns it, modifies it, and returns it.
 ///
 /// ```rust,no_run

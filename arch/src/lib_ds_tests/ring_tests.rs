@@ -4,15 +4,15 @@
 //! `#[cfg(feature = "selftest")] #[path = "ring_tests.rs"] mod tests;`.
 //! All items under test are public; `super::` is not needed.
 //!
-//! `std::vec::Vec` from the original tests is replaced with `crate::ds::Seq`
+//! `std::vec::Vec` from the original tests is replaced with `reovim_lib_ds::Seq`
 //! (the arch Vec analog under DAG6/no_std).
 
 use {
-    crate::{alloc::AllocError, arch_test, ds::Seq, testrt},
+    crate::{arch_test, testrt},
     core::cell::Cell,
+    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::{Ring, Seq},
 };
-
-use super::Ring;
 
 // Helper: collect ring items into a Seq for comparison.
 fn collect<T: Copy>(r: &Ring<T>) -> Seq<T> {

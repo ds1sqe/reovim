@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "lib/depgraph",
+    # Portable heap-DS algorithms (Seq/Map/Bytes/Mutex/RwLock/Condvar) — Math;
+    # reaches its allocator + futex backend through the kabi handle (SP03,
+    # lib/ds → kabi only, never arch).
+    "lib/ds",
     "arch",
     "uapi/abi",
     "uapi/protocol",

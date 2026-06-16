@@ -51,7 +51,7 @@ arch_test!(runtime_error_io_inner_distinguishes_variants, {
 // caught.
 
 arch_test!(runtime_error_display_io, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     // RuntimeError::Io(errno) → "io error (errno <N>)"
     let e = RuntimeError::Io(5);
     let mut buf = Bytes::new();
@@ -61,7 +61,7 @@ arch_test!(runtime_error_display_io, {
 });
 
 arch_test!(runtime_error_display_protocol, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     // RuntimeError::Protocol(code) → "protocol error (code <N>)"
     let e = RuntimeError::Protocol(7);
     let mut buf = Bytes::new();
@@ -71,7 +71,7 @@ arch_test!(runtime_error_display_protocol, {
 });
 
 arch_test!(runtime_error_display_dispatch, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     let e = RuntimeError::Dispatch;
     let mut buf = Bytes::new();
     let _ = core::fmt::write(&mut BytesWriter::new(&mut buf), format_args!("{e}"));
@@ -80,7 +80,7 @@ arch_test!(runtime_error_display_dispatch, {
 });
 
 arch_test!(runtime_error_display_alloc, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     let e = RuntimeError::Alloc;
     let mut buf = Bytes::new();
     let _ = core::fmt::write(&mut BytesWriter::new(&mut buf), format_args!("{e}"));
@@ -89,7 +89,7 @@ arch_test!(runtime_error_display_alloc, {
 });
 
 arch_test!(runtime_error_display_invalid_path, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     let e = RuntimeError::InvalidPath;
     let mut buf = Bytes::new();
     let _ = core::fmt::write(&mut BytesWriter::new(&mut buf), format_args!("{e}"));
@@ -98,7 +98,7 @@ arch_test!(runtime_error_display_invalid_path, {
 });
 
 arch_test!(runtime_error_display_already_attached, {
-    use reovim_arch::ds::{Bytes, BytesWriter};
+    use reovim_lib_ds::{Bytes, BytesWriter};
     let e = RuntimeError::AlreadyAttached;
     let mut buf = Bytes::new();
     let _ = core::fmt::write(&mut BytesWriter::new(&mut buf), format_args!("{e}"));

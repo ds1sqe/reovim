@@ -5,7 +5,7 @@
 
 use core::num::NonZeroU32;
 
-use reovim_arch::{arch_test, ds::Bytes};
+use {reovim_arch::arch_test, reovim_lib_ds::Bytes};
 
 use crate::{
     projection::{Projection, ProjectionSpan},

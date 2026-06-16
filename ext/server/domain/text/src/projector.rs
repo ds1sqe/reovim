@@ -7,7 +7,7 @@
 //! cross-Domain composition) arrives in #797 Phase 4+.
 
 use {
-    reovim_arch::ds::Bytes,
+    reovim_lib_ds::Bytes,
     reovim_subsys_domain::{
         contract::RenderProjector,
         id::{BufferId, WindowId},
@@ -27,7 +27,7 @@ use {
 /// use reovim_domain_text::projector::TextProjector;
 /// use reovim_subsys_domain::contract::RenderProjector as _;
 /// use reovim_subsys_domain::id::{BufferId, WindowId};
-/// use reovim_arch::ds::Bytes;
+/// use reovim_lib_ds::Bytes;
 ///
 /// let p = TextProjector;
 /// let buf = Bytes::try_from_slice(b"hello").unwrap();

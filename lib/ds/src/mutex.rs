@@ -21,7 +21,7 @@ use core::{
     },
 };
 
-use crate::sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex};
+use reovim_kabi_platform::handle;
 
 /// Lock-word state: free.
 const FREE: u32 = 0;
@@ -41,7 +41,7 @@ const SPIN_LIMIT: u32 = 100;
 /// process, so a poisoned state can never be observed (see the module doc).
 ///
 /// ```rust
-/// use reovim_arch::sync::Mutex;
+/// use reovim_lib_ds::Mutex;
 ///
 /// let m = Mutex::new(0u32);
 /// {
@@ -72,7 +72,7 @@ impl<T> Mutex<T> {
     /// Creates a new, unlocked mutex wrapping `value`.
     ///
     /// ```rust
-    /// use reovim_arch::sync::Mutex;
+    /// use reovim_lib_ds::Mutex;
     /// let m = Mutex::new(7u32);
     /// assert_eq!(*m.lock(), 7);
     /// ```
@@ -84,17 +84,12 @@ impl<T> Mutex<T> {
         }
     }
 
-    /// Addr of the lock word, for the raw `futex` syscall.
-    fn word_addr(&self) -> usize {
-        core::ptr::from_ref(&self.word).addr()
-    }
-
-    /// Acquires the lock, blocking via `FUTEX_WAIT` if it is held.
+    /// Acquires the lock, blocking via the handle's `park` if it is held.
     ///
     /// The returned [`MutexGuard`] releases the lock on drop.
     ///
     /// ```rust
-    /// use reovim_arch::sync::Mutex;
+    /// use reovim_lib_ds::Mutex;
     /// let m = Mutex::new(0u32);
     /// let mut g = m.lock();
     /// *g += 1;
@@ -148,18 +143,20 @@ impl<T> Mutex<T> {
             }
             #[cfg(feature = "selftest")]
             if prev == LOCKED {
-                super::testhooks::note_contended_transition();
+                crate::testhooks::note_contended_transition();
             }
             // Wait while the word is CONTENDED. A mismatched value (EAGAIN)
             // or any wake re-loops and re-checks via the swap above. This
             // re-check absorbs spurious/stolen wakes (2.3 §1.1).
             #[cfg(feature = "selftest")]
-            super::testhooks::note_wait_entered();
-            // The futex result is intentionally ignored: EAGAIN (value moved
-            // off CONTENDED) and a genuine wake both lead back to the swap,
-            // which re-decides. Errors other than EAGAIN cannot occur for a
-            // private futex on a valid word.
-            let _ = futex(self.word_addr(), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, CONTENDED, 0, 0, 0);
+            crate::testhooks::note_wait_entered();
+            // `park` blocks only while the word still equals CONTENDED. A
+            // mismatched value (the word moved off CONTENDED) returns
+            // immediately, and a genuine wake also returns; both lead back to
+            // the swap, which re-decides — so the result needs no inspection.
+            // The handle's park carries FUTEX_PRIVATE_FLAG (the arch adapter),
+            // matching this in-process lock.
+            handle().park(&self.word, CONTENDED);
         }
     }
 
@@ -168,7 +165,7 @@ impl<T> Mutex<T> {
     /// Returns `Some(guard)` if the lock was free, `None` if it was held.
     ///
     /// ```rust
-    /// use reovim_arch::sync::Mutex;
+    /// use reovim_lib_ds::Mutex;
     /// let m = Mutex::new(0u32);
     /// let g = m.try_lock();
     /// assert!(g.is_some());
@@ -188,18 +185,19 @@ impl<T> Mutex<T> {
     }
 
     /// Releases the lock (called from the guard's `Drop`, and by
-    /// [`Condvar`](super::Condvar) which releases-then-reacquires manually).
+    /// [`Condvar`](crate::Condvar) which releases-then-reacquires manually).
     ///
-    /// `Release` store per 2.3 §1.1; `FUTEX_WAKE` is issued **after** the
-    /// store and **only** when the word was `CONTENDED`, so a sleeping
-    /// waiter sees the holder's writes when it wins.
-    pub(super) fn unlock(&self) {
+    /// `Release` store per 2.3 §1.1; the wake is issued **after** the store and
+    /// **only** when the word was `CONTENDED`, so a sleeping waiter sees the
+    /// holder's writes when it wins.
+    pub(crate) fn unlock(&self) {
         // `swap(FREE, Release)` publishes all writes made under the lock and
         // tells us whether a waiter needs waking.
         if self.word.swap(FREE, Release) == CONTENDED {
-            // Wake exactly one waiter: it will swap CONTENDED back in and
-            // either win or re-sleep, keeping the sticky-contended invariant.
-            let _ = futex(self.word_addr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, 0, 0, 0);
+            // Wake exactly one waiter (the handle's `unpark`): it will swap
+            // CONTENDED back in and either win or re-sleep, keeping the
+            // sticky-contended invariant.
+            handle().unpark(&self.word);
         }
     }
 }
@@ -209,7 +207,7 @@ impl<T> Mutex<T> {
 /// Derefs to the guarded `T`.
 ///
 /// ```rust
-/// use reovim_arch::sync::Mutex;
+/// use reovim_lib_ds::Mutex;
 /// let m = Mutex::new(5u32);
 /// let mut g = m.lock();
 /// *g = 10; // DerefMut
@@ -221,9 +219,9 @@ pub struct MutexGuard<'a, T> {
 }
 
 impl<'a, T> MutexGuard<'a, T> {
-    /// The mutex this guard holds. Used by [`Condvar`](super::Condvar) to
+    /// The mutex this guard holds. Used by [`Condvar`](crate::Condvar) to
     /// release-then-reacquire the same lock across a wait.
-    pub(super) const fn mutex(&self) -> &'a Mutex<T> {
+    pub(crate) const fn mutex(&self) -> &'a Mutex<T> {
         self.mutex
     }
 }
@@ -251,10 +249,3 @@ impl<T> Drop for MutexGuard<'_, T> {
         self.mutex.unlock();
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `mutex_tests.rs`,
-// declared in `sync/mod.rs` as
-// `#[cfg(feature = "selftest")] mod mutex_tests;`.
-// All items under test are public. The testhooks module in `sync/mod.rs` is
-// now gated `#[cfg(feature = "selftest")]` so the selftest tests
-// can call it too.

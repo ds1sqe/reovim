@@ -9,7 +9,7 @@ use {
     core::fmt::Write,
 };
 
-use super::{Bytes, BytesWriter, Str};
+use reovim_lib_ds::{Bytes, BytesWriter, Str};
 
 arch_test!(bytes_new_is_empty, {
     let b = Bytes::new();

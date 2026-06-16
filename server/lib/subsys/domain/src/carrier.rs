@@ -4,7 +4,7 @@
 //! `(domain_id: u32, inner_id: u16, flags: u16)` tuple. Position and cursor
 //! carriers use distinct header types to prevent accidental cross-use.
 
-use reovim_arch::ds::Bytes;
+use reovim_lib_ds::Bytes;
 
 use crate::id::DomainId;
 

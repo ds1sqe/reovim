@@ -22,6 +22,8 @@ doctest = false
 # All other crates propagate `runtime` via `reovim-arch/runtime`; enabling it
 # here once unifies them all at the composition root.
 reovim-arch      = { path = "../../arch", features = ["runtime"] }
+# Heap-DS algorithms (Shared) relocated from `reovim_arch::ds` (SP03).
+reovim-lib-ds    = { path = "../../lib/ds" }
 reovim-kernel    = { path = "../../server/lib/kernel" }
 reovim-server-rt = { path = "../../server/lib/server" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).

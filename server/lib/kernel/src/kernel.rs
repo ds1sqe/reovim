@@ -30,10 +30,7 @@
 //! | `force_overrides` | placeholder `()` | config service |
 
 use {
-    reovim_arch::{
-        ds::{Bytes, Shared},
-        sync::RwLock,
-    },
+    reovim_lib_ds::{Bytes, RwLock, Shared},
     reovim_subsys_domain::{
         carrier::{CarrierStatus, CursorCarrier, PositionCarrier},
         id::{
@@ -146,7 +143,7 @@ impl KernelAbi {
 
 /// The steady-state kernel root (2.1 §3, boot-core subset, LF13).
 ///
-/// Shared via `Shared<Kernel>` (the `arch::ds::Shared` no-std Arc analog).
+/// Shared via `Shared<Kernel>` (the `lib_ds::Shared` no-std Arc analog).
 /// Per-field locks (arch `RwLock`/`Mutex`) own concurrency; there is no central
 /// `Mutex<Kernel>` (CC1/CC2). The boot-core subset carries the realized fields;
 /// all deferred fields are typed as `()` placeholders until their features land.

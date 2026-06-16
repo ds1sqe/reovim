@@ -28,6 +28,8 @@ inject-failure = []
 # `selftest`: compiles the server-runtime sibling test modules into the lib.
 reovim-server-rt = { path = "../../..", features = ["runtime", "selftest"] }
 reovim-arch      = { path = "../../../../../../arch", features = ["runtime", "selftest"] }
+# Heap-DS algorithms (Seq) the runtime smoke uses (SP03 relocation).
+reovim-lib-ds    = { path = "../../../../../../lib/ds", features = ["selftest"] }
 # The kernel is needed for the integration smoke (boots kernel).
 reovim-kernel    = { path = "../../../../kernel", features = ["runtime", "selftest"] }
 # The Domain contract tier (DAG2) — its test registrations must be linked.

@@ -1,10 +1,14 @@
 //! `reovim-arch` — the platform floor.
 //!
-//! This is the single `#![no_std]` `core`-only crate that owns the OS
-//! boundary for the v0.16 sovereign rebuild (DAG6, 1.2 §10): raw syscall
-//! FFI, process entry/exit, the panic handler, the allocator, and every
-//! heap data structure consumed above it. Crates above `arch/` never
-//! declare OS bindings or heap primitives — they consume `arch/` alone.
+//! This is the `#![no_std]` crate that owns the OS boundary for the v0.16
+//! sovereign rebuild (DAG6, 1.2 §10): raw syscall FFI, process entry/exit, the
+//! panic handler, the allocator, and the futex/thread primitives. The heap-DS
+//! *algorithms* (`Seq`/`Map`/`Bytes`/`Mutex`/`RwLock`/`Condvar`) are NOT here —
+//! they are portable Math in `lib/ds`, reaching arch's allocator + futex
+//! backend through the boot-installed `kabi` handle (SP03). arch owns the
+//! backend *primitives* and implements the `kabi` platform contract; it holds
+//! zero heap DS of its own (the panic renderer uses a fixed stack buffer, not a
+//! handle-routed DS, so a panic before the handle installs still renders).
 //!
 //! `unsafe` is allowed here, and only here, because `arch/` is the one
 //! crate that owns OS FFI: inline-asm syscalls and raw-pointer memory
@@ -19,14 +23,12 @@
 #![allow(unsafe_code)]
 
 pub mod alloc;
-pub mod ds;
 #[cfg(target_os = "linux")]
 pub mod net;
 pub mod panic;
 // arch's implementation of the down-face platform contract: the static vtable
 // of const fn pointers + the write-once boot install (SP02, arch → kabi).
 pub mod platform;
-pub mod sync;
 pub mod sys;
 #[cfg(target_os = "linux")]
 pub mod term;
@@ -84,3 +86,14 @@ pub mod time_tests;
 // binary enables both "selftest" and "runtime").
 #[cfg(all(feature = "selftest", feature = "runtime"))]
 pub mod mem_tests;
+
+// The `lib/ds` integration selftests. The DS/sync *algorithms* moved to the
+// `reovim-lib-ds` crate (SP03), but the no_std runner, the live allocator (with
+// its fault-injection seam + `live_bytes` accounting), the thread primitive,
+// and the futex backend all live HERE. These tests construct `reovim_lib_ds`
+// types AFTER `rust_entry` installs the handle and exercise alloc + park/unpark
+// through it end-to-end — so they are arch-hosted integration tests, not
+// lib/ds-internal ones. arch enables `reovim-lib-ds/selftest` to reach the
+// test-only observation surface (`testhooks`, the growth-ladder constants).
+#[cfg(feature = "selftest")]
+pub mod lib_ds_tests;

@@ -130,7 +130,7 @@ arch_test!(flush_tail_matches_ring_rendered_bytes, {
     }
 
     // Collect the ring's entries as concatenated bytes.
-    let mut expected: reovim_arch::ds::Bytes = reovim_arch::ds::Bytes::new();
+    let mut expected: reovim_lib_ds::Bytes = reovim_lib_ds::Bytes::new();
     ring.for_each(|entry| {
         let _ = expected.try_extend_from_slice(entry.line.as_slice());
     });
@@ -158,7 +158,7 @@ arch_test!(flush_compact_into_buf_fits_ring_entries, {
     ring.push_event(&ev1);
 
     // Collect expected bytes.
-    let mut expected: reovim_arch::ds::Bytes = reovim_arch::ds::Bytes::new();
+    let mut expected: reovim_lib_ds::Bytes = reovim_lib_ds::Bytes::new();
     ring.for_each(|entry| {
         let _ = expected.try_extend_from_slice(entry.line.as_slice());
     });

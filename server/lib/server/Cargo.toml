@@ -22,6 +22,9 @@ runtime = ["reovim-arch/runtime"]
 
 [dependencies]
 reovim-arch          = { path = "../../../arch" }
+# Heap-DS algorithms (Seq/Shared/Bytes) relocated from `reovim_arch::ds` to
+# `reovim-lib-ds` (SP03).
+reovim-lib-ds        = { path = "../../../lib/ds" }
 reovim-uapi-abi      = { path = "../../../uapi/abi" }
 reovim-uapi-protocol = { path = "../../../uapi/protocol" }
 reovim-subsys-domain = { path = "../subsys/domain" }

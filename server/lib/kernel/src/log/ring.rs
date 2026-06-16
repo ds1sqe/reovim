@@ -1,6 +1,6 @@
 //! `LogRing` — the kernel log ring (LOG6, 9.5 §8).
 //!
-//! A bounded ring of rendered LOG2 entries over `arch::ds::Ring`. Each entry
+//! A bounded ring of rendered LOG2 entries over `lib_ds::Ring`. Each entry
 //! carries its [`LogLevel`] alongside the pre-rendered [`Bytes`] so readers
 //! can filter without parsing. Capacity comes from
 //! [`LauncherArgs::log_ring_bytes`] (default 1 MiB; LOG6 spec default).
@@ -38,11 +38,8 @@
 //! and the two do not form a cycle at runtime.
 
 use {
-    reovim_arch::{
-        alloc::AllocError,
-        ds::{Bytes, Ring},
-        sync::Mutex,
-    },
+    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::{Bytes, Mutex, Ring},
     reovim_uapi_abi::error::LogLevel,
 };
 
@@ -87,8 +84,8 @@ pub const MIN_RING_CAPACITY: usize = 2;
 /// Carries the log level alongside the pre-rendered LOG2 bytes so readers can
 /// filter by level without parsing the rendered line.
 ///
-/// ```rust
-/// use reovim_arch::ds::Bytes;
+/// ```no_run
+/// use reovim_lib_ds::Bytes;
 /// use reovim_kernel::log::ring::LogEntry;
 /// use reovim_uapi_abi::error::LogLevel;
 ///
@@ -124,7 +121,7 @@ pub struct LogEntry {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```no_run
 /// use reovim_kernel::log::ring::LogRing;
 ///
 /// let ring = LogRing::try_new(1024 * 1024).expect("1 MiB ring");
@@ -153,7 +150,7 @@ impl LogRing {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     ///
     /// let ring = LogRing::try_new(1024 * 1024).expect("1 MiB ring allocation");
@@ -171,7 +168,7 @@ impl LogRing {
 
     /// The number of live entries.
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     ///
     /// let ring = LogRing::try_new(4096).unwrap();
@@ -184,7 +181,7 @@ impl LogRing {
 
     /// Whether the ring holds no entries.
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     ///
     /// let ring = LogRing::try_new(4096).unwrap();
@@ -197,7 +194,7 @@ impl LogRing {
 
     /// The fixed slot capacity of the ring.
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     ///
     /// let ring = LogRing::try_new(1024 * 1024).unwrap();
@@ -229,7 +226,7 @@ impl LogRing {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     /// use reovim_kernel::event_bus::{DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;
@@ -283,7 +280,7 @@ impl LogRing {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::log::ring::LogRing;
     /// use reovim_kernel::event_bus::{DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;

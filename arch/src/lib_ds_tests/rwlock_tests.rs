@@ -4,7 +4,7 @@
 //! `#[cfg(feature = "selftest")] mod rwlock_tests;`.
 //!
 //! Type substitutions from the original libtest-based tests:
-//! - `std::sync::Arc` → `crate::ds::Shared`
+//! - `std::sync::Arc` → `reovim_lib_ds::Shared`
 //! - `std::thread::spawn` / `h.join().unwrap()` → `crate::thread::spawn` / `h.join()`
 //! - `std::thread::sleep(Duration::from_millis(N))` → bounded spin on `crate::time::Instant`
 //!
@@ -16,11 +16,12 @@ use crate::{arch_test, testrt};
 // Only the spawn-dependent (Linux-gated) cases consume these.
 #[cfg(target_os = "linux")]
 use {
-    crate::{ds::Shared, sync::testhooks, thread, time::Instant},
+    crate::{thread, time::Instant},
     core::sync::atomic::{AtomicBool, AtomicU32 as TU32, Ordering as O},
+    reovim_lib_ds::{Shared, testhooks},
 };
 
-use super::RwLock;
+use reovim_lib_ds::RwLock;
 
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
 #[cfg(target_os = "linux")]

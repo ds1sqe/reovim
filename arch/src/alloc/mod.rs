@@ -73,24 +73,13 @@ const MAX_SMALL: usize = 2048;
 /// size, which covers every alignment a request of that size can demand).
 const SIZE_CLASSES: [usize; 7] = [16, 32, 64, 128, 256, 512, 2048];
 
-// `AllocError` now lives in the down-face contract (`kabi::AllocError`): its
-// layout is part of the platform vtable's alloc-slot signature, so the canonical
-// home is the contract, not this implementor (master invariant 2). arch
-// re-exports it so its own alloc impl and the ~25 in-crate `crate::alloc::
-// AllocError` users — plus the two external crates that still name
-// `reovim_arch::alloc::AllocError` (`server/lib/kernel`, `server/lib/subsys/
-// domain`) — keep compiling unchanged. This is arch USING its own contract, a
-// transitional aid, not a backward facade.
-//
-// The blast radius (25+ arch-internal sites across ds/, thread/, alloc/ tests;
-// 2 external crates) makes the re-export the right call per SP02 settled
-// decision 1: direct naming is the default, the re-export the marked fallback
-// when the radius is large.
-//
-// TODO(SP03): drop this re-export once lib/ds + the kernels name
-// `kabi::AllocError` directly (they move to lib/ds / route through the handle
-// in SP03).
-pub use reovim_kabi_platform::AllocError;
+// `AllocError` lives in the down-face contract (`kabi::AllocError`): its layout
+// is part of the platform vtable's alloc-slot signature, so the canonical home
+// is the contract, not this implementor (master invariant 2). arch's own alloc
+// impl names it directly here; the SP02 transitional `pub use` re-export is
+// gone (SP03) — lib/ds and the kernels now name `reovim_kabi_platform::
+// AllocError` directly, having moved to lib/ds / routed through the handle.
+use reovim_kabi_platform::AllocError;
 
 /// A free slot in a size class's intrusive free-list.
 ///
@@ -111,8 +100,10 @@ struct Inner {
 /// A minimal test-and-set spin lock over an atomic flag.
 ///
 /// Private to the allocator. This is *not* a general lock primitive — the
-/// futex-backed [`crate::sync`] mutex (Phase 3) is the real one. It exists
-/// only so the allocator is thread-usable before that primitive lands.
+/// futex-backed `reovim_lib_ds::Mutex` is the real one, and it routes its
+/// park/unpark back through this allocator's handle, so the allocator cannot
+/// depend on it (that would be a bootstrap cycle). The spin lock exists so the
+/// allocator is thread-usable on its own, below the `lib/ds` sync layer.
 struct SpinLock {
     locked: AtomicUsize,
 }

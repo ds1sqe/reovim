@@ -23,9 +23,9 @@ use {
     reovim_arch::{
         alloc::fault,
         arch_test,
-        ds::Shared,
         sys::{AT_FDCWD, O_CLOEXEC, O_RDONLY, close, openat, read},
     },
+    reovim_lib_ds::Shared,
     reovim_uapi_abi::error::LogLevel,
 };
 
@@ -223,7 +223,7 @@ arch_test!(integration_smoke_boot_with_sink, {
     // of the ring's rendered entries, in order — replayed head (14 boot
     // lines) followed by the live post-sink line. One renderer, one
     // mechanism: ring bytes and sink bytes are the same bytes.
-    let mut expected = reovim_arch::ds::Bytes::new();
+    let mut expected = reovim_lib_ds::Bytes::new();
     kernel.log_ring.for_each(|entry| {
         expected
             .try_extend_from_slice(entry.line.as_slice())

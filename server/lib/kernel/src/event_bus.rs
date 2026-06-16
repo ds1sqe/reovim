@@ -2,7 +2,7 @@
 //!
 //! ## Design
 //!
-//! The bus holds a subscriber list behind an `arch::sync::RwLock`. `emit()`
+//! The bus holds a subscriber list behind an `lib_ds::RwLock`. `emit()`
 //! uses clone-then-invoke (CC6): it copies the current subscriber set under
 //! the read lock, drops the lock, then invokes each subscriber — so no lock
 //! is held across any subscriber callback. A subscriber that calls
@@ -31,10 +31,7 @@
 //! the kernel floor.
 
 use {
-    reovim_arch::{
-        ds::{Seq, Shared},
-        sync::RwLock,
-    },
+    reovim_lib_ds::{RwLock, Seq, Shared},
     reovim_uapi_abi::error::LogLevel,
 };
 
@@ -197,7 +194,7 @@ pub type Subscriber = fn(&DS12Event);
 
 /// The kernel DS12 event fan-out bus (9.4, CC6).
 ///
-/// Holds a subscriber set behind an `arch::sync::RwLock<Seq<Subscriber>>`.
+/// Holds a subscriber set behind an `lib_ds::RwLock<Seq<Subscriber>>`.
 /// `emit()` clones the subscriber set under the read lock (CC6: copy-then-
 /// invoke, never holding the lock across a callback). The built-in LOG1 slot
 /// (`builtin_ring`) fires first when set.
@@ -207,7 +204,7 @@ pub type Subscriber = fn(&DS12Event);
 ///
 /// # Example
 ///
-/// ```rust
+/// ```no_run
 /// use reovim_kernel::event_bus::{DS12EventBus, DS12Event, BootStageFields, EVT_BOOT_STAGE_START};
 /// use reovim_kernel::BootClock;
 /// use reovim_uapi_abi::error::LogLevel;
@@ -272,8 +269,8 @@ impl DS12EventBus {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Shared;
+    /// ```no_run
+    /// use reovim_lib_ds::Shared;
     /// use reovim_kernel::event_bus::DS12EventBus;
     /// use reovim_kernel::log::ring::LogRing;
     ///
@@ -302,7 +299,7 @@ impl DS12EventBus {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::event_bus::{DS12EventBus, DS12Event, Subscriber};
     ///
     /// fn noop(_event: &DS12Event) {}
@@ -331,7 +328,7 @@ impl DS12EventBus {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     /// use reovim_kernel::event_bus::{DS12EventBus, DS12Event, BootStageFields, EVT_BOOT_STAGE_OK};
     /// use reovim_kernel::BootClock;
     /// use reovim_uapi_abi::error::LogLevel;

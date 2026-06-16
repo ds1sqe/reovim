@@ -17,8 +17,8 @@ fn make_proj(
     cursor: u32,
     span_end: u32,
     content: &[u8],
-) -> reovim_arch::ds::Bytes {
-    let mut v = reovim_arch::ds::Bytes::new();
+) -> reovim_lib_ds::Bytes {
+    let mut v = reovim_lib_ds::Bytes::new();
     v.try_extend_from_slice(&buf_id.to_le_bytes()).unwrap();
     v.try_extend_from_slice(&win_id.to_le_bytes()).unwrap();
     v.try_extend_from_slice(&cursor.to_le_bytes()).unwrap();
@@ -151,7 +151,7 @@ arch_test!(frame_compose_alloc_fault_sweep, {
 arch_test!(push_decimal_renders_zero, {
     // No caller passes 0 today (columns are 1-based), but the rendering
     // contract documents zero; exercise the arm directly.
-    let mut dst = reovim_arch::ds::Seq::new();
+    let mut dst = reovim_lib_ds::Seq::new();
     crate::frame::push_decimal(&mut dst, 0).expect("push 0");
     assert_eq!(dst.as_slice(), b"0");
 });

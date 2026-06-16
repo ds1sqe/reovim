@@ -1,15 +1,7 @@
 # Existing public API doctest gaps when the L12 scanner landed.
 # Format: relative/path<TAB>public item signature
-arch/src/ds/map.rs	pub struct MapIter<'a, K, V>
-arch/src/ds/ring.rs	pub struct RingIter<'a, T>
+arch/src/platform.rs	pub fn install_platform() -> Result<(), InstallError>
 arch/src/profiler.rs	pub static __llvm_profile_runtime: i32
-arch/src/sync/mod.rs	pub fn contended_transitions() -> usize
-arch/src/sync/mod.rs	pub fn rwlock_reader_cas_retry() -> usize
-arch/src/sync/mod.rs	pub fn rwlock_reader_waits() -> usize
-arch/src/sync/mod.rs	pub fn rwlock_writer_lost_cas() -> usize
-arch/src/sync/mod.rs	pub fn waits_entered() -> usize
-arch/src/sync/rwlock.rs	pub struct RwLockReadGuard<'a, T>
-arch/src/sync/rwlock.rs	pub struct RwLockWriteGuard<'a, T>
 arch/src/sys/errno.rs	pub const EADDRINUSE: Errno
 arch/src/sys/errno.rs	pub const EAGAIN: Errno
 arch/src/sys/errno.rs	pub const EBADF: Errno
@@ -29,8 +21,8 @@ arch/src/sys/linux_aarch64/raw.rs	pub const CLOCK_GETTIME: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const CLONE: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const CLOSE: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const CONNECT: usize
-arch/src/sys/linux_aarch64/raw.rs	pub const EXIT: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const EXIT_GROUP: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const EXIT: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const FUTEX: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const GETTID: usize
 arch/src/sys/linux_aarch64/raw.rs	pub const IOCTL: usize
@@ -52,8 +44,8 @@ arch/src/sys/linux_x86_64/raw.rs	pub const CLOCK_GETTIME: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const CLONE: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const CLOSE: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const CONNECT: usize
-arch/src/sys/linux_x86_64/raw.rs	pub const EXIT: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const EXIT_GROUP: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const EXIT: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const FUTEX: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const GETTID: usize
 arch/src/sys/linux_x86_64/raw.rs	pub const IOCTL: usize
@@ -89,6 +81,12 @@ arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SIGHAND: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SYSVSEM: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_THREAD: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_VM: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn gettid() -> i32
+arch/src/sys/none_aarch64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn openat(
+arch/src/sys/none_aarch64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
 arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAIT: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAKE: usize
@@ -103,12 +101,6 @@ arch/src/sys/none_aarch64/wrap.rs	pub const O_WRONLY: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const PROT_NONE: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const PROT_READ: usize
 arch/src/sys/none_aarch64/wrap.rs	pub const PROT_WRITE: usize
-arch/src/sys/none_aarch64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn gettid() -> i32
-arch/src/sys/none_aarch64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
-arch/src/sys/none_aarch64/wrap.rs	pub const fn openat(
-arch/src/sys/none_aarch64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
 arch/src/sys/none_aarch64/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
 arch/src/sys/none_aarch64/wrap.rs	pub fn exit(code: i32) -> !
 arch/src/sys/none_aarch64/wrap.rs	pub fn exit_group(code: i32) -> !
@@ -117,9 +109,9 @@ arch/src/sys/none_aarch64/wrap.rs	pub fn mmap(
 arch/src/sys/none_aarch64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
 arch/src/sys/none_aarch64/wrap.rs	pub struct Timespec
 arch/src/sys/term.rs	pub const BRKINT: u32
-arch/src/sys/term.rs	pub const ECHO: u32
 arch/src/sys/term.rs	pub const ECHOE: u32
 arch/src/sys/term.rs	pub const ECHOK: u32
+arch/src/sys/term.rs	pub const ECHO: u32
 arch/src/sys/term.rs	pub const ICANON: u32
 arch/src/sys/term.rs	pub const ICRNL: u32
 arch/src/sys/term.rs	pub const INPCK: u32
@@ -164,6 +156,23 @@ lib/depgraph/src/lib.rs	pub fn default_for(root: &Path) -> Result<Self, ProbeErr
 lib/depgraph/src/lib.rs	pub fn validate(&self, path: &Path) -> Result<(), ProbeError>
 lib/depgraph/src/toml.rs	pub enum TomlValue
 lib/depgraph/src/toml.rs	pub struct TomlDoc
+lib/ds/src/lib.rs	pub fn contended_transitions() -> usize
+lib/ds/src/lib.rs	pub fn rwlock_reader_cas_retry() -> usize
+lib/ds/src/lib.rs	pub fn rwlock_reader_waits() -> usize
+lib/ds/src/lib.rs	pub fn rwlock_writer_lost_cas() -> usize
+lib/ds/src/lib.rs	pub fn waits_entered() -> usize
+lib/ds/src/map.rs	pub const FIRST_CAPACITY: usize
+lib/ds/src/map.rs	pub const fn cyclic_in_range(hole: usize, scan: usize, x: usize) -> bool
+lib/ds/src/map.rs	pub fn alloc_buckets(cap: usize) -> Result<NonNull<Bucket<K, V>>, AllocError>
+lib/ds/src/map.rs	pub fn layout_for(n: usize) -> Result<Layout, AllocError>
+lib/ds/src/map.rs	pub struct MapIter<'a, K, V>
+lib/ds/src/ring.rs	pub struct RingIter<'a, T>
+lib/ds/src/rwlock.rs	pub fn reader_count(&self) -> u32
+lib/ds/src/rwlock.rs	pub struct RwLockReadGuard<'a, T>
+lib/ds/src/rwlock.rs	pub struct RwLockWriteGuard<'a, T>
+lib/ds/src/seq.rs	pub const FIRST_CAPACITY: usize
+lib/ds/src/shared.rs	pub const fn refcount_overflowed(old: usize) -> bool
+lib/ds/src/shared.rs	pub const MAX_REFCOUNT: usize
 server/lib/kernel/src/boot.rs	pub type StageBody
 server/lib/kernel/src/kernel.rs	pub fn create_session(
 server/lib/kernel/src/kernel.rs	pub fn dispatch_input_for_session(
@@ -181,9 +190,9 @@ server/lib/kernel/src/kernel.rs	pub fn hostapi_service_lease_release(&self, id: 
 server/lib/kernel/src/kernel.rs	pub fn hostapi_service_lease_validate(
 server/lib/kernel/src/kernel.rs	pub fn hostapi_service_register(
 server/lib/kernel/src/kernel.rs	pub fn hostapi_service_revoke_owner(
-server/lib/kernel/src/kernel.rs	pub fn hostapi_undo(&self, buffer_id: BufferId) -> Result<bool, &'static str>
 server/lib/kernel/src/kernel.rs	pub fn hostapi_undo_group_close(&self, buffer_id: BufferId) -> Result<(), &'static str>
 server/lib/kernel/src/kernel.rs	pub fn hostapi_undo_group_open(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_undo(&self, buffer_id: BufferId) -> Result<bool, &'static str>
 server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slot_get(
 server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slot_put(
 server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slots_drop_buffer(
@@ -197,11 +206,11 @@ server/lib/kernel/src/router.rs	pub fn register_static_owner(
 server/lib/kernel/src/router.rs	pub fn revoke_owner(&mut self, owner: CdylibId) -> Result<usize, &'static str>
 server/lib/kernel/src/router.rs	pub struct DomainRouter
 server/lib/kernel/src/router.rs	pub struct StaticOwnerRecord
-server/lib/kernel/src/session.rs	pub const MAX_FOCUS_CHAIN_DEPTH: usize
 server/lib/kernel/src/session.rs	pub const fn is_empty(&self) -> bool
 server/lib/kernel/src/session.rs	pub const fn len(&self) -> usize
 server/lib/kernel/src/session.rs	pub const fn new() -> Self
 server/lib/kernel/src/session.rs	pub const fn set_session_id(&mut self, id: SessionId)
+server/lib/kernel/src/session.rs	pub const MAX_FOCUS_CHAIN_DEPTH: usize
 server/lib/kernel/src/session.rs	pub fn attachment(&self, id: DomainAttachmentId) -> Option<&DomainAttachment>
 server/lib/kernel/src/session.rs	pub fn create_session(
 server/lib/kernel/src/session.rs	pub fn dispatch_prepared(
@@ -318,4 +327,3 @@ uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
 uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
 uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
 uapi/protocol/src/view.rs	pub struct StrListIter<'a>
-arch/src/platform.rs	pub fn install_platform() -> Result<(), InstallError>

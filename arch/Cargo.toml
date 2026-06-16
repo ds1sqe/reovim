@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Platform floor: the one #![no_std] crate owning OS FFI, entry, panic, allocator, and heap data structures"
+description = "Platform floor: the #![no_std] crate owning OS FFI, entry, panic, allocator, and futex/thread backend primitives"
 publish = false
 
 [features]
@@ -19,8 +19,12 @@ runtime = []
 # Compiles per-module sibling test files INTO the lib (L12 layout, #785
 # Phase 5). Tests declare via arch_test! and reach crate-private items
 # through `super::`. The selftest runner bin (arch-selftest) enables both
-# `runtime` and `selftest`.
-selftest = []
+# `runtime` and `selftest`. arch also hosts the `lib/ds` integration selftests
+# (SP03): the DS/sync algorithms moved to `reovim-lib-ds`, but the no_std
+# runner, live allocator (fault seam + accounting), threads, and futex backend
+# stay here — so `selftest` propagates to `reovim-lib-ds/selftest` to reach its
+# test-observation surface (testhooks, the growth-ladder constants/helpers).
+selftest = ["reovim-lib-ds/selftest"]
 
 [lints]
 workspace = true
@@ -34,7 +38,16 @@ workspace = true
 # are preserved — no external crate enters the graph.
 reovim-kabi-platform = { path = "../kabi/platform" }
 
+# arch CONSUMES lib/ds POST-install: the relocated DS/sync algorithms (SP03)
+# route through the boot-installed handle, which arch installs at `rust_entry`.
+# This is the sanctioned `arch → lib/ds → kabi` diamond (master invariant 6),
+# not a cycle: lib/ds names no arch symbol back. arch needs it for the smoke
+# fixture's post-boot DS exercise and the `selftest`-gated lib/ds integration
+# tests. Both crates stay #![no_std] with zero third-party deps (DAG5/DAG6).
+reovim-lib-ds = { path = "../lib/ds" }
+
 # No [dev-dependencies] or [build-dependencies].
 # DAG5 (1.2 §9 Dependency Sovereignty): the platform floor reaches the OS
 # only through hand-written inline-asm/`extern "C"` FFI it owns. Beyond the
-# in-repo kabi contract it implements, only `core` is consumed.
+# in-repo kabi contract it implements (and the lib/ds algorithms it consumes
+# post-install), only `core` is consumed.

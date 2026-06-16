@@ -14,10 +14,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use {
-    reovim_arch::{arch_test, ds::Shared},
-    reovim_uapi_abi::error::LogLevel,
-};
+use {reovim_arch::arch_test, reovim_lib_ds::Shared, reovim_uapi_abi::error::LogLevel};
 
 use crate::{
     BootClock,

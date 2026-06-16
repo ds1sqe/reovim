@@ -41,10 +41,10 @@ arch_test!(carrier_is_disconnect_false_for_other_error, {
 
 use {
     reovim_arch::{
-        ds::Seq,
         net::{UnixListener, UnixStream},
         thread::spawn,
     },
+    reovim_lib_ds::Seq,
     reovim_uapi_abi::FrameHeader,
     reovim_uapi_protocol::frame::HEADER_LEN,
 };

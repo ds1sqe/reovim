@@ -66,7 +66,7 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use reovim_arch::sync::Mutex;
+use reovim_lib_ds::Mutex;
 
 use crate::log::ring::LogRing;
 

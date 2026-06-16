@@ -7,7 +7,8 @@
 //! push default).
 
 use {
-    reovim_arch::{ds::Seq, net::UnixStream},
+    reovim_arch::net::UnixStream,
+    reovim_lib_ds::Seq,
     reovim_subsys_domain::projection::Projection,
     reovim_uapi_abi::{ErrorCode, FrameHeader},
     reovim_uapi_protocol::{

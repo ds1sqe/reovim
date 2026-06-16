@@ -5,7 +5,7 @@
 //! backpressure counters, typed options bytes, and the S5 control-op
 //! partitioning.
 
-use reovim_arch::ds::Bytes;
+use reovim_lib_ds::Bytes;
 
 use crate::{
     id::{BufferId, CdylibId, SessionId, StreamId},

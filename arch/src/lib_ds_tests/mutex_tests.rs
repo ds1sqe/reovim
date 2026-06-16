@@ -4,20 +4,23 @@
 //! `#[cfg(feature = "selftest")] mod mutex_tests;`.
 //!
 //! Type substitutions from the original libtest-based tests:
-//! - `std::sync::Arc` → `crate::ds::Shared`
+//! - `std::sync::Arc` → `reovim_lib_ds::Shared`
 //! - `std::thread::spawn` / `h.join().unwrap()` → `crate::thread::spawn` / `h.join()`
 //! - `std::thread::sleep(Duration::from_millis(N))` → bounded spin on `crate::time::Instant`
 //! - `std::thread::yield_now()` → `core::hint::spin_loop()`
 
-use crate::{arch_test, sync::testhooks, testrt};
+use reovim_lib_ds::testhooks;
+
+use crate::{arch_test, testrt};
 // Only the spawn-dependent (Linux-gated) cases consume these.
 #[cfg(target_os = "linux")]
 use {
-    crate::{ds::Shared, thread, time::Instant},
+    crate::{thread, time::Instant},
     core::sync::atomic::{AtomicBool, Ordering as O},
+    reovim_lib_ds::Shared,
 };
 
-use super::Mutex;
+use reovim_lib_ds::Mutex;
 
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
 /// This replaces `std::thread::sleep` in the selftest context where the

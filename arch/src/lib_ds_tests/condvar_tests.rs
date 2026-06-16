@@ -17,13 +17,14 @@ use crate::arch_test;
 // Only the spawn-dependent (Linux-gated) cases consume these.
 #[cfg(target_os = "linux")]
 use {
-    crate::{ds::Shared, testrt, thread, time::Instant},
+    crate::{testrt, thread, time::Instant},
     core::sync::atomic::{AtomicBool, AtomicU32 as TU32, Ordering as O},
+    reovim_lib_ds::Shared,
 };
 
-use super::Condvar;
+use reovim_lib_ds::Condvar;
 #[cfg(target_os = "linux")]
-use super::Mutex;
+use reovim_lib_ds::Mutex;
 
 /// Spin for approximately `millis` milliseconds using `crate::time::Instant`.
 #[cfg(target_os = "linux")]

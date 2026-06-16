@@ -1,0 +1,25 @@
+[package]
+name = "reovim-lib-ds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Portable heap-DS algorithms (Seq, Map, Bytes, Mutex, RwLock, Condvar) reaching their allocator/futex backend through the kabi platform handle"
+publish = false
+
+[dependencies]
+# The ONLY dependency: the down-face platform contract. lib/ds reaches its
+# allocator + park/unpark backend through the boot-installed kabi handle; it
+# names NO implementor (no `arch` edge — master invariant 2: lib/ds ⊄ arch).
+reovim-kabi-platform = { path = "../../kabi/platform" }
+
+[lints]
+workspace = true
+
+[features]
+# Selftest gating mirrors arch: the sibling `*_tests.rs` modules and the
+# futex-slow-path test instrumentation compile only under `selftest`.
+selftest = []

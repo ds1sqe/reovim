@@ -1,23 +1,26 @@
-//! `Bytes` and `Str` — owned byte/UTF-8 strings over the arch allocator.
+//! `Bytes` and `Str` — owned byte/UTF-8 strings over the platform allocator.
 //!
 //! `Bytes` is a growable owned `[u8]` (the `Vec<u8>` analog); `Str` wraps it
 //! with a maintained UTF-8 invariant (the `String` analog). Both are fallible
-//! on growth, like every floor data structure.
+//! on growth, like every floor data structure, allocating through the
+//! boot-installed `kabi` handle.
 //!
-//! [`BytesWriter`] is the alloc-free, fallible [`core::fmt::Write`] seam the
-//! panic handler (Phase 4) renders the LOG2 line through: formatting flows
+//! [`BytesWriter`] is a fallible [`core::fmt::Write`] seam: formatting flows
 //! into a `Bytes` and a failed push surfaces as `fmt::Error` rather than an
-//! abort. Designing it here keeps the panic path's rendering target in the
-//! floor from the start.
+//! abort. (The panic renderer does NOT use this — a panic can fire before the
+//! handle installs, so `arch::panic` renders into an allocator-free fixed
+//! buffer instead; see `arch/src/panic.rs`.)
 
 use core::{fmt, ops::Deref};
 
-use crate::{alloc::AllocError, ds::seq::Seq};
+use reovim_kabi_platform::AllocError;
+
+use crate::seq::Seq;
 
 /// A growable, heap-owning byte string.
 ///
-/// ```rust
-/// use reovim_arch::ds::Bytes;
+/// ```no_run
+/// use reovim_lib_ds::Bytes;
 ///
 /// let mut b = Bytes::new();
 /// b.try_push(b'h').unwrap();
@@ -33,8 +36,8 @@ pub struct Bytes {
 impl Bytes {
     /// Creates an empty `Bytes` with no allocation.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let b = Bytes::new();
     /// assert!(b.is_empty());
     /// ```
@@ -49,8 +52,8 @@ impl Bytes {
     ///
     /// Returns [`AllocError`] when the backing allocation is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let b = Bytes::try_from_slice(b"hello").unwrap();
     /// assert_eq!(b.as_slice(), b"hello");
     /// ```
@@ -66,8 +69,8 @@ impl Bytes {
     ///
     /// Returns [`AllocError`] when a needed growth is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let mut b = Bytes::new();
     /// b.try_push(b'x').unwrap();
     /// assert_eq!(b.as_slice(), b"x");
@@ -84,8 +87,8 @@ impl Bytes {
     /// bytes pushed before the failure remain (partial append), matching the
     /// fallible-builder contract.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let mut b = Bytes::new();
     /// b.try_extend_from_slice(b"ab").unwrap();
     /// b.try_extend_from_slice(b"cd").unwrap();
@@ -100,8 +103,8 @@ impl Bytes {
 
     /// The bytes as a slice.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let b = Bytes::try_from_slice(b"hi").unwrap();
     /// assert_eq!(b.as_slice(), b"hi");
     /// ```
@@ -112,8 +115,8 @@ impl Bytes {
 
     /// The number of bytes.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// let b = Bytes::try_from_slice(b"abc").unwrap();
     /// assert_eq!(b.len(), 3);
     /// ```
@@ -124,8 +127,8 @@ impl Bytes {
 
     /// Whether there are no bytes.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Bytes;
+    /// ```no_run
+    /// use reovim_lib_ds::Bytes;
     /// assert!(Bytes::new().is_empty());
     /// assert!(!Bytes::try_from_slice(b"x").unwrap().is_empty());
     /// ```
@@ -157,9 +160,9 @@ impl Deref for Bytes {
 /// adapter borrows rather than owns so the caller keeps the rendered `Bytes`
 /// after formatting.
 ///
-/// ```rust
+/// ```no_run
 /// use core::fmt::Write as _;
-/// use reovim_arch::ds::{Bytes, BytesWriter};
+/// use reovim_lib_ds::{Bytes, BytesWriter};
 ///
 /// let mut buf = Bytes::new();
 /// let mut w = BytesWriter::new(&mut buf);
@@ -173,8 +176,8 @@ pub struct BytesWriter<'a> {
 impl<'a> BytesWriter<'a> {
     /// Wraps `target` for formatting into.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::{Bytes, BytesWriter};
+    /// ```no_run
+    /// use reovim_lib_ds::{Bytes, BytesWriter};
     /// let mut buf = Bytes::new();
     /// let _w = BytesWriter::new(&mut buf);
     /// ```
@@ -198,8 +201,8 @@ impl fmt::Write for BytesWriter<'_> {
 /// Every mutator preserves the UTF-8 invariant: bytes only enter through
 /// `&str` inputs, so [`as_str`](Str::as_str) can soundly skip re-validation.
 ///
-/// ```rust
-/// use reovim_arch::ds::Str;
+/// ```no_run
+/// use reovim_lib_ds::Str;
 ///
 /// let mut s = Str::try_from_str("hello").unwrap();
 /// s.try_push_str(" world").unwrap();
@@ -214,8 +217,8 @@ pub struct Str {
 impl Str {
     /// Creates an empty `Str`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// let s = Str::new();
     /// assert!(s.is_empty());
     /// ```
@@ -232,8 +235,8 @@ impl Str {
     ///
     /// Returns [`AllocError`] when the backing allocation is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// let s = Str::try_from_str("ok").unwrap();
     /// assert_eq!(s.as_str(), "ok");
     /// ```
@@ -249,8 +252,8 @@ impl Str {
     ///
     /// Returns [`AllocError`] when a needed growth is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// let mut s = Str::new();
     /// s.try_push_str("hi").unwrap();
     /// s.try_push_str("!").unwrap();
@@ -262,8 +265,8 @@ impl Str {
 
     /// The contents as a `&str`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// let s = Str::try_from_str("abc").unwrap();
     /// assert_eq!(s.as_str(), "abc");
     /// ```
@@ -278,8 +281,8 @@ impl Str {
 
     /// The number of UTF-8 bytes.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// let s = Str::try_from_str("hi").unwrap();
     /// assert_eq!(s.len(), 2);
     /// ```
@@ -290,8 +293,8 @@ impl Str {
 
     /// Whether the string is empty.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Str;
+    /// ```no_run
+    /// use reovim_lib_ds::Str;
     /// assert!(Str::new().is_empty());
     /// assert!(!Str::try_from_str("x").unwrap().is_empty());
     /// ```
@@ -314,8 +317,3 @@ impl Deref for Str {
         self.as_str()
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `bytes_tests.rs`.
-#[cfg(feature = "selftest")]
-#[path = "bytes_tests.rs"]
-mod tests;

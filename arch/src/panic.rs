@@ -40,12 +40,69 @@ use core::sync::atomic::{
     Ordering::{Acquire, Release},
 };
 
-// `Bytes`/`BytesWriter` are the panic line's render target, used only by the
-// gated panic-path internals (the handler + tests). A non-runtime non-test
-// rlib build compiles none of them, so the import is gated to match (else
-// `unused_imports` under the zero-warning deny).
+/// Capacity of the panic line's fixed render buffer (bytes).
+///
+/// The panic renderer is **allocator-free** (it must work before the platform
+/// handle installs — a panic can fire mid-boot), so it formats into a fixed
+/// stack buffer instead of a heap `lib/ds::Bytes`. The line is `[ts] kernel
+/// panic: <message> at <file>:<line>:<col>` plus an optional ` rollback=failed`
+/// suffix; 512 bytes covers a realistic panic message + source location, and a
+/// longer one is truncated best-effort (panic-time rendering is best-effort by
+/// design — the old `Bytes` renderer likewise swallowed an OOM mid-line).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
-use crate::ds::{Bytes, BytesWriter};
+const PANIC_LINE_CAP: usize = 512;
+
+/// An allocator-free, fallible [`core::fmt::Write`] sink over a fixed stack
+/// buffer — the panic line's render target.
+///
+/// This is the bootstrap-safe replacement for the old `lib/ds::BytesWriter`:
+/// it constructs NO handle-routed data structure, so a panic that fires before
+/// `rust_entry` installs the platform handle still renders (the
+/// no-DS-before-install invariant holds on the panic path by construction).
+/// A write that would overflow the buffer is truncated and reported as
+/// [`core::fmt::Error`], so the panic path renders best-effort rather than
+/// recursing into a second panic. The partially rendered bytes still flush.
+#[cfg(any(feature = "runtime", feature = "selftest"))]
+pub(crate) struct StackWriter {
+    /// The fixed render buffer; only the first `len` bytes are written.
+    buf: [u8; PANIC_LINE_CAP],
+    /// Bytes written so far (the live prefix of `buf`).
+    len: usize,
+}
+
+#[cfg(any(feature = "runtime", feature = "selftest"))]
+impl StackWriter {
+    /// Creates an empty writer over a zeroed fixed buffer.
+    pub(crate) const fn new() -> Self {
+        Self {
+            buf: [0; PANIC_LINE_CAP],
+            len: 0,
+        }
+    }
+
+    /// The rendered bytes (the live prefix of the buffer).
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+}
+
+#[cfg(any(feature = "runtime", feature = "selftest"))]
+impl core::fmt::Write for StackWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        let remaining = PANIC_LINE_CAP - self.len;
+        if bytes.len() > remaining {
+            // Buffer full: copy what fits, then report truncation so the panic
+            // path stays alive rather than re-panicking. Best-effort by design.
+            self.buf[self.len..].copy_from_slice(&bytes[..remaining]);
+            self.len = PANIC_LINE_CAP;
+            return Err(core::fmt::Error);
+        }
+        self.buf[self.len..self.len + bytes.len()].copy_from_slice(bytes);
+        self.len += bytes.len();
+        Ok(())
+    }
+}
 
 /// What the panic handler does after recording the fault (6.2 §5, §5.1).
 ///
@@ -367,19 +424,19 @@ fn current_record() -> PanicRecord {
 /// by the #797 Phase 4 fixture-exec tests and the scaffolding is unit-tested with
 /// a stand-in message here.
 ///
-/// Rendering is best-effort: a refused growth surfaces as `fmt::Error` from
-/// [`BytesWriter`] and is swallowed, so the panic path never recurses into a
-/// second panic. The partially rendered bytes are still flushed.
+/// Rendering is best-effort and **allocator-free**: it formats into the
+/// caller-owned [`StackWriter`] (a fixed stack buffer), so a panic that fires
+/// before the platform handle installs still renders. A buffer-overflow write
+/// surfaces as `fmt::Error` and is swallowed, so the panic path never recurses
+/// into a second panic; the partially rendered bytes are still flushed.
 #[cfg(any(feature = "runtime", feature = "selftest"))]
-fn render_line<F>(record: PanicRecord, render_msg: F) -> Bytes
+fn render_line<F>(w: &mut StackWriter, record: PanicRecord, render_msg: F)
 where
-    F: FnOnce(&mut BytesWriter) -> core::fmt::Result,
+    F: FnOnce(&mut StackWriter) -> core::fmt::Result,
 {
     use core::fmt::Write;
 
     let ts = crate::time::monotonic();
-    let mut line = Bytes::new();
-    let mut w = BytesWriter::new(&mut line);
 
     // LOG2 ts: seconds right-aligned min width 5, micros zero-padded width 6.
     // Then kernel-emitter form: emitter `kernel`, bare-subsystem address
@@ -388,16 +445,15 @@ where
     // `tv_nsec` is in `0..1_000_000_000`, so micros fits and the cast is exact.
     #[allow(clippy::cast_sign_loss)]
     let micros = (ts.tv_nsec / 1_000) as u64;
-    // A failed write leaves `line` holding whatever rendered first; the panic
-    // path stays alive rather than re-panicking on OOM.
+    // A failed write leaves `w` holding whatever rendered first; the panic
+    // path stays alive rather than re-panicking on buffer overflow.
     let _ = write!(w, "[{secs:>5}.{micros:06}] kernel panic: ");
-    let _ = render_msg(&mut w);
+    let _ = render_msg(w);
     if record.rollback_failed {
         // AB13: the cleanup-context panic carries the rollback marker.
         let _ = w.write_str(" rollback=failed");
     }
     let _ = w.write_str("\n");
-    line
 }
 
 /// Writes the panic message + location into `w` per LOG2 message rendering.
@@ -413,7 +469,7 @@ where
 /// safely in [`render_location`], which takes the `Option` so both arms are
 /// directly unit-testable (no dead branch, no unchecked assumption).
 #[cfg(feature = "runtime")]
-fn render_panic_message(w: &mut BytesWriter, info: &core::panic::PanicInfo) -> core::fmt::Result {
+fn render_panic_message(w: &mut StackWriter, info: &core::panic::PanicInfo) -> core::fmt::Result {
     use core::fmt::Write;
 
     // `PanicInfo::message()` is the structured payload; `Display` renders it.
@@ -427,7 +483,7 @@ fn render_panic_message(w: &mut BytesWriter, info: &core::panic::PanicInfo) -> c
 /// drive both arms without synthesizing a `PanicInfo`.
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn render_location(
-    w: &mut BytesWriter,
+    w: &mut StackWriter,
     location: Option<&core::panic::Location<'_>>,
 ) -> core::fmt::Result {
     use core::fmt::Write;
@@ -517,7 +573,7 @@ fn write_all(fd: i32, buf: &[u8]) {
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn handle<F>(render_msg: F) -> i32
 where
-    F: FnOnce(&mut BytesWriter) -> core::fmt::Result,
+    F: FnOnce(&mut StackWriter) -> core::fmt::Result,
 {
     let record = current_record();
     // Invoke the pre-exit hook FIRST (gap-7, 8.2 §2): the TUI runtime registers
@@ -526,7 +582,10 @@ where
     if let Some(hook) = load_pre_exit_hook() {
         hook();
     }
-    let line = render_line(record, render_msg);
+    // Render into a fixed stack buffer — allocator-free, so this works even
+    // before the platform handle installs (a panic mid-boot still renders).
+    let mut line = StackWriter::new();
+    render_line(&mut line, record, render_msg);
     // Fire the state-record hook (6.2 §5 step 3) before flushing, so a hook
     // that wants to influence the tail has run; the flush is the last step.
     if let Some(hook) = load_state_record_hook() {

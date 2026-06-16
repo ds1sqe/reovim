@@ -32,6 +32,8 @@ unsafe extern "C" fn fixture_park(_word: *const u32, _expected: u32) {}
 
 unsafe extern "C" fn fixture_unpark(_word: *const u32) {}
 
+unsafe extern "C" fn fixture_unpark_all(_word: *const u32) {}
+
 /// The synthetic provider's `static` vtable (zero heap to build), the shape an
 /// arch-side `static` takes.
 static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
@@ -40,6 +42,7 @@ static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
     dealloc: fixture_dealloc,
     park: fixture_park,
     unpark: fixture_unpark,
+    unpark_all: fixture_unpark_all,
 };
 
 #[test]

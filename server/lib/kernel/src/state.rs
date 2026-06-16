@@ -5,7 +5,7 @@
 //! view-slot rows, and service leases.
 
 use {
-    reovim_arch::ds::{Bytes, Map, Seq},
+    reovim_lib_ds::{Bytes, Map, Seq},
     reovim_subsys_domain::{
         carrier::{CarrierStatus, CursorCarrier, PositionCarrier},
         id::{

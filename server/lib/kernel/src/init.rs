@@ -26,10 +26,9 @@
 //! On boot failure at any stage, `Init` drops whole — no partially-constructed
 //! kernel state escapes (LF13).
 
-use reovim_arch::{
-    ds::Shared,
-    panic::{PanicRecord, SetError},
-    sync::RwLock,
+use {
+    reovim_arch::panic::{PanicRecord, SetError},
+    reovim_lib_ds::{RwLock, Shared},
 };
 
 use crate::{

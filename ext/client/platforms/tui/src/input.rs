@@ -10,7 +10,7 @@
 //! sequences (ANSI escapes for arrow keys) are forwarded verbatim when the
 //! first byte is `0x1b` and the sequence fits in the read buffer.
 
-use {reovim_arch::ds::Seq, reovim_uapi_abi::input::RawInputKind};
+use {reovim_lib_ds::Seq, reovim_uapi_abi::input::RawInputKind};
 
 /// Encodes `payload` as a single-entry `RawInputList` byte buffer.
 ///

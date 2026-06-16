@@ -11,10 +11,10 @@
 //! Full Unicode grapheme handling is #797 Phase 4+.
 //!
 //! Buffer mutation rebuilds the `Bytes` from slices around the edit point to
-//! avoid needing `DerefMut` on `arch::ds::Bytes`.
+//! avoid needing `DerefMut` on `lib_ds::Bytes`.
 
 use {
-    reovim_arch::ds::Bytes,
+    reovim_lib_ds::Bytes,
     reovim_subsys_domain::contract::{OnRawInputHandler, RawInputResult},
 };
 
@@ -25,10 +25,15 @@ use {
 /// Stateless: all per-session state arrives as arguments via the CC14
 /// snapshot-and-apply dispatch (§2.3).
 ///
-/// ```rust
+/// ```no_run
+/// // no_run: `on_raw_input` allocates through the `lib/ds` `Bytes`, which
+/// // reaches the allocator via the boot-installed `kabi` platform handle. A
+/// // doctest runs outside the arch boot path (no `rust_entry`/install), so the
+/// // call cannot execute here; the runtime behaviour is covered by the booted
+/// // kernel selftests. The example still type-checks the handler API.
 /// use reovim_domain_text::handler::TextHandler;
 /// use reovim_subsys_domain::contract::OnRawInputHandler as _;
-/// use reovim_arch::ds::Bytes;
+/// use reovim_lib_ds::Bytes;
 ///
 /// let h = TextHandler;
 /// let buf = Bytes::new();

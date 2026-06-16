@@ -2,7 +2,7 @@
 //!
 //! This crate is the kernel tier of the v0.16 sovereign rebuild (#778).
 //! It sits directly above `arch/` and `uapi/abi` in the layer DAG (L9/DAG5):
-//! no third-party crates, no `alloc`, every heap container an `arch::ds::*`
+//! no third-party crates, no `alloc`, every heap container an `lib_ds::*`
 //! type (L10/DAG6).
 //!
 //! ## Design: two types, one handoff (2.1, LF13)

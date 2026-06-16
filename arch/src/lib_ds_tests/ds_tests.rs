@@ -6,14 +6,14 @@
 //!
 //! Previously `extern crate std` was used for `std::vec::Vec` (ring
 //! iteration collect) and for `std::sync::Arc` (Mutex sharing). Replaced with
-//! `crate::ds::Seq` and `crate::ds::Shared` respectively.
+//! `reovim_lib_ds::Seq` and `reovim_lib_ds::Shared` respectively.
 
-use crate::{
-    alloc::{AllocError, live_bytes},
-    arch_test,
-    ds::{Map, Ring, Seq, Shared},
-    testrt,
+use {
+    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::{Map, Ring, Seq, Shared},
 };
+
+use crate::{alloc::live_bytes, arch_test, testrt};
 
 arch_test!(ds_compose_and_return_to_baseline, {
     let base = live_bytes();

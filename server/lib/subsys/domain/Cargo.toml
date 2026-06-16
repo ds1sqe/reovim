@@ -19,6 +19,11 @@ selftest = ["reovim-arch/selftest"]
 
 [dependencies]
 reovim-arch = { path = "../../../../arch" }
+# Heap-DS algorithms (Bytes/Seq — the contract tier's owned buffers) relocated
+# from `reovim_arch::ds` into `reovim-lib-ds` (SP03). `AllocError` is named from
+# the kabi contract directly (master invariant 2: its home is kabi, not arch).
+reovim-lib-ds = { path = "../../../../lib/ds" }
+reovim-kabi-platform = { path = "../../../../kabi/platform" }
 
 [lints]
 workspace = true

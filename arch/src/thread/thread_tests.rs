@@ -6,20 +6,16 @@
 //! `SpawnError`, and `AllocError`.
 //!
 //! Type substitutions from the original libtest-based tests:
-//! - `std::sync::Arc` → `crate::ds::Shared`
+//! - `std::sync::Arc` → `reovim_lib_ds::Shared`
 //! - `std::vec::Vec` for handle storage → individual handle variables
 //! - `std::thread::yield_now()` → `core::hint::spin_loop()` in a bounded loop
 //! - All tests use `arch_test!` instead of `#[test]`
 
 use {
-    crate::{
-        alloc::{AllocError, live_bytes},
-        arch_test,
-        ds::{Seq, Shared},
-        sync::Mutex,
-        testrt,
-    },
+    crate::{alloc::live_bytes, arch_test, testrt},
     core::sync::atomic::{AtomicU32 as TU32, Ordering as O},
+    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::{Mutex, Seq, Shared},
 };
 
 use crate::sys::{CLONE_THREAD, CLONE_VM};

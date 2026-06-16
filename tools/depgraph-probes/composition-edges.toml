@@ -39,6 +39,11 @@ from   = "reovim-server"
 to     = "reovim-uapi-abi"
 reason = "needed for socket-path type surface (Errno etc.) used in the argv NUL-scan"
 
+[[edge]]
+from   = "reovim-server"
+to     = "reovim-lib-ds"
+reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"
+
 # ── reovim (apps/reovim/) ─────────────────────────────────────────────────────
 # Dual-mode launcher: in-process UDS composition root — boots server runtime
 # on background thread, runs TUI client on main thread over the real UDS socket.
@@ -72,3 +77,8 @@ reason = "wires TextHandler + TextProjector into the kernel's DomainRouter; core
 from   = "reovim"
 to     = "reovim-uapi-abi"
 reason = "needed for socket-path type surface used in argv NUL-scan and socket cleanup"
+
+[[edge]]
+from   = "reovim"
+to     = "reovim-lib-ds"
+reason = "composition root constructs Shared<T> handles for kernel wiring; the DS-algorithm tier moved from arch to lib/ds in the reorg, so the edge is now direct"

@@ -21,7 +21,7 @@
 //! [16..]   buffer bytes (raw UTF-8)
 //! ```
 
-use reovim_arch::ds::{Bytes, Seq};
+use reovim_lib_ds::{Bytes, Seq};
 
 use crate::{
     carrier::{CursorCarrier, PositionCarrier},

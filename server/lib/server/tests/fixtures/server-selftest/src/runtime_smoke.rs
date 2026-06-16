@@ -30,8 +30,9 @@
 //!   correctly.
 
 use {
-    reovim_arch::{arch_test, ds::Seq, net::UnixStream},
+    reovim_arch::{arch_test, net::UnixStream},
     reovim_domain_text::{TextHandler, TextProjector},
+    reovim_lib_ds::Seq,
     reovim_kernel::{
         Init, LauncherArgs,
         session::{BufferId, DomainAttachmentId, SessionState, WindowId},

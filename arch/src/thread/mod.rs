@@ -48,8 +48,10 @@ use core::{
     },
 };
 
+use reovim_kabi_platform::AllocError;
+
 use crate::{
-    alloc::{AllocError, alloc, dealloc},
+    alloc::{alloc, dealloc},
     sys::{
         CLONE_CHILD_CLEARTID, CLONE_FILES, CLONE_FS, CLONE_PARENT_SETTID, CLONE_SIGHAND,
         CLONE_SYSVSEM, CLONE_THREAD, CLONE_VM, Errno, FUTEX_WAIT, MAP_ANONYMOUS, MAP_PRIVATE,

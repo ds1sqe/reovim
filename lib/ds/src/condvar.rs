@@ -24,25 +24,16 @@
 
 use core::sync::atomic::{AtomicU32, Ordering::Relaxed};
 
-use {
-    super::mutex::MutexGuard,
-    crate::sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
-};
+use reovim_kabi_platform::handle;
 
-/// `FUTEX_WAKE` count meaning "wake everyone".
-///
-/// The kernel reads the wake count as a signed `int`, so the broadcast
-/// value is `i32::MAX` (the glibc convention). `u32::MAX` would arrive as
-/// `-1` and the kernel's wake loop (`++woken >= nr_wake`) would stop after
-/// a single waiter — a lost broadcast that strands every other sleeper.
-const WAKE_ALL: u32 = 0x7FFF_FFFF; // i32::MAX, expressed unsigned
+use crate::mutex::MutexGuard;
 
-/// A condition variable paired with an arch [`Mutex`](super::Mutex).
+/// A condition variable paired with a [`Mutex`](crate::Mutex).
 ///
-/// No poisoning (see [`crate::sync`] module doc).
+/// No poisoning (see the [`crate`] module doc).
 ///
-/// ```rust
-/// use reovim_arch::sync::{Condvar, Mutex};
+/// ```no_run
+/// use reovim_lib_ds::{Condvar, Mutex};
 ///
 /// static M: Mutex<bool> = Mutex::new(false);
 /// static CV: Condvar = Condvar::new();
@@ -67,8 +58,8 @@ pub struct Condvar {
 impl Condvar {
     /// Creates a new condition variable.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::Condvar;
+    /// ```no_run
+    /// use reovim_lib_ds::Condvar;
     /// let cv = Condvar::new();
     /// // A brand-new Condvar is inert until paired with a Mutex and waited on.
     /// cv.notify_one(); // harmless with no waiters
@@ -80,11 +71,6 @@ impl Condvar {
         }
     }
 
-    /// Address of the sequence word, for the raw `futex` syscall.
-    fn seq_addr(&self) -> usize {
-        core::ptr::from_ref(&self.seq).addr()
-    }
-
     /// Atomically releases `guard`'s mutex and blocks until notified, then
     /// re-acquires the mutex and returns a fresh guard.
     ///
@@ -92,8 +78,8 @@ impl Condvar {
     /// guarantee). The missed-wake window is closed by the sequence re-check
     /// (see the module doc).
     ///
-    /// ```rust
-    /// use reovim_arch::sync::{Condvar, Mutex};
+    /// ```no_run
+    /// use reovim_lib_ds::{Condvar, Mutex};
     ///
     /// let m = Mutex::new(false);
     /// let cv = Condvar::new();
@@ -119,9 +105,9 @@ impl Condvar {
         mutex.unlock();
 
         // Step 3: sleep while the sequence still equals the captured value. A
-        // notify between steps 1 and 2-3 makes the value mismatch, so
-        // FUTEX_WAIT returns EAGAIN without blocking — the window is closed.
-        let _ = futex(self.seq_addr(), FUTEX_WAIT | FUTEX_PRIVATE_FLAG, captured, 0, 0, 0);
+        // notify between steps 1 and 2-3 makes the value mismatch, so `park`
+        // returns without blocking — the missed-wake window is closed.
+        handle().park(&self.seq, captured);
 
         // Re-acquire under the same Acquire/Release contract before returning.
         mutex.lock()
@@ -129,28 +115,29 @@ impl Condvar {
 
     /// Bumps the sequence and wakes one waiter.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::Condvar;
+    /// ```no_run
+    /// use reovim_lib_ds::Condvar;
     /// let cv = Condvar::new();
     /// cv.notify_one(); // no-op with no waiters; sequence is still bumped
     /// ```
     pub fn notify_one(&self) {
         // The bump must precede the wake so a waiter that has not yet slept
-        // observes the changed sequence (EAGAIN) rather than missing the wake.
+        // observes the changed sequence (and returns) rather than missing the
+        // wake.
         self.seq.fetch_add(1, Relaxed);
-        let _ = futex(self.seq_addr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, 0, 0, 0);
+        handle().unpark(&self.seq);
     }
 
     /// Bumps the sequence and wakes all waiters.
     ///
-    /// ```rust
-    /// use reovim_arch::sync::Condvar;
+    /// ```no_run
+    /// use reovim_lib_ds::Condvar;
     /// let cv = Condvar::new();
     /// cv.notify_all(); // no-op with no waiters
     /// ```
     pub fn notify_all(&self) {
         self.seq.fetch_add(1, Relaxed);
-        let _ = futex(self.seq_addr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
+        handle().unpark_all(&self.seq);
     }
 }
 
@@ -159,7 +146,3 @@ impl Default for Condvar {
         Self::new()
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `condvar_tests.rs`,
-// declared in `sync/mod.rs` as
-// `#[cfg(feature = "selftest")] mod condvar_tests;`.

@@ -5,7 +5,7 @@
 //! the tests define minimal in-test implementations and exercise them through
 //! the trait objects (the same `&dyn` routing path the kernel uses).
 
-use reovim_arch::{arch_test, ds::Bytes};
+use {reovim_arch::arch_test, reovim_lib_ds::Bytes};
 
 use crate::{
     contract::{OnRawInputHandler, RawInputResult, RenderProjector},

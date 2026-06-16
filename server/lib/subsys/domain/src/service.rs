@@ -4,7 +4,7 @@
 //! cdylib boundary. This module carries the safe in-process metadata and lease
 //! state that kernel and Domains share.
 
-use reovim_arch::ds::Bytes;
+use reovim_lib_ds::Bytes;
 
 use crate::{
     id::{CdylibId, ServiceKey, ServiceLeaseId},

@@ -16,10 +16,8 @@
 //! 7. Enter the notify/input loop (`recv_notify_frame`).
 
 use {
-    reovim_arch::{
-        ds::Seq,
-        net::{Errno, UnixStream},
-    },
+    reovim_arch::net::{Errno, UnixStream},
+    reovim_lib_ds::Seq,
     reovim_uapi_abi::FrameHeader,
     reovim_uapi_protocol::{
         frame::{HEADER_LEN, read_frame},

@@ -1,9 +1,9 @@
 //! `Seq<T>` — a growable sequence owning raw allocator memory.
 //!
 //! The `Vec` analog for the zero-std floor. There is no `alloc` crate, so
-//! `Seq` calls the arch [`allocator`](crate::alloc) directly and is fallible
-//! where growth can fail ([`try_push`](Seq::try_push) surfaces
-//! [`AllocError`]).
+//! `Seq` reaches the platform allocator through the boot-installed `kabi`
+//! handle and is fallible where growth can fail ([`try_push`](Seq::try_push)
+//! surfaces [`AllocError`]).
 //!
 //! `T` must be non-zero-sized. The floor has no zero-sized-element consumer,
 //! and a non-ZST bound keeps the capacity/pointer arithmetic free of the ZST
@@ -16,11 +16,54 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::alloc::{AllocError, alloc, dealloc, realloc};
+use reovim_kabi_platform::{AllocError, handle};
 
 /// The capacity a non-empty `Seq` first grows to. Small, because most floor
 /// sequences are tiny; growth doubles from here.
+///
+/// `pub` under `selftest` so the growth-ladder selftests (hosted by `arch`,
+/// which owns the `no_std` runner) can assert the doubling boundary.
+#[cfg(not(feature = "selftest"))]
 const FIRST_CAPACITY: usize = 4;
+/// See above; `selftest`-visible variant for the arch-hosted growth tests.
+#[cfg(feature = "selftest")]
+pub const FIRST_CAPACITY: usize = 4;
+
+/// Resizes the allocation at `ptr` (`old` layout) to `new_size` bytes,
+/// preserving the `min(old.size(), new_size)` leading bytes.
+///
+/// lib/ds-side realloc (SP03 settled decision 1: no `realloc` vtable slot). The
+/// handle exposes only `alloc`/`dealloc`; a grow is `alloc + copy + dealloc`,
+/// the same shape arch's old `realloc` used internally. The returned pointer
+/// may differ from `ptr`.
+///
+/// # Safety
+///
+/// `ptr`/`old` must name a live allocation from a prior `handle().alloc`;
+/// `new_size` is non-zero (the callers guarantee it via a non-zero `Layout`).
+unsafe fn realloc(
+    ptr: NonNull<u8>,
+    old: Layout,
+    new_size: usize,
+) -> Result<NonNull<u8>, AllocError> {
+    // Keep alignment stable across the grow: the new layout reuses old's align.
+    let new_layout = Layout::from_size_align(new_size, old.align()).map_err(|_| AllocError)?;
+    let fresh = handle().alloc(new_layout)?;
+    let copy = if new_size < old.size() {
+        new_size
+    } else {
+        old.size()
+    };
+    // SAFETY: `ptr` is live for `old.size() >= copy` bytes; `fresh` is freshly
+    // allocated for `new_size >= copy` bytes; the two are distinct allocations,
+    // so they do not overlap.
+    unsafe {
+        core::ptr::copy_nonoverlapping(ptr.as_ptr(), fresh.as_ptr(), copy);
+    }
+    // The original allocation is no longer referenced after the copy.
+    handle().dealloc(ptr, old);
+    Ok(fresh)
+}
 
 /// A growable, heap-owning sequence of `T`.
 ///
@@ -28,8 +71,8 @@ const FIRST_CAPACITY: usize = 4;
 /// are initialized. Empty `Seq`s hold no allocation (a dangling pointer and
 /// zero capacity), so [`new`](Seq::new) never allocates.
 ///
-/// ```rust
-/// use reovim_arch::ds::Seq;
+/// ```no_run
+/// use reovim_lib_ds::Seq;
 ///
 /// let mut s: Seq<u32> = Seq::new();
 /// assert!(s.is_empty());
@@ -54,8 +97,8 @@ impl<T> Seq<T> {
 
     /// Creates an empty `Seq` with no allocation.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let s: Seq<i32> = Seq::new();
     /// assert!(s.is_empty());
     /// assert_eq!(s.len(), 0);
@@ -74,8 +117,8 @@ impl<T> Seq<T> {
 
     /// The number of initialized elements.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u8> = Seq::new();
     /// assert_eq!(s.len(), 0);
     /// s.try_push(42).unwrap();
@@ -88,8 +131,8 @@ impl<T> Seq<T> {
 
     /// Whether the sequence holds no elements.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u8> = Seq::new();
     /// assert!(s.is_empty());
     /// s.try_push(1).unwrap();
@@ -102,8 +145,8 @@ impl<T> Seq<T> {
 
     /// The current allocated capacity in elements.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u8> = Seq::new();
     /// assert_eq!(s.capacity(), 0);
     /// s.try_push(1).unwrap();
@@ -138,8 +181,8 @@ impl<T> Seq<T> {
     /// layout size or the allocation is refused; the `Seq` is unchanged on
     /// error.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// s.try_reserve(10).unwrap();
     /// assert!(s.capacity() >= 10);
@@ -164,7 +207,7 @@ impl<T> Seq<T> {
         // reserving `isize::MAX/8 + 1` u64 slots), so the Err propagates.
         let new_layout = Self::layout_for(new_cap)?;
         let new_ptr = if self.cap == 0 {
-            alloc(new_layout)?
+            handle().alloc(new_layout)?
         } else {
             // SAFETY: this recomputes, deterministically, the exact layout that
             // succeeded when the current `self.cap` allocation was made (same
@@ -187,8 +230,8 @@ impl<T> Seq<T> {
     /// Returns [`AllocError`] when a needed growth allocation is refused; on
     /// error `value` is returned to the caller and the `Seq` is unchanged.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// s.try_push(10).unwrap();
     /// s.try_push(20).unwrap();
@@ -208,8 +251,8 @@ impl<T> Seq<T> {
 
     /// Removes and returns the last element, or `None` when empty.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// assert_eq!(s.pop(), None);
     /// s.try_push(7).unwrap();
@@ -229,8 +272,8 @@ impl<T> Seq<T> {
     /// Returns a reference to the element at `index`, or `None` if out of
     /// bounds.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// s.try_push(5).unwrap();
     /// assert_eq!(s.get(0), Some(&5));
@@ -247,8 +290,8 @@ impl<T> Seq<T> {
 
     /// Returns a mutable reference to the element at `index`, or `None`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// s.try_push(1).unwrap();
     /// if let Some(v) = s.get_mut(0) { *v = 99; }
@@ -265,8 +308,8 @@ impl<T> Seq<T> {
 
     /// Returns the initialized elements as a slice.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u8> = Seq::new();
     /// s.try_push(1).unwrap();
     /// s.try_push(2).unwrap();
@@ -281,8 +324,8 @@ impl<T> Seq<T> {
 
     /// Returns the initialized elements as a mutable slice.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u8> = Seq::new();
     /// s.try_push(10).unwrap();
     /// s.as_mut_slice()[0] = 20;
@@ -295,8 +338,8 @@ impl<T> Seq<T> {
 
     /// Iterates the initialized elements by reference.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Seq;
+    /// ```no_run
+    /// use reovim_lib_ds::Seq;
     /// let mut s: Seq<u32> = Seq::new();
     /// s.try_push(1).unwrap();
     /// s.try_push(2).unwrap();
@@ -312,8 +355,7 @@ impl<T> Seq<T> {
 // alloc'd and frees on drop), so it behaves like a `Vec<T>`: sending it to
 // another thread moves sole ownership of the `T`s, sound when `T: Send`. The
 // `NonNull` only blocks the auto-impl out of conservatism; the ownership is
-// unique. Required so a `Mutex<Seq<T>>` can cross the arch thread boundary
-// (Phase 3 integration smoke).
+// unique. Required so a `Mutex<Seq<T>>` can cross a thread boundary.
 unsafe impl<T: Send> Send for Seq<T> {}
 // SAFETY: a shared `&Seq<T>` hands out `&T`, so concurrent readers need
 // `T: Sync`; matches `Vec`'s bound.
@@ -365,16 +407,8 @@ impl<T> Drop for Seq<T> {
         // Then free the backing allocation. `layout_for(cap)` succeeded when
         // the allocation was made, so it succeeds here too.
         let layout = Self::layout_for(self.cap).expect("layout valid at alloc time");
-        // SAFETY: `self.ptr`/`layout` name the live allocation from the last
-        // grow; no element is referenced after the drops above.
-        unsafe {
-            dealloc(self.ptr.cast(), layout);
-        }
+        // `self.ptr`/`layout` name the live allocation from the last grow; no
+        // element is referenced after the drops above.
+        handle().dealloc(self.ptr.cast(), layout);
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `seq_tests.rs`,
-// declared as a `#[path]` child so `super::` reaches `FIRST_CAPACITY`.
-#[cfg(feature = "selftest")]
-#[path = "seq_tests.rs"]
-mod tests;

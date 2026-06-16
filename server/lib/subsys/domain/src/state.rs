@@ -4,7 +4,7 @@
 //! shared value vocabulary for view slots, registers, edit origins, and
 //! byte-range undo groups in the Domain contract tier.
 
-use reovim_arch::ds::{Bytes, Seq};
+use reovim_lib_ds::{Bytes, Seq};
 
 use crate::id::{BufferId, CdylibId, ClientId, RegisterId, SlotKindId, WindowId};
 

@@ -25,6 +25,14 @@ runtime = ["reovim-arch/runtime"]
 
 [dependencies]
 reovim-arch = { path = "../../../arch" }
+# Portable heap-DS algorithms (Seq/Map/Bytes/Ring/Mutex/RwLock — the kernel's
+# Vec/HashMap/String/Arc/lock analogs). Relocated from `reovim_arch::ds`/
+# `::sync` into `reovim-lib-ds` (SP03); the kernel names lib/ds, never arch's
+# (now-gone) ds/sync modules.
+reovim-lib-ds = { path = "../../../lib/ds" }
+# `AllocError` is named directly from the kabi contract (master invariant 2:
+# its canonical home is kabi, not arch — the SP02 arch re-export is gone).
+reovim-kabi-platform = { path = "../../../kabi/platform" }
 reovim-uapi-abi = { path = "../../../uapi/abi" }
 reovim-subsys-domain = { path = "../subsys/domain" }
 

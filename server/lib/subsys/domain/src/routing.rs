@@ -5,7 +5,7 @@
 //! deterministic ordering metadata. Kernel-owned maps and dispatch loops live
 //! in `reovim-kernel`; these types are the shared surface those maps store.
 
-use reovim_arch::ds::{Bytes, Seq};
+use reovim_lib_ds::{Bytes, Seq};
 
 use crate::id::{CdylibId, DomainId};
 

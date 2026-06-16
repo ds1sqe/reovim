@@ -5,11 +5,12 @@
 //! so `super::` reaches the private `FIRST_CAPACITY` constant.
 
 use {
-    crate::{alloc::AllocError, arch_test, testrt},
+    crate::{arch_test, testrt},
     core::cell::Cell,
+    reovim_kabi_platform::AllocError,
 };
 
-use super::{FIRST_CAPACITY, Seq};
+use reovim_lib_ds::{Seq, seq::FIRST_CAPACITY};
 
 arch_test!(seq_is_send_and_sync_for_send_sync_t, {
     // Compile-time proof that `Seq<T>` crosses the arch thread boundary.

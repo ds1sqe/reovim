@@ -9,6 +9,7 @@ dependencies = [
  "reovim-arch",
  "reovim-domain-text",
  "reovim-kernel",
+ "reovim-lib-ds",
  "reovim-platform-tui",
  "reovim-server-rt",
  "reovim-uapi-abi",
@@ -19,6 +20,7 @@ name = "reovim-arch"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kabi-platform",
+ "reovim-lib-ds",
 ]
 
 [[package]]
@@ -26,6 +28,7 @@ name = "reovim-domain-text"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-lib-ds",
  "reovim-subsys-domain",
 ]
 
@@ -38,8 +41,17 @@ name = "reovim-kernel"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-lib-ds",
  "reovim-subsys-domain",
  "reovim-uapi-abi",
+]
+
+[[package]]
+name = "reovim-lib-ds"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-platform",
 ]
 
 [[package]]
@@ -47,6 +59,7 @@ name = "reovim-platform-tui"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-lib-ds",
  "reovim-uapi-abi",
  "reovim-uapi-protocol",
 ]
@@ -58,6 +71,7 @@ dependencies = [
  "reovim-arch",
  "reovim-domain-text",
  "reovim-kernel",
+ "reovim-lib-ds",
  "reovim-server-rt",
  "reovim-uapi-abi",
 ]
@@ -68,6 +82,7 @@ version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
+ "reovim-lib-ds",
  "reovim-subsys-domain",
  "reovim-uapi-abi",
  "reovim-uapi-protocol",
@@ -78,6 +93,8 @@ name = "reovim-subsys-domain"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-kabi-platform",
+ "reovim-lib-ds",
 ]
 
 [[package]]

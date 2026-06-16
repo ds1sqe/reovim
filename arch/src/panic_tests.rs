@@ -21,21 +21,21 @@
 //! statics are clean for the next test. The selftest runner is single-threaded
 //! sequential; no serialization guard is needed.
 
-use crate::{arch_test, ds::Bytes, testrt};
+use reovim_lib_ds::Bytes;
+
+use crate::{arch_test, testrt};
 
 // Only the hosted (filesystem-backed) capture tests need the file syscalls
 // and the recover-hook's seen-flag atomics.
 #[cfg(target_os = "linux")]
 use {
-    crate::{
-        ds::Str,
-        sys::{self, AT_FDCWD, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY},
-    },
+    crate::sys::{self, AT_FDCWD, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY},
     core::sync::atomic::{AtomicU8, Ordering::Relaxed},
+    reovim_lib_ds::Str,
 };
 
 use super::{
-    BytesWriter, Disposition, FLUSH_FD, PanicRecord, SetError, clear_cleanup_context,
+    Disposition, FLUSH_FD, PanicRecord, SetError, StackWriter, clear_cleanup_context,
     current_disposition, current_record, enter_cleanup_context, handle, load_ring_tail_provider,
     load_state_record_hook, render_location, reset_registry, set_disposition, set_flush_fd,
     set_ring_tail_provider, set_state_record_hook,
@@ -88,8 +88,9 @@ fn read_to_str(fd: i32) -> Str {
 
 /// A synthetic message renderer for the `handle` scaffolding tests.
 /// Under `panic = "abort"` a real `PanicInfo` cannot be caught in-process,
-/// so the scaffolding is tested with a stand-in message.
-fn synth_message(msg: &str) -> impl FnOnce(&mut BytesWriter) -> core::fmt::Result + '_ {
+/// so the scaffolding is tested with a stand-in message. The renderer writes
+/// into the allocator-free `StackWriter` (the panic line's render target).
+fn synth_message(msg: &str) -> impl FnOnce(&mut StackWriter) -> core::fmt::Result + '_ {
     move |w| {
         use core::fmt::Write;
         write!(w, "{msg} at synth.rs:1:1")
@@ -323,16 +324,15 @@ arch_test!(panic_write_all_error_arm_on_bad_fd, {
 arch_test!(panic_render_location_some_and_none_arms, {
     // Both arms of `render_location` directly: the `Some` arm via the live
     // caller location, the `None` arm (not contractually impossible — the
-    // PanicInfo API returns Option) via an explicit None.
-    let mut line = Bytes::new();
-    let mut w = BytesWriter::new(&mut line);
+    // PanicInfo API returns Option) via an explicit None. Renders into the
+    // allocator-free `StackWriter`.
+    let mut w = StackWriter::new();
     render_location(&mut w, Some(core::panic::Location::caller())).unwrap();
-    testrt::check(line.as_slice().starts_with(b" at "), "Some arm renders ' at file:line:col'");
+    testrt::check(w.as_slice().starts_with(b" at "), "Some arm renders ' at file:line:col'");
 
-    let mut line2 = Bytes::new();
-    let mut w2 = BytesWriter::new(&mut line2);
+    let mut w2 = StackWriter::new();
     render_location(&mut w2, None).unwrap();
-    testrt::check_eq(line2.as_slice(), b" at <unknown>".as_slice());
+    testrt::check_eq(w2.as_slice(), b" at <unknown>".as_slice());
 });
 
 // ---- pre-exit hook tests (gap-7, #797 Phase 4) ----------------------------

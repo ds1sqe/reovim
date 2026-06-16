@@ -1,6 +1,6 @@
 //! LOG2 canonical line renderer (9.5 §2).
 //!
-//! Produces the `arch::ds::Bytes` that go into every ring entry and every
+//! Produces the `lib_ds::Bytes` that go into every ring entry and every
 //! sink line. This is the **one** rendering (LOG1: logging is a rendering of
 //! DS12; there is no second pipeline).
 //!
@@ -30,7 +30,7 @@
 
 use core::fmt::Write as _;
 
-use reovim_arch::ds::{Bytes, BytesWriter};
+use reovim_lib_ds::{Bytes, BytesWriter};
 
 // ── Emitter address forms ────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ pub enum RenderError {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```no_run
 /// use reovim_kernel::log::render::{EmitterAddress, InstanceAddress, RenderInput, render_line};
 /// use reovim_uapi_abi::error::LogLevel;
 ///

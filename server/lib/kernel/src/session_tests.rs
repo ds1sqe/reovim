@@ -23,7 +23,10 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use reovim_arch::{arch_test, ds::Bytes, sync::RwLock};
+use {
+    reovim_arch::arch_test,
+    reovim_lib_ds::{Bytes, RwLock},
+};
 
 use {
     crate::{

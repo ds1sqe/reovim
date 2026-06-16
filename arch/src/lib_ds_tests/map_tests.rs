@@ -6,14 +6,18 @@
 //! private `FIRST_CAPACITY` constant.
 
 use {
-    crate::{alloc::AllocError, arch_test, testrt},
+    crate::{arch_test, testrt},
     core::{
         cell::Cell,
         hash::{Hash, Hasher},
     },
+    reovim_kabi_platform::AllocError,
 };
 
-use super::{FIRST_CAPACITY, FxHasher, Map, cyclic_in_range};
+use reovim_lib_ds::{
+    FxHasher, Map,
+    map::{FIRST_CAPACITY, cyclic_in_range},
+};
 
 arch_test!(map_new_is_empty_and_unallocated, {
     let m: Map<u32, u32> = Map::new();

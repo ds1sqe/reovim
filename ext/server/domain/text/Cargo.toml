@@ -18,6 +18,8 @@ selftest = ["reovim-subsys-domain/selftest"]
 [dependencies]
 reovim-subsys-domain = { path = "../../../../server/lib/subsys/domain" }
 reovim-arch          = { path = "../../../../arch" }
+# Heap-DS algorithms (Bytes) relocated from `reovim_arch::ds` (SP03).
+reovim-lib-ds        = { path = "../../../../lib/ds" }
 
 [lints]
 workspace = true

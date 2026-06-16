@@ -7,12 +7,13 @@
 //!
 //! ## SP02 scope: clock wired, the rest declared
 //!
-//! Only the `clock` slot is consumed end-to-end in SP02 (the boot selftest
-//! reads it through the installed handle). The `alloc`/`dealloc`/`park`/
-//! `unpark` slots are real — they point at arch's genuine backends — but no
-//! caller routes through them yet; SP03 (`lib/ds`) consumes them through the
-//! handle. Pointing them at the real backends now (rather than stubs) keeps
-//! the vtable honest: the install proves the whole table, not just one slot.
+//! SP02 wired the `clock` slot end-to-end (the boot selftest reads it through
+//! the installed handle). SP03 wires the rest: the
+//! `alloc`/`dealloc`/`park`/`unpark`/`unpark_all` slots point at arch's genuine
+//! backends and `lib/ds` consumes them through the handle's safe wrappers.
+//! `unpark_all` is the AB3 trailing append for the wake-all sync paths
+//! (`Condvar::notify_all`, `RwLock` release). Pointing every slot at a real
+//! backend keeps the vtable honest: the install proves the whole table.
 //!
 //! ## Zero heap to build
 //!
@@ -27,9 +28,18 @@ use reovim_kabi_platform::{InstallError, PlatformVtable, install};
 
 use crate::{
     alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
-    sys::{FUTEX_WAIT, FUTEX_WAKE, futex},
+    sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
     time::Instant,
 };
+
+/// `FUTEX_WAKE` count meaning "wake everyone".
+///
+/// The kernel reads the wake count as a signed `int`, so the broadcast value
+/// is `i32::MAX` (the glibc convention). `u32::MAX` would arrive as `-1` and
+/// the kernel's wake loop (`++woken >= nr_wake`) would stop after a single
+/// waiter — a lost broadcast that strands every other sleeper. This matches
+/// the wake-all count the `lib/ds` `Condvar`/`RwLock` paths request.
+const WAKE_ALL: u32 = 0x7FFF_FFFF; // i32::MAX, expressed unsigned
 
 /// The clock adapter: reads arch's monotonic clock and returns whole
 /// nanoseconds, matching the contract's `ClockFn` ABI.
@@ -92,10 +102,12 @@ unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
 /// changed) and a genuine wake both mean "re-check", which the caller does.
 unsafe extern "C" fn park(word: *const u32, expected: u32) {
     let addr = word as usize;
-    // No FUTEX_PRIVATE_FLAG here: the contract leaves wake-key policy to the
-    // consumer's matched unpark; SP03 wires the matched pair. Shared-key keeps
-    // park/unpark on the same bucket without a flag-coordination assumption.
-    let _ = futex(addr, FUTEX_WAIT, expected, 0, 0, 0);
+    // FUTEX_PRIVATE_FLAG: this sync is process-local (the `lib/ds` mutex/
+    // condvar/rwlock all live in one process), so the private-futex fast path
+    // is both correct and faster. park/unpark/unpark_all all carry the flag, so
+    // they share one hash bucket — a private waiter is only woken by a private
+    // wake, matching the call sites the floor's sync primitives use.
+    let _ = futex(addr, FUTEX_WAIT | FUTEX_PRIVATE_FLAG, expected, 0, 0, 0);
 }
 
 /// The unpark adapter: futex-wakes one thread parked on `word`.
@@ -106,9 +118,26 @@ unsafe extern "C" fn park(word: *const u32, expected: u32) {
 /// parked on is a no-op.
 unsafe extern "C" fn unpark(word: *const u32) {
     let addr = word as usize;
-    // Wake exactly one waiter (the matched `park`'s counterpart). The result
-    // is ignored: zero woken (no waiter) is a valid no-op.
-    let _ = futex(addr, FUTEX_WAKE, 1, 0, 0, 0);
+    // Wake exactly one waiter (the matched `park`'s counterpart), private-futex
+    // to match `park`'s key. The result is ignored: zero woken (no waiter) is a
+    // valid no-op.
+    let _ = futex(addr, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, 0, 0, 0);
+}
+
+/// The wake-all adapter: futex-wakes every thread parked on `word`.
+///
+/// Used by the `lib/ds` `Condvar::notify_all` and `RwLock` release paths,
+/// which must wake the whole waiter cohort, not one.
+///
+/// # Safety
+///
+/// `word` must point to a live, aligned `u32`. Waking a `word` no thread is
+/// parked on is a no-op.
+unsafe extern "C" fn unpark_all(word: *const u32) {
+    let addr = word as usize;
+    // Wake every waiter (`WAKE_ALL` = i32::MAX), private-futex to match `park`.
+    // The result is ignored: zero woken (no waiters) is a valid no-op.
+    let _ = futex(addr, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
 }
 
 /// arch's platform vtable: a `static` of const function pointers (zero heap to
@@ -121,6 +150,7 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     dealloc,
     park,
     unpark,
+    unpark_all,
 };
 
 /// Installs arch's platform vtable as the process-wide handle (write-once).

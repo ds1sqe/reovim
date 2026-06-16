@@ -1,10 +1,11 @@
-//! `Shared<T>` — an atomic-refcount shared reference over the arch allocator.
+//! `Shared<T>` — an atomic-refcount shared reference over the platform
+//! allocator.
 //!
 //! The `Arc` analog for the zero-std floor, **strong counts only** — there is
 //! no weak count. The floor has no weak-reference consumer yet; per the
 //! rule-of-three, the weak side is not built until a real consumer needs it.
-//! There is no `alloc` crate, so the shared box comes straight from the arch
-//! [`allocator`](crate::alloc).
+//! There is no `alloc` crate, so the shared box comes from the platform
+//! allocator (reached through the boot-installed `kabi` handle).
 //!
 //! ## Refcount orderings
 //!
@@ -37,18 +38,35 @@ use core::{
     },
 };
 
-use crate::alloc::{AllocError, alloc, dealloc};
+use reovim_kabi_platform::{AllocError, handle};
 
 /// The strong-count value at which [`Clone`] saturates and leaks rather than
 /// risk overflow. No live program holds this many references.
+///
+/// `pub` under `selftest` so the arch-hosted overflow-guard test can assert the
+/// saturation boundary directly.
+#[cfg(not(feature = "selftest"))]
 const MAX_REFCOUNT: usize = usize::MAX / 2;
+/// See above; `selftest`-visible variant for the arch-hosted shared tests.
+#[cfg(feature = "selftest")]
+pub const MAX_REFCOUNT: usize = usize::MAX / 2;
 
 /// Whether a pre-increment count of `old` has reached the saturation guard.
 ///
 /// Factored out so the guard's decision is unit-testable on both sides: a real
 /// clone can never reach [`MAX_REFCOUNT`] (it would need `usize::MAX / 2` live
 /// references), so the guarded path is otherwise structurally unreachable.
+///
+/// `pub` under `selftest` so the arch-hosted test can drive both sides of the
+/// guard predicate.
+#[cfg(not(feature = "selftest"))]
 const fn refcount_overflowed(old: usize) -> bool {
+    old >= MAX_REFCOUNT
+}
+
+/// See above; `selftest`-visible variant for the arch-hosted shared tests.
+#[cfg(feature = "selftest")]
+pub const fn refcount_overflowed(old: usize) -> bool {
     old >= MAX_REFCOUNT
 }
 
@@ -63,8 +81,8 @@ struct SharedBox<T> {
 /// Cloning hands out another owner of the same heap value; the value is
 /// dropped and freed when the last `Shared` is dropped. Strong counts only.
 ///
-/// ```rust
-/// use reovim_arch::ds::Shared;
+/// ```no_run
+/// use reovim_lib_ds::Shared;
 ///
 /// let a = Shared::try_new(42u32).unwrap();
 /// assert_eq!(*a, 42);
@@ -86,15 +104,15 @@ impl<T> Shared<T> {
     ///
     /// Returns [`AllocError`] when the backing allocation is refused.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Shared;
+    /// ```no_run
+    /// use reovim_lib_ds::Shared;
     /// let s = Shared::try_new(99u32).unwrap();
     /// assert_eq!(*s, 99);
     /// assert_eq!(s.strong_count(), 1);
     /// ```
     pub fn try_new(value: T) -> Result<Self, AllocError> {
         let layout = Layout::new::<SharedBox<T>>();
-        let raw = alloc(layout)?.cast::<SharedBox<T>>();
+        let raw = handle().alloc(layout)?.cast::<SharedBox<T>>();
         // SAFETY: `raw` is a fresh, correctly-sized, aligned allocation for
         // `SharedBox<T>`; writing the initial box initializes it.
         unsafe {
@@ -118,8 +136,8 @@ impl<T> Shared<T> {
 
     /// The current strong reference count.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Shared;
+    /// ```no_run
+    /// use reovim_lib_ds::Shared;
     /// let a = Shared::try_new(1u32).unwrap();
     /// let b = a.clone();
     /// assert_eq!(a.strong_count(), 2);
@@ -170,11 +188,9 @@ impl<T> Drop for Shared<T> {
             core::ptr::drop_in_place(core::ptr::addr_of_mut!((*self.ptr.as_ptr()).value));
         }
         let layout = Layout::new::<SharedBox<T>>();
-        // SAFETY: the box came from `alloc` with this exact layout and is no
+        // The box came from `handle().alloc` with this exact layout and is no
         // longer referenced (count zero, value dropped).
-        unsafe {
-            dealloc(self.ptr.cast(), layout);
-        }
+        handle().dealloc(self.ptr.cast(), layout);
     }
 }
 
@@ -187,10 +203,3 @@ unsafe impl<T: Send + Sync> Send for Shared<T> {}
 // value, requiring the same `T: Send + Sync` bounds as `Send`. Standard `Arc`
 // bounds.
 unsafe impl<T: Send + Sync> Sync for Shared<T> {}
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `shared_tests.rs`,
-// declared as a `#[path]` child so `super::` reaches `MAX_REFCOUNT` and
-// `refcount_overflowed`.
-#[cfg(feature = "selftest")]
-#[path = "shared_tests.rs"]
-mod tests;

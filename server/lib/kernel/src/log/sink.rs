@@ -35,10 +35,9 @@
 //! (`fd` is `None`) or when the headless flag is set. This is called from
 //! `LogRing::push_event` — a one-way ring→sink gate.
 
-use reovim_arch::{
-    ds::Shared,
-    sync::Mutex,
-    sys::{AT_FDCWD, O_CLOEXEC, O_CREAT, O_WRONLY, close, openat, write},
+use {
+    reovim_arch::sys::{AT_FDCWD, O_CLOEXEC, O_CREAT, O_WRONLY, close, openat, write},
+    reovim_lib_ds::{Mutex, Shared},
 };
 
 use crate::{
@@ -127,7 +126,7 @@ static SINK: Mutex<SinkState> = Mutex::new(SinkState::initial());
 ///
 /// ```rust,no_run
 /// // no_run: requires the arch runtime — use the kernel-selftest bin.
-/// use reovim_arch::ds::Shared;
+/// use reovim_lib_ds::Shared;
 /// use reovim_kernel::log::ring::LogRing;
 /// use reovim_kernel::log::sink::FileSink;
 /// use reovim_kernel::event_bus::DS12EventBus;
@@ -200,7 +199,7 @@ impl FileSink {
     ///
     /// ```rust,no_run
     /// // no_run: requires the arch runtime — use the kernel-selftest bin.
-    /// use reovim_arch::ds::Shared;
+    /// use reovim_lib_ds::Shared;
     /// use reovim_kernel::log::ring::LogRing;
     /// use reovim_kernel::log::sink::FileSink;
     /// use reovim_kernel::event_bus::DS12EventBus;

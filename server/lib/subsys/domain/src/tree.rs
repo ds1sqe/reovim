@@ -5,9 +5,9 @@
 //! owns storage, locking, and mutation sequencing; this module keeps the shared
 //! data vocabulary in the contract tier.
 
-use reovim_arch::{
-    alloc::AllocError,
-    ds::{Bytes, Seq},
+use {
+    reovim_kabi_platform::AllocError,
+    reovim_lib_ds::{Bytes, Seq},
 };
 
 use crate::{

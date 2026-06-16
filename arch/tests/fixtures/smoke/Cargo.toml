@@ -25,6 +25,9 @@ doctest = false
 # arch `_start` and `#[panic_handler]` lang items are linked (L9: path dep
 # only, zero third-party).
 reovim-arch = { path = "../../..", features = ["runtime"] }
+# Heap-DS algorithms (Seq/Shared/Mutex) the post-boot smoke exercises through
+# the installed handle (SP03): relocated from `reovim_arch::ds`/`::sync`.
+reovim-lib-ds = { path = "../../../../lib/ds" }
 
 [lints]
 workspace = true

@@ -1,8 +1,8 @@
-//! `Map<K, V>` — an open-addressing hash map over the arch allocator.
+//! `Map<K, V>` — an open-addressing hash map over the platform allocator.
 //!
 //! The `HashMap` analog for the zero-std floor. There is no `alloc` crate, so
-//! `Map` obtains its bucket array straight from the arch
-//! [`allocator`](crate::alloc) and is fallible where growth can fail
+//! `Map` obtains its bucket array from the platform allocator (reached through
+//! the boot-installed `kabi` handle) and is fallible where growth can fail
 //! ([`try_insert`](Map::try_insert) surfaces [`AllocError`]).
 //!
 //! ## Probing and deletion strategy
@@ -34,7 +34,7 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::alloc::{AllocError, alloc, dealloc};
+use reovim_kabi_platform::{AllocError, handle};
 
 /// The `FxHash` 64-bit seed constant (widely published; rustc `rustc_hash`,
 /// Firefox `FxHash`). Reimplemented here, no dependency.
@@ -42,14 +42,21 @@ const FX_SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
 
 /// The bucket count a non-empty `Map` first grows to. Power of two so the
 /// index is a mask; growth doubles from here.
+///
+/// `pub` under `selftest` so the arch-hosted rehash/backward-shift tests can
+/// assert the initial capacity the bucket arithmetic depends on.
+#[cfg(not(feature = "selftest"))]
 const FIRST_CAPACITY: usize = 8;
+/// See above; `selftest`-visible variant for the arch-hosted map tests.
+#[cfg(feature = "selftest")]
+pub const FIRST_CAPACITY: usize = 8;
 
 /// An in-repo `FxHash`-style hasher (multiply-xor). Deterministic; not
 /// collision-resistant. See the module docs for the seed provenance.
 ///
-/// ```rust
+/// ```no_run
 /// use core::hash::{Hash, Hasher as _};
-/// use reovim_arch::ds::FxHasher;
+/// use reovim_lib_ds::FxHasher;
 ///
 /// let mut h = FxHasher::default();
 /// 42u64.hash(&mut h);
@@ -110,8 +117,8 @@ type Bucket<K, V> = Option<(K, V)>;
 /// `len` are occupied. An empty `Map` holds no allocation, so
 /// [`new`](Map::new) never allocates.
 ///
-/// ```rust
-/// use reovim_arch::ds::Map;
+/// ```no_run
+/// use reovim_lib_ds::Map;
 ///
 /// let mut m: Map<u32, &str> = Map::new();
 /// assert!(m.is_empty());
@@ -141,7 +148,17 @@ unsafe impl<K: Sync, V: Sync> Sync for Map<K, V> {}
 impl<K, V> Map<K, V> {
     /// The `Layout` of `n` bucket slots. `n` is non-zero at the call sites.
     /// (Unbounded impl: `Drop` needs this without the `Eq + Hash` bounds.)
+    ///
+    /// `pub` under `selftest` so the arch-hosted layout-overflow tests can
+    /// exercise the `Layout::array` overflow arm directly.
+    #[cfg(not(feature = "selftest"))]
     fn layout_for(n: usize) -> Result<Layout, AllocError> {
+        Layout::array::<Bucket<K, V>>(n).map_err(|_| AllocError)
+    }
+
+    /// See above; `selftest`-visible variant for the arch-hosted map tests.
+    #[cfg(feature = "selftest")]
+    pub fn layout_for(n: usize) -> Result<Layout, AllocError> {
         Layout::array::<Bucket<K, V>>(n).map_err(|_| AllocError)
     }
 }
@@ -149,8 +166,8 @@ impl<K, V> Map<K, V> {
 impl<K: Eq + Hash, V> Map<K, V> {
     /// Creates an empty `Map` with no allocation.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let m: Map<u32, u32> = Map::new();
     /// assert!(m.is_empty());
     /// assert_eq!(m.len(), 0);
@@ -166,8 +183,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     /// The number of stored entries.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, u32> = Map::new();
     /// assert_eq!(m.len(), 0);
     /// m.try_insert(1, 10).unwrap();
@@ -180,8 +197,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     /// Whether the map holds no entries.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, u32> = Map::new();
     /// assert!(m.is_empty());
     /// m.try_insert(1, 1).unwrap();
@@ -226,9 +243,24 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     /// Allocates `cap` (power-of-two) bucket slots, all initialized to the
     /// empty (`None`) state.
+    ///
+    /// `pub` under `selftest` so the arch-hosted test can drive the inner
+    /// `layout_for(cap)?` overflow arm directly.
+    #[cfg(not(feature = "selftest"))]
     fn alloc_buckets(cap: usize) -> Result<NonNull<Bucket<K, V>>, AllocError> {
+        Self::alloc_buckets_impl(cap)
+    }
+
+    /// See above; `selftest`-visible variant for the arch-hosted map tests.
+    #[cfg(feature = "selftest")]
+    pub fn alloc_buckets(cap: usize) -> Result<NonNull<Bucket<K, V>>, AllocError> {
+        Self::alloc_buckets_impl(cap)
+    }
+
+    /// The shared body of [`alloc_buckets`](Self::alloc_buckets).
+    fn alloc_buckets_impl(cap: usize) -> Result<NonNull<Bucket<K, V>>, AllocError> {
         let layout = Self::layout_for(cap)?;
-        let raw = alloc(layout)?.cast::<Bucket<K, V>>();
+        let raw = handle().alloc(layout)?.cast::<Bucket<K, V>>();
         // Initialize every slot to `None` so reads are always defined.
         for i in 0..cap {
             // SAFETY: `i < cap`, so the slot is within the fresh allocation and
@@ -248,8 +280,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
     /// Returns [`AllocError`] when a needed growth allocation is refused; on
     /// error the map is unchanged.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, u32> = Map::new();
     /// assert_eq!(m.try_insert(1, 10).unwrap(), None);
     /// // Re-inserting the same key returns the old value.
@@ -317,19 +349,17 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
         if old_cap != 0 {
             let old_layout = Self::layout_for(old_cap).expect("layout valid at alloc time");
-            // SAFETY: `old_ptr`/`old_layout` name the prior live allocation; its
-            // entries were moved out above, so no element is double-dropped.
-            unsafe {
-                dealloc(old_ptr.cast(), old_layout);
-            }
+            // `old_ptr`/`old_layout` name the prior live allocation; its entries
+            // were moved out above, so no element is double-dropped.
+            handle().dealloc(old_ptr.cast(), old_layout);
         }
         Ok(())
     }
 
     /// Returns a reference to the value for `key`, or `None`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, &str> = Map::new();
     /// m.try_insert(5, "five").unwrap();
     /// assert_eq!(m.get(&5), Some(&"five"));
@@ -345,8 +375,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     /// Returns a mutable reference to the value for `key`, or `None`.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, u32> = Map::new();
     /// m.try_insert(1, 10).unwrap();
     /// if let Some(v) = m.get_mut(&1) { *v = 99; }
@@ -386,8 +416,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
     /// (`probe_find` returned an index whose slot is empty) — unreachable
     /// short of a bug in this module.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, &str> = Map::new();
     /// m.try_insert(1, "one").unwrap();
     /// assert_eq!(m.remove(&1), Some("one"));
@@ -427,8 +457,8 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     /// Iterates the stored entries by reference, in bucket order.
     ///
-    /// ```rust
-    /// use reovim_arch::ds::Map;
+    /// ```no_run
+    /// use reovim_lib_ds::Map;
     /// let mut m: Map<u32, u32> = Map::new();
     /// m.try_insert(1, 10).unwrap();
     /// m.try_insert(2, 20).unwrap();
@@ -451,7 +481,22 @@ impl<K: Eq + Hash, V> Map<K, V> {
 /// whose ideal slot is strictly between the hole and its current slot can
 /// still be found from the hole, so it stays; otherwise it shifts into the
 /// hole.
+///
+/// `pub` under `selftest` so the arch-hosted MC/DC test can drive both arms
+/// directly.
+#[cfg(not(feature = "selftest"))]
 const fn cyclic_in_range(hole: usize, scan: usize, x: usize) -> bool {
+    cyclic_in_range_impl(hole, scan, x)
+}
+
+/// See above; `selftest`-visible variant for the arch-hosted map tests.
+#[cfg(feature = "selftest")]
+pub const fn cyclic_in_range(hole: usize, scan: usize, x: usize) -> bool {
+    cyclic_in_range_impl(hole, scan, x)
+}
+
+/// The shared body of [`cyclic_in_range`].
+const fn cyclic_in_range_impl(hole: usize, scan: usize, x: usize) -> bool {
     if hole < scan {
         x > hole && x <= scan
     } else {
@@ -514,17 +559,8 @@ impl<K, V> Drop for Map<K, V> {
             ));
         }
         let layout = Self::layout_for(self.cap).expect("layout valid at alloc time");
-        // SAFETY: `self.ptr`/`layout` name the live allocation from the last
-        // grow; no bucket is referenced after the drops above.
-        unsafe {
-            dealloc(self.ptr.cast(), layout);
-        }
+        // `self.ptr`/`layout` name the live allocation from the last grow; no
+        // bucket is referenced after the drops above.
+        handle().dealloc(self.ptr.cast(), layout);
     }
 }
-
-// L12 layout (#785 Phase 5): tests live in the sibling file `map_tests.rs`,
-// declared as a `#[path]` child so `super::` reaches `cyclic_in_range` and
-// `FIRST_CAPACITY`.
-#[cfg(feature = "selftest")]
-#[path = "map_tests.rs"]
-mod tests;

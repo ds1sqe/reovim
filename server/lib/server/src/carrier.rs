@@ -10,11 +10,9 @@
 //! disconnect (zero-byte read).
 
 use {
-    reovim_arch::{
-        ds::{Seq, Shared},
-        net::UnixStream,
-    },
+    reovim_arch::net::UnixStream,
     reovim_kernel::Kernel,
+    reovim_lib_ds::{Seq, Shared},
     reovim_uapi_abi::{ErrorCode, FrameHeader},
     reovim_uapi_protocol::{
         frame::{HEADER_LEN, read_frame},

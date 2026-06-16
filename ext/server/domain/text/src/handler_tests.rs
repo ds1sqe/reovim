@@ -4,7 +4,7 @@
 //! runner via the `kernel-selftest` fixture bin.
 
 use {
-    reovim_arch::{arch_test, ds::Bytes},
+    reovim_arch::arch_test, reovim_lib_ds::Bytes,
     reovim_subsys_domain::contract::OnRawInputHandler as _,
 };
 

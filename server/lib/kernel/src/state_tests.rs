@@ -9,7 +9,8 @@ use core::{
 };
 
 use {
-    reovim_arch::{arch_test, ds::Bytes},
+    reovim_arch::arch_test,
+    reovim_lib_ds::Bytes,
     reovim_subsys_domain::{
         carrier::{CarrierStatus, CursorCarrier, CursorHeader, PositionCarrier, PositionHeader},
         id::{

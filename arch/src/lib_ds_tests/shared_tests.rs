@@ -7,14 +7,17 @@
 //!
 //! The multithreaded clone/drop test previously used `std::thread::spawn` and
 //! `std::vec::Vec`. Replaced with `crate::thread::spawn` (the arch thread
-//! primitive) and `crate::ds::Seq`.
+//! primitive) and `reovim_lib_ds::Seq`.
 
 use {
     crate::{arch_test, testrt},
     core::cell::Cell,
 };
 
-use super::{MAX_REFCOUNT, Shared, refcount_overflowed};
+use reovim_lib_ds::{
+    Shared,
+    shared::{MAX_REFCOUNT, refcount_overflowed},
+};
 
 arch_test!(shared_new_has_count_one_and_derefs, {
     let s = Shared::try_new(42u32).unwrap();

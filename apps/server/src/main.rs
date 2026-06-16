@@ -20,7 +20,7 @@
 #![allow(unsafe_code)] // entry! expands to #[unsafe(no_mangle)]
 
 use {
-    reovim_arch::ds::Shared,
+    reovim_lib_ds::Shared,
     reovim_domain_text::{TextHandler, TextProjector},
     reovim_kernel::{
         Init, LauncherArgs,

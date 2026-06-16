@@ -21,8 +21,9 @@
 //! a later phase to fill the body.
 
 use {
-    reovim_arch::{ds::Shared, net::UnixListener, thread::spawn},
+    reovim_arch::{net::UnixListener, thread::spawn},
     reovim_kernel::Kernel,
+    reovim_lib_ds::Shared,
 };
 
 use crate::{carrier::run_connection, error::RuntimeError};

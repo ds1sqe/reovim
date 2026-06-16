@@ -18,10 +18,7 @@
 //! `correlation_alloc`, `force_overrides`) are NOT refilled here. The skeleton
 //! grows NEW fields (`session`, `domain_router`) onto `Kernel`.
 
-use reovim_arch::{
-    ds::{Bytes, Map, Seq, Shared},
-    sync::Mutex,
-};
+use reovim_lib_ds::{Bytes, Map, Mutex, Seq, Shared};
 
 use crate::{
     projection::Projection,
@@ -59,7 +56,7 @@ const fn empty_scope() -> DomainScope {
 /// Mutable per-session state, held behind a `Mutex` (CC14).
 ///
 /// The walking-skeleton subset carries:
-/// - one text buffer (`arch::ds::Bytes`),
+/// - one text buffer (`lib_ds::Bytes`),
 /// - one `DomainId` (the registered text Domain),
 /// - one `DomainAttachmentId` for the root attachment,
 /// - a single-entry `FocusChain = [Resolved(root)]` (§4.2 subset note),

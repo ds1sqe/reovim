@@ -17,7 +17,8 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use {
-    reovim_arch::{alloc::fault, arch_test, ds::Shared},
+    reovim_arch::{alloc::fault, arch_test},
+    reovim_lib_ds::Shared,
     reovim_uapi_abi::error::LogLevel,
 };
 
@@ -138,12 +139,12 @@ arch_test!(log6_oldest_first_eviction, {
     // The remaining entries should be ev1 and ev2 (oldest-first).
     // ev1 had ts_nanos=2_000_000, so its rendered line contains "0.002".
     // ev2 had ts_nanos=3_000_000, so its rendered line contains "0.003".
-    let mut lines: [Option<reovim_arch::ds::Bytes>; 2] = [None, None];
+    let mut lines: [Option<reovim_lib_ds::Bytes>; 2] = [None, None];
     let mut idx = 0usize;
     ring.for_each(|entry| {
         if idx < 2 {
             // Clone the bytes for inspection: copy as Bytes::try_from_slice.
-            lines[idx] = reovim_arch::ds::Bytes::try_from_slice(entry.line.as_slice()).ok();
+            lines[idx] = reovim_lib_ds::Bytes::try_from_slice(entry.line.as_slice()).ok();
             idx += 1;
         }
     });
