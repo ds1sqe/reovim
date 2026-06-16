@@ -33,7 +33,11 @@ use reovim_depgraph::run_lib_ds_purity_probe;
 
 #[must_use]
 fn root_workspace_toml(members: &[&str]) -> String {
-    let list = members.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ");
+    let list = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("[workspace]\nresolver = \"2\"\nmembers = [{list}]\nexclude = [\"archive\"]\n")
 }
 
@@ -100,8 +104,7 @@ fn lib_ds_purity_cargo_dep_on_arch_trips_probe() {
     assert!(
         mentions_arch,
         "lib-ds-purity fixture A: violation must mention reovim-arch;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -119,11 +122,7 @@ fn lib_ds_purity_source_arch_ref_trips_probe() {
 
     // lib/ds crate with NO Cargo dep on arch, but with an arch:: source reference.
     common::write_file(root, "lib/ds/Cargo.toml", &pkg_toml("reovim-lib-ds"));
-    common::write_file(
-        root,
-        "lib/ds/src/lib.rs",
-        "#![no_std]\nuse arch::alloc::Layout;\n",
-    );
+    common::write_file(root, "lib/ds/src/lib.rs", "#![no_std]\nuse arch::alloc::Layout;\n");
 
     common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds"]));
 
@@ -139,8 +138,7 @@ fn lib_ds_purity_source_arch_ref_trips_probe() {
     assert!(
         mentions_source,
         "lib-ds-purity fixture B: violation must mention the arch:: reference;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -174,11 +172,7 @@ fn lib_ds_purity_kabi_dep_is_clean() {
         "#![no_std]\n// Uses kabi handle, not arch directly.\n",
     );
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["kabi/platform", "lib/ds"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["kabi/platform", "lib/ds"]));
 
     let violations =
         run_lib_ds_purity_probe(root).expect("lib/ds purity probe must run on positive fixture");
@@ -186,8 +180,7 @@ fn lib_ds_purity_kabi_dep_is_clean() {
     assert!(
         violations.is_empty(),
         "lib-ds-purity positive fixture: kabi dep must NOT trip the probe;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -221,13 +214,11 @@ fn lib_ds_purity_cfg_test_arch_ref_is_exempt() {
     common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds"]));
 
     let violations =
-        run_lib_ds_purity_probe(root)
-            .expect("lib/ds purity probe must run on cfg(test) fixture");
+        run_lib_ds_purity_probe(root).expect("lib/ds purity probe must run on cfg(test) fixture");
 
     assert!(
         violations.is_empty(),
         "lib-ds-purity cfg(test) exemption: arch:: inside #[cfg(test)] mod must not be flagged;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }

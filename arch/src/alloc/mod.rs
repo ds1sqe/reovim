@@ -73,19 +73,24 @@ const MAX_SMALL: usize = 2048;
 /// size, which covers every alignment a request of that size can demand).
 const SIZE_CLASSES: [usize; 7] = [16, 32, 64, 128, 256, 512, 2048];
 
-/// Failure to allocate: the kernel refused the backing `mmap`, or the
-/// request was malformed (zero size, or an alignment the front cannot meet).
-///
-/// ```rust
-/// use reovim_arch::alloc::{AllocError, alloc};
-/// use core::alloc::Layout;
-///
-/// // A zero-size layout is rejected.
-/// let zero = Layout::from_size_align(0, 1).unwrap();
-/// assert_eq!(alloc(zero), Err(AllocError));
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AllocError;
+// `AllocError` now lives in the down-face contract (`kabi::AllocError`): its
+// layout is part of the platform vtable's alloc-slot signature, so the canonical
+// home is the contract, not this implementor (master invariant 2). arch
+// re-exports it so its own alloc impl and the ~25 in-crate `crate::alloc::
+// AllocError` users — plus the two external crates that still name
+// `reovim_arch::alloc::AllocError` (`server/lib/kernel`, `server/lib/subsys/
+// domain`) — keep compiling unchanged. This is arch USING its own contract, a
+// transitional aid, not a backward facade.
+//
+// The blast radius (25+ arch-internal sites across ds/, thread/, alloc/ tests;
+// 2 external crates) makes the re-export the right call per SP02 settled
+// decision 1: direct naming is the default, the re-export the marked fallback
+// when the radius is large.
+//
+// TODO(SP03): drop this re-export once lib/ds + the kernels name
+// `kabi::AllocError` directly (they move to lib/ds / route through the handle
+// in SP03).
+pub use reovim_kabi_platform::AllocError;
 
 /// A free slot in a size class's intrusive free-list.
 ///

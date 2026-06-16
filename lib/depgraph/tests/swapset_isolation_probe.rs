@@ -42,7 +42,11 @@ use reovim_depgraph::run_swapset_isolation_probe;
 
 #[must_use]
 fn root_workspace_toml(members: &[&str]) -> String {
-    let list = members.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ");
+    let list = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("[workspace]\nresolver = \"2\"\nmembers = [{list}]\nexclude = [\"archive\"]\n")
 }
 
@@ -112,22 +116,21 @@ fn swapset_isolation_cross_root_driver_deps_trip_probe() {
         &root_workspace_toml(&["client/drivers/usb", "editor/drivers/gpu"]),
     );
 
-    let violations = run_swapset_isolation_probe(root)
-        .expect("swapset isolation probe must run on fixture A");
+    let violations =
+        run_swapset_isolation_probe(root).expect("swapset isolation probe must run on fixture A");
 
     assert!(
         !violations.is_empty(),
         "swapset-isolation fixture A: expected a violation for \
          editor/drivers/gpu → client/drivers/usb;\ngot zero violations"
     );
-    let names_both = violations.iter().any(|v| {
-        v.contains("reovim-editor-driver-gpu") && v.contains("reovim-client-driver-usb")
-    });
+    let names_both = violations
+        .iter()
+        .any(|v| v.contains("reovim-editor-driver-gpu") && v.contains("reovim-client-driver-usb"));
     assert!(
         names_both,
         "swapset-isolation fixture A: violation must name both crates;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -165,8 +168,8 @@ fn swapset_isolation_cross_set_module_to_platform_trips_probe() {
         &root_workspace_toml(&["editor/platforms/x", "editor/modules/vim"]),
     );
 
-    let violations = run_swapset_isolation_probe(root)
-        .expect("swapset isolation probe must run on fixture B");
+    let violations =
+        run_swapset_isolation_probe(root).expect("swapset isolation probe must run on fixture B");
 
     assert!(
         !violations.is_empty(),
@@ -196,11 +199,7 @@ fn swapset_isolation_same_group_is_clean() {
     common::write_file(
         root,
         "editor/drivers/gpu/Cargo.toml",
-        &pkg_toml_with_path_dep(
-            "reovim-editor-driver-gpu",
-            "reovim-editor-driver-base",
-            "../base",
-        ),
+        &pkg_toml_with_path_dep("reovim-editor-driver-gpu", "reovim-editor-driver-base", "../base"),
     );
 
     common::write_file(
@@ -215,8 +214,7 @@ fn swapset_isolation_same_group_is_clean() {
     assert!(
         violations.is_empty(),
         "swapset-isolation: same-group dep must NOT trip the probe;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -238,18 +236,10 @@ fn swapset_isolation_leaf_to_foundation_is_clean() {
     common::write_file(
         root,
         "editor/drivers/gpu/Cargo.toml",
-        &pkg_toml_with_path_dep(
-            "reovim-editor-driver-gpu",
-            "reovim-lib-ds",
-            "../../../lib/ds",
-        ),
+        &pkg_toml_with_path_dep("reovim-editor-driver-gpu", "reovim-lib-ds", "../../../lib/ds"),
     );
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["lib/ds", "editor/drivers/gpu"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds", "editor/drivers/gpu"]));
 
     let violations = run_swapset_isolation_probe(root)
         .expect("swapset isolation probe must run on Foundation-dep fixture");
@@ -257,7 +247,6 @@ fn swapset_isolation_leaf_to_foundation_is_clean() {
     assert!(
         violations.is_empty(),
         "swapset-isolation: swap-set leaf → Foundation lib must NOT trip the probe;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }

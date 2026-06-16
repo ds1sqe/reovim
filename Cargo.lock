@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "reovim-arch"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-kabi-platform",
+]
 
 [[package]]
 name = "reovim-depgraph"
@@ -17,6 +20,10 @@ dependencies = [
  "reovim-arch",
  "reovim-subsys-domain",
 ]
+
+[[package]]
+name = "reovim-kabi-platform"
+version = "0.16.0-dev"
 
 [[package]]
 name = "reovim-kernel"

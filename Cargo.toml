@@ -7,6 +7,9 @@ members = [
     "uapi/protocol",
     "uapi/module-macros",
     "uapi/driver-macros",
+    # Down-face platform contract: the #[repr(C)] handle vtable arch implements
+    # (SP02, arch → kabi). A leaf — depends on nothing impl-side.
+    "kabi/platform",
     "server/lib/subsys/domain",
     "server/lib/kernel",
     "server/lib/server",

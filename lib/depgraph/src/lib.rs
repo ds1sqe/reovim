@@ -217,7 +217,7 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         "reovim-arch".to_owned(),
         vec![
             "reovim-kabi-platform".to_owned(), // arch → kabi/platform (implements the vtable)
-            "reovim-lib-ds".to_owned(),         // arch → lib/ds (uses DS algorithms via the handle)
+            "reovim-lib-ds".to_owned(),        // arch → lib/ds (uses DS algorithms via the handle)
         ],
     );
     m.insert(
@@ -1868,8 +1868,7 @@ fn check_source_for_l11_violations(file: &Path, text: &str, violations: &mut Vec
 /// `path_starts_with("editorx/foo", "editor")` returns `false`.
 #[must_use]
 fn path_starts_with(path: &str, prefix: &str) -> bool {
-    path == prefix
-        || path.starts_with(&format!("{prefix}/"))
+    path == prefix || path.starts_with(&format!("{prefix}/"))
 }
 
 /// Returns `true` when `path` is a swap-set leaf — i.e. it lives inside one
@@ -1889,7 +1888,13 @@ fn is_swapset_leaf(path: &str) -> bool {
     // Accepted roots for swap-set leaves.
     const SWAPSET_ROOTS: &[&str] = &["editor", "client", "system"];
     // Named swap-set directories.
-    const SWAPSET_DIRS: &[&str] = &["drivers", "modules", "providers", "platforms", "capabilities"];
+    const SWAPSET_DIRS: &[&str] = &[
+        "drivers",
+        "modules",
+        "providers",
+        "platforms",
+        "capabilities",
+    ];
 
     let comps: Vec<&str> = path.split('/').collect();
     // A swap-set leaf has at least three components: <root>/<set>/<leaf>.
@@ -1932,6 +1937,13 @@ fn is_arch_crate_name(name: &str) -> bool {
 
 /// Result type for SP01 structural probes: a list of human-readable violation
 /// descriptions.  An empty vec means the probe passed.
+///
+/// ```rust
+/// use reovim_depgraph::StructuralViolations;
+///
+/// let v: StructuralViolations = Vec::new();
+/// assert!(v.is_empty());
+/// ```
 pub type StructuralViolations = Vec<String>;
 
 /// **Firewall probe** — Architectural invariant 1 (master-plan §Architectural
@@ -1949,20 +1961,29 @@ pub type StructuralViolations = Vec<String>;
 /// # Errors
 ///
 /// Returns `ProbeError` when workspace enumeration fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_firewall_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_firewall_probe(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
 pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
     let crates = enumerate_crates(root)?;
 
     // Build a path index: crate name → workspace-relative path.
-    let name_to_path: BTreeMap<&str, &str> =
-        crates.iter().map(|c| (c.name.as_str(), c.path.as_str())).collect();
+    let name_to_path: BTreeMap<&str, &str> = crates
+        .iter()
+        .map(|c| (c.name.as_str(), c.path.as_str()))
+        .collect();
 
     let mut violations = Vec::new();
 
     for krate in &crates {
         // The firewall applies to Math kernels: editor/** and client/**.
-        if !path_starts_with(&krate.path, "editor")
-            && !path_starts_with(&krate.path, "client")
-        {
+        if !path_starts_with(&krate.path, "editor") && !path_starts_with(&krate.path, "client") {
             continue;
         }
 
@@ -1982,9 +2003,7 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
             let is_sys_kernel = path_starts_with(dep_path, "system/kernel");
             // (c) direct dep on any */drivers/* crate (swap-set impl leaf).
             //     Applies to drivers under editor/, client/, system/, ext/.
-            let is_drivers_dep = dep_path
-                .split('/')
-                .any(|component| component == "drivers");
+            let is_drivers_dep = dep_path.split('/').any(|component| component == "drivers");
 
             if is_arch_dep || is_sys_kernel || is_drivers_dep {
                 violations.push(format!(
@@ -2018,6 +2037,15 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
 /// # Errors
 ///
 /// Returns `ProbeError` when workspace enumeration or filesystem I/O fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_lib_ds_purity_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_lib_ds_purity_probe(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
 pub fn run_lib_ds_purity_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
     let crates = enumerate_crates(root)?;
     let mut violations = Vec::new();
@@ -2138,12 +2166,23 @@ fn check_lib_ds_source_for_arch(
 /// # Errors
 ///
 /// Returns `ProbeError` when workspace enumeration fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_swapset_isolation_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_swapset_isolation_probe(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
 pub fn run_swapset_isolation_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
     let crates = enumerate_crates(root)?;
 
     // Build a path index: crate name → workspace-relative path.
-    let name_to_path: BTreeMap<&str, &str> =
-        crates.iter().map(|c| (c.name.as_str(), c.path.as_str())).collect();
+    let name_to_path: BTreeMap<&str, &str> = crates
+        .iter()
+        .map(|c| (c.name.as_str(), c.path.as_str()))
+        .collect();
 
     let mut violations = Vec::new();
 
@@ -2167,8 +2206,7 @@ pub fn run_swapset_isolation_probe(root: &Path) -> Result<StructuralViolations, 
                     "swapset-isolation: `{}` ({}, group `{}`) has a direct dep on \
                      `{}` ({}, group `{}`) — swap-set leaves must not depend on \
                      each other across groups; compose only in apps/*",
-                    krate.name, krate.path, from_group,
-                    dep.name, dep_path, to_group,
+                    krate.name, krate.path, from_group, dep.name, dep_path, to_group,
                 ));
             }
         }
@@ -2191,6 +2229,12 @@ pub fn run_swapset_isolation_probe(root: &Path) -> Result<StructuralViolations, 
 /// different feature name, update here.
 ///
 /// TODO(SP02): confirm or update this feature name when the feature is introduced.
+///
+/// ```rust
+/// use reovim_depgraph::PROVIDER_PRESENCE_FEATURE;
+///
+/// assert!(!PROVIDER_PRESENCE_FEATURE.is_empty());
+/// ```
 pub const PROVIDER_PRESENCE_FEATURE: &str = "platform-provider";
 
 /// **Mode/provider selector probe** — Architectural invariant 5.
@@ -2209,6 +2253,15 @@ pub const PROVIDER_PRESENCE_FEATURE: &str = "platform-provider";
 /// # Errors
 ///
 /// Returns `ProbeError` when workspace enumeration or manifest I/O fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_mode_selector_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_mode_selector_probe(Path::new("/nonexistent/xyz"));
+/// assert!(result.is_err());
+/// ```
 pub fn run_mode_selector_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
     let crates = enumerate_crates(root)?;
     let mut violations = Vec::new();
@@ -2291,11 +2344,10 @@ fn manifest_contains_feature(manifest_text: &str, feature_name: &str) -> bool {
         // Canonical form: `feature-name = []` or `feature-name = ["dep"]`.
         // We test that the trimmed line starts with the feature name followed
         // immediately (after optional whitespace) by `=`.
-        if line.starts_with(feature_name) {
-            let after = line[feature_name.len()..].trim_start();
-            if after.starts_with('=') {
-                return true;
-            }
+        if let Some(stripped) = line.strip_prefix(feature_name)
+            && stripped.trim_start().starts_with('=')
+        {
+            return true;
         }
     }
     false

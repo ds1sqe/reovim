@@ -1,0 +1,20 @@
+[package]
+name = "reovim-kabi-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Down-face platform contract: the #[repr(C)] handle vtable arch implements (kabi → nothing impl-side)"
+publish = false
+
+[lints]
+workspace = true
+
+# No [dependencies], [dev-dependencies], or [build-dependencies].
+# kabi/platform is the down-face CONTRACT tier — a leaf (master invariant 6):
+# it declares the mechanism (#[repr(C)] vtable) and NEVER names an
+# implementor. A dependency on `arch` (or any impl crate) is the cardinal
+# forbidden edge `kabi → arch`. DAG5 (Dependency Sovereignty): only `core`.

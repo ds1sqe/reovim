@@ -32,7 +32,7 @@
 //! - `reovim-arch → reovim-kabi-platform`  (granted: arch → kabi)
 //! - `reovim-arch → reovim-lib-ds`         (granted: arch → lib/ds)
 //! - `reovim-lib-ds → reovim-kabi-platform` (granted: lib/ds → kabi)
-//! - `reovim-editor-kernel → reovim-lib-ds` (ServerKernel → Foundation: allowed)
+//! - `reovim-editor-kernel → reovim-lib-ds` (`ServerKernel` → Foundation: allowed)
 //!
 //! The NEGATIVE mutant adds:
 //! - `reovim-editor-kernel → reovim-arch`  (firewall violation: direct arch dep)
@@ -51,7 +51,11 @@ use reovim_depgraph::{
 
 #[must_use]
 fn root_workspace_toml(members: &[&str]) -> String {
-    let list = members.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ");
+    let list = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "[workspace]\nresolver = \"2\"\nmembers = [{list}]\nexclude = [\"archive\"]\n\
          [profile.dev]\npanic = \"abort\"\n\
@@ -69,11 +73,15 @@ fn pkg_toml(name: &str) -> String {
 /// Returns the list of workspace members for the Cargo.toml.
 fn write_positive_fixture(root: &std::path::Path) {
     // arch backend.
-    common::write_file(root, "arch/Cargo.toml", &format!(
-        "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../kabi/platform\" }}\n\
+    common::write_file(
+        root,
+        "arch/Cargo.toml",
+        &format!(
+            "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../kabi/platform\" }}\n\
          reovim-lib-ds = {{ path = \"../lib/ds\" }}\n",
-        pkg_toml("reovim-arch")
-    ));
+            pkg_toml("reovim-arch")
+        ),
+    );
     common::write_file(root, "arch/src/lib.rs", "#![no_std]\n");
 
     // kabi/platform contract (SP02 placeholder: leaf, no deps).
@@ -81,25 +89,37 @@ fn write_positive_fixture(root: &std::path::Path) {
     common::write_file(root, "kabi/platform/src/lib.rs", "#![no_std]\n");
 
     // lib/ds algorithm crate (SP03 placeholder: → kabi only).
-    common::write_file(root, "lib/ds/Cargo.toml", &format!(
-        "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../../kabi/platform\" }}\n",
-        pkg_toml("reovim-lib-ds")
-    ));
+    common::write_file(
+        root,
+        "lib/ds/Cargo.toml",
+        &format!(
+            "{}\n[dependencies]\nreovim-kabi-platform = {{ path = \"../../kabi/platform\" }}\n",
+            pkg_toml("reovim-lib-ds")
+        ),
+    );
     common::write_file(root, "lib/ds/src/lib.rs", "#![no_std]\n// no arch:: references\n");
 
     // editor/lib/kernel (SP04 rename placeholder: Math kernel → lib/ds only).
-    common::write_file(root, "editor/lib/kernel/Cargo.toml", &format!(
-        "{}\n[dependencies]\nreovim-lib-ds = {{ path = \"../../../lib/ds\" }}\n",
-        pkg_toml("reovim-editor-kernel")
-    ));
+    common::write_file(
+        root,
+        "editor/lib/kernel/Cargo.toml",
+        &format!(
+            "{}\n[dependencies]\nreovim-lib-ds = {{ path = \"../../../lib/ds\" }}\n",
+            pkg_toml("reovim-editor-kernel")
+        ),
+    );
     common::write_file(root, "editor/lib/kernel/src/lib.rs", "#![no_std]\n");
 
     // apps/server composition root.
-    common::write_file(root, "apps/server/Cargo.toml", &format!(
-        "{}\n[dependencies]\nreovim-editor-kernel = {{ path = \"../../editor/lib/kernel\" }}\n\
+    common::write_file(
+        root,
+        "apps/server/Cargo.toml",
+        &format!(
+            "{}\n[dependencies]\nreovim-editor-kernel = {{ path = \"../../editor/lib/kernel\" }}\n\
          reovim-arch = {{ path = \"../../arch\" }}\n",
-        pkg_toml("reovim-server")
-    ));
+            pkg_toml("reovim-server")
+        ),
+    );
     common::write_file(root, "apps/server/src/main.rs", "#![no_std]\n#![no_main]\n");
 }
 
@@ -175,8 +195,7 @@ fn future_tree_positive_passes_all_probes() {
     );
 
     // Firewall: no editor/client → arch/system-kernel/drivers direct edge.
-    let fw_violations =
-        run_firewall_probe(root).expect("firewall probe must run on future-tree");
+    let fw_violations = run_firewall_probe(root).expect("firewall probe must run on future-tree");
     assert!(
         fw_violations.is_empty(),
         "future-tree positive: firewall probe must be clean;\n{}",
@@ -217,11 +236,11 @@ fn future_tree_positive_passes_all_probes() {
 ///
 /// The firewall probe must trip.  All other probes must remain clean (the
 /// mutant edge is only an architectural-airlock violation, not a DAG1/2/5
-/// violation given a Foundation→ServerKernel allowed_categories check is
+/// violation given a Foundation→ServerKernel `allowed_categories` check is
 /// the inverse direction).
 ///
 /// Note: `run_probe` also catches this edge as an `UngrantedFoundationEdge`
-/// because `editor/lib/kernel` (ServerKernel) → `arch` (Foundation) goes
+/// because `editor/lib/kernel` (`ServerKernel`) → `arch` (Foundation) goes
 /// through `allowed_categories(ServerKernel)` which includes `Foundation` —
 /// so DAG2 passes, but the firewall probe catches it independently as the
 /// direct-edge airlock violation.  We verify that the firewall is the probe
@@ -260,21 +279,19 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
     );
 
     // ── Firewall must trip ────────────────────────────────────────────────────
-    let fw_violations =
-        run_firewall_probe(root).expect("firewall probe must run on mutant");
+    let fw_violations = run_firewall_probe(root).expect("firewall probe must run on mutant");
     assert!(
         !fw_violations.is_empty(),
         "future-tree mutant: firewall probe must trip on direct editor → arch edge;\n\
          got zero violations"
     );
-    let names_violation = fw_violations.iter().any(|v| {
-        v.contains("reovim-editor-kernel") && v.contains("reovim-arch")
-    });
+    let names_violation = fw_violations
+        .iter()
+        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-arch"));
     assert!(
         names_violation,
         "future-tree mutant: firewall violation must name both crates;\n\
-         violations: {:?}",
-        fw_violations
+         violations: {fw_violations:?}"
     );
 
     // ── Other new probes must still be clean ──────────────────────────────────
@@ -316,8 +333,8 @@ fn future_tree_mutant_airlock_violation_trips_only_firewall() {
 ///
 /// This is the Phase 1 AC integration smoke: "a fixture writes a synthetic
 /// workspace with arch → kabi + lib/ds → kabi + renamed editor/lib/kernel
-/// crate, runs the existing DAG probe, and asserts zero UngrantedFoundationEdge
-/// / ForbiddenEdge / classification violations for those edges."
+/// crate, runs the existing DAG probe, and asserts zero `UngrantedFoundationEdge`
+/// / `ForbiddenEdge` / classification violations for those edges."
 #[test]
 fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
     let td = common::TempDir::new();
@@ -371,9 +388,10 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
     );
 
     // kabi/platform classifies as Foundation (no UnknownPath).
-    let has_kabi_unknown = report.violations.iter().any(|v| {
-        matches!(v, Violation::UnknownPath { path } if path.starts_with("kabi"))
-    });
+    let has_kabi_unknown = report
+        .violations
+        .iter()
+        .any(|v| matches!(v, Violation::UnknownPath { path } if path.starts_with("kabi")));
     assert!(
         !has_kabi_unknown,
         "Phase 1 AC: kabi/* must classify as Foundation (no UnknownPath);\n\
@@ -382,9 +400,10 @@ fn phase1_ac_sp01_grants_accept_future_tree_dag_probe() {
     );
 
     // editor/lib/kernel classifies as ServerKernel (no UnknownPath).
-    let has_editor_unknown = report.violations.iter().any(|v| {
-        matches!(v, Violation::UnknownPath { path } if path.starts_with("editor"))
-    });
+    let has_editor_unknown = report
+        .violations
+        .iter()
+        .any(|v| matches!(v, Violation::UnknownPath { path } if path.starts_with("editor")));
     assert!(
         !has_editor_unknown,
         "Phase 1 AC: editor/lib/kernel must classify as ServerKernel (no UnknownPath);\n\

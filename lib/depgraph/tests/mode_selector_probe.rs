@@ -42,7 +42,11 @@ use reovim_depgraph::{PROVIDER_PRESENCE_FEATURE, run_mode_selector_probe};
 
 #[must_use]
 fn root_workspace_toml(members: &[&str]) -> String {
-    let list = members.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ");
+    let list = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("[workspace]\nresolver = \"2\"\nmembers = [{list}]\nexclude = [\"archive\"]\n")
 }
 
@@ -70,8 +74,8 @@ fn pkg_toml_with_provider_feature(name: &str) -> String {
 #[test]
 fn mode_selector_real_workspace_is_clean() {
     let root = common::workspace_root();
-    let violations = run_mode_selector_probe(&root)
-        .expect("mode selector probe must run on real workspace");
+    let violations =
+        run_mode_selector_probe(&root).expect("mode selector probe must run on real workspace");
     assert!(
         violations.is_empty(),
         "mode-selector: real workspace has unexpected violations:\n{}",
@@ -94,16 +98,12 @@ fn mode_selector_non_apps_feature_trips_probe() {
     let root = td.path();
 
     // A Foundation lib that incorrectly declares the provider feature.
-    common::write_file(
-        root,
-        "lib/ds/Cargo.toml",
-        &pkg_toml_with_provider_feature("reovim-lib-ds"),
-    );
+    common::write_file(root, "lib/ds/Cargo.toml", &pkg_toml_with_provider_feature("reovim-lib-ds"));
 
     common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds"]));
 
-    let violations = run_mode_selector_probe(root)
-        .expect("mode selector probe must run on fixture A");
+    let violations =
+        run_mode_selector_probe(root).expect("mode selector probe must run on fixture A");
 
     assert!(
         !violations.is_empty(),
@@ -114,8 +114,7 @@ fn mode_selector_non_apps_feature_trips_probe() {
     assert!(
         mentions_crate,
         "mode-selector fixture A: violation must mention the offending crate;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -139,20 +138,12 @@ fn mode_selector_two_apps_crates_trip_probe() {
         "apps/server/Cargo.toml",
         &pkg_toml_with_provider_feature("reovim-server"),
     );
-    common::write_file(
-        root,
-        "apps/tui/Cargo.toml",
-        &pkg_toml_with_provider_feature("reovim-tui"),
-    );
+    common::write_file(root, "apps/tui/Cargo.toml", &pkg_toml_with_provider_feature("reovim-tui"));
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["apps/server", "apps/tui"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["apps/server", "apps/tui"]));
 
-    let violations = run_mode_selector_probe(root)
-        .expect("mode selector probe must run on fixture B");
+    let violations =
+        run_mode_selector_probe(root).expect("mode selector probe must run on fixture B");
 
     assert!(
         !violations.is_empty(),
@@ -181,20 +172,15 @@ fn mode_selector_single_apps_feature_is_clean() {
     );
     common::write_file(root, "apps/tui/Cargo.toml", &pkg_toml("reovim-tui"));
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["apps/server", "apps/tui"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["apps/server", "apps/tui"]));
 
-    let violations = run_mode_selector_probe(root)
-        .expect("mode selector probe must run on single-apps fixture");
+    let violations =
+        run_mode_selector_probe(root).expect("mode selector probe must run on single-apps fixture");
 
     assert!(
         violations.is_empty(),
         "mode-selector: single apps/* feature declaration must NOT trip the probe;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -213,11 +199,7 @@ fn mode_selector_zero_occurrences_is_clean() {
     common::write_file(root, "lib/ds/Cargo.toml", &pkg_toml("reovim-lib-ds"));
     common::write_file(root, "apps/server/Cargo.toml", &pkg_toml("reovim-server"));
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["lib/ds", "apps/server"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds", "apps/server"]));
 
     let violations = run_mode_selector_probe(root)
         .expect("mode selector probe must run on zero-occurrences fixture");
@@ -225,7 +207,6 @@ fn mode_selector_zero_occurrences_is_clean() {
     assert!(
         violations.is_empty(),
         "mode-selector: zero occurrences of the provider feature must NOT trip the probe;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }

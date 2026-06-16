@@ -39,4 +39,16 @@ reovim_arch::arch_test!(deliberately_fails, {
     reovim_arch::testrt::check_eq(1 + 1, 3);
 });
 
-reovim_arch::entry!(|_argc, _argv, _envp| { testrt::run() });
+reovim_arch::entry!(|_argc, _argv, _envp| {
+    // Pin the panic disposition to Halt before running any test. The runner is
+    // fail-fast: a failing selftest is non-recoverable, so it must exit the
+    // halt code (70), deterministically — independent of test order. Without
+    // this, a kernel-boot test that registers the kernel's runtime
+    // `Disposition::Recover` (write-once, process-global) leaks into a later
+    // test's failure exit, which would otherwise depend on link-section
+    // ordering. The runner owns the process exit policy, so it registers first;
+    // later kernel-boot registrations see `AlreadySet` (tolerated). The result
+    // is ignored: this is the first writer by construction.
+    let _ = reovim_arch::panic::set_disposition(reovim_arch::panic::Disposition::Halt);
+    testrt::run()
+});

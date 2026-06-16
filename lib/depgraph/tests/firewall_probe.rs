@@ -36,7 +36,11 @@ use reovim_depgraph::run_firewall_probe;
 /// Minimal workspace manifest.
 #[must_use]
 fn root_workspace_toml(members: &[&str]) -> String {
-    let list = members.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ");
+    let list = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("[workspace]\nresolver = \"2\"\nmembers = [{list}]\nexclude = [\"archive\"]\n")
 }
 
@@ -91,21 +95,12 @@ fn firewall_editor_kernel_to_arch_trips_probe() {
     common::write_file(
         root,
         "editor/lib/kernel/Cargo.toml",
-        &pkg_toml_with_path_dep(
-            "reovim-editor-kernel",
-            "reovim-arch",
-            "../../../arch",
-        ),
+        &pkg_toml_with_path_dep("reovim-editor-kernel", "reovim-arch", "../../../arch"),
     );
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["arch", "editor/lib/kernel"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["arch", "editor/lib/kernel"]));
 
-    let violations =
-        run_firewall_probe(root).expect("firewall probe must run on fixture");
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 
     assert!(
         !violations.is_empty(),
@@ -113,14 +108,13 @@ fn firewall_editor_kernel_to_arch_trips_probe() {
          got zero violations"
     );
     // The violation message must name both crates.
-    let names_both = violations.iter().any(|v| {
-        v.contains("reovim-editor-kernel") && v.contains("reovim-arch")
-    });
+    let names_both = violations
+        .iter()
+        .any(|v| v.contains("reovim-editor-kernel") && v.contains("reovim-arch"));
     assert!(
         names_both,
         "firewall fixture A: violation message should name both crates;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
@@ -152,8 +146,7 @@ fn firewall_client_to_system_kernel_trips_probe() {
         &root_workspace_toml(&["system/kernel", "client/platforms/tui"]),
     );
 
-    let violations =
-        run_firewall_probe(root).expect("firewall probe must run on fixture");
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 
     assert!(
         !violations.is_empty(),
@@ -164,14 +157,13 @@ fn firewall_client_to_system_kernel_trips_probe() {
     assert!(
         names_dep,
         "firewall fixture B: violation must name client/platforms/tui crate;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }
 
 // ── 4. Negative fixture C: editor/modules/vim → editor/drivers/gpu ────────────
 
-/// A synthetic `editor/modules/vim` (ServerExt) with a direct dep on
+/// A synthetic `editor/modules/vim` (`ServerExt`) with a direct dep on
 /// `editor/drivers/gpu` (a `*/drivers/*` crate) must trip the firewall probe.
 ///
 /// The `*/drivers/*` part of the firewall blocks Math kernels from naming ANY
@@ -205,8 +197,7 @@ fn firewall_editor_module_to_drivers_trips_probe() {
         &root_workspace_toml(&["editor/drivers/gpu", "editor/modules/vim"]),
     );
 
-    let violations =
-        run_firewall_probe(root).expect("firewall probe must run on fixture");
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 
     assert!(
         !violations.is_empty(),
@@ -234,26 +225,16 @@ fn firewall_editor_to_lib_ds_is_allowed() {
     common::write_file(
         root,
         "editor/lib/kernel/Cargo.toml",
-        &pkg_toml_with_path_dep(
-            "reovim-editor-kernel",
-            "reovim-lib-ds",
-            "../../../lib/ds",
-        ),
+        &pkg_toml_with_path_dep("reovim-editor-kernel", "reovim-lib-ds", "../../../lib/ds"),
     );
 
-    common::write_file(
-        root,
-        "Cargo.toml",
-        &root_workspace_toml(&["lib/ds", "editor/lib/kernel"]),
-    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["lib/ds", "editor/lib/kernel"]));
 
-    let violations =
-        run_firewall_probe(root).expect("firewall probe must run on fixture");
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
 
     assert!(
         violations.is_empty(),
         "firewall positive fixture: editor → lib/ds must NOT trip the firewall;\n\
-         violations: {:?}",
-        violations
+         violations: {violations:?}"
     );
 }

@@ -25,7 +25,16 @@ selftest = []
 [lints]
 workspace = true
 
-# No [dependencies], [dev-dependencies], or [build-dependencies].
+[dependencies]
+# arch IMPLEMENTS the down-face platform contract: it builds the static
+# vtable and installs it at boot (arch → kabi, SP02, granted in
+# lib/depgraph). This is the only permitted direction across the airlock;
+# kabi never names arch back. kabi/platform is itself a #![no_std] leaf with
+# no third-party deps, so DAG5 (Dependency Sovereignty) and DAG6 (zero-std)
+# are preserved — no external crate enters the graph.
+reovim-kabi-platform = { path = "../kabi/platform" }
+
+# No [dev-dependencies] or [build-dependencies].
 # DAG5 (1.2 §9 Dependency Sovereignty): the platform floor reaches the OS
-# only through hand-written inline-asm/`extern "C"` FFI it owns. Only
-# `core` is consumed.
+# only through hand-written inline-asm/`extern "C"` FFI it owns. Beyond the
+# in-repo kabi contract it implements, only `core` is consumed.
