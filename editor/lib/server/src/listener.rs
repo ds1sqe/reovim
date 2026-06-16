@@ -21,9 +21,8 @@
 //! a later phase to fill the body.
 
 use {
-    reovim_arch::{net::UnixListener, thread::spawn},
     reovim_kernel::Kernel,
-    reovim_lib_ds::Shared,
+    reovim_lib_ds::{Shared, net::UnixListener, thread::spawn},
 };
 
 use crate::{carrier::run_connection, error::RuntimeError};
@@ -63,7 +62,7 @@ pub fn start_listener(kernel: &Shared<Kernel>, path: &[u8]) -> Result<(), Runtim
 
     // Spawn the accept loop on a background thread. The loop runs for the
     // lifetime of the server process.
-    spawn::<_, ()>(move || {
+    spawn(move || {
         accept_loop(&listener, &kernel_accept);
     })
     .map_err(|_| RuntimeError::Io(-1))?;
@@ -83,7 +82,7 @@ fn accept_loop(listener: &UnixListener, kernel: &Shared<Kernel>) {
         // Spawn; ignore spawn failures (out-of-memory) — the connection is
         // dropped and the loop continues. The closure owns the stream so the
         // fd closes when the connection thread exits.
-        let _ = spawn::<_, ()>(move || {
+        let _ = spawn(move || {
             run_connection(&stream, &k);
         });
     }

@@ -16,6 +16,10 @@
 //! - [`Ring`] — bounded ring buffer with oldest-first eviction (LOG6 substrate).
 //! - [`Mutex`]/[`RwLock`]/[`Condvar`] — futex-backed sync primitives, reached
 //!   through the handle's `park`/`unpark`/`unpark_all` wrappers.
+//! - [`net`]/[`thread`] — Unix-domain socket wrappers and a detached
+//!   thread-spawn helper, reached through the handle's net fd-op and
+//!   `thread_spawn` wrappers (SP05). Same Math-over-handle pattern as the
+//!   sync primitives: portable algorithm, World backend injected at boot.
 //!
 //! ## lib/ds is Math (master invariant 2: `lib/ds ⊄ arch`)
 //!
@@ -59,8 +63,10 @@
 mod bytes;
 mod condvar;
 mod mutex;
+pub mod net;
 mod ring;
 mod rwlock;
+pub mod thread;
 
 // `map`/`seq`/`shared` carry `pub`-under-`selftest` internals
 // (`FIRST_CAPACITY`, `cyclic_in_range`, `MAX_REFCOUNT`, `refcount_overflowed`)

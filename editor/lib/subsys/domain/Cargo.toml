@@ -14,11 +14,16 @@ publish = false
 # Compiles per-module sibling test files INTO the lib (L12.1 layout).
 # Tests register via reovim_arch::arch_test! and run on the arch no_std
 # selftest runner. Off in flight builds; the kernel-selftest bin enables it.
-# Enables arch/selftest so reovim_arch::testrt and arch_test! are available.
-selftest = ["reovim-arch/selftest"]
+# `dep:reovim-arch` activates the now-OPTIONAL arch dep + enables arch/selftest
+# so reovim_arch::testrt and arch_test! are available. The contract tier's ONLY
+# arch use is this selftest test-infra, so the product build carries no arch
+# edge (SP05a firewall close).
+selftest = ["dep:reovim-arch", "reovim-arch/selftest"]
 
 [dependencies]
-reovim-arch = { path = "../../../../arch" }
+# OPTIONAL: arch is needed only under `selftest` (the test-infra). The product
+# contract tier names no arch symbol (SP05a firewall close).
+reovim-arch = { path = "../../../../arch", optional = true }
 # Heap-DS algorithms (Bytes/Seq — the contract tier's owned buffers) relocated
 # from `reovim_arch::ds` into `reovim-lib-ds` (SP03). `AllocError` is named from
 # the kabi contract directly (master invariant 2: its home is kabi, not arch).

@@ -13,11 +13,16 @@ publish = false
 [features]
 # Compiles per-module sibling test files INTO the lib (L12.1 layout).
 # Enabled by the kernel-selftest fixture bin when it wires the text Domain.
-selftest = ["reovim-subsys-domain/selftest"]
+# `dep:reovim-arch` + `reovim-arch/selftest` activate the now-OPTIONAL arch dep
+# and its selftest test-infra (`arch_test!`/`testrt`), the Domain's ONLY arch
+# use; the product build carries no arch edge (SP05a firewall close).
+selftest = ["dep:reovim-arch", "reovim-arch/selftest", "reovim-subsys-domain/selftest"]
 
 [dependencies]
 reovim-subsys-domain = { path = "../../../editor/lib/subsys/domain" }
-reovim-arch          = { path = "../../../arch" }
+# OPTIONAL: arch is needed only under `selftest` (the test-infra). The product
+# Domain names no arch symbol (SP05a firewall close).
+reovim-arch          = { path = "../../../arch", optional = true }
 # Heap-DS algorithms (Bytes) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds        = { path = "../../../lib/ds" }
 

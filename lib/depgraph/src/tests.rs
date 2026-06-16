@@ -102,6 +102,7 @@ fn krate(name: &str, path: &str, deps: &[(&str, DepTable, bool, bool)]) -> Crate
                 table: *t,
                 is_path: *is_path,
                 is_workspace_true: *is_ws,
+                optional: false,
             })
             .collect(),
     }

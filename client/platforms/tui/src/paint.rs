@@ -28,11 +28,13 @@
 //! send `SendInput`, wait for one `AttachEvent::Projection`, paint. Real
 //! bidirectional muxing (poll/epoll or a second thread) is deferred.
 
-use reovim_arch::{
-    net::UnixStream,
-    panic::set_pre_exit_hook,
-    sys::write,
-    term::{ENOTTY, RawMode},
+use {
+    reovim_arch::{
+        panic::set_pre_exit_hook,
+        sys::write,
+        term::{ENOTTY, RawMode},
+    },
+    reovim_lib_ds::net::UnixStream,
 };
 
 use crate::{

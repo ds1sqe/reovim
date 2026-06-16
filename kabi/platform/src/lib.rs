@@ -85,6 +85,67 @@ use core::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllocError;
 
+/// A failure from one of the net / thread fd-op primitives, carrying the
+/// platform's positive errno code.
+///
+/// The fd-op slots ([`UnixConnectFn`] and siblings) report errors as a negative
+/// errno return — the Linux raw-syscall convention, FFI-safe across the
+/// `extern "C"` boundary. The safe wrappers below map that negative return to
+/// this typed error so consumers (`lib/ds`'s `UnixStream`/`UnixListener`) match
+/// on a positive code rather than re-deriving the sign. Like [`AllocError`] it
+/// lives in `kabi` (not `arch`): it is part of the fd-op slots' Rust-facing
+/// contract and names no implementor (master invariant 2).
+///
+/// ```rust
+/// use reovim_kabi_platform::NetError;
+///
+/// // EBADF is 9 on Linux; the wrapper builds the error from the positive code.
+/// let e = NetError::from_code(9);
+/// assert_eq!(e.code(), 9);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NetError(i32);
+
+impl NetError {
+    /// Builds a [`NetError`] from a positive errno code.
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::NetError;
+    ///
+    /// assert_eq!(NetError::from_code(22).code(), 22);
+    /// ```
+    #[must_use]
+    pub const fn from_code(code: i32) -> Self {
+        Self(code)
+    }
+
+    /// The positive errno code (e.g. `9` for `EBADF`).
+    ///
+    /// ```rust
+    /// use reovim_kabi_platform::NetError;
+    /// assert_eq!(NetError::from_code(111).code(), 111);
+    /// ```
+    #[must_use]
+    pub const fn code(self) -> i32 {
+        self.0
+    }
+}
+
+/// Maps a fd-op slot's `i64` return (`>= 0` success, `< 0` is `-errno`) to a
+/// typed `Result`. The success value is narrowed to the caller's `usize`
+/// (a byte count or a non-negative fd both fit).
+const fn map_fd_ret(ret: i64) -> Result<usize, NetError> {
+    if ret < 0 {
+        // A negative return encodes `-errno`; recover the positive code. The
+        // cast cannot truncate meaningfully: errno values are small positives.
+        #[allow(clippy::cast_possible_truncation)]
+        Err(NetError::from_code((-ret) as i32))
+    } else {
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        Ok(ret as usize)
+    }
+}
+
 /// The clock primitive: reads a monotonic time source, returning whole
 /// nanoseconds since an unspecified epoch.
 ///
@@ -167,6 +228,103 @@ pub type UnparkFn = unsafe extern "C" fn(word: *const u32);
 /// parked on is a no-op (not an error).
 pub type UnparkAllFn = unsafe extern "C" fn(word: *const u32);
 
+/// The Unix-domain connect primitive.
+///
+/// Connects a stream socket to the NUL-terminated pathname `path` (`path_len`
+/// bytes including the NUL) and returns the connected fd (`>= 0`), or a
+/// negative errno on failure.
+///
+/// fd-based syscall surface (the SP05 net stratum): the contract carries raw
+/// fds as `i32`, paths as `*const u8` + `usize`, and reports errors as a
+/// negative errno return — the Linux raw-syscall convention — rather than a
+/// non-FFI-safe `Result`. The consumer (`lib/ds`'s `UnixStream`) maps a
+/// negative return back to a typed error and wraps the fd in a Math type.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes containing a NUL-terminated pathname; the provider reads no
+/// further. A malformed path maps to a negative-errno return, not UB.
+pub type UnixConnectFn = unsafe extern "C" fn(path: *const u8, path_len: usize) -> i64;
+
+/// The Unix-domain listen primitive.
+///
+/// Binds a stream socket to the NUL-terminated pathname `path` and marks it
+/// passive, returning the listening fd (`>= 0`) or a negative errno. A stale
+/// socket file at `path` is unlinked before bind so a repeated bind (a
+/// restarted server) succeeds (the
+/// `panic = "abort"` profile means a listener's Drop-unlink may not run; the
+/// pre-bind unlink is the robust cleanup).
+///
+/// # Safety
+///
+/// As [`UnixConnectFn`]: `path` must point to `path_len` readable bytes with a
+/// NUL-terminated pathname.
+pub type UnixListenFn = unsafe extern "C" fn(path: *const u8, path_len: usize) -> i64;
+
+/// The Unix-domain accept primitive: blocks until a connection arrives on the
+/// listening `listener_fd`, returning the connected fd (`>= 0`) or a negative
+/// errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `listener_fd` is a plain scalar; an
+/// invalid fd maps to a negative errno, not UB.
+pub type UnixAcceptFn = unsafe extern "C" fn(listener_fd: i32) -> i64;
+
+/// The fd-read primitive: reads up to `len` bytes from `fd` into `buf`,
+/// returning the byte count (`0` at end-of-stream, `> 0` otherwise) or a
+/// negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` writable
+/// bytes; the provider writes at most the returned count. A bad fd maps to a
+/// negative errno.
+pub type FdReadFn = unsafe extern "C" fn(fd: i32, buf: *mut u8, len: usize) -> i64;
+
+/// The fd-write primitive.
+///
+/// Writes up to `len` bytes from `buf` to `fd`, returning the byte count
+/// written or a negative errno. The provider suppresses `SIGPIPE` (a peer that
+/// closed mid-stream surfaces as a negative errno, not a process-killing
+/// signal).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
+/// bytes. A bad fd or a closed peer maps to a negative errno.
+pub type FdWriteFn = unsafe extern "C" fn(fd: i32, buf: *const u8, len: usize) -> i64;
+
+/// The fd-close primitive: closes `fd`, returning `0` or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a plain scalar; closing an
+/// already-closed fd maps to a negative errno, not UB.
+pub type FdCloseFn = unsafe extern "C" fn(fd: i32) -> i64;
+
+/// The thread-spawn primitive: starts a detached thread that calls
+/// `entry(arg)`, returning the new thread id (`>= 0`) or a negative errno.
+///
+/// pthread_create-shaped: a single C-ABI entry taking one type-erased argument.
+/// The consumer (`lib/ds`'s thread-spawn helper) boxes a Rust closure into a
+/// provider-allocated block, hands the thin block pointer as `arg`, and
+/// supplies a monomorphized `extern "C"` trampoline as `entry` that reconstructs
+/// and runs the closure. The thread is **detached**: the provider owns the
+/// thread's stack and frees nothing on exit (the only floor consumer — the
+/// server accept/connection loops — never joins; a joinable handle is deferred
+/// until a real joiner appears, rule of three).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `entry` must be a valid function
+/// that runs to completion (or exits the thread) given `arg`; `arg` must be
+/// valid for the duration of `entry`'s execution. The provider transfers
+/// ownership of `arg` to the new thread.
+pub type ThreadSpawnFn =
+    unsafe extern "C" fn(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> i64;
+
 /// The platform handle: a `#[repr(C)]` vtable of effectful primitive function
 /// pointers the provider builds and the boot path installs.
 ///
@@ -181,12 +339,16 @@ pub type UnparkAllFn = unsafe extern "C" fn(word: *const u32);
 /// ## Slot order is append-only (AB3) and frozen (AB15)
 ///
 /// `#[repr(C)]` freezes the field layout; the order — `clock`, `alloc`,
-/// `dealloc`, `park`, `unpark`, `unpark_all` — is append-only. A future
-/// primitive is a new trailing field, never a reorder or removal, so a binary
-/// built against an older slot set stays ABI-compatible. SP02 wired `clock`
-/// end-to-end; SP03 wires `alloc`/`dealloc`/`park`/`unpark`/`unpark_all`
-/// through the safe wrappers below (consumed by `lib/ds`). `unpark_all` is the
-/// AB3 trailing append SP03 adds for the wake-all sync paths.
+/// `dealloc`, `park`, `unpark`, `unpark_all`, then the SP05 net/thread slots
+/// — is append-only. A future primitive is a new trailing field, never a
+/// reorder or removal, so a binary built against an older slot set stays
+/// ABI-compatible. SP02 wired `clock` end-to-end; SP03 wires
+/// `alloc`/`dealloc`/`park`/`unpark`/`unpark_all` through the safe wrappers
+/// below (consumed by `lib/ds`). SP05 appends the net fd-op slots
+/// (`unix_connect`/`unix_listen`/`unix_accept`/`fd_read`/`fd_write`/`fd_close`)
+/// and `thread_spawn` (AB3 trailing append) so `lib/ds` can build
+/// `UnixStream`/`UnixListener` Math types and a detached thread-spawn helper
+/// without naming `arch`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PlatformVtable {
@@ -202,6 +364,21 @@ pub struct PlatformVtable {
     pub unpark: UnparkFn,
     /// Wake every thread parked on `word` (SP03-consumed; AB3 trailing append).
     pub unpark_all: UnparkAllFn,
+    /// Connect a Unix-domain stream socket (SP05; AB3 trailing append).
+    pub unix_connect: UnixConnectFn,
+    /// Bind + listen a Unix-domain stream socket (SP05; AB3 trailing append).
+    pub unix_listen: UnixListenFn,
+    /// Accept a connection on a listening fd (SP05; AB3 trailing append).
+    pub unix_accept: UnixAcceptFn,
+    /// Read bytes from an fd (SP05; AB3 trailing append).
+    pub fd_read: FdReadFn,
+    /// Write bytes to an fd, SIGPIPE-suppressed (SP05; AB3 trailing append).
+    pub fd_write: FdWriteFn,
+    /// Close an fd (SP05; AB3 trailing append).
+    pub fd_close: FdCloseFn,
+    /// Spawn a detached thread running a C-ABI entry (SP05; AB3 trailing
+    /// append).
+    pub thread_spawn: ThreadSpawnFn,
 }
 
 // `PlatformVtable` is `Sync` automatically: it holds only `unsafe extern "C"`
@@ -282,6 +459,133 @@ impl PlatformVtable {
         // provider wakes the whole cohort and an empty key is a no-op.
         unsafe { (self.unpark_all)(addr) }
     }
+
+    /// Connects a Unix-domain stream socket to the NUL-terminated `path`,
+    /// returning the connected fd.
+    ///
+    /// The safe Rust face of the [`unix_connect`](PlatformVtable::unix_connect)
+    /// slot: it passes the path slice's pointer + length to the provider and
+    /// maps a negative-errno return to [`NetError`]. `lib/ds`'s `UnixStream`
+    /// stays safe — the `unsafe extern "C"` call is encapsulated here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when the connect fails (no listener, missing path,
+    /// malformed address).
+    pub fn unix_connect(&self, path: &[u8]) -> Result<i32, NetError> {
+        // SAFETY: `path` is a live slice borrowed for the call, so the pointer
+        // is valid for `path.len()` bytes; the provider reads no further and
+        // dereferences nothing else.
+        let ret = unsafe { (self.unix_connect)(path.as_ptr(), path.len()) };
+        map_fd_ret(ret).map(narrow_fd)
+    }
+
+    /// Binds + listens a Unix-domain stream socket at the NUL-terminated
+    /// `path`, returning the listening fd.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when the bind or listen fails (malformed path,
+    /// permission denied).
+    pub fn unix_listen(&self, path: &[u8]) -> Result<i32, NetError> {
+        // SAFETY: as `unix_connect`: `path` is a live slice; the pointer is
+        // valid for `path.len()` bytes and the provider reads no further.
+        let ret = unsafe { (self.unix_listen)(path.as_ptr(), path.len()) };
+        map_fd_ret(ret).map(narrow_fd)
+    }
+
+    /// Accepts one connection on the listening `listener_fd`, returning the
+    /// connected fd. Blocks until a peer connects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when accept fails (the listener fd was closed, the
+    /// socket is not listening).
+    pub fn unix_accept(&self, listener_fd: i32) -> Result<i32, NetError> {
+        // SAFETY: `listener_fd` is a scalar; the slot dereferences no memory.
+        let ret = unsafe { (self.unix_accept)(listener_fd) };
+        map_fd_ret(ret).map(narrow_fd)
+    }
+
+    /// Reads up to `buf.len()` bytes from `fd` into `buf`, returning the byte
+    /// count (`0` at end-of-stream).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] on a read failure (bad fd, interrupted call the
+    /// provider did not retry).
+    pub fn fd_read(&self, fd: i32, buf: &mut [u8]) -> Result<usize, NetError> {
+        // SAFETY: `buf` is a live mutable slice; its pointer is valid for
+        // `buf.len()` writable bytes, and the provider writes at most the
+        // returned count.
+        let ret = unsafe { (self.fd_read)(fd, buf.as_mut_ptr(), buf.len()) };
+        map_fd_ret(ret)
+    }
+
+    /// Writes up to `buf.len()` bytes from `buf` to `fd`, returning the byte
+    /// count written (SIGPIPE-suppressed by the provider).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] on a write failure (bad fd, closed peer → the
+    /// provider's `EPIPE`-class error).
+    pub fn fd_write(&self, fd: i32, buf: &[u8]) -> Result<usize, NetError> {
+        // SAFETY: `buf` is a live slice; its pointer is valid for `buf.len()`
+        // readable bytes.
+        let ret = unsafe { (self.fd_write)(fd, buf.as_ptr(), buf.len()) };
+        map_fd_ret(ret)
+    }
+
+    /// Closes `fd`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when the close fails (already-closed fd).
+    pub fn fd_close(&self, fd: i32) -> Result<(), NetError> {
+        // SAFETY: `fd` is a scalar; the slot dereferences no memory.
+        let ret = unsafe { (self.fd_close)(fd) };
+        map_fd_ret(ret).map(|_| ())
+    }
+
+    /// Spawns a detached thread that calls `entry(arg)`, returning the new
+    /// thread id.
+    ///
+    /// The safe Rust face of the [`thread_spawn`](PlatformVtable::thread_spawn)
+    /// slot. The CALLER (`lib/ds`'s thread-spawn helper) is responsible for
+    /// `entry`/`arg` validity — `entry` must be a valid function that runs to
+    /// completion given `arg`, and the new thread takes ownership of `arg`.
+    /// This method is itself `unsafe` because those obligations cannot be
+    /// expressed in the type system: a wrong `entry`/`arg` pairing is UB inside
+    /// the new thread.
+    ///
+    /// # Safety
+    ///
+    /// `entry` must be a valid `extern "C"` function safe to call with `arg`,
+    /// and `arg` must be valid for the whole of `entry`'s execution. Ownership
+    /// of `arg` transfers to the spawned thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when the spawn fails (the underlying `clone` was
+    /// refused, or a stack could not be mapped).
+    pub unsafe fn thread_spawn(
+        &self,
+        entry: unsafe extern "C" fn(*mut u8),
+        arg: *mut u8,
+    ) -> Result<i32, NetError> {
+        // SAFETY: the caller upholds `entry`/`arg` validity (this method's
+        // contract); the slot starts a thread and returns a tid or -errno.
+        let ret = unsafe { (self.thread_spawn)(entry, arg) };
+        map_fd_ret(ret).map(narrow_fd)
+    }
+}
+
+/// Narrows a non-negative `usize` (a fd or tid the slot returned) to the `i32`
+/// the fd-op ABI uses. A valid fd / tid is always `< 2^31`, so the cast cannot
+/// wrap; the `#[allow]` documents the proven-in-range narrowing.
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+const fn narrow_fd(v: usize) -> i32 {
+    v as i32
 }
 
 /// The error a second [`install`] returns: the handle is already set.
@@ -340,14 +644,37 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 /// }
 /// unsafe extern "C" fn unpark_stub(word: *const u32) { let _ = word; }
 /// unsafe extern "C" fn unpark_all_stub(word: *const u32) { let _ = word; }
+/// unsafe extern "C" fn connect_stub(p: *const u8, n: usize) -> i64 { let _ = (p, n); -1 }
+/// unsafe extern "C" fn listen_stub(p: *const u8, n: usize) -> i64 { let _ = (p, n); -1 }
+/// unsafe extern "C" fn accept_stub(fd: i32) -> i64 { let _ = fd; -1 }
+/// unsafe extern "C" fn read_stub(fd: i32, b: *mut u8, n: usize) -> i64 {
+///     let _ = (fd, b, n);
+///     0
+/// }
+/// unsafe extern "C" fn write_stub(fd: i32, b: *const u8, n: usize) -> i64 {
+///     let _ = (fd, b, n);
+///     0
+/// }
+/// unsafe extern "C" fn close_stub(fd: i32) -> i64 { let _ = fd; 0 }
+/// unsafe extern "C" fn spawn_stub(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> i64 {
+///     let _ = (entry, arg);
+///     -1
+/// }
 ///
 /// static TABLE: PlatformVtable = PlatformVtable {
-///     clock:      clock_stub,
-///     alloc:      alloc_stub,
-///     dealloc:    dealloc_stub,
-///     park:       park_stub,
-///     unpark:     unpark_stub,
-///     unpark_all: unpark_all_stub,
+///     clock:        clock_stub,
+///     alloc:        alloc_stub,
+///     dealloc:      dealloc_stub,
+///     park:         park_stub,
+///     unpark:       unpark_stub,
+///     unpark_all:   unpark_all_stub,
+///     unix_connect: connect_stub,
+///     unix_listen:  listen_stub,
+///     unix_accept:  accept_stub,
+///     fd_read:      read_stub,
+///     fd_write:     write_stub,
+///     fd_close:     close_stub,
+///     thread_spawn: spawn_stub,
 /// };
 ///
 /// // Boot path: install the platform table once.

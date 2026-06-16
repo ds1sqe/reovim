@@ -29,7 +29,7 @@
 
 mod common;
 
-use reovim_depgraph::run_firewall_probe;
+use reovim_depgraph::{run_firewall_probe, run_no_product_arch_net_probe};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,42 +59,86 @@ fn pkg_toml_with_path_dep(name: &str, dep_name: &str, dep_rel_path: &str) -> Str
     )
 }
 
+/// Manifest with an OPTIONAL, selftest-gated `reovim-arch` path dep, declared
+/// in the inline-table form (`= { path = "..", optional = true }`) with a
+/// `selftest = ["dep:reovim-arch"]` feature. This is the post-SP05 shape of a
+/// crate whose only arch use is the selftest test-infra — the firewall must
+/// NOT flag it.
+#[must_use]
+fn pkg_toml_optional_arch_inline(name: &str, dep_rel_path: &str) -> String {
+    format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+         [features]\nselftest = [\"dep:reovim-arch\"]\n\
+         [dependencies]\nreovim-arch = {{ path = \"{dep_rel_path}\", optional = true }}\n"
+    )
+}
+
+/// Manifest with an OPTIONAL, selftest-gated `reovim-arch` path dep declared in
+/// the SECTION-table form (`[dependencies.reovim-arch]` block). Same product
+/// meaning as the inline form; proves the probe's dep parser reads `optional`
+/// from both manifest shapes.
+#[must_use]
+fn pkg_toml_optional_arch_section(name: &str, dep_rel_path: &str) -> String {
+    format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+         [features]\nselftest = [\"dep:reovim-arch\"]\n\
+         [dependencies.reovim-arch]\npath = \"{dep_rel_path}\"\noptional = true\n"
+    )
+}
+
 // ── 1. Positive control: real workspace ───────────────────────────────────────
 
-/// The real workspace's `editor/**` + `client/**` Math kernels still carry their
-/// pre-reorg DIRECT edges to `arch` for the non-DS floor services (net, panic,
-/// thread, time, profiler). Those residual edges are converted to handle-routed
-/// services by the final reorg sub-plan (SP05); until then the firewall probe
-/// records exactly this KNOWN set. Any violation OUTSIDE it is an unexpected
-/// regression (a NEW Math-kernel→arch edge) and fails the test. When SP05 closes
-/// the residual edges, `KNOWN_RESIDUAL` empties and the assertion reverts to
-/// "zero violations".
+/// After SP05 the firewall residual set is EXACTLY `{reovim-kernel,
+/// reovim-platform-tui}`: SP05 routed server-rt's + tui's net/thread through
+/// the `kabi` handle and made the (now test-only) arch dep optional + selftest-
+/// gated in server-rt, subsys-domain, and domain-text, so those three crates'
+/// product builds carry no arch edge. The kernel (panic/time/sys) and tui
+/// (panic/sys/term) keep their arch edges for SP05b/c.
 ///
-/// The probe MECHANISM is proven by the negative fixtures below (a synthetic
-/// editor/client→arch edge still trips it); this real-workspace test only
-/// tolerates the documented, soon-to-be-closed residuals.
+/// The assertion is `assert_eq!` on the SET of residual crates, not
+/// `is_empty()`: it fails both on an unexpected NEW Math-kernel→arch edge AND
+/// on a stale residual that should have been closed — safe incremental closure
+/// across SP05b/c. The probe MECHANISM (and the optional-skip
+/// precision) is proven by the negative fixtures below.
 #[test]
-fn firewall_real_workspace_only_has_known_residual_arch_edges() {
-    /// Math-kernel crates still holding a direct `arch` edge for the non-DS floor
-    /// services; SP05 routes these through the `kabi` handle and empties this set.
-    const KNOWN_RESIDUAL: &[&str] = &[
-        "reovim-kernel",
-        "reovim-server-rt",
-        "reovim-subsys-domain",
-        "reovim-domain-text",
-        "reovim-platform-tui",
-    ];
+fn firewall_real_workspace_residual_equals_kernel_and_tui() {
+    use std::collections::BTreeSet;
+
+    /// The crate names the firewall is still expected to flag after SP05.
+    /// Order-independent (compared as a set). SP05b/c shrink this further.
+    const EXPECTED_RESIDUAL: &[&str] = &["reovim-kernel", "reovim-platform-tui"];
+
     let root = common::workspace_root();
     let violations = run_firewall_probe(&root).expect("firewall probe must run on real workspace");
-    let unexpected: Vec<&str> = violations
-        .iter()
-        .filter(|v| !KNOWN_RESIDUAL.iter().any(|k| v.contains(k)))
-        .map(String::as_str)
-        .collect();
+
+    // Reduce each violation line to the residual crate it names. A violation
+    // line names exactly one of the expected residual crates when the closure
+    // is correct; an UNEXPECTED line (naming none of them) is recorded as a raw
+    // string so the failure message points at the regression.
+    let mut residual: BTreeSet<&str> = BTreeSet::new();
+    let mut unexpected: Vec<&str> = Vec::new();
+    for v in &violations {
+        match EXPECTED_RESIDUAL.iter().find(|k| v.contains(**k)) {
+            Some(k) => {
+                residual.insert(*k);
+            }
+            None => unexpected.push(v.as_str()),
+        }
+    }
+
     assert!(
         unexpected.is_empty(),
-        "firewall: unexpected (non-residual) Math-kernel→arch violations:\n{}",
+        "firewall: unexpected (non-residual) Math-kernel→arch violations \
+         (a NEW direct arch edge regressed):\n{}",
         unexpected.join("\n")
+    );
+
+    let expected: BTreeSet<&str> = EXPECTED_RESIDUAL.iter().copied().collect();
+    assert_eq!(
+        residual, expected,
+        "firewall: residual set must equal exactly {{reovim-kernel, \
+         reovim-platform-tui}} after SP05 — a missing entry means a residual \
+         was closed without updating this assertion (update it when SP05b/c land)"
     );
 }
 
@@ -227,7 +271,120 @@ fn firewall_editor_module_to_drivers_trips_probe() {
     );
 }
 
-// ── 5. Positive fixture: transitive via lib/ds is allowed ────────────────────
+// ── 5b. No product arch::net/thread in server-rt + tui ────
+
+/// After SP05, server-rt's and tui's PRODUCT source (non-`*_tests.rs`,
+/// `#[cfg(test/selftest)]`-block-skipped) must name no `arch::net`/`arch::thread`/
+/// `reovim_arch::net`/`reovim_arch::thread`: the net transport flows through the
+/// kabi handle (lib/ds), not arch. This is the source-level companion to the
+/// manifest-level firewall close — it catches a bypass the Cargo-edge probe
+/// cannot see.
+#[test]
+fn no_product_arch_net_in_server_rt_and_tui() {
+    let root = common::workspace_root();
+    let violations =
+        run_no_product_arch_net_probe(&root, &["reovim-server-rt", "reovim-platform-tui"])
+            .expect("no-product-arch-net probe must run on real workspace");
+    assert!(
+        violations.is_empty(),
+        "no-product-arch-net: server-rt/tui product code still names arch net/thread:\n{}",
+        violations.join("\n")
+    );
+}
+
+// ── 6. Optional-dep refinement: DUAL-SIDED proof ─────────────
+
+/// (i) A synthetic `editor/lib/subsys/domain` crate whose ONLY arch edge is an
+/// OPTIONAL, selftest-gated `reovim-arch` dep (inline-table form) must NOT trip
+/// the firewall: an optional dep is not a product edge.
+#[test]
+fn firewall_optional_selftest_arch_dep_inline_does_not_trip() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    common::write_file(root, "arch/Cargo.toml", &pkg_toml("reovim-arch"));
+    common::write_file(
+        root,
+        "editor/lib/subsys/domain/Cargo.toml",
+        &pkg_toml_optional_arch_inline("reovim-subsys-domain", "../../../../arch"),
+    );
+    common::write_file(
+        root,
+        "Cargo.toml",
+        &root_workspace_toml(&["arch", "editor/lib/subsys/domain"]),
+    );
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        violations.is_empty(),
+        "firewall: an optional selftest-gated arch dep (inline form) must NOT trip;\n\
+         violations: {violations:?}"
+    );
+}
+
+/// (i, section-table form) Same as above but the optional dep is declared as a
+/// `[dependencies.reovim-arch]` section table. Proves `optional` is parsed from
+/// BOTH manifest shapes.
+#[test]
+fn firewall_optional_selftest_arch_dep_section_does_not_trip() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    common::write_file(root, "arch/Cargo.toml", &pkg_toml("reovim-arch"));
+    common::write_file(
+        root,
+        "editor/domains/text/Cargo.toml",
+        &pkg_toml_optional_arch_section("reovim-domain-text", "../../../arch"),
+    );
+    common::write_file(root, "Cargo.toml", &root_workspace_toml(&["arch", "editor/domains/text"]));
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        violations.is_empty(),
+        "firewall: an optional selftest-gated arch dep (section-table form) must NOT trip;\n\
+         violations: {violations:?}"
+    );
+}
+
+/// (ii) The precision side: an UNCONDITIONAL `reovim-arch` dep STILL trips the
+/// firewall. Pairs with the optional cases above to prove the skip is precise —
+/// it suppresses ONLY `optional = true` edges, never a genuine product edge.
+#[test]
+fn firewall_unconditional_arch_dep_still_trips() {
+    let td = common::TempDir::new();
+    let root = td.path();
+
+    common::write_file(root, "arch/Cargo.toml", &pkg_toml("reovim-arch"));
+    // Same crate path as the inline optional fixture, but the arch dep is
+    // unconditional (no `optional = true`) — a product edge that must trip.
+    common::write_file(
+        root,
+        "editor/lib/subsys/domain/Cargo.toml",
+        &pkg_toml_with_path_dep("reovim-subsys-domain", "reovim-arch", "../../../../arch"),
+    );
+    common::write_file(
+        root,
+        "Cargo.toml",
+        &root_workspace_toml(&["arch", "editor/lib/subsys/domain"]),
+    );
+
+    let violations = run_firewall_probe(root).expect("firewall probe must run on fixture");
+    assert!(
+        !violations.is_empty(),
+        "firewall: an UNCONDITIONAL arch dep must STILL trip the probe;\n\
+         got zero violations"
+    );
+    let names_both = violations
+        .iter()
+        .any(|v| v.contains("reovim-subsys-domain") && v.contains("reovim-arch"));
+    assert!(
+        names_both,
+        "firewall: the unconditional-dep violation must name both crates;\n\
+         violations: {violations:?}"
+    );
+}
+
+// ── 7. Positive fixture: transitive via lib/ds is allowed ────────────────────
 
 /// A synthetic `editor/lib/kernel` → `lib/ds` edge must NOT trip the firewall.
 ///

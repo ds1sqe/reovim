@@ -16,8 +16,10 @@
 //! 7. Enter the notify/input loop (`recv_notify_frame`).
 
 use {
-    reovim_arch::net::{Errno, UnixStream},
-    reovim_lib_ds::Seq,
+    reovim_lib_ds::{
+        Seq,
+        net::{Errno, UnixStream},
+    },
     reovim_uapi_abi::FrameHeader,
     reovim_uapi_protocol::{
         frame::{HEADER_LEN, read_frame},
@@ -233,17 +235,17 @@ pub fn send_input(
 }
 
 /// Returns `true` when `errno` signals a clean peer-closed disconnect
-/// (EBADF is the arch convention on a zero-byte `read_exact`).
+/// (EBADF is the convention on a zero-byte `read_exact`).
 ///
 /// ```rust
-/// use reovim_arch::net::EBADF;
+/// use reovim_lib_ds::net::EBADF;
 /// use reovim_platform_tui::carrier::is_disconnect;
 ///
 /// assert!(is_disconnect(EBADF));
 /// ```
 #[must_use]
 pub fn is_disconnect(e: Errno) -> bool {
-    e == reovim_arch::net::EBADF
+    e == reovim_lib_ds::net::EBADF
 }
 
 // L12 layout: tests in sibling carrier_tests.rs, declared in lib.rs.

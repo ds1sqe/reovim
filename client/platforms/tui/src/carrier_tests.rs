@@ -24,7 +24,8 @@
 
 use {
     crate::carrier::{CarrierError, connect_and_handshake, is_disconnect, recv_notify_frame},
-    reovim_arch::{arch_test, net::EBADF},
+    reovim_arch::arch_test,
+    reovim_lib_ds::net::EBADF,
     reovim_uapi_protocol::messages::Message,
 };
 
@@ -33,7 +34,7 @@ arch_test!(carrier_is_disconnect_true_for_ebadf, {
 });
 
 arch_test!(carrier_is_disconnect_false_for_other_error, {
-    use reovim_arch::net::ENOENT;
+    use reovim_lib_ds::net::ENOENT;
     reovim_arch::testrt::check(!is_disconnect(ENOENT), "ENOENT is not a disconnect");
 });
 

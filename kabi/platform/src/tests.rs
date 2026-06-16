@@ -34,6 +34,44 @@ unsafe extern "C" fn fixture_unpark(_word: *const u32) {}
 
 unsafe extern "C" fn fixture_unpark_all(_word: *const u32) {}
 
+unsafe extern "C" fn fixture_unix_connect(_path: *const u8, _len: usize) -> i64 {
+    // A synthetic provider: report a fixed fd so the dispatch path is proven.
+    7
+}
+
+unsafe extern "C" fn fixture_unix_listen(_path: *const u8, _len: usize) -> i64 {
+    8
+}
+
+unsafe extern "C" fn fixture_unix_accept(_fd: i32) -> i64 {
+    9
+}
+
+unsafe extern "C" fn fixture_fd_read(_fd: i32, _buf: *mut u8, _len: usize) -> i64 {
+    // End-of-stream: zero bytes.
+    0
+}
+
+unsafe extern "C" fn fixture_fd_write(_fd: i32, _buf: *const u8, len: usize) -> i64 {
+    // A full write of `len` bytes (the count narrows back to i64).
+    #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+    {
+        len as i64
+    }
+}
+
+unsafe extern "C" fn fixture_fd_close(_fd: i32) -> i64 {
+    0
+}
+
+unsafe extern "C" fn fixture_thread_spawn(
+    _entry: unsafe extern "C" fn(*mut u8),
+    _arg: *mut u8,
+) -> i64 {
+    // A synthetic provider returns a fixed tid without starting a real thread.
+    42
+}
+
 /// The synthetic provider's `static` vtable (zero heap to build), the shape an
 /// arch-side `static` takes.
 static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
@@ -43,7 +81,18 @@ static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
     park: fixture_park,
     unpark: fixture_unpark,
     unpark_all: fixture_unpark_all,
+    unix_connect: fixture_unix_connect,
+    unix_listen: fixture_unix_listen,
+    unix_accept: fixture_unix_accept,
+    fd_read: fixture_fd_read,
+    fd_write: fixture_fd_write,
+    fd_close: fixture_fd_close,
+    thread_spawn: fixture_thread_spawn,
 };
+
+/// A no-op C-ABI thread entry for the `thread_spawn` fixture: the synthetic
+/// provider never invokes it, so the body is unreachable and trivially sound.
+unsafe extern "C" fn noop_entry(_arg: *mut u8) {}
 
 #[test]
 fn install_is_write_once_and_handle_reads_through() {
@@ -74,4 +123,22 @@ fn install_is_write_once_and_handle_reads_through() {
     // SAFETY: as above — the handle remains installed.
     let nanos_again = unsafe { (handle().clock)() };
     assert_eq!(nanos_again, 1_234_567_890, "the first table still stands");
+
+    // The SP05 net/thread safe wrappers dispatch through the handle too: the
+    // synthetic provider's fixed returns flow back as typed results, proving
+    // the new slots are wired and the negative-errno mapping is correct.
+    assert_eq!(handle().unix_connect(b"/x\0"), Ok(7), "connect fd flows through");
+    assert_eq!(handle().unix_listen(b"/x\0"), Ok(8), "listen fd flows through");
+    assert_eq!(handle().unix_accept(8), Ok(9), "accept fd flows through");
+    let mut buf = [0u8; 4];
+    assert_eq!(handle().fd_read(9, &mut buf), Ok(0), "read EOF flows through");
+    assert_eq!(handle().fd_write(9, b"abcd"), Ok(4), "write count flows through");
+    assert_eq!(handle().fd_close(9), Ok(()), "close ok flows through");
+
+    // thread_spawn is unsafe (the caller owns entry/arg validity); the fixture
+    // never touches `entry`/`arg`, so a null arg + no-op entry is sound here.
+    // SAFETY: the fixture spawn ignores `entry`/`arg`, so a no-op entry and a
+    // null arg uphold the contract trivially (nothing dereferences them).
+    let tid = unsafe { handle().thread_spawn(noop_entry, core::ptr::null_mut()) };
+    assert_eq!(tid, Ok(42), "thread tid flows through");
 }

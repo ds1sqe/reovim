@@ -32,6 +32,20 @@ use crate::{
     time::Instant,
 };
 
+// The net/thread fd-op backends are Linux-only kernel-ABI surface (the same
+// gate as `arch::net`/`arch::thread`); freestanding targets have no socket or
+// `clone` floor. The vtable shape is identical on every target — only the slot
+// IMPLEMENTATIONS differ (real adapters on Linux, `ENOSYS`-returning stubs on
+// freestanding) — so a `#[repr(C)]` table built either way stays ABI-compatible.
+#[cfg(target_os = "linux")]
+use crate::sys::net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX};
+#[cfg(target_os = "linux")]
+use crate::sys::{
+    AT_FDCWD, Errno, accept as sys_accept, bind as sys_bind, close as sys_close,
+    connect as sys_connect, listen as sys_listen, read as sys_read, send_nosignal,
+    unix_stream_socket, unlinkat,
+};
+
 /// `FUTEX_WAKE` count meaning "wake everyone".
 ///
 /// The kernel reads the wake count as a signed `int`, so the broadcast value
@@ -140,6 +154,400 @@ unsafe extern "C" fn unpark_all(word: *const u32) {
     let _ = futex(addr, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, WAKE_ALL, 0, 0, 0);
 }
 
+// ── net + thread fd-op adapters (SP05) ──────────────────────────────────────
+//
+// Linux-only: the socket + `clone` floor exists only on Linux (same gate as
+// `arch::net`/`arch::thread`). The `#[cfg(not(target_os = "linux"))]` stub
+// adapters at the end of this section fill the identical vtable slots with
+// `-ENOSYS` returns so the `#[repr(C)]` table is one shape on every target.
+
+/// `EINVAL` errno code, the negative-return used when a caller's path is
+/// malformed (empty, no NUL, or longer than `UNIX_PATH_MAX - 1`).
+#[cfg(target_os = "linux")]
+const EINVAL_CODE: i32 = 22;
+/// `ENOMEM` errno code, the negative-return used when a thread stack or its
+/// shared block cannot be mapped/allocated.
+#[cfg(target_os = "linux")]
+const ENOMEM_CODE: i32 = 12;
+
+/// Encodes an arch [`Errno`] as the negative-errno `i64` the fd-op slots
+/// return: `-code`.
+#[cfg(target_os = "linux")]
+const fn neg_errno(e: Errno) -> i64 {
+    -(e.code() as i64)
+}
+
+/// Builds a pathname [`SockaddrUn`] from `path`/`path_len` (a NUL-terminated
+/// byte string), returning the address + its `addrlen`, or `None` when the path
+/// is empty, missing its NUL, or too long.
+///
+/// # Safety
+///
+/// `path` must point to `path_len` readable bytes.
+#[cfg(target_os = "linux")]
+unsafe fn sockaddr_from_raw(path: *const u8, path_len: usize) -> Option<(SockaddrUn, usize)> {
+    // SAFETY: the caller guarantees `path` is valid for `path_len` bytes.
+    let bytes = unsafe { core::slice::from_raw_parts(path, path_len) };
+    let nul = bytes.iter().position(|&b| b == 0)?;
+    if nul == 0 || nul >= UNIX_PATH_MAX {
+        return None;
+    }
+    let mut sa = SockaddrUn::zeroed();
+    sa.sun_family = AF_UNIX;
+    sa.sun_path[..=nul].copy_from_slice(&bytes[..=nul]);
+    let addrlen = sa.addrlen();
+    Some((sa, addrlen))
+}
+
+/// The connect adapter: opens a stream socket, connects it to the pathname in
+/// `path`, and returns the connected fd or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes; a malformed path returns `-EINVAL` rather than UB.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn unix_connect(path: *const u8, path_len: usize) -> i64 {
+    // SAFETY: caller guarantees `path` is valid for `path_len` bytes.
+    let Some((sa, addrlen)) = (unsafe { sockaddr_from_raw(path, path_len) }) else {
+        return -i64::from(EINVAL_CODE);
+    };
+    // A valid fd fits in i32 (< 2^31); the narrowing cannot wrap.
+    let fd = match unix_stream_socket() {
+        Ok(fd) => fd as i32,
+        Err(e) => return neg_errno(e),
+    };
+    if let Err(e) = sys_connect(fd, &sa, addrlen) {
+        let _ = sys_close(fd);
+        return neg_errno(e);
+    }
+    i64::from(fd)
+}
+
+/// The listen adapter: unlinks any stale socket at `path`, binds a fresh stream
+/// socket there, marks it passive (backlog 8), and returns the listening fd or
+/// a negative errno.
+///
+/// The pre-bind unlink makes a repeated bind (a restarted server) succeed: the
+/// `panic = "abort"` profile means a prior listener's Drop-unlink may not have
+/// run, so the bind owns the cleanup rather than relying on teardown.
+///
+/// # Safety
+///
+/// As [`unix_connect`]: `path` must point to `path_len` readable bytes.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn unix_listen(path: *const u8, path_len: usize) -> i64 {
+    // SAFETY: caller guarantees `path` is valid for `path_len` bytes.
+    let Some((sa, addrlen)) = (unsafe { sockaddr_from_raw(path, path_len) }) else {
+        return -i64::from(EINVAL_CODE);
+    };
+    // SAFETY: `path` is valid for `path_len` bytes; the slice borrows it for the
+    // unlink call only.
+    let path_slice = unsafe { core::slice::from_raw_parts(path, path_len) };
+    // Best-effort pre-bind unlink of a stale socket file (ignore the result:
+    // ENOENT on a fresh path is expected).
+    let _ = unlinkat(AT_FDCWD, path_slice, 0);
+
+    let fd = match unix_stream_socket() {
+        Ok(fd) => fd as i32,
+        Err(e) => return neg_errno(e),
+    };
+    if let Err(e) = sys_bind(fd, &sa, addrlen) {
+        let _ = sys_close(fd);
+        return neg_errno(e);
+    }
+    if let Err(e) = sys_listen(fd, 8) {
+        let _ = sys_close(fd);
+        let _ = unlinkat(AT_FDCWD, path_slice, 0);
+        return neg_errno(e);
+    }
+    i64::from(fd)
+}
+
+/// The accept adapter: blocks until a connection arrives on `listener_fd`,
+/// returning the connected fd or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `listener_fd` is a scalar; a bad fd
+/// returns a negative errno.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn unix_accept(listener_fd: i32) -> i64 {
+    // A valid accepted fd fits in i32; the narrowing cannot wrap.
+    match sys_accept(listener_fd) {
+        Ok(fd) => i64::from(fd as i32),
+        Err(e) => neg_errno(e),
+    }
+}
+
+/// The fd-read adapter: reads up to `len` bytes from `fd` into `buf`, returning
+/// the byte count (`0` at EOF) or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` writable
+/// bytes; the adapter writes at most the returned count.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn fd_read(fd: i32, buf: *mut u8, len: usize) -> i64 {
+    // SAFETY: caller guarantees `buf` is valid for `len` writable bytes.
+    let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
+    match sys_read(fd, slice) {
+        Ok(n) => n as i64,
+        Err(e) => neg_errno(e),
+    }
+}
+
+/// The fd-write adapter: writes up to `len` bytes from `buf` to `fd`
+/// (`send(MSG_NOSIGNAL)` so a closed peer surfaces as `EPIPE`, not a
+/// process-killing `SIGPIPE`), returning the byte count or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
+/// bytes.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn fd_write(fd: i32, buf: *const u8, len: usize) -> i64 {
+    // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
+    let slice = unsafe { core::slice::from_raw_parts(buf, len) };
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
+    match send_nosignal(fd, slice) {
+        Ok(n) => n as i64,
+        Err(e) => neg_errno(e),
+    }
+}
+
+/// The fd-close adapter: closes `fd`, returning `0` or a negative errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `fd` is a scalar; an already-closed
+/// fd returns a negative errno.
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn fd_close(fd: i32) -> i64 {
+    match sys_close(fd) {
+        Ok(_) => 0,
+        Err(e) => neg_errno(e),
+    }
+}
+
+/// The thread-spawn adapter: starts a **detached** thread that calls
+/// `entry(arg)`, returning the new tid or a negative errno.
+///
+/// Detached, not joinable: the thread owns nothing the caller must reclaim. The
+/// adapter maps a guarded stack, stores the `(entry, arg)` pair at the stack
+/// top, and `clone`s into a fixed local trampoline that runs `entry(arg)` then
+/// exits the thread. The stack mapping is intentionally leaked on thread exit
+/// (the child runs on it and cannot free it; no joiner exists to reclaim it) —
+/// the same deliberate no-Drop leak the `thread::JoinHandle` documents for an
+/// un-joined handle. The only floor consumer (the server accept/connection
+/// loops) never joins, so a joinable handle is deferred (rule of three).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `entry` must be a valid function
+/// safe to call with `arg`; `arg` must be valid for the whole of `entry`'s
+/// execution. The new thread takes ownership of `arg`.
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn thread_spawn(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> i64 {
+    // SAFETY: the caller upholds the `entry`/`arg` contract; `spawn_detached`
+    // maps a stack, stores the pair, and clones into the trampoline.
+    match unsafe { spawn_detached(entry, arg) } {
+        Ok(tid) => i64::from(tid),
+        Err(code) => -i64::from(code),
+    }
+}
+
+/// The `(entry, arg)` pair the detached spawn hands to its child trampoline.
+///
+/// Heap-boxed at spawn and stored by pointer at the child's stack top; the
+/// trampoline copies both fields out and frees the box before running `entry`,
+/// so the only thing the detached thread leaks is its own stack mapping (which
+/// it runs on and cannot free).
+#[cfg(target_os = "linux")]
+struct SpawnPair {
+    entry: unsafe extern "C" fn(*mut u8),
+    arg: *mut u8,
+}
+
+/// Detached-thread page size (`x86_64`/`aarch64` 4 KiB base pages).
+#[cfg(target_os = "linux")]
+const SPAWN_PAGE_SIZE: usize = 4096;
+/// Usable detached-thread stack (1 MiB), excluding the guard page.
+#[cfg(target_os = "linux")]
+const SPAWN_STACK_SIZE: usize = 1024 * 1024;
+/// Total mapped detached-thread region: guard page + usable stack.
+#[cfg(target_os = "linux")]
+const SPAWN_MAP_SIZE: usize = SPAWN_PAGE_SIZE + SPAWN_STACK_SIZE;
+
+/// The `clone` flag set for a detached TLS-free worker thread.
+///
+/// `CLONE_VM|FS|FILES|SIGHAND|THREAD|SYSVSEM` make a real thread sharing the
+/// process address space, fd table, signal handlers and `SysV` sem-undo list.
+/// Unlike `thread::spawn`, NO `CLONE_PARENT_SETTID`/`CLONE_CHILD_CLEARTID`: a
+/// detached thread has no join word, so the kernel neither sets nor clears a
+/// ctid — the parent gets the tid as the `clone` return and never waits on it.
+#[cfg(target_os = "linux")]
+const SPAWN_CLONE_FLAGS: usize = crate::sys::CLONE_VM
+    | crate::sys::CLONE_FS
+    | crate::sys::CLONE_FILES
+    | crate::sys::CLONE_SIGHAND
+    | crate::sys::CLONE_THREAD
+    | crate::sys::CLONE_SYSVSEM;
+
+/// Maps a guarded stack, boxes the `(entry, arg)` pair, and `clone`s a detached
+/// child into [`spawn_trampoline`]. Returns the child tid on success, or a
+/// positive errno code on failure (the caller negates it for the slot return).
+///
+/// # Safety
+///
+/// `entry`/`arg` must satisfy the [`thread_spawn`] contract: `entry` is a valid
+/// function safe to call with `arg`, and `arg` lives for `entry`'s execution.
+#[cfg(target_os = "linux")]
+unsafe fn spawn_detached(entry: unsafe extern "C" fn(*mut u8), arg: *mut u8) -> Result<i32, i32> {
+    use crate::sys::{
+        MAP_ANONYMOUS, MAP_PRIVATE, PROT_NONE, PROT_READ, PROT_WRITE, clone_into, mmap, mprotect,
+        munmap,
+    };
+
+    // Map the stack: a low guard page (PROT_NONE) below the usable stack, so a
+    // stack overflow traps on the guard rather than corrupting an adjacent map.
+    let stack_base =
+        mmap(0, SPAWN_MAP_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+            .map_err(|_| ENOMEM_CODE)?;
+    if mprotect(stack_base, SPAWN_PAGE_SIZE, PROT_NONE).is_err() {
+        let _ = munmap(stack_base, SPAWN_MAP_SIZE);
+        return Err(ENOMEM_CODE);
+    }
+
+    // Box the (entry, arg) pair through arch's allocator.
+    let pair_layout = Layout::new::<SpawnPair>();
+    let Ok(pair) = arch_alloc(pair_layout) else {
+        let _ = munmap(stack_base, SPAWN_MAP_SIZE);
+        return Err(ENOMEM_CODE);
+    };
+    let pair = pair.cast::<SpawnPair>();
+    // SAFETY: `pair` is a fresh, correctly-sized, aligned allocation; the write
+    // initializes both fields.
+    unsafe {
+        core::ptr::write(pair.as_ptr(), SpawnPair { entry, arg });
+    }
+
+    // Lay the child's initial stack: the trampoline's single argument word (the
+    // pair pointer) at `[sp]`, with `sp == 8 mod 16` (the `clone_into` contract,
+    // matching `thread::spawn_inner`).
+    let stack_top = stack_base + SPAWN_MAP_SIZE;
+    let arg_slot = ((stack_top & !0xF) - 8) - 16;
+    // SAFETY: `arg_slot` is well within the mapped, writable stack region (far
+    // above the guard page, below the top) and 8-byte aligned for a usize write.
+    unsafe {
+        core::ptr::write(arg_slot as *mut usize, pair.as_ptr() as usize);
+    }
+
+    // SAFETY: `SPAWN_CLONE_FLAGS` is a coherent thread set; `arg_slot` is the top
+    // of a valid stack the child owns with the pair pointer stored at `[arg_slot]`;
+    // `join_word` is 0 (detached — no ctid). The child enters `spawn_trampoline`,
+    // never returning to Rust. On a `clone` error the parent tears down the stack
+    // and the pair box below.
+    let ret = unsafe {
+        clone_into(SPAWN_CLONE_FLAGS, arg_slot, 0, (spawn_trampoline as *const ()).addr())
+    };
+    match ret {
+        Ok(tid) => {
+            // The child owns the pair box and the stack now.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            Ok(tid as i32)
+        }
+        Err(e) => {
+            // The child never started: free the pair box and unmap the stack.
+            // SAFETY: `pair` is the live block we just wrote; nothing else holds
+            // it (the child did not start), so dropping + freeing is sound.
+            unsafe {
+                core::ptr::drop_in_place(pair.as_ptr());
+                arch_dealloc(pair.cast(), pair_layout);
+            }
+            let _ = munmap(stack_base, SPAWN_MAP_SIZE);
+            Err(e.code())
+        }
+    }
+}
+
+/// The detached child's entry point: reads the `(entry, arg)` pair from the
+/// pointer the parent stored at the stack top, frees the pair box, runs the
+/// user `entry(arg)`, then exits the thread.
+///
+/// `extern "C"` so its calling convention matches the hand-written child branch
+/// in `clone_into` (`arg` arrives in the target's first C-ABI argument register).
+/// The stack mapping is NOT freed here — the thread runs on it and no joiner
+/// exists to reclaim it (the deliberate detached-thread leak; see [`thread_spawn`]).
+#[cfg(target_os = "linux")]
+extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
+    let pair = pair_ptr as *mut SpawnPair;
+    // SAFETY: `pair_ptr` is the pair-box pointer the parent stored at the stack
+    // top and kept alive (it does not free the box on the success path); this is
+    // the unique live access now that the child runs.
+    let SpawnPair { entry, arg } = unsafe { core::ptr::read(pair) };
+    // Free the pair box (entry + arg are copied out); the box is no longer needed.
+    // SAFETY: `pair` is the live box; we just read its contents out, so freeing
+    // it here is the unique teardown (the parent handed ownership to the child).
+    unsafe {
+        arch_dealloc(core::ptr::NonNull::new_unchecked(pair.cast()), Layout::new::<SpawnPair>());
+    }
+    // Run the user closure trampoline.
+    // SAFETY: `entry`/`arg` satisfy the `thread_spawn` contract (the caller's
+    // obligation); `entry` is safe to call with `arg`.
+    unsafe { entry(arg) }
+    // Exit the THREAD only (not the process). No ctid to clear (detached).
+    crate::sys::exit(0)
+}
+
+// ── freestanding stub adapters (non-Linux) ───────────────────────────────────
+//
+// Freestanding targets have no socket/`clone` floor. The slots still exist (the
+// vtable is one `#[repr(C)]` shape on every target); they report `-ENOSYS` so a
+// consumer that somehow reaches them on a freestanding build gets a typed error
+// rather than a link failure. `ENOSYS` = 38 (Linux errno space, the shared floor
+// vocabulary).
+
+/// `ENOSYS` errno code — "function not implemented" — the freestanding stubs'
+/// negative return.
+#[cfg(not(target_os = "linux"))]
+const ENOSYS_CODE: i64 = 38;
+
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn unix_connect(_path: *const u8, _path_len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn unix_listen(_path: *const u8, _path_len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn unix_accept(_listener_fd: i32) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn fd_read(_fd: i32, _buf: *mut u8, _len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn fd_write(_fd: i32, _buf: *const u8, _len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn fd_close(_fd: i32) -> i64 {
+    -ENOSYS_CODE
+}
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn thread_spawn(_entry: unsafe extern "C" fn(*mut u8), _arg: *mut u8) -> i64 {
+    -ENOSYS_CODE
+}
+
 /// arch's platform vtable: a `static` of const function pointers (zero heap to
 /// build), the table the boot path installs.
 ///
@@ -151,6 +559,15 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     park,
     unpark,
     unpark_all,
+    // SP05 net/thread slots: real adapters on Linux, `-ENOSYS` stubs on
+    // freestanding (the items above are cfg-selected to one impl per target).
+    unix_connect,
+    unix_listen,
+    unix_accept,
+    fd_read,
+    fd_write,
+    fd_close,
+    thread_spawn,
 };
 
 /// Installs arch's platform vtable as the process-wide handle (write-once).

@@ -281,9 +281,11 @@ pub struct Crate {
 ///     table: DepTable::Dependencies,
 ///     is_path: true,
 ///     is_workspace_true: false,
+///     optional: false,
 /// };
 /// assert!(e.is_path);
 /// assert!(!e.is_workspace_true);
+/// assert!(!e.optional);
 /// assert_eq!(format!("{}", e.table), "dependencies");
 /// ```
 #[derive(Debug, Clone)]
@@ -296,6 +298,15 @@ pub struct DepEntry {
     pub is_path: bool,
     /// Whether the dep has `workspace = true`.
     pub is_workspace_true: bool,
+    /// Whether the dep is declared `optional = true`.
+    ///
+    /// An optional dep is compiled into the product build ONLY when a Cargo
+    /// feature activates it (`dep:name`). The firewall probe treats an optional
+    /// dep as a non-product edge: a genuinely-needed product dep cannot hide
+    /// behind `optional = true`, because a product build that omits the
+    /// activating feature would fail to compile — the compiler enforces what
+    /// the firewall no longer needs to police.
+    pub optional: bool,
 }
 
 /// Which Cargo dependency table a dep entry came from.
@@ -964,11 +975,25 @@ fn parse_manifest(rel: &str, manifest: &Path) -> Result<Option<Crate>, ProbeErro
         ("dev-dependencies", DepTable::DevDependencies),
         ("build-dependencies", DepTable::BuildDependencies),
     ] {
-        let Some(section) = doc.sections.get(label) else {
-            continue;
-        };
-        for (key, spec) in section {
-            let entry = dep_entry_from_toml_value(key, spec, dep_table, manifest)?;
+        // Inline-table / bare-string form: `[dependencies]` with one row per dep.
+        if let Some(section) = doc.sections.get(label) {
+            for (key, spec) in section {
+                let entry = dep_entry_from_toml_value(key, spec, dep_table, manifest)?;
+                deps.push(entry);
+            }
+        }
+        // Section-table form: `[dependencies.dep-name]` blocks, each a section
+        // whose header is `<label>.<dep-name>`. The parser stores these as a
+        // sibling section keyed by the dotted header, so a dep declared this
+        // way is invisible to the inline pass above and must be swept here —
+        // otherwise `optional`/`path` carried by a section-table dep would not
+        // reach the firewall.
+        let prefix = format!("{label}.");
+        for (header, fields) in &doc.sections {
+            let Some(dep_key) = header.strip_prefix(&prefix) else {
+                continue;
+            };
+            let entry = dep_entry_from_section_table(dep_key, fields, dep_table);
             deps.push(entry);
         }
     }
@@ -977,6 +1002,41 @@ fn parse_manifest(rel: &str, manifest: &Path) -> Result<Option<Crate>, ProbeErro
         path: rel.to_owned(),
         deps,
     }))
+}
+
+/// Builds a [`DepEntry`] from a section-table dep block
+/// (`[dependencies.name]` with `path`/`optional`/`package` keys as rows).
+///
+/// Mirrors the inline-table arm of [`dep_entry_from_toml_value`]: `package`
+/// renames the dep, `path` marks it sovereign, `workspace`/`optional` carry
+/// their booleans. The keys are plain [`toml::TomlValue`] rows the parser
+/// already validated, so this arm cannot fail.
+fn dep_entry_from_section_table(
+    key: &str,
+    fields: &std::collections::BTreeMap<String, toml::TomlValue>,
+    table: DepTable,
+) -> DepEntry {
+    let resolved_name = fields
+        .get("package")
+        .and_then(toml::TomlValue::as_str)
+        .unwrap_or(key)
+        .to_owned();
+    let is_path = fields.contains_key("path");
+    let is_workspace_true = fields
+        .get("workspace")
+        .and_then(toml::TomlValue::as_bool)
+        .unwrap_or(false);
+    let optional = fields
+        .get("optional")
+        .and_then(toml::TomlValue::as_bool)
+        .unwrap_or(false);
+    DepEntry {
+        name: resolved_name,
+        table,
+        is_path,
+        is_workspace_true,
+        optional,
+    }
 }
 
 fn dep_entry_from_toml_value(
@@ -993,6 +1053,7 @@ fn dep_entry_from_toml_value(
                 table,
                 is_path: false,
                 is_workspace_true: false,
+                optional: false,
             })
         }
         toml::TomlValue::InlineTable(t) => {
@@ -1007,11 +1068,16 @@ fn dep_entry_from_toml_value(
                 .get("workspace")
                 .and_then(toml::TomlValue::as_bool)
                 .unwrap_or(false);
+            let optional = t
+                .get("optional")
+                .and_then(toml::TomlValue::as_bool)
+                .unwrap_or(false);
             Ok(DepEntry {
                 name: resolved_name,
                 table,
                 is_path,
                 is_workspace_true,
+                optional,
             })
         }
         toml::TomlValue::Bool(_) | toml::TomlValue::Integer(_) => Err(ProbeError::Parse {
@@ -1975,6 +2041,24 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
             if !dep.is_path {
                 continue;
             }
+            // Optional deps are not product edges: they compile in only when a
+            // feature activates `dep:name`, and a product build that omits that
+            // feature would fail to compile if the dep were genuinely needed.
+            // A selftest-gated optional arch dep is the
+            // test-infra edge, not the product floor — skip it, but log an
+            // audit line per skipped arch dep so the suppression is visible
+            // rather than silent (analogous to the structural probe's
+            // allowlist reporting).
+            if dep.optional {
+                if is_arch_crate_name(&dep.name) {
+                    eprintln!(
+                        "firewall: skipped optional arch dep `{}` in `{}` ({}) — \
+                         optional (selftest-gated) edge, not a product edge",
+                        dep.name, krate.name, krate.path
+                    );
+                }
+                continue;
+            }
             let dep_path = name_to_path.get(dep.name.as_str()).copied().unwrap_or("");
 
             // Violation cases:
@@ -1999,6 +2083,143 @@ pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeErro
     }
 
     Ok(violations)
+}
+
+// ── Probe 1b: no product `arch::net`/`arch::thread` ───────────────────────────
+
+/// **No-product-arch-net probe.**
+///
+/// Asserts that the named crates' PRODUCT source (every `.rs` file under `src/`
+/// that is NOT an L12 `*_tests.rs` sibling, with `#[cfg(test)]` and
+/// `#[cfg(feature = "selftest")]` blocks skipped) names no `arch::net`,
+/// `arch::thread`, `reovim_arch::net`, or `reovim_arch::thread`. The
+/// server-rt + tui net/thread transport flows through the `kabi` handle (via the
+/// `lib/ds` wrappers), so a product reference to those arch paths would be a
+/// firewall bypass the manifest-level firewall probe cannot see (it inspects
+/// Cargo edges, not source).
+///
+/// `crate_names` is the set the caller wants checked (server-rt's product code
+/// is fully off `arch::net`/`arch::thread`; tui keeps arch for panic/sys/term but its
+/// PRODUCT net use is gone). The L12 `*_tests.rs` files and selftest-gated
+/// blocks are skipped because the test-infra legitimately binds arch sockets to
+/// stand up a fake server.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration or filesystem I/O fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_no_product_arch_net_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_no_product_arch_net_probe(Path::new("/nonexistent/xyz"), &[]);
+/// assert!(result.is_err());
+/// ```
+pub fn run_no_product_arch_net_probe(
+    root: &Path,
+    crate_names: &[&str],
+) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+    let mut violations = Vec::new();
+
+    for krate in &crates {
+        if !crate_names.contains(&krate.name.as_str()) {
+            continue;
+        }
+        let src_dir = root.join(&krate.path).join("src");
+        if src_dir.is_dir() {
+            sweep_product_src_for_arch_net(&src_dir, &krate.name, &mut violations)?;
+        }
+    }
+
+    Ok(violations)
+}
+
+/// Recursively sweeps product `.rs` files under `dir` for `arch::net`/
+/// `arch::thread` references, skipping L12 `*_tests.rs` siblings and `tests`
+/// directories.
+fn sweep_product_src_for_arch_net(
+    dir: &Path,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), ProbeError> {
+    let entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .and_then(Iterator::collect)
+        .map_err(io_error(dir))?;
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if path.is_dir() {
+            if name_str == "tests" {
+                continue; // skip test target directories
+            }
+            sweep_product_src_for_arch_net(&path, crate_name, violations)?;
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            // L12 sibling test files compile only under `selftest`; the fake-
+            // server test-infra legitimately uses arch sockets, so skip them.
+            if name_str.ends_with("_tests.rs") {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue; // unreadable files: silently skip
+            };
+            check_product_source_for_arch_net(&path, &text, crate_name, violations);
+        }
+    }
+    Ok(())
+}
+
+/// Scans `text` (a product source file) for `arch::net`/`arch::thread` path
+/// references outside `#[cfg(test)]` and `#[cfg(feature = "selftest")]` blocks.
+fn check_product_source_for_arch_net(
+    file: &Path,
+    text: &str,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) {
+    /// The product-forbidden arch transport paths.
+    const FORBIDDEN: &[&str] = &[
+        "arch::net",
+        "arch::thread",
+        "reovim_arch::net",
+        "reovim_arch::thread",
+    ];
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let stripped = strip_line_comment(lines[i]).trim();
+
+        // Skip a `#[cfg(test)]` or `#[cfg(feature = "selftest")]` block: the
+        // selftest-gated test-infra may name arch::net/thread legitimately.
+        if stripped == "#[cfg(test)]" || is_selftest_cfg(stripped) {
+            i += cfg_test_skip(&lines, i);
+            continue;
+        }
+
+        for pat in FORBIDDEN {
+            if stripped.contains(pat) {
+                violations.push(format!(
+                    "no-product-arch-net: `{}` `{}` line {}: product code names `{}` — \
+                     net/thread must route through the kabi handle (lib/ds), not arch",
+                    crate_name,
+                    file.display(),
+                    i + 1,
+                    pat,
+                ));
+            }
+        }
+
+        i += 1;
+    }
+}
+
+/// Returns `true` when `stripped` is a `#[cfg(feature = "selftest")]` attribute
+/// (tolerating single/double quotes and inner spacing).
+fn is_selftest_cfg(stripped: &str) -> bool {
+    stripped.starts_with("#[cfg(") && stripped.contains("feature") && stripped.contains("selftest")
 }
 
 // ── Probe 2: lib/ds ⊄ arch ────────────────────────────────────────────────────
