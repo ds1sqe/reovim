@@ -113,6 +113,14 @@ pub fn default_category_table() -> Vec<(String, Category)> {
     [
         ("arch", Category::Foundation),
         ("lib/*", Category::Foundation),
+        // kabi/* = down-face contract tier (SP01/SP02); classifies as Foundation
+        // because the coarse matrix expresses tier relationships; the finer
+        // airlock invariants (kabi is a leaf, arch → kabi is a granted edge) are
+        // enforced by the dedicated probes, not by minting a new category variant.
+        ("kabi/*", Category::Foundation),
+        // system/* = future RTOS kernel stub (SP04); Foundation until the interior
+        // lands and a real category is needed.  Revisit when system/ has sub-crates.
+        ("system/*", Category::Foundation),
         ("uapi/*", Category::Foundation),
         ("server/lib/subsys/*", Category::ServerContracts),
         // The kernel crate lives directly at server/lib/kernel (exact match);
@@ -132,6 +140,32 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         ("ext/client/driver/*", Category::ClientExt),
         ("ext/client/module/*", Category::ClientExt),
         ("ext/client/capabilities/*", Category::ClientExt),
+        // ── SP04 post-rename paths ───────────────────────────────────────────
+        // These rows pre-classify the new tree that SP04's `git mv` produces so
+        // that path classification is correct the instant each crate lands.  They
+        // are inert until SP04 creates crates under these paths.
+        ("editor/lib/subsys/*", Category::ServerContracts),
+        // editor/lib/kernel (exact) + wildcard for sub-crates.
+        ("editor/lib/kernel", Category::ServerKernel),
+        ("editor/lib/kernel/*", Category::ServerKernel),
+        // editor/lib/server* and editor/lib/runtime* → ServerRuntime.
+        // Wildcard suffix matches server/runtime crates one or more levels deep.
+        ("editor/lib/server", Category::ServerRuntime),
+        ("editor/lib/server/*", Category::ServerRuntime),
+        ("editor/lib/runtime", Category::ServerRuntime),
+        ("editor/lib/runtime/*", Category::ServerRuntime),
+        // editor swap-set dirs → ServerExt.
+        ("editor/modules/*", Category::ServerExt),
+        ("editor/drivers/*", Category::ServerExt),
+        ("editor/providers/*", Category::ServerExt),
+        ("editor/domains/*", Category::ServerExt),
+        // client paths (SP04 rename of clients/).
+        ("client/lib/subsys/*", Category::ClientContracts),
+        ("client/platforms/*", Category::ClientExt),
+        ("client/drivers/*", Category::ClientExt),
+        ("client/modules/*", Category::ClientExt),
+        ("client/capabilities/*", Category::ClientExt),
+        // ─────────────────────────────────────────────────────────────────────
         ("apps/*", Category::Apps),
         ("tools/*", Category::Tools),
     ]
@@ -143,9 +177,9 @@ pub fn default_category_table() -> Vec<(String, Category)> {
 /// The §6 foundation sub-DAG grant table.
 ///
 /// Records which intra-Foundation dep edges are granted.  Foundation crates
-/// (arch, lib/*, uapi/*) may only depend on other Foundation crates when an
-/// explicit grant exists here; absent entry → `UngrantedFoundationEdge`
-/// violation.
+/// (arch, lib/*, uapi/*, kabi/*, system/*) may only depend on other Foundation
+/// crates when an explicit grant exists here; absent entry →
+/// `UngrantedFoundationEdge` violation.
 ///
 /// ```rust
 /// use reovim_depgraph::default_foundation_grants;
@@ -167,6 +201,32 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
     // architecturally real and granted here (Phase 4 of #786).
     m.insert("reovim-uapi-module-macros".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
     m.insert("reovim-uapi-driver-macros".to_owned(), vec!["reovim-uapi-abi".to_owned()]);
+
+    // ── SP01 reorg grants (§6, arch → {kabi, lib/ds}, lib/ds → kabi) ────────
+    //
+    // The grants table is exact-string lookup (NOT glob) — a glob key is
+    // permanently inert and forbidden.  The names below are best-current-guess
+    // for the crates that SP02 (kabi) and SP03 (lib/ds) will create.
+    // SP02/SP03 must reconcile the actual crate name in the same commit as
+    // the crate is created; these entries bind automatically the moment the
+    // name matches.
+    //
+    // TODO(SP02/SP03): confirm crate name — update if the package name
+    // chosen by SP02/SP03 differs from the guess below.
+    m.insert(
+        "reovim-arch".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(), // arch → kabi/platform (implements the vtable)
+            "reovim-lib-ds".to_owned(),         // arch → lib/ds (uses DS algorithms via the handle)
+        ],
+    );
+    m.insert(
+        "reovim-lib-ds".to_owned(),
+        vec![
+            "reovim-kabi-platform".to_owned(), // lib/ds → kabi (dispatches alloc/park through handle)
+        ],
+    );
+    // ─────────────────────────────────────────────────────────────────────────
     m
 }
 
@@ -1785,6 +1845,460 @@ fn check_source_for_l11_violations(file: &Path, text: &str, violations: &mut Vec
 
         i += 1;
     }
+}
+
+// ── SP01 structural probes ────────────────────────────────────────────────────
+//
+// Four new probes encoding the Math/World airlock invariants that the coarse
+// category matrix cannot express.  Each returns a Vec of human-readable
+// violation strings (not `Violation` enum values — these probes operate at a
+// different abstraction level from DAG1..DAG5).
+//
+// Design (Option A from SP01): the probes are standalone functions, not wired
+// into `run_probe()`.  The category matrix stays coarse; the dedicated probes
+// carry the airlock.  One mechanism per invariant, named honestly.
+
+// ── helpers shared across SP01 probes ────────────────────────────────────────
+
+/// Returns `true` when `path` (workspace-relative, `/`-separated) starts with
+/// the given prefix component(s).  For example, `path_starts_with("editor/lib/kernel/foo", "editor")`
+/// returns `true`.
+///
+/// This is a component-prefix check, not a byte-prefix check, so
+/// `path_starts_with("editorx/foo", "editor")` returns `false`.
+#[must_use]
+fn path_starts_with(path: &str, prefix: &str) -> bool {
+    path == prefix
+        || path.starts_with(&format!("{prefix}/"))
+}
+
+/// Returns `true` when `path` is a swap-set leaf — i.e. it lives inside one
+/// of the named swap-set directories under any top-level kernel root.
+///
+/// Swap-set directories: `drivers`, `modules`, `providers`, `platforms`,
+/// `capabilities`.  A crate at `editor/drivers/gpu` or `client/platforms/tui`
+/// or `system/drivers/usb` is a swap-set leaf.
+///
+/// Note: the check is path-component-prefix only — the swap-set directory must
+/// be the SECOND component of a workspace-relative path (e.g. `<root>/<set>/<leaf>`).
+/// A crate at `ext/server/drivers/foo` is NOT a swap-set leaf by this rule
+/// (that is the legacy ext/ shape); only post-SP04 `editor/`, `client/`, or
+/// `system/` swap-sets count.
+#[must_use]
+fn is_swapset_leaf(path: &str) -> bool {
+    // Accepted roots for swap-set leaves.
+    const SWAPSET_ROOTS: &[&str] = &["editor", "client", "system"];
+    // Named swap-set directories.
+    const SWAPSET_DIRS: &[&str] = &["drivers", "modules", "providers", "platforms", "capabilities"];
+
+    let comps: Vec<&str> = path.split('/').collect();
+    // A swap-set leaf has at least three components: <root>/<set>/<leaf>.
+    if comps.len() < 3 {
+        return false;
+    }
+    SWAPSET_ROOTS.contains(&comps[0]) && SWAPSET_DIRS.contains(&comps[1])
+}
+
+/// Returns the "swap-set group key" for a swap-set leaf path: the first two
+/// path components joined, e.g. `editor/drivers`.  Two crates in the same
+/// group are siblings; two crates in different groups are not.
+///
+/// Returns `None` when `path` is not a swap-set leaf.
+#[must_use]
+fn swapset_group(path: &str) -> Option<String> {
+    if !is_swapset_leaf(path) {
+        return None;
+    }
+    let mut comps = path.splitn(3, '/');
+    let root = comps.next()?;
+    let dir = comps.next()?;
+    Some(format!("{root}/{dir}"))
+}
+
+/// Returns `true` when `crate_name` or any dep name in `deps` identifies
+/// an `arch` crate.  "arch crate" = exact name `reovim-arch` (the sole
+/// arch backend until SP02 lands; SP02/SP04 will refine if more arch crates
+/// appear).
+///
+/// The firewall probe uses this to detect a DIRECT edge to the arch backend.
+#[must_use]
+fn is_arch_crate_name(name: &str) -> bool {
+    // Exact crate name check.  If SP04 splits arch into sub-crates they will
+    // share this pattern and this function must be updated.
+    name == "reovim-arch"
+}
+
+// ── Probe 1: Direct-edge firewall ─────────────────────────────────────────────
+
+/// Result type for SP01 structural probes: a list of human-readable violation
+/// descriptions.  An empty vec means the probe passed.
+pub type StructuralViolations = Vec<String>;
+
+/// **Firewall probe** — Architectural invariant 1 (master-plan §Architectural
+/// Invariants, sub-plan SP01 Phase 2).
+///
+/// Asserts that no crate classified under `editor/**` or `client/**` has a
+/// DIRECT Cargo dependency edge naming an `arch`, `system/kernel`, or
+/// `*/drivers` crate.
+///
+/// The invariant is stated at the strength it actually holds: *direct* edge
+/// only.  Transitive World-fulness via `lib/ds → arch` is allowed — that path
+/// runs through the `kabi` contract handle, not through a direct kernel → arch
+/// edge.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration fails.
+pub fn run_firewall_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+
+    // Build a path index: crate name → workspace-relative path.
+    let name_to_path: BTreeMap<&str, &str> =
+        crates.iter().map(|c| (c.name.as_str(), c.path.as_str())).collect();
+
+    let mut violations = Vec::new();
+
+    for krate in &crates {
+        // The firewall applies to Math kernels: editor/** and client/**.
+        if !path_starts_with(&krate.path, "editor")
+            && !path_starts_with(&krate.path, "client")
+        {
+            continue;
+        }
+
+        for dep in &krate.deps {
+            // Only inspect direct path deps — sovereign in-repo edges only.
+            // (A non-path dep would already be a DAG5 violation.)
+            if !dep.is_path {
+                continue;
+            }
+            let dep_path = name_to_path.get(dep.name.as_str()).copied().unwrap_or("");
+
+            // Violation cases:
+            // (a) direct dep on the arch backend crate itself.
+            let is_arch_dep = is_arch_crate_name(&dep.name);
+            // (b) direct dep on system/kernel (World sovereign kernel).
+            //     `path_starts_with` already matches the exact path component-wise.
+            let is_sys_kernel = path_starts_with(dep_path, "system/kernel");
+            // (c) direct dep on any */drivers/* crate (swap-set impl leaf).
+            //     Applies to drivers under editor/, client/, system/, ext/.
+            let is_drivers_dep = dep_path
+                .split('/')
+                .any(|component| component == "drivers");
+
+            if is_arch_dep || is_sys_kernel || is_drivers_dep {
+                violations.push(format!(
+                    "firewall: `{}` ({}) has a direct dep on `{}` ({}) — \
+                     Math kernel must not name arch/system-kernel/drivers directly; \
+                     reach backends through kabi/lib-ds",
+                    krate.name, krate.path, dep.name, dep_path
+                ));
+            }
+        }
+    }
+
+    Ok(violations)
+}
+
+// ── Probe 2: lib/ds ⊄ arch ────────────────────────────────────────────────────
+
+/// **`lib/ds` purity probe** — Architectural invariant 2.
+///
+/// Asserts two things about `lib/ds` crate(s):
+///
+/// 1. No `lib/ds` crate lists an `arch` crate in any Cargo dependency table
+///    (Cargo-manifest check).
+/// 2. No `lib/ds` source file contains `use arch::` or `arch::` path references
+///    (source-grep, mirroring the L11 approach in `uapi_purity.rs`).
+///
+/// `lib/ds` reaches the arch allocator/park primitives ONLY through the `kabi`
+/// handle — never by naming `arch` directly.  The global handle static and
+/// `AllocError` live in `kabi`, not `arch`.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration or filesystem I/O fails.
+pub fn run_lib_ds_purity_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+    let mut violations = Vec::new();
+
+    for krate in &crates {
+        // Only inspect crates under lib/ds (or lib/ds/* if it nests).
+        if !path_starts_with(&krate.path, "lib/ds") {
+            continue;
+        }
+
+        // Manifest check: no dep in any table may name an arch crate.
+        for dep in &krate.deps {
+            if is_arch_crate_name(&dep.name) {
+                violations.push(format!(
+                    "lib-ds-purity: `{}` [{}] names arch crate `{}` — \
+                     lib/ds must reach arch primitives only through kabi, never directly",
+                    krate.name, dep.table, dep.name
+                ));
+            }
+        }
+
+        // Source-grep: no `use arch::` or standalone `arch::` path usage.
+        let src_dir = root.join(&krate.path).join("src");
+        if src_dir.is_dir() {
+            sweep_lib_ds_src(&src_dir, &krate.name, &mut violations)?;
+        }
+    }
+
+    Ok(violations)
+}
+
+/// Recursively sweeps `.rs` files under `dir` for `arch::` path references,
+/// appending violations for each hit outside `#[cfg(test)]` blocks.
+fn sweep_lib_ds_src(
+    dir: &Path,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), ProbeError> {
+    let entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .and_then(Iterator::collect)
+        .map_err(io_error(dir))?;
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if path.is_dir() {
+            if name_str == "tests" {
+                continue; // skip test target directories
+            }
+            sweep_lib_ds_src(&path, crate_name, violations)?;
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue; // unreadable files: silently skip
+            };
+            check_lib_ds_source_for_arch(&path, &text, crate_name, violations);
+        }
+    }
+    Ok(())
+}
+
+/// Scans `text` (a source file in `lib/ds`) for `arch::` path references
+/// outside `#[cfg(test)]` blocks.
+///
+/// Matches:
+/// - `use arch::…` — direct import from arch
+/// - `arch::` anywhere else on the line (e.g. `arch::syscall::write(…)`)
+fn check_lib_ds_source_for_arch(
+    file: &Path,
+    text: &str,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let raw = lines[i];
+        let stripped = strip_line_comment(raw).trim();
+
+        if stripped == "#[cfg(test)]" {
+            let advance = cfg_test_skip(&lines, i);
+            i += advance;
+            continue;
+        }
+
+        // Check for any `arch::` token (catches `use arch::`, `arch::alloc(…)`, etc.)
+        if stripped.contains("arch::") {
+            violations.push(format!(
+                "lib-ds-purity: `{}` `{}` line {}: contains `arch::` reference — \
+                 lib/ds must name arch primitives only through kabi handles",
+                crate_name,
+                file.display(),
+                i + 1,
+            ));
+        }
+
+        i += 1;
+    }
+}
+
+// ── Probe 3: Swap-set isolation ───────────────────────────────────────────────
+
+/// **Swap-set isolation probe** — Architectural invariant 4 (no impl→impl).
+///
+/// Asserts that no Cargo edge exists between two swap-set leaves where the two
+/// leaves belong to DIFFERENT swap-set groups.  A swap-set leaf is a crate
+/// whose workspace path matches `<root>/<set>/<leaf>` where `<root>` is one of
+/// `editor`, `client`, `system` and `<set>` is one of `drivers`, `modules`,
+/// `providers`, `platforms`, `capabilities`.
+///
+/// Two leaves in the SAME group (e.g. both under `editor/drivers/`) are not
+/// cross-group and are not flagged.  Two leaves in DIFFERENT groups (e.g.
+/// `editor/drivers/gpu` and `client/platforms/tui`) are flagged if a direct
+/// Cargo edge exists.
+///
+/// This encodes the nouveau-vs-nvidia isolation: no impl depends on a sibling
+/// impl.  Composition is the responsibility of `apps/*` composition roots.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration fails.
+pub fn run_swapset_isolation_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+
+    // Build a path index: crate name → workspace-relative path.
+    let name_to_path: BTreeMap<&str, &str> =
+        crates.iter().map(|c| (c.name.as_str(), c.path.as_str())).collect();
+
+    let mut violations = Vec::new();
+
+    for krate in &crates {
+        let Some(from_group) = swapset_group(&krate.path) else {
+            continue; // not a swap-set leaf
+        };
+
+        for dep in &krate.deps {
+            if !dep.is_path {
+                continue; // non-path deps are a DAG5 concern, not ours
+            }
+            let dep_path = name_to_path.get(dep.name.as_str()).copied().unwrap_or("");
+            let Some(to_group) = swapset_group(dep_path) else {
+                continue; // dep is not a swap-set leaf
+            };
+
+            if from_group != to_group {
+                // Two different swap-set leaves cross-depending: violation.
+                violations.push(format!(
+                    "swapset-isolation: `{}` ({}, group `{}`) has a direct dep on \
+                     `{}` ({}, group `{}`) — swap-set leaves must not depend on \
+                     each other across groups; compose only in apps/*",
+                    krate.name, krate.path, from_group,
+                    dep.name, dep_path, to_group,
+                ));
+            }
+        }
+    }
+
+    Ok(violations)
+}
+
+// ── Probe 4: Mode/provider selector manifest-grep ────────────────────────────
+
+/// The feature name that marks provider-presence selection.
+///
+/// The provider-presence Cargo feature (whichever name SP02 settles on)
+/// must appear in AT MOST ONE `apps/*` manifest and in NO non-`apps/*`
+/// manifest.  Pre-SP02 the feature does not exist, so count 0 is legal.
+/// SP02 tightens the assertion to exactly one in the same commit it
+/// introduces the feature.
+///
+/// This constant gives the probe a stable search token.  If SP02 uses a
+/// different feature name, update here.
+///
+/// TODO(SP02): confirm or update this feature name when the feature is introduced.
+pub const PROVIDER_PRESENCE_FEATURE: &str = "platform-provider";
+
+/// **Mode/provider selector probe** — Architectural invariant 5.
+///
+/// Asserts via manifest-grep that the provider-presence Cargo feature
+/// (`PROVIDER_PRESENCE_FEATURE`) appears in:
+/// - AT MOST ONE `apps/*` manifest  (count 0 legal pre-SP02)
+/// - NO non-`apps/*` manifest
+///
+/// The DAG edge-walker cannot see feature *definitions* inside `[features]`
+/// tables (it only sees dep edges), so this probe reads manifests directly.
+///
+/// SP02, which introduces the feature, must tighten this probe to
+/// "exactly one `apps/*` manifest" in the same commit.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration or manifest I/O fails.
+pub fn run_mode_selector_probe(root: &Path) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+    let mut violations = Vec::new();
+    let mut apps_count = 0usize;
+
+    for krate in &crates {
+        let manifest_path = root.join(&krate.path).join("Cargo.toml");
+        let text = match fs::read_to_string(&manifest_path) {
+            Ok(t) => t,
+            Err(source) => {
+                return Err(ProbeError::Io {
+                    path: manifest_path,
+                    source,
+                });
+            }
+        };
+
+        // Grep for the provider-presence feature name in the [features] section.
+        // We scan all lines of the manifest for the feature token.
+        // A line that contains `PROVIDER_PRESENCE_FEATURE` and is not a comment
+        // is treated as a declaration of the feature.
+        let has_feature = manifest_contains_feature(&text, PROVIDER_PRESENCE_FEATURE);
+
+        if !has_feature {
+            continue;
+        }
+
+        let is_apps = path_starts_with(&krate.path, "apps");
+
+        if is_apps {
+            apps_count += 1;
+            if apps_count > 1 {
+                violations.push(format!(
+                    "mode-selector: `{}` ({}) declares feature `{}` — \
+                     the provider-presence feature must appear in AT MOST ONE `apps/*` manifest \
+                     (found it in multiple apps crates)",
+                    krate.name, krate.path, PROVIDER_PRESENCE_FEATURE
+                ));
+            }
+        } else {
+            violations.push(format!(
+                "mode-selector: `{}` ({}) declares feature `{}` — \
+                 the provider-presence feature must ONLY appear in `apps/*` manifests, \
+                 never outside",
+                krate.name, krate.path, PROVIDER_PRESENCE_FEATURE
+            ));
+        }
+    }
+
+    Ok(violations)
+}
+
+/// Returns `true` when `manifest_text` (a `Cargo.toml` file) appears to
+/// declare `feature_name` in a `[features]` section.
+///
+/// The scan is intentionally conservative: it looks for the feature name as a
+/// key on its own line inside a `[features]` block, stripping TOML line
+/// comments via `toml::strip_comment`.  False negatives are possible for
+/// unusual TOML layouts (multi-line feature definitions); false positives are
+/// unlikely given the feature name is project-specific.
+#[must_use]
+fn manifest_contains_feature(manifest_text: &str, feature_name: &str) -> bool {
+    let mut in_features = false;
+    for raw_line in manifest_text.lines() {
+        let line = toml::strip_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') {
+            // Track whether we are inside a [features] section.
+            // Matches `[features]` exactly; `[features.*]` (e.g. future inline
+            // sub-tables) would be an unusual TOML shape and is not supported.
+            in_features = line == "[features]";
+            continue;
+        }
+        if !in_features {
+            continue;
+        }
+        // Inside [features]: check whether this line declares our feature name.
+        // Canonical form: `feature-name = []` or `feature-name = ["dep"]`.
+        // We test that the trimmed line starts with the feature name followed
+        // immediately (after optional whitespace) by `=`.
+        if line.starts_with(feature_name) {
+            let after = line[feature_name.len()..].trim_start();
+            if after.starts_with('=') {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]
