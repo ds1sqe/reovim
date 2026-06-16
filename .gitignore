@@ -1,9 +1,9 @@
 /target
 arch/tests/fixtures/target/
-server/lib/kernel/tests/fixtures/target/
-server/lib/server/tests/fixtures/target/
+editor/lib/kernel/tests/fixtures/target/
+editor/lib/server/tests/fixtures/target/
 apps/target/
-ext/client/platforms/tui/tests/fixtures/target/
+client/platforms/tui/tests/fixtures/target/
 tmp/
 COVERAGE.md
 COVERAGE-SERVER.md

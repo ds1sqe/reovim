@@ -14,12 +14,12 @@ members = [
     # Down-face platform contract: the #[repr(C)] handle vtable arch implements
     # (SP02, arch → kabi). A leaf — depends on nothing impl-side.
     "kabi/platform",
-    "server/lib/subsys/domain",
-    "server/lib/kernel",
-    "server/lib/server",
-    "ext/server/domain/text",
+    "editor/lib/subsys/domain",
+    "editor/lib/kernel",
+    "editor/lib/server",
+    "editor/domains/text",
     # TUI platform runtime — thin UDS client + raw-termios ANSI paint (#797 Phase 4).
-    "ext/client/platforms/tui",
+    "client/platforms/tui",
     # DEV2 E2E exec harness — bootstrap-state-1 std orchestration (#797 Phase 5).
     "tools/testing",
 ]
@@ -35,7 +35,7 @@ members = [
 # `apps/reovim` are `#![no_std] #![no_main]` bins with `reovim-arch/runtime`,
 # and their `runtime` feature must not unify onto the parent workspace's `arch`
 # rlib used by libtest builds (#797 Phase 4).
-exclude = ["archive", "arch/tests/fixtures", "server/lib/kernel/tests/fixtures", "server/lib/server/tests/fixtures", "apps", "ext/client/platforms/tui/tests/fixtures"]
+exclude = ["archive", "arch/tests/fixtures", "editor/lib/kernel/tests/fixtures", "editor/lib/server/tests/fixtures", "apps", "client/platforms/tui/tests/fixtures"]
 
 [workspace.package]
 rust-version = "1.92"

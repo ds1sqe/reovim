@@ -169,25 +169,25 @@ fn category_table_mirrors_spec_1_2_section_1() {
     assert!(has("uapi/*", Category::Foundation));
 
     // Server tier.
-    assert!(has("server/lib/subsys/*", Category::ServerContracts));
-    assert!(has("server/lib/kernel/*", Category::ServerKernel));
-    // Amended 1.2 §1: server/lib/server/* = "Framed-protocol and dispatch glue" (ServerRuntime).
-    assert!(has("server/lib/server/*", Category::ServerRuntime));
+    assert!(has("editor/lib/subsys/*", Category::ServerContracts));
+    assert!(has("editor/lib/kernel/*", Category::ServerKernel));
+    // Amended 1.2 §1: editor/lib/server/* = "Framed-protocol and dispatch glue" (ServerRuntime).
+    assert!(has("editor/lib/server/*", Category::ServerRuntime));
 
     // Client contracts.
-    assert!(has("clients/lib/subsys/*", Category::ClientContracts));
+    assert!(has("client/lib/subsys/*", Category::ClientContracts));
 
     // Server extensions (four sub-paths).
-    assert!(has("ext/server/modules/*", Category::ServerExt));
-    assert!(has("ext/server/drivers/*", Category::ServerExt));
-    assert!(has("ext/server/providers/*", Category::ServerExt));
-    assert!(has("ext/server/domain/*", Category::ServerExt));
+    assert!(has("editor/modules/*", Category::ServerExt));
+    assert!(has("editor/drivers/*", Category::ServerExt));
+    assert!(has("editor/providers/*", Category::ServerExt));
+    assert!(has("editor/domains/*", Category::ServerExt));
 
     // Client extensions — exactly four categories per amended 1.2 §1.
-    assert!(has("ext/client/platforms/*", Category::ClientExt));
-    assert!(has("ext/client/driver/*", Category::ClientExt));
-    assert!(has("ext/client/module/*", Category::ClientExt));
-    assert!(has("ext/client/capabilities/*", Category::ClientExt));
+    assert!(has("client/platforms/*", Category::ClientExt));
+    assert!(has("client/drivers/*", Category::ClientExt));
+    assert!(has("client/modules/*", Category::ClientExt));
+    assert!(has("client/capabilities/*", Category::ClientExt));
 
     // Composition roots and tools.
     assert!(has("apps/*", Category::Apps));
@@ -219,18 +219,18 @@ fn classify_every_category() {
         ("arch", Category::Foundation),
         ("lib/depgraph", Category::Foundation),
         ("uapi/protocol", Category::Foundation),
-        ("server/lib/subsys/mm", Category::ServerContracts),
-        ("server/lib/kernel/core", Category::ServerKernel),
-        ("server/lib/server/grpc", Category::ServerRuntime),
-        ("clients/lib/subsys/module", Category::ClientContracts),
-        ("ext/server/modules/vim", Category::ServerExt),
-        ("ext/server/drivers/display", Category::ServerExt),
-        ("ext/server/providers/text", Category::ServerExt),
-        ("ext/server/domain/text", Category::ServerExt),
-        ("ext/client/platforms/tui", Category::ClientExt),
-        ("ext/client/driver/render", Category::ClientExt),
-        ("ext/client/module/vim", Category::ClientExt),
-        ("ext/client/capabilities/cell", Category::ClientExt),
+        ("editor/lib/subsys/mm", Category::ServerContracts),
+        ("editor/lib/kernel/core", Category::ServerKernel),
+        ("editor/lib/server/grpc", Category::ServerRuntime),
+        ("client/lib/subsys/module", Category::ClientContracts),
+        ("editor/modules/vim", Category::ServerExt),
+        ("editor/drivers/display", Category::ServerExt),
+        ("editor/providers/text", Category::ServerExt),
+        ("editor/domains/text", Category::ServerExt),
+        ("client/platforms/tui", Category::ClientExt),
+        ("client/drivers/render", Category::ClientExt),
+        ("client/modules/vim", Category::ClientExt),
+        ("client/capabilities/cell", Category::ClientExt),
         ("apps/server", Category::Apps),
         ("tools/testing", Category::Tools),
     ];
@@ -239,12 +239,12 @@ fn classify_every_category() {
     }
 }
 
-/// Asserts that `server/lib/server/*` maps to `ServerRuntime` (amended
+/// Asserts that `editor/lib/server/*` maps to `ServerRuntime` (amended
 /// 1.2 §1: "Framed-protocol and dispatch glue").
 #[test]
-fn server_runtime_category_is_server_lib_server() {
+fn server_runtime_category_is_editor_lib_server() {
     let t = table();
-    assert_eq!(classify("server/lib/server/dispatch", &t).unwrap(), Category::ServerRuntime,);
+    assert_eq!(classify("editor/lib/server/dispatch", &t).unwrap(), Category::ServerRuntime,);
 }
 
 #[test]
@@ -1787,14 +1787,14 @@ fn dag6_unreadable_crate_root_fails_closed() {
 fn synthetic_contracts_to_kernel_dep_is_forbidden_edge() {
     let td = TempDir::new();
     let root = td.path();
-    let kernel_dir = root.join("server/lib/kernel");
+    let kernel_dir = root.join("editor/lib/kernel");
     std::fs::create_dir_all(&kernel_dir).unwrap();
     std::fs::write(
         kernel_dir.join("Cargo.toml"),
         "[package]\nname = \"reovim-kernel\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .unwrap();
-    let contracts_dir = root.join("server/lib/subsys/bad");
+    let contracts_dir = root.join("editor/lib/subsys/bad");
     std::fs::create_dir_all(&contracts_dir).unwrap();
     std::fs::write(
         contracts_dir.join("Cargo.toml"),

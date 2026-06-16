@@ -40,7 +40,7 @@ reovim-subsys-domain = { path = "../../../../subsys/domain", features = ["selfte
 # (Phase 2, #797). The kernel crate has NO dep on this crate (core/ext boundary);
 # the bin links it here to provide the `&'static dyn` trait objects used in
 # `session_tests.rs` under `cfg(feature = "selftest")`.
-reovim-domain-text = { path = "../../../../../../ext/server/domain/text", features = ["selftest"] }
+reovim-domain-text = { path = "../../../../../../editor/domains/text", features = ["selftest"] }
 
 [lints]
 workspace = true

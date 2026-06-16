@@ -64,7 +64,7 @@ fn dag1_unknown_path_crate_produces_unknown_path_violation() {
 
 // ── DAG2: ForbiddenEdge ───────────────────────────────────────────────────────
 
-/// DAG2: `lib/alpha` (Foundation) → `server/lib/kernel/beta` (`ServerKernel`)
+/// DAG2: `lib/alpha` (Foundation) → `editor/lib/kernel/beta` (`ServerKernel`)
 /// is a forbidden edge: Foundation may not depend on `ServerKernel`.
 /// Spec 1.2 §2: Foundation has no allowed outbound categories.
 #[test]
@@ -74,18 +74,18 @@ fn dag2_lib_to_server_kernel_produces_forbidden_edge_violation() {
     common::write_file(
         root,
         "Cargo.toml",
-        &root_workspace_toml(r#""lib/alpha", "server/lib/kernel/beta""#),
+        &root_workspace_toml(r#""lib/alpha", "editor/lib/kernel/beta""#),
     );
-    // lib/alpha depends on server/lib/kernel/beta (forbidden: Foundation → ServerKernel).
+    // lib/alpha depends on editor/lib/kernel/beta (forbidden: Foundation → ServerKernel).
     common::write_file(
         root,
         "lib/alpha/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nbeta = {{ path = \"../../server/lib/kernel/beta\" }}\n",
+            "{}\n[dependencies]\nbeta = {{ path = \"../../editor/lib/kernel/beta\" }}\n",
             pkg_toml("alpha")
         ),
     );
-    common::write_file(root, "server/lib/kernel/beta/Cargo.toml", &pkg_toml("beta"));
+    common::write_file(root, "editor/lib/kernel/beta/Cargo.toml", &pkg_toml("beta"));
 
     let config = empty_config();
     let report = run_probe(root, &config).expect("probe must run");
@@ -114,7 +114,7 @@ fn dag2_lib_to_server_kernel_produces_forbidden_edge_violation() {
 
 // ── DAG3: UncatalogedCompositionEdge ─────────────────────────────────────────
 
-/// DAG3: `apps/cli` (Apps) → `ext/client/driver/foo` (`ClientExt`) with an
+/// DAG3: `apps/cli` (Apps) → `client/drivers/foo` (`ClientExt`) with an
 /// empty composition catalog must produce `UncatalogedCompositionEdge`.
 /// Spec 1.2 §3/§7: every composition root edge must be cataloged.
 #[test]
@@ -124,17 +124,17 @@ fn dag3_uncataloged_composition_edge_produces_violation() {
     common::write_file(
         root,
         "Cargo.toml",
-        &root_workspace_toml(r#""apps/cli", "ext/client/driver/foo""#),
+        &root_workspace_toml(r#""apps/cli", "client/drivers/foo""#),
     );
     common::write_file(
         root,
         "apps/cli/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-driver-foo = {{ path = \"../../ext/client/driver/foo\" }}\n",
+            "{}\n[dependencies]\nreovim-driver-foo = {{ path = \"../../client/drivers/foo\" }}\n",
             pkg_toml("reovim-cli")
         ),
     );
-    common::write_file(root, "ext/client/driver/foo/Cargo.toml", &pkg_toml("reovim-driver-foo"));
+    common::write_file(root, "client/drivers/foo/Cargo.toml", &pkg_toml("reovim-driver-foo"));
 
     // Empty composition catalog — no edge granted.
     let config = ProbeConfig {

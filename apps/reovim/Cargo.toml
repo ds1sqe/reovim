@@ -25,12 +25,12 @@ reovim-arch         = { path = "../../arch", features = ["runtime"] }
 # Heap-DS algorithms (Shared) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds       = { path = "../../lib/ds" }
 # TUI platform runtime.
-reovim-platform-tui = { path = "../../ext/client/platforms/tui" }
+reovim-platform-tui = { path = "../../client/platforms/tui" }
 # Server-side kernel + runtime.
-reovim-kernel       = { path = "../../server/lib/kernel" }
-reovim-server-rt    = { path = "../../server/lib/server" }
+reovim-kernel       = { path = "../../editor/lib/kernel" }
+reovim-server-rt    = { path = "../../editor/lib/server" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).
-reovim-domain-text  = { path = "../../ext/server/domain/text" }
+reovim-domain-text  = { path = "../../editor/domains/text" }
 # uapi types needed to resolve socket path.
 reovim-uapi-abi     = { path = "../../uapi/abi" }
 

@@ -60,17 +60,17 @@ const DAG6_BOOTSTRAP_EXCLUSIONS: &[&str] = &[
 pub enum Category {
     /// `arch/`, `lib/*`, `uapi/*`
     Foundation,
-    /// `server/lib/subsys/*`
+    /// `editor/lib/subsys/*`
     ServerContracts,
-    /// `server/lib/kernel/*`
+    /// `editor/lib/kernel/*`
     ServerKernel,
-    /// `server/lib/server/*` — Framed-protocol and dispatch glue.
+    /// `editor/lib/server/*` — Framed-protocol and dispatch glue.
     ServerRuntime,
-    /// `clients/lib/subsys/*`
+    /// `client/lib/subsys/*`
     ClientContracts,
-    /// `ext/server/{modules,drivers,providers,domain}/*`
+    /// `editor/{modules,drivers,providers,domains}/*`
     ServerExt,
-    /// `ext/client/{platforms,driver,module,capabilities}/*`
+    /// `client/{platforms,drivers,modules,capabilities}/*`
     ClientExt,
     /// `apps/*`
     Apps,
@@ -122,28 +122,10 @@ pub fn default_category_table() -> Vec<(String, Category)> {
         // lands and a real category is needed.  Revisit when system/ has sub-crates.
         ("system/*", Category::Foundation),
         ("uapi/*", Category::Foundation),
-        ("server/lib/subsys/*", Category::ServerContracts),
-        // The kernel crate lives directly at server/lib/kernel (exact match);
-        // future sub-crates would match the wildcard form below.
-        ("server/lib/kernel", Category::ServerKernel),
-        ("server/lib/kernel/*", Category::ServerKernel),
-        // The runtime crate lives directly at server/lib/server (exact
-        // match), same shape as the kernel entry above.
-        ("server/lib/server", Category::ServerRuntime),
-        ("server/lib/server/*", Category::ServerRuntime),
-        ("clients/lib/subsys/*", Category::ClientContracts),
-        ("ext/server/modules/*", Category::ServerExt),
-        ("ext/server/drivers/*", Category::ServerExt),
-        ("ext/server/providers/*", Category::ServerExt),
-        ("ext/server/domain/*", Category::ServerExt),
-        ("ext/client/platforms/*", Category::ClientExt),
-        ("ext/client/driver/*", Category::ClientExt),
-        ("ext/client/module/*", Category::ClientExt),
-        ("ext/client/capabilities/*", Category::ClientExt),
-        // ── SP04 post-rename paths ───────────────────────────────────────────
-        // These rows pre-classify the new tree that SP04's `git mv` produces so
-        // that path classification is correct the instant each crate lands.  They
-        // are inert until SP04 creates crates under these paths.
+        // ── Settled tree paths (SP04 `git mv` binds these) ───────────────────
+        // The editor/** and client/** rows classify the renamed crates; the old
+        // server/lib/*, ext/server/*, and ext/client/* rows were removed in SP04
+        // because they match no crate after the rename.
         ("editor/lib/subsys/*", Category::ServerContracts),
         // editor/lib/kernel (exact) + wildcard for sub-crates.
         ("editor/lib/kernel", Category::ServerKernel),
@@ -243,9 +225,9 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
 /// // Wildcard does not match the parent itself.
 /// assert!(!pattern_matches("lib/*", "lib"));
 /// // Deep path under a wildcard.
-/// assert!(pattern_matches("ext/server/modules/*", "ext/server/modules/vim"));
+/// assert!(pattern_matches("editor/modules/*", "editor/modules/vim"));
 /// // No match for a sibling.
-/// assert!(!pattern_matches("apps/*", "ext/client/module/foo"));
+/// assert!(!pattern_matches("apps/*", "client/modules/foo"));
 /// ```
 #[must_use]
 pub fn pattern_matches(pattern: &str, path: &str) -> bool {
@@ -1073,8 +1055,8 @@ pub fn classify(path: &str, table: &[(String, Category)]) -> Result<Category, Vi
         [(_, category)] => Ok(*category),
         many => {
             // Ambiguity is a CATEGORY conflict, not pattern overlap: an exact
-            // entry and its own wildcard (e.g. `server/lib/kernel` and
-            // `server/lib/kernel/*`, both server-kernel) agree, and agreement
+            // entry and its own wildcard (e.g. `editor/lib/kernel` and
+            // `editor/lib/kernel/*`, both server-kernel) agree, and agreement
             // is a classification, not a violation.
             let first = many[0].1;
             if many.iter().all(|(_, c)| *c == first) {
@@ -1880,9 +1862,9 @@ fn path_starts_with(path: &str, prefix: &str) -> bool {
 ///
 /// Note: the check is path-component-prefix only — the swap-set directory must
 /// be the SECOND component of a workspace-relative path (e.g. `<root>/<set>/<leaf>`).
-/// A crate at `ext/server/drivers/foo` is NOT a swap-set leaf by this rule
-/// (that is the legacy ext/ shape); only post-SP04 `editor/`, `client/`, or
-/// `system/` swap-sets count.
+/// A crate at `editor/lib/kernel` is NOT a swap-set leaf by this rule (its second
+/// component is `lib`, a kernel-internal path, not a swap-set dir); only
+/// `editor/`, `client/`, or `system/` swap-sets count.
 #[must_use]
 fn is_swapset_leaf(path: &str) -> bool {
     // Accepted roots for swap-set leaves.

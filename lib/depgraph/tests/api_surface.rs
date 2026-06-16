@@ -321,21 +321,21 @@ fn foundation_edge_without_grant_produces_ungranted_violation() {
 fn allowlisted_violation_appears_in_report_allowlisted_list() {
     let td = common::TempDir::new();
     let root = td.path();
-    // apps/cli (Apps) → ext/client/driver/foo (ClientExt): uncataloged composition edge.
+    // apps/cli (Apps) → client/drivers/foo (ClientExt): uncataloged composition edge.
     common::write_file(
         root,
         "Cargo.toml",
-        &root_workspace_toml(r#""apps/cli", "ext/client/driver/foo""#),
+        &root_workspace_toml(r#""apps/cli", "client/drivers/foo""#),
     );
     common::write_file(
         root,
         "apps/cli/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-driver-foo = {{ path = \"../../ext/client/driver/foo\" }}\n",
+            "{}\n[dependencies]\nreovim-driver-foo = {{ path = \"../../client/drivers/foo\" }}\n",
             pkg_toml("reovim-cli")
         ),
     );
-    common::write_file(root, "ext/client/driver/foo/Cargo.toml", &pkg_toml("reovim-driver-foo"));
+    common::write_file(root, "client/drivers/foo/Cargo.toml", &pkg_toml("reovim-driver-foo"));
 
     // Allowlist entry covering the uncataloged edge.
     let allowlist = Allowlist {
@@ -726,11 +726,11 @@ fn cataloged_composition_edge_passes() {
         root,
         "apps/cli/Cargo.toml",
         &format!(
-            "{}\n[dependencies]\nreovim-ext-thing = {{ path = \"../../ext/client/driver/thing\" }}\n",
+            "{}\n[dependencies]\nreovim-ext-thing = {{ path = \"../../client/drivers/thing\" }}\n",
             pkg_toml("reovim-cli")
         ),
     );
-    common::write_file(root, "ext/client/driver/thing/Cargo.toml", &pkg_toml("reovim-ext-thing"));
+    common::write_file(root, "client/drivers/thing/Cargo.toml", &pkg_toml("reovim-ext-thing"));
 
     let mut config = ProbeConfig {
         category_table: default_category_table(),
@@ -790,13 +790,13 @@ fn allowed_category_edge_passes() {
     let root = td.path();
     common::write_file(
         root,
-        "server/lib/kernel/core/Cargo.toml",
+        "editor/lib/kernel/core/Cargo.toml",
         &format!(
             "{}\n[dependencies]\nreovim-subsys-x = {{ path = \"../../subsys/x\" }}\n",
             pkg_toml("reovim-kernel-core")
         ),
     );
-    common::write_file(root, "server/lib/subsys/x/Cargo.toml", &pkg_toml("reovim-subsys-x"));
+    common::write_file(root, "editor/lib/subsys/x/Cargo.toml", &pkg_toml("reovim-subsys-x"));
 
     let config = ProbeConfig {
         category_table: default_category_table(),

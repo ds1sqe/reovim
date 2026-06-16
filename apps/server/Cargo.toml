@@ -24,10 +24,10 @@ doctest = false
 reovim-arch      = { path = "../../arch", features = ["runtime"] }
 # Heap-DS algorithms (Shared) relocated from `reovim_arch::ds` (SP03).
 reovim-lib-ds    = { path = "../../lib/ds" }
-reovim-kernel    = { path = "../../server/lib/kernel" }
-reovim-server-rt = { path = "../../server/lib/server" }
+reovim-kernel    = { path = "../../editor/lib/kernel" }
+reovim-server-rt = { path = "../../editor/lib/server" }
 # Text Domain (ext crate; only composition roots link it — core/ext boundary).
-reovim-domain-text = { path = "../../ext/server/domain/text" }
+reovim-domain-text = { path = "../../editor/domains/text" }
 reovim-uapi-abi    = { path = "../../uapi/abi" }
 
 [lints]

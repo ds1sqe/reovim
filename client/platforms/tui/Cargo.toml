@@ -16,11 +16,11 @@ default = []
 selftest = ["reovim-arch/selftest"]
 
 [dependencies]
-reovim-arch         = { path = "../../../../arch" }
+reovim-arch         = { path = "../../../arch" }
 # Heap-DS algorithms (Seq/Bytes) relocated from `reovim_arch::ds` (SP03).
-reovim-lib-ds       = { path = "../../../../lib/ds" }
-reovim-uapi-abi     = { path = "../../../../uapi/abi" }
-reovim-uapi-protocol = { path = "../../../../uapi/protocol" }
+reovim-lib-ds       = { path = "../../../lib/ds" }
+reovim-uapi-abi     = { path = "../../../uapi/abi" }
+reovim-uapi-protocol = { path = "../../../uapi/protocol" }
 
 [lints]
 workspace = true
