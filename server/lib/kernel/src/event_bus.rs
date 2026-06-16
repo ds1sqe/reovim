@@ -163,6 +163,15 @@ pub const EVT_BOOT_STAGE_OK: &str = "boot.stage.ok";
 /// ```
 pub const EVT_BOOT_STAGE_FAIL: &str = "boot.stage.fail";
 
+/// DS12 carrier validation failure event (CR6/CR19).
+///
+/// ```rust
+/// use reovim_kernel::event_bus::EVT_CARRIER_VALIDATION_ERROR;
+///
+/// assert!(EVT_CARRIER_VALIDATION_ERROR.contains("carrier"));
+/// ```
+pub const EVT_CARRIER_VALIDATION_ERROR: &str = "carrier.validation.error";
+
 // ── Subscriber type ──────────────────────────────────────────────────────────
 
 /// A DS12 subscriber callback: a function pointer invoked for every event

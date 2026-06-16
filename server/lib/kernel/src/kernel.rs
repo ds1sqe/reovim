@@ -19,8 +19,10 @@
 //! | `boot_anchor` | yes | — |
 //! | `event_bus` | yes | — |
 //! | `log_ring` | yes | — |
-//! | `session` | yes (#797) | multi-session map (Phase 4) |
+//! | `session` | yes (#797 compatibility) | retained until server runtime moves to `sessions` |
+//! | `sessions` | yes (#798 Phase 3 subset) | full layout operations |
 //! | `domain_router` | yes (#797, subset) | full router (Phase 4) |
+//! | `state` | yes (#798, Phase 3 subset) | full state hostapi |
 //! | `config` | placeholder `()` | config service |
 //! | `lockfile` | placeholder `()` | lockfile / library-root feature |
 //! | `inventory` | placeholder `()` | module/driver discovery |
@@ -28,13 +30,35 @@
 //! | `force_overrides` | placeholder `()` | config service |
 
 use {
-    reovim_arch::{ds::Shared, sync::RwLock},
-    reovim_uapi_abi::AbiVersion,
+    reovim_arch::{
+        ds::{Bytes, Shared},
+        sync::RwLock,
+    },
+    reovim_subsys_domain::{
+        carrier::{CarrierStatus, CursorCarrier, PositionCarrier},
+        id::{
+            BufferId, CdylibId as StateCdylibId, ClientId, RegisterId, ServiceKey, ServiceLeaseId,
+            StreamId, WindowId,
+        },
+        routing::RegistrationPhase,
+        service::{ServiceAccessError, ServiceBorrow, ServiceDescriptorMeta, ServiceLease},
+        state::{EditOrigin, RegisterScope, UndoGroupId, ViewSlotFlags, ViewSlotKey},
+        stream::{BackpressureCounters, StreamControlClass, StreamControlOp, StreamScheme},
+    },
+    reovim_uapi_abi::{AbiVersion, error::LogLevel},
 };
 
 use crate::{
-    BootClock, event_bus::DS12EventBus, log::ring::LogRing, router::DomainRouter, session::Session,
+    BootClock,
+    event_bus::{BootStageFields, DS12Event, DS12EventBus, EVT_CARRIER_VALIDATION_ERROR},
+    log::ring::LogRing,
+    router::{CdylibId, DomainApiVersion, DomainManifest, DomainRouter, HandlerId, ProjectorId},
+    session::{DispatchRoutes, Session, SessionId, SessionTable},
+    state::{ServiceCallToken, StateSubstrate, ViewSlotRecord},
 };
+
+const STATIC_OWNER: CdylibId = CdylibId::new(core::num::NonZeroU32::MIN);
+const STATIC_OWNER_ORDER: u32 = 0;
 
 // ── Current ABI version ──────────────────────────────────────────────────────
 
@@ -173,6 +197,9 @@ pub struct Kernel {
     /// reference without borrowing `Kernel`.
     pub session: Shared<Session>,
 
+    /// Phase 3 session table: multiple live sessions with per-session locks.
+    pub sessions: Shared<RwLock<SessionTable>>,
+
     /// `DomainRouter` SUBSET — `intern_named`/`name_of` + one handler row +
     /// one projector row (§4.1 subset note, #797).
     ///
@@ -180,6 +207,10 @@ pub struct Kernel {
     /// composition root can register under write. No interior mut inside
     /// `DomainRouter` itself.
     pub domain_router: Shared<RwLock<DomainRouter>>,
+
+    /// Phase 3 state substrate: byte buffers, registers, view slots, and
+    /// service leases.
+    pub state: Shared<RwLock<StateSubstrate>>,
 
     // ── Deferred placeholders (filled by their respective features) ──────────
     // Named as `()` rather than fabricated registry types: rule of three —
@@ -202,6 +233,17 @@ pub struct Kernel {
     pub force_overrides: (),
 }
 
+pub(crate) struct KernelParts {
+    pub abi_shared: Shared<KernelAbi>,
+    pub boot_anchor: BootClock,
+    pub event_bus: Shared<DS12EventBus>,
+    pub log_ring: Shared<LogRing>,
+    pub session: Shared<Session>,
+    pub sessions: Shared<RwLock<SessionTable>>,
+    pub domain_router: Shared<RwLock<DomainRouter>>,
+    pub state: Shared<RwLock<StateSubstrate>>,
+}
+
 impl Kernel {
     /// Constructs a `Kernel` from the fields moved out of `Init` at the
     /// handoff (stage 7).
@@ -214,21 +256,16 @@ impl Kernel {
     /// ```rust,no_run
     /// // no_run: pub(crate) — only Init::boot is the intended caller (LF13).
     /// ```
-    pub(crate) const fn new(
-        abi: Shared<KernelAbi>,
-        boot_anchor: BootClock,
-        event_bus: Shared<DS12EventBus>,
-        log_ring: Shared<LogRing>,
-        session: Shared<Session>,
-        domain_router: Shared<RwLock<DomainRouter>>,
-    ) -> Self {
+    pub(crate) fn new(parts: KernelParts) -> Self {
         Self {
-            abi,
-            boot_anchor,
-            event_bus,
-            log_ring,
-            session,
-            domain_router,
+            abi: parts.abi_shared,
+            boot_anchor: parts.boot_anchor,
+            event_bus: parts.event_bus,
+            log_ring: parts.log_ring,
+            session: parts.session,
+            sessions: parts.sessions,
+            domain_router: parts.domain_router,
+            state: parts.state,
             config: (),
             lockfile: (),
             inventory: (),
@@ -262,8 +299,25 @@ impl Kernel {
     ) -> Result<crate::router::DomainId, &'static str> {
         let mut router = self.domain_router.write();
         let id = router.intern_named(name)?;
-        router.register_handler(id, handler);
-        router.register_projector(id, projector);
+        router.register_static_owner(STATIC_OWNER, STATIC_OWNER_ORDER)?;
+        let mut manifest = DomainManifest::new(
+            id,
+            Bytes::try_from_slice(name.as_bytes()).map_err(|_| "alloc")?,
+            STATIC_OWNER,
+            DomainApiVersion::new(0, 16),
+        );
+        manifest
+            .handler_kinds
+            .try_push(HandlerId::OnRawInput)
+            .map_err(|_| "alloc")?;
+        manifest
+            .projector_kinds
+            .try_push(ProjectorId::Render)
+            .map_err(|_| "alloc")?;
+        router.register_manifest(manifest)?;
+        router.register_handler(id, handler)?;
+        router.register_projector(id, projector)?;
+        router.activate_owner(STATIC_OWNER)?;
         Ok(id)
     }
 
@@ -280,6 +334,668 @@ impl Kernel {
     pub fn setup_session(&self, state: crate::session::SessionState) {
         let mut guard = self.session.state.lock();
         *guard = state;
+    }
+
+    /// Creates a new session-table entry rooted at `root_domain_id`.
+    ///
+    /// The returned session has fresh client, buffer, and window ids and a
+    /// matching empty buffer record in [`StateSubstrate`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an allocation or state-substrate error if either table cannot
+    /// grow.
+    pub fn create_session(
+        &self,
+        root_domain_id: crate::router::DomainId,
+    ) -> Result<SessionId, &'static str> {
+        let session = {
+            let mut sessions = self.sessions.write();
+            sessions.create_session(root_domain_id)?
+        };
+        let buffer_id = {
+            let guard = session.state.lock();
+            guard.buffer_id
+        };
+        let mut state = self.state.write();
+        state.ensure_buffer(buffer_id)?;
+        Ok(session.id)
+    }
+
+    /// Returns a shared session-table handle.
+    #[must_use]
+    pub fn session_by_id(&self, id: SessionId) -> Option<Shared<Session>> {
+        let sessions = self.sessions.read();
+        sessions.get(id)
+    }
+
+    fn static_owner_phase(
+        &self,
+        owner_cdylib_id: StateCdylibId,
+    ) -> Result<RegistrationPhase, &'static str> {
+        let router = self.domain_router.read();
+        router
+            .owner_record(owner_cdylib_id)
+            .map(|record| record.phase)
+            .ok_or("owner: missing static owner")
+    }
+
+    fn emit_carrier_validation_error(&self, source_id: u32) {
+        let error_code = i32::try_from(source_id).unwrap_or(i32::MAX);
+        let event = DS12Event {
+            ts_nanos: self.boot_anchor.elapsed_nanos(),
+            level: LogLevel::Warn,
+            event: EVT_CARRIER_VALIDATION_ERROR,
+            fields: BootStageFields {
+                stage: 0,
+                error_code: Some(error_code),
+            },
+        };
+        self.event_bus.emit(&event);
+    }
+
+    /// Registers a position-carrier codec row during static owner init.
+    ///
+    /// # Errors
+    ///
+    /// Returns an owner-phase, limit, duplicate-row, or allocation error.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and a static owner init window.
+    /// ```
+    pub fn hostapi_position_codec_register(
+        &self,
+        domain_id: crate::router::DomainId,
+        inner_id: u16,
+        owner_cdylib_id: StateCdylibId,
+        owner_generation: u64,
+        max_content_bytes: usize,
+    ) -> Result<(), &'static str> {
+        if self.static_owner_phase(owner_cdylib_id)? != RegistrationPhase::Init {
+            return Err("codec: registration outside init");
+        }
+        let mut state = self.state.write();
+        state.register_position_codec(
+            domain_id,
+            inner_id,
+            owner_cdylib_id,
+            owner_generation,
+            max_content_bytes,
+        )
+    }
+
+    /// Registers a cursor-carrier codec row during static owner init.
+    ///
+    /// # Errors
+    ///
+    /// Returns an owner-phase, limit, duplicate-row, or allocation error.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and a static owner init window.
+    /// ```
+    pub fn hostapi_cursor_codec_register(
+        &self,
+        domain_id: crate::router::DomainId,
+        inner_id: u16,
+        owner_cdylib_id: StateCdylibId,
+        owner_generation: u64,
+        max_content_bytes: usize,
+    ) -> Result<(), &'static str> {
+        if self.static_owner_phase(owner_cdylib_id)? != RegistrationPhase::Init {
+            return Err("codec: registration outside init");
+        }
+        let mut state = self.state.write();
+        state.register_cursor_codec(
+            domain_id,
+            inner_id,
+            owner_cdylib_id,
+            owner_generation,
+            max_content_bytes,
+        )
+    }
+
+    /// Simulates codec-owner revocation; matching carriers validate as opaque.
+    ///
+    /// # Errors
+    ///
+    /// Returns an allocation error if the temporary row list cannot grow.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and registered codec rows.
+    /// ```
+    pub fn hostapi_codec_revoke_owner(
+        &self,
+        owner_cdylib_id: StateCdylibId,
+        next_generation: u64,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state.revoke_codec_owner(owner_cdylib_id, next_generation)
+    }
+
+    /// Validates a position carrier at a kernel ingress boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("carrier: invalid")` for malformed or over-cap carriers,
+    /// and allocation errors from validation-event rate bookkeeping.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime.
+    /// ```
+    pub fn hostapi_validate_position_carrier(
+        &self,
+        session_id: SessionId,
+        source_id: u32,
+        now_ms: u64,
+        carrier: &PositionCarrier,
+    ) -> Result<CarrierStatus, &'static str> {
+        let report = {
+            let mut state = self.state.write();
+            state.validate_position_carrier(session_id, source_id, now_ms, carrier)?
+        };
+        if report.emit_ds12 {
+            self.emit_carrier_validation_error(source_id);
+        }
+        if report.status == CarrierStatus::Invalid {
+            Err("carrier: invalid")
+        } else {
+            Ok(report.status)
+        }
+    }
+
+    /// Validates a cursor carrier at a kernel ingress boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("carrier: invalid")` for malformed or over-cap carriers,
+    /// and allocation errors from validation-event rate bookkeeping.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime.
+    /// ```
+    pub fn hostapi_validate_cursor_carrier(
+        &self,
+        session_id: SessionId,
+        source_id: u32,
+        now_ms: u64,
+        carrier: &CursorCarrier,
+    ) -> Result<CarrierStatus, &'static str> {
+        let report = {
+            let mut state = self.state.write();
+            state.validate_cursor_carrier(session_id, source_id, now_ms, carrier)?
+        };
+        if report.emit_ds12 {
+            self.emit_carrier_validation_error(source_id);
+        }
+        if report.status == CarrierStatus::Invalid {
+            Err("carrier: invalid")
+        } else {
+            Ok(report.status)
+        }
+    }
+
+    /// Registers a stream scheme during static owner init.
+    ///
+    /// # Errors
+    ///
+    /// Returns an owner-phase, duplicate-name, limit, or allocation error.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and a static owner init window.
+    /// ```
+    pub fn hostapi_stream_scheme_register(&self, scheme: StreamScheme) -> Result<(), &'static str> {
+        let phase = self.static_owner_phase(scheme.owner_cdylib_id)?;
+        let mut state = self.state.write();
+        state.register_stream_scheme(scheme, phase)
+    }
+
+    /// Opens a stream handle for a registered scheme name.
+    ///
+    /// # Errors
+    ///
+    /// Returns missing-scheme, limit, id-overflow, or allocation errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and registered stream scheme.
+    /// ```
+    pub fn hostapi_stream_open(
+        &self,
+        scheme_name: &[u8],
+        session_id: Option<SessionId>,
+        buffer_id: Option<BufferId>,
+    ) -> Result<StreamId, &'static str> {
+        let mut state = self.state.write();
+        state.open_stream(scheme_name, session_id, buffer_id)
+    }
+
+    /// Adds a per-buffer subscription to a stream handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns missing-stream, limit, or allocation errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_subscribe(
+        &self,
+        stream_id: StreamId,
+        session_id: SessionId,
+        buffer_id: BufferId,
+        max_buffered_bytes: usize,
+    ) -> Result<bool, &'static str> {
+        let mut state = self.state.write();
+        state.stream_subscribe(stream_id, session_id, buffer_id, max_buffered_bytes)
+    }
+
+    /// Emits bytes into a stream's kernel-owned subscription queues.
+    ///
+    /// # Errors
+    ///
+    /// Returns stale/closed, backpressure, missing-stream, or allocation errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_emit(
+        &self,
+        stream_id: StreamId,
+        bytes: &[u8],
+        now_ms: u64,
+    ) -> Result<BackpressureCounters, &'static str> {
+        let mut state = self.state.write();
+        state.stream_emit(stream_id, bytes, now_ms)
+    }
+
+    /// Drains one stream subscription queue.
+    ///
+    /// # Errors
+    ///
+    /// Returns missing-stream errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_drain_subscription(
+        &self,
+        stream_id: StreamId,
+        buffer_id: BufferId,
+        now_ms: u64,
+    ) -> Result<Option<Bytes>, &'static str> {
+        let mut state = self.state.write();
+        state.stream_drain_subscription(stream_id, buffer_id, now_ms)
+    }
+
+    /// Drains one stream subscription through the external byte-edit path.
+    ///
+    /// # Errors
+    ///
+    /// Returns missing-stream, byte-range, cap, or allocation errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream subscription.
+    /// ```
+    pub fn hostapi_stream_drain_to_buffer(
+        &self,
+        stream_id: StreamId,
+        buffer_id: BufferId,
+        now_ms: u64,
+    ) -> Result<bool, &'static str> {
+        let mut state = self.state.write();
+        state.stream_drain_to_buffer(stream_id, buffer_id, now_ms)
+    }
+
+    /// Marks a stream stale after its underlying source ends.
+    ///
+    /// # Errors
+    ///
+    /// Returns a missing-stream error.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_mark_stale(&self, stream_id: StreamId) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.stream_mark_stale(stream_id)
+    }
+
+    /// Classifies and validates a stream control op.
+    ///
+    /// # Errors
+    ///
+    /// Returns missing-stream, invalid-op, or reserved-op errors.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_control_class(
+        &self,
+        stream_id: StreamId,
+        op: StreamControlOp,
+    ) -> Result<StreamControlClass, &'static str> {
+        let state = self.state.read();
+        state.stream_control_class(stream_id, op)
+    }
+
+    /// Closes a stream handle and clears its subscription queues.
+    ///
+    /// # Errors
+    ///
+    /// Returns a missing-stream error.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and an open stream.
+    /// ```
+    pub fn hostapi_stream_close(&self, stream_id: StreamId) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.stream_close(stream_id)
+    }
+
+    /// Simulates stream owner revocation over static owners.
+    ///
+    /// # Errors
+    ///
+    /// Returns allocation errors from temporary bookkeeping.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch runtime and registered stream schemes.
+    /// ```
+    pub fn hostapi_stream_revoke_owner(
+        &self,
+        owner_cdylib_id: StateCdylibId,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state.revoke_stream_owner(owner_cdylib_id)
+    }
+
+    /// HostApi-shaped register set operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation, limit, or allocation errors from the state
+    /// substrate.
+    pub fn hostapi_register_set(
+        &self,
+        scope: RegisterScope,
+        client_id: ClientId,
+        session_id: SessionId,
+        id: RegisterId,
+        carrier: &CursorCarrier,
+    ) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.set_register(scope, client_id, session_id, id, carrier)
+    }
+
+    /// HostApi-shaped register lookup with `client -> session -> system`
+    /// fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if cloning the stored carrier fails.
+    pub fn hostapi_register_get(
+        &self,
+        client_id: ClientId,
+        session_id: SessionId,
+        id: RegisterId,
+    ) -> Result<Option<CursorCarrier>, &'static str> {
+        let state = self.state.read();
+        state.lookup_register_cloned(client_id, session_id, id)
+    }
+
+    /// HostApi-shaped register clear operation.
+    #[must_use]
+    pub fn hostapi_register_clear(
+        &self,
+        scope: RegisterScope,
+        client_id: ClientId,
+        session_id: SessionId,
+        id: RegisterId,
+    ) -> bool {
+        let mut state = self.state.write();
+        state.clear_register(scope, client_id, session_id, id)
+    }
+
+    /// HostApi-shaped view-slot write.
+    ///
+    /// # Errors
+    ///
+    /// Returns limit or allocation errors from the view-slot registry.
+    pub fn hostapi_view_slot_put(
+        &self,
+        key: ViewSlotKey,
+        owner_cdylib_id: StateCdylibId,
+        flags: ViewSlotFlags,
+        bytes: &[u8],
+    ) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.put_view_slot(key, owner_cdylib_id, flags, bytes)
+    }
+
+    /// HostApi-shaped view-slot read by exact key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if cloning the stored slot bytes fails.
+    pub fn hostapi_view_slot_get(
+        &self,
+        key: ViewSlotKey,
+    ) -> Result<Option<ViewSlotRecord>, &'static str> {
+        let state = self.state.read();
+        state.view_slot_cloned(key)
+    }
+
+    /// Drops all view slots for one owner.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if the temporary drop list cannot grow.
+    pub fn hostapi_view_slots_drop_owner(
+        &self,
+        owner_cdylib_id: StateCdylibId,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state.drop_owner_view_slots(owner_cdylib_id)
+    }
+
+    /// Drops all view slots for one window tuple.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if the temporary drop list cannot grow.
+    pub fn hostapi_view_slots_drop_window(
+        &self,
+        client_id: ClientId,
+        buffer_id: BufferId,
+        window_id: WindowId,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state.drop_window_view_slots(client_id, buffer_id, window_id)
+    }
+
+    /// Drops all view slots associated with `buffer_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if the temporary drop list cannot grow.
+    pub fn hostapi_view_slots_drop_buffer(
+        &self,
+        buffer_id: BufferId,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state.drop_buffer_view_slots(buffer_id)
+    }
+
+    /// HostApi-shaped byte-buffer edit.
+    ///
+    /// # Errors
+    ///
+    /// Returns range, cap, or allocation errors from the buffer record.
+    pub fn hostapi_buffer_apply_edit(
+        &self,
+        buffer_id: BufferId,
+        origin: EditOrigin,
+        start: usize,
+        end: usize,
+        new_bytes: &[u8],
+        timestamp_ms: u64,
+    ) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.apply_buffer_edit(buffer_id, origin, start, end, new_bytes, timestamp_ms)
+    }
+
+    /// HostApi-shaped undo group open.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a group is already open, the origin is not recorded,
+    /// or allocation fails.
+    pub fn hostapi_undo_group_open(
+        &self,
+        buffer_id: BufferId,
+        origin: EditOrigin,
+        timestamp_ms: u64,
+    ) -> Result<UndoGroupId, &'static str> {
+        let mut state = self.state.write();
+        state.open_buffer_undo_group(buffer_id, origin, timestamp_ms)
+    }
+
+    /// HostApi-shaped undo group close.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no group is open or buffer creation fails.
+    pub fn hostapi_undo_group_close(&self, buffer_id: BufferId) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.close_buffer_undo_group(buffer_id)
+    }
+
+    /// HostApi-shaped undo operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a group is open or allocation fails.
+    pub fn hostapi_undo(&self, buffer_id: BufferId) -> Result<bool, &'static str> {
+        let mut state = self.state.write();
+        state.undo_buffer(buffer_id)
+    }
+
+    /// HostApi-shaped redo operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if replaying a redo group fails or allocation fails.
+    pub fn hostapi_redo(&self, buffer_id: BufferId) -> Result<bool, &'static str> {
+        let mut state = self.state.write();
+        state.redo_buffer(buffer_id)
+    }
+
+    /// Reads cloned bytes from a kernel-owned buffer record.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if cloning buffer bytes fails.
+    pub fn hostapi_buffer_bytes(&self, buffer_id: BufferId) -> Result<Option<Bytes>, &'static str> {
+        let state = self.state.read();
+        state.buffer_bytes(buffer_id)
+    }
+
+    /// Registers a service row.
+    ///
+    /// # Errors
+    ///
+    /// Returns duplicate-key or allocation errors from the service registry.
+    pub fn hostapi_service_register(
+        &self,
+        meta: ServiceDescriptorMeta,
+        owner_generation: u64,
+    ) -> Result<(), &'static str> {
+        let mut state = self.state.write();
+        state.service_registry.register(meta, owner_generation)
+    }
+
+    /// Performs a borrow-only service lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceAccessError::NotFound`] when no visible row exists.
+    pub fn hostapi_service_borrow(
+        &self,
+        key: ServiceKey,
+    ) -> Result<ServiceBorrow, ServiceAccessError> {
+        let state = self.state.read();
+        state.service_registry.borrow(key)
+    }
+
+    /// Retains a service lease.
+    ///
+    /// # Errors
+    ///
+    /// Returns lookup or allocation errors from the service registry.
+    pub fn hostapi_service_lease(
+        &self,
+        key: ServiceKey,
+        acquired_at_ms: u64,
+    ) -> Result<ServiceLease, ServiceAccessError> {
+        let mut state = self.state.write();
+        state.service_registry.lease(key, acquired_at_ms)
+    }
+
+    /// Releases a retained service lease.
+    #[must_use]
+    pub fn hostapi_service_lease_release(&self, id: ServiceLeaseId) -> bool {
+        let mut state = self.state.write();
+        state.service_registry.release_lease(id)
+    }
+
+    /// Validates a service lease against generation and timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` on timeout and `Stale` for revoked or mismatched rows.
+    pub fn hostapi_service_lease_validate(
+        &self,
+        id: ServiceLeaseId,
+        now_ms: u64,
+    ) -> Result<(), ServiceAccessError> {
+        let state = self.state.read();
+        state.service_registry.validate_lease(id, now_ms)
+    }
+
+    /// Begins a service call after `SEND_SAFE`/`SYNC_SAFE` checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns thread-safety, concurrency, lookup, or stale-generation errors.
+    pub fn hostapi_service_begin_call(
+        &self,
+        key: ServiceKey,
+        caller_thread_id: i32,
+    ) -> Result<ServiceCallToken, ServiceAccessError> {
+        let mut state = self.state.write();
+        state.service_registry.begin_call(key, caller_thread_id)
+    }
+
+    /// Ends a service call token.
+    #[must_use]
+    pub fn hostapi_service_end_call(&self, token: ServiceCallToken) -> bool {
+        let mut state = self.state.write();
+        state.service_registry.end_call(token)
+    }
+
+    /// Simulates owner-scoped service revocation over static owners.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err("alloc")` if the temporary owner-key list cannot grow.
+    pub fn hostapi_service_revoke_owner(
+        &self,
+        owner_cdylib_id: StateCdylibId,
+        next_generation: u64,
+    ) -> Result<usize, &'static str> {
+        let mut state = self.state.write();
+        state
+            .service_registry
+            .revoke_owner(owner_cdylib_id, next_generation)
     }
 
     /// Dispatches a raw-input byte sequence through the session's focus chain,
@@ -300,8 +1016,36 @@ impl Kernel {
         &self,
         input: &[u8],
     ) -> Result<crate::projection::Projection, &'static str> {
-        let router = self.domain_router.read();
-        self.session.dispatch_input(input, &router)
+        let snapshot = self.session.prepare_dispatch(input)?;
+        let routes = {
+            let router = self.domain_router.read();
+            DispatchRoutes::from_router(&snapshot, &router)
+        };
+        self.session.dispatch_prepared(&snapshot, input, &routes)
+    }
+
+    /// Dispatches input through a session-table entry.
+    ///
+    /// The sessions-map and router locks are used only for snapshots and are
+    /// dropped before handler/projector invocation (CC14).
+    ///
+    /// # Errors
+    ///
+    /// Returns a missing-session error or any dispatch/route/projection error.
+    pub fn dispatch_input_for_session(
+        &self,
+        session_id: SessionId,
+        input: &[u8],
+    ) -> Result<crate::projection::Projection, &'static str> {
+        let session = self
+            .session_by_id(session_id)
+            .ok_or("session-table: missing session")?;
+        let snapshot = session.prepare_dispatch(input)?;
+        let routes = {
+            let router = self.domain_router.read();
+            DispatchRoutes::from_router(&snapshot, &router)
+        };
+        session.dispatch_prepared(&snapshot, input, &routes)
     }
 }
 
@@ -316,11 +1060,16 @@ impl Kernel {
 //   it is single-owner) + primitive fields. `Mutex<T>` requires `T: Send`
 //   (not `T: Sync`). `Bytes` is `Send`. So `Mutex<SessionState>: Send + Sync`.
 //   `Session: Send + Sync`. `Shared<Session>: Send + Sync`.
+// - `Shared<RwLock<SessionTable>>`: the map owns `Shared<Session>` handles;
+//   table mutations are behind an `RwLock`, and `Session` is Send+Sync.
 // - `Shared<RwLock<DomainRouter>>`: `DomainRouter` holds `Map<K, V>` where
 //   values are `DomainId`/`Bytes` (both `Send`). `handler`/`projector` are
 //   `&'static dyn … + Send + Sync`. `RwLock<DomainRouter>: Send + Sync` (same
 //   analysis as `Mutex` — `DomainRouter: Send`). `Shared<RwLock<DomainRouter>>:
 //   Send + Sync`.
+// - `Shared<RwLock<StateSubstrate>>`: state maps own `Bytes`, carrier records,
+//   and plain id keys; service metadata is owned bytes + integer flags. The
+//   lock provides interior synchronization and the underlying records are Send.
 // - `()` placeholders: trivially Send+Sync.
 //
 // The compiler derives Send+Sync automatically; no manual `unsafe impl` needed.

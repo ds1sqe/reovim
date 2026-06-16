@@ -48,6 +48,7 @@ pub mod log;
 pub mod projection;
 pub mod router;
 pub mod session;
+pub mod state;
 
 // Re-export the primary entry-point types at the crate root for callers.
 pub use {
@@ -89,6 +90,10 @@ mod router_tests;
 #[cfg(feature = "selftest")]
 #[path = "session_tests.rs"]
 mod session_tests;
+
+#[cfg(feature = "selftest")]
+#[path = "state_tests.rs"]
+mod state_tests;
 
 // `projection.rs` is a re-export of `reovim-subsys-domain` types; its tests and
 // doc-tests live with the types in that crate. No sibling test module here.

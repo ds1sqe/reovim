@@ -14,10 +14,64 @@ use crate::{
     projection::Projection,
 };
 
+/// Explicit result of an `OnRawInput` handler invocation.
+///
+/// ```rust
+/// use reovim_arch::ds::Bytes;
+/// use reovim_subsys_domain::contract::RawInputResult;
+///
+/// let result = RawInputResult::ignored(Bytes::new(), 0);
+/// assert!(!result.claimed);
+/// ```
+pub struct RawInputResult {
+    /// Updated buffer snapshot.
+    pub buffer: Bytes,
+    /// Updated cursor byte offset.
+    pub cursor: usize,
+    /// Whether this handler consumed the input and stops ancestor dispatch.
+    pub claimed: bool,
+}
+
+impl RawInputResult {
+    /// Builds a claimed handler result.
+    ///
+    /// ```rust
+    /// use reovim_arch::ds::Bytes;
+    /// use reovim_subsys_domain::contract::RawInputResult;
+    ///
+    /// assert!(RawInputResult::claimed(Bytes::new(), 0).claimed);
+    /// ```
+    #[must_use]
+    pub const fn claimed(buffer: Bytes, cursor: usize) -> Self {
+        Self {
+            buffer,
+            cursor,
+            claimed: true,
+        }
+    }
+
+    /// Builds an ignored handler result.
+    ///
+    /// ```rust
+    /// use reovim_arch::ds::Bytes;
+    /// use reovim_subsys_domain::contract::RawInputResult;
+    ///
+    /// assert!(!RawInputResult::ignored(Bytes::new(), 0).claimed);
+    /// ```
+    #[must_use]
+    pub const fn ignored(buffer: Bytes, cursor: usize) -> Self {
+        Self {
+            buffer,
+            cursor,
+            claimed: false,
+        }
+    }
+}
+
 /// The `OnRawInput` handler contract (§4.1 §5, walking-skeleton subset).
 ///
 /// Called by `Session::dispatch_input` with the lock NOT held (CC14).
-/// Returns the new buffer bytes and cursor position after applying the input.
+/// Returns an explicit claim/ignore result plus any updated buffer/cursor.
 ///
 /// The implementation MAY allocate (the returned `Bytes` is heap-owned via
 /// `arch::ds::Bytes`). The kernel passes ownership of the snapshot buffer
@@ -27,14 +81,13 @@ use crate::{
 /// // no_run: trait; see TextHandler in reovim-domain-text for a concrete impl.
 /// ```
 pub trait OnRawInputHandler: Send + Sync {
-    /// Applies the raw input bytes to the buffer snapshot, returning the
-    /// updated buffer and cursor position.
+    /// Applies the raw input bytes to the buffer snapshot.
     ///
     /// `buffer`: owned buffer snapshot (rule of three: one handler, so
     /// transferring ownership avoids an unnecessary clone inside the handler).
     /// `cursor`: current cursor byte offset.
     /// `input`: the raw input bytes from the `SendInput` message.
-    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> (Bytes, usize);
+    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> RawInputResult;
 }
 
 /// The `Render` projector contract (§4.1 §5, walking-skeleton subset).

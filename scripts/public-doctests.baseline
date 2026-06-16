@@ -1,0 +1,320 @@
+# Existing public API doctest gaps when the L12 scanner landed.
+# Format: relative/path<TAB>public item signature
+arch/src/ds/map.rs	pub struct MapIter<'a, K, V>
+arch/src/ds/ring.rs	pub struct RingIter<'a, T>
+arch/src/profiler.rs	pub static __llvm_profile_runtime: i32
+arch/src/sync/mod.rs	pub fn contended_transitions() -> usize
+arch/src/sync/mod.rs	pub fn rwlock_reader_cas_retry() -> usize
+arch/src/sync/mod.rs	pub fn rwlock_reader_waits() -> usize
+arch/src/sync/mod.rs	pub fn rwlock_writer_lost_cas() -> usize
+arch/src/sync/mod.rs	pub fn waits_entered() -> usize
+arch/src/sync/rwlock.rs	pub struct RwLockReadGuard<'a, T>
+arch/src/sync/rwlock.rs	pub struct RwLockWriteGuard<'a, T>
+arch/src/sys/errno.rs	pub const EADDRINUSE: Errno
+arch/src/sys/errno.rs	pub const EAGAIN: Errno
+arch/src/sys/errno.rs	pub const EBADF: Errno
+arch/src/sys/errno.rs	pub const ECONNREFUSED: Errno
+arch/src/sys/errno.rs	pub const EFAULT: Errno
+arch/src/sys/errno.rs	pub const EINVAL: Errno
+arch/src/sys/errno.rs	pub const ENOENT: Errno
+arch/src/sys/errno.rs	pub const ENOMEM: Errno
+arch/src/sys/errno.rs	pub const ENOTTY: Errno
+arch/src/sys/errno.rs	pub const EOPNOTSUPP: Errno
+arch/src/sys/errno.rs	pub const EPIPE: Errno
+arch/src/sys/errno.rs	pub const EWOULDBLOCK: Errno
+arch/src/sys/linux_aarch64/mod.rs	pub unsafe fn clone_into(
+arch/src/sys/linux_aarch64/raw.rs	pub const ACCEPT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const BIND: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const CLOCK_GETTIME: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const CLONE: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const CLOSE: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const CONNECT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const EXIT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const EXIT_GROUP: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const FUTEX: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const GETTID: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const IOCTL: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const LISTEN: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const MMAP: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const MPROTECT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const MUNMAP: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const OPENAT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const READ: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const SENDTO: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const SOCKET: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const UNLINKAT: usize
+arch/src/sys/linux_aarch64/raw.rs	pub const WRITE: usize
+arch/src/sys/linux_aarch64/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
+arch/src/sys/linux_x86_64/mod.rs	pub unsafe fn clone_into(
+arch/src/sys/linux_x86_64/raw.rs	pub const ACCEPT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const BIND: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const CLOCK_GETTIME: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const CLONE: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const CLOSE: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const CONNECT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const EXIT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const EXIT_GROUP: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const FUTEX: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const GETTID: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const IOCTL: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const LISTEN: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const MMAP: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const MPROTECT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const MUNMAP: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const OPENAT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const READ: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const SENDTO: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const SOCKET: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const UNLINKAT: usize
+arch/src/sys/linux_x86_64/raw.rs	pub const WRITE: usize
+arch/src/sys/linux_x86_64/raw.rs	pub unsafe fn syscall1_noreturn(nr: usize, a1: usize) -> !
+arch/src/sys/net.rs	pub const AF_UNIX: u16
+arch/src/sys/net.rs	pub const SOCK_CLOEXEC: usize
+arch/src/sys/net.rs	pub const SOCK_STREAM: usize
+arch/src/sys/net.rs	pub const UNIX_PATH_MAX: usize
+arch/src/sys/none_aarch64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/mod.rs	pub const unsafe fn clone_into(
+arch/src/sys/none_aarch64/semihost.rs	pub fn exit(code: i32) -> !
+arch/src/sys/none_aarch64/timer.rs	pub fn counter() -> u64
+arch/src/sys/none_aarch64/timer.rs	pub fn frequency() -> u64
+arch/src/sys/none_aarch64/uart.rs	pub fn write_bytes(buf: &[u8])
+arch/src/sys/none_aarch64/wrap.rs	pub const AT_FDCWD: i32
+arch/src/sys/none_aarch64/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_FILES: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_FS: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_THREAD: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const CLONE_VM: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAIT: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const FUTEX_WAKE: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const MAP_FAILED: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const MAP_PRIVATE: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const O_CLOEXEC: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const O_CREAT: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const O_RDONLY: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const O_TRUNC: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const O_WRONLY: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const PROT_NONE: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const PROT_READ: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const PROT_WRITE: usize
+arch/src/sys/none_aarch64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn gettid() -> i32
+arch/src/sys/none_aarch64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub const fn openat(
+arch/src/sys/none_aarch64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub fn exit(code: i32) -> !
+arch/src/sys/none_aarch64/wrap.rs	pub fn exit_group(code: i32) -> !
+arch/src/sys/none_aarch64/wrap.rs	pub fn futex(
+arch/src/sys/none_aarch64/wrap.rs	pub fn mmap(
+arch/src/sys/none_aarch64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/wrap.rs	pub struct Timespec
+arch/src/sys/term.rs	pub const BRKINT: u32
+arch/src/sys/term.rs	pub const ECHO: u32
+arch/src/sys/term.rs	pub const ECHOE: u32
+arch/src/sys/term.rs	pub const ECHOK: u32
+arch/src/sys/term.rs	pub const ICANON: u32
+arch/src/sys/term.rs	pub const ICRNL: u32
+arch/src/sys/term.rs	pub const INPCK: u32
+arch/src/sys/term.rs	pub const ISIG: u32
+arch/src/sys/term.rs	pub const ISTRIP: u32
+arch/src/sys/term.rs	pub const IXON: u32
+arch/src/sys/term.rs	pub const NCCS: usize
+arch/src/sys/term.rs	pub const OPOST: u32
+arch/src/sys/term.rs	pub const TCGETS: usize
+arch/src/sys/term.rs	pub const TCSETS: usize
+arch/src/sys/term.rs	pub const VMIN: usize
+arch/src/sys/term.rs	pub const VTIME: usize
+arch/src/sys/wrap.rs	pub const AT_FDCWD: i32
+arch/src/sys/wrap.rs	pub const AT_REMOVEDIR: usize
+arch/src/sys/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/src/sys/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/src/sys/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/src/sys/wrap.rs	pub const CLONE_FILES: usize
+arch/src/sys/wrap.rs	pub const CLONE_FS: usize
+arch/src/sys/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/src/sys/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/src/sys/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/src/sys/wrap.rs	pub const CLONE_THREAD: usize
+arch/src/sys/wrap.rs	pub const CLONE_VM: usize
+arch/src/sys/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/src/sys/wrap.rs	pub const FUTEX_WAIT: usize
+arch/src/sys/wrap.rs	pub const FUTEX_WAKE: usize
+arch/src/sys/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/src/sys/wrap.rs	pub const MAP_FAILED: usize
+arch/src/sys/wrap.rs	pub const MAP_PRIVATE: usize
+arch/src/sys/wrap.rs	pub const MSG_NOSIGNAL: usize
+arch/src/sys/wrap.rs	pub const O_CLOEXEC: usize
+arch/src/sys/wrap.rs	pub const O_CREAT: usize
+arch/src/sys/wrap.rs	pub const O_RDONLY: usize
+arch/src/sys/wrap.rs	pub const O_TRUNC: usize
+arch/src/sys/wrap.rs	pub const O_WRONLY: usize
+arch/src/sys/wrap.rs	pub const PROT_NONE: usize
+arch/src/sys/wrap.rs	pub const PROT_READ: usize
+arch/src/sys/wrap.rs	pub const PROT_WRITE: usize
+arch/src/testrt/mod.rs	pub fn check(cond: bool, msg: &str)
+lib/depgraph/src/lib.rs	pub fn default_for(root: &Path) -> Result<Self, ProbeError>
+lib/depgraph/src/lib.rs	pub fn validate(&self, path: &Path) -> Result<(), ProbeError>
+lib/depgraph/src/toml.rs	pub enum TomlValue
+lib/depgraph/src/toml.rs	pub struct TomlDoc
+server/lib/kernel/src/boot.rs	pub type StageBody
+server/lib/kernel/src/kernel.rs	pub fn create_session(
+server/lib/kernel/src/kernel.rs	pub fn dispatch_input_for_session(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_buffer_apply_edit(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_buffer_bytes(&self, buffer_id: BufferId) -> Result<Option<Bytes>, &'static str>
+server/lib/kernel/src/kernel.rs	pub fn hostapi_redo(&self, buffer_id: BufferId) -> Result<bool, &'static str>
+server/lib/kernel/src/kernel.rs	pub fn hostapi_register_clear(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_register_get(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_register_set(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_begin_call(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_borrow(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_end_call(&self, token: ServiceCallToken) -> bool
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_lease(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_lease_release(&self, id: ServiceLeaseId) -> bool
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_lease_validate(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_register(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_service_revoke_owner(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_undo(&self, buffer_id: BufferId) -> Result<bool, &'static str>
+server/lib/kernel/src/kernel.rs	pub fn hostapi_undo_group_close(&self, buffer_id: BufferId) -> Result<(), &'static str>
+server/lib/kernel/src/kernel.rs	pub fn hostapi_undo_group_open(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slot_get(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slot_put(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slots_drop_buffer(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slots_drop_owner(
+server/lib/kernel/src/kernel.rs	pub fn hostapi_view_slots_drop_window(
+server/lib/kernel/src/kernel.rs	pub fn session_by_id(&self, id: SessionId) -> Option<Shared<Session>>
+server/lib/kernel/src/router.rs	pub const fn init(cdylib_id: CdylibId, owner_order: u32) -> Self
+server/lib/kernel/src/router.rs	pub fn activate_owner(&mut self, owner: CdylibId) -> Result<(), &'static str>
+server/lib/kernel/src/router.rs	pub fn owner_record(&self, owner: CdylibId) -> Option<StaticOwnerRecord>
+server/lib/kernel/src/router.rs	pub fn register_static_owner(
+server/lib/kernel/src/router.rs	pub fn revoke_owner(&mut self, owner: CdylibId) -> Result<usize, &'static str>
+server/lib/kernel/src/router.rs	pub struct DomainRouter
+server/lib/kernel/src/router.rs	pub struct StaticOwnerRecord
+server/lib/kernel/src/session.rs	pub const MAX_FOCUS_CHAIN_DEPTH: usize
+server/lib/kernel/src/session.rs	pub const fn is_empty(&self) -> bool
+server/lib/kernel/src/session.rs	pub const fn len(&self) -> usize
+server/lib/kernel/src/session.rs	pub const fn new() -> Self
+server/lib/kernel/src/session.rs	pub const fn set_session_id(&mut self, id: SessionId)
+server/lib/kernel/src/session.rs	pub fn attachment(&self, id: DomainAttachmentId) -> Option<&DomainAttachment>
+server/lib/kernel/src/session.rs	pub fn create_session(
+server/lib/kernel/src/session.rs	pub fn dispatch_prepared(
+server/lib/kernel/src/session.rs	pub fn ensure_default_membership(&mut self) -> Result<(), &'static str>
+server/lib/kernel/src/session.rs	pub fn from_router(snapshot: &DispatchSnapshot, router: &DomainRouter) -> Self
+server/lib/kernel/src/session.rs	pub fn get(&self, id: SessionId) -> Option<Shared<Session>>
+server/lib/kernel/src/session.rs	pub fn has_buffer(&self, buffer_id: BufferId) -> bool
+server/lib/kernel/src/session.rs	pub fn has_client(&self, client_id: ClientId) -> bool
+server/lib/kernel/src/session.rs	pub fn has_window(&self, window_id: WindowId) -> bool
+server/lib/kernel/src/session.rs	pub fn insert_shared(&mut self, session: Shared<Session>) -> Result<(), &'static str>
+server/lib/kernel/src/session.rs	pub fn last_focus_transition(&self) -> Option<&FocusTransition>
+server/lib/kernel/src/session.rs	pub fn prepare_dispatch(&self, input: &[u8]) -> Result<DispatchSnapshot, &'static str>
+server/lib/kernel/src/session.rs	pub fn remove(&mut self, id: SessionId) -> Option<Shared<Session>>
+server/lib/kernel/src/session.rs	pub fn replay_queue_len(&self, replay_queue_id: ReplayQueueId) -> Option<usize>
+server/lib/kernel/src/session.rs	pub fn resolve_pending_leaf(
+server/lib/kernel/src/session.rs	pub fn try_attach_buffer(&mut self, buffer_id: BufferId) -> Result<bool, &'static str>
+server/lib/kernel/src/session.rs	pub fn try_attach_child(
+server/lib/kernel/src/session.rs	pub fn try_attach_client(&mut self, client_id: ClientId) -> Result<bool, &'static str>
+server/lib/kernel/src/session.rs	pub fn try_attach_root(
+server/lib/kernel/src/session.rs	pub fn try_attach_window(&mut self, window_id: WindowId) -> Result<bool, &'static str>
+server/lib/kernel/src/session.rs	pub fn try_create_pending_child(
+server/lib/kernel/src/session.rs	pub fn try_focus_pending_child(
+server/lib/kernel/src/session.rs	pub fn try_push_handler(
+server/lib/kernel/src/session.rs	pub fn try_push_projector(
+server/lib/kernel/src/session.rs	pub struct DispatchRoutes<'a>
+server/lib/kernel/src/session.rs	pub struct DispatchSnapshot
+server/lib/kernel/src/session.rs	pub struct ResolvedHandler<'a>
+server/lib/kernel/src/session.rs	pub struct ResolvedProjector<'a>
+server/lib/kernel/src/session.rs	pub struct Session
+server/lib/kernel/src/session.rs	pub struct SessionState
+server/lib/kernel/src/session.rs	pub struct SessionTable
+server/lib/kernel/src/state.rs	pub const fn new(key: ServiceKey, owner_generation: u64) -> Self
+server/lib/kernel/src/state.rs	pub fn apply_buffer_edit(
+server/lib/kernel/src/state.rs	pub fn begin_call(
+server/lib/kernel/src/state.rs	pub fn buffer_bytes(&self, buffer_id: BufferId) -> Result<Option<Bytes>, &'static str>
+server/lib/kernel/src/state.rs	pub fn close_buffer_undo_group(&mut self, buffer_id: BufferId) -> Result<(), &'static str>
+server/lib/kernel/src/state.rs	pub fn drop_buffer_view_slots(&mut self, buffer_id: BufferId) -> Result<usize, &'static str>
+server/lib/kernel/src/state.rs	pub fn drop_window_view_slots(
+server/lib/kernel/src/state.rs	pub fn end_call(&mut self, token: ServiceCallToken) -> bool
+server/lib/kernel/src/state.rs	pub fn lookup_register_cloned(
+server/lib/kernel/src/state.rs	pub fn open_buffer_undo_group(
+server/lib/kernel/src/state.rs	pub fn redo_buffer(&mut self, buffer_id: BufferId) -> Result<bool, &'static str>
+server/lib/kernel/src/state.rs	pub fn register_with_thread(
+server/lib/kernel/src/state.rs	pub fn undo_buffer(&mut self, buffer_id: BufferId) -> Result<bool, &'static str>
+server/lib/kernel/src/state.rs	pub fn view_slot_cloned(
+server/lib/kernel/src/state.rs	pub struct ServiceCallToken
+server/lib/subsys/domain/src/routing.rs	pub fn new(
+server/lib/subsys/domain/src/service.rs	pub const DROP_MAY_CALL_HOSTAPI: u32
+server/lib/subsys/domain/src/service.rs	pub const HOSTAPI_REENTRANT: u32
+server/lib/subsys/domain/src/service.rs	pub const SEND_SAFE: u32
+server/lib/subsys/domain/src/service.rs	pub const SYNC_SAFE: u32
+server/lib/subsys/domain/src/state.rs	pub const DROP_MAY_CALL_HOSTAPI: u32
+server/lib/subsys/domain/src/state.rs	pub const HOSTAPI_REENTRANT: u32
+server/lib/subsys/domain/src/state.rs	pub const SEND_SAFE: u32
+server/lib/subsys/domain/src/stream.rs	pub const KERNEL_DRAIN: Self
+server/lib/subsys/domain/src/stream.rs	pub const KERNEL_INSPECT: Self
+server/lib/subsys/domain/src/tree.rs	pub const fn new(
+uapi/abi/src/config.rs	pub union ConfigValue
+uapi/abi/src/service.rs	pub const SERVICE_DROP_MAY_CALL_HOSTAPI: u32
+uapi/abi/src/service.rs	pub const SERVICE_HOSTAPI_REENTRANT: u32
+uapi/abi/src/service.rs	pub const SERVICE_SYNC_SAFE: u32
+uapi/protocol/src/codec.rs	pub const LEN_PREFIX: usize
+uapi/protocol/src/frame.rs	pub const FLAG_COMPRESSED: u16
+uapi/protocol/src/frame.rs	pub const FLAG_MORE: u16
+uapi/protocol/src/frame.rs	pub const FLAG_V1_ACCEPT_MASK: u16
+uapi/protocol/src/frame.rs	pub const HEADER_LEN: usize
+uapi/protocol/src/messages.rs	pub struct Attach<'a>
+uapi/protocol/src/messages.rs	pub struct AttachAck<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventClientLeft<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventCursor<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventDiff<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventDomainTableDelta<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventFrame<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventProjection<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventServerDraining
+uapi/protocol/src/messages.rs	pub struct AttachEventSessionDestroyed<'a>
+uapi/protocol/src/messages.rs	pub struct AttachEventSessionPivot<'a>
+uapi/protocol/src/messages.rs	pub struct ConfigDump<'a>
+uapi/protocol/src/messages.rs	pub struct ConfigDumpResponse<'a>
+uapi/protocol/src/messages.rs	pub struct ConfigValidate<'a>
+uapi/protocol/src/messages.rs	pub struct ConfigValidateResponse<'a>
+uapi/protocol/src/messages.rs	pub struct DebugDrive<'a>
+uapi/protocol/src/messages.rs	pub struct DebugDriveAck<'a>
+uapi/protocol/src/messages.rs	pub struct DebugRead<'a>
+uapi/protocol/src/messages.rs	pub struct DebugReadEvent<'a>
+uapi/protocol/src/messages.rs	pub struct DestroySession<'a>
+uapi/protocol/src/messages.rs	pub struct DestroySessionAck;
+uapi/protocol/src/messages.rs	pub struct Detach<'a>
+uapi/protocol/src/messages.rs	pub struct DetachAck;
+uapi/protocol/src/messages.rs	pub struct HelloAck<'a>
+uapi/protocol/src/messages.rs	pub struct InputAck
+uapi/protocol/src/messages.rs	pub struct PkgSync<'a>
+uapi/protocol/src/messages.rs	pub struct PkgSyncDone<'a>
+uapi/protocol/src/messages.rs	pub struct PkgSyncProgress<'a>
+uapi/protocol/src/messages.rs	pub struct PkgVerify<'a>
+uapi/protocol/src/messages.rs	pub struct PkgVerifyAck<'a>
+uapi/protocol/src/messages.rs	pub struct Reject<'a>
+uapi/protocol/src/messages.rs	pub struct RenameSession<'a>
+uapi/protocol/src/messages.rs	pub struct RenameSessionAck;
+uapi/protocol/src/messages.rs	pub struct SendInput<'a>
+uapi/protocol/src/messages.rs	pub struct SwitchSession<'a>
+uapi/protocol/src/messages.rs	pub struct SwitchSessionAck;
+uapi/protocol/src/messages.rs	pub trait Message
+uapi/protocol/src/state.rs	pub enum Action
+uapi/protocol/src/state.rs	pub enum Phase
+uapi/protocol/src/state.rs	pub enum RejectReason
+uapi/protocol/src/state.rs	pub enum Role
+uapi/protocol/src/state.rs	pub enum TagInfo
+uapi/protocol/src/view.rs	pub const fn is_empty(&self) -> bool
+uapi/protocol/src/view.rs	pub const fn iter(&self) -> CarrierIter<'a>
+uapi/protocol/src/view.rs	pub const fn iter(&self) -> DomainEntryIter<'a>
+uapi/protocol/src/view.rs	pub const fn len(&self) -> usize
+uapi/protocol/src/view.rs	pub struct CarrierIter<'a>
+uapi/protocol/src/view.rs	pub struct DomainEntryIter<'a>
+uapi/protocol/src/view.rs	pub struct RawInputIter<'a>
+uapi/protocol/src/view.rs	pub struct StrListIter<'a>

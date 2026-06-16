@@ -39,7 +39,9 @@ use crate::{
     kernel::{KERNEL_ABI_VERSION, Kernel, KernelAbi},
     log::{flush, ring::LogRing},
     router::DomainRouter,
-    session::{BufferId, DomainAttachmentId, Session, SessionId, SessionState, WindowId},
+    session::{
+        BufferId, DomainAttachmentId, Session, SessionId, SessionState, SessionTable, WindowId,
+    },
 };
 
 // ── LauncherArgs ─────────────────────────────────────────────────────────────
@@ -494,16 +496,25 @@ impl Init {
             WindowId::new(1),
         );
         let session = Session::new(SessionId::new(1), session_state);
-        let session_shared = Shared::try_new(session).map_err(|_| BootError::Alloc)?;
+        let primary_session = Shared::try_new(session).map_err(|_| BootError::Alloc)?;
+        let mut sessions = SessionTable::new();
+        sessions
+            .insert_shared(Shared::clone(&primary_session))
+            .map_err(|_| BootError::Alloc)?;
+        let session_table = Shared::try_new(RwLock::new(sessions)).map_err(|_| BootError::Alloc)?;
+        let state = crate::state::StateSubstrate::new();
+        let state_shared = Shared::try_new(RwLock::new(state)).map_err(|_| BootError::Alloc)?;
 
-        let kernel = Kernel::new(
+        let kernel = Kernel::new(crate::kernel::KernelParts {
             abi_shared,
             boot_anchor,
-            bus_shared,
-            ring_shared,
-            session_shared,
-            router_shared,
-        );
+            event_bus: bus_shared,
+            log_ring: ring_shared,
+            session: primary_session,
+            sessions: session_table,
+            domain_router: router_shared,
+            state: state_shared,
+        });
         Shared::try_new(kernel).map_err(|_| BootError::Alloc)
     }
 }

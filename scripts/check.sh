@@ -4,9 +4,9 @@
 # Usage: scripts/check.sh [MODE]
 #
 # Modes:
-#   (none)         full check: fmt, then clippy and tests in parallel
-#   --quick        fmt + clippy only (fast dev iteration)
-#   --sequential   fmt, clippy, tests one after another (debugging /
+#   (none)         full check: layout/docs/fmt, then clippy and tests in parallel
+#   --quick        layout/docs/fmt + doctests + clippy (fast dev iteration)
+#   --sequential   layout/docs/fmt, clippy, tests one after another (debugging /
 #                  low-memory environments)
 #   --clean-cache  remove the dedicated clippy target dir and exit
 #
@@ -50,13 +50,21 @@ run_clippy() {
         cargo clippy --workspace --all-targets -- -D warnings
 }
 run_tests() { cargo test --workspace; }
+run_doc_tests() { cargo test --workspace --doc; }
 run_test_layout() { "$ROOT/scripts/check-test-layout.sh" --check; }
+run_public_doctests() { "$ROOT/scripts/check-public-doctests.sh" --check; }
 
 cd "$ROOT"
 
 echo "==> test-layout (L12)"
 if ! run_test_layout; then
     echo "check.sh: test-layout FAILED (inline #[cfg(test)] mod tests blocks found)" >&2
+    exit 1
+fi
+
+echo "==> public-doctests (L12)"
+if ! run_public_doctests; then
+    echo "check.sh: public-doctests FAILED (public API items without doctests)" >&2
     exit 1
 fi
 
@@ -68,6 +76,11 @@ fi
 
 case "$mode" in
     quick)
+        echo "==> doc-tests"
+        if ! run_doc_tests; then
+            echo "check.sh: doc-tests FAILED" >&2
+            exit 1
+        fi
         echo "==> clippy"
         if ! run_clippy; then
             echo "check.sh: clippy FAILED" >&2

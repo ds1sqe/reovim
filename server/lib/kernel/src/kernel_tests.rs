@@ -57,6 +57,15 @@ arch_test!(kernel_event_bus_field_accessible_after_boot, {
     );
 });
 
+arch_test!(kernel_state_substrate_field_accessible_after_boot, {
+    let kernel = Init::new(LauncherArgs::default())
+        .boot()
+        .expect("boot succeeds");
+    let guard = kernel.state.read();
+    assert_eq!(guard.buffer_count(), 0);
+    assert!(guard.limits().max_slots_per_window > 0);
+});
+
 arch_test!(kernel_event_bus_emits_after_boot, {
     use {
         crate::{

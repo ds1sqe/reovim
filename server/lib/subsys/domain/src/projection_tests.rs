@@ -3,11 +3,18 @@
 //! Registered under the `selftest` feature; runs on the arch no_std selftest
 //! runner via the `kernel-selftest` fixture bin.
 
+use core::num::NonZeroU32;
+
 use reovim_arch::{arch_test, ds::Bytes};
 
 use crate::{
-    id::{BufferId, WindowId},
-    projection::{Projection, ProjectionSpan},
+    carrier::{CursorCarrier, CursorHeader, PositionCarrier, PositionHeader},
+    id::{BufferId, ClientId, DomainId, WindowId},
+    projection::{
+        FullProjection, FullProjectionSpan, GlyphHint, OverlayBlob, Projection, ProjectionDelivery,
+        ProjectionRange, ProjectionSlotKey, ProjectionSpan, StyleRef,
+    },
+    routing::ProjectorId,
 };
 
 arch_test!(projection_span_fields_round_trip, {
@@ -61,4 +68,62 @@ arch_test!(projection_encode_empty_content, {
     let decoded = Projection::decode(encoded.as_slice()).expect("decode empty");
     assert!(decoded.content.is_empty());
     assert_eq!(decoded.cursor_byte, 0);
+});
+
+arch_test!(opaque_style_and_glyph_refs_round_trip, {
+    assert_eq!(StyleRef::new(10).as_u32(), 10);
+    assert_eq!(GlyphHint::new(11).as_u32(), 11);
+    let span =
+        FullProjectionSpan::new(ProjectionRange::new(1, 4), StyleRef::new(10), GlyphHint::new(11));
+    assert_eq!(span.range.start, 1);
+    assert_eq!(span.range.end, 4);
+    assert!(!span.range.is_empty());
+});
+
+arch_test!(projection_slot_key_tracks_projector_identity, {
+    let key = ProjectionSlotKey::new(
+        ClientId::new(1),
+        BufferId::new(2),
+        WindowId::new(3),
+        ProjectorId::Render,
+    );
+    assert_eq!(key.client_id, ClientId::new(1));
+    assert_eq!(key.projector_id, ProjectorId::Render);
+});
+
+arch_test!(full_projection_holds_spans_cursors_and_overlays, {
+    let domain = DomainId::new(NonZeroU32::new(1).unwrap());
+    let mut full = FullProjection::new(
+        ClientId::new(1),
+        BufferId::new(2),
+        WindowId::new(3),
+        PositionCarrier::new(PositionHeader::new(domain, 0, 0), Bytes::new()),
+    );
+    full.spans
+        .try_push(FullProjectionSpan::new(
+            ProjectionRange::new(0, 5),
+            StyleRef::new(1),
+            GlyphHint::new(2),
+        ))
+        .expect("alloc");
+    full.cursors
+        .try_push(CursorCarrier::new(
+            CursorHeader::new(domain, 0, 0),
+            Bytes::try_from_slice(b"cursor").expect("alloc"),
+        ))
+        .expect("alloc");
+    full.overlays
+        .try_push(OverlayBlob::new(
+            ProjectorId::custom(9),
+            Bytes::try_from_slice(b"overlay").expect("alloc"),
+        ))
+        .expect("alloc");
+    assert_eq!(full.spans.as_slice()[0].range.end, 5);
+    assert_eq!(full.cursors.as_slice()[0].content.as_slice(), b"cursor");
+    assert_eq!(full.overlays.as_slice()[0].payload.as_slice(), b"overlay");
+});
+
+arch_test!(projection_delivery_marks_full_resend_boundaries, {
+    assert!(ProjectionDelivery::FullResend.requires_full_resend());
+    assert!(!ProjectionDelivery::DiffAllowed.requires_full_resend());
 });

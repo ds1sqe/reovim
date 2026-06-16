@@ -8,7 +8,7 @@
 use reovim_arch::{arch_test, ds::Bytes};
 
 use crate::{
-    contract::{OnRawInputHandler, RenderProjector},
+    contract::{OnRawInputHandler, RawInputResult, RenderProjector},
     id::{BufferId, WindowId},
     projection::Projection,
 };
@@ -17,12 +17,12 @@ use crate::{
 struct AppendHandler;
 
 impl OnRawInputHandler for AppendHandler {
-    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> (Bytes, usize) {
+    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> RawInputResult {
         let mut out = buffer;
         for &b in input {
             out.try_push(b).expect("alloc");
         }
-        (out, cursor + input.len())
+        RawInputResult::claimed(out, cursor + input.len())
     }
 }
 
@@ -50,9 +50,10 @@ impl RenderProjector for FullSpanProjector {
 
 arch_test!(handler_trait_object_appends_bytes, {
     let h: &dyn OnRawInputHandler = &AppendHandler;
-    let (buf, cursor) = h.on_raw_input(Bytes::new(), 0, b"ab");
-    assert_eq!(buf.as_slice(), b"ab");
-    assert_eq!(cursor, 2);
+    let result = h.on_raw_input(Bytes::new(), 0, b"ab");
+    assert_eq!(result.buffer.as_slice(), b"ab");
+    assert_eq!(result.cursor, 2);
+    assert!(result.claimed);
 });
 
 arch_test!(projector_trait_object_full_span, {

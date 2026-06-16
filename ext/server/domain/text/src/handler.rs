@@ -13,7 +13,10 @@
 //! Buffer mutation rebuilds the `Bytes` from slices around the edit point to
 //! avoid needing `DerefMut` on `arch::ds::Bytes`.
 
-use {reovim_arch::ds::Bytes, reovim_subsys_domain::contract::OnRawInputHandler};
+use {
+    reovim_arch::ds::Bytes,
+    reovim_subsys_domain::contract::{OnRawInputHandler, RawInputResult},
+};
 
 // ── TextHandler ───────────────────────────────────────────────────────────────
 
@@ -30,16 +33,18 @@ use {reovim_arch::ds::Bytes, reovim_subsys_domain::contract::OnRawInputHandler};
 /// let h = TextHandler;
 /// let buf = Bytes::new();
 /// // Insert 'a' (printable ASCII).
-/// let (new_buf, new_cursor) = h.on_raw_input(buf, 0, b"a");
-/// assert_eq!(new_buf.as_slice(), b"a");
-/// assert_eq!(new_cursor, 1);
+/// let result = h.on_raw_input(buf, 0, b"a");
+/// assert_eq!(result.buffer.as_slice(), b"a");
+/// assert_eq!(result.cursor, 1);
+/// assert!(result.claimed);
 /// ```
 pub struct TextHandler;
 
 impl OnRawInputHandler for TextHandler {
-    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> (Bytes, usize) {
+    fn on_raw_input(&self, buffer: Bytes, cursor: usize, input: &[u8]) -> RawInputResult {
         let mut current = buffer;
         let mut cur = cursor;
+        let mut claimed = false;
         let mut i = 0;
 
         while i < input.len() {
@@ -50,7 +55,10 @@ impl OnRawInputHandler for TextHandler {
                 match input[i + 2] {
                     b'D' => {
                         // Cursor left: `\x1b[D`
-                        cur = cur.saturating_sub(1);
+                        if cur > 0 {
+                            cur -= 1;
+                            claimed = true;
+                        }
                         i += 3;
                         continue;
                     }
@@ -58,6 +66,7 @@ impl OnRawInputHandler for TextHandler {
                         // Cursor right: `\x1b[C`
                         if cur < current.len() {
                             cur += 1;
+                            claimed = true;
                         }
                         i += 3;
                         continue;
@@ -77,33 +86,41 @@ impl OnRawInputHandler for TextHandler {
                 0x08 | 0x7f if cur > 0 => {
                     cur -= 1;
                     current = delete_at(current, cur);
+                    claimed = true;
                 }
                 // Ctrl-B: cursor left.
-                0x02 => {
-                    cur = cur.saturating_sub(1);
+                0x02 if cur > 0 => {
+                    cur -= 1;
+                    claimed = true;
                 }
-                // Ctrl-F: cursor right (guarded; falls through to the no-op
-                // arm when already at end of buffer).
+                // Ctrl-F: cursor right; ignored at the end of the buffer so an
+                // ancestor may handle boundary navigation.
                 0x06 if cur < current.len() => {
                     cur += 1;
+                    claimed = true;
                 }
                 // Printable ASCII: insert at cursor.
                 0x20..=0x7e => {
                     // insert_at returns original on allocation failure (byte dropped).
+                    let old_len = current.len();
                     current = insert_at(current, cur, b);
-                    // Advance cursor only if the buffer actually grew.
-                    // After insert_at the new length is old+1 iff no OOM.
-                    // We detect success by checking the new length.
-                    cur += 1;
+                    if current.len() == old_len + 1 {
+                        cur += 1;
+                    }
+                    claimed = true;
                 }
                 // All other bytes (other control characters, high bytes) and
-                // positional no-ops (backspace at start, Ctrl-F at end): ignore.
+                // positional no-ops (backspace at start): ignore.
                 _ => {}
             }
             i += 1;
         }
 
-        (current, cur)
+        if claimed {
+            RawInputResult::claimed(current, cur)
+        } else {
+            RawInputResult::ignored(current, cur)
+        }
     }
 }
 

@@ -21,9 +21,13 @@
 //! [16..]   buffer bytes (raw UTF-8)
 //! ```
 
-use reovim_arch::ds::Bytes;
+use reovim_arch::ds::{Bytes, Seq};
 
-use crate::id::{BufferId, WindowId};
+use crate::{
+    carrier::{CursorCarrier, PositionCarrier},
+    id::{BufferId, ClientId, WindowId},
+    routing::ProjectorId,
+};
 
 // ── ProjectionSpan ────────────────────────────────────────────────────────────
 
@@ -44,6 +48,158 @@ pub struct ProjectionSpan {
     pub start: usize,
     /// Exclusive end byte in the buffer.
     pub end: usize,
+}
+
+/// Opaque style handle carried through Phase 4 (§5.3 §1).
+///
+/// ```rust
+/// use reovim_subsys_domain::projection::StyleRef;
+///
+/// assert_eq!(StyleRef::new(12).as_u32(), 12);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StyleRef(u32);
+
+impl StyleRef {
+    /// Wraps a raw style id.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::StyleRef;
+    ///
+    /// assert_eq!(StyleRef::new(1).as_u32(), 1);
+    /// ```
+    #[must_use]
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Returns the raw style id.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::StyleRef;
+    ///
+    /// assert_eq!(StyleRef::new(2).as_u32(), 2);
+    /// ```
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+/// Opaque glyph hint carried through Phase 4 (§5.3 §1).
+///
+/// ```rust
+/// use reovim_subsys_domain::projection::GlyphHint;
+///
+/// assert_eq!(GlyphHint::new(3).as_u32(), 3);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GlyphHint(u32);
+
+impl GlyphHint {
+    /// Wraps a raw glyph-hint id.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::GlyphHint;
+    ///
+    /// assert_eq!(GlyphHint::new(4).as_u32(), 4);
+    /// ```
+    #[must_use]
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Returns the raw glyph-hint id.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::GlyphHint;
+    ///
+    /// assert_eq!(GlyphHint::new(5).as_u32(), 5);
+    /// ```
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+/// Byte range used by the full Phase 4 projection shape.
+///
+/// ```rust
+/// use reovim_subsys_domain::projection::ProjectionRange;
+///
+/// assert!(ProjectionRange::new(2, 2).is_empty());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProjectionRange {
+    /// Inclusive start byte.
+    pub start: usize,
+    /// Exclusive end byte.
+    pub end: usize,
+}
+
+impl ProjectionRange {
+    /// Builds a byte range.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::ProjectionRange;
+    ///
+    /// assert_eq!(ProjectionRange::new(1, 4).end, 4);
+    /// ```
+    #[must_use]
+    pub const fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    /// Returns whether the range is empty.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::ProjectionRange;
+    ///
+    /// assert!(!ProjectionRange::new(1, 4).is_empty());
+    /// ```
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+}
+
+/// Full Phase 4 span with opaque style/glyph handles.
+///
+/// ```rust
+/// use reovim_subsys_domain::projection::{FullProjectionSpan, GlyphHint, ProjectionRange, StyleRef};
+///
+/// let span = FullProjectionSpan::new(ProjectionRange::new(0, 5), StyleRef::new(1), GlyphHint::new(2));
+/// assert_eq!(span.range.end, 5);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FullProjectionSpan {
+    /// Buffer byte range.
+    pub range: ProjectionRange,
+    /// Opaque style handle.
+    pub style: StyleRef,
+    /// Opaque glyph hint.
+    pub glyph: GlyphHint,
+}
+
+impl FullProjectionSpan {
+    /// Builds a full projection span.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::{FullProjectionSpan, GlyphHint, ProjectionRange, StyleRef};
+    ///
+    /// assert_eq!(
+    ///     FullProjectionSpan::new(ProjectionRange::new(0, 1), StyleRef::new(0), GlyphHint::new(0)).range.start,
+    ///     0,
+    /// );
+    /// ```
+    #[must_use]
+    pub const fn new(range: ProjectionRange, style: StyleRef, glyph: GlyphHint) -> Self {
+        Self {
+            range,
+            style,
+            glyph,
+        }
+    }
 }
 
 // ── Projection ────────────────────────────────────────────────────────────────
@@ -78,6 +234,165 @@ pub struct Projection {
     pub cursor_byte: usize,
     /// Buffer content at the time of projection.
     pub content: Bytes,
+}
+
+/// Opaque overlay payload emitted by a projector (§5.3 §1/§4).
+///
+/// ```rust,no_run
+/// // no_run: requires arch allocator runtime for payload bytes.
+/// ```
+pub struct OverlayBlob {
+    /// Projector that emitted this overlay.
+    pub projector_id: ProjectorId,
+    /// Projector-defined payload bytes.
+    pub payload: Bytes,
+}
+
+impl OverlayBlob {
+    /// Builds an overlay payload.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch allocator runtime for payload bytes.
+    /// ```
+    #[must_use]
+    pub const fn new(projector_id: ProjectorId, payload: Bytes) -> Self {
+        Self {
+            projector_id,
+            payload,
+        }
+    }
+}
+
+/// Projection slot key (§5.3 §3).
+///
+/// ```rust
+/// use reovim_subsys_domain::{
+///     id::{BufferId, ClientId, WindowId},
+///     projection::ProjectionSlotKey,
+///     routing::ProjectorId,
+/// };
+///
+/// let key = ProjectionSlotKey::new(ClientId::new(1), BufferId::new(2), WindowId::new(3), ProjectorId::Render);
+/// assert_eq!(key.window_id, WindowId::new(3));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProjectionSlotKey {
+    /// Client component.
+    pub client_id: ClientId,
+    /// Buffer component.
+    pub buffer_id: BufferId,
+    /// Window component.
+    pub window_id: WindowId,
+    /// Projector component.
+    pub projector_id: ProjectorId,
+}
+
+impl ProjectionSlotKey {
+    /// Builds a projection slot key.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::{
+    ///     id::{BufferId, ClientId, WindowId},
+    ///     projection::ProjectionSlotKey,
+    ///     routing::ProjectorId,
+    /// };
+    ///
+    /// assert_eq!(
+    ///     ProjectionSlotKey::new(ClientId::new(1), BufferId::new(2), WindowId::new(3), ProjectorId::Render).client_id,
+    ///     ClientId::new(1),
+    /// );
+    /// ```
+    #[must_use]
+    pub const fn new(
+        client_id: ClientId,
+        buffer_id: BufferId,
+        window_id: WindowId,
+        projector_id: ProjectorId,
+    ) -> Self {
+        Self {
+            client_id,
+            buffer_id,
+            window_id,
+            projector_id,
+        }
+    }
+}
+
+/// Full Phase 4 projection contract shape (§5.3 §1).
+///
+/// ```rust,no_run
+/// // no_run: requires arch allocator runtime for carriers and sequences.
+/// ```
+pub struct FullProjection {
+    /// Client this projection targets.
+    pub client_id: ClientId,
+    /// Buffer this projection covers.
+    pub buffer_id: BufferId,
+    /// Window this projection is for.
+    pub window_id: WindowId,
+    /// Viewport carrier.
+    pub viewport: PositionCarrier,
+    /// Styled spans.
+    pub spans: Seq<FullProjectionSpan>,
+    /// Cursor/selection carriers.
+    pub cursors: Seq<CursorCarrier>,
+    /// Projector-defined overlays.
+    pub overlays: Seq<OverlayBlob>,
+}
+
+impl FullProjection {
+    /// Builds an empty full projection shape.
+    ///
+    /// ```rust,no_run
+    /// // no_run: requires arch allocator runtime for carriers and sequences.
+    /// ```
+    #[must_use]
+    pub const fn new(
+        client_id: ClientId,
+        buffer_id: BufferId,
+        window_id: WindowId,
+        viewport: PositionCarrier,
+    ) -> Self {
+        Self {
+            client_id,
+            buffer_id,
+            window_id,
+            viewport,
+            spans: Seq::new(),
+            cursors: Seq::new(),
+            overlays: Seq::new(),
+        }
+    }
+}
+
+/// Projection delivery decision (§5.3 §6).
+///
+/// ```rust
+/// use reovim_subsys_domain::projection::ProjectionDelivery;
+///
+/// assert!(ProjectionDelivery::FullResend.requires_full_resend());
+/// assert!(!ProjectionDelivery::DiffAllowed.requires_full_resend());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProjectionDelivery {
+    /// Send a complete projection.
+    FullResend,
+    /// Diff is allowed because no boundary condition changed.
+    DiffAllowed,
+}
+
+impl ProjectionDelivery {
+    /// Returns whether the server must send a full projection.
+    ///
+    /// ```rust
+    /// use reovim_subsys_domain::projection::ProjectionDelivery;
+    ///
+    /// assert!(ProjectionDelivery::FullResend.requires_full_resend());
+    /// ```
+    #[must_use]
+    pub const fn requires_full_resend(self) -> bool {
+        matches!(self, Self::FullResend)
+    }
 }
 
 /// Why a [`Projection::decode`] call was refused.
