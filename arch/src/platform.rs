@@ -31,6 +31,11 @@ use crate::{
     sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
     time::Instant,
 };
+#[cfg(target_os = "linux")]
+use crate::{
+    sys::{Timespec, gettid, openat},
+    time::realtime,
+};
 
 // The net/thread fd-op backends are Linux-only kernel-ABI surface (the same
 // gate as `arch::net`/`arch::thread`); freestanding targets have no socket or
@@ -43,7 +48,7 @@ use crate::sys::net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX};
 use crate::sys::{
     AT_FDCWD, Errno, accept as sys_accept, bind as sys_bind, close as sys_close,
     connect as sys_connect, listen as sys_listen, read as sys_read, send_nosignal,
-    unix_stream_socket, unlinkat,
+    unix_stream_socket, unlinkat, write as sys_write,
 };
 
 /// `FUTEX_WAKE` count meaning "wake everyone".
@@ -322,6 +327,31 @@ unsafe extern "C" fn fd_write(fd: i32, buf: *const u8, len: usize) -> i64 {
     }
 }
 
+/// The file-write adapter: writes up to `len` bytes from `buf` to `fd` with the
+/// ordinary `write(2)` syscall, returning the byte count or a negative errno.
+///
+/// The plain-write counterpart to [`fd_write`] (a socket `send`): `write(2)` is
+/// valid on any fd — a regular file (the kernel log sink), a pipe, or a tty
+/// (the tui's stdout) — whereas `send` is socket-only (it returns `ENOTSOCK` on
+/// a file). The two write slots split on the `lib/ds` module boundary: `net`
+/// uses `fd_write`, `fs` uses this slot.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
+/// bytes.
+#[cfg(target_os = "linux")]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn file_write(fd: i32, buf: *const u8, len: usize) -> i64 {
+    // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
+    let slice = unsafe { core::slice::from_raw_parts(buf, len) };
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
+    match sys_write(fd, slice) {
+        Ok(n) => n as i64,
+        Err(e) => neg_errno(e),
+    }
+}
+
 /// The fd-close adapter: closes `fd`, returning `0` or a negative errno.
 ///
 /// # Safety
@@ -506,6 +536,67 @@ extern "C" fn spawn_trampoline(pair_ptr: usize) -> ! {
     crate::sys::exit(0)
 }
 
+// ── time + file + thread-identity adapters (SP05) ────────────────────────────
+
+/// The wall-clock adapter: reads arch's real-time clock and returns whole
+/// nanoseconds since the Unix epoch, matching the contract's `RealtimeFn` ABI.
+///
+/// `arch::time::realtime` returns a [`Timespec`]; this flattens it to a single
+/// `i64` nanos value (no `Timespec` repr crosses the contract — the slot is a
+/// scalar return).
+///
+/// # Safety
+///
+/// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
+/// `realtime` read has no precondition, so this is sound to call anytime.
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn realtime_adapter() -> i64 {
+    let Timespec { tv_sec, tv_nsec } = realtime();
+    // tv_sec/tv_nsec are i64; the year-2262 horizon keeps this in range.
+    tv_sec * 1_000_000_000 + tv_nsec
+}
+
+/// The file-open adapter: opens the pathname in `path` (`AT_FDCWD`-relative)
+/// with the Linux open `flags`/`mode` and returns the new fd or a negative
+/// errno.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes containing a NUL-terminated pathname; a refused open maps to
+/// a negative errno rather than UB.
+#[cfg(target_os = "linux")]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
+unsafe extern "C" fn file_open(path: *const u8, path_len: usize, flags: i32, mode: u32) -> i64 {
+    // SAFETY: caller guarantees `path` is valid for `path_len` readable bytes;
+    // the slice borrows it for the openat call only.
+    let slice = unsafe { core::slice::from_raw_parts(path, path_len) };
+    // `flags` is a Linux open-flag bit pattern carried as `i32` across the
+    // contract; the cast to the `usize` the syscall wrapper takes reinterprets
+    // those bits (sign loss is intentional — a flag set is not a signed value).
+    match openat(AT_FDCWD, slice, flags as usize, mode as usize) {
+        // A valid fd is a small non-negative usize (< 2^31); the narrowing
+        // cannot wrap.
+        Ok(fd) => fd as i64,
+        Err(e) => neg_errno(e),
+    }
+}
+
+/// The thread-id adapter: returns the calling thread's kernel thread id.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` to share the vtable's one ABI shape; `gettid` takes no
+/// argument, dereferences no memory, and cannot fail.
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn thread_id() -> i64 {
+    i64::from(gettid())
+}
+
 // ── freestanding stub adapters (non-Linux) ───────────────────────────────────
 //
 // Freestanding targets have no socket/`clone` floor. The slots still exist (the
@@ -548,6 +639,33 @@ unsafe extern "C" fn thread_spawn(_entry: unsafe extern "C" fn(*mut u8), _arg: *
     -ENOSYS_CODE
 }
 
+/// Freestanding wall-clock stub: returns `0`, the Unix-epoch sentinel. A
+/// bare-metal target has no real-time clock, so the wall anchor reads as the
+/// epoch (the consumer only uses it as a human-readable origin, never for
+/// ordering).
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn realtime_adapter() -> i64 {
+    0
+}
+/// Freestanding file-open stub: `-ENOSYS` (no filesystem floor on bare metal),
+/// the same fallible shape as the other fd stubs.
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn file_open(_path: *const u8, _path_len: usize, _flags: i32, _mode: u32) -> i64 {
+    -ENOSYS_CODE
+}
+/// Freestanding thread-id stub: returns `0`, the single-bare-metal-thread
+/// sentinel (there is one thread of control, identified as id 0).
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn thread_id() -> i64 {
+    0
+}
+/// Freestanding file-write stub: `-ENOSYS` (no filesystem/stdio floor on bare
+/// metal), the same fallible shape as the other fd stubs.
+#[cfg(not(target_os = "linux"))]
+unsafe extern "C" fn file_write(_fd: i32, _buf: *const u8, _len: usize) -> i64 {
+    -ENOSYS_CODE
+}
+
 /// arch's platform vtable: a `static` of const function pointers (zero heap to
 /// build), the table the boot path installs.
 ///
@@ -568,6 +686,13 @@ static PLATFORM_VTABLE: PlatformVtable = PlatformVtable {
     fd_write,
     fd_close,
     thread_spawn,
+    // SP05 time/file/thread-identity slots: real adapters on Linux, `-ENOSYS`
+    // (or epoch/id-0 sentinels) on freestanding, cfg-selected to one impl per
+    // target.
+    realtime: realtime_adapter,
+    file_open,
+    thread_id,
+    file_write,
 };
 
 /// Installs arch's platform vtable as the process-wide handle (write-once).

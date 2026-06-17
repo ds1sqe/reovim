@@ -10,8 +10,8 @@ use crate::clock::BootClock;
 
 arch_test!(boot_clock_capture_wall_after_epoch, {
     let clock = BootClock::capture();
-    // Wall anchor must be after year 2000.
-    assert!(clock.wall_anchor.tv_sec > 946_684_800, "wall anchor before epoch");
+    // Wall anchor must be after year 2000 (Unix-epoch nanos).
+    assert!(clock.wall_anchor > 946_684_800_000_000_000, "wall anchor before epoch");
 });
 
 arch_test!(boot_clock_elapsed_nanos_completes, {

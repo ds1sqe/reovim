@@ -1962,7 +1962,12 @@ impl ServiceRegistry {
         meta: ServiceDescriptorMeta,
         owner_generation: u64,
     ) -> Result<(), &'static str> {
-        self.register_with_thread(meta, owner_generation, reovim_arch::sys::gettid())
+        // `current_id()` returns i64; a kernel tid is a small positive integer
+        // (< 2^31), so the narrowing to the i32 owner-thread-id field cannot
+        // wrap.
+        #[allow(clippy::cast_possible_truncation)]
+        let owner_thread_id = reovim_lib_ds::thread::current_id() as i32;
+        self.register_with_thread(meta, owner_generation, owner_thread_id)
     }
 
     /// Registers one visible service row with an explicit owner thread id.

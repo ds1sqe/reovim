@@ -35,9 +35,9 @@
 //! (`fd` is `None`) or when the headless flag is set. This is called from
 //! `LogRing::push_event` — a one-way ring→sink gate.
 
-use {
-    reovim_arch::sys::{AT_FDCWD, O_CLOEXEC, O_CREAT, O_WRONLY, close, openat, write},
-    reovim_lib_ds::{Mutex, Shared},
+use reovim_lib_ds::{
+    Mutex, Shared,
+    fs::{File, O_CLOEXEC, O_CREAT, O_WRONLY, SysError, close_fd, write_fd},
 };
 
 use crate::{
@@ -50,10 +50,11 @@ use crate::{
 
 // ── O_APPEND ──────────────────────────────────────────────────────────────────
 //
-// `O_APPEND` (0o2000 / 1024 decimal) is not yet exported by `arch::sys`.
-// Defined locally; matches Linux x86_64 and aarch64 (same value on both).
-// When arch/sys/wrap.rs gains the export, replace this with the import.
-const O_APPEND: usize = 0o2000;
+// `O_APPEND` (0o2000 / 1024 decimal) is not among the lib/ds open-flag
+// constants the sink imports. Defined locally; matches Linux `x86_64` and
+// `aarch64` (same value on both). When lib/ds `fs` gains the export, replace
+// this with the import.
+const O_APPEND: i32 = 0o2000;
 
 // ── OBS1 event constant (9.5 family) ─────────────────────────────────────────
 
@@ -148,14 +149,15 @@ pub struct FileSink {
 impl FileSink {
     /// Creates a `FileSink` targeting `path`.
     ///
-    /// `path` MUST be a NUL-terminated byte slice (the `openat` contract).
+    /// `path` MUST be a NUL-terminated byte slice (the file-open contract).
     /// The sink is not opened yet; call [`open_and_subscribe`] to open and
     /// register.
     ///
     /// # Panics
     ///
     /// Panics when `path` exceeds the 128-byte internal buffer — a path that
-    /// long would be refused by `openat` on a Unix socket-class limit anyway.
+    /// long would be refused by the file-open on a Unix socket-class limit
+    /// anyway.
     ///
     /// # Example
     ///
@@ -190,8 +192,8 @@ impl FileSink {
     ///
     /// # Errors
     ///
-    /// Returns [`SinkOpenError`] when `openat` fails or bus subscriber
-    /// capacity is exhausted. On `openat` failure the `log.sink.fail` event
+    /// Returns [`SinkOpenError`] when the file open fails or bus subscriber
+    /// capacity is exhausted. On open failure the `log.sink.fail` event
     /// is emitted via `bus` before this function returns (the caller still
     /// receives the `Err`; the event is advisory).
     ///
@@ -222,22 +224,17 @@ impl FileSink {
         // head after open so the file contains the full boot history.
         // Mode 0o644: owner read/write, group/other read.
         let flags = O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC;
-        let open_result = openat(AT_FDCWD, &self.path[..self.path_len], flags, 0o644);
+        let open_result = File::open(&self.path[..self.path_len], flags, 0o644);
         let fd = match open_result {
-            // Kernel-ABI fds fit in i32; a larger value is a kernel-contract
-            // violation we surface as EBADF rather than truncate.
-            Ok(raw_fd) => {
-                let Ok(fd) = i32::try_from(raw_fd) else {
-                    emit_sink_fail(bus, reovim_arch::sys::EBADF.0);
-                    return Err(SinkOpenError::Open(reovim_arch::sys::EBADF));
-                };
-                fd
-            }
+            // Take the raw fd out of the RAII `File`: the sink drives the fd
+            // through a manual lifecycle (it registers it as the panic-flush fd
+            // and closes it on its own failure path), so it owns the close.
+            Ok(file) => file.into_raw_fd(),
             Err(errno) => {
                 // Emit log.sink.fail advisory event after returning the error.
                 // We emit here (before return) so the event is visible even if
                 // the caller ignores the returned error.
-                emit_sink_fail(bus, errno.0);
+                emit_sink_fail(bus, errno.code());
                 return Err(SinkOpenError::Open(errno));
             }
         };
@@ -307,7 +304,7 @@ impl Drop for FileSink {
         // and cannot propagate (best-effort teardown).
         let maybe_fd = SINK.lock().fd.take();
         if let Some(fd) = maybe_fd {
-            let _ = close(fd);
+            let _ = close_fd(fd);
         }
     }
 }
@@ -356,7 +353,7 @@ fn sink_subscriber_callback(event: &DS12Event) {
             // Mark closed first (stops future writes), then extract the bus
             // clone so we can emit outside the lock.
             st.closed = true;
-            let _ = close(fd);
+            let _ = close_fd(fd);
             st.fd = None;
             st.bus.take() // Some(Shared<DS12EventBus>) if available
         }
@@ -425,7 +422,7 @@ fn emit_sink_fail(bus: &DS12EventBus, errno: i32) {
 fn write_all_to_fd(fd: i32, buf: &[u8]) -> bool {
     let mut off = 0;
     while off < buf.len() {
-        match write(fd, &buf[off..]) {
+        match write_fd(fd, &buf[off..]) {
             Ok(0) | Err(_) => return false,
             Ok(n) => off += n,
         }
@@ -450,7 +447,7 @@ fn write_all_to_fd(fd: i32, buf: &[u8]) -> bool {
 pub fn reset_for_test() {
     let mut st = SINK.lock();
     if let Some(fd) = st.fd.take() {
-        let _ = close(fd);
+        let _ = close_fd(fd);
     }
     st.headless = true;
     st.closed = false;
@@ -501,8 +498,8 @@ pub fn inject_fd_for_test(fd: i32, bus: Shared<DS12EventBus>) {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub enum SinkOpenError {
-    /// The `openat` syscall failed.
-    Open(reovim_arch::sys::Errno),
+    /// The file open through the handle failed.
+    Open(SysError),
     /// The bus subscriber capacity was exhausted.
     Subscribe,
 }

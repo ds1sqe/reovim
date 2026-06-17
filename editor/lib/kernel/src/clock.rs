@@ -5,10 +5,7 @@
 //! re-based to this anchor so they are human-readable relative to boot rather
 //! than the unspecified monotonic epoch.
 
-use reovim_arch::{
-    sys::Timespec,
-    time::{Instant, realtime},
-};
+use reovim_lib_ds::time::{monotonic, realtime};
 
 /// Boot-time clock anchor (7.5 §4).
 ///
@@ -16,17 +13,19 @@ use reovim_arch::{
 /// unchanged at the handoff so timestamps and ring content are continuous
 /// across the boot/steady-state boundary.
 ///
-/// Two fields:
+/// Both fields are whole nanoseconds read through the `kabi` handle (the
+/// monotonic and wall-clock slots), so `BootClock` names no `arch` type:
 ///
-/// - `mono_zero`: the `CLOCK_MONOTONIC` reading at `Init::new`. Subtract this
-///   from a later `Instant` to obtain a boot-relative monotonic duration.
-/// - `wall_anchor`: the `CLOCK_REALTIME` reading at the same instant, used to
-///   derive an absolute wall-clock time for the boot origin (LOG2 §2 first
-///   line, human audit use).
+/// - `mono_zero`: the monotonic reading at `Init::new`. Subtract it from a
+///   later monotonic reading to obtain a boot-relative duration.
+/// - `wall_anchor`: the wall-clock reading (Unix-epoch nanos) at the same
+///   instant, used to derive an absolute wall-clock time for the boot origin
+///   (LOG2 §2 first line, human audit use).
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
+/// // no_run: BootClock reads the boot-installed platform handle.
 /// use reovim_kernel::BootClock;
 ///
 /// let clock = BootClock::capture();
@@ -36,10 +35,12 @@ use reovim_arch::{
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct BootClock {
-    /// Monotonic reading at boot-stage-0 — the re-base zero for LOG2 timestamps.
-    pub mono_zero: Instant,
-    /// CLOCK\_REALTIME reading at boot-stage-0 — the wall-clock anchor (7.5 §4).
-    pub wall_anchor: Timespec,
+    /// Monotonic nanos read at boot-stage-0 — the re-base zero for LOG2
+    /// timestamps.
+    pub mono_zero: i64,
+    /// Wall-clock nanos (Unix epoch) read at boot-stage-0 — the wall-clock
+    /// anchor (7.5 §4).
+    pub wall_anchor: i64,
 }
 
 impl BootClock {
@@ -52,17 +53,18 @@ impl BootClock {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: BootClock reads the boot-installed platform handle.
     /// use reovim_kernel::BootClock;
     ///
     /// let clock = BootClock::capture();
-    /// // Wall anchor is after the Unix epoch (past year 2000).
-    /// assert!(clock.wall_anchor.tv_sec > 946_684_800);
+    /// // Wall anchor is after the Unix epoch (past year 2000), in nanos.
+    /// assert!(clock.wall_anchor > 946_684_800_000_000_000);
     /// ```
     #[must_use]
     pub fn capture() -> Self {
         Self {
-            mono_zero: Instant::now(),
+            mono_zero: monotonic(),
             wall_anchor: realtime(),
         }
     }
@@ -75,7 +77,8 @@ impl BootClock {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: BootClock reads the boot-installed platform handle.
     /// use reovim_kernel::BootClock;
     ///
     /// let clock = BootClock::capture();
@@ -84,8 +87,14 @@ impl BootClock {
     /// assert!(elapsed < u64::MAX);
     /// ```
     #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub fn elapsed_nanos(&self) -> u64 {
-        Instant::now().elapsed_nanos(self.mono_zero)
+        // Clamp at 0: the monotonic clock never steps backward, so a current
+        // reading at or before `mono_zero` (clock did not advance, or
+        // `capture()` ran after the query) saturates to a zero elapsed rather
+        // than wrapping. `.max(0)` keeps the value non-negative, so the cast to
+        // u64 cannot lose sign.
+        (monotonic() - self.mono_zero).max(0) as u64
     }
 
     /// Microseconds elapsed since the boot anchor (truncated, not rounded).
@@ -95,7 +104,8 @@ impl BootClock {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: BootClock reads the boot-installed platform handle.
     /// use reovim_kernel::BootClock;
     ///
     /// let clock = BootClock::capture();

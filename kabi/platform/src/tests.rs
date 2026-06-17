@@ -10,7 +10,7 @@
 //! would race over the one-shot static. A test fixture provides the vtable; no
 //! arch implementor is named (the contract has no impl-side edge).
 
-use super::{HANDLE, InstallError, PlatformVtable, handle, install};
+use super::{HANDLE, InstallError, NetError, PlatformVtable, handle, install};
 
 // ── fixture primitives (a synthetic provider, no arch edge) ──────────────────
 
@@ -72,6 +72,38 @@ unsafe extern "C" fn fixture_thread_spawn(
     42
 }
 
+unsafe extern "C" fn fixture_realtime() -> i64 {
+    // A fixed, sane wall-clock nanos value (well after the Unix epoch), read
+    // through the handle to prove the dispatch path.
+    1_700_000_000_000_000_000
+}
+
+unsafe extern "C" fn fixture_file_open(
+    _path: *const u8,
+    _path_len: usize,
+    flags: i32,
+    _mode: u32,
+) -> i64 {
+    // A synthetic provider: a non-negative `flags` "opens" successfully and
+    // returns a fixed fd; a negative `flags` reports `-ENOENT` (errno 2) so the
+    // error branch of the safe wrapper is exercised through the handle.
+    if flags < 0 { -2 } else { 11 }
+}
+
+unsafe extern "C" fn fixture_thread_id() -> i64 {
+    // A synthetic provider returns a fixed tid.
+    1234
+}
+
+#[allow(clippy::cast_possible_wrap)]
+unsafe extern "C" fn fixture_file_write(_fd: i32, _buf: *const u8, len: usize) -> i64 {
+    // A synthetic provider "writes" the whole buffer: echo the byte count so the
+    // plain-write dispatch path (distinct from the socket `fd_write`) is proven.
+    // A test buffer's byte count never exceeds `isize::MAX`, so the cast cannot
+    // wrap.
+    len as i64
+}
+
 /// The synthetic provider's `static` vtable (zero heap to build), the shape an
 /// arch-side `static` takes.
 static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
@@ -88,6 +120,10 @@ static FIXTURE_VTABLE: PlatformVtable = PlatformVtable {
     fd_write: fixture_fd_write,
     fd_close: fixture_fd_close,
     thread_spawn: fixture_thread_spawn,
+    realtime: fixture_realtime,
+    file_open: fixture_file_open,
+    thread_id: fixture_thread_id,
+    file_write: fixture_file_write,
 };
 
 /// A no-op C-ABI thread entry for the `thread_spawn` fixture: the synthetic
@@ -141,4 +177,23 @@ fn install_is_write_once_and_handle_reads_through() {
     // null arg uphold the contract trivially (nothing dereferences them).
     let tid = unsafe { handle().thread_spawn(noop_entry, core::ptr::null_mut()) };
     assert_eq!(tid, Ok(42), "thread tid flows through");
+
+    // The SP05 time + sys safe wrappers dispatch through the handle too.
+    assert_eq!(handle().realtime(), 1_700_000_000_000_000_000, "wall-clock nanos flow through");
+    assert_eq!(handle().thread_id(), 1234, "thread id flows through");
+    assert_eq!(handle().clock(), 1_234_567_890, "monotonic nanos flow through the safe wrapper");
+
+    // file_open SUCCESS: a non-negative `flags` "opens" and returns fd 11.
+    assert_eq!(handle().file_open(b"/log\0", 1, 0), Ok(11), "file_open fd flows through");
+    // file_open ERROR branch: a negative `flags` makes the fixture return
+    // `-2` (-ENOENT), which the wrapper maps to the typed positive-errno error.
+    assert_eq!(
+        handle().file_open(b"/log\0", -1, 0),
+        Err(NetError::from_code(2)),
+        "file_open negative errno maps to the typed error",
+    );
+
+    // file_write (plain `write(2)`, distinct from the socket `fd_write`): the
+    // fixture echoes the byte count, proving the separate dispatch path.
+    assert_eq!(handle().file_write(11, b"abcd"), Ok(4), "file_write count flows through");
 }

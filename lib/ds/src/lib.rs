@@ -20,6 +20,10 @@
 //!   thread-spawn helper, reached through the handle's net fd-op and
 //!   `thread_spawn` wrappers (SP05). Same Math-over-handle pattern as the
 //!   sync primitives: portable algorithm, World backend injected at boot.
+//! - [`fs`]/[`time`] — file + raw-fd wrappers and monotonic/wall-clock
+//!   readings, reached through the handle's `file_open`/fd-op and
+//!   `clock`/`realtime` wrappers (SP05). The kernel's log sink + boot clock and
+//!   the tui's stdio route through these, not `arch`.
 //!
 //! ## lib/ds is Math (master invariant 2: `lib/ds ⊄ arch`)
 //!
@@ -62,11 +66,13 @@
 
 mod bytes;
 mod condvar;
+pub mod fs;
 mod mutex;
 pub mod net;
 mod ring;
 mod rwlock;
 pub mod thread;
+pub mod time;
 
 // `map`/`seq`/`shared` carry `pub`-under-`selftest` internals
 // (`FIRST_CAPACITY`, `cyclic_in_range`, `MAX_REFCOUNT`, `refcount_overflowed`)

@@ -24,8 +24,8 @@ arch_test!(launcher_args_default_ring_bytes_is_1mib, {
 
 arch_test!(init_new_captures_boot_anchor, {
     let init = Init::new(LauncherArgs::default());
-    // Wall anchor must be after year 2000.
-    assert!(init.boot_anchor().wall_anchor.tv_sec > 946_684_800);
+    // Wall anchor must be after year 2000 (Unix-epoch nanos).
+    assert!(init.boot_anchor().wall_anchor > 946_684_800_000_000_000);
 });
 
 arch_test!(init_args_accessor_returns_args, {

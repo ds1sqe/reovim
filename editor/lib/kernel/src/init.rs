@@ -323,12 +323,13 @@ impl Init {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: Init::new captures the boot clock via the platform handle.
     /// use reovim_kernel::{Init, LauncherArgs};
     ///
     /// let init = Init::new(LauncherArgs::default());
-    /// // boot_anchor wall-clock is after year 2000.
-    /// assert!(init.boot_anchor().wall_anchor.tv_sec > 946_684_800);
+    /// // boot_anchor wall-clock is after year 2000 (Unix-epoch nanos).
+    /// assert!(init.boot_anchor().wall_anchor > 946_684_800_000_000_000);
     /// ```
     #[must_use]
     pub fn new(args: LauncherArgs) -> Self {
@@ -343,7 +344,8 @@ impl Init {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: Init::new captures the boot clock via the platform handle.
     /// use reovim_kernel::{Init, LauncherArgs};
     ///
     /// let init = Init::new(LauncherArgs::default());
@@ -359,7 +361,8 @@ impl Init {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// // no_run: Init::new captures the boot clock via the platform handle.
     /// use reovim_kernel::{Init, LauncherArgs};
     ///
     /// let init = Init::new(LauncherArgs::default());

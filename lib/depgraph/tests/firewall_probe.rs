@@ -29,7 +29,9 @@
 
 mod common;
 
-use reovim_depgraph::{run_firewall_probe, run_no_product_arch_net_probe};
+use reovim_depgraph::{
+    run_firewall_probe, run_no_product_arch_net_probe, run_no_product_arch_time_sys_probe,
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -288,6 +290,32 @@ fn no_product_arch_net_in_server_rt_and_tui() {
     assert!(
         violations.is_empty(),
         "no-product-arch-net: server-rt/tui product code still names arch net/thread:\n{}",
+        violations.join("\n")
+    );
+}
+
+// ── 5c. No product arch::time/sys time+sys calls in kernel + tui ──
+
+/// After `SP05b`, the kernel's and tui's PRODUCT source (non-`*_tests.rs`,
+/// `#[cfg(test/selftest)]`-block-skipped) must name no `arch::time` and none of
+/// the `arch::sys` time+file+thread-identity call surface (`openat`, `gettid`,
+/// `read`, `write`, `close`): those route through the kabi handle (lib/ds
+/// `time`/`fs`/`thread`), not arch. This is the `SP05b` verifiable deliverable —
+/// the source-level companion to the (UNCHANGED) manifest-level firewall
+/// residual.
+///
+/// The probe deliberately ALLOWS the termios `arch::sys::ioctl`/`arch::sys::term`
+/// surface and `arch::term`: those are `SP05c`'s terminal-control / panic-restore
+/// stratum, which the tui legitimately keeps until `SP05c` empties the residual.
+#[test]
+fn no_product_arch_time_sys_in_kernel_and_tui() {
+    let root = common::workspace_root();
+    let violations =
+        run_no_product_arch_time_sys_probe(&root, &["reovim-kernel", "reovim-platform-tui"])
+            .expect("no-product-arch-time-sys probe must run on real workspace");
+    assert!(
+        violations.is_empty(),
+        "no-product-arch-time-sys: kernel/tui product code still names arch time/sys calls:\n{}",
         violations.join("\n")
     );
 }

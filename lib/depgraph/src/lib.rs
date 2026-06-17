@@ -2222,6 +2222,162 @@ fn is_selftest_cfg(stripped: &str) -> bool {
     stripped.starts_with("#[cfg(") && stripped.contains("feature") && stripped.contains("selftest")
 }
 
+// ── Probe 1c: no product `arch::time`/`arch::sys` time+sys-call surface ────────
+
+/// **No-product-arch-time-sys probe.**
+///
+/// The SP05 companion to [`run_no_product_arch_net_probe`]: asserts that the
+/// named crates' PRODUCT source (every `.rs` file under `src/` that is NOT an
+/// L12 `*_tests.rs` sibling, with `#[cfg(test)]` and
+/// `#[cfg(feature = "selftest")]` blocks skipped) names no `arch::time` and
+/// none of the `arch::sys` TIME/FILE/THREAD-IDENTITY syscall surface — the
+/// kernel's clock + log-sink + service-registration and the tui's stdio route
+/// those through the `kabi` handle (via the `lib/ds` `time`/`fs`/`thread`
+/// wrappers), so a product reference to those arch paths would be a firewall
+/// bypass the manifest-level probe cannot see.
+///
+/// ## What is and is not forbidden (and why)
+///
+/// Forbidden: `arch::time` (the whole monotonic + wall-clock module) and the
+/// `arch::sys` CALL names the SP05 time+sys stratum moved behind the handle —
+/// `openat`, `gettid`, `read`, `write`, `close` (plus the `reovim_arch::`
+/// path forms). These are matched as the qualified call names
+/// (`arch::sys::openat`, …), NOT as the bare `arch::sys::` prefix.
+///
+/// Deliberately ALLOWED: `arch::sys::ioctl` and the `arch::sys::term::*`
+/// termios surface, plus `arch::term`. Those are the terminal-control /
+/// panic-restore stratum `SP05c` owns — the tui's panic-restore hook still
+/// names `arch::sys::{ioctl, term::…}` and `arch::term::Termios`, which is
+/// correct until `SP05c`. A bare-prefix ban (`arch::sys::`) would flag that
+/// legitimate
+/// edge, so the forbidden set is the specific moved-call names instead.
+///
+/// # Errors
+///
+/// Returns `ProbeError` when workspace enumeration or filesystem I/O fails.
+///
+/// ```rust
+/// use reovim_depgraph::run_no_product_arch_time_sys_probe;
+/// use std::path::Path;
+///
+/// // A non-existent root returns Err (Io).
+/// let result = run_no_product_arch_time_sys_probe(Path::new("/nonexistent/xyz"), &[]);
+/// assert!(result.is_err());
+/// ```
+pub fn run_no_product_arch_time_sys_probe(
+    root: &Path,
+    crate_names: &[&str],
+) -> Result<StructuralViolations, ProbeError> {
+    let crates = enumerate_crates(root)?;
+    let mut violations = Vec::new();
+
+    for krate in &crates {
+        if !crate_names.contains(&krate.name.as_str()) {
+            continue;
+        }
+        let src_dir = root.join(&krate.path).join("src");
+        if src_dir.is_dir() {
+            sweep_product_src_for_arch_time_sys(&src_dir, &krate.name, &mut violations)?;
+        }
+    }
+
+    Ok(violations)
+}
+
+/// Recursively sweeps product `.rs` files under `dir` for the forbidden
+/// `arch::time`/`arch::sys` time+sys-call references, skipping L12 `*_tests.rs`
+/// siblings and `tests` directories.
+fn sweep_product_src_for_arch_time_sys(
+    dir: &Path,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), ProbeError> {
+    let entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .and_then(Iterator::collect)
+        .map_err(io_error(dir))?;
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if path.is_dir() {
+            if name_str == "tests" {
+                continue; // skip test target directories
+            }
+            sweep_product_src_for_arch_time_sys(&path, crate_name, violations)?;
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            // L12 sibling test files compile only under `selftest`; the
+            // selftest test-infra legitimately uses arch time/sys calls.
+            if name_str.ends_with("_tests.rs") {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue; // unreadable files: silently skip
+            };
+            check_product_source_for_arch_time_sys(&path, &text, crate_name, violations);
+        }
+    }
+    Ok(())
+}
+
+/// Scans `text` (a product source file) for `arch::time`/`arch::sys` time+sys
+/// call references outside `#[cfg(test)]` and `#[cfg(feature = "selftest")]`
+/// blocks, ALLOWING the termios `arch::sys::ioctl`/`arch::sys::term` surface
+/// (`SP05c`'s stratum).
+fn check_product_source_for_arch_time_sys(
+    file: &Path,
+    text: &str,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) {
+    /// The product-forbidden arch time + sys-call paths. The whole `arch::time`
+    /// module, and the specific `arch::sys` CALL names SP05 moved behind the
+    /// handle — NOT the bare `arch::sys::` prefix (which would flag the
+    /// `SP05c`-owned `arch::sys::ioctl`/`arch::sys::term` termios surface).
+    const FORBIDDEN: &[&str] = &[
+        "arch::time",
+        "reovim_arch::time",
+        "arch::sys::openat",
+        "reovim_arch::sys::openat",
+        "arch::sys::gettid",
+        "reovim_arch::sys::gettid",
+        "arch::sys::read",
+        "reovim_arch::sys::read",
+        "arch::sys::write",
+        "reovim_arch::sys::write",
+        "arch::sys::close",
+        "reovim_arch::sys::close",
+    ];
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let stripped = strip_line_comment(lines[i]).trim();
+
+        // Skip a `#[cfg(test)]` or `#[cfg(feature = "selftest")]` block: the
+        // selftest-gated test-infra may name arch time/sys calls legitimately.
+        if stripped == "#[cfg(test)]" || is_selftest_cfg(stripped) {
+            i += cfg_test_skip(&lines, i);
+            continue;
+        }
+
+        for pat in FORBIDDEN {
+            if stripped.contains(pat) {
+                violations.push(format!(
+                    "no-product-arch-time-sys: `{}` `{}` line {}: product code names `{}` — \
+                     time/file/thread-identity must route through the kabi handle (lib/ds), \
+                     not arch",
+                    crate_name,
+                    file.display(),
+                    i + 1,
+                    pat,
+                ));
+            }
+        }
+
+        i += 1;
+    }
+}
+
 // ── Probe 2: lib/ds ⊄ arch ────────────────────────────────────────────────────
 
 /// **`lib/ds` purity probe** — Architectural invariant 2.

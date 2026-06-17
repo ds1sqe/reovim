@@ -105,7 +105,8 @@ pub struct BootStageFields {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
+/// // no_run: BootClock::capture reads the boot-installed platform handle.
 /// use reovim_kernel::event_bus::{DS12Event, BootStageFields};
 /// use reovim_kernel::LauncherArgs;
 /// use reovim_kernel::BootClock;

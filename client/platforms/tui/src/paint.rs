@@ -31,10 +31,12 @@
 use {
     reovim_arch::{
         panic::set_pre_exit_hook,
-        sys::write,
         term::{ENOTTY, RawMode},
     },
-    reovim_lib_ds::net::UnixStream,
+    reovim_lib_ds::{
+        fs::{read_fd, write_fd},
+        net::UnixStream,
+    },
 };
 
 use crate::{
@@ -125,7 +127,7 @@ fn restore_terminal_on_panic() {
 fn write_all_fd(fd: i32, buf: &[u8]) {
     let mut off = 0;
     while off < buf.len() {
-        match write(fd, &buf[off..]) {
+        match write_fd(fd, &buf[off..]) {
             Ok(0) | Err(_) => break,
             Ok(n) => off += n,
         }
@@ -190,8 +192,10 @@ pub fn run(args: RunArgs) -> Result<(), RunError> {
 fn run_loop(stream: &UnixStream, client_id: u64) -> Result<(), RunError> {
     let mut stdin_buf = [0u8; 16]; // enough for an ANSI escape sequence
     loop {
-        // Read stdin bytes (blocks until at least 1 byte).
-        let n = match reovim_arch::sys::read(STDIN_FD, &mut stdin_buf) {
+        // Read stdin bytes (blocks until at least 1 byte). STDIN is a
+        // process-owned fd this client must NOT close, so it goes through the
+        // raw-fd `read_fd` (never a `File`, whose Drop would close it).
+        let n = match read_fd(STDIN_FD, &mut stdin_buf) {
             Ok(0) | Err(_) => return Ok(()), // EOF or error → clean exit
             Ok(n) => n,
         };

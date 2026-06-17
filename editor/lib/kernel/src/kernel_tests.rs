@@ -26,8 +26,8 @@ arch_test!(kernel_boot_anchor_field_accessible, {
     let kernel = Init::new(LauncherArgs::default())
         .boot()
         .expect("boot succeeds");
-    // Boot anchor wall clock is after year 2000.
-    assert!(kernel.boot_anchor.wall_anchor.tv_sec > 946_684_800);
+    // Boot anchor wall clock is after year 2000 (Unix-epoch nanos).
+    assert!(kernel.boot_anchor.wall_anchor > 946_684_800_000_000_000);
 });
 
 arch_test!(kernel_abi_field_version_is_current, {

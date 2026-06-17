@@ -76,6 +76,23 @@ extern "C" fn trampoline<F: FnOnce()>(arg: *mut u8) {
     f();
 }
 
+/// Returns the calling thread's kernel thread id through the kabi handle.
+///
+/// Reaches the handle's `thread_id` slot — never `arch` directly. The id
+/// cannot fail; a valid tid is a small positive integer (widened to `i64` to
+/// match the slot's scalar return).
+///
+/// ```no_run
+/// // no_run: reading the thread id needs a booted `kabi` handle.
+/// use reovim_lib_ds::thread::current_id;
+///
+/// let _tid = current_id();
+/// ```
+#[must_use]
+pub fn current_id() -> i64 {
+    i64::from(handle().thread_id())
+}
+
 /// Spawns a detached thread running `f` through the kabi handle.
 ///
 /// `f` is boxed into a handle-allocated block and run on the new thread via a

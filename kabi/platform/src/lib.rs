@@ -304,6 +304,78 @@ pub type FdWriteFn = unsafe extern "C" fn(fd: i32, buf: *const u8, len: usize) -
 /// already-closed fd maps to a negative errno, not UB.
 pub type FdCloseFn = unsafe extern "C" fn(fd: i32) -> i64;
 
+/// The wall-clock primitive: reads a real-time clock, returning whole
+/// nanoseconds since the Unix epoch (1970-01-01 00:00:00 UTC).
+///
+/// Distinct from [`ClockFn`]: that slot is MONOTONIC (never steps, unspecified
+/// epoch, for ordering durations); this is WALL-CLOCK (can step under NTP/manual
+/// set, Unix epoch, for a human-readable timestamp anchor). A flat `i64` nanos
+/// return — not a `(secs, nanos)` struct — keeps the FFI return an ABI-trivial
+/// scalar with no layout freeze (AB15) for zero benefit; the i64-nanos horizon
+/// reaches year ~2262.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` to share the vtable's one ABI shape with the effectful
+/// slots; the underlying clock read has no precondition, so a caller upholds
+/// nothing beyond the handle being installed.
+pub type RealtimeFn = unsafe extern "C" fn() -> i64;
+
+/// The file-open primitive.
+///
+/// Opens the NUL-terminated pathname `path` (`path_len` bytes) with the Linux
+/// open `flags` and creation `mode`, returning the new fd (`>= 0`) or a negative
+/// errno. The directory base is the provider's current working directory
+/// (`AT_FDCWD`-relative); a consumer passes only an absolute or cwd-relative
+/// path.
+///
+/// fd-based syscall surface, the sibling of [`UnixConnectFn`] for files: the
+/// contract carries the path as `*const u8` + `usize`, the open `flags`/`mode`
+/// as the Linux-ABI `i32`/`u32` scalars, and reports errors as a negative-errno
+/// return. The `flags` values are Linux open-flag constants (an ABI vocabulary,
+/// not internal policy), so exporting them across `#[repr(C)]` is correct. The
+/// consumer (`lib/ds`'s `File`) maps a negative return to a typed error and
+/// wraps the fd; write/read/close then route through the existing fd-op slots.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `path` must point to `path_len`
+/// readable bytes containing a NUL-terminated pathname; the provider reads no
+/// further. A malformed path or a refused open maps to a negative-errno return,
+/// not UB.
+pub type FileOpenFn =
+    unsafe extern "C" fn(path: *const u8, path_len: usize, flags: i32, mode: u32) -> i64;
+
+/// The thread-id primitive: returns the calling thread's kernel thread id
+/// (`>= 0`).
+///
+/// The platform identity syscall (`gettid`-shaped) the kernel uses to stamp a
+/// service row with its owning thread. A flat `i64` return matches the other
+/// scalar slots; a valid tid is a small positive integer well within `i32`.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` to share the vtable's one ABI shape; the underlying
+/// thread-id read has no precondition and cannot fail, so a caller upholds
+/// nothing beyond the handle being installed.
+pub type ThreadIdFn = unsafe extern "C" fn() -> i64;
+
+/// The plain byte-write primitive: writes up to `len` bytes from `buf` to `fd`
+/// with `write(2)` semantics, returning the byte count or a negative errno.
+///
+/// The file/stdio companion to [`FileOpenFn`], distinct from [`FdWriteFn`]:
+/// that slot is a stream `send` that suppresses `SIGPIPE` for the socket
+/// carrier, and `send` is valid only on a socket fd. This slot is the ordinary
+/// `write(2)` that works on any fd — a regular file (the kernel log sink), a
+/// pipe, or a tty (the tui's stdout). The two write paths split on the
+/// `lib/ds` module boundary: `net` uses [`FdWriteFn`], `fs` uses this slot.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
+/// bytes; the provider reads at most that many.
+pub type FileWriteFn = unsafe extern "C" fn(fd: i32, buf: *const u8, len: usize) -> i64;
+
 /// The thread-spawn primitive: starts a detached thread that calls
 /// `entry(arg)`, returning the new thread id (`>= 0`) or a negative errno.
 ///
@@ -348,7 +420,10 @@ pub type ThreadSpawnFn =
 /// (`unix_connect`/`unix_listen`/`unix_accept`/`fd_read`/`fd_write`/`fd_close`)
 /// and `thread_spawn` (AB3 trailing append) so `lib/ds` can build
 /// `UnixStream`/`UnixListener` Math types and a detached thread-spawn helper
-/// without naming `arch`.
+/// without naming `arch`. SP05 also appends `realtime` (wall-clock anchor),
+/// `file_open` (open a file by path), and `thread_id` (the calling thread's
+/// tid) so the kernel's clock/log-sink/service-registration and the tui's
+/// stdio reach time + file + thread-identity backends through the handle.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PlatformVtable {
@@ -379,6 +454,15 @@ pub struct PlatformVtable {
     /// Spawn a detached thread running a C-ABI entry (SP05; AB3 trailing
     /// append).
     pub thread_spawn: ThreadSpawnFn,
+    /// Read the wall clock in Unix-epoch nanoseconds (SP05; AB3 trailing
+    /// append).
+    pub realtime: RealtimeFn,
+    /// Open a file, returning its fd (SP05; AB3 trailing append).
+    pub file_open: FileOpenFn,
+    /// Read the calling thread's kernel thread id (SP05; AB3 trailing append).
+    pub thread_id: ThreadIdFn,
+    /// Plain `write(2)` to any fd — file or stdio (SP05; AB3 trailing append).
+    pub file_write: FileWriteFn,
 }
 
 // `PlatformVtable` is `Sync` automatically: it holds only `unsafe extern "C"`
@@ -578,6 +662,94 @@ impl PlatformVtable {
         let ret = unsafe { (self.thread_spawn)(entry, arg) };
         map_fd_ret(ret).map(narrow_fd)
     }
+
+    /// Reads the monotonic clock, returning whole nanoseconds since an
+    /// unspecified epoch.
+    ///
+    /// The safe Rust face of the [`clock`](PlatformVtable::clock) slot — the
+    /// monotonic counterpart to [`realtime`](PlatformVtable::realtime). The
+    /// reading never steps backward, so the difference of two readings is a
+    /// non-negative duration; use it for ordering and durations, not for a
+    /// human-readable timestamp. (A field named `clock` and this method named
+    /// `clock` coexist: the field is the raw fn pointer, the method is its safe
+    /// face.)
+    #[must_use]
+    pub fn clock(&self) -> i64 {
+        // SAFETY: the `clock` slot was installed from a provider's
+        // `unsafe extern "C"` monotonic read, which has no precondition.
+        unsafe { (self.clock)() }
+    }
+
+    /// Reads the wall clock, returning whole nanoseconds since the Unix epoch.
+    ///
+    /// The safe Rust face of the [`realtime`](PlatformVtable::realtime) slot.
+    /// The reading can step (NTP, manual clock set), so it is a human-readable
+    /// timestamp anchor, never a basis for ordering — use the monotonic
+    /// [`clock`](PlatformVtable::clock) slot for durations.
+    #[must_use]
+    pub fn realtime(&self) -> i64 {
+        // SAFETY: the `realtime` slot was installed from a provider's
+        // `unsafe extern "C"` clock read, which has no precondition.
+        unsafe { (self.realtime)() }
+    }
+
+    /// Opens the NUL-terminated `path` with the Linux open `flags` and creation
+    /// `mode`, returning the new fd.
+    ///
+    /// The safe Rust face of the [`file_open`](PlatformVtable::file_open) slot:
+    /// it passes the path slice's pointer + length and the `flags`/`mode`
+    /// scalars to the provider and maps a negative-errno return to [`NetError`].
+    /// `lib/ds`'s `File` stays safe — the `unsafe extern "C"` call is
+    /// encapsulated here. `flags`/`mode` are the Linux open-flag and file-mode
+    /// constants the consumer supplies.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] when the open fails (missing path, permission
+    /// denied, a malformed pathname).
+    pub fn file_open(&self, path: &[u8], flags: i32, mode: u32) -> Result<i32, NetError> {
+        // SAFETY: `path` is a live slice borrowed for the call, so the pointer
+        // is valid for `path.len()` bytes; the provider reads no further.
+        let ret = unsafe { (self.file_open)(path.as_ptr(), path.len(), flags, mode) };
+        map_fd_ret(ret).map(narrow_fd)
+    }
+
+    /// Returns the calling thread's kernel thread id.
+    ///
+    /// The safe Rust face of the [`thread_id`](PlatformVtable::thread_id) slot.
+    /// The id cannot fail, so it returns a plain `i32` (a tid is a small
+    /// positive integer well within `i32`).
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn thread_id(&self) -> i32 {
+        // SAFETY: the `thread_id` slot was installed from a provider's
+        // `unsafe extern "C"` thread-id read, which has no precondition and
+        // cannot fail.
+        let ret = unsafe { (self.thread_id)() };
+        // A tid is a small positive integer (< 2^31), so the narrowing to the
+        // i32 the service-registration consumer uses cannot wrap.
+        ret as i32
+    }
+
+    /// Writes up to `buf.len()` bytes from `buf` to `fd` with `write(2)`
+    /// semantics, returning the byte count written.
+    ///
+    /// The safe Rust face of the [`file_write`](PlatformVtable::file_write)
+    /// slot — the plain-write counterpart to
+    /// [`fd_write`](PlatformVtable::fd_write) (a socket `send`). Use it for
+    /// non-socket fds: a regular file, a pipe, or a tty. `lib/ds`'s `fs`
+    /// surface routes here; `net` routes through `fd_write`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetError`] on a write failure (bad fd, full disk, a broken
+    /// pipe → the provider's `EPIPE`-class error).
+    pub fn file_write(&self, fd: i32, buf: &[u8]) -> Result<usize, NetError> {
+        // SAFETY: `buf` is a live slice; its pointer is valid for `buf.len()`
+        // readable bytes.
+        let ret = unsafe { (self.file_write)(fd, buf.as_ptr(), buf.len()) };
+        map_fd_ret(ret)
+    }
 }
 
 /// Narrows a non-negative `usize` (a fd or tid the slot returned) to the `i32`
@@ -660,6 +832,16 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     let _ = (entry, arg);
 ///     -1
 /// }
+/// unsafe extern "C" fn realtime_stub() -> i64 { 0 }
+/// unsafe extern "C" fn file_open_stub(p: *const u8, n: usize, f: i32, m: u32) -> i64 {
+///     let _ = (p, n, f, m);
+///     -1
+/// }
+/// unsafe extern "C" fn thread_id_stub() -> i64 { 1 }
+/// unsafe extern "C" fn file_write_stub(fd: i32, b: *const u8, n: usize) -> i64 {
+///     let _ = (fd, b, n);
+///     0
+/// }
 ///
 /// static TABLE: PlatformVtable = PlatformVtable {
 ///     clock:        clock_stub,
@@ -675,6 +857,10 @@ static HANDLE: AtomicPtr<PlatformVtable> = AtomicPtr::new(core::ptr::null_mut())
 ///     fd_write:     write_stub,
 ///     fd_close:     close_stub,
 ///     thread_spawn: spawn_stub,
+///     realtime:     realtime_stub,
+///     file_open:    file_open_stub,
+///     thread_id:    thread_id_stub,
+///     file_write:   file_write_stub,
 /// };
 ///
 /// // Boot path: install the platform table once.
