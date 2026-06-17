@@ -28,7 +28,7 @@
 
 use core::alloc::Layout;
 
-use reovim_kabi_platform::{NetError, handle};
+use {reovim_kabi_platform::handle, reovim_uapi_posix::Errno};
 
 /// Why a [`spawn`] failed.
 ///
@@ -43,7 +43,7 @@ pub enum SpawnError {
     OutOfMemory,
     /// The handle's `thread_spawn` primitive refused (the underlying `clone`
     /// failed, or a stack could not be mapped), carrying the platform errno.
-    Spawn(NetError),
+    Spawn(Errno),
 }
 
 /// The monomorphized child entry: reconstructs the boxed `F`, runs it, and frees

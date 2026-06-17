@@ -24,7 +24,10 @@
 
 use core::alloc::Layout;
 
-use reovim_kabi_platform::{InstallError, PlatformVtable, install};
+use {
+    reovim_kabi_platform::{InstallError, PlatformVtable, install},
+    reovim_uapi_posix::{Fd, Mode, OpenFlags},
+};
 
 use crate::{
     alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
@@ -280,9 +283,10 @@ unsafe extern "C" fn unix_listen(path: *const u8, path_len: usize) -> i64 {
 /// returns a negative errno.
 #[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-unsafe extern "C" fn unix_accept(listener_fd: i32) -> i64 {
-    // A valid accepted fd fits in i32; the narrowing cannot wrap.
-    match sys_accept(listener_fd) {
+unsafe extern "C" fn unix_accept(listener_fd: Fd) -> i64 {
+    // A valid accepted fd fits in i32; the narrowing cannot wrap. The canonical
+    // `Fd` newtype maps to the raw `i32` arch's `accept` syscall wrapper takes.
+    match sys_accept(listener_fd.as_i32()) {
         Ok(fd) => i64::from(fd as i32),
         Err(e) => neg_errno(e),
     }
@@ -297,11 +301,12 @@ unsafe extern "C" fn unix_accept(listener_fd: i32) -> i64 {
 /// bytes; the adapter writes at most the returned count.
 #[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-unsafe extern "C" fn fd_read(fd: i32, buf: *mut u8, len: usize) -> i64 {
+unsafe extern "C" fn fd_read(fd: Fd, buf: *mut u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` writable bytes.
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
-    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
-    match sys_read(fd, slice) {
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap. The
+    // canonical `Fd` maps to the raw `i32` arch's `read` wrapper takes.
+    match sys_read(fd.as_i32(), slice) {
         Ok(n) => n as i64,
         Err(e) => neg_errno(e),
     }
@@ -317,11 +322,12 @@ unsafe extern "C" fn fd_read(fd: i32, buf: *mut u8, len: usize) -> i64 {
 /// bytes.
 #[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-unsafe extern "C" fn fd_write(fd: i32, buf: *const u8, len: usize) -> i64 {
+unsafe extern "C" fn fd_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
     let slice = unsafe { core::slice::from_raw_parts(buf, len) };
-    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
-    match send_nosignal(fd, slice) {
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap. The
+    // canonical `Fd` maps to the raw `i32` arch's `send` wrapper takes.
+    match send_nosignal(fd.as_i32(), slice) {
         Ok(n) => n as i64,
         Err(e) => neg_errno(e),
     }
@@ -342,11 +348,11 @@ unsafe extern "C" fn fd_write(fd: i32, buf: *const u8, len: usize) -> i64 {
 /// bytes.
 #[cfg(target_os = "linux")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-unsafe extern "C" fn file_write(fd: i32, buf: *const u8, len: usize) -> i64 {
+unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
     // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
     let slice = unsafe { core::slice::from_raw_parts(buf, len) };
     // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
-    match sys_write(fd, slice) {
+    match sys_write(fd.as_i32(), slice) {
         Ok(n) => n as i64,
         Err(e) => neg_errno(e),
     }
@@ -359,8 +365,9 @@ unsafe extern "C" fn file_write(fd: i32, buf: *const u8, len: usize) -> i64 {
 /// `unsafe extern "C"` per the vtable ABI. `fd` is a scalar; an already-closed
 /// fd returns a negative errno.
 #[cfg(target_os = "linux")]
-unsafe extern "C" fn fd_close(fd: i32) -> i64 {
-    match sys_close(fd) {
+unsafe extern "C" fn fd_close(fd: Fd) -> i64 {
+    // The canonical `Fd` maps to the raw `i32` arch's `close` wrapper takes.
+    match sys_close(fd.as_i32()) {
         Ok(_) => 0,
         Err(e) => neg_errno(e),
     }
@@ -571,14 +578,20 @@ unsafe extern "C" fn realtime_adapter() -> i64 {
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss
 )]
-unsafe extern "C" fn file_open(path: *const u8, path_len: usize, flags: i32, mode: u32) -> i64 {
+unsafe extern "C" fn file_open(
+    path: *const u8,
+    path_len: usize,
+    flags: OpenFlags,
+    mode: Mode,
+) -> i64 {
     // SAFETY: caller guarantees `path` is valid for `path_len` readable bytes;
     // the slice borrows it for the openat call only.
     let slice = unsafe { core::slice::from_raw_parts(path, path_len) };
-    // `flags` is a Linux open-flag bit pattern carried as `i32` across the
-    // contract; the cast to the `usize` the syscall wrapper takes reinterprets
-    // those bits (sign loss is intentional — a flag set is not a signed value).
-    match openat(AT_FDCWD, slice, flags as usize, mode as usize) {
+    // `flags` carries a Linux open-flag bit pattern; the cast to the `usize`
+    // the syscall wrapper takes reinterprets those bits (sign loss is
+    // intentional — a flag set is not a signed value). `mode` is the unsigned
+    // permission word, widened to the wrapper's `usize`.
+    match openat(AT_FDCWD, slice, flags.bits() as usize, mode.bits() as usize) {
         // A valid fd is a small non-negative usize (< 2^31); the narrowing
         // cannot wrap.
         Ok(fd) => fd as i64,
@@ -619,19 +632,19 @@ unsafe extern "C" fn unix_listen(_path: *const u8, _path_len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn unix_accept(_listener_fd: i32) -> i64 {
+unsafe extern "C" fn unix_accept(_listener_fd: Fd) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_read(_fd: i32, _buf: *mut u8, _len: usize) -> i64 {
+unsafe extern "C" fn fd_read(_fd: Fd, _buf: *mut u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_write(_fd: i32, _buf: *const u8, _len: usize) -> i64 {
+unsafe extern "C" fn fd_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn fd_close(_fd: i32) -> i64 {
+unsafe extern "C" fn fd_close(_fd: Fd) -> i64 {
     -ENOSYS_CODE
 }
 #[cfg(not(target_os = "linux"))]
@@ -650,7 +663,12 @@ unsafe extern "C" fn realtime_adapter() -> i64 {
 /// Freestanding file-open stub: `-ENOSYS` (no filesystem floor on bare metal),
 /// the same fallible shape as the other fd stubs.
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn file_open(_path: *const u8, _path_len: usize, _flags: i32, _mode: u32) -> i64 {
+unsafe extern "C" fn file_open(
+    _path: *const u8,
+    _path_len: usize,
+    _flags: OpenFlags,
+    _mode: Mode,
+) -> i64 {
     -ENOSYS_CODE
 }
 /// Freestanding thread-id stub: returns `0`, the single-bare-metal-thread
@@ -662,7 +680,7 @@ unsafe extern "C" fn thread_id() -> i64 {
 /// Freestanding file-write stub: `-ENOSYS` (no filesystem/stdio floor on bare
 /// metal), the same fallible shape as the other fd stubs.
 #[cfg(not(target_os = "linux"))]
-unsafe extern "C" fn file_write(_fd: i32, _buf: *const u8, _len: usize) -> i64 {
+unsafe extern "C" fn file_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
     -ENOSYS_CODE
 }
 

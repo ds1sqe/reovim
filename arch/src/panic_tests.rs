@@ -35,10 +35,10 @@ use {
 };
 
 use super::{
-    Disposition, FLUSH_FD, PanicRecord, SetError, StackWriter, clear_cleanup_context,
-    current_disposition, current_record, enter_cleanup_context, handle, load_ring_tail_provider,
-    load_state_record_hook, render_location, reset_registry, set_disposition, set_flush_fd,
-    set_ring_tail_provider, set_state_record_hook,
+    Disposition, PanicRecord, SetError, StackWriter, clear_cleanup_context, current_disposition,
+    current_record, enter_cleanup_context, handle, load_ring_tail_provider, load_state_record_hook,
+    render_location, reset_registry, set_disposition, set_flush_fd, set_ring_tail_provider,
+    set_state_record_hook,
 };
 
 // ---- file-based capture helpers -------------------------------------------
@@ -145,12 +145,12 @@ arch_test!(panic_set_disposition_is_write_once, {
 });
 
 arch_test!(panic_set_flush_fd_is_write_once, {
-    use core::sync::atomic::Ordering::Acquire;
     reset_registry();
     testrt::check_eq(set_flush_fd(7), Ok(()));
-    testrt::check_eq(FLUSH_FD.load(Acquire), 7i32);
+    // The flush-fd atom lives in kabi/panic now; observe it through its getter.
+    testrt::check_eq(reovim_kabi_panic::get_flush_fd(), Some(7i32));
     testrt::check_eq(set_flush_fd(9), Err(SetError::AlreadySet));
-    testrt::check_eq(FLUSH_FD.load(Acquire), 7i32);
+    testrt::check_eq(reovim_kabi_panic::get_flush_fd(), Some(7i32));
     reset_registry();
 });
 

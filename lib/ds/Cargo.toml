@@ -11,10 +11,15 @@ description = "Portable heap-DS algorithms (Seq, Map, Bytes, Mutex, RwLock, Cond
 publish = false
 
 [dependencies]
-# The ONLY dependency: the down-face platform contract. lib/ds reaches its
-# allocator + park/unpark backend through the boot-installed kabi handle; it
-# names NO implementor (no `arch` edge — master invariant 2: lib/ds ⊄ arch).
+# The down-face platform contract. lib/ds reaches its allocator + park/unpark
+# backend through the boot-installed kabi handle; it names NO implementor (no
+# `arch` edge — master invariant 2: lib/ds ⊄ arch).
 reovim-kabi-platform = { path = "../../kabi/platform" }
+
+# The canonical POSIX vocabulary (Errno/OpenFlags/Mode). lib/ds names these
+# newtypes in its fd-op error and file-open surfaces so the fd-op vocabulary
+# has a single home; uapi/posix is a #![no_std] zero-dep leaf (DAG5/DAG6).
+reovim-uapi-posix = { path = "../../uapi/posix" }
 
 [lints]
 workspace = true

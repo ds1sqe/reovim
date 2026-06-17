@@ -1,0 +1,32 @@
+[package]
+name = "reovim-kabi-panic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Down-face panic-seam contract: the always-present write-once fault-floor atoms (kabi → uapi/panic only)"
+publish = false
+
+[features]
+# Exposes `reset()` so the no_std selftest runner can clear the process-global
+# write-once atoms between sequential test cases. Non-default: a real process
+# never resets the fault floor (write-once is permanent, 6.2 §5.2). arch's own
+# `selftest` feature enables this transitively. Features are in-repo plumbing,
+# not dependency edges (L9-clean).
+selftest = []
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-uapi-panic = { path = "../../uapi/panic" }
+
+# kabi/panic is the always-present fault-floor CONTRACT tier — a leaf
+# (Platform-Contract §3.4): it owns the write-once atomic statics the panic
+# handler reads at any boot stage.  It NEVER names arch or any impl crate;
+# the only permitted intra-Foundation edge is → uapi/panic for the
+# Disposition/PanicRecord value types and the hook fn-pointer aliases.
+# DAG5: no third-party deps; only core + one intra-workspace path dep.

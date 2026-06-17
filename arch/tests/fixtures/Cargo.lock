@@ -49,19 +49,33 @@ dependencies = [
 name = "reovim-arch"
 version = "0.16.0-dev"
 dependencies = [
+ "reovim-kabi-panic",
  "reovim-kabi-platform",
  "reovim-lib-ds",
+ "reovim-uapi-panic",
+ "reovim-uapi-posix",
+]
+
+[[package]]
+name = "reovim-kabi-panic"
+version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-panic",
 ]
 
 [[package]]
 name = "reovim-kabi-platform"
 version = "0.16.0-dev"
+dependencies = [
+ "reovim-uapi-posix",
+]
 
 [[package]]
 name = "reovim-lib-ds"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-kabi-platform",
+ "reovim-uapi-posix",
 ]
 
 [[package]]
@@ -74,6 +88,14 @@ version = "0.16.0-dev"
 
 [[package]]
 name = "reovim-uapi-module-macros"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-panic"
+version = "0.16.0-dev"
+
+[[package]]
+name = "reovim-uapi-posix"
 version = "0.16.0-dev"
 
 [[package]]

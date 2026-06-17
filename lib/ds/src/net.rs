@@ -22,21 +22,8 @@
 //! server leaks its listener fd to process teardown — the listen primitive
 //! pre-unlinks any stale socket path before bind, so a restart still succeeds.
 
-use reovim_kabi_platform::{NetError, handle};
-
-/// A net-error carrying the platform's positive errno code.
-///
-/// Re-exported from `kabi` so consumers name `reovim_lib_ds::net::Errno` rather
-/// than reaching into the contract crate. The methods the carrier code needs —
-/// `code()` and equality against the [`EBADF`] sentinel — are the kabi
-/// [`NetError`] surface.
-///
-/// ```rust
-/// use reovim_lib_ds::net::Errno;
-///
-/// assert_eq!(Errno::from_code(2).code(), 2);
-/// ```
-pub type Errno = NetError;
+use reovim_kabi_platform::handle;
+pub use reovim_uapi_posix::Errno;
 
 /// "Bad file descriptor" / peer-closed sentinel (`EBADF`, Linux errno 9).
 ///
@@ -50,7 +37,7 @@ pub type Errno = NetError;
 /// assert_eq!(EBADF, Errno::from_code(9));
 /// assert_eq!(EBADF.code(), 9);
 /// ```
-pub const EBADF: Errno = NetError::from_code(9);
+pub const EBADF: Errno = Errno::from_code(9);
 
 /// "No such file or directory" (`ENOENT`, Linux errno 2).
 ///
@@ -64,7 +51,7 @@ pub const EBADF: Errno = NetError::from_code(9);
 /// assert_eq!(ENOENT, Errno::from_code(2));
 /// assert_ne!(ENOENT, EBADF);
 /// ```
-pub const ENOENT: Errno = NetError::from_code(2);
+pub const ENOENT: Errno = Errno::from_code(2);
 
 /// A connected Unix-domain byte-stream socket.
 ///

@@ -24,7 +24,7 @@ runtime = []
 # runner, live allocator (fault seam + accounting), threads, and futex backend
 # stay here — so `selftest` propagates to `reovim-lib-ds/selftest` to reach its
 # test-observation surface (testhooks, the growth-ladder constants/helpers).
-selftest = ["reovim-lib-ds/selftest"]
+selftest = ["reovim-lib-ds/selftest", "reovim-kabi-panic/selftest"]
 
 [lints]
 workspace = true
@@ -37,6 +37,23 @@ workspace = true
 # no third-party deps, so DAG5 (Dependency Sovereignty) and DAG6 (zero-std)
 # are preserved — no external crate enters the graph.
 reovim-kabi-platform = { path = "../kabi/platform" }
+
+# arch names the canonical POSIX newtypes (Fd/OpenFlags/Mode) in the fd-op
+# slot implementations it wires into the platform vtable, mapping them to the
+# raw syscall edge it owns. uapi/posix is a #![no_std] zero-dep leaf, so
+# DAG5 (Dependency Sovereignty) and DAG6 (zero-std) are preserved.
+reovim-uapi-posix = { path = "../uapi/posix" }
+
+# arch's panic handler reads the five write-once fault-floor atoms from
+# kabi/panic — the always-present down-face seam (Platform-Contract §3.4): a
+# panic can fire before `Init::boot` completes, so unlike kabi/platform these
+# atoms carry no install gate. arch keeps the `#[panic_handler]` lang item and
+# the render/flush mechanism; the registry lives in kabi/panic and arch reaches
+# it through thin shims. kabi/panic re-exports the uapi/panic value types, but
+# arch also names `Disposition`/`PanicRecord` directly, so it depends on
+# uapi/panic too. Both are #![no_std] zero-dep leaves (DAG5/DAG6 preserved).
+reovim-kabi-panic = { path = "../kabi/panic" }
+reovim-uapi-panic = { path = "../uapi/panic" }
 
 # arch CONSUMES lib/ds POST-install: the relocated DS/sync algorithms (SP03)
 # route through the boot-installed handle, which arch installs at `rust_entry`.

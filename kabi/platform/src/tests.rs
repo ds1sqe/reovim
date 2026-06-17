@@ -10,7 +10,9 @@
 //! would race over the one-shot static. A test fixture provides the vtable; no
 //! arch implementor is named (the contract has no impl-side edge).
 
-use super::{HANDLE, InstallError, NetError, PlatformVtable, handle, install};
+use reovim_uapi_posix::{Errno, Fd, Mode, OpenFlags};
+
+use super::{HANDLE, InstallError, PlatformVtable, handle, install};
 
 // ── fixture primitives (a synthetic provider, no arch edge) ──────────────────
 
@@ -43,16 +45,16 @@ unsafe extern "C" fn fixture_unix_listen(_path: *const u8, _len: usize) -> i64 {
     8
 }
 
-unsafe extern "C" fn fixture_unix_accept(_fd: i32) -> i64 {
+unsafe extern "C" fn fixture_unix_accept(_fd: Fd) -> i64 {
     9
 }
 
-unsafe extern "C" fn fixture_fd_read(_fd: i32, _buf: *mut u8, _len: usize) -> i64 {
+unsafe extern "C" fn fixture_fd_read(_fd: Fd, _buf: *mut u8, _len: usize) -> i64 {
     // End-of-stream: zero bytes.
     0
 }
 
-unsafe extern "C" fn fixture_fd_write(_fd: i32, _buf: *const u8, len: usize) -> i64 {
+unsafe extern "C" fn fixture_fd_write(_fd: Fd, _buf: *const u8, len: usize) -> i64 {
     // A full write of `len` bytes (the count narrows back to i64).
     #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
     {
@@ -60,7 +62,7 @@ unsafe extern "C" fn fixture_fd_write(_fd: i32, _buf: *const u8, len: usize) -> 
     }
 }
 
-unsafe extern "C" fn fixture_fd_close(_fd: i32) -> i64 {
+unsafe extern "C" fn fixture_fd_close(_fd: Fd) -> i64 {
     0
 }
 
@@ -81,13 +83,13 @@ unsafe extern "C" fn fixture_realtime() -> i64 {
 unsafe extern "C" fn fixture_file_open(
     _path: *const u8,
     _path_len: usize,
-    flags: i32,
-    _mode: u32,
+    flags: OpenFlags,
+    _mode: Mode,
 ) -> i64 {
     // A synthetic provider: a non-negative `flags` "opens" successfully and
     // returns a fixed fd; a negative `flags` reports `-ENOENT` (errno 2) so the
     // error branch of the safe wrapper is exercised through the handle.
-    if flags < 0 { -2 } else { 11 }
+    if flags.bits() < 0 { -2 } else { 11 }
 }
 
 unsafe extern "C" fn fixture_thread_id() -> i64 {
@@ -96,7 +98,7 @@ unsafe extern "C" fn fixture_thread_id() -> i64 {
 }
 
 #[allow(clippy::cast_possible_wrap)]
-unsafe extern "C" fn fixture_file_write(_fd: i32, _buf: *const u8, len: usize) -> i64 {
+unsafe extern "C" fn fixture_file_write(_fd: Fd, _buf: *const u8, len: usize) -> i64 {
     // A synthetic provider "writes" the whole buffer: echo the byte count so the
     // plain-write dispatch path (distinct from the socket `fd_write`) is proven.
     // A test buffer's byte count never exceeds `isize::MAX`, so the cast cannot
@@ -184,12 +186,16 @@ fn install_is_write_once_and_handle_reads_through() {
     assert_eq!(handle().clock(), 1_234_567_890, "monotonic nanos flow through the safe wrapper");
 
     // file_open SUCCESS: a non-negative `flags` "opens" and returns fd 11.
-    assert_eq!(handle().file_open(b"/log\0", 1, 0), Ok(11), "file_open fd flows through");
+    assert_eq!(
+        handle().file_open(b"/log\0", OpenFlags(1), Mode(0)),
+        Ok(11),
+        "file_open fd flows through",
+    );
     // file_open ERROR branch: a negative `flags` makes the fixture return
     // `-2` (-ENOENT), which the wrapper maps to the typed positive-errno error.
     assert_eq!(
-        handle().file_open(b"/log\0", -1, 0),
-        Err(NetError::from_code(2)),
+        handle().file_open(b"/log\0", OpenFlags(-1), Mode(0)),
+        Err(Errno::from_code(2)),
         "file_open negative errno maps to the typed error",
     );
 

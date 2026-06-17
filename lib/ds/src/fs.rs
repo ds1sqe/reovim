@@ -20,22 +20,24 @@
 //!
 //! [`UnixStream`]: crate::net::UnixStream
 
-use reovim_kabi_platform::{NetError, handle};
+use {
+    reovim_kabi_platform::handle,
+    reovim_uapi_posix::{Errno, Mode, OpenFlags},
+};
 
 /// A file/sys-call error carrying the platform's positive errno code.
 ///
 /// File-open and fd failures are NOT net failures, so the consumer names
 /// `SysError` rather than [`crate::net::Errno`] for an accurate error surface —
-/// even though the underlying errno mapping is shared (both alias the kabi
-/// [`NetError`] carrier, which is the one positive-errno type the fd-op slots
-/// report).
+/// even though the underlying errno mapping is shared (both alias the canonical
+/// [`Errno`], which is the one positive-errno type the fd-op slots report).
 ///
 /// ```rust
 /// use reovim_lib_ds::fs::SysError;
 ///
 /// assert_eq!(SysError::from_code(2).code(), 2);
 /// ```
-pub type SysError = NetError;
+pub type SysError = Errno;
 
 /// `O_WRONLY` — open for writing only (Linux open-flag constant).
 ///
@@ -90,7 +92,11 @@ impl File {
     /// let _ = File::open(b"/tmp/reovim.log\0", O_WRONLY | O_CREAT, 0o644);
     /// ```
     pub fn open(path: &[u8], flags: i32, mode: u32) -> Result<Self, SysError> {
-        let fd = handle().file_open(path, flags, mode)?;
+        // Wrap the caller's raw Linux open-flag word and mode bits into the
+        // canonical POSIX newtypes the handle slot names. Both wraps are
+        // ABI-identical (`#[repr(transparent)]`), so this re-homes the
+        // vocabulary at the boundary without changing the value.
+        let fd = handle().file_open(path, OpenFlags(flags), Mode(mode))?;
         Ok(Self { fd })
     }
 

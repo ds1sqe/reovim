@@ -8,12 +8,17 @@ members = [
     "lib/ds",
     "arch",
     "uapi/abi",
+    "uapi/posix",
+    "uapi/panic",
     "uapi/protocol",
     "uapi/module-macros",
     "uapi/driver-macros",
     # Down-face platform contract: the #[repr(C)] handle vtable arch implements
     # (SP02, arch → kabi). A leaf — depends on nothing impl-side.
     "kabi/platform",
+    # Down-face fault-floor seam: the always-present write-once panic-policy atoms
+    # (Platform-Contract §3.4). No install gate — readable before Init::boot.
+    "kabi/panic",
     "editor/lib/subsys/domain",
     "editor/lib/kernel",
     "editor/lib/server",

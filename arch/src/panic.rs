@@ -1,18 +1,27 @@
 //! The AB12 panic-handler skeleton and its write-once hook seam.
 //!
-//! This module owns the platform-floor half of the panic path (6.2 §5,
-//! 9.5 §9.1). It renders the panic into a LOG2 line (9.5 §2 grammar,
-//! kernel-emitter form), performs the **final flush** to a registered file
-//! descriptor, fires a registered state-record hook, and terminates the
-//! process per the registered disposition.
+//! This module owns the platform-floor *mechanism* of the panic path (6.2 §5,
+//! 9.5 §9.1): the `#[panic_handler]` lang item, the allocator-free LOG2 line
+//! renderer (9.5 §2 grammar, kernel-emitter form), the **final flush** to a
+//! registered file descriptor, and process termination per the registered
+//! disposition.
+//!
+//! The write-once hook *registry* itself lives down-face in `kabi/panic` — the
+//! always-present fault-floor seam (Platform-Contract §3.4). arch reaches it
+//! through the thin `set_*`/`load_*` shims in this module; the `set_*` entry
+//! points and the [`Disposition`]/[`PanicRecord`]/[`SetError`] vocabulary are
+//! re-exported here so existing callers are unchanged while ownership lives
+//! down-face. `CLEANUP_CONTEXT` (the AB13 marker) is the one piece of registry
+//! state arch still owns — it is an arch-local runtime flag, not a relocated
+//! hook.
 //!
 //! ## Skeleton boundary (what arch builds vs. defers)
 //!
-//! Arch builds the panic-path *mechanism* and the *hook seam*, not the
-//! kernel subsystems it ultimately integrates with. There is **no** kernel
-//! log ring, persistence subsystem, DS12 event, or supervision here — those
-//! land in later master-plan phases. The seam is four write-once hooks the
-//! higher layers register at boot:
+//! Arch builds the panic-path *mechanism* and the shims onto the *hook seam*,
+//! not the kernel subsystems it ultimately integrates with. There is **no**
+//! kernel log ring, persistence subsystem, DS12 event, or supervision here —
+//! those land in later master-plan phases. The seam is four write-once hooks
+//! (owned by `kabi/panic`) the higher layers register at boot:
 //!
 //! - [`set_flush_fd`] — the LOG7 file sink fd the final flush writes to;
 //! - [`set_ring_tail_provider`] — returns a pre-rendered LOG2 byte tail
@@ -28,17 +37,32 @@
 //!
 //! ## Write-once contract (6.2 §5.2)
 //!
-//! Each hook is an atomic static. Registration writes use `Release`; the
-//! panic handler reads use `Acquire`, so everything written before
-//! registration is visible to a panic on any thread after it. The first
+//! Each hook is an atomic static in `kabi/panic`. Registration writes use
+//! `Release`; the panic handler reads use `Acquire`, so everything written
+//! before registration is visible to a panic on any thread after it. The first
 //! `set_*` wins; a second is rejected with [`SetError::AlreadySet`] and
 //! changes nothing — re-registration is a boot-stage bug, surfaced, never
 //! silently honoured.
 
-use core::sync::atomic::{
-    AtomicI32, AtomicU8, AtomicUsize,
-    Ordering::{Acquire, Release},
-};
+use core::sync::atomic::{AtomicU8, Ordering::Release};
+
+// The five write-once panic-policy atoms live in `kabi/panic` — the
+// always-present down-face fault-floor seam (Platform-Contract §3.4). arch
+// keeps the `#[panic_handler]` lang item, the allocator-free render/flush
+// mechanism, and the AB13 cleanup-context flag; the hook registry is owned by
+// `kabi/panic` and reached through the thin shims in this module.
+use reovim_kabi_panic as kabi_panic;
+
+/// The panic disposition and record types are owned up-face by `uapi/panic`;
+/// re-exported here so callers naming `reovim_arch::panic::{Disposition,
+/// PanicRecord}` keep resolving while the canonical definition lives up-face.
+pub use reovim_uapi_panic::{Disposition, PanicRecord};
+
+/// Why a `set_*` registration was rejected — owned by `kabi/panic` (write-once,
+/// 6.2 §5.2). Re-exported so callers naming `reovim_arch::panic::SetError` keep
+/// resolving through the shim. The first registration wins; a second is rejected
+/// with [`SetError::AlreadySet`] and changes nothing.
+pub use reovim_kabi_panic::SetError;
 
 /// Capacity of the panic line's fixed render buffer (bytes).
 ///
@@ -104,124 +128,6 @@ impl core::fmt::Write for StackWriter {
     }
 }
 
-/// What the panic handler does after recording the fault (6.2 §5, §5.1).
-///
-/// The two dispositions exit with fixed `sysexits` status codes that the
-/// supervising launcher treats as a contract (§5.1): exactly `75` is
-/// restart-requested; any other non-zero exit is a no-restart fault.
-///
-/// ```rust
-/// use reovim_arch::panic::Disposition;
-///
-/// assert_eq!(Disposition::Recover.exit_code(), 75);
-/// assert_eq!(Disposition::Halt.exit_code(), 70);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Disposition {
-    /// `EX_TEMPFAIL` (75): transient failure — restart requested. The
-    /// supervisor restarts and quarantines the attributed owner.
-    Recover,
-    /// `EX_SOFTWARE` (70): internal software error — stop for analysis. The
-    /// flushed log and process state are preserved (dev/test posture).
-    Halt,
-}
-
-impl Disposition {
-    /// The normative process exit code for this disposition (6.2 §5.1).
-    ///
-    /// ```rust
-    /// use reovim_arch::panic::Disposition;
-    ///
-    /// // EX_TEMPFAIL (75) signals a restart-requested transient failure.
-    /// assert_eq!(Disposition::Recover.exit_code(), 75);
-    /// // EX_SOFTWARE (70) signals a halt-for-analysis internal error.
-    /// assert_eq!(Disposition::Halt.exit_code(), 70);
-    /// ```
-    #[must_use]
-    pub const fn exit_code(self) -> i32 {
-        match self {
-            // EX_TEMPFAIL: the launcher treats exactly 75 as restart-requested.
-            Self::Recover => 75,
-            // EX_SOFTWARE: any non-75 non-zero exit is a no-restart fault.
-            Self::Halt => 70,
-        }
-    }
-
-    /// Encodes the disposition as the `u8` stored in the atomic registry.
-    const fn as_u8(self) -> u8 {
-        match self {
-            Self::Recover => DISPOSITION_RECOVER,
-            Self::Halt => DISPOSITION_HALT,
-        }
-    }
-}
-
-/// The record handed to the state-record hook (6.2 §5 step 3, AB13).
-///
-/// Arch fills the disposition and the AB13 cleanup marker; the persistence
-/// consumer (a later phase) maps it onto lifecycle + quarantine state. Arch
-/// keeps it minimal: no kernel DS is referenced here (skeleton boundary).
-///
-/// ```rust
-/// use reovim_arch::panic::{Disposition, PanicRecord};
-///
-/// let r = PanicRecord { disposition: Disposition::Halt, rollback_failed: false };
-/// assert_eq!(r.disposition.exit_code(), 70);
-/// assert!(!r.rollback_failed);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PanicRecord {
-    /// The disposition the handler will terminate under.
-    pub disposition: Disposition,
-    /// Whether the panic happened in a cleanup context (AB13). When `true`
-    /// the flushed line carries `rollback = failed` and the persisted state
-    /// records `TombstonedFailedUnload`.
-    pub rollback_failed: bool,
-}
-
-/// Why a `set_*` registration was rejected.
-///
-/// ```rust
-/// use reovim_arch::panic::SetError;
-///
-/// // AlreadySet is the only variant; its Debug form is stable.
-/// let e = SetError::AlreadySet;
-/// assert_eq!(format!("{e:?}"), "AlreadySet");
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SetError {
-    /// The hook was already registered; the first registration wins and
-    /// this call changed nothing (6.2 §5.2 write-once).
-    AlreadySet,
-}
-
-// ---- the five write-once hook statics (6.2 §5.2, gap-7) -------------------
-//
-// Function-pointer hooks are stored as their address in an `AtomicUsize`
-// (0 = unregistered); the disposition as an `AtomicU8` (0 = unregistered).
-// `usize` carries a `fn` pointer losslessly on this crate's only target.
-
-/// The LOG7 file-sink fd for the final flush. `-1` = unregistered.
-static FLUSH_FD: AtomicI32 = AtomicI32::new(-1);
-/// `fn() -> &'static [u8]` returning the pre-rendered ring tail. 0 = unset.
-static RING_TAIL_PROVIDER: AtomicUsize = AtomicUsize::new(0);
-/// `fn(PanicRecord)` state-record hook. 0 = unset.
-static STATE_RECORD_HOOK: AtomicUsize = AtomicUsize::new(0);
-/// The disposition value (encoded `u8`). `DISPOSITION_UNSET` = unset.
-static DISPOSITION: AtomicU8 = AtomicU8::new(DISPOSITION_UNSET);
-/// `fn()` pre-exit callback run before the panic handler renders its output.
-/// Allows platform runtimes (e.g. the TUI) to restore terminal state so the
-/// panic line prints in cooked mode (gap-7, #797 Phase 4, 8.2 §2). 0 = unset.
-static PRE_EXIT_HOOK: AtomicUsize = AtomicUsize::new(0);
-
-/// Encoded `DISPOSITION` sentinel: nothing registered (handler defaults to
-/// `halt`, 6.2 §5.2).
-const DISPOSITION_UNSET: u8 = 0;
-/// Encoded `DISPOSITION` value for [`Disposition::Recover`].
-const DISPOSITION_RECOVER: u8 = 1;
-/// Encoded `DISPOSITION` value for [`Disposition::Halt`].
-const DISPOSITION_HALT: u8 = 2;
-
 /// The signature of a registered ring-tail provider.
 type RingTailProvider = fn() -> &'static [u8];
 /// The signature of a registered state-record hook.
@@ -248,12 +154,10 @@ static CLEANUP_CONTEXT: AtomicU8 = AtomicU8::new(0);
 /// set_flush_fd(2).expect("first registration always succeeds");
 /// ```
 pub fn set_flush_fd(fd: i32) -> Result<(), SetError> {
-    // CAS from the unset sentinel (-1): the first writer wins. Release so a
-    // panic on any thread observing the fd also observes prior writes.
-    FLUSH_FD
-        .compare_exchange(-1, fd, Release, Acquire)
-        .map(|_| ())
-        .map_err(|_| SetError::AlreadySet)
+    // Delegating shim: the atom is owned by kabi/panic. arch keeps this entry
+    // point so existing callers (kernel boot) are unchanged until 3d migrates
+    // them to kabi/panic directly.
+    kabi_panic::set_flush_fd(fd)
 }
 
 /// Registers the ring-tail provider (write-once, 6.2 §5.2).
@@ -273,10 +177,8 @@ pub fn set_flush_fd(fd: i32) -> Result<(), SetError> {
 /// set_ring_tail_provider(my_tail).expect("first registration always succeeds");
 /// ```
 pub fn set_ring_tail_provider(provider: RingTailProvider) -> Result<(), SetError> {
-    // The fn pointer is stored as its address; `load_ring_tail_provider`
-    // reconstructs exactly this type from it.
-    let addr = (provider as *const ()).addr();
-    set_fn_hook(&RING_TAIL_PROVIDER, addr)
+    // Delegating shim: the atom is owned by kabi/panic (3d migrates callers).
+    kabi_panic::set_ring_tail_provider(provider)
 }
 
 /// Registers the state-record hook (write-once, 6.2 §5.2).
@@ -295,10 +197,8 @@ pub fn set_ring_tail_provider(provider: RingTailProvider) -> Result<(), SetError
 /// set_state_record_hook(my_hook).expect("first registration always succeeds");
 /// ```
 pub fn set_state_record_hook(hook: StateRecordHook) -> Result<(), SetError> {
-    // The fn pointer is stored as its address; `load_state_record_hook`
-    // reconstructs exactly this type from it.
-    let addr = (hook as *const ()).addr();
-    set_fn_hook(&STATE_RECORD_HOOK, addr)
+    // Delegating shim: the atom is owned by kabi/panic (3d migrates callers).
+    kabi_panic::set_state_record_hook(hook)
 }
 
 /// Registers the panic disposition (write-once, 6.2 §5.2).
@@ -313,10 +213,8 @@ pub fn set_state_record_hook(hook: StateRecordHook) -> Result<(), SetError> {
 /// set_disposition(Disposition::Recover).expect("first registration always succeeds");
 /// ```
 pub fn set_disposition(disposition: Disposition) -> Result<(), SetError> {
-    DISPOSITION
-        .compare_exchange(DISPOSITION_UNSET, disposition.as_u8(), Release, Acquire)
-        .map(|_| ())
-        .map_err(|_| SetError::AlreadySet)
+    // Delegating shim: the atom is owned by kabi/panic (3d migrates callers).
+    kabi_panic::set_disposition(disposition)
 }
 
 /// Registers a pre-exit callback invoked by the panic handler BEFORE it renders
@@ -341,15 +239,8 @@ pub fn set_disposition(disposition: Disposition) -> Result<(), SetError> {
 /// set_pre_exit_hook(restore_terminal).expect("first registration always succeeds");
 /// ```
 pub fn set_pre_exit_hook(hook: PreExitHook) -> Result<(), SetError> {
-    let addr = (hook as *const ()).addr();
-    set_fn_hook(&PRE_EXIT_HOOK, addr)
-}
-
-/// Shared write-once CAS for a function-pointer hook stored as a `usize`.
-fn set_fn_hook(slot: &AtomicUsize, value: usize) -> Result<(), SetError> {
-    slot.compare_exchange(0, value, Release, Acquire)
-        .map(|_| ())
-        .map_err(|_| SetError::AlreadySet)
+    // Delegating shim: the atom is owned by kabi/panic (3d migrates callers).
+    kabi_panic::set_pre_exit_hook(hook)
 }
 
 /// Marks the calling context as a cleanup context (AB13).
@@ -392,19 +283,19 @@ pub fn clear_cleanup_context() {
 /// nothing is registered (6.2 §5.2 default).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn current_disposition() -> Disposition {
-    match DISPOSITION.load(Acquire) {
-        DISPOSITION_RECOVER => Disposition::Recover,
-        // Both the explicit `halt` registration and the unset default land
-        // here: an unbooted process halts (the safe posture).
-        _ => Disposition::Halt,
-    }
+    // The disposition atom is owned by kabi/panic. An unset registry resolves
+    // to `halt` here — an unbooted process halts (the safe posture, 6.2 §5.2).
+    kabi_panic::get_disposition().unwrap_or(Disposition::Halt)
 }
 
 /// Builds the [`PanicRecord`] for the current fault from the registry.
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn current_record() -> PanicRecord {
+    use core::sync::atomic::Ordering::Acquire;
     PanicRecord {
         disposition: current_disposition(),
+        // Acquire pairs with the cleanup-context `Release` stores so a panic
+        // observing the flag also observes everything written before it was set.
         rollback_failed: CLEANUP_CONTEXT.load(Acquire) != 0,
     }
 }
@@ -500,8 +391,8 @@ fn render_location(
 /// tail is the ring's, meaningless without the sink).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn final_flush(line: &[u8]) {
-    let fd = FLUSH_FD.load(Acquire);
-    if fd >= 0 {
+    // The flush-fd atom is owned by kabi/panic; `None` means no sink registered.
+    if let Some(fd) = kabi_panic::get_flush_fd() {
         // A registered sink: write the pre-rendered ring tail verbatim ahead
         // of the panic line (9.5 §9.1 ordering). A short or failed write is
         // swallowed — at panic time there is no recovery, only best effort.
@@ -516,39 +407,29 @@ fn final_flush(line: &[u8]) {
 }
 
 /// Loads the registered ring-tail provider, or `None` if unset.
+///
+/// A delegating wrapper over `kabi/panic` (which owns the atom and the
+/// fn-pointer reconstruction); arch keeps it so the panic-path callers and the
+/// selftest suite reach the provider through one local name.
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn load_ring_tail_provider() -> Option<RingTailProvider> {
-    match RING_TAIL_PROVIDER.load(Acquire) {
-        0 => None,
-        // SAFETY: the static holds either 0 (handled above) or the address
-        // of a `RingTailProvider` written once by `set_ring_tail_provider`,
-        // which transmuted exactly this fn type to `usize`. Reconstructing
-        // the same fn pointer is sound.
-        addr => Some(unsafe { core::mem::transmute::<usize, RingTailProvider>(addr) }),
-    }
+    kabi_panic::get_ring_tail_provider()
 }
 
 /// Loads the registered state-record hook, or `None` if unset.
+///
+/// Delegating wrapper over `kabi/panic` (see [`load_ring_tail_provider`]).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn load_state_record_hook() -> Option<StateRecordHook> {
-    match STATE_RECORD_HOOK.load(Acquire) {
-        0 => None,
-        // SAFETY: as `load_ring_tail_provider`: the address was written once
-        // by `set_state_record_hook` from exactly this fn type.
-        addr => Some(unsafe { core::mem::transmute::<usize, StateRecordHook>(addr) }),
-    }
+    kabi_panic::get_state_record_hook()
 }
 
 /// Loads the registered pre-exit hook, or `None` if unset.
+///
+/// Delegating wrapper over `kabi/panic` (see [`load_ring_tail_provider`]).
 #[cfg(any(feature = "runtime", feature = "selftest"))]
 fn load_pre_exit_hook() -> Option<PreExitHook> {
-    match PRE_EXIT_HOOK.load(Acquire) {
-        0 => None,
-        // SAFETY: the address was written once by `set_pre_exit_hook` from
-        // exactly this fn type (`PreExitHook = fn()`); reconstructing the same
-        // fn pointer is sound.
-        addr => Some(unsafe { core::mem::transmute::<usize, PreExitHook>(addr) }),
-    }
+    kabi_panic::get_pre_exit_hook()
 }
 
 /// Writes the whole of `buf` to `fd`, looping over short writes; gives up on
@@ -631,20 +512,20 @@ extern "C" fn rust_eh_personality() -> ! {
     crate::sys::exit_group(Disposition::Halt.exit_code())
 }
 
-/// Resets every registry static so each test starts from the unregistered
-/// state. The registry is process-global write-once; the no_std runner is
+/// Resets every registry slot so each test starts from the unregistered state.
+/// The registry is process-global write-once; the no_std runner is
 /// single-threaded sequential, so no external serialization is needed. Every
 /// registry test must call this at the END of the test body to leave the
 /// globals clean for the next test (runner does not tear down between tests).
+///
+/// The five hook atoms live in `kabi/panic` now, so the reset of those forwards
+/// to its `selftest`-gated [`reovim_kabi_panic::reset`]; `CLEANUP_CONTEXT` is an
+/// arch-local runtime flag (not a relocated hook), so arch resets it directly.
 #[cfg(feature = "selftest")]
 pub(crate) fn reset_registry() {
     use core::sync::atomic::Ordering::Relaxed;
-    FLUSH_FD.store(-1, Relaxed);
-    RING_TAIL_PROVIDER.store(0, Relaxed);
-    STATE_RECORD_HOOK.store(0, Relaxed);
-    DISPOSITION.store(DISPOSITION_UNSET, Relaxed);
+    kabi_panic::reset();
     CLEANUP_CONTEXT.store(0, Relaxed);
-    PRE_EXIT_HOOK.store(0, Relaxed);
 }
 
 // L12 layout (#785 Phase 5): tests live in the sibling file `panic_tests.rs`,

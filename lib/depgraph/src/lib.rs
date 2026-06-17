@@ -200,13 +200,48 @@ pub fn default_foundation_grants() -> std::collections::BTreeMap<String, Vec<Str
         vec![
             "reovim-kabi-platform".to_owned(), // arch → kabi/platform (implements the vtable)
             "reovim-lib-ds".to_owned(),        // arch → lib/ds (uses DS algorithms via the handle)
+            // arch → uapi/posix: the fd-op slot impls name the canonical POSIX
+            // newtypes (Fd/OpenFlags/Mode) at the slot boundary and map them to
+            // the raw syscall edge arch owns (#778, Platform-Contract §3.5).
+            "reovim-uapi-posix".to_owned(),
+            // arch → kabi/panic: the panic handler reads the five write-once
+            // fault-floor atoms (relocated from arch) through kabi/panic's
+            // get_*/set_* shims; the registry lives down-face there (#778,
+            // Platform-Contract §3.4).
+            "reovim-kabi-panic".to_owned(),
+            // arch → uapi/panic: arch re-exports and names the Disposition /
+            // PanicRecord value types whose canonical home is uapi/panic.
+            "reovim-uapi-panic".to_owned(),
         ],
     );
     m.insert(
         "reovim-lib-ds".to_owned(),
         vec![
             "reovim-kabi-platform".to_owned(), // lib/ds → kabi (dispatches alloc/park through handle)
+            // lib/ds → uapi/posix: the fd-op error surface and the file-open
+            // wrappers name the canonical Errno/OpenFlags/Mode so the POSIX
+            // vocabulary has one home (#778, Platform-Contract §3.5).
+            "reovim-uapi-posix".to_owned(),
         ],
+    );
+    // kabi/platform → uapi/posix: the effectful slots carry canonical POSIX
+    // newtypes (Errno/Fd/OpenFlags/Mode) per the POSIX-personality model
+    // (#778, Platform-Contract §3.5). The edge enters as a probe type alias
+    // naming Errno/Fd and broadens to the full slot signatures once the slots
+    // are re-typed; the grant is the steady-state edge either way.
+    m.insert(
+        "reovim-kabi-platform".to_owned(),
+        vec![
+            "reovim-uapi-posix".to_owned(), // kabi/platform → uapi/posix (canonical slot types)
+        ],
+    );
+    // kabi/panic → uapi/panic: the fault-floor seam stores and exposes hook
+    // fn-pointer aliases (RingTailProviderFn/StateRecordHookFn/PreExitHookFn)
+    // and value types (Disposition/PanicRecord) from uapi/panic. This is the
+    // only permitted intra-Foundation edge for kabi/panic (Platform-Contract §3.4).
+    m.insert(
+        "reovim-kabi-panic".to_owned(),
+        vec!["reovim-uapi-panic".to_owned()], // kabi/panic → uapi/panic (Disposition/PanicRecord + hook aliases)
     );
     // ─────────────────────────────────────────────────────────────────────────
     m
