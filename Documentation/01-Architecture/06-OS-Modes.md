@@ -59,6 +59,15 @@ leak across the line and a bug.
    the input-source path is contract-bound — deferred to
    `08-Client/02-Platform-Runtimes.md`.
 
+**Why the invariant holds by construction.** `kabi/platform` carries
+**canonical POSIX values owned by `uapi/posix`**, not a Linux passthrough.
+Every target's mechanism is canonicalized to those values *below* the line
+by its provider, so the editor above the line observes one personality on
+every machine. The invariant is therefore a tautology, not a discipline:
+there is no mode-specific value left for the editor to observe, because
+canonicalization already happened underneath. The slot types are specified
+in `06-ABI/05-Platform-Contract.md`.
+
 ## 1. The two modes
 
 1. **Over-OS mode** — reovim runs as a hosted program on an existing OS.
@@ -136,6 +145,37 @@ first OS image needs no preemptive scheduler, no SMP, no futex: one core
 spinning tick, UART RX feeding the input ring. The thread/futex floor is
 only needed for the later thread-per-connection runtime tier — a
 single-seat appliance may never need it.
+
+### 2.2 The arch hard-split — three knowledges
+
+The single `arch/` floor of §2 is one crate today. As it matures it
+**hard-splits into three crate families**, sorted by which of three
+knowledges each unit of code carries — never by target alone:
+
+| Family | Knows | Owns | Returns |
+|---|---|---|---|
+| `arch-sys-{target}` | hardware only | the raw machine mechanism (syscalls, MMIO, asm) | the machine's **NATIVE** values |
+| `platform-{target}-{strategy}` | hardware **and** contract | the POSIX trap gate: canonicalize NATIVE → POSIX, install the vtable | canonical `uapi/posix` values |
+| `arch-floor-{target}` | the language only | lang items: `#[panic_handler]`, `#[global_allocator]`, `_start` | nothing — it crosses to the product at LINK, not import |
+
+The split rule is a function of knowledge: a unit of `arch` code belongs to
+exactly one family by which knowledge it carries. **The `ioctl` borderline**
+makes this concrete — a raw `ioctl` request number and the bytes it moves
+are hardware-only (`arch-sys`); the mapping of an `ioctl` result into a
+POSIX `errno` or a canonical struct is contract knowledge (the provider).
+The impedance match between NATIVE and POSIX lives in exactly one place: the
+provider.
+
+**Not a HAL — reconciled with §2.** This split is *not* the HAL §2 forbids.
+A HAL is a uniform abstraction layer the product imports *above* `arch/`;
+this adds nothing above `arch/`. The provider sits *below* `kabi`, is
+selected at the composition root (§6), and `arch-sys` stays native — so
+there is no second contract above the floor to drift against. The §2 "Not a
+HAL" rule stands unchanged; the three-knowledges split refines `arch/`'s
+internal structure, it does not raise a layer over it. The
+`arch → {}` firewall (no product source names `arch`; three things cross at
+LINK) is the DAG rule that keeps the split honest —
+`01-Architecture/02-Project-Layout-and-DAG.md`.
 
 ## 3. Target classes
 
@@ -250,6 +290,38 @@ that wires these: it selects the contract implementor and installs the
 platform vtable at `Init::boot`. Neither the editor kernel nor the client
 kernel sees a mode branch — their code is identical. The mode branch lives
 entirely at the composition root and below the contract.
+
+### 6.1 The POSIX provider per mode
+
+The provider that fills the contract carries **graduated substance** by
+target class — the canonical POSIX values are fixed, but how much work it
+takes to produce them varies:
+
+| Target class | Provider substance |
+|---|---|
+| kernel-ABI (Linux) | **~none** — Linux/x86-64 numbers already fill the `uapi/posix` canonical values, so the mapping is identity and the provider is a thin passthrough. |
+| system-library (Windows/macOS) | **shim** — translate the vendor ABI to canonical POSIX: `errno` remap, handle↔`fd`, open-flag and mode translation. |
+| freestanding (bare metal) | **full** — the system kernel implements POSIX semantics over hardware from scratch; the provider is the largest. |
+
+A **zero-arch provider** (`platform-linux-mock`) also fills the contract
+with no machine underneath — it canonicalizes nothing real but passes the
+same behavioral conformance suite, which is what makes "provider" a contract
+role and not a synonym for "the Linux backend."
+
+**Composition is Kbuild-style, not Cargo features.** Each config selects its
+provider through a dedicated per-config composition-root crate — there is no
+feature flag toggling provider bodies inside one crate. In-tree system
+drivers register through an in-tree `#[used]` / `#[link_section]`
+distributed-slice (the linker's `__start_/__stop_` section symbols), **not**
+an external registry crate — `linkme`/`inventory` are forbidden deps under
+DAG5 (`01-Architecture/02-Project-Layout-and-DAG.md`).
+
+**`#[vtable]`-style authoring.** A provider authors its ops table from a
+contract trait via an in-tree macro that lowers the trait to the frozen
+`#[repr(C)]` table plus per-slot `HAS_*` presence consts. The trait is the
+authoring DSL only; it never becomes a runtime `dyn` seam. Full slot shape,
+append-only evolution, and the macro contract are specified in
+`06-ABI/05-Platform-Contract.md`.
 
 ## 7. Spec deltas this mode forces
 

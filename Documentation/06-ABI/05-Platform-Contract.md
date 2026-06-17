@@ -25,7 +25,9 @@ companion: `01-Architecture/06-OS-Modes.md` (modes) and
 
 **Locked rules.** None new (design-stage). Candidate rules below are
 proposed, not yet gating; they inherit the add-only/versioned discipline
-of `06-ABI/02-Versioning-and-Vtables.md` (AB3, AB15).
+of `06-ABI/02-Versioning-and-Vtables.md` (AB3, AB15). The behavioral-
+conformance rule **AB16** is declared `spec-asserted` in
+`09-Conformance/01-Rule-Matrix.md`; its fixtures land in the 05d sub-plans.
 
 ---
 
@@ -78,7 +80,9 @@ pointers** — a "platform syscall table" — built as a **`static`** and
 installed at boot, macro-generated (the same shape as `declare_*_driver!`).
 It is read through a global accessor in `kabi` on every effectful call.
 
-This deliberately rejects a trait object or a generic:
+This deliberately rejects a `dyn` trait *seam* and a generic — though a
+contract trait still *authors* the table (§3.7), it is never the runtime
+seam:
 
 - **One vtable doctrine.** Drivers and modules already cross their seam via
   `REOVIM_*_VTABLE` (`06-ABI/02-Versioning-and-Vtables.md`). The platform
@@ -149,11 +153,57 @@ the handle installed before it can allocate. It dissolves:
 `lib/ds` reaches it **through the handle** (a consumer via the contract). One
 allocator, two access paths — not a duplicate.
 
-### 3.4 Exception: panic seams stay write-once globals
+### 3.4 The fault floor is a separate seam: `kabi/panic`
 
-The panic handler has no `&self`, so the four panic hooks remain write-once
-atomic statics, exactly as today (AB12, `06-ABI/02 §5.2`). Everything else
-effectful lives in the vtable.
+The panic handler has no `&self`, so the panic hooks cannot be vtable slots:
+they remain **write-once atomic statics**, exactly as today (AB12,
+`06-ABI/02 §5.2`). These are not an exception bolted onto the platform
+vtable — they are a distinct down-face seam, **`kabi/panic`**, the
+always-present fault floor. It carries no install gate: a panic can fire
+before `Init::boot` finishes installing the platform table, so the fault
+hooks must exist unconditionally, unlike the install-gated `kabi/platform`
+vtable. Everything else effectful lives in the platform vtable; fault
+disposition lives in `kabi/panic`.
+
+### 3.5 Slot signatures are canonical POSIX types
+
+Every effectful slot that carries a POSIX value takes and returns a
+**`uapi/posix` newtype**, never a raw integer: `OpenFlags`, `Mode`, `Fd`,
+`Errno`, and the rest of the canonical set. A bare `i32` flag or `errno`
+must not travel through a slot — the newtype is where `uapi/posix`'s
+canonical-value ownership is enforced *at the ABI*. A provider receives
+already-canonical values and returns canonical results; the NATIVE → POSIX
+impedance match happened in the provider before the value reached the slot
+(`01-Architecture/06-OS-Modes.md` §2.2). This is what lets the editor read
+one personality on every target (OS-Modes §0): the slot type structurally
+forbids a mode-specific integer from leaking up. The `O_*` flag constants
+and the `errno` set that today sit in `lib/ds` move to `uapi/posix` so the
+slot types and the consumer share one canonical source.
+
+### 3.6 Append-only vtable evolution
+
+The "versioned, appended not broken" discipline above (AB3) is realized
+concretely. A new primitive is a **nullable slot appended at the tail**,
+paired with a per-slot **`HAS_*` presence const**. A consumer null-checks
+the slot (or reads `HAS_*`) before calling; a provider that does not fill it
+yields `Errno::ENOSYS`, never undefined behavior. Slots are never reordered,
+retyped, or removed — only appended. An older kernel reads a newer provider's
+table through `size_of_self` (§3) and simply never reaches the tail slots it
+does not know. Every under-specified primitive is therefore reversible by
+addition, which is the structural reason the contract is built straight
+rather than staged behind a second provider.
+
+### 3.7 Authoring: the `#[vtable]`-style ops macro
+
+The `static` table is generated from a **contract trait** by an in-tree
+`#[vtable]`-style macro — the Rust-for-Linux mechanism, reimplemented
+in-tree with no external proc-macro dependency (DAG5). The macro lowers the
+trait to the frozen `#[repr(C)]` table of `extern "C"` pointers plus the
+per-slot `HAS_*` consts (§3.6) and the install glue. The trait is an
+**authoring DSL only**: it never appears as a `dyn Trait` value and never
+crosses the seam. "No trait" in the one-vtable doctrine (§3) means "no `dyn`
+seam," not "no trait anywhere" — the trait is how a human writes the table;
+the `#[repr(C)]` struct is what ships and what installs.
 
 ## 4. What the decoupling buys (stated honestly)
 
@@ -188,6 +238,21 @@ discipline. The device-access seam is a *separate* contract, `kabi/device`
 `lib/ds`, not part of the contract — the contract carries only the effectful
 primitives those DS call.
 
+### 5.1 The conformance suite defines "same behavior"
+
+A provider is correct **iff it passes `platform-conformance`** — a
+behavioral fixture suite that operationally *defines* what "same behavior
+across providers" means. There is **no reference provider**: `uapi/posix`
+owns the canonical values and the suite owns the canonical behavior, so the
+Linux provider is not privileged as the oracle. A zero-arch mock
+(`platform-linux-mock`) passes the *same* suite — the proof that "provider"
+is a contract role, not a synonym for the Linux backend. The suite is
+**append-only**: adding a fixture tightens the contract and can never
+invalidate a previously conforming provider, so it ships from day one with
+no premature-abstraction risk. The suite is normative now; its fixtures are
+implemented in the 05d sub-plans. The gating rule is **AB16**
+(`09-Conformance/01-Rule-Matrix.md`).
+
 ## Open items
 
 1. Does the contract ship as its own crate (`kabi/platform`) from day one, or
@@ -209,3 +274,7 @@ primitives those DS call.
 | Header discipline | the platform vtable begins with `VtableHeader`; a provider that grows a slot is read through `size_of_self` by an older kernel (AB3 reuse). |
 | Bootstrap order | the platform vtable is a `static` built without heap; no `lib/ds` DS is constructed before `Init::boot` installs the handle. |
 | No direct `arch` edge | no kernel or `lib/ds` crate names `arch::*`; the depgraph probe rejects `*-kernel → arch` and `lib/ds → arch`. |
+| Canonical slot types | every POSIX-valued slot takes/returns a `uapi/posix` newtype (`OpenFlags`/`Mode`/`Fd`/`Errno`); no raw integer crosses a slot (§3.5). |
+| Append-only evolution | a new primitive is a nullable tail slot guarded by a `HAS_*` const; an unfilled slot yields `Errno::ENOSYS`; slots are never reordered or removed (AB3, §3.6). |
+| Behavioral conformance | a provider — including the zero-arch `platform-linux-mock` — is valid iff it passes the `platform-conformance` suite; no provider is the reference oracle (AB16, §5.1). |
+| Fault floor always present | the `kabi/panic` hooks are write-once statics installable before `Init::boot` completes; they are not platform-vtable slots (§3.4). |

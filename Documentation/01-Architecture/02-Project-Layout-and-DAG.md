@@ -6,7 +6,8 @@ drift detection.
 
 **Heritage.** #789 target classes (DAG6).
 
-**Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5`, `DAG6`.
+**Locked rules.** `DAG1`, `DAG2`, `DAG3`, `DAG4`, `DAG5` (amended §9.1),
+`DAG6`, `DAG7` (candidate, §12).
 
 ---
 
@@ -17,13 +18,14 @@ category.
 
 | Category | Paths | Role |
 |---|---|---|
-| Foundation | `arch/`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor (`arch/`), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device contracts (`kabi/*`). No upward deps. |
+| Foundation | `arch/` (→ `arch-sys-*`, `arch-floor-*`), `platform-*`, `lib/*`, `uapi/*`, `kabi/*` | Backend floor and its hard-split families (raw mechanism `arch-sys-*`, lang-item floor `arch-floor-*`, canonicalizing providers `platform-*`; §12), core libraries incl. `lib/ds` DS algorithms, up-face ABI (`uapi/*`), down-face platform/device/panic contracts (`kabi/*`). No upward deps. |
 | Server contracts | `server/lib/subsys/*` | Closed server contracts and safe wrappers. No ext deps. |
 | Server kernel | `server/lib/kernel/*` | Kernel mechanisms. No ext or client deps. |
 | Server runtime | `server/lib/server/*` | Framed-protocol and dispatch glue. |
 | Client contracts | `clients/lib/subsys/*` | Closed client contracts. No ext or platform deps. |
 | Server extensions | `ext/server/{modules,drivers,providers,domain}` | Runtime-loaded server policy/mechanics. |
 | Client extensions | `ext/client/{platforms,driver,module,capabilities}` | Platform runtimes and client open implementations. |
+| System extensions | `ext/system/drivers/*` | Build-time-linked machine drivers, registered via the in-tree `#[used]`-section registry (not runtime-loaded). World side, below the `kabi/device`/`kabi/platform` contracts (T3, §12). Distinct from the runtime-loaded `ext/server/drivers/*`. |
 | Composition roots | `apps/*` | User-facing binaries and app libraries. |
 | Tools | `tools/*` | Dev / test / perf only. Non-shipping. |
 | Archive | `archive/*` | Non-normative heritage. Excluded from depgraph. |
@@ -31,6 +33,14 @@ category.
 The four `ext/client/<category>/` are: `platforms`, `driver`,
 `module`, `capabilities`. Singular `driver` and `module`; plural
 `capabilities`.
+
+**"driver" is three distinct families — qualify it always.**
+`ext/server/drivers/*` (runtime-loaded server-policy cdylibs),
+`ext/client/driver/*` (client open-implementation cdylibs), and
+`ext/system/drivers/*` (build-time machine drivers, `#[used]`-section). The
+"driver vtable" of `06-ABI/05-Platform-Contract.md` §3.1 refers to the
+runtime-loaded cdylib seam, **not** the build-time system drivers, which
+carry no hot-unload or generation fence.
 
 ## 2. Allowed category edges
 
@@ -245,6 +255,35 @@ run in CI on every PR. There is no allowlist for `DAG5` (§8).
 > raw-terminal layer (8.2), and hand-rolled dynamic loading (2.2) —
 > each carry a heritage note at the owning chapter.
 
+### 9.1 The "include tool" clause (amendment)
+
+**Amendment — deliberate, stricter, never weaker.** Sovereignty extends to
+**host and build tooling**, not only shipped product. No in-repo tool
+(`tools/*`, `lib/depgraph`, build scripts, and any future composition or
+Kconfig-style generator) may take a third-party dependency: tooling is
+in-tree code held to the same closed-graph law as product crates. In
+particular:
+
+- **Distributed-slice / registry crates are forbidden as dependencies.**
+  `linkme` and `inventory` are the tempting exception for the
+  `#[used]`-section system-driver registry (§12;
+  `01-Architecture/06-OS-Modes.md` §6.1) — both are forbidden. The registry
+  is realized with the in-tree `#[used]` / `#[link_section]` mechanism over
+  the linker's `__start_/__stop_` section symbols, no external crate.
+- **Composition tooling is in-tree.** Any Kconfig-style provider/config
+  generator for Kbuild-style composition is a `tools/*` crate written in
+  in-repo Rust, never a pulled-in build framework.
+
+**Rationale.** A 50-year artifact that bans ambient runtime dependencies but
+trusts an ambient *build* dependency has only moved the supply-chain surface,
+not closed it. The toolchain-trust boundary above admits exactly
+`rustc`/`cargo` and the toolchain subcommands as *invoked programs*; it
+admits nothing as a graph dependency — tool or product. This clause is
+consistent with the root `Cargo.toml` marker (`[workspace.dependencies]`
+intentionally absent — closed to `std` + in-repo path deps) and is
+orthogonal to `DAG6`'s std-in-tooling bootstrap rows (§10), which track a
+`std` → `no_std` *migration* of in-tree tools, not an external-dependency ban.
+
 ## 10. Zero-std sovereignty
 
 Motivated by the North Star (README): the reliability grade is a
@@ -417,6 +456,50 @@ violation. This is deferred, not applied now — flipping it before
 is recorded here so the supersession is not rediscovered during
 implementation.
 
+## 12. The four-tier model and the `arch` firewall (candidate, `DAG7`)
+
+The Foundation tier (§1) resolves into **four dependency tiers**, ordered by
+what each may name. This generalizes the existing edge rules (§2, §10, §11)
+to the post-split `arch-*` / `platform-*` crate families
+(`01-Architecture/06-OS-Modes.md` §2.2):
+
+| Tier | Crates | May name | Must not name |
+|---|---|---|---|
+| **T1 — Contracts** | `uapi/*`, `kabi/*` | `core`, target-neutral `lib/*` | any `arch-*`, `platform-*` (`DAG7`) |
+| **T2 — Math** | `lib/*` (incl. `lib/ds`) | `core`, `kabi/*`, peer `lib/*` | any `arch-*`, `platform-*` (the `lib/ds ⊄ arch` firewall, §10) |
+| **T3 — Providers + floor** | `arch-sys-*`, `platform-*`, `arch-floor-*`, `ext/system/drivers/*` | `kabi/*` (implements it), `lib/ds`, `core` | upward: no contract, kernel, or app |
+| **T4 — Composition roots** | `apps/*`, boot images | any tier, by mode-selected config | — |
+
+**The arch hard-split (T3).** `arch/` matures into three crate families by
+the three-knowledges rule (OS-Modes §2.2): `arch-sys-*` (raw hardware,
+returns NATIVE), `platform-*` (the canonicalizing provider, the POSIX trap
+gate), and `arch-floor-*` (lang items). `ext/system/drivers/*` are the
+build-time, `#[used]`-section-registered machine drivers a
+`platform-*`/system kernel composes — World side, below `kabi/device`,
+**not** runtime-loaded.
+
+**`DAG7` — the Tier-1 firewall (candidate).** No `uapi/*` or `kabi/*` crate
+names any `arch-*` or `platform-*` crate. This extends the existing
+`no kabi → arch` rule (§11) to the post-split family names: a contract never
+names a provider or a floor, by import. Today
+`lib/depgraph/tests/firewall_probe.rs` asserts only the Tier-2 residual
+(`lib/ds ⊄ arch`); the Tier-1 assertion is **spec-first** — the probe
+extension lands in the 05d sub-plans, exactly as `DAG6` was spec-first
+before its enforcement flight.
+
+**`arch → {}`, stated whole.** Taking §2 (no upward edges), §10
+(`lib/ds ⊄ arch`), §11 (`no *-kernel → arch`), and `DAG7` together: **no
+contract, Math, kernel, or app crate names `arch` by import** — the import
+residual of `arch` in product source is the empty set, panic included.
+Exactly three things cross from the floor to the product at **LINK, not
+import**: `#[panic_handler]`, `#[global_allocator]`, and the
+`_start → editor-entry` extern symbol
+(`01-Architecture/01-Layer-Model.md` §1.1). Everything else the product
+needs from the machine arrives through a `kabi` contract, never an `arch`
+name. (Resolved-closure still reaches the floor transitively via `lib/ds`'s
+backend; like §11, this is a *direct-import* rule, stated at the strength it
+holds.)
+
 ## Open items
 
 1. **Facade re-export vs the contract tier — RESOLVED (mechanism model).**
@@ -449,5 +532,6 @@ implementation.
 | DAG2 | Fixture adds a `lib/*` crate depending on `server/*`; expect **fail**. |
 | DAG3 | Fixture adds `apps/cli → reovim-driver-display`; expect **fail**. |
 | DAG4 | Inspect runtime install paths; verify no probe edge created. |
-| DAG5 | Fixture crate adds a registry dependency in each of the three dep tables in turn; expect **fail** for all three. Resolved-graph gate: lockfile/metadata package set is exactly the workspace-local set; a registry or git source → **fail**. |
+| DAG5 | Fixture crate adds a registry dependency in each of the three dep tables in turn; expect **fail** for all three. Resolved-graph gate: lockfile/metadata package set is exactly the workspace-local set; a registry or git source → **fail**. Include-tool clause (§9.1): a `tools/*` or `lib/depgraph` crate adding a third-party dep (e.g. `linkme`, `inventory`) → **fail**. |
 | DAG6 | Three negative fixtures: a product crate missing `#![no_std]` at its root; a `use std::` in product code; a `use alloc::` in product code — each expects **fail**. Profile gate: workspace `panic` setting other than `"abort"` → **fail**. (Probe lands with the L10 enforcement flight; spec-first until then, like DAG5 pre-scaffold.) |
+| DAG7 | Fixture: a `uapi/*` or `kabi/*` crate adds an `arch-*`/`platform-*` path dep; expect **fail**. Extends `firewall_probe.rs` from the Tier-2 residual (`lib/ds ⊄ arch`) to the Tier-1 contracts; spec-first until the 05d probe flight, like DAG6. |
