@@ -198,6 +198,10 @@ pub fn collect_boot_info() -> BootInfo {
         cpu_freq_hz: timer::frequency(),
         cpu_id,
         cpu_count: 1,
+        // Cache geometry / affinity / SDRAM clock / heap capacity are not yet
+        // discovered on x86 — default them to 0 (honest "unknown") so the target
+        // keeps compiling; an x86 discovery backend fills them in future work.
+        ..BootInfo::default()
     }
 }
 

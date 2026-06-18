@@ -44,6 +44,16 @@ static ARENA: Arena = Arena(UnsafeCell::new([0; ARENA_BYTES]));
 /// Next unallocated byte offset into [`ARENA`].
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
+/// Total capacity of the page arena in bytes.
+///
+/// A one-shot *static* fact — the arena's fixed `.bss` size, not its live
+/// used/free, which is mutable runtime state the floor reports through a
+/// different seam. The boot-info collector reads this to report heap capacity.
+#[must_use]
+pub const fn capacity() -> usize {
+    ARENA_BYTES
+}
+
 /// Hands out `len` bytes (rounded up to whole pages), page-aligned.
 ///
 /// # Errors

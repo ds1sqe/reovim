@@ -6,6 +6,28 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Deeper hardware introspection** (#778, boot-console sub-plan 03). The
+  `BootInfo` and the boot-time health-probe suite gain five more real hardware
+  facts, discovered along the same static-discovery axis as sub-plan 02 (no new
+  architectural seam):
+  - `BootInfo` (in `kabi-platform`) grows static fields for CPU cache geometry
+    (`cache_line_bytes`, `l1d_bytes`, `l1i_bytes`, `l2_bytes`), CPU affinity
+    (`cpu_affinity`), memory-bus frequency (`mem_freq_hz`), and page-arena
+    capacity (`heap_total_bytes`). All default to `0` ("unknown"), so the x86
+    backend keeps compiling without yet discovering them.
+  - The aarch64 backend reads them from real registers and firmware: cache line
+    from `CTR_EL0`, L1-D/L1-I/L2 sizes from `CLIDR_EL1` + `CCSIDR_EL1` (selected
+    via `CSSELR_EL1`), affinity from `MPIDR_EL1`, the SDRAM clock from mailbox
+    tag `0x00030002`, and the static arena capacity from a new
+    `arena::capacity()`.
+  - Five new ping-pong probes (`cpu.vendor`, `cpu.cache`, `cpu.affinity`,
+    `mem.freq`, `heap.total`) report them at the boot tail. `cpu.vendor` decodes
+    the `MIDR_EL1` implementer byte of the existing id (no redundant field).
+    Each verdict has a genuine FAIL/unknown branch — zero cache line, an
+    `MPIDR_EL1[31]` RES1 bit that reads clear, a firmware that does not report
+    the SDRAM clock — never a fabricated number. The boot-tail probe suite is
+    now fifteen probes (thirty live health lines).
+
 - **Runtime-discovered hardware facts + boot-time health banner** (#778,
   platform-info sub-plan 02). The kernel now learns what machine it booted on
   and reports its boot health, the way a real kernel's `dmesg` does:

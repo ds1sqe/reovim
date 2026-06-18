@@ -173,9 +173,39 @@ pub struct BootInfo {
     /// CPU identification: `MIDR_EL1` on ARM narrowed to its low 32 bits (the
     /// implementer/variant/part fields; bits 63:32 are architecturally RES0, so
     /// the narrowing loses nothing), CPUID leaf 1 `eax` on x86. `0` when unknown.
+    ///
+    /// The CPU *vendor* is not a separate field: it is the implementer byte of
+    /// `cpu_id` (`MIDR_EL1[31:24]`), decoded where it is reported.
     pub cpu_id: u32,
     /// Logical CPU count (`1` on the current single-core floor; `0` when unknown).
     pub cpu_count: u32,
+    /// Minimum cache line size in bytes (`CTR_EL0` on ARM), or `0` when unknown.
+    /// The smallest line across the cache levels — the granule cache-maintenance
+    /// and false-sharing reasoning are sized against.
+    pub cache_line_bytes: u32,
+    /// L1 data cache size in bytes (`sets × ways × line`, from `CCSIDR_EL1` for
+    /// the level-1 data cache selected via `CSSELR_EL1`), or `0` when absent or
+    /// unknown.
+    pub l1d_bytes: u32,
+    /// L1 instruction cache size in bytes (same derivation as [`l1d_bytes`] for
+    /// the level-1 instruction cache), or `0` when absent or unknown.
+    ///
+    /// [`l1d_bytes`]: BootInfo::l1d_bytes
+    pub l1i_bytes: u32,
+    /// Unified L2 cache size in bytes (same derivation for the level-2 cache),
+    /// or `0` when absent or unknown.
+    pub l2_bytes: u32,
+    /// CPU affinity register `MPIDR_EL1` (the `Aff0..Aff3` topology fields). Bit
+    /// 31 is RES1 on `ARMv8`, so a value with bit 31 clear signals an unreadable
+    /// register. `0` when unknown.
+    pub cpu_affinity: u64,
+    /// Memory (SDRAM) clock frequency in Hz, from the firmware mailbox
+    /// `GET_CLOCK_RATE` on ARM, or `0` when the firmware does not report it.
+    pub mem_freq_hz: u64,
+    /// Total capacity in bytes of the floor's page arena — a one-shot *static*
+    /// fact (the arena's fixed size), not live used/free, which is mutable
+    /// runtime-services state. `0` when unknown.
+    pub heap_total_bytes: u64,
 }
 
 /// Maps a fd-op slot's `i64` return (`>= 0` success, `< 0` is `-errno`) to a

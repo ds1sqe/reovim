@@ -73,6 +73,15 @@ arch_test!(launcher_args_boot_info_round_trips_multi_range, {
             cpu_freq_hz: 54_000_000,
             cpu_id: 0x410f_d083,
             cpu_count: 1,
+            // Deeper static facts (sub-plan 03): every new field carries a
+            // distinct non-zero value so the round-trip proves each survives.
+            cache_line_bytes: 64,
+            l1d_bytes: 0x8000,
+            l1i_bytes: 0xC000,
+            l2_bytes: 0x10_0000,
+            cpu_affinity: 0x8000_0000,
+            mem_freq_hz: 1_600_000_000,
+            heap_total_bytes: 0x10_0000,
         },
         ..LauncherArgs::default()
     };
@@ -88,6 +97,15 @@ arch_test!(launcher_args_boot_info_round_trips_multi_range, {
     assert_eq!(info.cpu_freq_hz, 54_000_000);
     assert_eq!(info.cpu_id, 0x410f_d083);
     assert_eq!(info.cpu_count, 1);
+
+    // Every deeper static fact survives push-at-entry byte for byte.
+    assert_eq!(info.cache_line_bytes, 64);
+    assert_eq!(info.l1d_bytes, 0x8000);
+    assert_eq!(info.l1i_bytes, 0xC000);
+    assert_eq!(info.l2_bytes, 0x10_0000);
+    assert_eq!(info.cpu_affinity, 0x8000_0000);
+    assert_eq!(info.mem_freq_hz, 1_600_000_000);
+    assert_eq!(info.heap_total_bytes, 0x10_0000);
 });
 
 arch_test!(init_boot_returns_shared_kernel, {

@@ -67,6 +67,15 @@ const TAG_END: u32 = 0x0000_0000;
 /// (not a bus alias), so no bus→phys masking applies to its result.
 const TAG_GET_ARM_MEMORY: u32 = 0x0001_0005;
 
+/// Property tag: get a clock's rate in Hz. The two-word value slot carries the
+/// clock id on the way in and the rate on the way out; a rate of 0 means the
+/// clock does not exist or is not reported.
+const TAG_GET_CLOCK_RATE: u32 = 0x0003_0002;
+
+/// Clock id for the SDRAM controller, the [`TAG_GET_CLOCK_RATE`] selector whose
+/// rate is the memory-bus frequency.
+const CLOCK_ID_SDRAM: u32 = 0x0000_0008;
+
 /// The property buffer, 16-byte aligned (the mailbox address carries the
 /// channel in its low 4 bits, so the buffer must be 16-aligned for those bits
 /// to be free). The GPU reads it by physical address, so it must sit at a
@@ -317,6 +326,58 @@ pub fn arm_memory() -> Option<(u64, u64)> {
         return None;
     }
     Some((u64::from(base), u64::from(size)))
+}
+
+/// Queries the `VideoCore` for the SDRAM clock rate in Hz over the mailbox
+/// property interface.
+///
+/// Returns `None` if the firmware reports the batch failed or a zero rate — the
+/// caller then reports the memory frequency as unknown rather than a wrong
+/// number. QEMU's BCM2711 model may not implement the clock and returns 0, which
+/// is honestly surfaced as unknown. Rides the same `mailbox_call` transport as
+/// [`arm_memory`]; the request is a single get-clock-rate tag whose two-word
+/// value slot holds the clock id on the way in and the rate on the way back.
+#[must_use]
+pub fn sdram_clock_hz() -> Option<u64> {
+    // One tag, two-word value slot:
+    //   [0] total size bytes  [1] request code 0
+    //   [2] tag id  [3] value bytes (8)  [4] req/resp code  [5] clock id  [6] rate
+    //   [7] end tag
+    #[repr(C, align(16))]
+    struct ClockBuffer {
+        words: [u32; 8],
+    }
+
+    let mut buf = ClockBuffer { words: [0; 8] };
+    let w = &mut buf.words;
+    w[0] = 32; // 8 words * 4 bytes
+    w[1] = 0;
+    w[2] = TAG_GET_CLOCK_RATE;
+    w[3] = 8; // value buffer bytes: clock id + rate
+    w[4] = 0;
+    w[5] = CLOCK_ID_SDRAM; // clock id (in)
+    w[6] = 0; // rate (out)
+    w[7] = TAG_END;
+
+    // Same 16-aligned, sub-4-GiB stack-buffer reasoning as `arm_memory`: the
+    // address truncates to u32 without losing bits on this target's image layout.
+    #[allow(clippy::cast_possible_truncation)]
+    let addr = (&raw const buf.words).addr() as u32;
+    if addr & 0xF != 0 {
+        return None;
+    }
+    let message = (addr & !0xF) | MBOX_CH_PROP;
+
+    mailbox_call(message);
+
+    if buf.words[1] != MBOX_RESP_SUCCESS {
+        return None;
+    }
+    let rate = buf.words[6];
+    if rate == 0 {
+        return None;
+    }
+    Some(u64::from(rate))
 }
 
 /// Posts `message` to the property channel and waits for its echo.

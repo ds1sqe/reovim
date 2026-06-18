@@ -21,12 +21,15 @@
 //! Boot stages 1-6 are structural stubs (`boot.rs`) — they init no subsystem,
 //! so a per-stage `[ OK ]` line would assert nothing. Instead each probe checks
 //! a subsystem that genuinely exists and reports a genuine metric or a genuine
-//! `FAIL`: the CPU id register read back non-zero, a logical core was counted,
-//! the firmware memory map was discovered and sums to real usable RAM, the heap
-//! satisfies both a byte and a page allocation, the log ring has capacity and
-//! captured the boot lines, the timer frequency read non-zero, and the
-//! monotonic counter advanced across the suite. Nothing here hardcodes success;
-//! every verdict has a real `FAIL` branch, unit-tested in `diagnostics_tests`.
+//! `FAIL`: the CPU id register read back non-zero, the implementer decoded to a
+//! known vendor, the cache geometry and affinity registers read back well-formed
+//! values, a logical core was counted, the firmware memory map was discovered
+//! and sums to real usable RAM, the SDRAM clock was reported (or honestly marked
+//! unknown), the heap satisfies both a byte and a page allocation and reports its
+//! static capacity, the log ring has capacity and captured the boot lines, the
+//! timer frequency read non-zero, and the monotonic counter advanced across the
+//! suite. Nothing here hardcodes success; every verdict has a real `FAIL` (or
+//! `unknown`) branch, unit-tested in `diagnostics_tests`.
 //!
 //! ## Why the message is carried in the event id
 //!
@@ -252,6 +255,104 @@ pub(crate) fn clock_monotonic_msg<'a>(
     }
 }
 
+/// Maps a `MIDR_EL1`/CPUID implementer byte to a vendor name, or `None` for an
+/// implementer this decoder does not recognize.
+///
+/// The implementer byte is `cpu_id[31:24]`. The list is the registered ARM
+/// implementer codes; an unrecognized byte is reported as `unknown (0xNN)`
+/// rather than guessed.
+pub(crate) const fn implementer_name(byte: u8) -> Option<&'static str> {
+    match byte {
+        0x41 => Some("ARM"),
+        0x42 => Some("Broadcom"),
+        0x43 => Some("Cavium"),
+        0x44 => Some("DEC"),
+        0x46 => Some("Fujitsu"),
+        0x48 => Some("HiSilicon"),
+        0x4E => Some("NVIDIA"),
+        0x50 => Some("Ampere"),
+        0x51 => Some("Qualcomm"),
+        0x56 => Some("Marvell"),
+        0x69 => Some("Intel"),
+        _ => None,
+    }
+}
+
+/// CPU vendor, decoded from the implementer byte of the existing `cpu_id`
+/// (`MIDR_EL1[31:24]`). An unrecognized implementer renders `unknown (0xNN)` —
+/// informational, not `FAIL` (a zero id is already caught by the `cpu.id` probe).
+pub(crate) fn cpu_vendor_msg<'a>(buf: &'a mut [u8], key: &str, cpu_id: u32) -> Option<&'a str> {
+    #[allow(clippy::cast_possible_truncation)]
+    let implementer = (cpu_id >> 24) as u8;
+    match implementer_name(implementer) {
+        Some(name) => fmt(buf, format_args!("{key}: {name}")),
+        None => fmt(buf, format_args!("{key}: unknown ({implementer:#04x})")),
+    }
+}
+
+/// CPU cache geometry: minimum line size plus L1-D / L1-I / L2 sizes in KiB.
+/// `FAIL` when the line size is zero (`CTR_EL0` unreadable); an absent level
+/// reports `0 KiB` (its `CLIDR_EL1` `Ctype` was empty), which is honest.
+// `l1d_bytes`/`l1i_bytes` differ by one letter by design (the cache they name
+// does), so the similar-names heuristic does not apply.
+#[allow(clippy::similar_names)]
+pub(crate) fn cpu_cache_msg<'a>(
+    buf: &'a mut [u8],
+    key: &str,
+    line_bytes: u32,
+    l1d_bytes: u32,
+    l1i_bytes: u32,
+    l2_bytes: u32,
+) -> Option<&'a str> {
+    if line_bytes == 0 {
+        return fmt(buf, format_args!("{key}: FAIL (no cache info)"));
+    }
+    fmt(
+        buf,
+        format_args!(
+            "{key}: line {line_bytes} B, L1d {} KiB, L1i {} KiB, L2 {} KiB",
+            l1d_bytes >> 10,
+            l1i_bytes >> 10,
+            l2_bytes >> 10,
+        ),
+    )
+}
+
+/// CPU affinity from `MPIDR_EL1`. `FAIL` when bit 31 (RES1 on `ARMv8`) is clear —
+/// a malformed or unreadable register; otherwise the affinity value in hex.
+pub(crate) fn cpu_affinity_msg<'a>(buf: &'a mut [u8], key: &str, affinity: u64) -> Option<&'a str> {
+    if affinity & (1 << 31) == 0 {
+        fmt(buf, format_args!("{key}: FAIL (bad MPIDR)"))
+    } else {
+        // The Aff0..Aff3 topology bytes; mask off the RES1/U/MT flag bits above
+        // Aff2 so the reported value is the affinity proper.
+        let aff = affinity & 0x0000_00FF_00FF_FFFF;
+        fmt(buf, format_args!("{key}: {aff:#x}"))
+    }
+}
+
+/// Memory (SDRAM) clock in MHz. `unknown` when zero — the firmware did not
+/// report the clock (QEMU's model may not implement the tag), never fabricated.
+pub(crate) fn mem_freq_msg<'a>(buf: &'a mut [u8], key: &str, freq_hz: u64) -> Option<&'a str> {
+    if freq_hz == 0 {
+        fmt(buf, format_args!("{key}: unknown"))
+    } else {
+        fmt(buf, format_args!("{key}: {} MHz", freq_hz / 1_000_000))
+    }
+}
+
+/// Heap (page-arena) total capacity. `FAIL` at zero — capacity was never
+/// reported; otherwise the size in MiB (when a whole mebibyte or larger) or KiB.
+pub(crate) fn heap_total_msg<'a>(buf: &'a mut [u8], key: &str, bytes: u64) -> Option<&'a str> {
+    if bytes == 0 {
+        fmt(buf, format_args!("{key}: FAIL (no capacity)"))
+    } else if bytes >= MIB {
+        fmt(buf, format_args!("{key}: {} MiB", bytes / MIB))
+    } else {
+        fmt(buf, format_args!("{key}: {} KiB", bytes >> 10))
+    }
+}
+
 /// Sums the `Usable` ranges of `boot_info`'s memory map. Returns `(bytes,
 /// present)`; `present` is `false` for an empty map so the memory line reports
 /// `unknown` rather than a misleading `0 MiB`.
@@ -332,6 +433,38 @@ pub(crate) fn run_at_boot_tail(
 
     probe_start(bus, clock, &mut buf, "clock.freq");
     if let Some(line) = clock_freq_msg(&mut buf, "clock.freq", boot_info.cpu_freq_hz) {
+        emit_health(bus, clock, line);
+    }
+
+    probe_start(bus, clock, &mut buf, "cpu.vendor");
+    if let Some(line) = cpu_vendor_msg(&mut buf, "cpu.vendor", boot_info.cpu_id) {
+        emit_health(bus, clock, line);
+    }
+
+    probe_start(bus, clock, &mut buf, "cpu.cache");
+    if let Some(line) = cpu_cache_msg(
+        &mut buf,
+        "cpu.cache",
+        boot_info.cache_line_bytes,
+        boot_info.l1d_bytes,
+        boot_info.l1i_bytes,
+        boot_info.l2_bytes,
+    ) {
+        emit_health(bus, clock, line);
+    }
+
+    probe_start(bus, clock, &mut buf, "cpu.affinity");
+    if let Some(line) = cpu_affinity_msg(&mut buf, "cpu.affinity", boot_info.cpu_affinity) {
+        emit_health(bus, clock, line);
+    }
+
+    probe_start(bus, clock, &mut buf, "mem.freq");
+    if let Some(line) = mem_freq_msg(&mut buf, "mem.freq", boot_info.mem_freq_hz) {
+        emit_health(bus, clock, line);
+    }
+
+    probe_start(bus, clock, &mut buf, "heap.total");
+    if let Some(line) = heap_total_msg(&mut buf, "heap.total", boot_info.heap_total_bytes) {
         emit_health(bus, clock, line);
     }
 
