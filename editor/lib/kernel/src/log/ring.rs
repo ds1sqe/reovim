@@ -45,11 +45,7 @@ use {
 
 use crate::{
     event_bus::DS12Event,
-    log::{
-        flush,
-        render::{EmitterAddress, InstanceAddress, RenderInput, render_line},
-        sink,
-    },
+    log::{flush, render::render_event, sink},
 };
 
 // ── Sizing constants ──────────────────────────────────────────────────────────
@@ -244,16 +240,10 @@ impl LogRing {
     /// assert_eq!(ring.len(), 1);
     /// ```
     pub fn push_event(&self, event: &DS12Event) {
-        let subsystem = kernel_subsystem_from_event(event.event);
-        let input = RenderInput {
-            ts_nanos: event.ts_nanos,
-            emitter_pkg: "kernel",
-            emitter_addr: EmitterAddress::Kernel { subsystem },
-            instance: InstanceAddress::None,
-            message: event.event,
-            level: event.level,
-        };
-        let Ok(line) = render_line(&input) else {
+        // One rendering for the ring and the sink alike — boot-stage enrichment
+        // and the bare-id fallback both live in `render::render_event` (LOG1:
+        // one renderer, one mechanism).
+        let Ok(line) = render_event(event) else {
             return;
         };
         // Write to stderr gate (LOG8) — no ring lock held.
@@ -307,23 +297,6 @@ impl LogRing {
         for entry in guard.iter() {
             f(entry);
         }
-    }
-}
-
-/// Maps a dotted OBS1 event name to the kernel subsystem label for LOG2 §3.
-///
-/// The first segment of the dotted name is the family; we return a static
-/// label for the families present in the boot-core crate. Later features
-/// will add families (`config`, `pkg`, `persist`, …).
-///
-/// `pub(crate)` so `sink.rs` can use the same mapping without duplication.
-pub(crate) fn kernel_subsystem_from_event(event: &str) -> &'static str {
-    if event.starts_with("boot.") {
-        "boot"
-    } else if event.starts_with("log.") {
-        "log"
-    } else {
-        "kernel"
     }
 }
 

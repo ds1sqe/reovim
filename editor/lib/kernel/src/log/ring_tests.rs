@@ -299,3 +299,24 @@ arch_test!(push_event_fallback_subsystem_renders_kernel, {
         "rendered line must use the fallback 'kernel' subsystem for unknown event families"
     );
 });
+
+// ── Boot-stage enrichment (push_event path) ───────────────────────────────────
+
+arch_test!(push_event_renders_enriched_boot_stage_line, {
+    let clock = BootClock::capture();
+    let ring = LogRing::try_new(1024 * 1024).unwrap();
+    // `make_event` emits boot.stage.ok; stage 2 renders as the named, numbered
+    // message rather than the bare "boot.stage.ok" event id.
+    ring.push_event(&make_event(&clock, 2));
+
+    let mut checked = false;
+    ring.for_each(|entry| {
+        let line = core::str::from_utf8(entry.line.as_slice()).unwrap();
+        assert!(
+            line.contains("kernel boot: stage 2/7 ok: shell config"),
+            "boot-stage line must carry the stage number and name: {line:?}"
+        );
+        checked = true;
+    });
+    assert!(checked, "ring must hold the pushed boot-stage entry");
+});

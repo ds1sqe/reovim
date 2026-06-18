@@ -31,7 +31,7 @@ use {
 
 use crate::{
     alloc::{alloc as arch_alloc, dealloc as arch_dealloc},
-    sys::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
+    sys::{Errno, FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, futex},
     time::Instant,
 };
 #[cfg(target_os = "linux")]
@@ -49,9 +49,9 @@ use crate::{
 use crate::sys::net::{AF_UNIX, SockaddrUn, UNIX_PATH_MAX};
 #[cfg(target_os = "linux")]
 use crate::sys::{
-    AT_FDCWD, Errno, accept as sys_accept, bind as sys_bind, close as sys_close,
-    connect as sys_connect, listen as sys_listen, read as sys_read, send_nosignal,
-    unix_stream_socket, unlinkat, write as sys_write,
+    AT_FDCWD, accept as sys_accept, bind as sys_bind, close as sys_close, connect as sys_connect,
+    listen as sys_listen, read as sys_read, send_nosignal, unix_stream_socket, unlinkat,
+    write as sys_write,
 };
 
 /// `FUTEX_WAKE` count meaning "wake everyone".
@@ -179,8 +179,8 @@ const EINVAL_CODE: i32 = 22;
 const ENOMEM_CODE: i32 = 12;
 
 /// Encodes an arch [`Errno`] as the negative-errno `i64` the fd-op slots
-/// return: `-code`.
-#[cfg(target_os = "linux")]
+/// return: `-code`. Target-neutral — shared by the Linux fd-op adapters and the
+/// freestanding `file_write` adapter, so it carries no `target_os` gate.
 const fn neg_errno(e: Errno) -> i64 {
     -(e.code() as i64)
 }
@@ -677,11 +677,28 @@ const unsafe extern "C" fn file_open(
 const unsafe extern "C" fn thread_id() -> i64 {
     0
 }
-/// Freestanding file-write stub: `-ENOSYS` (no filesystem/stdio floor on bare
-/// metal), the same fallible shape as the other fd stubs.
+/// Freestanding file-write adapter: writes up to `len` bytes from `buf` to `fd`
+/// through the floor's byte sink, returning the byte count or a negative errno.
+///
+/// The bare-metal counterpart to the Linux [`file_write`] twin: there is no
+/// filesystem floor, but `sys::write` routes the standard fds (1/2) to the PL011
+/// UART, so the kernel's stdout/stderr — including the boot-stage `stderr_echo`
+/// — reaches the console live. `fd_write` (socket send) stays `-ENOSYS`.
+///
+/// # Safety
+///
+/// `unsafe extern "C"` per the vtable ABI. `buf` must point to `len` readable
+/// bytes.
 #[cfg(not(target_os = "linux"))]
-const unsafe extern "C" fn file_write(_fd: Fd, _buf: *const u8, _len: usize) -> i64 {
-    -ENOSYS_CODE
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+unsafe extern "C" fn file_write(fd: Fd, buf: *const u8, len: usize) -> i64 {
+    // SAFETY: caller guarantees `buf` is valid for `len` readable bytes.
+    let slice = unsafe { core::slice::from_raw_parts(buf, len) };
+    // A byte count never exceeds `isize::MAX`, so the cast cannot wrap.
+    match crate::sys::write(fd.as_i32(), slice) {
+        Ok(n) => n as i64,
+        Err(e) => neg_errno(e),
+    }
 }
 
 /// arch's platform vtable: a `static` of const function pointers (zero heap to

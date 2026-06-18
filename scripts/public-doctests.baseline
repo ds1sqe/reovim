@@ -243,3 +243,5 @@ arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
 arch/src/sys/none_aarch64/console.rs	pub struct Console
 arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
 arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
+arch/src/sys/none_aarch64/console.rs	pub fn write_bytes(&mut self, buf: &[u8])
+arch/src/sys/none_aarch64/console.rs	pub fn install(console: Console)

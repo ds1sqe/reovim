@@ -12,6 +12,8 @@
 //! (CC0, Daniel Hepper) embedded as our own data over the printable range
 //! U+0020..=U+007F — not a third-party dependency.
 
+use core::cell::UnsafeCell;
+
 use super::framebuffer::Framebuffer;
 
 /// Glyph cell width in pixels (the embedded font is 8 wide).
@@ -140,8 +142,9 @@ fn glyph(byte: u8) -> &'static [u8; 8] {
 
 /// A line-oriented text console over a [`Framebuffer`].
 ///
-/// The cursor tracks the next cell in glyph units. [`Console::print`] is the
-/// only sink; it renders printable bytes and interprets `\n`/`\r`.
+/// The cursor tracks the next cell in glyph units. [`Console::print`] and
+/// [`Console::write_bytes`] render into it (printable bytes drawn, `\n`/`\r`
+/// interpreted).
 pub struct Console {
     fb: Framebuffer,
     /// Cursor column in glyph cells.
@@ -189,6 +192,15 @@ impl Console {
     /// renders a cell (printable ASCII as its glyph, everything else blank).
     pub fn print(&mut self, s: &str) {
         for &byte in s.as_bytes() {
+            self.put_byte(byte);
+        }
+    }
+
+    /// Renders raw `buf` bytes at the cursor — the byte-oriented twin of
+    /// [`print`](Self::print) for sinks that carry `&[u8]` rather than `&str`
+    /// (the floor's `write` fan-out). Same per-byte cell/newline handling.
+    pub fn write_bytes(&mut self, buf: &[u8]) {
+        for &byte in buf {
             self.put_byte(byte);
         }
     }
@@ -242,5 +254,44 @@ impl Console {
                 }
             }
         }
+    }
+}
+
+/// The floor's optional on-screen write sink.
+///
+/// When a payload installs a console (via [`install`]), the floor's `write`
+/// fans fd 1/2 here in addition to the UART, so everything the kernel and the
+/// payload print — the boot-stage `stderr_echo` included — appears on the HDMI
+/// surface live, with no payload-side ring drain. A payload with no display
+/// (e.g. the exit-code selftest fixtures) never installs one and the sink stays
+/// UART-only.
+struct ConsoleSink(UnsafeCell<Option<Console>>);
+
+// SAFETY: the freestanding floor is a single thread of control — no preemption
+// and no interrupt-driven writers — so the cell is only ever reached from that
+// one thread, exactly as the page arena's storage is (`arena.rs`).
+unsafe impl Sync for ConsoleSink {}
+
+/// The installed console, if any. `None` until a payload calls [`install`].
+static CONSOLE: ConsoleSink = ConsoleSink(UnsafeCell::new(None));
+
+/// Installs `console` as the floor's on-screen write sink, replacing any prior
+/// one. Call once, early, from a payload that has a display; the floor's `write`
+/// then mirrors every fd 1/2 byte to it.
+pub fn install(console: Console) {
+    // SAFETY: single thread of control; no live reference into the cell exists
+    // across this store.
+    unsafe {
+        *CONSOLE.0.get() = Some(console);
+    }
+}
+
+/// Writes `buf` to the installed console, if one is present; a no-op otherwise.
+/// Called by the floor's `write` so on-screen output tracks every fd 1/2 write.
+pub(crate) fn write_bytes(buf: &[u8]) {
+    // SAFETY: single thread of control; the `&mut` borrow does not alias — no
+    // other reference into the cell is live during the call.
+    if let Some(console) = unsafe { (*CONSOLE.0.get()).as_mut() } {
+        console.write_bytes(buf);
     }
 }

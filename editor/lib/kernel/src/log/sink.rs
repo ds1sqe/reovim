@@ -42,10 +42,7 @@ use reovim_lib_ds::{
 
 use crate::{
     event_bus::{BootStageFields, DS12Event, DS12EventBus, SubscribeError},
-    log::{
-        render::{EmitterAddress, InstanceAddress, RenderInput, render_line},
-        ring::kernel_subsystem_from_event,
-    },
+    log::render::render_event,
 };
 
 // ── O_APPEND ──────────────────────────────────────────────────────────────────
@@ -321,16 +318,9 @@ impl Drop for FileSink {
 /// ignores the re-entrant event.
 fn sink_subscriber_callback(event: &DS12Event) {
     // Render first (before acquiring the lock) so lock hold-time is minimal.
-    let subsystem = kernel_subsystem_from_event(event.event);
-    let input = RenderInput {
-        ts_nanos: event.ts_nanos,
-        emitter_pkg: "kernel",
-        emitter_addr: EmitterAddress::Kernel { subsystem },
-        instance: InstanceAddress::None,
-        message: event.event,
-        level: event.level,
-    };
-    let Ok(line) = render_line(&input) else {
+    // The same `render_event` the ring uses, so the file and the ring never
+    // disagree on a line's bytes (LOG1: one renderer, one mechanism).
+    let Ok(line) = render_event(event) else {
         return; // Render failed (OOM); drop silently.
     };
     let bytes = line.as_slice();

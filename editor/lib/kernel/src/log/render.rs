@@ -32,6 +32,8 @@ use core::fmt::Write as _;
 
 use reovim_lib_ds::{Bytes, BytesWriter};
 
+use crate::event_bus::{DS12Event, EVT_BOOT_STAGE_FAIL, EVT_BOOT_STAGE_OK, EVT_BOOT_STAGE_START};
+
 // ── Emitter address forms ────────────────────────────────────────────────────
 
 /// The emitter address stamped on a LOG2 line (9.5 §3).
@@ -335,6 +337,114 @@ fn write_escaped(s: &str, w: &mut BytesWriter<'_>) -> core::fmt::Result {
         }
     }
     Ok(())
+}
+
+// ── Boot-stage message enrichment (2.2 stage map) ────────────────────────────
+
+/// The last boot stage `run_boot_stages` emits (stages 1..=7); the denominator
+/// in a rendered "stage N/7" message.
+const LAST_BOOT_STAGE: u8 = 7;
+
+/// Human-readable name for boot stage `n` (2.2 stage map). An out-of-range
+/// stage renders as `"stage"` so the message stays well-formed.
+pub(crate) const fn boot_stage_name(n: u8) -> &'static str {
+    match n {
+        0 => "init",
+        1 => "host config",
+        2 => "shell config",
+        3 => "library root",
+        4 => "module load",
+        5 => "driver load",
+        6 => "runtime",
+        7 => "handoff",
+        _ => "stage",
+    }
+}
+
+/// A [`core::fmt::Write`] sink over a fixed `&mut [u8]`, for building a short
+/// message without allocation. A write that would overflow the buffer fails,
+/// so the message is rejected whole rather than clipped mid-write.
+struct FixedWriter<'a> {
+    buf: &'a mut [u8],
+    len: usize,
+}
+
+impl core::fmt::Write for FixedWriter<'_> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let end = self.len.checked_add(s.len()).ok_or(core::fmt::Error)?;
+        let dst = self.buf.get_mut(self.len..end).ok_or(core::fmt::Error)?;
+        dst.copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// Builds a human-readable boot-stage message ("stage 2/7 ok: shell config")
+/// into `buf` and returns it as a `&str`. The verb comes from the OBS1 event
+/// id, the name from [`boot_stage_name`].
+///
+/// Returns `None` when `event` is not a boot-stage event — the caller then
+/// renders the bare event id — or when the formatted message would not fit
+/// `buf` (it falls back to the bare id the same way).
+pub(crate) fn boot_stage_message<'a>(buf: &'a mut [u8], event: &str, stage: u8) -> Option<&'a str> {
+    let verb = match event {
+        EVT_BOOT_STAGE_START => "starting",
+        EVT_BOOT_STAGE_OK => "ok",
+        EVT_BOOT_STAGE_FAIL => "failed",
+        _ => return None,
+    };
+    let len = {
+        let mut w = FixedWriter {
+            buf: &mut *buf,
+            len: 0,
+        };
+        write!(w, "stage {stage}/{LAST_BOOT_STAGE} {verb}: {}", boot_stage_name(stage)).ok()?;
+        w.len
+    };
+    core::str::from_utf8(&buf[..len]).ok()
+}
+
+/// Maps a dotted OBS1 event name to its kernel subsystem label (9.5 §3).
+///
+/// The first dotted segment is the family; a static label is returned for the
+/// families the boot-core crate emits. Unknown families fall back to `kernel`.
+fn kernel_subsystem_from_event(event: &str) -> &'static str {
+    if event.starts_with("boot.") {
+        "boot"
+    } else if event.starts_with("log.") {
+        "log"
+    } else {
+        "kernel"
+    }
+}
+
+/// Renders a kernel DS12 `event` into its canonical LOG2 line bytes.
+///
+/// This is the ONE rendering both the ring (`LogRing::push_event`) and the file
+/// sink use, so the two can never diverge (LOG1: one renderer, one mechanism).
+/// Boot-stage events get the human-readable message from [`boot_stage_message`];
+/// every other event renders the bare OBS1 event id.
+///
+/// # Errors
+///
+/// Returns [`RenderError::Alloc`] if the backing [`Bytes`] cannot grow.
+pub(crate) fn render_event(event: &DS12Event) -> Result<Bytes, RenderError> {
+    // The buffer holds the formatted boot-stage message for the duration of the
+    // `render_line` call below; non-boot events use the bare event id.
+    let mut stage_buf = [0u8; 48];
+    let message =
+        boot_stage_message(&mut stage_buf, event.event, event.fields.stage).unwrap_or(event.event);
+    let input = RenderInput {
+        ts_nanos: event.ts_nanos,
+        emitter_pkg: "kernel",
+        emitter_addr: EmitterAddress::Kernel {
+            subsystem: kernel_subsystem_from_event(event.event),
+        },
+        instance: InstanceAddress::None,
+        message,
+        level: event.level,
+    };
+    render_line(&input)
 }
 
 // L12 layout: tests in sibling render_tests.rs, declared in log/mod.rs.

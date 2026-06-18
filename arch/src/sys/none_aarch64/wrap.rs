@@ -106,10 +106,11 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 
 // ---- wrappers -------------------------------------------------------------------
 
-/// Writes `buf` to the UART for the standard output fds.
+/// Writes `buf` to the floor's console for the standard output fds.
 ///
-/// fd 1 and fd 2 are both the PL011 — bare metal has one byte sink, so
-/// stdout and stderr coincide. The write is total once started (polled
+/// fd 1 and fd 2 coincide on the floor and fan out to two sinks: the PL011 UART
+/// always, and the framebuffer console when a payload has installed one (see
+/// [`super::console::install`]). The UART write is total once started (polled
 /// MMIO cannot short-write), so the full length is always reported.
 ///
 /// # Errors
@@ -119,6 +120,7 @@ pub const CLONE_CHILD_CLEARTID: usize = 0x0020_0000;
 pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno> {
     if fd == 1 || fd == 2 {
         super::uart::write_bytes(buf);
+        super::console::write_bytes(buf);
         Ok(buf.len())
     } else {
         Err(EBADF)

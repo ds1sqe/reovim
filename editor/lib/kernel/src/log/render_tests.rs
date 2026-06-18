@@ -14,7 +14,9 @@
 
 use {reovim_arch::arch_test, reovim_uapi_abi::error::LogLevel};
 
-use crate::log::render::{EmitterAddress, InstanceAddress, RenderError, RenderInput, render_line};
+use crate::log::render::{
+    EmitterAddress, InstanceAddress, RenderError, RenderInput, boot_stage_message, render_line,
+};
 
 // ── Kernel-event golden (spec §2 worked example) ─────────────────────────────
 //
@@ -435,4 +437,31 @@ arch_test!(render_alloc_fault_boundary_sweep, {
             }
         }
     }
+});
+
+// ── Boot-stage message enrichment ─────────────────────────────────────────────
+
+arch_test!(boot_stage_message_enriches_known_events, {
+    // ok / starting / failed verbs, with the stage number, denominator, and name.
+    let mut buf = [0u8; 48];
+    assert_eq!(
+        boot_stage_message(&mut buf, "boot.stage.ok", 2),
+        Some("stage 2/7 ok: shell config")
+    );
+    let mut buf = [0u8; 48];
+    assert_eq!(
+        boot_stage_message(&mut buf, "boot.stage.start", 7),
+        Some("stage 7/7 starting: handoff")
+    );
+    let mut buf = [0u8; 48];
+    assert_eq!(
+        boot_stage_message(&mut buf, "boot.stage.fail", 3),
+        Some("stage 3/7 failed: library root")
+    );
+    // Non-boot events fall back to the bare id (the caller renders event.event).
+    let mut buf = [0u8; 48];
+    assert_eq!(boot_stage_message(&mut buf, "log.sink.fail", 0), None);
+    // An out-of-range stage stays well-formed (name "stage").
+    let mut buf = [0u8; 48];
+    assert_eq!(boot_stage_message(&mut buf, "boot.stage.ok", 9), Some("stage 9/7 ok: stage"));
 });
