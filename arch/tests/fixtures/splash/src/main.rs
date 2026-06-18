@@ -1,8 +1,9 @@
 //! Bare-metal aarch64 boot-log payload (QEMU raspi4b / BCM2711).
 //!
-//! Boots through the arch `_start`, asks the `VideoCore` for a 640x480x32
+//! Boots through the arch `_start`, asks the `VideoCore` for a 1280x720x32
 //! framebuffer over the mailbox property interface, wraps it in an 8x8-font
-//! text [`console::Console`], and renders the boot log onto the HDMI surface
+//! text [`console::Console`] (rendered at 2x magnification), and renders the
+//! boot log onto the HDMI surface
 //! while echoing the same lines to the PL011 UART. It then parks in a `wfe`
 //! loop forever — it deliberately does NOT semihosting-exit, so the rendered
 //! surface persists for a QEMU screendump / VNC capture. This is the floor's
