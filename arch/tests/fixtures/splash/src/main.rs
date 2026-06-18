@@ -37,7 +37,7 @@ const BOOT_FONT: &fonts::Font = &fonts::JETBRAINS_MONO;
 /// Before the framebuffer is acquired `console` is `None` and output is
 /// UART-only — the natural degraded path when the mailbox alloc fails.
 struct BootLog {
-    console: Option<console::Console>,
+    console: Option<console::Console<'static>>,
 }
 
 impl BootLog {
@@ -97,15 +97,17 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
         .map(|fb| (fb.width(), fb.height(), fb.base(), fb.pitch()));
 
     let mut log = BootLog {
-        console: fb.map(|fb| {
-            // Light text on a dark slate background — legible on an HDMI
-            // capture and unmistakably "ours". The font renders at its native
-            // 8x16 cell via coverage software-blend.
+        // Light text on a dark slate background — legible on an HDMI capture
+        // and unmistakably "ours". The font renders at its native 8x16 cell via
+        // coverage software-blend, backed by the console's retained-content grid
+        // (taken once from the lib's static store).
+        console: fb.zip(console::screen_grid()).map(|(fb, grid)| {
             console::Console::new(
                 fb,
                 BOOT_FONT,
                 Color::Rgb(rgb(0xC8, 0xE0, 0xFF)),
                 Color::Rgb(rgb(0x0A, 0x14, 0x28)),
+                grid,
             )
         }),
     };
@@ -150,7 +152,24 @@ reovim_arch::entry!(|_argc, _argv, _envp| {
          \x1b[23m\x1b[4munderline \x1b[24m\x1b[7mreverse\x1b[0m\n",
     );
 
+    // Scroll demo: emit well over one screenful (the 1280x720 surface fits 36
+    // rows) so the boot-log header scrolls off the top and the newest lines
+    // land at the bottom. A screendump proves scroll-on-overflow repaints from
+    // the retained grid — the write-only framebuffer is never read back.
+    let mut n = 0;
+    while n < 40 {
+        log.str("scroll line ");
+        log.dec(n);
+        log.str("\n");
+        n += 1;
+    }
+
     log.str("entering wfe loop\n");
+
+    // Park a reverse-video block cursor at the write head for the capture.
+    if let Some(con) = log.console.as_mut() {
+        con.show_cursor();
+    }
 
     loop {
         // SAFETY: `wfe` is an unprivileged hint that parks the core until an

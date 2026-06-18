@@ -14,7 +14,7 @@ use {
             fonts::{Font, JETBRAINS_MONO, TERMINUS},
             framebuffer::Framebuffer,
         },
-        Console, blend,
+        Cell, Console, RESET_CELL, ScreenGrid, blend, shift_rows_up,
     },
     crate::{arch_test, testrt},
 };
@@ -40,7 +40,9 @@ const BRIGHT_RED: u32 = 0x00FF_0000;
 fn render(font: &'static Font, s: &str) -> [u32; CELL_PIXELS] {
     let mut buf = [0u32; CELL_PIXELS];
     let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 16, 8 * 4);
-    let mut console = Console::new(fb, font, Color::Rgb(FG), Color::Rgb(BG));
+    // One-cell backing for the one-cell stub surface.
+    let mut grid = [RESET_CELL; 1];
+    let mut console = Console::new(fb, font, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
     console.print(s);
     buf
 }
@@ -150,7 +152,10 @@ arch_test!(console_sgr_pen_change_affects_only_subsequent_cells, {
     // surface holds two 8-px cells (cols 0 and 1) on one row.
     let mut buf = [0u32; 16 * 16];
     let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 16, 16, 16 * 4);
-    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    // Two-cell backing for the two 8-px cells this 16-wide stub holds.
+    let mut grid = [RESET_CELL; 2];
+    let mut console =
+        Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
     console.print("\x1b[38;2;255;0;0mM"); // cell A, col 0 (red)
     console.print("\x1b[38;2;0;255;0mM"); // cell B, col 1 (green)
 
@@ -176,7 +181,10 @@ arch_test!(console_sgr_integration_colored_then_reset, {
     // SGR dispatch, pen, and blit composing across two cells.
     let mut buf = [0u32; 16 * 16];
     let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 16, 16, 16 * 4);
-    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    // Two-cell backing for the two 8-px cells this 16-wide stub holds.
+    let mut grid = [RESET_CELL; 2];
+    let mut console =
+        Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
     console.print("\x1b[31mA\x1b[0mB");
 
     let (mut a_red, mut b_default) = (false, false);
@@ -321,7 +329,10 @@ arch_test!(console_effect_attributes_compose_and_reset, {
     // attribute and the pen, so cell B is pixel-identical to the plain glyph.
     let mut buf = [0u32; 16 * 16];
     let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 16, 16, 16 * 4);
-    let mut console = Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG));
+    // Two-cell backing for the two 8-px cells this 16-wide stub holds.
+    let mut grid = [RESET_CELL; 2];
+    let mut console =
+        Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
     console.print("\x1b[1;3;31mM"); // cell A: bold italic red
     console.print("\x1b[0mM"); // cell B: reset → plain default glyph
 
@@ -343,4 +354,134 @@ arch_test!(console_effect_attributes_compose_and_reset, {
         b_matches_plain,
         "SGR 0 clears every attribute and pen: cell B is the plain glyph",
     );
+});
+
+arch_test!(console_scroll_shift_rows_up_moves_content, {
+    // A 2-col x 3-row grid. Shifting up drops the top row, moves the lower rows
+    // up one, and blanks the freed bottom row — pure grid arithmetic, no blit.
+    let mut grid = [
+        Cell {
+            ch: b'A',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'a',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'B',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'b',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'C',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'c',
+            ..RESET_CELL
+        },
+    ];
+    shift_rows_up(
+        &mut grid,
+        2,
+        6,
+        Cell {
+            ch: b' ',
+            ..RESET_CELL
+        },
+    );
+    testrt::check_eq(grid[0].ch, b'B');
+    testrt::check_eq(grid[1].ch, b'b');
+    testrt::check_eq(grid[2].ch, b'C');
+    testrt::check_eq(grid[3].ch, b'c');
+    testrt::check_eq(grid[4].ch, b' ');
+    testrt::check_eq(grid[5].ch, b' ');
+});
+
+arch_test!(console_scroll_shift_rows_up_single_row_blanks, {
+    // The exact-capacity boundary: a one-row grid has no row to pull down, so
+    // the `copy_within` source range is empty and the row is simply blanked.
+    let mut grid = [
+        Cell {
+            ch: b'Z',
+            ..RESET_CELL
+        },
+        Cell {
+            ch: b'z',
+            ..RESET_CELL
+        },
+    ];
+    shift_rows_up(
+        &mut grid,
+        2,
+        2,
+        Cell {
+            ch: b' ',
+            ..RESET_CELL
+        },
+    );
+    testrt::check_eq(grid[0].ch, b' ');
+    testrt::check_eq(grid[1].ch, b' ');
+});
+
+arch_test!(console_scroll_drops_top_keeps_newest_at_bottom, {
+    // A 1-col x 3-row surface. Writing four lines overflows it: the first line
+    // scrolls off, the grid retains the last three (B, C, D) top to bottom, and
+    // the surface is repainted from the grid — no framebuffer readback.
+    let mut buf = [0u32; 8 * 60]; // three 20px row pitches tall
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 8, 60, 8 * 4);
+    let mut grid = [RESET_CELL; 3];
+    let mut console =
+        Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
+    console.print("A\nB\nC\nD");
+
+    testrt::check_eq(console.grid[0].ch, b'B');
+    testrt::check_eq(console.grid[1].ch, b'C');
+    testrt::check_eq(console.grid[2].ch, b'D');
+
+    // The bottom row (pixels y=40..56) was repainted from the grid and inks the
+    // newest glyph.
+    let bottom_inked = (40..56).any(|y| (0..8).any(|x| buf[y * 8 + x] == FG));
+    testrt::check(bottom_inked, "the newest line is painted in the bottom row");
+});
+
+arch_test!(console_cursor_block_shows_then_restores_on_write, {
+    // A 3-col surface. After printing "A" the head is the empty cell to its
+    // right; show_cursor paints a reverse-video block there (a blank cell
+    // inverted is solid foreground). Printing "B" erases the block (repaints
+    // the true cell) and writes B in its place — the cursor never persists in
+    // the grid.
+    let mut buf = [0u32; 24 * 16]; // three 8px columns, one row
+    let fb = Framebuffer::over_region(buf.as_mut_ptr() as usize, 24, 16, 24 * 4);
+    let mut grid = [RESET_CELL; 3];
+    let mut console =
+        Console::new(fb, &TERMINUS, Color::Rgb(FG), Color::Rgb(BG), ScreenGrid(&mut grid));
+    console.print("A"); // A at col 0; head at col 1 (empty)
+    console.show_cursor(); // block fills col 1
+
+    // Col 1 (pixels x=8..16) is a blank cell, so its reverse-video block is
+    // solid foreground in every pixel.
+    let mut block_solid = true;
+    for y in 0..16 {
+        for x in 8..16 {
+            block_solid &= buf[y * 24 + x] == FG;
+        }
+    }
+    testrt::check(block_solid, "the block cursor fills the empty head cell with fg");
+
+    console.print("B"); // erases the block, writes B where the cursor was
+    let (mut restored, mut glyph_drawn) = (false, false);
+    for y in 0..16 {
+        for x in 8..16 {
+            let p = buf[y * 24 + x];
+            restored |= p == BG;
+            glyph_drawn |= p == FG;
+        }
+    }
+    testrt::check(restored, "printing past the cursor erases the block (cell restored)");
+    testrt::check(glyph_drawn, "the new glyph is painted where the cursor was");
 });
