@@ -44,29 +44,50 @@
 //! # System-image mode (bare metal)
 //!
 //! A freestanding `ARCH_FIXTURE_TARGET` (suffix `-none`) selects the third
-//! execution mode: the built ELF is objcopy'd to a raw `kernel8.img` and
-//! booted under a system emulator instead of exec'd as a process. The
-//! runner value stays a bare program name — the machine flags are owned
-//! here (`-M raspi4b -display none -serial stdio -semihosting -kernel
-//! <img>`), not threaded through the environment:
+//! execution mode: the built ELF is repackaged into a bootable image and
+//! booted under a system emulator instead of exec'd as a process. The runner
+//! value stays a bare program name — the machine flags are owned by
+//! `run_system_image`, not threaded through the environment — and dispatch on
+//! the arch:
 //!
 //! ```text
+//! # aarch64: raw kernel8.img on raspi4b, semihosting exit
 //! ARCH_FIXTURE_TARGET=aarch64-unknown-none \
 //! ARCH_FIXTURE_RUNNER=qemu-system-aarch64 \
+//!     cargo test -p reovim-arch --test fixtures_exec
+//!
+//! # x86_64: Multiboot1 ELF32 on q35, isa-debug-exit exit
+//! ARCH_FIXTURE_TARGET=x86_64-unknown-none \
+//! ARCH_FIXTURE_RUNNER=qemu-system-x86_64 \
 //!     cargo test -p reovim-arch --test fixtures_exec
 //! ```
 //!
 //! Bare metal has no process ABI: no argv (so no file-sink fixtures), no
 //! filesystem, no threads. Only the arch-selftest pilots run in this mode —
-//! the image's exit code arrives through QEMU's semihosting exit and the
-//! LOG2 panic line through the PL011 serial on stdout. Every other test
-//! skips itself, loudly, when the target is freestanding.
+//! the image's exit code arrives through QEMU's exit channel (semihosting on
+//! aarch64, `isa-debug-exit` on `x86_64`) and the LOG2 panic line through the
+//! serial console on stdout. Every other test skips itself, loudly, when the
+//! target is freestanding.
 
 use std::{
+    fs::File,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Mutex, OnceLock},
+    thread,
+    time::{Duration, Instant},
 };
+
+/// Wall-clock ceiling on a single system-image boot. A boot hang (triple-fault
+/// reset loop, a wedged poll) must fail the test deterministically rather than
+/// block CI; one minute is far above a healthy boot (~1 s) yet bounds the worst
+/// case.
+const BOOT_TIMEOUT: Duration = Duration::from_mins(1);
+
+/// Sentinel exit code returned when a system-image boot exceeds [`BOOT_TIMEOUT`]
+/// — distinct from the floor's success (0) and halt (70) codes so a hang is an
+/// unambiguous test failure.
+const BOOT_TIMEOUT_CODE: i32 = 124;
 
 // ---------------------------------------------------------------------------
 // Serialization guards for the selftest-runner tests
@@ -298,7 +319,7 @@ fn llvm_objcopy() -> PathBuf {
     p
 }
 
-/// Converts the linked ELF into the raw image the machine boots (the
+/// Converts the linked ELF into the raw image the aarch64 machine boots (the
 /// firmware-style load: raw bytes at the link address, entered at the first
 /// byte) and returns the image path, `<elf>.kernel8.img`.
 fn objcopy_kernel_image(elf: &Path) -> PathBuf {
@@ -316,25 +337,104 @@ fn objcopy_kernel_image(elf: &Path) -> PathBuf {
     img
 }
 
-/// Boots the fixture ELF as a machine image and returns the guest exit code
-/// plus the captured serial output.
+/// Repackages the 64-bit ELF as a 32-bit ELF for QEMU's Multiboot1 `-kernel`
+/// loader, returning the image path, `<elf>.mb32.elf`.
 ///
-/// The harness owns the machine flags (no flag soup in the environment):
-/// `-M raspi4b` is the deliverable machine, `-serial stdio` binds the PL011
-/// the floor writes to, `-semihosting` arms the `SYS_EXIT` channel that
-/// carries the runner's exit code out as the emulator's own, and
-/// `-display none` keeps the run headless. `ARCH_FIXTURE_RUNNER` supplies
-/// the emulator program itself (e.g. `qemu-system-aarch64`).
+/// Multiboot1 enters in 32-bit protected mode and QEMU's loader rejects an
+/// `ELFCLASS64` image ("give a 32bit one"), even though the climb to long mode
+/// happens inside the kernel. The instruction bytes are unchanged — only the
+/// ELF container class is rewritten — so the `.code32` `_start` prologue still
+/// loads correctly and climbs to 64-bit itself.
+fn objcopy_multiboot_elf32(elf: &Path) -> PathBuf {
+    let mut img = elf.as_os_str().to_owned();
+    img.push(".mb32.elf");
+    let img = PathBuf::from(img);
+    let status = Command::new(llvm_objcopy())
+        .arg("-O")
+        .arg("elf32-i386")
+        .arg(elf)
+        .arg(&img)
+        .status()
+        .expect("llvm-objcopy runs");
+    assert!(status.success(), "objcopy {} -> elf32", elf.display());
+    img
+}
+
+/// Runs `cmd` with stdout captured to `serial_path`, enforcing [`BOOT_TIMEOUT`].
+///
+/// Returns the process exit code, or [`BOOT_TIMEOUT_CODE`] if the boot hung and
+/// had to be killed. Stdout is redirected to a file rather than a pipe so a
+/// chatty boot log (the full test runner) cannot deadlock against an unread
+/// pipe buffer while we poll for the timeout.
+fn run_with_timeout(mut cmd: Command, serial_path: &Path) -> i32 {
+    let sink = File::create(serial_path).expect("create serial sink");
+    let mut child = cmd
+        .stdout(Stdio::from(sink))
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("system emulator spawns");
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().expect("try_wait on emulator") {
+            return status
+                .code()
+                .expect("emulator exited with a code, not a signal");
+        }
+        if start.elapsed() >= BOOT_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            return BOOT_TIMEOUT_CODE;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// Boots the fixture ELF as a machine image and returns the guest exit code
+/// plus the captured serial output, dispatching on the freestanding arch.
+///
+/// The harness owns the machine flags (no flag soup in the environment), and
+/// `ARCH_FIXTURE_RUNNER` supplies the emulator program (`qemu-system-aarch64`
+/// or `qemu-system-x86_64`):
+///
+/// - **aarch64** (`-M raspi4b -semihosting`): the raw `kernel8.img` is loaded
+///   at its link address; the floor's semihosting `SYS_EXIT` carries the guest
+///   exit code out as the emulator's own, verbatim.
+/// - **`x86_64`** (`-M q35 -device isa-debug-exit`): the Multiboot1 ELF32 is
+///   loaded; the floor signals exit by writing to the `isa-debug-exit` port,
+///   which makes QEMU exit with `(code << 1) | 1`. That transform is inverted
+///   here so the guest's logical code (0 success, 70 halt) reaches the
+///   assertions unchanged, identical to the aarch64 path.
+///
+/// Both paths bind `-serial stdio` to the console the floor writes to and run
+/// headless under [`run_with_timeout`].
 fn run_system_image(exe: &Path) -> (i32, String) {
     let runner = fixture_runner();
     assert!(
         !runner.is_empty(),
         "system-image mode needs ARCH_FIXTURE_RUNNER (a system emulator)",
     );
-    let img = objcopy_kernel_image(exe);
-    let output = Command::new(&runner[0])
-        .args(&runner[1..])
-        .args([
+    let target = fixture_target().expect("system-image mode sets ARCH_FIXTURE_TARGET");
+
+    let mut cmd = Command::new(&runner[0]);
+    cmd.args(&runner[1..]);
+    let is_x86 = target.starts_with("x86_64");
+    if is_x86 {
+        let img = objcopy_multiboot_elf32(exe);
+        cmd.args([
+            "-M",
+            "q35",
+            "-display",
+            "none",
+            "-serial",
+            "stdio",
+            "-device",
+            "isa-debug-exit,iobase=0xf4,iosize=0x04",
+        ])
+        .arg("-kernel")
+        .arg(&img);
+    } else {
+        let img = objcopy_kernel_image(exe);
+        cmd.args([
             "-M",
             "raspi4b",
             "-display",
@@ -344,15 +444,24 @@ fn run_system_image(exe: &Path) -> (i32, String) {
             "-semihosting",
         ])
         .arg("-kernel")
-        .arg(&img)
-        .stderr(Stdio::inherit())
-        .output()
-        .expect("system emulator boots the image");
-    let code = output
-        .status
-        .code()
-        .expect("emulator exited with a code, not a signal");
-    let serial = String::from_utf8_lossy(&output.stdout).into_owned();
+        .arg(&img);
+    }
+
+    let mut serial_path = exe.as_os_str().to_owned();
+    serial_path.push(".serial.log");
+    let serial_path = PathBuf::from(serial_path);
+    let raw = run_with_timeout(cmd, &serial_path);
+    let serial = std::fs::read_to_string(&serial_path).unwrap_or_default();
+    let _ = std::fs::remove_file(&serial_path);
+
+    // isa-debug-exit reports `(code << 1) | 1`; invert it to the guest's
+    // logical code. A timed-out boot keeps its sentinel (it is not an exit the
+    // floor produced) so the assertions see an unambiguous failure.
+    let code = if is_x86 && raw != BOOT_TIMEOUT_CODE {
+        (raw - 1) >> 1
+    } else {
+        raw
+    };
     (code, serial)
 }
 

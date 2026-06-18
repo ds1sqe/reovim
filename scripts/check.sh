@@ -18,10 +18,11 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLIPPY_TARGET="$ROOT/target/check-clippy"
-# The freestanding floor (reovim-arch on aarch64-unknown-none) is cfg-gated
-# out of the host build, so the host clippy above never sees it. It gets its
-# own clippy pass against its own target dir.
+# The freestanding floor (reovim-arch on the bare-metal targets) is cfg-gated
+# out of the host build, so the host clippy above never sees it. Each
+# bare-metal target gets its own clippy pass against its own target dir.
 CLIPPY_NONE_TARGET="$ROOT/target/check-clippy-none"
+CLIPPY_NONE_X86_TARGET="$ROOT/target/check-clippy-none-x86"
 
 usage() {
     sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -33,8 +34,8 @@ case "${1:-}" in
     --quick) mode=quick ;;
     --sequential) mode=sequential ;;
     --clean-cache)
-        rm -rf "$CLIPPY_TARGET" "$CLIPPY_NONE_TARGET"
-        echo "removed $CLIPPY_TARGET $CLIPPY_NONE_TARGET"
+        rm -rf "$CLIPPY_TARGET" "$CLIPPY_NONE_TARGET" "$CLIPPY_NONE_X86_TARGET"
+        echo "removed $CLIPPY_TARGET $CLIPPY_NONE_TARGET $CLIPPY_NONE_X86_TARGET"
         exit 0
         ;;
     -h | --help)
@@ -59,6 +60,11 @@ run_clippy() {
 run_clippy_none() {
     CARGO_TARGET_DIR="$CLIPPY_NONE_TARGET" \
         cargo clippy -p reovim-arch --target aarch64-unknown-none \
+        --features runtime -- -D warnings
+}
+run_clippy_none_x86() {
+    CARGO_TARGET_DIR="$CLIPPY_NONE_X86_TARGET" \
+        cargo clippy -p reovim-arch --target x86_64-unknown-none \
         --features runtime -- -D warnings
 }
 run_tests() { cargo test --workspace; }
@@ -89,6 +95,12 @@ fi
 echo "==> clippy (freestanding: aarch64-unknown-none)"
 if ! run_clippy_none; then
     echo "check.sh: clippy-none FAILED (freestanding arch lints)" >&2
+    exit 1
+fi
+
+echo "==> clippy (freestanding: x86_64-unknown-none)"
+if ! run_clippy_none_x86; then
+    echo "check.sh: clippy-none-x86 FAILED (freestanding arch lints)" >&2
     exit 1
 fi
 

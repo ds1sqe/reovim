@@ -12,6 +12,10 @@
 //! layout (load address 0x80000, `.text.boot` first, testrt section
 //! brackets, BSS/stack symbols the boot arm consumes), supplied by the
 //! package's linker script.
+//!
+//! `x86_64-unknown-none`: the Multiboot1 image needs its own layout (load
+//! address 0x100000, `.multiboot` header first, then `.text.boot`; same
+//! testrt brackets and BSS/stack symbols), supplied by `link-none-x86_64.ld`.
 
 fn main() {
     let target = std::env::var("TARGET").unwrap_or_default();
@@ -19,10 +23,15 @@ fn main() {
     if !linker.contains("rust-lld") && !target.ends_with("-none") {
         println!("cargo::rustc-link-arg-bins=-nostartfiles");
     }
-    if target == "aarch64-unknown-none" {
+    let script = match target.as_str() {
+        "aarch64-unknown-none" => Some("link-none-aarch64.ld"),
+        "x86_64-unknown-none" => Some("link-none-x86_64.ld"),
+        _ => None,
+    };
+    if let Some(script) = script {
         let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
-        println!("cargo::rustc-link-arg-bins=-T{dir}/link-none-aarch64.ld");
-        println!("cargo::rerun-if-changed=link-none-aarch64.ld");
+        println!("cargo::rustc-link-arg-bins=-T{dir}/{script}");
+        println!("cargo::rerun-if-changed={script}");
     }
     println!("cargo::rerun-if-env-changed=RUSTC_LINKER");
 }

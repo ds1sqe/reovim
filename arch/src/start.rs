@@ -36,7 +36,7 @@
 /// // _start requires a no_main binary context — not callable from the doctest harness.
 /// // It is entered only via the kernel's initial control transfer after exec.
 /// ```
-#[cfg(all(feature = "runtime", target_arch = "x86_64"))]
+#[cfg(all(feature = "runtime", target_os = "linux", target_arch = "x86_64"))]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -60,6 +60,241 @@ pub extern "C" fn _start() -> ! {
         "and rsp, -16",        // 16-byte align the stack before the call
         "call {entry}",        // rust_entry(argc, argv, envp) -> ! (never returns)
         "ud2",                // unreachable: rust_entry exits the process
+        entry = sym rust_entry,
+    )
+}
+
+/// The Multiboot1 header that marks the image as a bootable kernel.
+///
+/// QEMU's `-kernel` loader recognizes a Multiboot1 image by a header in the
+/// first 8 KiB of the file: magic `0x1BADB002`, a flags word, and a checksum
+/// such that `magic + flags + checksum ≡ 0 (mod 2^32)`. `flags = 0` requests
+/// nothing extra (no module alignment, no memory-map tag pushed beyond the
+/// default), which is all the dev-loop floor needs — the boot pointer in `ebx`
+/// is discarded here (the memory map is sub-plan 02's concern). The linker
+/// script places `.multiboot` first, so the header lands at the image base.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[repr(C, align(4))]
+struct MultibootHeader {
+    magic: u32,
+    flags: u32,
+    checksum: u32,
+}
+
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[unsafe(link_section = ".multiboot")]
+#[used]
+static MULTIBOOT_HEADER: MultibootHeader = MultibootHeader {
+    magic: 0x1BAD_B002,
+    flags: 0,
+    checksum: 0u32.wrapping_sub(0x1BAD_B002),
+};
+
+/// A 4 KiB page table (512 × 8-byte entries), filled by the `_start` asm
+/// before paging is enabled (Rust never touches it).
+///
+/// Three of these build the identity map for the climb to long mode:
+/// `PML4[0] → PDPT[0] → PD`, where `PD`'s 512 entries are 2 MiB pages covering
+/// the low 1 GiB (image, stack, COM1's port space is I/O not memory). One
+/// branch, 2 MiB leaves: the floor needs an address space to enter 64-bit
+/// mode, not fine-grained protection.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[repr(C, align(4096))]
+struct PageTable(core::cell::UnsafeCell<[u64; 512]>);
+
+// SAFETY: written only by the `_start` asm before any Rust code runs and
+// before the CPU's page walker consumes them; afterwards only the hardware
+// walker reads them. No two accessors ever race.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+unsafe impl Sync for PageTable {}
+
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+static PML4: PageTable = PageTable(core::cell::UnsafeCell::new([0; 512]));
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+static PDPT: PageTable = PageTable(core::cell::UnsafeCell::new([0; 512]));
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+static PD: PageTable = PageTable(core::cell::UnsafeCell::new([0; 512]));
+
+/// The flat long-mode GDT: null, 64-bit ring-0 code (`L=1`), ring-0 data.
+///
+/// Long mode ignores segment base/limit, so the descriptors only need the
+/// type/present/long bits: code = `0x00AF_9A00_0000_FFFF` (present, code,
+/// readable, `L`), data = `0x00CF_9200_0000_FFFF` (present, data, writable).
+/// Selector `0x08` is the code segment, `0x10` the data segment.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[repr(C, align(16))]
+struct Gdt([u64; 3]);
+
+// SAFETY: read-only after construction; `lgdt` and the CPU read it, Rust never
+// mutates it.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+unsafe impl Sync for Gdt {}
+
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+static GDT: Gdt = Gdt([0, 0x00AF_9A00_0000_FFFF, 0x00CF_9200_0000_FFFF]);
+
+/// The long-mode proof-of-life banner, written to COM1 by `_start` before any
+/// Rust runtime exists. NUL-terminated so the asm loop knows where to stop.
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[used]
+static HELLO: [u8; 39] = *b"reovim: hello from long mode (x86_64)\n\0";
+
+/// The bare-metal boot entry (`_start`) for the QEMU `q35` machine, entered via
+/// Multiboot1 (`qemu-system-x86_64 -kernel <elf>`).
+///
+/// QEMU's Multiboot1 loader loads the ELF and jumps to its entry point in
+/// **32-bit protected mode**, paging off, interrupts off, with the boot info
+/// pointer in `ebx` and magic `0x2BADB002` in `eax`. There is no kernel and no
+/// process ABI: no argc/argv/envp exist, so [`rust_entry`] receives zeros, and
+/// `ebx` is discarded (the memory map is sub-plan 02's concern, mirroring the
+/// aarch64 arm discarding the DTB).
+///
+/// The naked body owns the whole climb from 32-bit protected mode to 64-bit
+/// long mode, in order:
+///
+/// 1. **Stack + BSS.** A temporary stack at `__stack_top` (also the long-mode
+///    stack), then a `rep stosd` BSS clear over `[__bss_start, __bss_end)` —
+///    which zero-initializes the page-table statics below and the page arena,
+///    upholding `mmap`'s zero-fill contract. BSS is cleared *before* the page
+///    tables are filled because they live in `.bss`.
+/// 2. **Identity page tables.** `PD` gets 512 × 2 MiB present/writable pages
+///    (low 1 GiB); `PML4[0]`/`PDPT[0]` point down the branch. `cr3 ← PML4`.
+/// 3. **Enable long mode.** `CR4.PAE`, then `EFER.LME` (MSR `0xC0000080`), then
+///    `CR0.PG|PE` — activating IA-32e mode in 32-bit compatibility (`CS.L=0`).
+/// 4. **Far-jump to 64-bit.** `lgdt` loads [`GDT`]; a far return to selector
+///    `0x08` reloads `CS` with the `L=1` descriptor, entering 64-bit mode.
+/// 5. **64-bit continuation.** Reload the data segment registers, set `rsp`,
+///    initialize COM1 (16550 at port `0x3F8`, 115200 8N1), write [`HELLO`], then
+///    call [`rust_entry`] with `(0, null, null)`. Never returns; exit is the
+///    `isa-debug-exit` channel in `sys`.
+///
+/// The `.code32`/`.code64` directives bracket the whole body in one function so
+/// the assembler-mode switch cannot leak into sibling functions; the trailing
+/// `.code64` restores the default after the (runtime-unreachable) far jump.
+///
+/// No IDT is installed: the payload's failure channel is the Rust panic path
+/// (COM1 + exit code), which raises no exceptions. An unexpected fault is fatal
+/// by triple-fault reset — the honest behavior for a floor with no handler
+/// policy.
+///
+/// ```ignore
+/// // _start is entered only by QEMU's Multiboot1 control transfer — not
+/// // callable from any Rust context.
+/// ```
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.boot")]
+pub extern "C" fn _start() -> ! {
+    // SAFETY: `naked_asm` is the whole function body, reached only by QEMU's
+    // Multiboot1 jump described above. Register use is free (no caller, no
+    // ABI); the page-table/GDT/string statics and `rust_entry` are
+    // link-time-resolved addresses inside this image, and the linker symbols
+    // `__stack_top`/`__bss_start`/`__bss_end` are absolute (non-PIE static
+    // link). Every control-register and MSR write is documented at its step.
+    core::arch::naked_asm!(
+        ".code32",
+        // -- 1: temporary stack + BSS clear (before the tables are filled) ----
+        "lea esp, [__stack_top]",
+        "cld",                       // rep stosd ascends; DF must be clear
+        "lea edi, [__bss_start]",
+        "lea ecx, [__bss_end]",
+        "sub ecx, edi",
+        "shr ecx, 2",                // dword count (bounds are 8-aligned)
+        "xor eax, eax",
+        "rep stosd",
+        // -- 2: identity page tables (PD: 512 * 2 MiB present|writable) -------
+        "lea edi, [{pd}]",
+        "xor ecx, ecx",
+        "mov eax, 0x83",             // present|writable|PS(2 MiB), frame 0
+        "2:",
+        "mov [edi + ecx*8], eax",    // entry low dword: frame|flags
+        "mov dword ptr [edi + ecx*8 + 4], 0", // entry high dword
+        "add eax, 0x200000",         // next 2 MiB frame
+        "inc ecx",
+        "cmp ecx, 512",
+        "jb 2b",
+        "lea eax, [{pdpt}]",
+        "or eax, 3",                 // present|writable
+        "lea edi, [{pml4}]",
+        "mov [edi], eax",
+        "mov dword ptr [edi + 4], 0",
+        "lea eax, [{pd}]",
+        "or eax, 3",
+        "lea edi, [{pdpt}]",
+        "mov [edi], eax",
+        "mov dword ptr [edi + 4], 0",
+        "lea eax, [{pml4}]",
+        "mov cr3, eax",
+        // -- 3: enable long mode (PAE -> LME -> PG) ---------------------------
+        "mov eax, cr4",
+        "or eax, 0x20",              // CR4.PAE (bit 5)
+        "mov cr4, eax",
+        "mov ecx, 0xC0000080",       // IA32_EFER
+        "rdmsr",
+        "or eax, 0x100",             // EFER.LME (bit 8)
+        "wrmsr",
+        "mov eax, cr0",
+        "or eax, 0x80000001",        // CR0.PG (bit 31) | PE (bit 0)
+        "mov cr0, eax",
+        // -- 4: load GDT, far-jump into the 64-bit code segment ---------------
+        "sub esp, 8",                // scratch GDTR: limit(2) + base(4)
+        "mov word ptr [esp], 23",    // limit = 3*8 - 1
+        "lea eax, [{gdt}]",
+        "mov [esp + 2], eax",        // 32-bit base
+        "lgdt [esp]",
+        "add esp, 8",
+        "push 0x08",                 // CS selector (deeper on the stack)
+        "lea eax, [3f]",
+        "push eax",                  // 64-bit entry offset (popped as EIP)
+        "retf",                      // far return: loads CS:EIP -> 64-bit mode
+        // -- 5: 64-bit continuation -------------------------------------------
+        ".code64",
+        "3:",
+        "mov ax, 0x10",              // data selector
+        "mov ds, ax",
+        "mov es, ax",
+        "mov ss, ax",
+        "mov fs, ax",
+        "mov gs, ax",
+        "lea rsp, [__stack_top]",
+        // COM1 16550 init: 115200 8N1, FIFO on (mirrors sys::uart::init).
+        "mov dx, 0x3F9", "mov al, 0x00", "out dx, al", // IER: no interrupts
+        "mov dx, 0x3FB", "mov al, 0x80", "out dx, al", // LCR: DLAB on
+        "mov dx, 0x3F8", "mov al, 0x01", "out dx, al", // DLL: divisor 1
+        "mov dx, 0x3F9", "mov al, 0x00", "out dx, al", // DLM: divisor high
+        "mov dx, 0x3FB", "mov al, 0x03", "out dx, al", // LCR: 8N1, DLAB off
+        "mov dx, 0x3FA", "mov al, 0xC7", "out dx, al", // FCR: enable+clear FIFO
+        "mov dx, 0x3FC", "mov al, 0x0B", "out dx, al", // MCR: DTR|RTS|OUT2
+        // Write HELLO byte-by-byte, polling LSR (0x3FD bit 5 = THR empty).
+        "lea rsi, [{hello}]",
+        "4:",
+        "mov bl, [rsi]",
+        "test bl, bl",
+        "jz 5f",
+        "6:",
+        "mov dx, 0x3FD",
+        "in al, dx",
+        "test al, 0x20",
+        "jz 6b",
+        "mov dx, 0x3F8",
+        "mov al, bl",
+        "out dx, al",
+        "inc rsi",
+        "jmp 4b",
+        "5:",
+        // -- into Rust: no process ABI here, so (argc, argv, envp) = (0, 0, 0) -
+        "xor edi, edi",
+        "xor esi, esi",
+        "xor edx, edx",
+        "call {entry}",
+        "ud2",                       // unreachable: rust_entry exits via sys
+        ".code64",                   // restore default mode after the block
+        pml4 = sym PML4,
+        pdpt = sym PDPT,
+        pd = sym PD,
+        gdt = sym GDT,
+        hello = sym HELLO,
         entry = sym rust_entry,
     )
 }

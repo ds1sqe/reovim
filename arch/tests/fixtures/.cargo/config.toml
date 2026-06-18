@@ -1,0 +1,14 @@
+# Bare-metal x86_64 fixtures: force the static relocation model.
+#
+# The built-in `x86_64-unknown-none` target defaults to PIC + PIE
+# (`position-independent-executables: true`), unlike `aarch64-unknown-none`
+# which is `relocation-model: static`. The arch `_start` climb uses absolute
+# addressing (32-bit `lea`/`mov` of link-time symbol addresses before paging is
+# enabled), which emits `R_X86_64_32`/`R_X86_64_32S` relocations the PIE link
+# rejects. Static relocation + non-PIE matches the firmware-loaded-image model
+# (nobody relocates a Multiboot1 kernel) and the aarch64 floor's posture.
+#
+# Scoped to the freestanding target only; host fixture builds (and the
+# host-only coverage run, which overrides RUSTFLAGS) are unaffected.
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static", "-C", "link-args=-no-pie"]

@@ -21,17 +21,17 @@
 //! statics are clean for the next test. The selftest runner is single-threaded
 //! sequential; no serialization guard is needed.
 
-use reovim_lib_ds::Bytes;
-
 use crate::{arch_test, testrt};
 
-// Only the hosted (filesystem-backed) capture tests need the file syscalls
-// and the recover-hook's seen-flag atomics.
+// Only the hosted (filesystem-backed) capture tests need the file syscalls,
+// the byte/string accumulators they read into, and the recover-hook's
+// seen-flag atomics. Bare metal has no filesystem, so none of this compiles
+// there (and `Bytes`/`Str` would be unused imports).
 #[cfg(target_os = "linux")]
 use {
     crate::sys::{self, AT_FDCWD, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY},
     core::sync::atomic::{AtomicU8, Ordering::Relaxed},
-    reovim_lib_ds::Str,
+    reovim_lib_ds::{Bytes, Str},
 };
 
 use super::{

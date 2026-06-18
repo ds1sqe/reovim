@@ -27,6 +27,11 @@ mod none_aarch64;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 use none_aarch64 as target;
 
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+mod none_x86_64;
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+use none_x86_64 as target;
+
 // The VideoCore mailbox framebuffer is freestanding-only hardware surface
 // (no Linux backend has one), exposed so the bare-metal splash payload can
 // drive it. Same target gate as the backend it lives in.
@@ -49,6 +54,7 @@ pub use none_aarch64::collect_boot_info;
     all(target_os = "linux", target_arch = "x86_64"),
     all(target_os = "linux", target_arch = "aarch64"),
     all(target_os = "none", target_arch = "aarch64"),
+    all(target_os = "none", target_arch = "x86_64"),
 )))]
 compile_error!(
     "no arch sys backend for this target; see arch/src/sys/ for the per-target backend convention"

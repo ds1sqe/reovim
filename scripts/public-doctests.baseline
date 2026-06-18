@@ -65,6 +65,17 @@ arch/src/sys/net.rs	pub const SOCK_CLOEXEC: usize
 arch/src/sys/net.rs	pub const SOCK_STREAM: usize
 arch/src/sys/net.rs	pub const UNIX_PATH_MAX: usize
 arch/src/sys/none_aarch64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/src/sys/none_aarch64/console.rs	pub fn new(fb: Framebuffer, fg: u32, bg: u32, scale: u32) -> Self
+arch/src/sys/none_aarch64/console.rs	pub fn print(&mut self, s: &str)
+arch/src/sys/none_aarch64/console.rs	pub struct Console
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn base(&self) -> usize
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn height(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn pitch(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub const fn width(&self) -> u32
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn clear(&self, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn init() -> Option<Framebuffer>
+arch/src/sys/none_aarch64/framebuffer.rs	pub fn put_pixel(&self, x: u32, y: u32, color: u32)
+arch/src/sys/none_aarch64/framebuffer.rs	pub struct Framebuffer
 arch/src/sys/none_aarch64/mod.rs	pub const unsafe fn clone_into(
 arch/src/sys/none_aarch64/semihost.rs	pub fn exit(code: i32) -> !
 arch/src/sys/none_aarch64/timer.rs	pub fn counter() -> u64
@@ -108,6 +119,50 @@ arch/src/sys/none_aarch64/wrap.rs	pub fn futex(
 arch/src/sys/none_aarch64/wrap.rs	pub fn mmap(
 arch/src/sys/none_aarch64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
 arch/src/sys/none_aarch64/wrap.rs	pub struct Timespec
+arch/src/sys/none_x86_64/arena.rs	pub fn alloc_pages(len: usize) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/mod.rs	pub const unsafe fn clone_into(
+arch/src/sys/none_x86_64/semihost.rs	pub fn exit(code: i32) -> !
+arch/src/sys/none_x86_64/timer.rs	pub fn counter() -> u64
+arch/src/sys/none_x86_64/timer.rs	pub fn frequency() -> u64
+arch/src/sys/none_x86_64/uart.rs	pub fn write_bytes(buf: &[u8])
+arch/src/sys/none_x86_64/wrap.rs	pub const AT_FDCWD: i32
+arch/src/sys/none_x86_64/wrap.rs	pub const CLOCK_MONOTONIC: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLOCK_REALTIME: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_CHILD_CLEARTID: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_FILES: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_FS: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_PARENT_SETTID: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_SIGHAND: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_SYSVSEM: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_THREAD: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const CLONE_VM: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const fn close(_fd: i32) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub const fn gettid() -> i32
+arch/src/sys/none_x86_64/wrap.rs	pub const fn mprotect(_addr: usize, _len: usize, _prot: usize) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub const fn munmap(_addr: usize, _len: usize) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub const fn openat(
+arch/src/sys/none_x86_64/wrap.rs	pub const fn read(fd: i32, _buf: &mut [u8]) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_PRIVATE_FLAG: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_WAIT: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const FUTEX_WAKE: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const MAP_ANONYMOUS: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const MAP_FAILED: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const MAP_PRIVATE: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const O_CLOEXEC: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const O_CREAT: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const O_RDONLY: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const O_TRUNC: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const O_WRONLY: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const PROT_NONE: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const PROT_READ: usize
+arch/src/sys/none_x86_64/wrap.rs	pub const PROT_WRITE: usize
+arch/src/sys/none_x86_64/wrap.rs	pub fn clock_gettime(clockid: usize, tp: &mut Timespec) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub fn exit(code: i32) -> !
+arch/src/sys/none_x86_64/wrap.rs	pub fn exit_group(code: i32) -> !
+arch/src/sys/none_x86_64/wrap.rs	pub fn futex(
+arch/src/sys/none_x86_64/wrap.rs	pub fn mmap(
+arch/src/sys/none_x86_64/wrap.rs	pub fn write(fd: i32, buf: &[u8]) -> Result<usize, Errno>
+arch/src/sys/none_x86_64/wrap.rs	pub struct Timespec
 arch/src/sys/term.rs	pub const BRKINT: u32
 arch/src/sys/term.rs	pub const ECHOE: u32
 arch/src/sys/term.rs	pub const ECHOK: u32
