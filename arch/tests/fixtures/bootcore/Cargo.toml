@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Bare-metal aarch64 boot-core: runs the real reovim-kernel Init::boot on QEMU raspi4b and renders the boot-stage log ring (UART + framebuffer console)"
+description = "Bare-metal boot-core: runs the real reovim-kernel Init::boot on the freestanding floor (QEMU raspi4b aarch64 with UART + framebuffer console; QEMU q35 x86_64 Multiboot1, UART-only) and streams the boot-stage log"
 publish = false
 
 [[bin]]

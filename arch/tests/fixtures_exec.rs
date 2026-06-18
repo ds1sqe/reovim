@@ -565,6 +565,38 @@ fn testrt_pilot_one_failure_exits_nonzero() {
 }
 
 #[test]
+fn bootcore_boots_real_kernel_exits_zero() {
+    // The first x86 `Init::boot` proof (#788 sub-plan 02): the bootcore payload
+    // boots the REAL reovim kernel on the freestanding floor, the boot-tail
+    // diagnostics banner prints the Multiboot-discovered RAM, and the bin exits
+    // 0 through isa-debug-exit. This is the consumer that exercises the x86
+    // BootInfo provider end-to-end — empty-`BootInfo` would print memory as
+    // "unknown", so a real "MiB" figure proves the provider fed `Init` real
+    // facts.
+    //
+    // x86-only: the aarch64 bootcore parks (`wfe`) to persist its framebuffer
+    // for a manual screendump, so it never exits — running it here would time
+    // out. aarch64's kernel-boot proof stays the manual screendump.
+    let Some(target) = fixture_target() else {
+        return; // hosted mode: no bare-metal kernel-boot image
+    };
+    if !target.starts_with("x86_64") {
+        return;
+    }
+    let exe = build_fixture("arch-bootcore");
+    let (code, serial) = run_system_image(&exe);
+    assert_eq!(code, 0, "bootcore boots the kernel and exits 0; serial: {serial:?}");
+    assert!(
+        serial.contains("kernel booted"),
+        "bootcore reached the post-boot line; serial: {serial:?}",
+    );
+    assert!(
+        serial.contains("MiB"),
+        "boot banner reports discovered RAM in MiB, not unknown; serial: {serial:?}",
+    );
+}
+
+#[test]
 fn panic_halt_fixture_flushes_log2_and_exits_70() {
     if skip_in_system_image_mode("panic_halt_fixture_flushes_log2_and_exits_70") {
         return;

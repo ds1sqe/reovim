@@ -43,7 +43,7 @@ pub fn counter() -> u64 {
 /// rbx is saved into the scratch register r11 around the instruction and
 /// the result is moved back out — the standard freestanding `cpuid`
 /// idiom.
-fn cpuid(leaf: u32) -> (u32, u32, u32, u32) {
+pub(super) fn cpuid(leaf: u32) -> (u32, u32, u32, u32) {
     let eax: u32;
     let ebx: u32;
     let ecx: u32;

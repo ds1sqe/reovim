@@ -50,6 +50,11 @@ pub use none_aarch64::console;
 #[cfg(all(target_os = "none", target_arch = "aarch64"))]
 pub use none_aarch64::collect_boot_info;
 
+// x86 discovers the same facts from the Multiboot1 memory map (stashed by
+// `_start`) and `CPUID`, feeding the identical neutral `BootInfo`.
+#[cfg(all(target_os = "none", target_arch = "x86_64"))]
+pub use none_x86_64::collect_boot_info;
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
     all(target_os = "linux", target_arch = "aarch64"),

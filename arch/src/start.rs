@@ -69,10 +69,10 @@ pub extern "C" fn _start() -> ! {
 /// QEMU's `-kernel` loader recognizes a Multiboot1 image by a header in the
 /// first 8 KiB of the file: magic `0x1BADB002`, a flags word, and a checksum
 /// such that `magic + flags + checksum ≡ 0 (mod 2^32)`. `flags = 0` requests
-/// nothing extra (no module alignment, no memory-map tag pushed beyond the
-/// default), which is all the dev-loop floor needs — the boot pointer in `ebx`
-/// is discarded here (the memory map is sub-plan 02's concern). The linker
-/// script places `.multiboot` first, so the header lands at the image base.
+/// nothing extra (no module alignment, no extra header tags) — the loader still
+/// fills the default info structure, whose memory map the floor reads via the
+/// boot pointer in `ebx` (stashed by `_start` into [`MULTIBOOT_INFO_PTR`]). The
+/// linker script places `.multiboot` first, so the header lands at the image base.
 #[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
 #[repr(C, align(4))]
 struct MultibootHeader {
@@ -139,15 +139,32 @@ static GDT: Gdt = Gdt([0, 0x00AF_9A00_0000_FFFF, 0x00CF_9200_0000_FFFF]);
 #[used]
 static HELLO: [u8; 39] = *b"reovim: hello from long mode (x86_64)\n\0";
 
+/// The Multiboot1 information-structure pointer the bootloader leaves in `EBX`
+/// at entry.
+///
+/// The `_start` asm stashes it here in the 32-bit prologue — *after* the BSS
+/// clear (so the store is not zeroed) and *before* the COM1 banner loop reuses
+/// `rbx`/`bl`. The x86 boot-info provider (`sys::collect_boot_info`) reads it to
+/// parse the firmware memory map. It is the storage cell; the single read API is
+/// `sys::none_x86_64::boot_info::multiboot_ptr`. Zero until stashed, and on any
+/// non-Multiboot entry, which the reader treats as "no boot info" (empty map).
+///
+/// This is the boot pointer Invariant 5 calls for gathering *separately* from
+/// the `(argc, argv, envp)` shape — it never threads through [`rust_entry`].
+#[cfg(all(feature = "runtime", target_arch = "x86_64", target_os = "none"))]
+pub(crate) static MULTIBOOT_INFO_PTR: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+
 /// The bare-metal boot entry (`_start`) for the QEMU `q35` machine, entered via
 /// Multiboot1 (`qemu-system-x86_64 -kernel <elf>`).
 ///
 /// QEMU's Multiboot1 loader loads the ELF and jumps to its entry point in
 /// **32-bit protected mode**, paging off, interrupts off, with the boot info
 /// pointer in `ebx` and magic `0x2BADB002` in `eax`. There is no kernel and no
-/// process ABI: no argc/argv/envp exist, so [`rust_entry`] receives zeros, and
-/// `ebx` is discarded (the memory map is sub-plan 02's concern, mirroring the
-/// aarch64 arm discarding the DTB).
+/// process ABI: no argc/argv/envp exist, so [`rust_entry`] receives zeros. The
+/// boot pointer in `ebx` is stashed into [`MULTIBOOT_INFO_PTR`] for
+/// `sys::collect_boot_info` (where the aarch64 arm instead discovers RAM live
+/// via the `VideoCore` mailbox).
 ///
 /// The naked body owns the whole climb from 32-bit protected mode to 64-bit
 /// long mode, in order:
@@ -156,7 +173,9 @@ static HELLO: [u8; 39] = *b"reovim: hello from long mode (x86_64)\n\0";
 ///    stack), then a `rep stosd` BSS clear over `[__bss_start, __bss_end)` —
 ///    which zero-initializes the page-table statics below and the page arena,
 ///    upholding `mmap`'s zero-fill contract. BSS is cleared *before* the page
-///    tables are filled because they live in `.bss`.
+///    tables are filled because they live in `.bss`. Immediately after the
+///    clear (and before the banner loop reuses `bl`), `ebx` — the Multiboot
+///    info pointer — is stashed into [`MULTIBOOT_INFO_PTR`].
 /// 2. **Identity page tables.** `PD` gets 512 × 2 MiB present/writable pages
 ///    (low 1 GiB); `PML4[0]`/`PDPT[0]` point down the branch. `cr3 ← PML4`.
 /// 3. **Enable long mode.** `CR4.PAE`, then `EFER.LME` (MSR `0xC0000080`), then
@@ -203,6 +222,13 @@ pub extern "C" fn _start() -> ! {
         "shr ecx, 2",                // dword count (bounds are 8-aligned)
         "xor eax, eax",
         "rep stosd",
+        // -- 1b: stash the Multiboot info pointer (ebx) before it is reused ----
+        // ebx still holds the loader's info pointer (untouched since entry; the
+        // BSS clear used edi/ecx/eax). Store it now — after the clear so it is
+        // not zeroed, before the 64-bit banner loop clobbers bl. A plain
+        // 4-byte store to the AtomicU32 cell (still single-threaded here); the
+        // provider reads it with an atomic load.
+        "mov [{mb_ptr}], ebx",
         // -- 2: identity page tables (PD: 512 * 2 MiB present|writable) -------
         "lea edi, [{pd}]",
         "xor ecx, ecx",
@@ -290,6 +316,7 @@ pub extern "C" fn _start() -> ! {
         "call {entry}",
         "ud2",                       // unreachable: rust_entry exits via sys
         ".code64",                   // restore default mode after the block
+        mb_ptr = sym MULTIBOOT_INFO_PTR,
         pml4 = sym PML4,
         pdpt = sym PDPT,
         pd = sym PD,
